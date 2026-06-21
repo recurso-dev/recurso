@@ -186,10 +186,25 @@ func main() {
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
 
+	// Phase 2: Mandate Repository
+	mandateRepo := db.NewMandateRepository(database)
+
+	// Phase 2: Offline Payment Repository
+	offlinePaymentRepo := db.NewOfflinePaymentRepository(database)
+
+	// Phase 2: Organization Repository
+	orgRepo := db.NewOrganizationRepository(database)
+
+	// Phase 2: Accounting Connection Repository
+	acctConnRepo := db.NewAccountingConnectionRepository(database)
+
 	// AI Service (P45)
 	dunningRepo := db.NewDunningRepository(database)
 	retryService := service.NewSmartRetryService(dunningRepo)
 	churnService := service.NewChurnService(customerRepo, invoiceRepo)
+	churnService.SetSubscriptionRepo(subscriptionRepo)
+	churnService.SetPlanRepo(planRepo)
+	churnService.SetDB(database)
 
 	// Analytics
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
@@ -213,7 +228,16 @@ func main() {
 	// Accounting (P41)
 	accountingGateway := accounting.NewMockAccountingAdapter()
 	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
-	_ = accountingService // Ready to be used by handlers or workers
+	accountingService.SetConnectionRepo(acctConnRepo)
+
+	// Phase 2: Mandate Service
+	mandateService := service.NewMandateService(mandateRepo, paymentGateway, customerRepo, invoiceRepo)
+
+	// Phase 2: Offline Payment Service
+	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, paymentGateway, invoiceRepo, subscriptionService)
+
+	// Phase 2: Organization Service
+	orgService := service.NewOrganizationService(orgRepo, subscriptionRepo, planRepo)
 
 	// Referral (P42)
 	referralRepo := db.NewReferralRepository(dbx)
@@ -234,12 +258,16 @@ func main() {
 	// P25: E-Invoice Retry Worker
 	einvoiceWorker := worker.NewEInvoiceRetryWorker(invoiceRepo, einvoiceService)
 
+	// Phase 2: Accounting Sync Worker (daily)
+	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
+
 	// Start Workers in Background
 	go retryWorker.Start(context.Background())
 	go webhookWorker.Start(context.Background())
 	go churnWorker.Start(context.Background())
 	go revrecWorker.Start(context.Background())
 	go einvoiceWorker.Start(context.Background())
+	go acctSyncWorker.Start(context.Background())
 
 	// Distributed Locking & Redis
 	var locker port.Locker
@@ -289,6 +317,11 @@ func main() {
 	cardExpiryScheduler.Start()
 	defer cardExpiryScheduler.Stop()
 
+	// Phase 2: Mandate Debit Scheduler (hourly)
+	mandateDebitScheduler := scheduler.NewMandateDebitScheduler(mandateRepo, mandateService, locker)
+	mandateDebitScheduler.Start()
+	defer mandateDebitScheduler.Stop()
+
 	// Graceful shutdown handler
 	go func() {
 		sigChan := make(chan os.Signal, 1)
@@ -298,6 +331,7 @@ func main() {
 		preChargeScheduler.Stop()
 		dunningScheduler.Stop()
 		cardExpiryScheduler.Stop()
+		mandateDebitScheduler.Stop()
 		os.Exit(0)
 	}()
 
@@ -350,9 +384,18 @@ func main() {
 	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
 	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc)
 
+	// Phase 2: New Handlers
+	mandateHandler := handler.NewMandateHandler(mandateService)
+	offlinePaymentHandler := handler.NewOfflinePaymentHandler(offlinePaymentService)
+	orgHandler := handler.NewOrganizationHandler(orgService)
+	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService)
+	churnHandler := handler.NewChurnHandler(churnService, database)
+
 	// Payment Handlers
 	paymentHandler := handler.NewPaymentHandler(paymentGateway, invoiceRepo)
 	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	webhookHandler.SetMandateService(mandateService)
+	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
 
 	// 8. Setup Router
 	r := gin.Default()
@@ -563,6 +606,39 @@ func main() {
 		// Gift API (P43)
 		v1.POST("/gifts/purchase", giftHandler.PurchaseGift)
 		v1.POST("/gifts/redeem", giftHandler.RedeemGift)
+
+		// Phase 2: UPI Mandates
+		v1.POST("/mandates", mandateHandler.CreateMandate)
+		v1.GET("/mandates", mandateHandler.ListMandates)
+		v1.GET("/mandates/:id", mandateHandler.GetMandate)
+		v1.POST("/mandates/:id/revoke", mandateHandler.RevokeMandate)
+
+		// Phase 2: Offline Payments / Virtual Accounts
+		v1.POST("/virtual-accounts", offlinePaymentHandler.CreateVirtualAccount)
+		v1.GET("/virtual-accounts", offlinePaymentHandler.ListVirtualAccounts)
+		v1.POST("/payments/offline", offlinePaymentHandler.RecordOfflinePayment)
+		v1.GET("/payments/offline", offlinePaymentHandler.ListOfflinePayments)
+
+		// Phase 2: Organizations (Multi-Entity)
+		v1.POST("/organizations", orgHandler.CreateOrganization)
+		v1.GET("/organizations/:id", orgHandler.GetOrganization)
+		v1.POST("/organizations/:id/tenants", orgHandler.AddTenant)
+		v1.GET("/organizations/:id/tenants", orgHandler.ListTenants)
+		v1.GET("/organizations/:id/analytics/mrr", orgHandler.GetConsolidatedMRR)
+
+		// Phase 2: Accounting / ERP Integrations
+		v1.GET("/accounting/connections", accountingHandler.ListConnections)
+		v1.POST("/accounting/connect/:provider", accountingHandler.InitiateOAuth)
+		v1.GET("/accounting/callback/:provider", accountingHandler.OAuthCallback)
+		v1.DELETE("/accounting/connections/:id", accountingHandler.Disconnect)
+		v1.POST("/accounting/sync", accountingHandler.TriggerSync)
+		v1.GET("/accounting/sync/status", accountingHandler.SyncStatus)
+
+		// Phase 2: Churn Scoring
+		v1.GET("/customers/:id/churn", churnHandler.GetCustomerChurn)
+		v1.GET("/churn/high-risk", churnHandler.GetHighRiskCustomers)
+		v1.GET("/churn/alerts", churnHandler.GetAlerts)
+		v1.POST("/churn/alerts/:id/ack", churnHandler.AcknowledgeAlert)
 	}
 
 	// 9. Start Server

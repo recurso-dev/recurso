@@ -165,6 +165,24 @@ func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amou
 	}, nil
 }
 
+var ErrNotSupported = fmt.Errorf("operation not supported by this gateway")
+
+func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+	return nil, ErrNotSupported
+}
+
+func (s *StripeGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+	return nil, ErrNotSupported
+}
+
+func (s *StripeGateway) RevokeMandate(ctx context.Context, tokenID string) error {
+	return ErrNotSupported
+}
+
+func (s *StripeGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
+	return nil, ErrNotSupported
+}
+
 // Helper for Webhook Handler to call directly if needed
 func (s *StripeGateway) ConstructEvent(payload []byte, header string) (stripe.Event, error) {
 	return webhook.ConstructEvent(payload, header, s.webhookSecret)

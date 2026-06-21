@@ -35,6 +35,7 @@ type Subscription struct {
 	PaymentTerms           string             `json:"payment_terms"`                                          // P15
 	CouponID               *uuid.UUID         `json:"coupon_id,omitempty"`                                    // P7
 	ReferenceID            string             `json:"reference_id,omitempty" db:"reference_id"`               // P43
+	MandateID              *uuid.UUID         `json:"mandate_id,omitempty" db:"mandate_id"`
 	RazorpaySubscriptionID string             `json:"razorpay_subscription_id" db:"razorpay_subscription_id"` // P24
 	StripeSubscriptionID   string             `json:"stripe_subscription_id" db:"stripe_subscription_id"`     // P26
 	CreatedAt              time.Time          `json:"created_at" db:"created_at"`

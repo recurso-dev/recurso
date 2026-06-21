@@ -1,0 +1,1 @@
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS data_region VARCHAR(20) DEFAULT 'global';

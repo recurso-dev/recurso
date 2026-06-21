@@ -54,3 +54,21 @@ func (r *SmartRouter) RetryPayment(ctx context.Context, invoiceID string, amount
 	}
 	return r.Stripe.RetryPayment(ctx, invoiceID, amount, currency)
 }
+
+// Mandate operations always route to Razorpay (UPI is India-only)
+func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+	return r.Razorpay.CreateMandate(ctx, customerEmail, vpa, maxAmount, frequency)
+}
+
+func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+	return r.Razorpay.ExecuteMandateDebit(ctx, tokenID, amount, currency, invoiceID)
+}
+
+func (r *SmartRouter) RevokeMandate(ctx context.Context, tokenID string) error {
+	return r.Razorpay.RevokeMandate(ctx, tokenID)
+}
+
+// Virtual account operations route to Razorpay
+func (r *SmartRouter) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
+	return r.Razorpay.CreateVirtualAccount(ctx, customerID, invoiceID, amount, description)
+}

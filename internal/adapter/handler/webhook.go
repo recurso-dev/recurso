@@ -30,6 +30,8 @@ type WebhookHandler struct {
 	subRepo             port.SubscriptionRepository
 	customerRepo        port.CustomerRepository
 	notificationService *service.NotificationService
+	mandateService      *service.MandateService
+	offlinePaymentSvc   *service.OfflinePaymentService
 	stripeWebhookSecret string
 	logger              *slog.Logger
 }
@@ -55,6 +57,14 @@ func NewWebhookHandler(
 		stripeWebhookSecret: stripeWebhookSecret,
 		logger:              slog.Default().With("component", "webhook_handler"),
 	}
+}
+
+func (h *WebhookHandler) SetMandateService(svc *service.MandateService) {
+	h.mandateService = svc
+}
+
+func (h *WebhookHandler) SetOfflinePaymentService(svc *service.OfflinePaymentService) {
+	h.offlinePaymentSvc = svc
 }
 
 // RazorpayWebhookPayload is a simplified structure
@@ -117,6 +127,18 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	}
 
 	h.logger.Info("webhook received", "event", event.Event)
+
+	// Handle token.confirmed for UPI mandate authorization
+	if event.Event == "token.confirmed" {
+		h.handleTokenConfirmed(c, body)
+		return
+	}
+
+	// Handle virtual_account.credited for offline payment reconciliation
+	if event.Event == "virtual_account.credited" {
+		h.handleVirtualAccountCredited(c, body)
+		return
+	}
 
 	if event.Event == "payment.captured" || event.Event == "order.paid" {
 		invoiceIDStr := event.Payload.Payment.Entity.Notes.InvoiceID
@@ -461,4 +483,91 @@ func stringOrEmpty(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
+	if h.mandateService == nil {
+		h.logger.Info("mandate service not configured, ignoring token.confirmed")
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	var payload struct {
+		Payload struct {
+			Token struct {
+				Entity struct {
+					ID string `json:"id"`
+				} `json:"entity"`
+			} `json:"token"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		h.logger.Error("failed to parse token.confirmed payload", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	tokenID := payload.Payload.Token.Entity.ID
+	if tokenID == "" {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no token_id"})
+		return
+	}
+
+	if err := h.mandateService.HandleAuthorization(c.Request.Context(), tokenID); err != nil {
+		h.logger.Error("failed to handle mandate authorization", "token_id", tokenID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.logger.Info("mandate authorized via webhook", "token_id", tokenID)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byte) {
+	if h.offlinePaymentSvc == nil {
+		h.logger.Info("offline payment service not configured, ignoring virtual_account.credited")
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	var payload struct {
+		Payload struct {
+			VirtualAccount struct {
+				Entity struct {
+					ID            string `json:"id"`
+					AmountPaid    int64  `json:"amount_paid"`
+					AmountExpected int64 `json:"amount_expected"`
+				} `json:"entity"`
+			} `json:"virtual_account"`
+			Payment struct {
+				Entity struct {
+					ID     string `json:"id"`
+					Amount int64  `json:"amount"`
+				} `json:"entity"`
+			} `json:"payment"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		h.logger.Error("failed to parse virtual_account.credited payload", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		return
+	}
+
+	vaID := payload.Payload.VirtualAccount.Entity.ID
+	amount := payload.Payload.Payment.Entity.Amount
+	paymentID := payload.Payload.Payment.Entity.ID
+
+	if vaID == "" {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no va_id"})
+		return
+	}
+
+	if err := h.offlinePaymentSvc.ReconcileVirtualAccount(c.Request.Context(), vaID, amount, paymentID); err != nil {
+		h.logger.Error("failed to reconcile virtual account", "va_id", vaID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	h.logger.Info("virtual account payment reconciled via webhook", "va_id", vaID, "amount", amount)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

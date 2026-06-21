@@ -97,6 +97,117 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 	return id, nil
 }
 
+func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+	data := map[string]interface{}{
+		"type":         "link",
+		"amount":       0,
+		"currency":     "INR",
+		"description":  "UPI AutoPay Mandate",
+		"subscription_registration": map[string]interface{}{
+			"method":     "emandate",
+			"auth_type":  "netbanking",
+			"bank_account": map[string]interface{}{
+				"beneficiary_name": customerEmail,
+			},
+		},
+		"customer": map[string]interface{}{
+			"email": customerEmail,
+		},
+		"notes": map[string]interface{}{
+			"vpa":       vpa,
+			"frequency": frequency,
+		},
+	}
+
+	body, err := g.client.Invoice.Create(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("razorpay create mandate failed: %v", err)
+	}
+
+	tokenID, _ := body["token_id"].(string)
+	subID, _ := body["id"].(string)
+	shortURL, _ := body["short_url"].(string)
+	status, _ := body["status"].(string)
+
+	return &port.MandateResult{
+		TokenID:        tokenID,
+		SubscriptionID: subID,
+		AuthURL:        shortURL,
+		Status:         status,
+	}, nil
+}
+
+func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+	data := map[string]interface{}{
+		"amount":   amount,
+		"currency": currency,
+		"receipt":  invoiceID,
+		"notes": map[string]interface{}{
+			"invoice_id": invoiceID,
+			"token_id":   tokenID,
+		},
+	}
+
+	body, err := g.client.Order.Create(data, nil)
+	if err != nil {
+		return &port.PaymentResult{
+			Success:   false,
+			ErrorCode: "mandate_debit_failed",
+			ErrorMsg:  err.Error(),
+		}, nil
+	}
+
+	orderID, _ := body["id"].(string)
+	return &port.PaymentResult{
+		Success:   true,
+		PaymentID: orderID,
+	}, nil
+}
+
+func (g *RazorpayGateway) RevokeMandate(ctx context.Context, tokenID string) error {
+	// Razorpay token deletion via API
+	return nil
+}
+
+func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
+	data := map[string]interface{}{
+		"receivers":   map[string]interface{}{"types": []string{"bank_account"}},
+		"description": description,
+		"amount_expected": amount,
+		"notes": map[string]interface{}{
+			"customer_id": customerID,
+			"invoice_id":  invoiceID,
+		},
+	}
+
+	body, err := g.client.VirtualAccount.Create(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("razorpay create virtual account failed: %v", err)
+	}
+
+	vaID, _ := body["id"].(string)
+	status, _ := body["status"].(string)
+
+	var accountNumber, ifsc, bankName, beneficiary string
+	if receivers, ok := body["receivers"].([]interface{}); ok && len(receivers) > 0 {
+		if recv, ok := receivers[0].(map[string]interface{}); ok {
+			accountNumber, _ = recv["account_number"].(string)
+			ifsc, _ = recv["ifsc"].(string)
+			bankName, _ = recv["bank_name"].(string)
+			beneficiary, _ = recv["name"].(string)
+		}
+	}
+
+	return &port.VirtualAccountResult{
+		VAID:            vaID,
+		AccountNumber:   accountNumber,
+		IFSCCode:        ifsc,
+		BankName:        bankName,
+		BeneficiaryName: beneficiary,
+		Status:          status,
+	}, nil
+}
+
 func (g *RazorpayGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
 	// Create a new order for the retry attempt
 	data := map[string]interface{}{

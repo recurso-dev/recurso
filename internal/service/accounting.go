@@ -2,8 +2,13 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/adapter/accounting"
+	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
 )
 
@@ -12,6 +17,7 @@ type AccountingService struct {
 	customerRepo port.CustomerRepository
 	invoiceRepo  port.InvoiceRepository
 	planRepo     port.PlanRepository
+	connRepo     port.AccountingConnectionRepository
 }
 
 func NewAccountingService(
@@ -26,6 +32,10 @@ func NewAccountingService(
 		invoiceRepo:  invoiceRepo,
 		planRepo:     planRepo,
 	}
+}
+
+func (s *AccountingService) SetConnectionRepo(repo port.AccountingConnectionRepository) {
+	s.connRepo = repo
 }
 
 func (s *AccountingService) SyncCustomer(ctx context.Context, customerID uuid.UUID) error {
@@ -54,4 +64,100 @@ func (s *AccountingService) SyncProduct(ctx context.Context, planID string) erro
 		return err
 	}
 	return s.gateway.SyncProduct(ctx, plan)
+}
+
+// SyncAllForTenant syncs all entities for a given tenant using the appropriate adapter.
+func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.UUID) error {
+	if s.connRepo == nil {
+		return fmt.Errorf("accounting connection repository not configured")
+	}
+
+	conns, err := s.connRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to list connections: %w", err)
+	}
+
+	for _, conn := range conns {
+		if !conn.IsActive {
+			continue
+		}
+
+		adapter := s.getAdapterForConnection(conn)
+		if adapter == nil {
+			continue
+		}
+
+		// Sync customers
+		customers, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: 1000})
+		if err != nil {
+			log.Printf("Failed to list customers for sync: %v", err)
+			continue
+		}
+
+		for _, customer := range customers {
+			if err := adapter.SyncCustomer(ctx, customer); err != nil {
+				s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "error", err.Error())
+				continue
+			}
+			s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "success", "")
+		}
+
+		// Sync invoices
+		invoices, err := s.invoiceRepo.List(ctx, tenantID)
+		if err != nil {
+			log.Printf("Failed to list invoices for sync: %v", err)
+			continue
+		}
+
+		for _, invoice := range invoices {
+			if err := adapter.SyncInvoice(ctx, invoice); err != nil {
+				s.logSyncResult(ctx, conn, "invoice", invoice.ID, "create", "error", err.Error())
+				continue
+			}
+			s.logSyncResult(ctx, conn, "invoice", invoice.ID, "create", "success", "")
+		}
+
+		// Update connection status
+		now := time.Now()
+		conn.LastSyncAt = &now
+		conn.SyncStatus = "synced"
+		_ = s.connRepo.Update(ctx, conn)
+	}
+
+	return nil
+}
+
+func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConnection) port.AccountingGateway {
+	switch conn.Provider {
+	case "quickbooks":
+		adapter := accounting.NewQuickBooksAdapter(conn.AccessToken, conn.RealmID, false)
+		return adapter
+	case "xero":
+		adapter := accounting.NewXeroAdapter(conn.AccessToken, conn.RealmID)
+		return adapter
+	default:
+		return s.gateway // Fall back to default (mock)
+	}
+}
+
+func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, action, status, errMsg string) {
+	if s.connRepo == nil {
+		return
+	}
+
+	syncLog := &domain.AccountingSyncLog{
+		ID:           uuid.New(),
+		TenantID:     conn.TenantID,
+		ConnectionID: conn.ID,
+		EntityType:   entityType,
+		EntityID:     entityID,
+		Action:       action,
+		Status:       status,
+		ErrorMessage: errMsg,
+		SyncedAt:     time.Now(),
+	}
+
+	if err := s.connRepo.CreateSyncLog(ctx, syncLog); err != nil {
+		log.Printf("Failed to create sync log: %v", err)
+	}
 }
