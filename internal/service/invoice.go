@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -186,15 +187,23 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	// Calculate Advance Amount
 	advanceAmount := price.Amount * int64(periods)
 
-	// Add Unbilled Charges? Maybe not for advance invoice, usually separate.
-	// But let's check unbilled charges anyway to clear them?
-	// For "Advance", strictly billing for future time. Let's keep unbilled charges for the *regular* renewal invoice to avoid confusion.
-
 	subtotal := advanceAmount
-	total := subtotal // Tax?
+
+	// Tax calculation (matching GenerateInvoice)
+	customer, err := s.CustomerRepo.GetByID(ctx, sub.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	taxEngine := tax.NewGSTEngine("TN")
+	pos := customer.PlaceOfSupply
+	if domain.PtrToString(pos) == "" {
+		pos = nil
+	}
+	taxRes := taxEngine.CalculateTax(subtotal, domain.PtrToString(pos))
+	total := subtotal + taxRes.Total
 
 	now := time.Now()
-	// Terms?
 	terms := sub.PaymentTerms
 	if terms == "" {
 		terms = "net0"
@@ -211,7 +220,11 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
+		TaxAmount:      taxRes.Total,
 		Total:          total,
+		IGSTAmount:     taxRes.IGST,
+		CGSTAmount:     taxRes.CGST,
+		SGSTAmount:     taxRes.SGST,
 		CreatedAt:      now,
 		DueDate:        dueDate,
 		PaymentTerms:   terms,
@@ -221,22 +234,18 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		return nil, err
 	}
 
-	// Update Subscription Period
-	// Assuming Monthly for now, simpler
-	// For "Advance", we push the CurrentPeriodEnd forward.
-	// We need CalculateNextBillingDate logic but iterated N times.
-	// Simplified: just add N months.
+	// Update Subscription Period using plan's interval unit and count
 	newEndDate := sub.CurrentPeriodEnd
 	if newEndDate.Before(now) {
 		newEndDate = now
 	}
-	// TODO: Use domain logic for exact interval
-	newEndDate = newEndDate.AddDate(0, periods, 0) // Assume monthly
+	for i := 0; i < periods; i++ {
+		newEndDate = domain.AddInterval(newEndDate, string(plan.IntervalUnit), plan.IntervalCount)
+	}
 
 	sub.CurrentPeriodEnd = newEndDate
 	if err := s.SubscriptionRepo.Update(ctx, sub); err != nil {
-		// Log but don't fail — the invoice was already created
-		fmt.Printf("Warning: failed to update subscription period: %v\n", err)
+		slog.Warn("failed to update subscription period after advance invoice", "error", err, "subscription_id", sub.ID)
 	}
 
 	return inv, nil

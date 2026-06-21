@@ -52,14 +52,14 @@ func (s *Subscription) CalculateNextBillingDate(intervalUnit string, intervalCou
 
 	// Default: Acquisition based (just add interval)
 	if s.BillingAnchorType == "acquisition" || s.BillingAnchorType == "" {
-		return addInterval(startDate, intervalUnit, intervalCount)
+		return AddInterval(startDate, intervalUnit, intervalCount)
 	}
 
 	// Calendar Billing: First of Month
 	if s.BillingAnchorType == "first_of_month" {
 		// If we are already aligned (day is 1), just add interval
 		if startDate.Day() == 1 {
-			return addInterval(startDate, intervalUnit, intervalCount)
+			return AddInterval(startDate, intervalUnit, intervalCount)
 		}
 
 		// Otherwise, prorate to the 1st of next month
@@ -69,11 +69,16 @@ func (s *Subscription) CalculateNextBillingDate(intervalUnit string, intervalCou
 		return firstOfNextMonth
 	}
 
-	return addInterval(startDate, intervalUnit, intervalCount)
+	return AddInterval(startDate, intervalUnit, intervalCount)
 }
 
-func addInterval(t time.Time, unit string, count int) time.Time {
+// AddInterval adds a billing interval to a time. Exported for use in advance invoicing.
+func AddInterval(t time.Time, unit string, count int) time.Time {
 	switch unit {
+	case "day":
+		return t.AddDate(0, 0, count)
+	case "week":
+		return t.AddDate(0, 0, count*7)
 	case "month":
 		return t.AddDate(0, count, 0)
 	case "year":
