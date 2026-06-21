@@ -98,6 +98,36 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	return sub, nil
 }
 
+func (r *SubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*domain.Subscription, error) {
+	sub := &domain.Subscription{}
+	query := `
+		SELECT
+			id, tenant_id, customer_id, plan_id, status,
+			current_period_start, current_period_end, billing_anchor,
+			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
+			created_at, updated_at
+		FROM subscriptions WHERE stripe_subscription_id = $1
+	`
+	var razorpayID, stripeID, refID sql.NullString
+	var billingAnchor sql.NullTime
+	err := r.db.QueryRowContext(ctx, query, stripeSubID).Scan(
+		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
+		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
+		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
+		&sub.CreatedAt, &sub.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subscription by stripe ID: %w", err)
+	}
+	if billingAnchor.Valid {
+		sub.BillingAnchor = billingAnchor.Time
+	}
+	sub.ReferenceID = refID.String
+	sub.RazorpaySubscriptionID = razorpayID.String
+	sub.StripeSubscriptionID = stripeID.String
+	return sub, nil
+}
+
 func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]*domain.Subscription, error) {
 	query := `
 		SELECT 

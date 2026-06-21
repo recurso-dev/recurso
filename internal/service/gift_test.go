@@ -70,6 +70,9 @@ func (m *mockSubRepoForGift) GetByCustomerID(ctx context.Context, tenantID, cust
 func (m *mockSubRepoForGift) ListDueForRenewal(ctx context.Context, before time.Time) ([]*domain.Subscription, error) {
 	return nil, nil
 }
+func (m *mockSubRepoForGift) GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*domain.Subscription, error) {
+	return nil, nil
+}
 func (m *mockSubRepoForGift) GetActiveSubscriptions(ctx context.Context) ([]*domain.Subscription, error) {
 	return nil, nil
 }

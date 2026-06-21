@@ -17,14 +17,18 @@ import (
 	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
 	"github.com/recur-so/recurso/internal/service"
+	"github.com/stripe/stripe-go/v76"
+	"github.com/stripe/stripe-go/v76/webhook"
 )
 
 type WebhookHandler struct {
-	subService   *service.SubscriptionService
-	gateway      port.PaymentGateway
-	retryService *service.SmartRetryService
-	invoiceRepo  port.InvoiceRepository
-	logger       *slog.Logger
+	subService          *service.SubscriptionService
+	gateway             port.PaymentGateway
+	retryService        *service.SmartRetryService
+	invoiceRepo         port.InvoiceRepository
+	subRepo             port.SubscriptionRepository
+	stripeWebhookSecret string
+	logger              *slog.Logger
 }
 
 func NewWebhookHandler(
@@ -32,13 +36,17 @@ func NewWebhookHandler(
 	gateway port.PaymentGateway,
 	retryService *service.SmartRetryService,
 	invoiceRepo port.InvoiceRepository,
+	subRepo port.SubscriptionRepository,
+	stripeWebhookSecret string,
 ) *WebhookHandler {
 	return &WebhookHandler{
-		subService:   subService,
-		gateway:      gateway,
-		retryService: retryService,
-		invoiceRepo:  invoiceRepo,
-		logger:       slog.Default().With("component", "webhook_handler"),
+		subService:          subService,
+		gateway:             gateway,
+		retryService:        retryService,
+		invoiceRepo:         invoiceRepo,
+		subRepo:             subRepo,
+		stripeWebhookSecret: stripeWebhookSecret,
+		logger:              slog.Default().With("component", "webhook_handler"),
 	}
 }
 
@@ -138,6 +146,213 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// HandleStripe handles incoming Stripe webhook events.
+func (h *WebhookHandler) HandleStripe(c *gin.Context) {
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		h.logger.Error("failed to read stripe webhook body", "error", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		return
+	}
+
+	// 1. Verify Signature
+	var event stripe.Event
+	if h.stripeWebhookSecret != "" {
+		event, err = webhook.ConstructEvent(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret)
+		if err != nil {
+			h.logger.Warn("stripe webhook signature verification failed",
+				"error", err,
+				"ip", c.ClientIP(),
+			)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+			return
+		}
+	} else {
+		h.logger.Warn("STRIPE_WEBHOOK_SECRET not set — skipping signature verification")
+		if err := json.Unmarshal(body, &event); err != nil {
+			h.logger.Error("invalid stripe webhook JSON", "error", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			return
+		}
+	}
+
+	h.logger.Info("stripe webhook received", "event_type", event.Type)
+	ctx := c.Request.Context()
+
+	switch event.Type {
+	case "payment_intent.succeeded":
+		h.handlePaymentIntentSucceeded(ctx, c, event)
+	case "invoice.payment_failed":
+		h.handleInvoicePaymentFailed(ctx, c, event)
+	case "customer.subscription.deleted":
+		h.handleSubscriptionDeleted(ctx, c, event)
+	default:
+		h.logger.Info("stripe webhook event ignored", "event_type", event.Type)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, c *gin.Context, event stripe.Event) {
+	var pi stripe.PaymentIntent
+	if err := json.Unmarshal(event.Data.Raw, &pi); err != nil {
+		h.logger.Error("failed to unmarshal payment intent", "error", err)
+		return
+	}
+
+	invoiceIDStr := pi.Metadata["invoice_id"]
+	if invoiceIDStr == "" {
+		h.logger.Info("stripe payment_intent.succeeded ignored — no invoice_id in metadata",
+			"payment_intent_id", pi.ID,
+		)
+		return
+	}
+
+	invoiceID, err := uuid.Parse(invoiceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid invoice_id in stripe metadata", "invoice_id", invoiceIDStr)
+		return
+	}
+
+	if err := h.subService.MarkInvoicePaid(ctx, invoiceID); err != nil {
+		h.logger.Error("failed to mark invoice paid via stripe webhook",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+		return
+	}
+
+	h.logger.Info("invoice marked paid via stripe webhook", "invoice_id", invoiceID)
+	h.recordDunningSuccess(ctx, invoiceID)
+}
+
+func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, c *gin.Context, event stripe.Event) {
+	var stripeInvoice stripe.Invoice
+	if err := json.Unmarshal(event.Data.Raw, &stripeInvoice); err != nil {
+		h.logger.Error("failed to unmarshal stripe invoice", "error", err)
+		return
+	}
+
+	invoiceIDStr := stripeInvoice.Metadata["invoice_id"]
+	if invoiceIDStr == "" {
+		h.logger.Info("stripe invoice.payment_failed ignored — no invoice_id in metadata",
+			"stripe_invoice_id", stripeInvoice.ID,
+		)
+		return
+	}
+
+	invoiceID, err := uuid.Parse(invoiceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid invoice_id in stripe invoice metadata", "invoice_id", invoiceIDStr)
+		return
+	}
+
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil || inv == nil {
+		h.logger.Error("failed to fetch invoice for payment failure",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+		return
+	}
+
+	inv.Status = domain.InvoiceStatusPastDue
+	inv.LastPaymentError = stripeInvoice.Metadata["error_message"]
+	if inv.LastPaymentError == "" && stripeInvoice.LastFinalizationError != nil {
+		inv.LastPaymentError = stripeInvoice.LastFinalizationError.Msg
+	}
+
+	if err := h.invoiceRepo.Update(ctx, inv); err != nil {
+		h.logger.Error("failed to update invoice to past_due",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+		return
+	}
+
+	h.logger.Info("invoice marked past_due via stripe webhook", "invoice_id", invoiceID)
+	h.recordDunningFailure(ctx, invoiceID)
+}
+
+func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, c *gin.Context, event stripe.Event) {
+	var stripeSub stripe.Subscription
+	if err := json.Unmarshal(event.Data.Raw, &stripeSub); err != nil {
+		h.logger.Error("failed to unmarshal stripe subscription", "error", err)
+		return
+	}
+
+	if h.subRepo == nil {
+		h.logger.Error("subscription repository not available for stripe webhook")
+		return
+	}
+
+	sub, err := h.subRepo.GetByStripeSubscriptionID(ctx, stripeSub.ID)
+	if err != nil {
+		h.logger.Error("failed to find subscription by stripe ID",
+			"stripe_subscription_id", stripeSub.ID,
+			"error", err,
+		)
+		return
+	}
+
+	// Use Cancel with tenant context
+	ctxWithTenant := context.WithValue(ctx, "tenant_id", sub.TenantID)
+	_, err = h.subService.Cancel(ctxWithTenant, sub.TenantID, sub.ID, true, "stripe_webhook", "subscription deleted in Stripe")
+	if err != nil {
+		h.logger.Error("failed to cancel subscription via stripe webhook",
+			"subscription_id", sub.ID,
+			"stripe_subscription_id", stripeSub.ID,
+			"error", err,
+		)
+		return
+	}
+
+	h.logger.Info("subscription canceled via stripe webhook",
+		"subscription_id", sub.ID,
+		"stripe_subscription_id", stripeSub.ID,
+	)
+}
+
+// recordDunningFailure records a reward=0.0 outcome if the invoice has an active dunning action
+func (h *WebhookHandler) recordDunningFailure(ctx context.Context, invoiceID uuid.UUID) {
+	if h.retryService == nil || h.invoiceRepo == nil {
+		return
+	}
+
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil || inv == nil {
+		return
+	}
+
+	if inv.DunningActionID == "" || inv.DunningContextKey == "" {
+		return
+	}
+
+	err = h.retryService.RecordOutcome(ctx, domain.DunningHistory{
+		ID:            uuid.New(),
+		TenantID:      inv.TenantID,
+		InvoiceID:     inv.ID,
+		ContextKey:    inv.DunningContextKey,
+		ActionID:      inv.DunningActionID,
+		RetryInterval: getDunningActionSeconds(inv.DunningActionID),
+		Outcome:       "failure",
+		Reward:        0.0,
+		CreatedAt:     time.Now(),
+	})
+	if err != nil {
+		h.logger.Error("failed to record dunning failure outcome",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+	} else {
+		h.logger.Info("recorded dunning failure outcome via stripe webhook",
+			"invoice_id", invoiceID,
+			"action_id", inv.DunningActionID,
+			"context_key", inv.DunningContextKey,
+		)
+	}
 }
 
 // recordDunningSuccess records a reward=1.0 outcome if the invoice has an active dunning action

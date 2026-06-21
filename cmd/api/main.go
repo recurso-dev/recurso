@@ -340,7 +340,7 @@ func main() {
 
 	// Payment Handlers
 	paymentHandler := handler.NewPaymentHandler(paymentGateway, invoiceRepo)
-	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo)
+	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, os.Getenv("STRIPE_WEBHOOK_SECRET"))
 
 	// 8. Setup Router
 	r := gin.Default()
@@ -422,6 +422,7 @@ func main() {
 	r.GET("/v1/portal/:tenant_id/:customer_id", publicLimit, portalHandler.GetPortalData)
 	r.POST("/payments/order", publicLimit, paymentHandler.CreateOrder)
 	r.POST("/webhooks/razorpay", webhookHandler.HandleRazorpay) // Webhooks need higher limits
+	r.POST("/webhooks/stripe", webhookHandler.HandleStripe)
 	r.POST("/auth/register", publicLimit, tenantHandler.Register) // P8 Register Endpoint
 
 	// Invoice PDF Public (P30 for Demo)
