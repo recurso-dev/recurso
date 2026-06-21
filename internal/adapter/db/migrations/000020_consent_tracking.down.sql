@@ -1,0 +1,11 @@
+DROP TABLE IF EXISTS precharge_notifications;
+DROP TABLE IF EXISTS consents;
+
+ALTER TABLE customers DROP COLUMN IF EXISTS gstin;
+ALTER TABLE customers DROP COLUMN IF EXISTS state_code;
+ALTER TABLE customers DROP COLUMN IF EXISTS place_of_supply;
+
+ALTER TABLE tenants DROP COLUMN IF EXISTS gstin;
+ALTER TABLE tenants DROP COLUMN IF EXISTS state_code;
+ALTER TABLE tenants DROP COLUMN IF EXISTS sac_code;
+ALTER TABLE tenants DROP COLUMN IF EXISTS gst_rate;

@@ -1,0 +1,2 @@
+ALTER TABLE invoices ADD COLUMN next_retry_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE invoices ADD COLUMN retry_count INT DEFAULT 0;

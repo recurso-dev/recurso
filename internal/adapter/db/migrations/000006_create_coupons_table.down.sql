@@ -1,0 +1,2 @@
+ALTER TABLE subscriptions DROP COLUMN IF EXISTS coupon_id;
+DROP TABLE IF EXISTS coupons;

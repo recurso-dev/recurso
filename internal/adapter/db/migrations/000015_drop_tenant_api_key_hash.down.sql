@@ -1,0 +1,2 @@
+ALTER TABLE tenants
+ADD COLUMN api_key_hash VARCHAR(64) DEFAULT '';
