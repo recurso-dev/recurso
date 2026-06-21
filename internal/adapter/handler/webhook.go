@@ -28,6 +28,8 @@ type WebhookHandler struct {
 	retryService        *service.SmartRetryService
 	invoiceRepo         port.InvoiceRepository
 	subRepo             port.SubscriptionRepository
+	customerRepo        port.CustomerRepository
+	notificationService *service.NotificationService
 	stripeWebhookSecret string
 	logger              *slog.Logger
 }
@@ -38,6 +40,8 @@ func NewWebhookHandler(
 	retryService *service.SmartRetryService,
 	invoiceRepo port.InvoiceRepository,
 	subRepo port.SubscriptionRepository,
+	customerRepo port.CustomerRepository,
+	notificationService *service.NotificationService,
 	stripeWebhookSecret string,
 ) *WebhookHandler {
 	return &WebhookHandler{
@@ -46,6 +50,8 @@ func NewWebhookHandler(
 		retryService:        retryService,
 		invoiceRepo:         invoiceRepo,
 		subRepo:             subRepo,
+		customerRepo:        customerRepo,
+		notificationService: notificationService,
 		stripeWebhookSecret: stripeWebhookSecret,
 		logger:              slog.Default().With("component", "webhook_handler"),
 	}
@@ -282,6 +288,30 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event s
 
 	h.logger.Info("invoice marked past_due via stripe webhook", "invoice_id", invoiceID)
 	h.recordDunningFailure(ctx, invoiceID)
+
+	// Send payment failed notification
+	if h.notificationService != nil && h.customerRepo != nil {
+		customer, custErr := h.customerRepo.GetByID(ctx, inv.CustomerID)
+		if custErr != nil {
+			h.logger.Error("failed to fetch customer for payment failed notification", "error", custErr, "customer_id", inv.CustomerID)
+		} else if customer != nil {
+			failureReason := inv.LastPaymentError
+			if failureReason == "" {
+				failureReason = "Payment was declined by your bank"
+			}
+			err := h.notificationService.SendPaymentFailed(ctx, service.PaymentFailedData{
+				CustomerName:  stringOrEmpty(customer.Name),
+				CustomerEmail: customer.Email,
+				InvoiceNumber: inv.InvoiceNumber,
+				Amount:        formatInvoiceAmount(inv.Total, inv.Currency),
+				FailureReason: failureReason,
+			})
+			if err != nil {
+				h.logger.Error("failed to send payment failed notification", "error", err, "invoice_id", invoiceID)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -412,4 +442,23 @@ func getDunningActionSeconds(actionID string) int64 {
 		}
 	}
 	return 86400
+}
+
+func formatInvoiceAmount(amountPaise int64, currency string) string {
+	amount := float64(amountPaise) / 100
+	switch currency {
+	case "INR":
+		return fmt.Sprintf("₹%.2f", amount)
+	case "USD":
+		return fmt.Sprintf("$%.2f", amount)
+	default:
+		return fmt.Sprintf("%s %.2f", currency, amount)
+	}
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
