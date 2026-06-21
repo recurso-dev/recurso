@@ -339,7 +339,7 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	customerHandler := handler.NewCustomerHandler(customerService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
-	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo)
+	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway)
 	usageHandler := handler.NewUsageHandler(usageRepo)
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
@@ -472,6 +472,8 @@ func main() {
 	publicLimit := middleware.RateLimitMiddleware(rdb, 20, time.Minute)
 
 	r.GET("/checkout/:id", publicLimit, checkoutHandler.ShowCheckout)
+	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
+	r.GET("/checkout/:id/success", publicLimit, checkoutHandler.CheckoutSuccess)
 	r.GET("/portal/:customer_id", publicLimit, portalHandler.ShowDashboard)
 	// Phase 48: Read-only unauthenticated portal data
 	r.GET("/v1/portal/:tenant_id/:customer_id", publicLimit, portalHandler.GetPortalData)

@@ -36,6 +36,9 @@ import PortalRedeem from './pages/portal/PortalRedeem'
 import Quotes from './pages/Quotes'
 import CreateQuote from './pages/CreateQuote'
 
+// Checkout (public)
+import Checkout from './pages/Checkout'
+
 // Smart Dunning
 import DunningDashboard from './pages/DunningDashboard'
 
@@ -65,6 +68,9 @@ function App() {
                 <Routes>
                     <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
                     <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/" />} /> {/* Added Register Route */}
+
+                    {/* Hosted Checkout (public) */}
+                    <Route path="/checkout/:id" element={<Checkout />} />
 
                     {/* Customer Portal Routes (public) */}
                     <Route path="/portal/login" element={<PortalLogin />} />

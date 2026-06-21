@@ -81,6 +81,10 @@ export const endpoints = {
   createReferral: (data) => api.post('/referrals', data),
   generateReferralCode: (data) => api.post('/referrals/generate-code', data),
 
+  // Checkout (public, uses base URL without /v1)
+  getCheckoutInvoice: (id) => axios.get(`${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/v1').replace('/v1', '')}/checkout/${id}`),
+  initiateCheckoutPayment: (id) => axios.post(`${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/v1').replace('/v1', '')}/checkout/${id}/pay`),
+
   // Smart Dunning Analytics
   getDunningOverview: () => api.get('/analytics/dunning/overview'),
   getDunningWeights: () => api.get('/analytics/dunning/weights'),
