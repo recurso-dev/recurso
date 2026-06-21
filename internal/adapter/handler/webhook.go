@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -181,25 +182,31 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	h.logger.Info("stripe webhook received", "event_type", event.Type)
 	ctx := c.Request.Context()
 
+	var handlerErr error
 	switch event.Type {
 	case "payment_intent.succeeded":
-		h.handlePaymentIntentSucceeded(ctx, c, event)
+		handlerErr = h.handlePaymentIntentSucceeded(ctx, event)
 	case "invoice.payment_failed":
-		h.handleInvoicePaymentFailed(ctx, c, event)
+		handlerErr = h.handleInvoicePaymentFailed(ctx, event)
 	case "customer.subscription.deleted":
-		h.handleSubscriptionDeleted(ctx, c, event)
+		handlerErr = h.handleSubscriptionDeleted(ctx, event)
 	default:
 		h.logger.Info("stripe webhook event ignored", "event_type", event.Type)
+	}
+
+	if handlerErr != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": handlerErr.Error()})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, c *gin.Context, event stripe.Event) {
+func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event stripe.Event) error {
 	var pi stripe.PaymentIntent
 	if err := json.Unmarshal(event.Data.Raw, &pi); err != nil {
 		h.logger.Error("failed to unmarshal payment intent", "error", err)
-		return
+		return fmt.Errorf("failed to unmarshal payment intent: %w", err)
 	}
 
 	invoiceIDStr := pi.Metadata["invoice_id"]
@@ -207,13 +214,13 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, c *gi
 		h.logger.Info("stripe payment_intent.succeeded ignored — no invoice_id in metadata",
 			"payment_intent_id", pi.ID,
 		)
-		return
+		return nil
 	}
 
 	invoiceID, err := uuid.Parse(invoiceIDStr)
 	if err != nil {
 		h.logger.Warn("invalid invoice_id in stripe metadata", "invoice_id", invoiceIDStr)
-		return
+		return nil
 	}
 
 	if err := h.subService.MarkInvoicePaid(ctx, invoiceID); err != nil {
@@ -221,18 +228,19 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, c *gi
 			"invoice_id", invoiceID,
 			"error", err,
 		)
-		return
+		return fmt.Errorf("failed to mark invoice paid: %w", err)
 	}
 
 	h.logger.Info("invoice marked paid via stripe webhook", "invoice_id", invoiceID)
 	h.recordDunningSuccess(ctx, invoiceID)
+	return nil
 }
 
-func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, c *gin.Context, event stripe.Event) {
+func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event stripe.Event) error {
 	var stripeInvoice stripe.Invoice
 	if err := json.Unmarshal(event.Data.Raw, &stripeInvoice); err != nil {
 		h.logger.Error("failed to unmarshal stripe invoice", "error", err)
-		return
+		return fmt.Errorf("failed to unmarshal stripe invoice: %w", err)
 	}
 
 	invoiceIDStr := stripeInvoice.Metadata["invoice_id"]
@@ -240,13 +248,13 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, c *gin.
 		h.logger.Info("stripe invoice.payment_failed ignored — no invoice_id in metadata",
 			"stripe_invoice_id", stripeInvoice.ID,
 		)
-		return
+		return nil
 	}
 
 	invoiceID, err := uuid.Parse(invoiceIDStr)
 	if err != nil {
 		h.logger.Warn("invalid invoice_id in stripe invoice metadata", "invoice_id", invoiceIDStr)
-		return
+		return nil
 	}
 
 	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
@@ -255,7 +263,7 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, c *gin.
 			"invoice_id", invoiceID,
 			"error", err,
 		)
-		return
+		return fmt.Errorf("failed to fetch invoice %s: %w", invoiceID, err)
 	}
 
 	inv.Status = domain.InvoiceStatusPastDue
@@ -269,23 +277,24 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, c *gin.
 			"invoice_id", invoiceID,
 			"error", err,
 		)
-		return
+		return fmt.Errorf("failed to update invoice to past_due: %w", err)
 	}
 
 	h.logger.Info("invoice marked past_due via stripe webhook", "invoice_id", invoiceID)
 	h.recordDunningFailure(ctx, invoiceID)
+	return nil
 }
 
-func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, c *gin.Context, event stripe.Event) {
+func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, event stripe.Event) error {
 	var stripeSub stripe.Subscription
 	if err := json.Unmarshal(event.Data.Raw, &stripeSub); err != nil {
 		h.logger.Error("failed to unmarshal stripe subscription", "error", err)
-		return
+		return fmt.Errorf("failed to unmarshal stripe subscription: %w", err)
 	}
 
 	if h.subRepo == nil {
 		h.logger.Error("subscription repository not available for stripe webhook")
-		return
+		return fmt.Errorf("subscription repository not configured")
 	}
 
 	sub, err := h.subRepo.GetByStripeSubscriptionID(ctx, stripeSub.ID)
@@ -294,7 +303,7 @@ func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, c *gin.C
 			"stripe_subscription_id", stripeSub.ID,
 			"error", err,
 		)
-		return
+		return fmt.Errorf("failed to find subscription by stripe ID %s: %w", stripeSub.ID, err)
 	}
 
 	// Use Cancel with tenant context
@@ -306,13 +315,14 @@ func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, c *gin.C
 			"stripe_subscription_id", stripeSub.ID,
 			"error", err,
 		)
-		return
+		return fmt.Errorf("failed to cancel subscription: %w", err)
 	}
 
 	h.logger.Info("subscription canceled via stripe webhook",
 		"subscription_id", sub.ID,
 		"stripe_subscription_id", stripeSub.ID,
 	)
+	return nil
 }
 
 // recordDunningFailure records a reward=0.0 outcome if the invoice has an active dunning action
