@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Recurso Checkout</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f5f7; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; text-align: center; }
+        .amount { font-size: 2.5rem; font-weight: bold; margin: 1rem 0; color: #333; }
+        .meta { color: #666; margin-bottom: 2rem; }
+        .btn { background: #3399cc; color: white; border: none; padding: 12px 24px; border-radius: 4px; font-size: 1rem; cursor: pointer; width: 100%; font-weight: 600; }
+        .btn:hover { background: #2d88b4; }
+        .status-paid { color: #2ecc71; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h3>Invoice {{ .InvoiceNumber }}</h3>
+        
+        {{ if eq .Status "paid" }}
+            <div class="status-paid">PAID</div>
+            <p>Thank you for your business!</p>
+        {{ else }}
+            <div class="amount">{{ .Currency }} {{ .DisplayAmount }}</div>
+            <div class="meta">Due: {{ .DueDate }}</div>
+            
+            <!-- Integration Point for Razorpay/Stripe -->
+            <button class="btn" onclick="startPayment()">Pay Now</button>
+            
+            <script>
+                function startPayment() {
+                    alert("Integration with Razorpay coming in next step!");
+                }
+            </script>
+        {{ end }}
+    </div>
+</body>
+</html>
