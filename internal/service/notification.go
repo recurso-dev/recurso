@@ -214,6 +214,34 @@ func (s *NotificationService) wrapInBaseTemplate(subject string, content string)
 	return buf.String(), nil
 }
 
+// GiftPurchasedData for gift notification emails to recipients
+type GiftPurchasedData struct {
+	RecipientEmail string
+	PlanName       string
+	Duration       string
+	GiftCode       string
+	RedeemURL      string
+}
+
+// SendGiftPurchased notifies the recipient that they've received a gift subscription
+func (s *NotificationService) SendGiftPurchased(ctx context.Context, data GiftPurchasedData) error {
+	content, err := s.renderTemplate(email.GiftPurchasedTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("You've Received a Gift!", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.RecipientEmail,
+		Subject:  fmt.Sprintf("You've been gifted a %s subscription!", data.PlanName),
+		HTMLBody: html,
+	})
+}
+
 // SendPreChargeReminder sends 24-hour pre-charge notification (RBI compliance)
 func (s *NotificationService) SendPreChargeReminder(ctx context.Context, data email.PreChargeEmailData) error {
 	content, err := s.renderTemplate(email.PreChargeReminderTemplate, data)
