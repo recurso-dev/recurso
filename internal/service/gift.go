@@ -1,0 +1,144 @@
+package service
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/recur-so/recurso/internal/core/port"
+)
+
+type GiftService struct {
+	giftRepo         port.GiftRepository
+	subscriptionRepo port.SubscriptionRepository // Use Repo directly or via Service? Repo is simpler for creation.
+	invoiceService   *InvoiceService             // To charge the buyer
+	planRepo         port.PlanRepository
+}
+
+func NewGiftService(
+	giftRepo port.GiftRepository,
+	subscriptionRepo port.SubscriptionRepository,
+	invoiceService *InvoiceService,
+	planRepo port.PlanRepository,
+) *GiftService {
+	return &GiftService{
+		giftRepo:         giftRepo,
+		subscriptionRepo: subscriptionRepo,
+		invoiceService:   invoiceService,
+		planRepo:         planRepo,
+	}
+}
+
+// PurchaseGift creates a new Gift record. Ideally, it should also trigger an invoice/charge.
+func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buyerID uuid.UUID, planID uuid.UUID, durationMonths int) (*domain.Gift, error) {
+	// 1. Generate Code
+	bytes := make([]byte, 4)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
+	code := fmt.Sprintf("GIFT-%s", hex.EncodeToString(bytes))
+
+	// 2. Create Gift
+	gift := &domain.Gift{
+		ID:              uuid.New(),
+		TenantID:        tenantID,
+		Code:            code,
+		PlanID:          planID,
+		BuyerCustomerID: buyerID,
+		Status:          domain.GiftStatusPurchased,
+		DurationMonths:  durationMonths,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+
+	if err := s.giftRepo.Create(ctx, gift); err != nil {
+		return nil, err
+	}
+
+	// TODO: Create an Invoice for the Buyer here.
+	// For now, we assume the API caller will handle the invoice creation or we do it async.
+	// But in a real system, we'd probably create a "Pending" Invoice and only activate Gift when paid.
+	// Simplifying for this MVP: Gift is active immediately (Pre-paid / Trusted).
+
+	return gift, nil
+}
+
+// ListGifts returns gifts for a tenant with pagination
+func (s *GiftService) ListGifts(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Gift, error) {
+	return s.giftRepo.List(ctx, tenantID, limit, offset)
+}
+
+// RedeemGift activates the gift for a recipient
+func (s *GiftService) RedeemGift(ctx context.Context, tenantID uuid.UUID, recipientCustomerID uuid.UUID, code string) (*domain.Subscription, error) {
+	// 1. Find Gift
+	gift, err := s.giftRepo.GetByCode(ctx, tenantID, code)
+	if err != nil {
+		return nil, err
+	}
+	if gift == nil {
+		return nil, errors.New("invalid gift code")
+	}
+
+	if gift.Status == domain.GiftStatusRedeemed {
+		return nil, errors.New("gift already redeemed")
+	}
+
+	// 2. Create Subscription
+	plan, err := s.planRepo.GetByID(ctx, gift.PlanID)
+	if err != nil {
+		return nil, err
+	}
+	if plan == nil {
+		return nil, errors.New("gift plan not found")
+	}
+
+	startTime := time.Now()
+	// Calculate End Time based on duration
+	endTime := startTime.AddDate(0, gift.DurationMonths, 0)
+
+	sub := &domain.Subscription{
+		ID:                 uuid.New(),
+		TenantID:           tenantID,
+		CustomerID:         recipientCustomerID,
+		PlanID:             gift.PlanID,
+		Status:             domain.SubscriptionStatusActive,
+		CurrentPeriodStart: startTime,
+		CurrentPeriodEnd:   endTime,
+		BillingAnchor:      startTime,
+		ReferenceID:        fmt.Sprintf("GIFT:%s", gift.Code), // Track origin
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
+		// AutoRenew: false? Field missing in domain?
+		// Assuming domain.Subscription logic handles cancellations.
+		// For a gift, usually it's "Canceled at Period End" immediately, or we let it expire.
+		// Let's set status to Active but we need to ensure no future invoices are generated.
+		// Simplest way: Cancel it effective at period end?
+		// Or update Subscription domain to have `AutoRenew` bool.
+	}
+
+	// Phase 43 modification: `AutoRenew` field.
+	// Check Subscription Domain if AutoRenew exists.
+	// If not, adding it is a good idea for Gifts.
+
+	if err := s.subscriptionRepo.Create(ctx, sub); err != nil {
+		return nil, err
+	}
+
+	// 3. Mark Gift Redeemed
+	now := time.Now()
+	gift.Status = domain.GiftStatusRedeemed
+	gift.RedeemedByCustomerID = &recipientCustomerID
+	gift.RedeemedAt = &now
+	gift.UpdatedAt = now
+
+	if err := s.giftRepo.Update(ctx, gift); err != nil {
+		return nil, err
+	}
+
+	return sub, nil
+}

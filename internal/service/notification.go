@@ -1,0 +1,315 @@
+package service
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"html/template"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/adapter/email"
+	"github.com/recur-so/recurso/internal/core/port"
+)
+
+// NotificationService handles sending notifications for billing events
+type NotificationService struct {
+	emailSender port.EmailSender
+	baseURL     string
+}
+
+func NewNotificationService(emailSender port.EmailSender, baseURL string) *NotificationService {
+	return &NotificationService{
+		emailSender: emailSender,
+		baseURL:     baseURL,
+	}
+}
+
+// InvoiceData for invoice emails
+type InvoiceData struct {
+	CustomerName  string
+	CustomerEmail string
+	InvoiceNumber string
+	Amount        string
+	DueDate       string
+	PaymentURL    string
+}
+
+// SendInvoiceCreated sends an invoice notification
+func (s *NotificationService) SendInvoiceCreated(ctx context.Context, data InvoiceData) error {
+	content, err := s.renderTemplate(email.InvoiceCreatedTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("New Invoice", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Invoice %s - %s Due", data.InvoiceNumber, data.Amount),
+		HTMLBody: html,
+	})
+}
+
+// PaymentData for payment emails
+type PaymentData struct {
+	CustomerName  string
+	CustomerEmail string
+	InvoiceNumber string
+	Amount        string
+	PaymentDate   string
+}
+
+// SendPaymentReceived sends a payment confirmation
+func (s *NotificationService) SendPaymentReceived(ctx context.Context, data PaymentData) error {
+	content, err := s.renderTemplate(email.PaymentReceivedTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Payment Received", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Payment Received - %s", data.Amount),
+		HTMLBody: html,
+	})
+}
+
+// SubscriptionData for subscription emails
+type SubscriptionData struct {
+	CustomerName    string
+	CustomerEmail   string
+	PlanName        string
+	Price           string
+	Interval        string
+	StartDate       string
+	NextBillingDate string
+	PortalURL       string
+}
+
+// SendSubscriptionCreated sends a subscription confirmation
+func (s *NotificationService) SendSubscriptionCreated(ctx context.Context, data SubscriptionData) error {
+	content, err := s.renderTemplate(email.SubscriptionCreatedTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Subscription Created", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Welcome to %s!", data.PlanName),
+		HTMLBody: html,
+	})
+}
+
+// MagicLinkData for login emails
+type MagicLinkData struct {
+	Email    string
+	LoginURL string
+}
+
+// SendMagicLink sends a passwordless login link
+func (s *NotificationService) SendMagicLink(ctx context.Context, toEmail string, token string) error {
+	data := MagicLinkData{
+		Email:    toEmail,
+		LoginURL: fmt.Sprintf("%s/portal/verify?token=%s", s.baseURL, token),
+	}
+
+	content, err := s.renderTemplate(email.MagicLinkTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Login to Recurso", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       toEmail,
+		Subject:  "Login to Your Billing Portal",
+		HTMLBody: html,
+	})
+}
+
+// PaymentFailedData for failed payment emails
+type PaymentFailedData struct {
+	CustomerName     string
+	CustomerEmail    string
+	InvoiceNumber    string
+	Amount           string
+	FailureReason    string
+	UpdatePaymentURL string
+}
+
+// SendPaymentFailed notifies customer of failed payment
+func (s *NotificationService) SendPaymentFailed(ctx context.Context, data PaymentFailedData) error {
+	content, err := s.renderTemplate(email.PaymentFailedTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Payment Failed", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  "Action Required: Payment Failed",
+		HTMLBody: html,
+	})
+}
+
+// Helper to render a template
+func (s *NotificationService) renderTemplate(tmplStr string, data interface{}) (string, error) {
+	tmpl, err := template.New("email").Parse(tmplStr)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+// Helper to wrap content in base template
+func (s *NotificationService) wrapInBaseTemplate(subject string, content string) (string, error) {
+	data := struct {
+		Subject string
+		Content template.HTML
+	}{
+		Subject: subject,
+		Content: template.HTML(content),
+	}
+
+	tmpl, err := template.New("base").Parse(email.EmailBaseTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+// SendPreChargeReminder sends 24-hour pre-charge notification (RBI compliance)
+func (s *NotificationService) SendPreChargeReminder(ctx context.Context, data email.PreChargeEmailData) error {
+	content, err := s.renderTemplate(email.PreChargeReminderTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Upcoming Payment Reminder", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Payment Reminder: %s subscription renews tomorrow", data.PlanName),
+		HTMLBody: html,
+	})
+}
+
+// SendDunningEmail sends dunning notifications based on escalation level
+func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, data email.DunningEmailData) error {
+	var tmplStr string
+	var subject string
+
+	switch level {
+	case 1:
+		tmplStr = email.DunningFirstReminderTemplate
+		subject = "Action Required: Payment Failed"
+	case 2:
+		tmplStr = email.DunningSecondReminderTemplate
+		subject = "⚠️ Payment Still Pending - Action Required"
+	case 3:
+		tmplStr = email.DunningFinalNoticeTemplate
+		subject = "🚨 Final Notice: Service Suspension"
+	default:
+		return fmt.Errorf("invalid dunning level: %d", level)
+	}
+
+	content, err := s.renderTemplate(tmplStr, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate(subject, content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  subject,
+		HTMLBody: html,
+	})
+}
+
+// SendSubscriptionCancelled sends cancellation confirmation
+func (s *NotificationService) SendSubscriptionCancelled(ctx context.Context, customerEmail, customerName, planName, accessUntil, reactivateURL string) error {
+	data := struct {
+		CustomerName  string
+		PlanName      string
+		AccessUntil   string
+		ReactivateURL string
+	}{
+		CustomerName:  customerName,
+		PlanName:      planName,
+		AccessUntil:   accessUntil,
+		ReactivateURL: reactivateURL,
+	}
+
+	content, err := s.renderTemplate(email.SubscriptionCancelledTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Subscription Cancelled", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       customerEmail,
+		ToName:   customerName,
+		Subject:  "Your subscription has been cancelled",
+		HTMLBody: html,
+	})
+}
+
+// EmailLog tracks sent emails
+type EmailLog struct {
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	ToEmail   string
+	Subject   string
+	EventType string
+	SentAt    time.Time
+	Status    string
+}
