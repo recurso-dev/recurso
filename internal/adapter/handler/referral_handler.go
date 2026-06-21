@@ -88,6 +88,28 @@ type GenerateCodeRequest struct {
 	CustomerID uuid.UUID `json:"customer_id" binding:"required"`
 }
 
+func (h *ReferralHandler) QualifyReferral(c *gin.Context) {
+	tenantID, exists := c.Get("tenant_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		return
+	}
+
+	referralID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid referral ID"})
+		return
+	}
+
+	referral, err := h.referralService.QualifyReferral(c.Request.Context(), tenantID.(uuid.UUID), referralID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": referral})
+}
+
 func (h *ReferralHandler) GenerateCode(c *gin.Context) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {

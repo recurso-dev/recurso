@@ -12,12 +12,16 @@ import (
 type mockReferralRepo struct {
 	referrals      []*domain.Referral
 	byReferredID   *domain.Referral
+	byID           map[uuid.UUID]*domain.Referral
 	created        []*domain.Referral
+	updated        []*domain.Referral
 	createErr      error
 }
 
 func newMockReferralRepo() *mockReferralRepo {
-	return &mockReferralRepo{}
+	return &mockReferralRepo{
+		byID: make(map[uuid.UUID]*domain.Referral),
+	}
 }
 
 func (m *mockReferralRepo) Create(ctx context.Context, r *domain.Referral) error {
@@ -25,6 +29,18 @@ func (m *mockReferralRepo) Create(ctx context.Context, r *domain.Referral) error
 		return m.createErr
 	}
 	m.created = append(m.created, r)
+	return nil
+}
+
+func (m *mockReferralRepo) GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.Referral, error) {
+	if r, ok := m.byID[id]; ok {
+		return r, nil
+	}
+	return nil, nil
+}
+
+func (m *mockReferralRepo) Update(ctx context.Context, r *domain.Referral) error {
+	m.updated = append(m.updated, r)
 	return nil
 }
 

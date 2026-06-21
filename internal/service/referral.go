@@ -147,3 +147,54 @@ func (s *ReferralService) CreateReferral(ctx context.Context, tenantID uuid.UUID
 func (s *ReferralService) ListReferrals(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Referral, error) {
 	return s.referralRepo.List(ctx, tenantID, limit, offset)
 }
+
+// QualifyReferral marks a referral as qualified (e.g., when the referred customer makes their first payment)
+func (s *ReferralService) QualifyReferral(ctx context.Context, tenantID uuid.UUID, referralID uuid.UUID) (*domain.Referral, error) {
+	referral, err := s.referralRepo.GetByID(ctx, tenantID, referralID)
+	if err != nil {
+		return nil, err
+	}
+	if referral == nil {
+		return nil, errors.New("referral not found")
+	}
+
+	if referral.Status != domain.ReferralStatusPending {
+		return nil, fmt.Errorf("referral is already %s", referral.Status)
+	}
+
+	now := time.Now()
+	referral.Status = domain.ReferralStatusQualified
+	referral.QualifiedAt = &now
+	referral.UpdatedAt = now
+
+	if err := s.referralRepo.Update(ctx, referral); err != nil {
+		return nil, err
+	}
+
+	return referral, nil
+}
+
+// ApplyReward marks a qualified referral as rewarded
+func (s *ReferralService) ApplyReward(ctx context.Context, tenantID uuid.UUID, referralID uuid.UUID) (*domain.Referral, error) {
+	referral, err := s.referralRepo.GetByID(ctx, tenantID, referralID)
+	if err != nil {
+		return nil, err
+	}
+	if referral == nil {
+		return nil, errors.New("referral not found")
+	}
+
+	if referral.Status != domain.ReferralStatusQualified {
+		return nil, fmt.Errorf("referral must be qualified before reward can be applied, current status: %s", referral.Status)
+	}
+
+	now := time.Now()
+	referral.Status = domain.ReferralStatusRewarded
+	referral.UpdatedAt = now
+
+	if err := s.referralRepo.Update(ctx, referral); err != nil {
+		return nil, err
+	}
+
+	return referral, nil
+}
