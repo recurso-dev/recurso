@@ -23,8 +23,9 @@ type SubscriptionService struct {
 	ledger          *LedgerService
 	gateway         port.PaymentGateway
 	gspAdapter      port.GSPAdapter
-	einvoiceService *EInvoiceService
-	txManager       *db.TxManager
+	notificationService *NotificationService
+	einvoiceService     *EInvoiceService
+	txManager           *db.TxManager
 	subRepoImpl     *db.SubscriptionRepository // Concrete type for TX methods
 	invRepoImpl     *db.InvoiceRepository      // Concrete type for TX methods
 	revrecService   *RevRecService
@@ -76,6 +77,11 @@ func NewSubscriptionService(
 // SetEInvoiceService injects the EInvoiceService after construction (avoids circular deps).
 func (s *SubscriptionService) SetEInvoiceService(einvoiceSvc *EInvoiceService) {
 	s.einvoiceService = einvoiceSvc
+}
+
+// SetNotificationService injects the NotificationService after construction.
+func (s *SubscriptionService) SetNotificationService(ns *NotificationService) {
+	s.notificationService = ns
 }
 
 type CreateSubscriptionInput struct {
@@ -307,6 +313,22 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		"payment_terms", paymentTerms,
 	)
 
+	// Send subscription created notification
+	if s.notificationService != nil {
+		err := s.notificationService.SendSubscriptionCreated(ctx, SubscriptionData{
+			CustomerName:    domain.PtrToString(customer.Name),
+			CustomerEmail:   customer.Email,
+			PlanName:        plan.Name,
+			Price:           formatAmount(price.Amount, price.Currency),
+			Interval:        fmt.Sprintf("%d %s", plan.IntervalCount, plan.IntervalUnit),
+			StartDate:       start.Format("Jan 02, 2006"),
+			NextBillingDate: end.Format("Jan 02, 2006"),
+		})
+		if err != nil {
+			s.logger.Error("failed to send subscription created notification", "error", err, "subscription_id", subID)
+		}
+	}
+
 	return sub, nil
 }
 
@@ -339,10 +361,24 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		}
 	}
 
-	// Send Email
-	// In real world, fetch customer email. For P1, mock details.
-	_ = s.notifier.SendEmail(ctx, inv.CustomerID.String(), "Payment Successful", "Your invoice "+inv.InvoiceNumber+" has been paid.")
-	// TODO: Fetch customer email from CustomerRepo instead of using CustomerID
+	// Send payment received notification
+	if s.notificationService != nil {
+		customer, custErr := s.customerRepo.GetByID(ctx, inv.CustomerID)
+		if custErr != nil {
+			s.logger.Error("failed to fetch customer for payment notification", "error", custErr, "customer_id", inv.CustomerID)
+		} else if customer != nil {
+			err := s.notificationService.SendPaymentReceived(ctx, PaymentData{
+				CustomerName:  domain.PtrToString(customer.Name),
+				CustomerEmail: customer.Email,
+				InvoiceNumber: inv.InvoiceNumber,
+				Amount:        formatAmount(inv.Total, inv.Currency),
+				PaymentDate:   now.Format("Jan 02, 2006"),
+			})
+			if err != nil {
+				s.logger.Error("failed to send payment received notification", "error", err, "invoice_id", inv.ID)
+			}
+		}
+	}
 
 	return nil
 }
@@ -675,4 +711,16 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	}
 
 	return sub, nil
+}
+
+func formatAmount(amountPaise int64, currency string) string {
+	amount := float64(amountPaise) / 100
+	switch currency {
+	case "INR":
+		return fmt.Sprintf("₹%.2f", amount)
+	case "USD":
+		return fmt.Sprintf("$%.2f", amount)
+	default:
+		return fmt.Sprintf("%s %.2f", currency, amount)
+	}
 }

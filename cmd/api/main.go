@@ -93,7 +93,7 @@ func main() {
 
 	emailSender := email.NewConsoleSender() // Use SMTPSender in production
 	notificationService := service.NewNotificationService(emailSender, "http://localhost:8080")
-	_ = notificationService // TODO: Wire to event handlers
+	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
 
 	// Ledger (P5)
 	// We wrap in try-catch in case TB is not running (since docker failed)
@@ -184,6 +184,7 @@ func main() {
 	einvoiceService := service.NewEInvoiceService(gspAdapter, invoiceRepo, customerRepo, irpConfigRepo, gstConfigRepo)
 	invoiceService.EInvoiceService = einvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
+	subscriptionService.SetNotificationService(notificationService)
 
 	// AI Service (P45)
 	dunningRepo := db.NewDunningRepository(database)
@@ -340,7 +341,7 @@ func main() {
 
 	// Payment Handlers
 	paymentHandler := handler.NewPaymentHandler(paymentGateway, invoiceRepo)
-	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
 
 	// 8. Setup Router
 	r := gin.Default()
