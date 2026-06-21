@@ -1,0 +1,121 @@
+package handler
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/recur-so/recurso/internal/service"
+)
+
+type CustomerHandler struct {
+	service *service.CustomerService
+}
+
+func NewCustomerHandler(s *service.CustomerService) *CustomerHandler {
+	return &CustomerHandler{service: s}
+}
+
+type createCustomerRequest struct {
+	Email         string `json:"email" binding:"required,email"`
+	Name          string `json:"name" binding:"required"`
+	Phone         string `json:"phone"`
+	TaxID         string `json:"tax_id"`
+	GSTIN         string `json:"gstin"`           // P24
+	TaxType       string `json:"tax_type"`        // P25
+	PlaceOfSupply string `json:"place_of_supply"` // P24
+	Line1         string `json:"line1"`
+	City          string `json:"city"`
+	State         string `json:"state"`
+	Zip           string `json:"zip"`
+	Country       string `json:"country" binding:"omitempty,len=2"` // Allow empty or iso code
+}
+
+func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
+	var req createCustomerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		return
+	}
+
+	input := service.CreateCustomerInput{
+		TenantID:      tenantID,
+		Email:         req.Email,
+		Name:          req.Name,
+		Phone:         req.Phone,
+		TaxID:         req.TaxID,
+		GSTIN:         req.GSTIN,
+		TaxType:       req.TaxType,
+		PlaceOfSupply: req.PlaceOfSupply,
+		Line1:         req.Line1,
+		City:          req.City,
+		State:         req.State,
+		Zip:           req.Zip,
+		Country:       req.Country,
+	}
+
+	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	customer, err := h.service.CreateCustomer(ctx, input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, customer)
+}
+
+func (h *CustomerHandler) ListCustomers(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+
+	// Parse query params
+	search := c.Query("q")
+	country := c.Query("country")
+	status := c.Query("status")
+	
+	limit := 10
+	if l := c.Query("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	
+	offset := 0
+	if p := c.Query("page"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+			offset = (v - 1) * limit
+		}
+	}
+	
+	filter := domain.CustomerFilter{
+		Search:  search,
+		Country: country,
+		Status:  status,
+		Limit:   limit,
+		Offset:  offset,
+	}
+
+	customers, err := h.service.ListCustomers(ctx, tenantID, filter)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if customers == nil {
+		customers = []*domain.Customer{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": customers})
+}
