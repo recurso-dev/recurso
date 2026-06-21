@@ -1,0 +1,24 @@
+package port
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
+)
+
+// MagicLinkRepository handles magic link persistence
+type MagicLinkRepository interface {
+	Create(ctx context.Context, link *domain.MagicLink) error
+	GetByToken(ctx context.Context, token string) (*domain.MagicLink, error)
+	MarkUsed(ctx context.Context, id uuid.UUID) error
+	DeleteExpired(ctx context.Context) error
+}
+
+// PortalSessionRepository handles portal session persistence
+type PortalSessionRepository interface {
+	Create(ctx context.Context, session *domain.PortalSession) error
+	GetByToken(ctx context.Context, token string) (*domain.PortalSession, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+	DeleteExpired(ctx context.Context) error
+}
