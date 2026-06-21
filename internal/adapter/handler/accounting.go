@@ -1,8 +1,13 @@
 package handler
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -79,7 +84,7 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 	}
 
 	tenantID, _ := c.MustGet("tenant_id").(uuid.UUID)
-	state := tenantID.String() + ":" + provider
+	state := generateOAuthState(tenantID, provider)
 
 	authURL := accounting.BuildAuthURL(config, state)
 	c.JSON(http.StatusOK, gin.H{"auth_url": authURL})
@@ -96,16 +101,10 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 		return
 	}
 
-	// Parse tenant ID from state
-	var tenantID uuid.UUID
-	if len(state) >= 36 {
-		parsed, err := uuid.Parse(state[:36])
-		if err == nil {
-			tenantID = parsed
-		}
-	}
-	if tenantID == uuid.Nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state"})
+	// Verify and parse tenant ID from HMAC-signed state
+	tenantID, err := verifyOAuthState(state)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or tampered state"})
 		return
 	}
 
@@ -168,9 +167,26 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 }
 
 func (h *AccountingHandler) Disconnect(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+		return
+	}
+
+	// Verify the connection belongs to this tenant before deleting
+	conn, err := h.connRepo.GetByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		return
+	}
+	if conn.TenantID != tenantID {
+		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
 		return
 	}
 
@@ -215,4 +231,49 @@ func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": logs})
+}
+
+// oauthStateSecret returns the key used to HMAC-sign OAuth state tokens.
+// Falls back to a generated UUID if OAUTH_STATE_SECRET is not set.
+func oauthStateSecret() string {
+	if s := os.Getenv("OAUTH_STATE_SECRET"); s != "" {
+		return s
+	}
+	return "recurso-oauth-state-fallback-key"
+}
+
+// generateOAuthState produces an HMAC-signed state: "tenantID:provider:signature"
+func generateOAuthState(tenantID uuid.UUID, provider string) string {
+	payload := tenantID.String() + ":" + provider
+	mac := hmac.New(sha256.New, []byte(oauthStateSecret()))
+	mac.Write([]byte(payload))
+	sig := hex.EncodeToString(mac.Sum(nil))
+	return payload + ":" + sig
+}
+
+// verifyOAuthState verifies the HMAC signature and extracts the tenant ID.
+func verifyOAuthState(state string) (uuid.UUID, error) {
+	parts := strings.SplitN(state, ":", 3)
+	if len(parts) != 3 {
+		return uuid.Nil, fmt.Errorf("malformed state")
+	}
+
+	tenantIDStr, provider, signature := parts[0], parts[1], parts[2]
+
+	// Recompute expected signature
+	payload := tenantIDStr + ":" + provider
+	mac := hmac.New(sha256.New, []byte(oauthStateSecret()))
+	mac.Write([]byte(payload))
+	expected := hex.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(expected), []byte(signature)) {
+		return uuid.Nil, fmt.Errorf("invalid state signature")
+	}
+
+	tenantID, err := uuid.Parse(tenantIDStr)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("invalid tenant_id in state: %w", err)
+	}
+
+	return tenantID, nil
 }

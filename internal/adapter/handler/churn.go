@@ -114,16 +114,28 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 }
 
 func (h *ChurnHandler) AcknowledgeAlert(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		return
+	}
+
 	alertID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid alert id"})
 		return
 	}
 
-	query := `UPDATE churn_alerts SET acknowledged = TRUE WHERE id = $1`
-	_, err = h.db.ExecContext(c.Request.Context(), query, alertID)
+	query := `UPDATE churn_alerts SET acknowledged = TRUE WHERE id = $1 AND tenant_id = $2`
+	result, err := h.db.ExecContext(c.Request.Context(), query, alertID, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "alert not found"})
 		return
 	}
 
