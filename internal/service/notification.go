@@ -271,6 +271,26 @@ func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, d
 	})
 }
 
+// SendCardExpiringNotification sends a card expiry warning email
+func (s *NotificationService) SendCardExpiringNotification(ctx context.Context, data email.CardExpiringEmailData) error {
+	content, err := s.renderTemplate(email.CardExpiringTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Card Expiring Soon", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Your %s card ending in %s is expiring soon", data.CardBrand, data.CardLast4),
+		HTMLBody: html,
+	})
+}
+
 // SendSubscriptionCancelled sends cancellation confirmation
 func (s *NotificationService) SendSubscriptionCancelled(ctx context.Context, customerEmail, customerName, planName, accessUntil, reactivateURL string) error {
 	data := struct {

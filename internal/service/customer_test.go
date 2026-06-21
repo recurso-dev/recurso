@@ -65,6 +65,10 @@ func (m *mockCustomerRepo) UpdateRisk(ctx context.Context, customerID uuid.UUID,
 	return nil
 }
 
+func (m *mockCustomerRepo) UpdatePaymentMethod(ctx context.Context, customerID uuid.UUID, brand, last4 string, expMonth, expYear int) error {
+	return nil
+}
+
 // --- Tests ---
 
 func TestCreateCustomer_Success(t *testing.T) {

@@ -94,3 +94,15 @@ func (s *CustomerService) GetCustomer(ctx context.Context, tenantID uuid.UUID, c
 	}
 	return customer, nil
 }
+
+type UpdatePaymentMethodInput struct {
+	CustomerID uuid.UUID
+	CardBrand  string
+	CardLast4  string
+	ExpMonth   int
+	ExpYear    int
+}
+
+func (s *CustomerService) UpdatePaymentMethod(ctx context.Context, input UpdatePaymentMethodInput) error {
+	return s.repo.UpdatePaymentMethod(ctx, input.CustomerID, input.CardBrand, input.CardLast4, input.ExpMonth, input.ExpYear)
+}

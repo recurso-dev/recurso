@@ -16,4 +16,5 @@ type CustomerRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error)
 	Update(ctx context.Context, customer *domain.Customer) error
 	UpdateRisk(ctx context.Context, customerID uuid.UUID, score int, factors map[string]interface{}) error
+	UpdatePaymentMethod(ctx context.Context, customerID uuid.UUID, brand, last4 string, expMonth, expYear int) error
 }

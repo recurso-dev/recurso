@@ -24,3 +24,13 @@ type DunningEmailData struct {
 	PayNowURL        string
 	UpdatePaymentURL string
 }
+
+// CardExpiringEmailData contains data for card expiry warning emails
+type CardExpiringEmailData struct {
+	CustomerName     string
+	CustomerEmail    string
+	CardBrand        string
+	CardLast4        string
+	ExpiryDate       string // e.g. "July 2026"
+	UpdatePaymentURL string
+}

@@ -73,6 +73,43 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	c.JSON(http.StatusCreated, customer)
 }
 
+type updatePaymentMethodRequest struct {
+	CardBrand string `json:"card_brand" binding:"required"`
+	CardLast4 string `json:"card_last4" binding:"required,len=4"`
+	ExpMonth  int    `json:"card_exp_month" binding:"required,min=1,max=12"`
+	ExpYear   int    `json:"card_exp_year" binding:"required,min=2020"`
+}
+
+func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer id"})
+		return
+	}
+
+	var req updatePaymentMethodRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	input := service.UpdatePaymentMethodInput{
+		CustomerID: customerID,
+		CardBrand:  req.CardBrand,
+		CardLast4:  req.CardLast4,
+		ExpMonth:   req.ExpMonth,
+		ExpYear:    req.ExpYear,
+	}
+
+	ctx := c.Request.Context()
+	if err := h.service.UpdatePaymentMethod(ctx, input); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

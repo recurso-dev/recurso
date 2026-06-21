@@ -125,15 +125,17 @@ func (r *CustomerRepository) GetByReferralCode(ctx context.Context, tenantID uui
 	var customer domain.Customer
 	var addressJSON []byte
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, created_at
-		FROM customers 
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		FROM customers
 		WHERE tenant_id = $1 AND referral_code = $2 LIMIT 1
 	`
 	err := r.db.QueryRowContext(ctx, query, tenantID, code).Scan(
 		&customer.ID, &customer.TenantID, &customer.Email, &customer.Name,
 		&customer.Phone, &customer.TaxID,
 		&customer.BillingAddress.Line1, &customer.BillingAddress.City, &customer.BillingAddress.State, &customer.BillingAddress.Zip, &customer.BillingAddress.Country,
-		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode, &customer.CreatedAt,
+		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode,
+		&customer.CardBrand, &customer.CardLast4, &customer.CardExpMonth, &customer.CardExpYear,
+		&customer.CreatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -154,7 +156,7 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 	var addressJSON []byte // We scan this but prefer individual columns if populated
 
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
 		FROM customers WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -167,7 +169,9 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 		&customer.ID, &customer.TenantID, &customer.Email, &customer.Name,
 		&customer.Phone, &customer.TaxID,
 		&customer.BillingAddress.Line1, &customer.BillingAddress.City, &customer.BillingAddress.State, &customer.BillingAddress.Zip, &customer.BillingAddress.Country,
-		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode, &customer.CreatedAt,
+		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode,
+		&customer.CardBrand, &customer.CardLast4, &customer.CardExpMonth, &customer.CardExpYear,
+		&customer.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
@@ -189,7 +193,7 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 
 func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error) {
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
 		FROM customers WHERE tenant_id = $1
 	`
 	args := []interface{}{tenantID}
@@ -246,7 +250,9 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 			&c.ID, &c.TenantID, &c.Email, &c.Name,
 			&c.Phone, &c.TaxID,
 			&c.BillingAddress.Line1, &c.BillingAddress.City, &c.BillingAddress.State, &c.BillingAddress.Zip, &c.BillingAddress.Country,
-			&addressJSON, &c.LedgerAccountID, &c.ReferralCode, &c.CreatedAt,
+			&addressJSON, &c.LedgerAccountID, &c.ReferralCode,
+			&c.CardBrand, &c.CardLast4, &c.CardExpMonth, &c.CardExpYear,
+			&c.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -259,4 +265,63 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 	}
 
 	return customers, nil
+}
+
+// UpdatePaymentMethod updates the stored card details for a customer
+func (r *CustomerRepository) UpdatePaymentMethod(ctx context.Context, customerID uuid.UUID, brand, last4 string, expMonth, expYear int) error {
+	query := `UPDATE customers SET card_brand = $1, card_last4 = $2, card_exp_month = $3, card_exp_year = $4 WHERE id = $5`
+	_, err := r.db.ExecContext(ctx, query, brand, last4, expMonth, expYear, customerID)
+	return err
+}
+
+// CustomerWithExpiringCard holds customer info for card expiry notifications
+type CustomerWithExpiringCard struct {
+	CustomerID    uuid.UUID
+	TenantID      uuid.UUID
+	CustomerName  string
+	CustomerEmail string
+	CardBrand     string
+	CardLast4     string
+	CardExpMonth  int
+	CardExpYear   int
+}
+
+// GetCustomersWithExpiringCards finds customers with cards expiring in the given month/year
+// who have active subscriptions and have not already been notified.
+func (r *CustomerRepository) GetCustomersWithExpiringCards(ctx context.Context, month, year int) ([]CustomerWithExpiringCard, error) {
+	query := `
+		SELECT c.id, c.tenant_id, COALESCE(c.name, ''), c.email, c.card_brand, c.card_last4, c.card_exp_month, c.card_exp_year
+		FROM customers c
+		INNER JOIN subscriptions s ON s.customer_id = c.id AND s.status = 'active'
+		LEFT JOIN card_expiry_notifications cen ON cen.customer_id = c.id AND cen.card_exp_month = $1 AND cen.card_exp_year = $2
+		WHERE c.card_exp_month = $1 AND c.card_exp_year = $2
+		  AND cen.id IS NULL
+		GROUP BY c.id
+	`
+	rows, err := r.db.QueryContext(ctx, query, month, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []CustomerWithExpiringCard
+	for rows.Next() {
+		var cust CustomerWithExpiringCard
+		if err := rows.Scan(&cust.CustomerID, &cust.TenantID, &cust.CustomerName, &cust.CustomerEmail, &cust.CardBrand, &cust.CardLast4, &cust.CardExpMonth, &cust.CardExpYear); err != nil {
+			return nil, err
+		}
+		results = append(results, cust)
+	}
+	return results, nil
+}
+
+// MarkCardExpiryNotificationSent records that a card expiry notification was sent
+func (r *CustomerRepository) MarkCardExpiryNotificationSent(ctx context.Context, customerID, tenantID uuid.UUID, expMonth, expYear int, cardLast4 string) error {
+	query := `
+		INSERT INTO card_expiry_notifications (tenant_id, customer_id, card_exp_month, card_exp_year, card_last4)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (customer_id, card_exp_month, card_exp_year) DO NOTHING
+	`
+	_, err := r.db.ExecContext(ctx, query, tenantID, customerID, expMonth, expYear, cardLast4)
+	return err
 }

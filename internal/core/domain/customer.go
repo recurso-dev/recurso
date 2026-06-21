@@ -21,6 +21,10 @@ type Customer struct {
 	ReferralCode    *string                `json:"referral_code" db:"referral_code"` // P42
 	RiskScore       int                    `json:"risk_score" db:"risk_score"`       // P45: 0-100
 	RiskFactors     map[string]interface{} `json:"risk_factors" db:"risk_factors"`   // P45: JSON
+	CardBrand       *string                `json:"card_brand,omitempty" db:"card_brand"`
+	CardLast4       *string                `json:"card_last4,omitempty" db:"card_last4"`
+	CardExpMonth    *int                   `json:"card_exp_month,omitempty" db:"card_exp_month"`
+	CardExpYear     *int                   `json:"card_exp_year,omitempty" db:"card_exp_year"`
 	CreatedAt       time.Time              `json:"created_at"`
 }
 

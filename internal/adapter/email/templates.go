@@ -403,6 +403,34 @@ const DunningFinalNoticeTemplate = `
 </p>
 `
 
+// CardExpiringTemplate for card expiry warning notification
+const CardExpiringTemplate = `
+<h1>Your Card Is Expiring Soon</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>The payment method on your account will expire soon. Please update it to avoid any interruption to your service.</p>
+
+<div class="info-box" style="border-left: 4px solid #f59e0b;">
+    <div class="info-row">
+        <span class="info-label">Card</span>
+        <span class="info-value">{{.CardBrand}} ending in {{.CardLast4}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Expires</span>
+        <span class="info-value" style="color: #f59e0b;">{{.ExpiryDate}}</span>
+    </div>
+</div>
+
+<p>To ensure uninterrupted service, please update your payment method before your card expires.</p>
+
+<p style="text-align: center;">
+    <a href="{{.UpdatePaymentURL}}" class="btn" style="background: #f59e0b;">Update Payment Method</a>
+</p>
+
+<p style="font-size: 12px; color: #64748b;">
+    If you've already updated your card, you can safely ignore this email.
+</p>
+`
+
 // SubscriptionCancelledTemplate for cancellation confirmation
 const SubscriptionCancelledTemplate = `
 <h1>Subscription Cancelled</h1>

@@ -279,6 +279,16 @@ func main() {
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 
+	// Card Expiry Scheduler - notifies customers ~30 days before card expires
+	cardExpiryScheduler := scheduler.NewCardExpiringScheduler(
+		customerRepo,
+		notificationService,
+		locker,
+		"http://localhost:8080",
+	)
+	cardExpiryScheduler.Start()
+	defer cardExpiryScheduler.Stop()
+
 	// Graceful shutdown handler
 	go func() {
 		sigChan := make(chan os.Signal, 1)
@@ -287,6 +297,7 @@ func main() {
 		log.Println("Shutting down gracefully...")
 		preChargeScheduler.Stop()
 		dunningScheduler.Stop()
+		cardExpiryScheduler.Stop()
 		os.Exit(0)
 	}()
 
@@ -454,6 +465,7 @@ func main() {
 
 		v1.POST("/customers", customerHandler.CreateCustomer)
 		v1.GET("/customers", customerHandler.ListCustomers)
+		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
 
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
 		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)
