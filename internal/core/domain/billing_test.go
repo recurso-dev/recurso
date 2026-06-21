@@ -161,6 +161,10 @@ func TestAddInterval(t *testing.T) {
 		count    int
 		expected time.Time
 	}{
+		{"day", 1, base.AddDate(0, 0, 1)},
+		{"day", 7, base.AddDate(0, 0, 7)},
+		{"week", 1, base.AddDate(0, 0, 7)},
+		{"week", 2, base.AddDate(0, 0, 14)},
 		{"month", 1, base.AddDate(0, 1, 0)},
 		{"month", 3, base.AddDate(0, 3, 0)},
 		{"year", 1, base.AddDate(1, 0, 0)},
@@ -170,9 +174,9 @@ func TestAddInterval(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.unit, func(t *testing.T) {
-			got := addInterval(base, tc.unit, tc.count)
+			got := AddInterval(base, tc.unit, tc.count)
 			if !got.Equal(tc.expected) {
-				t.Errorf("addInterval(%v, %q, %d) = %v, want %v", base, tc.unit, tc.count, got, tc.expected)
+				t.Errorf("AddInterval(%v, %q, %d) = %v, want %v", base, tc.unit, tc.count, got, tc.expected)
 			}
 		})
 	}

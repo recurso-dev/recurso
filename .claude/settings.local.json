@@ -11,7 +11,19 @@
       "Bash(go build:*)",
       "Bash(git init:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(gh pr:*)",
+      "Bash(git pull:*)",
+      "Bash(git branch:*)",
+      "Bash(go run:*)",
+      "Bash(APP_ENV=development go run:*)",
+      "Bash(brew list:*)",
+      "Bash(pg_isready:*)",
+      "Bash(DATABASE_URL=\"postgres://swapnull@localhost:5432/recurso?sslmode=disable\" go run:*)",
+      "Bash(curl:*)",
+      "Bash(python3:*)",
+      "Bash(psql:*)",
+      "Bash(wc:*)"
     ]
   }
 }
