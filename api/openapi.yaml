@@ -1,0 +1,279 @@
+openapi: 3.0.0
+info:
+  title: Recurso Billing API
+  description: API for the Recurso Billing Engine
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local Development Server
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Key
+
+  schemas:
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        interval_unit:
+          type: string
+          enum: [month, year]
+        interval_count:
+          type: integer
+        amount:
+          type: integer
+        currency:
+          type: string
+          
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [active, canceled]
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        coupon_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    UsageEvent:
+      type: object
+      properties:
+        customer_id:
+          type: string
+        event_type:
+          type: string
+        properties:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+
+    Coupon:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        discount_type:
+          type: string
+          enum: [percent, amount]
+        discount_value:
+          type: integer
+        duration:
+          type: string
+          enum: [forever, once, repeating]
+
+paths:
+  /auth/register:
+    post:
+      summary: Register a new Tenant (Signup)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+              required: [name, email]
+      responses:
+        '201':
+          description: Tenant Registered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant:
+                    $ref: '#/components/schemas/Tenant'
+                  api_key:
+                    type: string
+
+  /v1/customers:
+    post:
+      summary: Create a Customer
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                name:
+                  type: string
+              required: [email, name]
+      responses:
+        '201':
+          description: Customer Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /v1/plans:
+    post:
+      summary: Create a Plan
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                code:
+                  type: string
+                amount:
+                  type: integer
+                currency:
+                  type: string
+                interval_unit:
+                  type: string
+                interval_count:
+                  type: integer
+              required: [name, code, amount, currency]
+      responses:
+        '201':
+          description: Plan Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+
+  /v1/subscriptions:
+    post:
+      summary: Create a Subscription
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customer_id:
+                  type: string
+                plan_id:
+                  type: string
+                coupon_code:
+                  type: string
+              required: [customer_id, plan_id]
+      responses:
+        '201':
+          description: Subscription Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+
+  /v1/usage/events:
+    post:
+      summary: Record Usage Event
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsageEvent'
+      responses:
+        '202':
+          description: Event Accepted
+
+  /v1/coupons:
+    post:
+      summary: Create a Coupon
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                code:
+                  type: string
+                discount_type:
+                  type: string
+                discount_value:
+                  type: integer
+                duration:
+                  type: string
+              required: [code, discount_type, discount_value, duration]
+      responses:
+        '201':
+          description: Coupon Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'

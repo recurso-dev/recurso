@@ -1,0 +1,264 @@
+This "Level 2" deep dive translates the strategic roadmap into engineering specifications. We are moving from *what* we are building to *exactly how* the system processes data, handles edge cases, and ensures financial integrity.
+
+This document serves as the **Technical Design Document (TDD)** for the engineering team.
+
+-----
+
+# Recurso: Technical Design Document (Level 2 Deep Dive)
+
+## 1\. The Financial Core: "Write-Last, Read-First" Implementation
+
+The most critical architectural pattern for Recurso is ensuring the immutable ledger (TigerBeetle) and the mutable metadata (Postgres) never drift. We will use the **Write-Last, Read-First** consistency pattern.
+
+### 1.1 The Consistency Algorithm
+
+We do not use 2PC (Two-Phase Commit) because it hurts performance. Instead, we use deterministic ordering.
+
+**The Workflow (Pseudocode):**
+
+```go
+// CORE TRANSACTION: SUBSCRIPTION RENEWAL
+func RenewSubscription(ctx context.Context, subID string) error {
+    // 1. READ FIRST (Postgres)
+    // Fetch subscription details, plan price, and tax status.
+    // This is a cheap, cached read.
+    sub, err := postgres.GetSubscription(subID)
+    if sub.Status!= "active" {
+        return fmt.Errorf("Subscription not active")
+    }
+
+    // 2. LOGIC & IDEMPOTENCY GENERATION
+    // Generate a deterministic transaction ID based on subID + billing_cycle_index.
+    // This ensures that if we retry this function, we generate the exact same ID,
+    // preventing double charging.
+    txID := generateUUIDv7(sub.ID, sub.CurrentCycle)
+
+    // 3. WRITE LAST (TigerBeetle)
+    // Attempt to commit the financial movement first.
+    // TigerBeetle is the "System of Record" for money.
+    transfer := tigerbeetle.Transfer{
+        ID:              txID,
+        DebitAccountID:  sub.CustomerLedgerID,
+        CreditAccountID: sub.RevenueLedgerID,
+        Amount:          sub.PlanAmount + sub.TaxAmount,
+        Ledger:          LedgerINR, // 356
+        Code:            TxCodeRenewal,
+    }
+
+    result, err := tbClient.CreateTransfers(tigerbeetle.Transfer{transfer})
+
+    if err!= nil {
+        // Handle transport errors (retry safe due to deterministic txID)
+        return retry(err)
+    }
+
+    if result.Result == tigerbeetle.ExistsWithDifferentAmount {
+        // CRITICAL: Fraud or logic bug detected. Raise Alert.
+        alert.Emergency("Ledger mismatch for sub %s", subID)
+        return err
+    }
+
+    // 4. UPDATE REFERENCE (Postgres)
+    // Only if TigerBeetle succeeds do we update the invoice status in Postgres.
+    // If this fails, we can retry indefinitely because the ledger is already secured.
+    postgres.UpdateInvoiceStatus(txID, "PAID")
+}
+```
+
+### 1.2 Schema Design: Polyglot Persistence
+
+#### **A. PostgreSQL (System of Reference)**
+
+Optimized for queries, relationships, and metadata.
+
+  * **`tenants`**: `id` (PK), `name`, `api_key`, `webhook_url`, `gstin`.
+  * **`customers`**: `id` (PK), `tenant_id` (FK), `external_id`, `email`, `tax_id`.
+  * **`subscriptions`**:
+      * `id` (PK), `customer_id` (FK)
+      * `status` (enum: active, past\_due, canceled)
+      * `current_period_start` (timestamp), `current_period_end` (timestamp)
+      * `billing_cycle_anchor` (timestamp) — *Crucial for proration calculation.*
+  * **`idempotency_keys`**: `key` (PK), `response_body` (JSONB), `created_at`. *Used to ensure API safety.*
+
+#### **B. TigerBeetle (System of Record)**
+
+Optimized for immutable financial history.
+
+  * **`Accounts`**:
+      * `id`: 128-bit Integer (Mapped from Postgres UUIDs).
+      * `user_data_128`: Holds the Postgres `customer_id` for reverse lookups.
+      * `code`: Account Type (1=Asset, 2=Liability, 3=Equity, 4=Revenue, 5=Expense).
+  * **`Transfers`**:
+      * `id`: 128-bit Integer (Deterministic UUIDv7).
+      * `amount`: `uint64` (Base currency units, e.g., Paisa).
+      * `flags`: `LINKED` (For multi-leg tax splits).
+
+-----
+
+## 2\. UPI AutoPay Deep Dive: The "Un-Happy" Paths
+
+Building for the "Happy Path" is easy. Recurso is built for the failures common in the Indian banking stack.
+
+### 2.1 The Mandate State Machine (Failure Handling)
+
+We will use an Event-Driven State Machine (using Apache Kafka) to manage mandate lifecycles.
+
+**Critical Edge Cases & Handling:**
+
+| Scenario | Error Code | Recurso System Action |
+| :--- | :--- | :--- |
+| **Insufficient Funds** | `Z9` / `51` | **Smart Retry:** Do not retry immediately. Schedule retry for `T + 4 hours` (afternoon) or `T + 1 day` (morning). |
+| **Debit Limit Exceeded** | `U30` | **Hard Stop:** Mark subscription as `past_due`. Trigger email: "Upgrade Mandate". Do not retry automatically. |
+| **Bank Downtime** | `U19` / `XY` | **Backoff Retry:** Retry in 30 mins. Do not count against "Max Retry" limit. |
+| **Mandate Revoked** | `UM1` | **Immediate Cancel:** Webhook received → Cancel subscription immediately. Send "Win-back" email. |
+| **VPA Invalid** | `ZH` | **Pause:** Mark mandate as `invalid`. Request user to set up a new payment method. |
+
+### 2.2 The Pre-Debit Notification (Compliance Engine)
+
+You cannot debate money without this step.
+
+**Implementation Logic:**
+
+1.  **Scanner Job (Go/Cron):** Runs every hour. Scans `subscriptions` table for `current_period_end` between `Now() + 24h` and `Now() + 25h`.
+2.  **Notification Dispatch:**
+      * Constructs payload for Gateway (Razorpay/PhonePe).
+      * Sends `notify_amount` and `execution_date`.
+3.  **Evidence Locking:**
+      * Saves the `notification_id` returned by the Gateway into a `notification_logs` table.
+      * *Constraint:* The Debit Job **cannot** execute a charge unless a valid `notification_id` exists for that cycle in the DB.
+
+-----
+
+## 3\. Subscription Mathematics: Proration & Billing
+
+### 3.1 Exact-Time Proration Algorithm
+
+We calculate usage down to the second to prevent revenue leakage on high-volume accounts.
+
+**Scenario:** User upgrades from **Plan A** (₹1000/mo) to **Plan B** (₹2000/mo) exactly 10 days, 12 hours into a 30-day month.
+
+1.  **Total Cycle Seconds:** $30 \times 24 \times 3600 = 2,592,000$ sec.
+2.  **Used Seconds:** $10.5 \times 24 \times 3600 = 907,200$ sec.
+3.  **Remaining Seconds:** $2,592,000 - 907,200 = 1,684,800$ sec.
+4.  **Credit Unused A:** $(1,684,800 / 2,592,000) \times 1000 = ₹650$.
+5.  **Debit Remaining B:** $(1,684,800 / 2,592,000) \times 2000 = ₹1300$.
+6.  **Net Charge:** $1300 - 650 = ₹650$ (Due immediately or added to next invoice).
+
+**Implementation Note:** We use integer math (working in Paisa) to avoid floating-point errors (`0.1 + 0.2!= 0.3`).
+
+-----
+
+## 4\. AI & Intelligence Layer: Engineering the Models
+
+### 4.1 Reinforcement Learning (RL) for Payments
+
+We will deploy a **Contextual Bandit** model using Python (deployed as a microservice via gRPC).
+
+**Feature Engineering (The Input Vector):**
+
+  * `Issuer_Bank_ID` (HDFC, SBI, ICICI...)
+  * `Bin_Type` (Credit, Debit, Prepaid)
+  * `Hour_Of_Day` (0-23)
+  * `Day_Of_Month` (1-31)
+  * `Last_Failure_Code`
+  * `Merchant_Category_Code` (MCC)
+
+**The Reward Function:**
+$$R = (Success \times 100) - (Attempts \times Cost\_Per\_API)$$
+
+The model learns to maximize $R$. If retrying HDFC cards at 2 AM costs money and fails, the model learns to wait until 10 AM.
+
+### 4.2 Natural Language to SQL (GenAI)
+
+To make the analytics "conversational," we use a RAG (Retrieval-Augmented Generation) pipeline.
+
+**Architecture:**
+
+1.  **User Query:** "Show me churn rate for plans \> ₹5000 last month."
+2.  **Vector Store (ChromaDB):** Retrieves the relevant table schema (e.g., `schema_subscriptions`, `schema_invoices`).
+3.  **LLM Context Window:**
+      * *System Prompt:* "You are a read-only SQL generator for ClickHouse. Use only these tables: [...]"
+      * *User Prompt:* "Show me churn rate..."
+4.  **Guardrail Layer:** Before execution, a parser checks the SQL for `DROP`, `DELETE`, `UPDATE`, or access to restricted tables (`users_pii`).
+5.  **Execution:** Runs on ClickHouse -\> Returns JSON -\> Visualized by Frontend.
+
+-----
+
+## 5\. Compliance & Security Architecture
+
+### 5.1 Card Tokenization (CoF) Data Flow
+
+To handle "One-Click" checkout without touching PCI scope.
+
+1.  **Client Side:** React SDK collects card data.
+2.  **Direct Post:** Data is sent directly to the Token Requestor (TR) / Gateway (Razorpay/Juspay).
+3.  **Token Receipt:** Gateway returns a `token_reference_id` (e.g., `tkn_123`) and `par` (Payment Account Reference).
+4.  **Recurso Storage:** We store `tkn_123` in our `payment_methods` table.
+5.  **Transaction:** When charging, we send `tkn_123` + `cryptogram` (if applicable) to the gateway.
+      * *Note:* We never see the PAN (Primary Account Number).
+
+### 5.2 GST E-Invoicing Integration (The JSON Payload)
+
+For B2B transactions \> ₹5 Cr turnover, we must generate an IRN (Invoice Reference Number).
+
+**The Workflow:**
+
+1.  **Invoice Created** in Recurso.
+2.  **Mapper:** Converts Recurso Invoice Object -\> GST INV-01 JSON Schema.
+3.  **API Call:** POST to GSP (GST Suvidha Provider) / IRP.
+4.  **Response:** Receive signed `SignedInvoice`, `Irn`, and `QrCode`.
+5.  **PDF Generation:** We generate the PDF invoice embedding the QR code (mandatory for validity).
+
+**Sample Payload Structure (Simplified):**
+
+```json
+{
+  "Version": "1.1",
+  "TranDtls": { "TaxSch": "GST", "SupTyp": "B2B" },
+  "SellerDtls": { "Gstin": "29AAAAA0000A1Z5" },
+  "BuyerDtls": { "Gstin": "27BBBBB0000B1Z1", "Pos": "27" },
+  "ItemList":
+}
+```
+
+-----
+
+## 6\. Execution: The First 4 Sprints (Weeks 1-8)
+
+**Sprint 1: The Core Ledger**
+
+  * **Goal:** Can we move money virtually?
+  * **Tasks:**
+      * Set up TigerBeetle cluster.
+      * Implement `CreateAccount` and `CreateTransfer` in Go.
+      * Build the Postgres `Account` mapping table.
+
+**Sprint 2: The Subscription Engine**
+
+  * **Goal:** Can we model time?
+  * **Tasks:**
+      * Implement `Plan` and `Subscription` structs.
+      * Build the "Billing Cycle Calculator" (handles leap years, 30/31 days).
+      * Unit tests for Proration logic.
+
+**Sprint 3: Payment Orchestration Hooks**
+
+  * **Goal:** Can we talk to the world?
+  * **Tasks:**
+      * Build the abstract `PaymentGateway` interface in Go.
+      * Implement Razorpay adapter.
+      * Create the Webhook Receiver (handle `payment_failed`, `subscription_cancelled`).
+
+**Sprint 4: The API Gateway & Tenant Auth**
+
+  * **Goal:** Can customers use it?
+  * **Tasks:**
+      * Implement JWT Authentication.
+      * Build `CreateSubscription` API.
+      * Dockerize all services and deploy to a dev Kubernetes cluster.
+
+-----
+
+### Final Technical Recommendation
+
+Don't build the "AI features" (Smart Retries, GenAI) until the **Ledger** and **Billing Cycle Calculator** are 100% robust. If the math is wrong, the AI is useless. Start with correctness (Rust/TigerBeetle), then layer on intelligence.
