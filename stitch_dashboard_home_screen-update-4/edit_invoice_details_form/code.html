@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Edit Invoice Details Form</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4f46e5", // Using indigo-600 as the primary color from the user's request
+              "background-light": "#f8fafc", // slate-50
+              "background-dark": "#0f172a", // slate-900
+              "slate": {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                200: '#e2e8f0',
+                300: '#cbd5e1',
+                400: '#94a3b8',
+                500: '#64748b',
+                600: '#475569',
+                700: '#334155',
+                800: '#1e293b',
+                900: '#0f172a',
+              },
+              "indigo": {
+                500: '#6366f1',
+                600: '#4f46e5',
+              },
+              "violet": {
+                500: '#8b5cf6'
+              }
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.375rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"}, // Using rem for consistency
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40"></div>
+<div class="fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-2xl">
+<div class="flex flex-col h-full w-full bg-background-light dark:bg-slate-900 shadow-2xl">
+<!-- Header -->
+<header class="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
+<div class="flex flex-col gap-1">
+<h2 class="text-lg font-semibold text-slate-900 dark:text-white">Edit Invoice</h2>
+<p class="text-sm text-slate-500 dark:text-slate-400">Invoice #INV-2024-001</p>
+</div>
+<button class="flex items-center justify-center w-8 h-8 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="material-symbols-outlined text-xl">close</span>
+</button>
+</header>
+<!-- Form Content -->
+<div class="flex-1 overflow-y-auto">
+<div class="p-6 space-y-8">
+<!-- Customer Information -->
+<div>
+<h3 class="text-base font-semibold text-slate-900 dark:text-slate-200 mb-4">Customer Information</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+<div>
+<p class="text-sm font-medium text-slate-700 dark:text-slate-400 pb-1.5">Customer Name</p>
+<p class="text-sm text-slate-900 dark:text-slate-300">Stripe</p>
+</div>
+<div>
+<p class="text-sm font-medium text-slate-700 dark:text-slate-400 pb-1.5">Customer Email</p>
+<p class="text-sm text-slate-900 dark:text-slate-300">billing@stripe.com</p>
+</div>
+</div>
+</div>
+<!-- Invoice Details -->
+<div>
+<h3 class="text-base font-semibold text-slate-900 dark:text-slate-200 mb-4">Invoice Details</h3>
+<div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-5">
+<label class="flex flex-col">
+<p class="text-sm font-medium text-slate-700 dark:text-slate-300 pb-2">Invoice Number</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-slate-400 dark:text-slate-500 cursor-not-allowed focus:outline-0 focus:ring-0 border border-slate-300 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 h-10 px-3 text-sm font-normal" readonly="" value="INV-2024-001"/>
+</label>
+<label class="flex flex-col">
+<p class="text-sm font-medium text-slate-700 dark:text-slate-300 pb-2">Status</p>
+<select class="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary border border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm font-normal appearance-none" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBrkbKGhvP4EdJAXGPtS5Zh1lzcD7jr4-Y0i6zM5fM5047doQ9WceGzGEJAU1ROKNrlY5v-aLv92USjLt57QzxLBekfEzDi_H3773DBgkTLm-bFSvH9hMSz0hGkB03QozdJJjeTmePbs0r58hU5hjbztXBbaEuwcfn-MX-yrgY3UwXsJA4XcJZsnBHymU4rl_qTHJVYeeK53qtxdZwrBOCGSMRzOzjNmWHFheNO7vF_6fcB8K02bODcuE92tsgnLjxNrYH2sZHRIX4"); background-position: right 0.5rem center; background-repeat: no-repeat; background-size: 1.5em 1.5em; padding-right: 2.5rem;'>
+<option value="draft">Draft</option>
+<option selected="" value="sent">Sent</option>
+<option value="paid">Paid</option>
+<option value="void">Void</option>
+</select>
+</label>
+<label class="flex flex-col">
+<p class="text-sm font-medium text-slate-700 dark:text-slate-300 pb-2">Issue Date</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary border border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm font-normal" type="date" value="2024-07-26"/>
+</label>
+<label class="flex flex-col">
+<p class="text-sm font-medium text-slate-700 dark:text-slate-300 pb-2">Due Date</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-md text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary border border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm font-normal" type="date" value="2024-08-25"/>
+</label>
+</div>
+</div>
+<!-- Line Items -->
+<div>
+<h3 class="text-base font-semibold text-slate-900 dark:text-slate-200 mb-4">Line Items</h3>
+<div class="w-full">
+<div class="flow-root">
+<div class="-mx-6">
+<div class="inline-block min-w-full align-middle">
+<table class="min-w-full">
+<thead class="border-b border-slate-200 dark:border-slate-800">
+<tr>
+<th class="py-2.5 px-6 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-2/5" scope="col">Description</th>
+<th class="py-2.5 px-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-1/5" scope="col">Qty</th>
+<th class="py-2.5 px-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-1/5" scope="col">Unit Price</th>
+<th class="py-2.5 px-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider w-1/5" scope="col">Amount</th>
+<th class="relative py-2.5 px-6" scope="col"><span class="sr-only">Remove</span></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr>
+<td class="whitespace-nowrap px-6 py-3 text-sm text-slate-900 dark:text-slate-200">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" value="API Integration Services"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" type="number" value="1"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" step="0.01" type="number" value="1200.00"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm text-right text-slate-600 dark:text-slate-400">$1,200.00</td>
+<td class="whitespace-nowrap px-6 py-3 text-sm text-right">
+<button class="text-slate-400 hover:text-red-500 dark:hover:text-red-400">
+<span class="material-symbols-outlined text-lg">delete</span>
+</button>
+</td>
+</tr>
+<tr>
+<td class="whitespace-nowrap px-6 py-3 text-sm text-slate-900 dark:text-slate-200">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" value="Monthly Subscription Fee"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" type="number" value="1"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm">
+<input class="form-input w-full rounded-md border-slate-300 dark:border-slate-700 bg-background-light dark:bg-slate-800 h-10 px-3 text-sm focus:ring-primary focus:border-primary" step="0.01" type="number" value="50.00"/>
+</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm text-right text-slate-600 dark:text-slate-400">$50.00</td>
+<td class="whitespace-nowrap px-6 py-3 text-sm text-right">
+<button class="text-slate-400 hover:text-red-500 dark:hover:text-red-400">
+<span class="material-symbols-outlined text-lg">delete</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+<div class="px-6 mt-4">
+<button class="flex items-center gap-2 text-sm font-medium text-primary hover:text-indigo-500 dark:text-indigo-500 dark:hover:text-indigo-400">
+<span class="material-symbols-outlined text-lg">add_circle</span>
+                                        Add Line Item
+                                    </button>
+</div>
+</div>
+</div>
+<!-- Totals -->
+<div class="flex justify-end">
+<div class="w-full max-w-xs space-y-3">
+<div class="flex justify-between items-center">
+<span class="text-sm text-slate-600 dark:text-slate-400">Subtotal</span>
+<span class="text-sm text-slate-900 dark:text-slate-200">$1,250.00</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-sm text-slate-600 dark:text-slate-400">Tax (0%)</span>
+<span class="text-sm text-slate-900 dark:text-slate-200">$0.00</span>
+</div>
+<div class="border-t border-slate-200 dark:border-slate-700 pt-3"></div>
+<div class="flex justify-between items-center">
+<span class="text-base font-semibold text-slate-900 dark:text-white">Total</span>
+<span class="text-base font-semibold text-slate-900 dark:text-white">$1,250.00</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer Actions -->
+<footer class="flex-shrink-0 px-6 py-4 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-200 dark:border-slate-800">
+<div class="flex justify-end gap-3">
+<button class="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-md hover:bg-slate-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-slate-900">
+                            Cancel
+                        </button>
+<button class="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-indigo-700 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary dark:focus:ring-offset-slate-900">
+                            Save Changes
+                        </button>
+</div>
+</footer>
+</div>
+</div>
+</div>
+</body></html>

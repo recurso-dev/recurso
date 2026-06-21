@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Recurso Settings</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#6366F1",
+                    "background-light": "#f6f6f8",
+                    "background-dark": "#101022",
+                },
+                fontFamily: {
+                    "display": ["Inter", "sans-serif"]
+                },
+                borderRadius: {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+                },
+            },
+        },
+    }
+    </script>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings:
+            'FILL' 0,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24
+    }
+    .material-symbols-outlined.fill {
+        font-variation-settings:
+            'FILL' 1
+    }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col">
+<div class="flex h-full w-full">
+<aside class="flex w-64 flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="flex size-8 items-center justify-center rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined text-xl">layers</span>
+</div>
+<div class="flex flex-col">
+<h1 class="text-base font-bold text-slate-800 dark:text-white">Recurso</h1>
+<p class="text-xs font-normal text-slate-500 dark:text-slate-400">Billing Engine</p>
+</div>
+</div>
+<nav class="mt-4 flex flex-col gap-2">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">home</span>
+<p class="text-sm font-medium">Home</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">group</span>
+<p class="text-sm font-medium">Customers</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<p class="text-sm font-medium">Plans</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">autorenew</span>
+<p class="text-sm font-medium">Subscriptions</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<p class="text-sm font-medium">Invoices</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">code</span>
+<p class="text-sm font-medium">Developers</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-2">
+<a class="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-primary dark:bg-primary/20" href="#">
+<span class="material-symbols-outlined fill">settings</span>
+<p class="text-sm font-medium">Settings</p>
+</a>
+</div>
+</aside>
+<main class="flex flex-1 flex-col">
+<header class="flex h-16 flex-shrink-0 items-center justify-between whitespace-nowrap border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-8">
+<div class="flex items-center gap-4">
+<h2 class="text-lg font-bold text-slate-800 dark:text-white">Settings</h2>
+</div>
+<div class="flex flex-1 items-center justify-end gap-4">
+<label class="relative hidden w-full max-w-xs md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">search</span>
+<input class="form-input h-10 w-full rounded-lg border-slate-200 bg-slate-100 pl-10 text-slate-800 placeholder:text-slate-400 focus:border-primary focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary dark:focus:ring-primary/50" placeholder="Search..." type="search"/>
+</label>
+<button class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined text-xl">notifications</span>
+</button>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User avatar image" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCKmTq23kq_7zxy4jWWSKGqLYoQN5dawzZ4knD3eQBSph4czc3h812JZZ2dMsSyngcm26fFFvazLdaWkz9rLdpeSUkZgGnhM4mJ_qtyr32tBeESICXHL_e24Lk4-SEV4viFOdKwUdNPVrQqBKFK3HVgWqm6MXM3EjDrVSf6wt1XvPyjdihY3k7HVO8MltVvuNvS-lm3AIV5UkzxaFeb01EECi0c3JV1SEmAeOSPiJgUVCQQP16hQ3l8hGUlLgxt_sqUln6NyhCpEz0');"></div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto p-8">
+<div class="mx-auto max-w-4xl space-y-10">
+<div class="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+<div class="border-b border-slate-200 p-6 dark:border-slate-800">
+<h3 class="text-lg font-semibold text-slate-800 dark:text-white">General</h3>
+<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Update your company's profile and details.</p>
+</div>
+<div class="space-y-6 p-6">
+<div>
+<label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300" for="company-name">Company Name</label>
+<input class="form-input w-full rounded-lg border-slate-300 placeholder:text-slate-400 focus:border-primary focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary" id="company-name" placeholder="Acme Inc." type="text" value="Recurso"/>
+</div>
+<div>
+<label class="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Company Logo</label>
+<div class="flex items-center gap-4">
+<div class="flex size-16 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">
+<span class="material-symbols-outlined text-4xl text-slate-400 dark:text-slate-500">apartment</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:hover:bg-slate-700">Change</button>
+<button class="rounded-md px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">Remove</button>
+</div>
+</div>
+</div>
+</div>
+<div class="border-t border-slate-200 bg-slate-50 px-6 py-4 text-right dark:border-slate-800 dark:bg-slate-800/50">
+<button class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90">Save Changes</button>
+</div>
+</div>
+<div class="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+<div class="border-b border-slate-200 p-6 dark:border-slate-800">
+<div class="flex items-center justify-between">
+<div>
+<h3 class="text-lg font-semibold text-slate-800 dark:text-white">Users</h3>
+<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage who has access to this workspace.</p>
+</div>
+<button class="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary/90">
+<span class="material-symbols-outlined text-base">add</span>
+<span>Invite user</span>
+</button>
+</div>
+</div>
+<ul class="divide-y divide-slate-200 dark:divide-slate-800">
+<li class="flex items-center justify-between p-6">
+<div class="flex items-center gap-4">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCKmTq23kq_7zxy4jWWSKGqLYoQN5dawzZ4knD3eQBSph4czc3h812JZZ2dMsSyngcm26fFFvazLdaWkz9rLdpeSUkZgGnhM4mJ_qtyr32tBeESICXHL_e24Lk4-SEV4viFOdKwUdNPVrQqBKFK3HVgWqm6MXM3EjDrVSf6wt1XvPyjdihY3k7HVO8MltVvuNvS-lm3AIV5UkzxaFeb01EECi0c3JV1SEmAeOSPiJgUVCQQP16hQ3l8hGUlLgxt_sqUln6NyhCpEz0');"></div>
+<div>
+<p class="font-semibold text-slate-800 dark:text-white">Alex Johnson</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">alex@recurso.com</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<p class="text-sm text-slate-500 dark:text-slate-400">Owner</p>
+<button class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+<span class="material-symbols-outlined text-xl">more_horiz</span>
+</button>
+</div>
+</li>
+<li class="flex items-center justify-between p-6">
+<div class="flex items-center gap-4">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD7VAHHeAtp1hIYZb0dbQS3jZ3FWFeUY_cvsFuHuNC9viuf2Z6WasfX1kJqSM6rbAUPL5578wXKTa6wxr80acZEyuteNZ9as7OEbGF10-fogNbhlmfmIiPllQH8AWJleTh1NGQZtMFY_KEaTgPAF5xrZZt1YbzkL87KpOwtNHsbVRR2kk_mVIpn2b2Qr1PFnoMt9D9PvXjBa3aYLNZJ-S_qI1t2pt5qfv-hML_MFe70KqaoLi4SkM2e__ubbMNBUG_2cxB7VsnOuaI');"></div>
+<div>
+<p class="font-semibold text-slate-800 dark:text-white">Maria Garcia</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">maria@recurso.com</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<p class="text-sm text-slate-500 dark:text-slate-400">Admin</p>
+<button class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+<span class="material-symbols-outlined text-xl">more_horiz</span>
+</button>
+</div>
+</li>
+<li class="flex items-center justify-between p-6">
+<div class="flex items-center gap-4">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD7VAHHeAtp1hIYZb0dbQS3jZ3FWFeUY_cvsFuHuNC9viuf2Z6WasfX1kJqSM6rbAUPL5578wXKTa6wxr80acZEyuteNZ9as7OEbGF10-fogNbhlmfmIiPllQH8AWJleTh1NGQZtMFY_KEaTgPAF5xrZZt1YbzkL87KpOwtNHsbVRR2kk_mVIpn2b2Qr1PFnoMt9D9PvXjBa3aYLNZJ-S_qI1t2pt5qfv-hML_MFe70KqaoLi4SkM2e__ubbMNBUG_2cxB7VsnOuaI');"></div>
+<div>
+<p class="font-semibold text-slate-800 dark:text-white">David Smith</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">david.s@recurso.com</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<p class="text-sm text-slate-500 dark:text-slate-400">Developer</p>
+<button class="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300">
+<span class="material-symbols-outlined text-xl">more_horiz</span>
+</button>
+</div>
+</li>
+</ul>
+</div>
+<div class="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+<div class="border-b border-slate-200 p-6 dark:border-slate-800">
+<h3 class="text-lg font-semibold text-slate-800 dark:text-white">Notifications</h3>
+<p class="mt-1 text-sm text-slate-500 dark:text-slate-400">Manage how you receive notifications.</p>
+</div>
+<div class="divide-y divide-slate-200 p-6 dark:divide-slate-800">
+<div class="flex items-center justify-between py-4">
+<div>
+<p class="font-medium text-slate-800 dark:text-white">Email Notifications</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">Receive notifications via email for important events.</p>
+</div>
+<button aria-checked="true" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:ring-offset-slate-900" role="switch" type="button">
+<span aria-hidden="true" class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+</div>
+<div class="flex items-center justify-between py-4">
+<div>
+<p class="font-medium text-slate-800 dark:text-white">Billing Alerts</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">Get notified about payment failures and overdue invoices.</p>
+</div>
+<button aria-checked="true" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-primary transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:ring-offset-slate-900" role="switch" type="button">
+<span aria-hidden="true" class="pointer-events-none inline-block h-5 w-5 translate-x-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+</div>
+<div class="flex items-center justify-between py-4">
+<div>
+<p class="font-medium text-slate-800 dark:text-white">API Status Webhooks</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">Receive webhook notifications for API status changes.</p>
+</div>
+<button aria-checked="false" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-slate-200 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 dark:bg-slate-700 dark:ring-offset-slate-900" role="switch" type="button">
+<span aria-hidden="true" class="pointer-events-none inline-block h-5 w-5 translate-x-0 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

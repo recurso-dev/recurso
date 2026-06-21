@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Recurso - Login</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#193ce6",
+                        "primary-hover": "#142db8",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#111421",
+                        "slate-900": "#0f172a",
+                        "slate-700": "#334155",
+                        "slate-500": "#64748b",
+                        "slate-200": "#e2e8f0",
+                        "slate-50": "#f8fafc",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0.375rem", "lg": "0.5rem", "xl": "0.75rem", "2xl": "1rem", "full": "9999px" },
+                    boxShadow: {
+                        'input-focus': '0 0 0 2px rgba(25, 60, 230, 0.2)',
+                        'card': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03)',
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .bg-grid-pattern {
+            background-image: linear-gradient(to right, #e2e8f0 1px, transparent 1px),
+            linear-gradient(to bottom, #e2e8f0 1px, transparent 1px);
+            background-size: 40px 40px;
+            mask-image: linear-gradient(to bottom, transparent, black 10%, black 90%, transparent);
+        }
+        .dark .bg-grid-pattern {
+            background-image: linear-gradient(to right, #1e293b 1px, transparent 1px),
+            linear-gradient(to bottom, #1e293b 1px, transparent 1px);
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white antialiased selection:bg-primary/20 selection:text-primary">
+<div class="relative min-h-screen flex flex-col justify-center items-center overflow-hidden">
+<!-- Ambient Background Effect -->
+<div class="absolute inset-0 z-0 bg-grid-pattern opacity-[0.4] pointer-events-none"></div>
+<div class="absolute -top-[20%] -right-[10%] w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="absolute -bottom-[20%] -left-[10%] w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+<div class="w-full max-w-[440px] px-6 z-10">
+<!-- Brand Header -->
+<div class="flex justify-center mb-10">
+<div class="flex items-center gap-3">
+<div class="size-8 text-primary">
+<svg class="w-full h-full" fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path clip-rule="evenodd" d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h1 class="text-slate-900 dark:text-white text-xl font-bold tracking-tight">Recurso</h1>
+</div>
+</div>
+<!-- Login Card -->
+<div class="bg-white dark:bg-slate-900 rounded-2xl shadow-card border border-slate-200 dark:border-slate-800 p-8 sm:p-10">
+<div class="flex flex-col gap-2 mb-8 text-center">
+<h2 class="text-slate-900 dark:text-white text-2xl font-bold tracking-tight">Welcome back</h2>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Enter your credentials to access your billing workspace.</p>
+</div>
+<form class="flex flex-col gap-5">
+<!-- Work Email Field -->
+<div class="flex flex-col gap-1.5">
+<label class="text-slate-700 dark:text-slate-300 text-xs font-semibold uppercase tracking-wide" for="email">Work Email</label>
+<input class="flex w-full h-11 px-3 py-2 bg-white dark:bg-slate-950 text-slate-900 dark:text-white rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-slate-400 text-sm transition-all duration-200" id="email" placeholder="name@company.com" type="email" value=""/>
+</div>
+<!-- Password Field -->
+<div class="flex flex-col gap-1.5">
+<div class="flex justify-between items-center">
+<label class="text-slate-700 dark:text-slate-300 text-xs font-semibold uppercase tracking-wide" for="password">Password</label>
+<a class="text-primary hover:text-primary-hover text-xs font-medium transition-colors" href="#">Forgot password?</a>
+</div>
+<div class="relative">
+<input class="flex w-full h-11 pl-3 pr-10 py-2 bg-white dark:bg-slate-950 text-slate-900 dark:text-white rounded-lg border border-slate-300 dark:border-slate-700 focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 placeholder:text-slate-400 text-sm transition-all duration-200" id="password" placeholder="••••••••" type="password" value=""/>
+<button class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors" type="button">
+<span class="material-symbols-outlined text-[20px]">visibility</span>
+</button>
+</div>
+</div>
+<!-- Submit Button -->
+<button class="mt-2 w-full h-11 bg-primary hover:bg-primary-hover text-white text-sm font-semibold rounded-lg shadow-sm transition-all duration-200 flex items-center justify-center gap-2 group">
+<span>Log in</span>
+<span class="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
+</button>
+</form>
+<div class="mt-8 pt-6 border-t border-slate-100 dark:border-slate-800 text-center">
+<p class="text-slate-500 dark:text-slate-400 text-sm">
+                        Don't have a workspace? 
+                        <a class="text-primary hover:text-primary-hover font-medium ml-1 inline-flex items-center gap-0.5 group" href="#">
+                            Register a new tenant
+                            <span class="material-symbols-outlined text-[16px] transition-transform group-hover:translate-x-0.5">chevron_right</span>
+</a>
+</p>
+</div>
+</div>
+<!-- Footer Compliance / Links -->
+<div class="mt-8 flex justify-center gap-6 text-xs text-slate-400 dark:text-slate-500">
+<a class="hover:text-slate-600 dark:hover:text-slate-300 transition-colors" href="#">Terms</a>
+<a class="hover:text-slate-600 dark:hover:text-slate-300 transition-colors" href="#">Privacy</a>
+<a class="hover:text-slate-600 dark:hover:text-slate-300 transition-colors" href="#">Status</a>
+</div>
+</div>
+</div>
+</body></html>

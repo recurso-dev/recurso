@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Register New Tenant/Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#6366f1",
+              "primary-hover": "#4f46e5",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111827",
+              "slate-850": "#1e293b",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            boxShadow: {
+                'card': '0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)',
+                'card-hover': '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)',
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+<div class="w-full max-w-md space-y-8 bg-white dark:bg-slate-850 p-8 rounded-xl shadow-card border border-zinc-200 dark:border-zinc-700">
+<div class="text-center">
+<div class="mx-auto h-12 w-12 flex items-center justify-center rounded-lg bg-primary/10 text-primary">
+<span class="material-symbols-outlined text-3xl">domain_add</span>
+</div>
+<h2 class="mt-6 text-3xl font-bold tracking-tight text-zinc-900 dark:text-white">
+                Create your workspace
+            </h2>
+<p class="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+                Start managing your billing and subscriptions with Recurso.
+            </p>
+</div>
+<form action="#" class="mt-8 space-y-6" method="POST">
+<div class="space-y-5">
+<div>
+<label class="block text-sm font-medium leading-6 text-zinc-900 dark:text-zinc-200" for="company-name">
+                        Company Name
+                    </label>
+<div class="mt-2">
+<input autocomplete="organization" class="block w-full rounded-lg border-0 py-2.5 px-3 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-slate-900 dark:ring-zinc-700 dark:text-white dark:focus:ring-primary" id="company-name" name="company-name" placeholder="Acme Inc." required="" type="text"/>
+</div>
+</div>
+<div>
+<label class="block text-sm font-medium leading-6 text-zinc-900 dark:text-zinc-200" for="email-address">
+                        Work Email
+                    </label>
+<div class="mt-2">
+<input autocomplete="email" class="block w-full rounded-lg border-0 py-2.5 px-3 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-slate-900 dark:ring-zinc-700 dark:text-white dark:focus:ring-primary" id="email-address" name="email" placeholder="you@company.com" required="" type="email"/>
+</div>
+</div>
+<div>
+<label class="block text-sm font-medium leading-6 text-zinc-900 dark:text-zinc-200" for="subdomain">
+                        Workspace URL
+                    </label>
+<div class="mt-2 flex rounded-lg shadow-sm ring-1 ring-inset ring-zinc-300 focus-within:ring-2 focus-within:ring-inset focus-within:ring-primary dark:ring-zinc-700 dark:bg-slate-900">
+<input autocomplete="off" class="block w-full flex-1 border-0 bg-transparent py-2.5 pl-3 text-zinc-900 placeholder:text-zinc-400 focus:ring-0 sm:text-sm sm:leading-6 dark:text-white" id="subdomain" name="subdomain" placeholder="yourcompany" type="text"/>
+<span class="flex select-none items-center pr-3 text-zinc-500 sm:text-sm bg-zinc-50 dark:bg-slate-800/50 px-3 border-l border-zinc-200 dark:border-zinc-700 rounded-r-lg">.recurso.com</span>
+</div>
+<p class="mt-1.5 text-xs text-zinc-500 dark:text-zinc-400">You can change this later in settings.</p>
+</div>
+<div>
+<label class="block text-sm font-medium leading-6 text-zinc-900 dark:text-zinc-200" for="password">
+                        Password
+                    </label>
+<div class="mt-2 relative">
+<input class="block w-full rounded-lg border-0 py-2.5 px-3 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-slate-900 dark:ring-zinc-700 dark:text-white dark:focus:ring-primary" id="password" name="password" placeholder="••••••••" required="" type="password"/>
+</div>
+</div>
+<div>
+<label class="block text-sm font-medium leading-6 text-zinc-900 dark:text-zinc-200" for="confirm-password">
+                        Confirm Password
+                    </label>
+<div class="mt-2 relative">
+<input class="block w-full rounded-lg border-0 py-2.5 px-3 text-zinc-900 shadow-sm ring-1 ring-inset ring-zinc-300 placeholder:text-zinc-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-slate-900 dark:ring-zinc-700 dark:text-white dark:focus:ring-primary" id="confirm-password" name="confirm-password" placeholder="••••••••" required="" type="password"/>
+</div>
+</div>
+</div>
+<div>
+<button class="flex w-full justify-center rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-primary-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-all duration-200" type="submit">
+                    Create Workspace
+                </button>
+</div>
+<div class="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                By registering, you agree to our <a class="font-medium text-primary hover:text-primary-hover underline underline-offset-2" href="#">Terms of Service</a> and <a class="font-medium text-primary hover:text-primary-hover underline underline-offset-2" href="#">Privacy Policy</a>.
+            </div>
+</form>
+<div class="mt-6 border-t border-zinc-200 dark:border-zinc-700 pt-6">
+<p class="text-center text-sm text-zinc-500 dark:text-zinc-400">
+                Already have an account?
+                <a class="font-semibold leading-6 text-primary hover:text-primary-hover" href="#">Log in</a>
+</p>
+</div>
+</div>
+
+</body></html>

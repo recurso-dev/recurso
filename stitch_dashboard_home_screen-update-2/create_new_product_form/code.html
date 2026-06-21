@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Create New Product Form</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings:
+            'FILL' 0,
+            'wght' 400,
+            'GRAD' 0,
+            'opsz' 24;
+            font-size: 20px;
+        }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4f46e5",
+              "background-light": "#f8f9fa",
+              "background-dark": "#111122",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="font-display">
+<div class="relative flex h-auto min-h-screen w-full flex-col bg-background-light dark:bg-background-dark group/design-root overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-b-[#232348] px-10 py-3">
+<div class="flex items-center gap-4 text-slate-800 dark:text-white">
+<div class="size-6 text-primary">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path clip-rule="evenodd" d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-slate-800 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">Recurso</h2>
+</div>
+<div class="flex flex-1 justify-end items-center gap-6">
+<div class="hidden md:flex items-center gap-8">
+<a class="text-slate-600 dark:text-slate-300 text-sm font-medium leading-normal" href="#">Dashboard</a>
+<a class="text-slate-900 dark:text-white text-sm font-medium leading-normal" href="#">Products</a>
+<a class="text-slate-600 dark:text-slate-300 text-sm font-medium leading-normal" href="#">Plans</a>
+<a class="text-slate-600 dark:text-slate-300 text-sm font-medium leading-normal" href="#">Invoices</a>
+<a class="text-slate-600 dark:text-slate-300 text-sm font-medium leading-normal" href="#">Customers</a>
+</div>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[-0.015em]">
+<span class="truncate">Create Product</span>
+</button>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User avatar image" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuC5TEmY9izf8fC2srXCQLZjaMj100DRFdlURAHsmj2C-pBY2AlSoWuV5AQfmfKdGQNfGd53U6IDv3whZ9w2R_y_cGOai20uk0IWQ_dQG4eVFklGfG6eYW1AwiaR1i2BwPOxS8LqFcVl-H19HtOIe5Y8cFfAGCwyr1_WNqgbAP1YaI2mvbS7V3rcSJbv8GYvpEzw5uZB2_fqaHLc4wjnewlBFfTCOVE922Ayznz4LqlaKzYXmIu8t1CLXdYPIB4zFz7GlSjwCnPMO0o");'></div>
+</div>
+</header>
+<main class="px-4 md:px-10 lg:px-20 py-10">
+<div class="mx-auto max-w-7xl">
+<div class="flex flex-col lg:flex-row gap-12">
+<div class="w-full lg:w-2/3 flex-shrink-0">
+<div class="flex flex-col gap-8">
+<div>
+<h1 class="text-slate-900 dark:text-white text-4xl font-black leading-tight tracking-[-0.033em]">Create a new product</h1>
+<p class="text-slate-500 dark:text-[#9292c9] text-base font-normal leading-normal mt-2">Products define what you sell. You can associate pricing plans with a product.</p>
+</div>
+<div class="flex flex-col gap-6 p-6 border rounded-xl border-slate-200 dark:border-[#232348] bg-white dark:bg-[#191933]/50">
+<h3 class="text-slate-800 dark:text-white text-lg font-semibold">Product Details</h3>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<label class="flex flex-col min-w-40 flex-1 md:col-span-2">
+<p class="text-slate-800 dark:text-white text-sm font-medium leading-normal pb-2">Product Name</p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 border border-slate-300 dark:border-[#323267] bg-white dark:bg-[#191933] h-11 placeholder:text-slate-400 dark:placeholder:text-[#9292c9] p-[15px] text-sm font-normal leading-normal" placeholder="e.g., Pro Plan" value=""/>
+</label>
+<label class="flex flex-col min-w-40 flex-1 md:col-span-2">
+<p class="text-slate-800 dark:text-white text-sm font-medium leading-normal pb-2">Product Description</p>
+<textarea class="form-input flex w-full min-w-0 flex-1 resize-y overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 border border-slate-300 dark:border-[#323267] bg-white dark:bg-[#191933] min-h-28 placeholder:text-slate-400 dark:placeholder:text-[#9292c9] p-[15px] text-sm font-normal leading-normal" placeholder="Enter a description for your product..."></textarea>
+</label>
+<label class="flex flex-col min-w-40 flex-1">
+<p class="text-slate-800 dark:text-white text-sm font-medium leading-normal pb-2">Product Identifier/SKU <span class="text-slate-400">(optional)</span></p>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 border border-slate-300 dark:border-[#323267] bg-white dark:bg-[#191933] h-11 placeholder:text-slate-400 dark:placeholder:text-[#9292c9] p-[15px] text-sm font-normal leading-normal" placeholder="e.g., PROD_12345" value=""/>
+</label>
+<div class="flex flex-col min-w-40 flex-1">
+<p class="text-slate-800 dark:text-white text-sm font-medium leading-normal pb-2">Status</p>
+<div class="flex items-center gap-2 p-1 rounded-lg bg-slate-100 dark:bg-[#111122]">
+<button class="flex-1 text-center py-1.5 px-3 text-sm font-medium rounded-md text-slate-500 dark:text-slate-400">Inactive</button>
+<button class="flex-1 text-center py-1.5 px-3 text-sm font-medium rounded-md bg-white dark:bg-[#323267] text-slate-900 dark:text-white shadow-sm">Active</button>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6 p-6 border rounded-xl border-slate-200 dark:border-[#232348] bg-white dark:bg-[#191933]/50">
+<h3 class="text-slate-800 dark:text-white text-lg font-semibold">Pricing</h3>
+<div class="p-1 rounded-lg bg-slate-100 dark:bg-[#111122] flex">
+<button class="flex-1 text-center py-1.5 px-3 text-sm font-medium rounded-md bg-white dark:bg-[#323267] text-slate-900 dark:text-white shadow-sm">Associate existing plans</button>
+<button class="flex-1 text-center py-1.5 px-3 text-sm font-medium rounded-md text-slate-500 dark:text-slate-400">Create new plan</button>
+</div>
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">search</span>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary focus:ring-opacity-50 border border-slate-300 dark:border-[#323267] bg-white dark:bg-[#191933] h-11 placeholder:text-slate-400 dark:placeholder:text-[#9292c9] px-10 text-sm font-normal leading-normal" placeholder="Search for plans to associate" value=""/>
+</div>
+<div class="flex flex-wrap gap-2">
+<div class="flex items-center gap-2 bg-primary/20 text-primary dark:bg-primary/30 dark:text-indigo-300 py-1 pl-3 pr-1.5 rounded-full text-sm font-medium">
+<span>Pro Plan - Monthly</span>
+<button class="rounded-full hover:bg-black/10 dark:hover:bg-white/10 p-0.5">
+<span class="material-symbols-outlined !text-base">close</span>
+</button>
+</div>
+<div class="flex items-center gap-2 bg-primary/20 text-primary dark:bg-primary/30 dark:text-indigo-300 py-1 pl-3 pr-1.5 rounded-full text-sm font-medium">
+<span>Enterprise Plan - Yearly</span>
+<button class="rounded-full hover:bg-black/10 dark:hover:bg-white/10 p-0.5">
+<span class="material-symbols-outlined !text-base">close</span>
+</button>
+</div>
+</div>
+</div>
+<div class="flex justify-end items-center gap-3 pt-4">
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-transparent text-slate-600 dark:text-slate-300 text-sm font-bold leading-normal tracking-[-0.015em] hover:bg-slate-100 dark:hover:bg-slate-800">
+<span class="truncate">Cancel</span>
+</button>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[-0.015em] hover:bg-primary/90 disabled:opacity-50">
+<span class="truncate">Create Product</span>
+</button>
+</div>
+</div>
+</div>
+<div class="w-full lg:w-1/3 flex-shrink-0">
+<div class="sticky top-10">
+<h3 class="text-slate-800 dark:text-white text-lg font-semibold mb-4">Preview</h3>
+<div class="p-6 border rounded-xl border-slate-200 dark:border-[#232348] bg-white dark:bg-[#191933]/50 shadow-sm">
+<div class="flex flex-col gap-4">
+<div class="flex items-start justify-between gap-4">
+<h4 class="text-slate-900 dark:text-white text-xl font-bold">Pro Plan</h4>
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/40 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+                                            Active
+                                        </span>
+</div>
+<p class="text-slate-500 dark:text-slate-400 text-sm">
+                                        Our Pro Plan offers advanced features for growing businesses, including priority support and API access.
+                                    </p>
+<div class="h-px w-full bg-slate-200 dark:bg-[#232348]"></div>
+<div class="flex flex-col gap-3">
+<h5 class="text-slate-600 dark:text-slate-300 text-sm font-medium">Associated Plans</h5>
+<div class="flex items-center justify-between">
+<span class="text-slate-800 dark:text-slate-200 text-sm">Pro Plan - Monthly</span>
+<span class="text-slate-800 dark:text-white text-sm font-semibold">$99/mo</span>
+</div>
+<div class="flex items-center justify-between">
+<span class="text-slate-800 dark:text-slate-200 text-sm">Enterprise Plan - Yearly</span>
+<span class="text-slate-800 dark:text-white text-sm font-semibold">$1,999/yr</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</body></html>

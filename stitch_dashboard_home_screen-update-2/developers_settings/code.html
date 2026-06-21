@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Developers Settings - Recurso</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#4F46E5",
+            "background-light": "#f8fafc",
+            "background-dark": "#101022",
+          },
+          fontFamily: {
+            "display": ["Inter", "sans-serif"]
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+    }
+
+    .material-symbols-outlined.fill {
+      font-variation-settings:
+        'FILL' 1,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+    }
+  </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex min-h-screen w-full">
+<!-- SideNavBar -->
+<aside class="flex h-screen w-64 flex-col justify-between border-r border-slate-200 bg-background-light p-4 dark:border-slate-800 dark:bg-background-dark fixed top-0 left-0">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="Recurso company logo" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDmDwyPNKpksMG2x0OdUbmanRPsi4WiTzQs8yETqVP1HpQM9LAFLwXcK884ZdLdV7aiIotBcNXKWaI9Nx8UpqeHI0hmc-C-EY4-1iugcQCdI9yPcWqtYsnA0lL2aW38RZ68RZGvzhX7ICoqLo_3C6vO7ifD7Ld_JX-Ciz2HBdzFQEE47DJaPIOOAMXI29z2EKdOieHRrE5ZQ0aDv_-GUHcns8Rx15e7oe52AsAMhauRg5F-DL4pcYToZ-Uo3bXm8yv55H0x2ZwUz-A");'></div>
+<div class="flex flex-col">
+<h1 class="text-slate-800 dark:text-white text-base font-medium leading-normal">Recurso</h1>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal leading-normal">Billing Engine</p>
+</div>
+</div>
+<nav class="flex flex-col gap-1 mt-4">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">home</span>
+<p class="text-sm font-medium leading-normal">Home</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">group</span>
+<p class="text-sm font-medium leading-normal">Customers</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">layers</span>
+<p class="text-sm font-medium leading-normal">Plans</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">bookmark</span>
+<p class="text-sm font-medium leading-normal">Subscriptions</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">receipt_long</span>
+<p class="text-sm font-medium leading-normal">Invoices</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-primary dark:bg-primary/20 dark:text-white" href="#">
+<span class="material-symbols-outlined fill text-xl">code</span>
+<p class="text-sm font-medium leading-normal">Developers</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">settings</span>
+<p class="text-sm font-medium leading-normal">Settings</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-1">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">help</span>
+<p class="text-sm font-medium leading-normal">Support</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/50" href="#">
+<span class="material-symbols-outlined text-xl">menu_book</span>
+<p class="text-sm font-medium leading-normal">Docs</p>
+</a>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 w-[calc(100%-16rem)] flex-1">
+<div class="mx-auto flex max-w-5xl flex-col p-8">
+<!-- PageHeading -->
+<header class="flex flex-wrap items-center justify-between gap-4">
+<div class="flex flex-col gap-1">
+<h1 class="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">Developer Settings</h1>
+<p class="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">Manage your API keys, webhooks, and other integration settings.</p>
+</div>
+<button class="flex items-center justify-center gap-2 overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-semibold leading-normal shadow-sm hover:bg-primary/90">
+<span class="material-symbols-outlined text-lg">add</span>
+<span class="truncate">Create API Key</span>
+</button>
+</header>
+<!-- Tabs -->
+<div class="mt-8">
+<div class="flex border-b border-slate-200 dark:border-slate-800 gap-8">
+<a class="flex flex-col items-center justify-center border-b-[3px] border-primary pb-[13px] pt-2" href="#">
+<p class="text-primary dark:text-white text-sm font-semibold leading-normal">API Keys</p>
+</a>
+<a class="flex flex-col items-center justify-center border-b-[3px] border-transparent text-slate-500 dark:text-slate-400 pb-[13px] pt-2 hover:border-slate-300 dark:hover:border-slate-700" href="#">
+<p class="text-sm font-semibold leading-normal">Webhooks</p>
+</a>
+<a class="flex flex-col items-center justify-center border-b-[3px] border-transparent text-slate-500 dark:text-slate-400 pb-[13px] pt-2 hover:border-slate-300 dark:hover:border-slate-700" href="#">
+<p class="text-sm font-semibold leading-normal">Event Logs</p>
+</a>
+</div>
+</div>
+<!-- Section: API Keys -->
+<section class="mt-8">
+<!-- SectionHeader -->
+<h2 class="text-slate-800 dark:text-white text-xl font-semibold leading-tight">API Keys</h2>
+<!-- BodyText -->
+<p class="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal mt-1">Manage and rotate the API keys used to authenticate your API requests.</p>
+<!-- API Keys List (Table-like structure) -->
+<div class="mt-6 flex flex-col gap-4">
+<!-- Table Header -->
+<div class="grid grid-cols-12 gap-4 px-4">
+<div class="col-span-4 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Name</div>
+<div class="col-span-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Key</div>
+<div class="col-span-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</div>
+<div class="col-span-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Created</div>
+<div class="col-span-1"></div>
+</div>
+<!-- Table Row 1 -->
+<div class="grid grid-cols-12 items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
+<div class="col-span-4 text-sm font-medium text-slate-800 dark:text-slate-200">Standard Publishable Key</div>
+<div class="col-span-3">
+<code class="font-mono text-sm text-slate-500 dark:text-slate-400">pk_live_...a1b2</code>
+</div>
+<div class="col-span-2">
+<span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">Active</span>
+</div>
+<div class="col-span-2 text-sm text-slate-500 dark:text-slate-400">Apr 15, 2024</div>
+<div class="col-span-1 flex justify-end">
+<button class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Table Row 2 -->
+<div class="grid grid-cols-12 items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
+<div class="col-span-4 text-sm font-medium text-slate-800 dark:text-slate-200">Standard Secret Key</div>
+<div class="col-span-3">
+<code class="font-mono text-sm text-slate-500 dark:text-slate-400">sk_live_...z8y9</code>
+</div>
+<div class="col-span-2">
+<span class="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">Active</span>
+</div>
+<div class="col-span-2 text-sm text-slate-500 dark:text-slate-400">Mar 02, 2024</div>
+<div class="col-span-1 flex justify-end">
+<button class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+</div>
+<!-- Table Row 3 -->
+<div class="grid grid-cols-12 items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900/50">
+<div class="col-span-4 text-sm font-medium text-slate-800 dark:text-slate-200">Old Marketing Site Key</div>
+<div class="col-span-3">
+<code class="font-mono text-sm text-slate-500 dark:text-slate-400">pk_live_...x4y5</code>
+</div>
+<div class="col-span-2">
+<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-1 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">Revoked</span>
+</div>
+<div class="col-span-2 text-sm text-slate-500 dark:text-slate-400">Jan 10, 2023</div>
+<div class="col-span-1 flex justify-end">
+<button class="text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+</body></html>

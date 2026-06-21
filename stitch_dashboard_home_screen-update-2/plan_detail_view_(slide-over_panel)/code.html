@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Plan Detail View</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4F46E5",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111827",
+              "panel-dark": "#1F2937",
+              "text-light": "#F9FAFB",
+              "text-dark-secondary": "#D1D5DB",
+              "border-dark": "#374151"
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"],
+              "mono": ["Fira Code", "Source Code Pro", "monospace"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body {
+            --checkbox-tick-svg: url('data:image/svg+xml,%3csvg viewBox=%270 0 16 16%27 fill=%27rgb(249,250,251)%27 xmlns=%27http://www.w3.org/2000/svg%27%3e%3cpath d=%27M12.207 4.793a1 1 0 010 1.414l-5 5a1 1 0 01-1.414 0l-2-2a1 1 0 011.414-1.414L6.5 9.086l4.293-4.293a1 1 0 011.414 0z%27/%3e%3c/svg%3e');
+        }
+    </style>
+</head>
+<body class="font-display antialiased">
+<div class="relative min-h-screen w-full bg-background-light dark:bg-background-dark">
+<!-- Background content simulating the main app view -->
+<div class="p-8">
+<h1 class="text-2xl font-bold text-gray-800 dark:text-text-light">Plans Data Grid</h1>
+<p class="text-gray-600 dark:text-text-dark-secondary">This is where the main application content, like a data table of plans, would be.</p>
+</div>
+<!-- Slide-over Panel -->
+<div class="fixed inset-0 bg-gray-900/50 dark:bg-black/60 backdrop-blur-sm z-40"></div>
+<div class="fixed top-0 right-0 bottom-0 flex h-full w-full max-w-lg flex-col bg-background-light dark:bg-panel-dark shadow-2xl z-50">
+<div class="flex h-full flex-col">
+<!-- Panel Header -->
+<header class="flex flex-col gap-4 border-b border-gray-200 dark:border-border-dark p-6">
+<div class="flex items-start justify-between gap-4">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<h1 class="text-xl font-bold text-gray-900 dark:text-text-light">Pro Tier</h1>
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">Active</span>
+</div>
+<p class="font-mono text-xs text-gray-500 dark:text-text-dark-secondary">plan_a1b2c3d4e5f6</p>
+</div>
+<button class="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border border-transparent text-gray-500 hover:bg-gray-100 dark:text-text-dark-secondary dark:hover:bg-white/10">
+<span class="material-symbols-outlined text-xl">close</span>
+</button>
+</div>
+<div class="flex justify-start gap-3">
+<button class="flex h-9 min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-md bg-primary px-4 text-sm font-medium text-white shadow-sm hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 dark:focus:ring-offset-panel-dark">
+<span class="truncate">Edit Plan</span>
+</button>
+<button class="flex h-9 min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-md bg-gray-200 px-4 text-sm font-medium text-gray-800 shadow-sm hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-offset-2 dark:bg-white/10 dark:text-text-light dark:hover:bg-white/20 dark:focus:ring-white/20 dark:focus:ring-offset-panel-dark">
+<span class="truncate">More</span>
+<span class="material-symbols-outlined text-base ml-1.5 -mr-1">expand_more</span>
+</button>
+</div>
+</header>
+<!-- Panel Body -->
+<div class="flex-1 overflow-y-auto">
+<div class="divide-y divide-gray-200 dark:divide-border-dark">
+<!-- Details Section -->
+<div class="p-6">
+<div class="grid grid-cols-1 gap-y-4 sm:grid-cols-2">
+<div class="flex flex-col gap-1">
+<p class="text-sm text-gray-500 dark:text-text-dark-secondary">Price</p>
+<p class="text-sm text-gray-900 dark:text-text-light">$99.00 USD</p>
+</div>
+<div class="flex flex-col gap-1">
+<p class="text-sm text-gray-500 dark:text-text-dark-secondary">Billing Interval</p>
+<p class="text-sm text-gray-900 dark:text-text-light">per month</p>
+</div>
+<div class="flex flex-col gap-1">
+<p class="text-sm text-gray-500 dark:text-text-dark-secondary">Created</p>
+<p class="text-sm text-gray-900 dark:text-text-light">Jan 1, 2024</p>
+</div>
+<div class="flex flex-col gap-1">
+<p class="text-sm text-gray-500 dark:text-text-dark-secondary">Currency</p>
+<p class="text-sm text-gray-900 dark:text-text-light">USD</p>
+</div>
+</div>
+</div>
+<!-- Features Section -->
+<div class="p-6">
+<h3 class="text-base font-semibold leading-tight text-gray-900 dark:text-text-light">Features</h3>
+<div class="mt-4">
+<label class="flex items-center gap-x-3 py-2">
+<input checked="" class="h-4 w-4 rounded border-gray-300 bg-transparent text-primary checked:border-primary checked:bg-primary checked:bg-[image:--checkbox-tick-svg] focus:ring-0 focus:ring-offset-0 dark:border-border-dark dark:checked:border-primary dark:checked:bg-primary" disabled="" type="checkbox"/>
+<p class="text-sm text-gray-900 dark:text-text-light">API Access</p>
+</label>
+<label class="flex items-center gap-x-3 py-2">
+<input checked="" class="h-4 w-4 rounded border-gray-300 bg-transparent text-primary checked:border-primary checked:bg-primary checked:bg-[image:--checkbox-tick-svg] focus:ring-0 focus:ring-offset-0 dark:border-border-dark dark:checked:border-primary dark:checked:bg-primary" disabled="" type="checkbox"/>
+<p class="text-sm text-gray-900 dark:text-text-light">Unlimited Team Members</p>
+</label>
+<label class="flex items-center gap-x-3 py-2">
+<input checked="" class="h-4 w-4 rounded border-gray-300 bg-transparent text-primary checked:border-primary checked:bg-primary checked:bg-[image:--checkbox-tick-svg] focus:ring-0 focus:ring-offset-0 dark:border-border-dark dark:checked:border-primary dark:checked:bg-primary" disabled="" type="checkbox"/>
+<p class="text-sm text-gray-900 dark:text-text-light">Priority Support</p>
+</label>
+<label class="flex items-center gap-x-3 py-2">
+<input class="h-4 w-4 rounded border-gray-300 bg-transparent text-primary checked:border-primary checked:bg-primary checked:bg-[image:--checkbox-tick-svg] focus:ring-0 focus:ring-offset-0 dark:border-border-dark dark:checked:border-primary dark:checked:bg-primary" disabled="" type="checkbox"/>
+<p class="text-sm text-gray-500 dark:text-text-dark-secondary">Dedicated Account Manager</p>
+</label>
+</div>
+</div>
+<!-- Usage-Based Tiers Section -->
+<div class="p-6">
+<h3 class="text-base font-semibold leading-tight text-gray-900 dark:text-text-light">Usage-Based Tiers</h3>
+<div class="mt-4 flow-root">
+<div class="-mx-6">
+<div class="inline-block min-w-full align-middle">
+<table class="min-w-full">
+<thead class="bg-gray-50 dark:bg-white/5">
+<tr>
+<th class="py-2 pl-6 pr-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-text-dark-secondary" scope="col">Tier</th>
+<th class="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-text-dark-secondary" scope="col">Up to (Usage)</th>
+<th class="px-3 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500 dark:text-text-dark-secondary" scope="col">Unit Price</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-gray-200 dark:divide-border-dark">
+<tr>
+<td class="whitespace-nowrap py-3 pl-6 pr-3 text-sm text-gray-900 dark:text-text-light">First 1,000</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm text-gray-500 dark:text-text-dark-secondary">1,000</td>
+<td class="whitespace-nowrap px-3 py-3 text-right text-sm text-gray-500 dark:text-text-dark-secondary">$0.10</td>
+</tr>
+<tr>
+<td class="whitespace-nowrap py-3 pl-6 pr-3 text-sm text-gray-900 dark:text-text-light">Next 4,000</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm text-gray-500 dark:text-text-dark-secondary">5,000</td>
+<td class="whitespace-nowrap px-3 py-3 text-right text-sm text-gray-500 dark:text-text-dark-secondary">$0.08</td>
+</tr>
+<tr>
+<td class="whitespace-nowrap py-3 pl-6 pr-3 text-sm text-gray-900 dark:text-text-light">Over 5,000</td>
+<td class="whitespace-nowrap px-3 py-3 text-sm text-gray-500 dark:text-text-dark-secondary">∞</td>
+<td class="whitespace-nowrap px-3 py-3 text-right text-sm text-gray-500 dark:text-text-dark-secondary">$0.05</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+<!-- Metadata Section -->
+<div class="p-6">
+<h3 class="text-base font-semibold leading-tight text-gray-900 dark:text-text-light">Metadata</h3>
+<div class="mt-4 rounded-lg bg-gray-100 dark:bg-background-dark p-4">
+<pre class="font-mono text-xs text-gray-800 dark:text-text-dark-secondary"><code>{
+  "internal_plan_id": "pro_tier_v2",
+  "salesforce_sync": "true",
+  "quarterly_goal_id": "q1_2024_enterprise"
+}</code></pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Recurso Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#6366F1",
+            "background-light": "#f6f6f8",
+            "background-dark": "#101022",
+          },
+          fontFamily: {
+            "display": ["Inter", "sans-serif"]
+          },
+          borderRadius: {
+            "DEFAULT": "0.25rem",
+            "lg": "0.5rem",
+            "xl": "0.75rem",
+            "full": "9999px"
+          },
+        },
+      },
+    }
+  </script>
+<style>
+    .material-symbols-outlined {
+      font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+    }
+    .material-symbols-outlined.fill {
+      font-variation-settings:
+        'FILL' 1
+    }
+  </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col">
+<div class="flex h-full w-full">
+<aside class="flex w-64 flex-col justify-between border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="flex size-8 items-center justify-center rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined text-xl">layers</span>
+</div>
+<div class="flex flex-col">
+<h1 class="text-base font-bold text-slate-800 dark:text-white">Recurso</h1>
+<p class="text-xs font-normal text-slate-500 dark:text-slate-400">Billing Engine</p>
+</div>
+</div>
+<nav class="mt-4 flex flex-col gap-2">
+<a class="flex items-center gap-3 rounded-lg bg-primary/10 px-3 py-2 text-primary dark:bg-primary/20" href="#">
+<span class="material-symbols-outlined fill">home</span>
+<p class="text-sm font-medium">Home</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">group</span>
+<p class="text-sm font-medium">Customers</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">inventory_2</span>
+<p class="text-sm font-medium">Plans</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">autorenew</span>
+<p class="text-sm font-medium">Subscriptions</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">receipt_long</span>
+<p class="text-sm font-medium">Invoices</p>
+</a>
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">code</span>
+<p class="text-sm font-medium">Developers</p>
+</a>
+</nav>
+</div>
+<div class="flex flex-col gap-2">
+<a class="flex items-center gap-3 rounded-lg px-3 py-2 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-sm font-medium">Settings</p>
+</a>
+</div>
+</aside>
+<main class="flex flex-1 flex-col">
+<header class="flex h-16 flex-shrink-0 items-center justify-between whitespace-nowrap border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-8">
+<div class="flex items-center gap-4">
+<h2 class="text-lg font-bold text-slate-800 dark:text-white">Dashboard</h2>
+</div>
+<div class="flex flex-1 items-center justify-end gap-4">
+<label class="relative hidden w-full max-w-xs md:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">search</span>
+<input class="form-input h-10 w-full rounded-lg border-slate-200 bg-slate-100 pl-10 text-slate-800 placeholder:text-slate-400 focus:border-primary focus:ring-primary/50 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-500 dark:focus:border-primary dark:focus:ring-primary/50" placeholder="Search..." type="search"/>
+</label>
+<button class="flex h-10 w-10 cursor-pointer items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-500 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined text-xl">notifications</span>
+</button>
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-full size-10" data-alt="User avatar image" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCKmTq23kq_7zxy4jWWSKGqLYoQN5dawzZ4knD3eQBSph4czc3h812JZZ2dMsSyngcm26fFFvazLdaWkz9rLdpeSUkZgGnhM4mJ_qtyr32tBeESICXHL_e24Lk4-SEV4viFOdKwUdNPVrQqBKFK3HVgWqm6MXM3EjDrVSf6wt1XvPyjdihY3k7HVO8MltVvuNvS-lm3AIV5UkzxaFeb01EECi0c3JV1SEmAeOSPiJgUVCQQP16hQ3l8hGUlLgxt_sqUln6NyhCpEz0');"></div>
+</div>
+</header>
+<div class="flex-1 overflow-y-auto p-8">
+<div class="mx-auto max-w-7xl">
+<div class="grid grid-cols-1 gap-6 md:grid-cols-2">
+<div class="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+<p class="text-base font-medium text-slate-600 dark:text-slate-300">Monthly Recurring Revenue</p>
+<p class="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">$42,593</p>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-base text-green-500">arrow_upward</span>
+<p class="text-sm font-medium text-green-500">+2.5%</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">vs last month</p>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
+<p class="text-base font-medium text-slate-600 dark:text-slate-300">Active Subscriptions</p>
+<p class="text-3xl font-bold tracking-tight text-slate-800 dark:text-white">2,104</p>
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-base text-red-500">arrow_downward</span>
+<p class="text-sm font-medium text-red-500">-1.2%</p>
+<p class="text-sm text-slate-500 dark:text-slate-400">vs last month</p>
+</div>
+</div>
+</div>
+<h2 class="text-xl font-bold tracking-tight text-slate-800 dark:text-white pb-3 pt-8">Recent Activity</h2>
+<div class="w-full @container">
+<div class="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+<table class="w-full">
+<thead class="bg-slate-50 dark:bg-slate-800/50">
+<tr>
+<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Event Type</th>
+<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Customer</th>
+<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Amount</th>
+<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</th>
+<th class="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Date</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Invoice Paid</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Liam Johnson</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$99.00</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm">
+<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Paid</span>
+</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Jan 20, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">New Subscription</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Olivia Smith</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$249.00</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm">
+<span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Paid</span>
+</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Jan 19, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Payment Failed</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Noah Williams</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$49.00</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm">
+<span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800 dark:bg-red-900/40 dark:text-red-300">Failed</span>
+</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Jan 19, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Invoice Sent</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Emma Brown</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$1,200.00</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm">
+<span class="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">Processing</span>
+</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Jan 18, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Trial Started</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">James Jones</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">--</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm">
+<span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300">Trialing</span>
+</td>
+<td class="px-6 py-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">Jan 17, 2024</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+<div aria-hidden="true" class="absolute inset-0 z-10 bg-black/30 backdrop-blur-sm"></div>
+<div class="absolute inset-y-0 right-0 z-20 flex w-full max-w-2xl">
+<div class="flex h-full w-full flex-col bg-background-light dark:bg-slate-900 shadow-2xl">
+<div class="flex flex-col h-full overflow-y-auto">
+<header class="flex h-16 flex-shrink-0 items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6">
+<div class="flex items-center gap-4">
+<div class="flex size-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800">
+<span class="material-symbols-outlined text-lg text-slate-500 dark:text-slate-400">person</span>
+</div>
+<h2 class="text-lg font-semibold text-slate-800 dark:text-white">Liam Johnson</h2>
+</div>
+<div class="flex items-center gap-2">
+<button class="flex items-center gap-2 rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined text-base">edit</span>
+                Edit
+              </button>
+<button class="flex items-center justify-center size-8 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400">
+<span class="material-symbols-outlined text-xl">close</span>
+</button>
+</div>
+</header>
+<div class="flex-1 p-6 space-y-8">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+<div>
+<h3 class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Email address</h3>
+<p class="mt-1 text-sm text-slate-800 dark:text-slate-200">liam.johnson@example.com</p>
+</div>
+<div>
+<h3 class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Customer ID</h3>
+<p class="mt-1 text-sm font-mono text-slate-800 dark:text-slate-200">cust_1P9Z8y2eZvKYlo2Chr9I4vvy</p>
+</div>
+<div>
+<h3 class="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">Created</h3>
+<p class="mt-1 text-sm text-slate-800 dark:text-slate-200">Dec 5, 2023</p>
+</div>
+</div>
+<div>
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-base font-semibold text-slate-800 dark:text-white">Subscriptions</h3>
+<button class="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary/90">
+<span class="material-symbols-outlined text-base">add</span>
+                  New Subscription
+                </button>
+</div>
+<div class="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+<table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="p-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Pro Plan</td>
+<td class="p-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$99.00 / month</td>
+<td class="p-4 whitespace-nowrap text-sm"><span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Active</span></td>
+<td class="p-4 whitespace-nowrap text-right text-sm text-slate-500 dark:text-slate-400">Renews on Feb 20, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="p-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">Basic Plan</td>
+<td class="p-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$29.00 / month</td>
+<td class="p-4 whitespace-nowrap text-sm"><span class="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-800 dark:bg-slate-700 dark:text-slate-300">Canceled</span></td>
+<td class="p-4 whitespace-nowrap text-right text-sm text-slate-500 dark:text-slate-400">Ended on Jan 5, 2024</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div>
+<h3 class="text-base font-semibold text-slate-800 dark:text-white mb-4">Invoices</h3>
+<div class="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+<table class="min-w-full divide-y divide-slate-200 dark:divide-slate-800">
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="p-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">INV-0123</td>
+<td class="p-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$99.00</td>
+<td class="p-4 whitespace-nowrap text-sm"><span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Paid</span></td>
+<td class="p-4 whitespace-nowrap text-right text-sm text-slate-500 dark:text-slate-400">Jan 20, 2024</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+<td class="p-4 whitespace-nowrap text-sm font-medium text-slate-800 dark:text-white">INV-0115</td>
+<td class="p-4 whitespace-nowrap text-sm text-slate-600 dark:text-slate-300">$99.00</td>
+<td class="p-4 whitespace-nowrap text-sm"><span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/40 dark:text-green-300">Paid</span></td>
+<td class="p-4 whitespace-nowrap text-right text-sm text-slate-500 dark:text-slate-400">Dec 20, 2023</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div>
+<h3 class="text-base font-semibold text-slate-800 dark:text-white mb-4">Payment Methods</h3>
+<div class="rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<svg class="h-6 w-auto" viewBox="0 0 38 24" xmlns="http://www.w3.org/2000/svg"><path d="M35.22 5.06h-5.91V3.91a.91.91 0 00-.91-.91H9.6a.91.91 0 00-.91.91v1.15H2.78a2.78 2.78 0 00-2.78 2.78v10.38c0 1.54 1.24 2.78 2.78 2.78h32.44c1.54 0 2.78-1.24 2.78-2.78V7.84c0-1.54-1.24-2.78-2.78-2.78zM9.6 4.82h18.8v.24H9.6v-.24zM35.22 19.22c0 .5-.4.9-.9.9H3.68a.9.9 0 01-.9-.9V9.6h32.44v9.62z" fill="#5F6368"></path><path d="M11.85 11.85h-1.83a.91.91 0 00-.91.91v2.74c0 .5.4.91.91.91h1.83a.91.91 0 00.91-.91v-2.74a.91.91 0 00-.91-.91zm-.91 3.65h-.01a.9.9 0 01-.9-.9v-1.83c0-.5.4-.91.91-.91h.01c.5 0 .91.4.91.91v1.83c0 .5-.4.9-.91.9zM16.42 11.85h-1.83a.91.91 0 00-.91.91v2.74c0 .5.4.91.91.91h1.83a.91.91 0 00.91-.91v-2.74a.91.91 0 00-.91-.91zm-.91 3.65h-.01a.9.9 0 01-.9-.9v-1.83c0-.5.4-.91.91-.91h.01c.5 0 .91.4.91.91v1.83c0 .5-.4.9-.91.9zM21 11.85h-1.83a.91.91 0 00-.91.91v2.74c0 .5.4.91.91.91H21a.91.91 0 00.91-.91v-2.74a.91.91 0 00-.91-.91zm-.91 3.65h-.01a.9.9 0 01-.9-.9v-1.83c0-.5.4-.91.91-.91h.01c.5 0 .91.4.91.91v1.83c0 .5-.4.9-.91.9z" fill="#5F6368"></path></svg>
+<p class="text-sm font-medium text-slate-800 dark:text-white">Visa ending in 4242</p>
+</div>
+<p class="text-sm text-slate-500 dark:text-slate-400">Expires 12/25</p>
+</div>
+</div>
+</div>
+<div>
+<h3 class="text-base font-semibold text-slate-800 dark:text-white mb-4">Activity</h3>
+<div class="space-y-4">
+<div class="flex items-start gap-3">
+<div class="flex size-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mt-0.5">
+<span class="material-symbols-outlined text-lg text-slate-500 dark:text-slate-400">receipt_long</span>
+</div>
+<div>
+<p class="text-sm text-slate-800 dark:text-slate-200">Invoice <span class="font-medium">INV-0123</span> was paid</p>
+<p class="text-xs text-slate-500 dark:text-slate-400">Jan 20, 2024, 10:32 AM</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="flex size-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mt-0.5">
+<span class="material-symbols-outlined text-lg text-slate-500 dark:text-slate-400">autorenew</span>
+</div>
+<div>
+<p class="text-sm text-slate-800 dark:text-slate-200">Subscription to <span class="font-medium">Pro Plan</span> was created</p>
+<p class="text-xs text-slate-500 dark:text-slate-400">Dec 20, 2023, 08:15 PM</p>
+</div>
+</div>
+<div class="flex items-start gap-3">
+<div class="flex size-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 mt-0.5">
+<span class="material-symbols-outlined text-lg text-slate-500 dark:text-slate-400">person_add</span>
+</div>
+<div>
+<p class="text-sm text-slate-800 dark:text-slate-200">Customer was created</p>
+<p class="text-xs text-slate-500 dark:text-slate-400">Dec 5, 2023, 11:45 AM</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</body></html>

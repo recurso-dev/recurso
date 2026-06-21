@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Credit Note Detail View</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&amp;family=Noto+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#1313ec",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101022",
+                        "border-dark": "#323267",
+                        "text-secondary": "#9292c9",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"],
+                        "mono": ["ui-monospace", "SFMono-Regular", "Menlo", "Monaco", "Consolas", "monospace"],
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar for the panel */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #111122;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #323267;
+            border-radius: 3px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #4B4B88;
+        }
+    </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display overflow-hidden text-white antialiased">
+<!-- Main Layout Container -->
+<div class="relative flex h-screen w-full flex-col overflow-hidden">
+<!-- Mock Background Content (The Data Grid Underneath) -->
+<div class="flex-1 p-8 opacity-20 pointer-events-none select-none filter blur-[1px]">
+<div class="mb-6 flex items-center justify-between">
+<h1 class="text-2xl font-bold text-white">Credit Notes</h1>
+<div class="h-10 w-32 rounded bg-[#232348]"></div>
+</div>
+<div class="w-full rounded-lg border border-border-dark bg-[#111122]">
+<div class="border-b border-border-dark p-4 flex gap-4">
+<div class="h-4 w-24 bg-[#323267] rounded"></div>
+<div class="h-4 w-32 bg-[#323267] rounded"></div>
+<div class="h-4 w-16 bg-[#323267] rounded ml-auto"></div>
+</div>
+<!-- Mock Rows -->
+<div class="p-4 border-b border-border-dark flex gap-4">
+<div class="h-4 w-20 bg-[#232348] rounded"></div>
+<div class="h-4 w-40 bg-[#232348] rounded"></div>
+</div>
+<div class="p-4 border-b border-border-dark flex gap-4">
+<div class="h-4 w-20 bg-[#232348] rounded"></div>
+<div class="h-4 w-40 bg-[#232348] rounded"></div>
+</div>
+<div class="p-4 border-b border-border-dark flex gap-4">
+<div class="h-4 w-20 bg-[#232348] rounded"></div>
+<div class="h-4 w-40 bg-[#232348] rounded"></div>
+</div>
+</div>
+</div>
+<!-- Slide-over Backdrop -->
+<div class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"></div>
+<!-- Slide-over Panel -->
+<div class="fixed inset-y-0 right-0 z-50 flex w-full max-w-[640px] flex-col bg-[#111122] shadow-2xl border-l border-border-dark transform transition-transform duration-300 ease-in-out">
+<!-- Panel Header (Toolbar) -->
+<div class="flex items-center justify-between border-b border-border-dark px-6 py-4">
+<div class="flex items-center gap-3">
+<span class="text-text-secondary text-sm font-medium uppercase tracking-wider">Detail View</span>
+</div>
+<div class="flex items-center gap-2">
+<button class="rounded-lg p-2 text-text-secondary hover:bg-white/5 hover:text-white transition-colors" title="Actions">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+<button class="rounded-lg p-2 text-text-secondary hover:bg-white/5 hover:text-white transition-colors" title="Close">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+</div>
+<!-- Panel Scrollable Content -->
+<div class="flex-1 overflow-y-auto custom-scrollbar">
+<!-- Page Heading & Status -->
+<div class="px-8 pt-8 pb-4">
+<div class="flex items-start justify-between gap-4">
+<div class="flex flex-col gap-2">
+<div class="flex items-center gap-3">
+<h2 class="text-3xl font-bold text-white tracking-tight">Credit Note</h2>
+<!-- Chip -->
+<div class="flex h-6 items-center justify-center rounded-full bg-[#232348] px-3 border border-border-dark">
+<div class="h-1.5 w-1.5 rounded-full bg-emerald-400 mr-2"></div>
+<span class="text-white text-xs font-medium uppercase tracking-wide">Issued</span>
+</div>
+</div>
+<div class="flex items-center gap-2 text-text-secondary font-mono text-sm">
+<span>ID:</span>
+<span class="text-white select-all">CN-3092</span>
+<button class="ml-1 text-text-secondary hover:text-white" title="Copy ID">
+<span class="material-symbols-outlined" style="font-size: 14px;">content_copy</span>
+</button>
+</div>
+<p class="text-text-secondary text-sm">Created on Oct 24, 2023 at 10:42 AM</p>
+</div>
+</div>
+</div>
+<!-- Stats Grid -->
+<div class="px-8 py-4">
+<div class="grid grid-cols-2 gap-4">
+<div class="flex flex-col gap-1 rounded-xl border border-border-dark bg-[#18182f] p-5">
+<p class="text-text-secondary text-sm font-medium">Total Credited</p>
+<p class="text-white font-mono text-2xl font-bold tracking-tight">$50.00 <span class="text-base text-text-secondary font-normal">USD</span></p>
+</div>
+<div class="flex flex-col gap-1 rounded-xl border border-border-dark bg-[#18182f] p-5">
+<p class="text-text-secondary text-sm font-medium">Remaining Balance</p>
+<p class="text-white font-mono text-2xl font-bold tracking-tight">$50.00 <span class="text-base text-text-secondary font-normal">USD</span></p>
+</div>
+</div>
+</div>
+<!-- Details List -->
+<div class="px-8 py-4">
+<h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-white">Details</h3>
+<div class="grid grid-cols-2 gap-y-6 rounded-xl border border-border-dark bg-[#18182f] p-6">
+<div class="flex flex-col gap-1 pr-4">
+<p class="text-text-secondary text-xs font-medium uppercase tracking-wide">Customer</p>
+<a class="text-primary font-medium hover:underline hover:text-blue-400 flex items-center gap-1 group" href="#">
+                                Acme Corp
+                                <span class="material-symbols-outlined opacity-0 group-hover:opacity-100 transition-opacity" style="font-size: 16px;">arrow_outward</span>
+</a>
+</div>
+<div class="flex flex-col gap-1 pl-4 border-l border-border-dark">
+<p class="text-text-secondary text-xs font-medium uppercase tracking-wide">Linked Invoice</p>
+<a class="text-primary font-mono text-sm hover:underline hover:text-blue-400" href="#">INV-2023-992</a>
+</div>
+<div class="flex flex-col gap-1 pr-4 col-span-2 border-t border-border-dark pt-4">
+<p class="text-text-secondary text-xs font-medium uppercase tracking-wide">Reason for Credit</p>
+<p class="text-white text-sm">Service outage compensation for the downtime experienced on Oct 22.</p>
+</div>
+</div>
+</div>
+<!-- Line Items Table -->
+<div class="px-8 py-4 pb-8">
+<h3 class="mb-3 text-sm font-semibold uppercase tracking-wider text-white">Line Items</h3>
+<div class="overflow-hidden rounded-xl border border-border-dark bg-[#18182f]">
+<table class="w-full text-left text-sm">
+<thead class="bg-[#232348] text-text-secondary">
+<tr>
+<th class="px-6 py-3 font-medium uppercase tracking-wider text-xs">Description</th>
+<th class="px-6 py-3 font-medium uppercase tracking-wider text-xs text-right">Qty</th>
+<th class="px-6 py-3 font-medium uppercase tracking-wider text-xs text-right">Amount</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-dark">
+<tr>
+<td class="px-6 py-4 text-white">
+<div class="font-medium">Pro Plan - Monthly</div>
+<div class="text-text-secondary text-xs mt-0.5">Proration Adjustment</div>
+</td>
+<td class="px-6 py-4 text-white text-right font-mono">1</td>
+<td class="px-6 py-4 text-white text-right font-mono font-medium">-$50.00</td>
+</tr>
+</tbody>
+<tfoot class="bg-[#232348]/30 border-t border-border-dark">
+<tr>
+<td class="px-6 py-3 text-right text-text-secondary text-xs font-medium uppercase" colspan="2">Subtotal</td>
+<td class="px-6 py-3 text-right text-white font-mono text-sm">-$50.00</td>
+</tr>
+<tr>
+<td class="px-6 py-3 text-right text-text-secondary text-xs font-medium uppercase" colspan="2">Tax</td>
+<td class="px-6 py-3 text-right text-white font-mono text-sm">$0.00</td>
+</tr>
+<tr class="bg-[#232348]/50">
+<td class="px-6 py-4 text-right text-white font-bold text-sm uppercase" colspan="2">Total Credit</td>
+<td class="px-6 py-4 text-right text-white font-mono font-bold">-$50.00</td>
+</tr>
+</tfoot>
+</table>
+</div>
+</div>
+</div>
+<!-- Panel Footer Actions -->
+<div class="border-t border-border-dark bg-[#111122] p-6">
+<div class="flex gap-3">
+<button class="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-blue-700 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">download</span>
+                        Download PDF
+                    </button>
+<button class="flex items-center justify-center gap-2 rounded-lg border border-border-dark bg-transparent px-4 py-2.5 text-sm font-medium text-white hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">mail</span>
+                        Email Customer
+                    </button>
+<button class="flex items-center justify-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 hover:bg-red-500/20 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 20px;">block</span>
+                        Void
+                    </button>
+</div>
+</div>
+</div>
+</div>
+</body></html>

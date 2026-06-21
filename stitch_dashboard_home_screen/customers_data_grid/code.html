@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Customers Data Grid - Recurso</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#4F46E5",
+                        "background-light": "#f6f6f8",
+                        "background-dark": "#101022",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root">
+<div class="flex min-h-screen">
+<!-- SideNavBar -->
+<div class="flex h-screen w-64 flex-col bg-[#111827] text-white p-4 shrink-0">
+<div class="flex h-full min-h-[700px] flex-col justify-between">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="bg-center bg-no-repeat aspect-square bg-cover rounded-lg size-10" data-alt="Recurso company logo, a stylized letter R in shades of violet" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBomEnbKIwrs8i5aerYsznyJQuWCmd6aGeRlAe4zFa-J19SI8dSRTo2JwbjcpScjeLlEpSeN3RR4iw1s8Nk3s0knQffdLNNVLJD9BOisn_eTY-o6SObyGY0VdIEUCcYXvOpkiTmxb9iWVI0PNT8Kkkb9DlBBk_zvKM_5EJC8aL-cxsGSoxsa54wCqOCScoEDq1jtzEg6J6V26vBcbu8P7umM_9YtFzoKWdsQt3m4dSozWiqqQWlQaf1sRLcbCzxArGSf-uUyGt5cvQ");'></div>
+<h1 class="text-white text-base font-medium leading-normal">Recurso</h1>
+</div>
+<div class="flex flex-col gap-2">
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">home</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Home</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary" href="#">
+<span class="material-symbols-outlined text-white" style="font-variation-settings: 'FILL' 1;">group</span>
+<p class="text-white text-sm font-medium leading-normal">Customers</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">credit_card</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Plans</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">autorenew</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Subscriptions</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">receipt_long</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Invoices</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">code</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Developers</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-white/10" href="#">
+<span class="material-symbols-outlined text-white/70">settings</span>
+<p class="text-white/90 text-sm font-medium leading-normal">Settings</p>
+</a>
+</div>
+</div>
+</div>
+</div>
+<!-- Main Content -->
+<div class="flex flex-1 flex-col p-8">
+<!-- PageHeading -->
+<div class="flex flex-wrap justify-between gap-3 pb-6 border-b border-gray-200 dark:border-gray-700">
+<p class="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight">Customers</p>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em]">
+<span class="truncate">+ Add Customer</span>
+</button>
+</div>
+<!-- Chips/Filters -->
+<div class="flex gap-3 py-6 overflow-x-auto">
+<div class="relative flex-grow max-w-sm">
+<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-500">search</span>
+</div>
+<input class="block w-full rounded-lg border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-600 dark:text-white dark:placeholder-gray-400 pl-10 h-10 text-sm" placeholder="Search customers..." type="text"/>
+</div>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 border border-gray-300 pl-3 pr-3">
+<p class="text-slate-700 dark:text-gray-300 text-sm font-medium leading-normal">Status: All</p>
+<span class="material-symbols-outlined text-gray-500 dark:text-gray-400">expand_more</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-gray-800 dark:border-gray-600 border border-gray-300 pl-3 pr-3">
+<span class="material-symbols-outlined text-gray-500 dark:text-gray-400">calendar_today</span>
+<p class="text-slate-700 dark:text-gray-300 text-sm font-medium leading-normal">Date Range</p>
+<span class="material-symbols-outlined text-gray-500 dark:text-gray-400">expand_more</span>
+</button>
+</div>
+<!-- Table -->
+<div class="w-full">
+<div class="flex overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+<table class="flex-1">
+<thead class="bg-gray-50 dark:bg-gray-800">
+<tr>
+<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Customer</th>
+<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Subscriptions</th>
+<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created</th>
+<th class="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-gray-200 dark:divide-gray-700">
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<div class="text-sm font-medium text-slate-900 dark:text-white">Olivia Rhye</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">olivia@untitledui.com</div>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<span class="inline-flex items-center gap-x-1.5 rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-400">
+<span class="size-1.5 rounded-full bg-green-500"></span>
+                                            Active
+                                        </span>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">3</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">Jan 20, 2024</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+<button class="text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<div class="text-sm font-medium text-slate-900 dark:text-white">Phoenix Baker</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">phoenix@untitledui.com</div>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<span class="inline-flex items-center gap-x-1.5 rounded-full bg-yellow-100 dark:bg-yellow-900/50 px-2.5 py-1 text-xs font-medium text-yellow-800 dark:text-yellow-400">
+<span class="size-1.5 rounded-full bg-yellow-500"></span>
+                                            Trialing
+                                        </span>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">1</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">Jan 18, 2024</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+<button class="text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<div class="text-sm font-medium text-slate-900 dark:text-white">Lana Steiner</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">lana@untitledui.com</div>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<span class="inline-flex items-center gap-x-1.5 rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-400">
+<span class="size-1.5 rounded-full bg-green-500"></span>
+                                            Active
+                                        </span>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">5</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">Jan 15, 2024</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+<button class="text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<div class="text-sm font-medium text-slate-900 dark:text-white">Demi Wilkinson</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">demi@untitledui.com</div>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<span class="inline-flex items-center gap-x-1.5 rounded-full bg-gray-100 dark:bg-gray-700/50 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-gray-400">
+<span class="size-1.5 rounded-full bg-gray-500"></span>
+                                            Canceled
+                                        </span>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">0</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">Jan 12, 2024</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+<button class="text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</td>
+</tr>
+<tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer">
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<div class="text-sm font-medium text-slate-900 dark:text-white">Candice Wu</div>
+<div class="text-sm text-gray-500 dark:text-gray-400">candice@untitledui.com</div>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap">
+<span class="inline-flex items-center gap-x-1.5 rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-1 text-xs font-medium text-green-700 dark:text-green-400">
+<span class="size-1.5 rounded-full bg-green-500"></span>
+                                            Active
+                                        </span>
+</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">2</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">Jan 10, 2024</td>
+<td class="h-[72px] px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+<button class="text-gray-400 hover:text-primary dark:hover:text-primary">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- Pagination -->
+<div class="flex items-center justify-between pt-6">
+<p class="text-sm text-gray-600 dark:text-gray-400">Showing <span class="font-medium">1</span> to <span class="font-medium">5</span> of <span class="font-medium">97</span> results</p>
+<div class="flex items-center justify-center">
+<a class="flex size-10 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 mr-2" href="#">
+<span class="material-symbols-outlined text-base">arrow_back</span>
+</a>
+<a class="text-sm font-bold leading-normal tracking-[0.015em] flex size-10 items-center justify-center text-white bg-primary rounded-lg" href="#">1</a>
+<a class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg hover:bg-primary/20 dark:hover:bg-primary/30" href="#">2</a>
+<a class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg hover:bg-primary/20 dark:hover:bg-primary/30" href="#">3</a>
+<span class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg">...</span>
+<a class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg hover:bg-primary/20 dark:hover:bg-primary/30" href="#">8</a>
+<a class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg hover:bg-primary/20 dark:hover:bg-primary/30" href="#">9</a>
+<a class="text-sm font-medium leading-normal flex size-10 items-center justify-center text-slate-600 dark:text-gray-400 rounded-lg hover:bg-primary/20 dark:hover:bg-primary/30" href="#">10</a>
+<a class="flex size-10 items-center justify-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 ml-2" href="#">
+<span class="material-symbols-outlined text-base">arrow_forward</span>
+</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</body></html>

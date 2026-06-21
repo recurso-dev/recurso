@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Subscriptions Data Grid</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#4f46e5",
+              "background-light": "#f6f6f8",
+              "background-dark": "#111827",
+              "surface-light": "#ffffff",
+              "surface-dark": "#1f2937",
+              "text-light-primary": "#111827",
+              "text-dark-primary": "#f9fafb",
+              "text-light-secondary": "#6b7280",
+              "text-dark-secondary": "#9ca3af",
+              "border-light": "#e5e7eb",
+              "border-dark": "#374151",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+      }
+    </style>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-text-light-primary dark:text-dark-primary">
+<div class="flex min-h-screen w-full">
+<!-- SideNavBar -->
+<nav class="flex w-64 flex-col border-r border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark p-4">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 px-3 py-2">
+<div class="flex items-center justify-center size-10 rounded-lg bg-primary text-white">
+<span class="material-symbols-outlined text-2xl">layers</span>
+</div>
+<div class="flex flex-col">
+<h1 class="text-base font-bold">Recurso</h1>
+<p class="text-sm font-normal text-text-light-secondary dark:text-dark-secondary">Billing Engine</p>
+</div>
+</div>
+<div class="flex flex-col gap-1 mt-4">
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">home</span>
+<p class="text-sm font-medium">Home</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">group</span>
+<p class="text-sm font-medium">Customers</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">inventory_2</span>
+<p class="text-sm font-medium">Plans</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 rounded-lg bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-400" href="#">
+<span class="material-symbols-outlined text-2xl" style="font-variation-settings: 'FILL' 1;">credit_card</span>
+<p class="text-sm font-bold">Subscriptions</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">receipt_long</span>
+<p class="text-sm font-medium">Invoices</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">code</span>
+<p class="text-sm font-medium">Developers</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">settings</span>
+<p class="text-sm font-medium">Settings</p>
+</a>
+</div>
+</div>
+<div class="mt-auto flex flex-col gap-1">
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">help</span>
+<p class="text-sm font-medium">Support</p>
+</a>
+<a class="flex items-center gap-3 px-3 py-2 text-text-light-secondary dark:text-dark-secondary hover:text-text-light-primary dark:hover:text-dark-primary rounded" href="#">
+<span class="material-symbols-outlined text-2xl">logout</span>
+<p class="text-sm font-medium">Log Out</p>
+</a>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="flex-1 p-8">
+<div class="mx-auto max-w-7xl">
+<!-- PageHeading -->
+<div class="flex flex-wrap items-center justify-between gap-4">
+<h1 class="text-3xl font-bold tracking-tight">Subscriptions</h1>
+<button class="flex h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary px-4 text-white text-sm font-semibold shadow-sm transition-all hover:bg-primary/90">
+<span class="material-symbols-outlined text-xl">add</span>
+<span class="truncate">Add Subscription</span>
+</button>
+</div>
+<div class="mt-6 flex flex-col gap-4">
+<!-- SearchBar and Filters -->
+<div class="flex flex-wrap items-center gap-4">
+<div class="flex-1 min-w-[300px]">
+<label class="flex flex-col h-12 w-full">
+<div class="flex w-full flex-1 items-stretch rounded-lg h-full border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/20">
+<div class="flex items-center justify-center pl-4">
+<span class="material-symbols-outlined text-text-light-secondary dark:text-dark-secondary text-2xl">search</span>
+</div>
+<input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-r-lg border-none bg-transparent text-text-light-primary dark:text-dark-primary focus:outline-0 focus:ring-0 h-full placeholder:text-text-light-secondary dark:placeholder:text-dark-secondary px-3 text-base" placeholder="Search by customer name, email, or ID..." value=""/>
+</div>
+</label>
+</div>
+<!-- Chips -->
+<div class="flex gap-2">
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark pl-4 pr-3 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">
+<p>Status: All</p>
+<span class="material-symbols-outlined text-xl">expand_more</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark pl-4 pr-3 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">
+<p>Plan: All</p>
+<span class="material-symbols-outlined text-xl">expand_more</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark pl-4 pr-3 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">
+<p>Date: All Time</p>
+<span class="material-symbols-outlined text-xl">expand_more</span>
+</button>
+</div>
+</div>
+<!-- Table -->
+<div class="overflow-hidden rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark">
+<div class="overflow-x-auto">
+<table class="w-full">
+<thead class="border-b border-border-light dark:border-border-dark">
+<tr>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Customer</th>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Status</th>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Plan</th>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Amount</th>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Start Date</th>
+<th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary">Next Invoice</th>
+<th class="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wider text-text-light-secondary dark:text-dark-secondary"></th>
+</tr>
+</thead>
+<tbody class="divide-y divide-border-light dark:divide-border-dark">
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Olivia Martin</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">olivia.martin@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/40 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-green-500 dark:text-green-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Active
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Pro Tier</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$99.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2023-01-15</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-08-15</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Liam Harris</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">liam.harris@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/40 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-green-500 dark:text-green-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Active
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Basic Tier</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$29.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2023-02-20</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-08-20</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Sophia Rodriguez</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">sophia.r@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-700/50 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:text-gray-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-gray-500 dark:text-gray-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Canceled
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Pro Tier</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$99.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2023-03-10</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-03-10</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Ava Davis</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">ava.davis@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900/40 px-2.5 py-0.5 text-xs font-medium text-orange-800 dark:text-orange-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-orange-500 dark:text-orange-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Past Due
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Pro Tier</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$99.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2023-05-22</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-07-22</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Isabella Kim</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">isabella.kim@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-blue-100 dark:bg-blue-900/40 px-2.5 py-0.5 text-xs font-medium text-blue-800 dark:text-blue-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-blue-500 dark:text-blue-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Trialing
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Pro Tier</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$0.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-07-10</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-08-10</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+<tr class="hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer">
+<td class="px-4 py-3 text-sm font-medium whitespace-nowrap">
+<div>Noah Chen</div>
+<div class="text-xs text-text-light-secondary dark:text-dark-secondary">noah.chen@email.com</div>
+</td>
+<td class="px-4 py-3 text-sm whitespace-nowrap">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/40 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">
+<svg class="-ml-0.5 mr-1.5 h-2 w-2 text-green-500 dark:text-green-400" fill="currentColor" viewbox="0 0 8 8"><circle cx="4" cy="4" r="3"></circle></svg>
+                                                Active
+                                            </span>
+</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">Enterprise</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">$499.00 / mo</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2023-04-01</td>
+<td class="px-4 py-3 text-sm text-text-light-secondary dark:text-dark-secondary whitespace-nowrap">2024-09-01</td>
+<td class="px-4 py-3 text-sm font-medium text-right"><span class="material-symbols-outlined text-xl">more_horiz</span></td>
+</tr>
+</tbody>
+</table>
+</div>
+<!-- Pagination -->
+<div class="flex items-center justify-between border-t border-border-light dark:border-border-dark px-4 py-3">
+<p class="text-sm text-text-light-secondary dark:text-dark-secondary">Showing <span class="font-semibold">1</span> to <span class="font-semibold">6</span> of <span class="font-semibold">24</span> results</p>
+<div class="flex gap-2">
+<button class="flex h-9 items-center justify-center rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-3 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">Previous</button>
+<button class="flex h-9 items-center justify-center rounded-lg border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark px-3 text-sm font-medium hover:bg-black/5 dark:hover:bg-white/5">Next</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</body></html>

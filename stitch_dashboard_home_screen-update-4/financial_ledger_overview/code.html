@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Financial Ledger Overview - Recurso</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+      .material-symbols-outlined {
+        font-variation-settings:
+        'FILL' 0,
+        'wght' 400,
+        'GRAD' 0,
+        'opsz' 24
+      }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#1313ec",
+              "background-light": "#f6f6f8",
+              "background-dark": "#101022",
+              "slate": {
+                50: '#f8fafc',
+                100: '#f1f5f9',
+                200: '#e2e8f0',
+                300: '#cbd5e1',
+                400: '#94a3b8',
+                500: '#64748b',
+                600: '#475569',
+                700: '#334155',
+                800: '#1e293b',
+                900: '#0f172a'
+              },
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.5rem", "lg": "0.75rem", "xl": "1rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="font-display bg-background-light dark:bg-background-dark text-slate-800 dark:text-slate-200">
+<div class="relative flex h-auto min-h-screen w-full flex-col group/design-root overflow-x-hidden">
+<div class="layout-container flex h-full grow flex-col">
+<div class="px-4 sm:px-8 md:px-12 lg:px-20 xl:px-40 flex flex-1 justify-center py-5">
+<div class="layout-content-container flex flex-col w-full max-w-[1280px] flex-1">
+<!-- TopNavBar -->
+<header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-slate-200 dark:border-slate-800 px-4 py-4 mb-8">
+<div class="flex items-center gap-4">
+<div class="size-6 text-primary">
+<svg fill="none" viewbox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+<path clip-rule="evenodd" d="M39.475 21.6262C40.358 21.4363 40.6863 21.5589 40.7581 21.5934C40.7876 21.655 40.8547 21.857 40.8082 22.3336C40.7408 23.0255 40.4502 24.0046 39.8572 25.2301C38.6799 27.6631 36.5085 30.6631 33.5858 33.5858C30.6631 36.5085 27.6632 38.6799 25.2301 39.8572C24.0046 40.4502 23.0255 40.7407 22.3336 40.8082C21.8571 40.8547 21.6551 40.7875 21.5934 40.7581C21.5589 40.6863 21.4363 40.358 21.6262 39.475C21.8562 38.4054 22.4689 36.9657 23.5038 35.2817C24.7575 33.2417 26.5497 30.9744 28.7621 28.762C30.9744 26.5497 33.2417 24.7574 35.2817 23.5037C36.9657 22.4689 38.4054 21.8562 39.475 21.6262ZM4.41189 29.2403L18.7597 43.5881C19.8813 44.7097 21.4027 44.9179 22.7217 44.7893C24.0585 44.659 25.5148 44.1631 26.9723 43.4579C29.9052 42.0387 33.2618 39.5667 36.4142 36.4142C39.5667 33.2618 42.0387 29.9052 43.4579 26.9723C44.1631 25.5148 44.659 24.0585 44.7893 22.7217C44.9179 21.4027 44.7097 19.8813 43.5881 18.7597L29.2403 4.41187C27.8527 3.02428 25.8765 3.02573 24.2861 3.36776C22.6081 3.72863 20.7334 4.58419 18.8396 5.74801C16.4978 7.18716 13.9881 9.18353 11.5858 11.5858C9.18354 13.988 7.18717 16.4978 5.74802 18.8396C4.58421 20.7334 3.72865 22.6081 3.36778 24.2861C3.02574 25.8765 3.02429 27.8527 4.41189 29.2403Z" fill="currentColor" fill-rule="evenodd"></path>
+</svg>
+</div>
+<h2 class="text-slate-900 dark:text-slate-50 text-xl font-bold">Recurso</h2>
+</div>
+<button class="flex min-w-[84px] max-w-[480px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-bold leading-normal tracking-[0.015em] hover:bg-primary/90 transition-colors">
+<span class="truncate">Export Data</span>
+</button>
+</header>
+<main class="flex flex-col gap-8 px-4">
+<!-- PageHeading and Chips -->
+<div class="flex flex-wrap justify-between items-center gap-4">
+<p class="text-slate-900 dark:text-slate-50 text-4xl font-black leading-tight tracking-[-0.033em] min-w-72">Financial Ledger Overview</p>
+<div class="flex gap-3">
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-800 dark:border dark:border-slate-700 dark:hover:bg-slate-700 px-4 shadow-sm">
+<p class="text-slate-700 dark:text-slate-300 text-sm font-medium">Last 30 days</p>
+<span class="material-symbols-outlined text-slate-500 dark:text-slate-400 text-xl">expand_more</span>
+</button>
+</div>
+</div>
+<!-- Stats Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<div class="flex flex-1 flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<p class="text-slate-600 dark:text-slate-400 text-base font-medium">Total Assets</p>
+<p class="text-slate-900 dark:text-slate-50 tracking-tight text-3xl font-bold">$1,250,980.55</p>
+<p class="text-green-600 dark:text-green-500 text-sm font-medium">+2.1% vs last period</p>
+</div>
+<div class="flex flex-1 flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<p class="text-slate-600 dark:text-slate-400 text-base font-medium">Total Liabilities</p>
+<p class="text-slate-900 dark:text-slate-50 tracking-tight text-3xl font-bold">$450,120.75</p>
+<p class="text-red-600 dark:text-red-500 text-sm font-medium">-0.5% vs last period</p>
+</div>
+<div class="flex flex-1 flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+<p class="text-slate-600 dark:text-slate-400 text-base font-medium">Total Equity</p>
+<p class="text-slate-900 dark:text-slate-50 tracking-tight text-3xl font-bold">$800,859.80</p>
+<p class="text-red-600 dark:text-red-500 text-sm font-medium">-1.2% vs last period</p>
+</div>
+</div>
+<!-- Chart -->
+<div class="flex flex-wrap gap-4">
+<div class="flex min-w-72 flex-1 flex-col gap-4 rounded-lg border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900 shadow-sm">
+<div class="flex justify-between items-start">
+<div>
+<p class="text-slate-600 dark:text-slate-400 text-base font-medium">Cash Flow (Credits vs. Debits)</p>
+<p class="text-slate-900 dark:text-slate-50 tracking-tight text-3xl font-bold truncate">$1,250,980.55</p>
+</div>
+<div class="flex gap-1 items-center">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal">Last 30 days</p>
+<p class="text-green-600 dark:text-green-500 text-sm font-medium">+2.1%</p>
+</div>
+</div>
+<div class="flex min-h-[200px] flex-1 flex-col gap-2 py-4">
+<svg fill="none" height="100%" preserveaspectratio="none" viewbox="-3 0 478 150" width="100%" xmlns="http://www.w3.org/2000/svg">
+<path d="M0 109C18.1538 109 18.1538 21 36.3077 21C54.4615 21 54.4615 41 72.6154 41C90.7692 41 90.7692 93 108.923 93C127.077 93 127.077 33 145.231 33C163.385 33 163.385 101 181.538 101C199.692 101 199.692 61 217.846 61C236 61 236 45 254.154 45C272.308 45 272.308 121 290.462 121C308.615 121 308.615 149 326.769 149C344.923 149 344.923 1 363.077 1C381.231 1 381.231 81 399.385 81C417.538 81 417.538 129 435.692 129C453.846 129 453.846 25 472 25V149H326.769H0V109Z" fill="url(#paint0_linear_chart)"></path>
+<path d="M0 109C18.1538 109 18.1538 21 36.3077 21C54.4615 21 54.4615 41 72.6154 41C90.7692 41 90.7692 93 108.923 93C127.077 93 127.077 33 145.231 33C163.385 33 163.385 101 181.538 101C199.692 101 199.692 61 217.846 61C236 61 236 45 254.154 45C272.308 45 272.308 121 290.462 121C308.615 121 308.615 149 326.769 149C344.923 149 344.923 1 363.077 1C381.231 1 381.231 81 399.385 81C417.538 81 417.538 129 435.692 129C453.846 129 453.846 25 472 25" stroke="#1313ec" stroke-linecap="round" stroke-width="3"></path>
+<defs>
+<lineargradient gradientunits="userSpaceOnUse" id="paint0_linear_chart" x1="236" x2="236" y1="1" y2="149">
+<stop stop-color="#1313ec" stop-opacity="0.2"></stop>
+<stop offset="1" stop-color="#1313ec" stop-opacity="0"></stop>
+</lineargradient>
+</defs>
+</svg>
+</div>
+</div>
+</div>
+<!-- Data Table -->
+<div class="flex flex-col gap-4 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+<div class="p-6">
+<h3 class="text-xl font-bold text-slate-900 dark:text-slate-50 mb-4">Recent Ledger Entries</h3>
+<div class="flex flex-col sm:flex-row gap-4">
+<div class="relative flex-grow">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+<input class="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 focus:ring-2 focus:ring-primary focus:border-primary transition-colors" placeholder="Search entries..." type="text"/>
+</div>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-4 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700">
+<p class="text-slate-700 dark:text-slate-300 text-sm font-medium">Account: All</p>
+<span class="material-symbols-outlined text-slate-500 dark:text-slate-400 text-xl">expand_more</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 px-4 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-700">
+<p class="text-slate-700 dark:text-slate-300 text-sm font-medium">Type: All</p>
+<span class="material-symbols-outlined text-slate-500 dark:text-slate-400 text-xl">expand_more</span>
+</button>
+</div>
+</div>
+<div class="overflow-x-auto">
+<table class="min-w-full text-sm text-left">
+<thead class="bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
+<tr class="text-xs font-semibold uppercase text-slate-500 dark:text-slate-400">
+<th class="px-6 py-3" scope="col">Transaction ID</th>
+<th class="px-6 py-3" scope="col">Timestamp</th>
+<th class="px-6 py-3" scope="col">Account</th>
+<th class="px-6 py-3" scope="col">Type</th>
+<th class="px-6 py-3 text-right" scope="col">Amount</th>
+<th class="px-6 py-3" scope="col">Status</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-slate-200 dark:divide-slate-800">
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+<td class="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">txn_1a2b3c4d5e</td>
+<td class="px-6 py-4 whitespace-nowrap">2023-10-27 14:30 UTC</td>
+<td class="px-6 py-4 font-medium">acct_receivable</td>
+<td class="px-6 py-4">Debit</td>
+<td class="px-6 py-4 font-medium text-right">$5,000.00</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">Posted</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+<td class="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">txn_f6g7h8i9j0</td>
+<td class="px-6 py-4 whitespace-nowrap">2023-10-27 11:15 UTC</td>
+<td class="px-6 py-4 font-medium">cash_on_hand</td>
+<td class="px-6 py-4">Credit</td>
+<td class="px-6 py-4 font-medium text-right">$5,000.00</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">Posted</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+<td class="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">txn_k1l2m3n4p5</td>
+<td class="px-6 py-4 whitespace-nowrap">2023-10-26 22:00 UTC</td>
+<td class="px-6 py-4 font-medium">customer_payments</td>
+<td class="px-6 py-4">Credit</td>
+<td class="px-6 py-4 font-medium text-right">$1,250.75</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center rounded-full bg-orange-100 dark:bg-orange-900/50 px-2.5 py-0.5 text-xs font-medium text-orange-800 dark:text-orange-300">Pending</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+<td class="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">txn_q6r7s8t9u0</td>
+<td class="px-6 py-4 whitespace-nowrap">2023-10-26 18:45 UTC</td>
+<td class="px-6 py-4 font-medium">payroll_expense</td>
+<td class="px-6 py-4">Debit</td>
+<td class="px-6 py-4 font-medium text-right">$15,200.00</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">Posted</span>
+</td>
+</tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer">
+<td class="px-6 py-4 font-mono text-slate-600 dark:text-slate-400">txn_v1w2x3y4z5</td>
+<td class="px-6 py-4 whitespace-nowrap">2023-10-25 09:05 UTC</td>
+<td class="px-6 py-4 font-medium">operating_expenses</td>
+<td class="px-6 py-4">Debit</td>
+<td class="px-6 py-4 font-medium text-right">$850.00</td>
+<td class="px-6 py-4">
+<span class="inline-flex items-center rounded-full bg-green-100 dark:bg-green-900/50 px-2.5 py-0.5 text-xs font-medium text-green-800 dark:text-green-300">Posted</span>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex items-center justify-between p-4 border-t border-slate-200 dark:border-slate-800">
+<span class="text-sm text-slate-600 dark:text-slate-400">Showing 1 to 5 of 1,234 entries</span>
+<div class="inline-flex gap-1">
+<button class="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-50" disabled="">
+<span class="material-symbols-outlined text-lg">chevron_left</span>
+</button>
+<button class="inline-flex items-center justify-center h-8 w-8 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700">
+<span class="material-symbols-outlined text-lg">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+</div>
+</div>
+</body></html>
