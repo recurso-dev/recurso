@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,10 +15,11 @@ import (
 )
 
 type GiftService struct {
-	giftRepo         port.GiftRepository
-	subscriptionRepo port.SubscriptionRepository // Use Repo directly or via Service? Repo is simpler for creation.
-	invoiceService   *InvoiceService             // To charge the buyer
-	planRepo         port.PlanRepository
+	giftRepo            port.GiftRepository
+	subscriptionRepo    port.SubscriptionRepository
+	invoiceService      *InvoiceService
+	planRepo            port.PlanRepository
+	notificationService *NotificationService
 }
 
 func NewGiftService(
@@ -25,31 +27,43 @@ func NewGiftService(
 	subscriptionRepo port.SubscriptionRepository,
 	invoiceService *InvoiceService,
 	planRepo port.PlanRepository,
+	notificationService *NotificationService,
 ) *GiftService {
 	return &GiftService{
-		giftRepo:         giftRepo,
-		subscriptionRepo: subscriptionRepo,
-		invoiceService:   invoiceService,
-		planRepo:         planRepo,
+		giftRepo:            giftRepo,
+		subscriptionRepo:    subscriptionRepo,
+		invoiceService:      invoiceService,
+		planRepo:            planRepo,
+		notificationService: notificationService,
 	}
 }
 
-// PurchaseGift creates a new Gift record. Ideally, it should also trigger an invoice/charge.
-func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buyerID uuid.UUID, planID uuid.UUID, durationMonths int) (*domain.Gift, error) {
-	// 1. Generate Code
-	bytes := make([]byte, 4)
-	if _, err := rand.Read(bytes); err != nil {
+// PurchaseGift creates a new Gift record, generates a buyer invoice, and notifies the recipient.
+func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buyerID uuid.UUID, planID uuid.UUID, recipientEmail string, durationMonths int) (*domain.Gift, error) {
+	// 1. Fetch plan to calculate price
+	plan, err := s.planRepo.GetByID(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plan: %w", err)
+	}
+	if len(plan.Prices) == 0 {
+		return nil, fmt.Errorf("plan has no prices")
+	}
+
+	// 2. Generate Code
+	codeBytes := make([]byte, 4)
+	if _, err := rand.Read(codeBytes); err != nil {
 		return nil, err
 	}
-	code := fmt.Sprintf("GIFT-%s", hex.EncodeToString(bytes))
+	code := fmt.Sprintf("GIFT-%s", hex.EncodeToString(codeBytes))
 
-	// 2. Create Gift
+	// 3. Create Gift
 	gift := &domain.Gift{
 		ID:              uuid.New(),
 		TenantID:        tenantID,
 		Code:            code,
 		PlanID:          planID,
 		BuyerCustomerID: buyerID,
+		RecipientEmail:  recipientEmail,
 		Status:          domain.GiftStatusPurchased,
 		DurationMonths:  durationMonths,
 		CreatedAt:       time.Now(),
@@ -60,10 +74,47 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 		return nil, err
 	}
 
-	// TODO: Create an Invoice for the Buyer here.
-	// For now, we assume the API caller will handle the invoice creation or we do it async.
-	// But in a real system, we'd probably create a "Pending" Invoice and only activate Gift when paid.
-	// Simplifying for this MVP: Gift is active immediately (Pre-paid / Trusted).
+	// 4. Create buyer invoice for plan price * duration
+	if s.invoiceService != nil {
+		price := plan.Prices[0]
+		giftAmount := price.Amount * int64(durationMonths)
+
+		now := time.Now()
+		invID := uuid.New()
+		inv := &domain.Invoice{
+			ID:            invID,
+			TenantID:      tenantID,
+			CustomerID:    buyerID,
+			InvoiceNumber: fmt.Sprintf("INV-GIFT-%d-%s", now.UnixNano(), invID.String()[:8]),
+			BillingReason: "gift_purchase",
+			Status:        domain.InvoiceStatusOpen,
+			Currency:      price.Currency,
+			Subtotal:      giftAmount,
+			Total:         giftAmount,
+			CreatedAt:     now,
+			DueDate:       now,
+			PaymentTerms:  "net0",
+		}
+
+		if err := s.invoiceService.InvoiceRepo.Create(ctx, inv); err != nil {
+			slog.Warn("failed to create gift buyer invoice", "error", err, "gift_id", gift.ID)
+		}
+	}
+
+	// 5. Send recipient notification email
+	if s.notificationService != nil && recipientEmail != "" {
+		duration := fmt.Sprintf("%d month(s)", durationMonths)
+		emailErr := s.notificationService.SendGiftPurchased(ctx, GiftPurchasedData{
+			RecipientEmail: recipientEmail,
+			PlanName:       plan.Name,
+			Duration:       duration,
+			GiftCode:       code,
+			RedeemURL:      fmt.Sprintf("%s/portal/redeem?code=%s", s.notificationService.baseURL, code),
+		})
+		if emailErr != nil {
+			slog.Warn("failed to send gift notification email", "error", emailErr, "gift_id", gift.ID)
+		}
+	}
 
 	return gift, nil
 }

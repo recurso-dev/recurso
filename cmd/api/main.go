@@ -246,7 +246,7 @@ func main() {
 
 	// Gift (P43)
 	giftRepo := db.NewGiftRepository(dbx)
-	giftService := service.NewGiftService(giftRepo, subscriptionRepo, invoiceService, planRepo)
+	giftService := service.NewGiftService(giftRepo, subscriptionRepo, invoiceService, planRepo, notificationService)
 	giftHandler := handler.NewGiftHandler(giftService)
 
 	// 6. Initialize Workers

@@ -465,6 +465,34 @@ const SubscriptionCancelledTemplate = `
 </p>
 `
 
+// GiftPurchasedTemplate notifies the recipient that they've received a gift subscription
+const GiftPurchasedTemplate = `
+<h1>You've Received a Gift!</h1>
+<p>Hello,</p>
+<p>Someone has gifted you a subscription. Use the code below to activate your gift.</p>
+
+<div class="info-box">
+    <div class="info-row">
+        <span class="info-label">Plan</span>
+        <span class="info-value">{{.PlanName}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Duration</span>
+        <span class="info-value">{{.Duration}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Gift Code</span>
+        <span class="info-value" style="font-size: 18px; letter-spacing: 2px;">{{.GiftCode}}</span>
+    </div>
+</div>
+
+<p style="text-align: center;">
+    <a href="{{.RedeemURL}}" class="btn">Redeem Gift</a>
+</p>
+
+<p style="font-size: 14px; color: #64748b;">This gift code does not expire. You can redeem it anytime.</p>
+`
+
 // GSTInvoiceTemplate for GST-compliant invoice email
 const GSTInvoiceTemplate = `
 <h1>Tax Invoice</h1>

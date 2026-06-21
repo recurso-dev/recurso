@@ -97,17 +97,27 @@ func (m *mockPlanRepoForGift) GetByCode(ctx context.Context, tenantID uuid.UUID,
 
 // --- Tests ---
 
+func testPlan(planID uuid.UUID) *domain.Plan {
+	return &domain.Plan{
+		ID:   planID,
+		Name: "Test Plan",
+		Prices: []domain.Price{
+			{ID: uuid.New(), PlanID: planID, Currency: "USD", Amount: 1000, Type: "recurring"},
+		},
+	}
+}
+
 func TestPurchaseGift_Success(t *testing.T) {
 	giftRepo := newMockGiftRepo()
 	subRepo := &mockSubRepoForGift{}
-	planRepo := &mockPlanRepoForGift{}
-	svc := NewGiftService(giftRepo, subRepo, nil, planRepo)
+	planID := uuid.New()
+	planRepo := &mockPlanRepoForGift{plan: testPlan(planID)}
+	svc := NewGiftService(giftRepo, subRepo, nil, planRepo, nil)
 
 	tenantID := uuid.New()
 	buyerID := uuid.New()
-	planID := uuid.New()
 
-	gift, err := svc.PurchaseGift(context.Background(), tenantID, buyerID, planID, 3)
+	gift, err := svc.PurchaseGift(context.Background(), tenantID, buyerID, planID, "recipient@example.com", 3)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -127,13 +137,17 @@ func TestPurchaseGift_Success(t *testing.T) {
 	if gift.BuyerCustomerID != buyerID {
 		t.Error("buyer ID mismatch")
 	}
+	if gift.RecipientEmail != "recipient@example.com" {
+		t.Errorf("recipient_email = %q, want recipient@example.com", gift.RecipientEmail)
+	}
 }
 
 func TestPurchaseGift_CodeFormat(t *testing.T) {
 	giftRepo := newMockGiftRepo()
-	svc := NewGiftService(giftRepo, &mockSubRepoForGift{}, nil, &mockPlanRepoForGift{})
+	planID := uuid.New()
+	svc := NewGiftService(giftRepo, &mockSubRepoForGift{}, nil, &mockPlanRepoForGift{plan: testPlan(planID)}, nil)
 
-	gift, err := svc.PurchaseGift(context.Background(), uuid.New(), uuid.New(), uuid.New(), 6)
+	gift, err := svc.PurchaseGift(context.Background(), uuid.New(), uuid.New(), planID, "", 6)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -148,20 +162,15 @@ func TestRedeemGift_Success(t *testing.T) {
 	giftRepo := newMockGiftRepo()
 	subRepo := &mockSubRepoForGift{}
 	planID := uuid.New()
-	planRepo := &mockPlanRepoForGift{
-		plan: &domain.Plan{
-			ID:   planID,
-			Name: "Pro Monthly",
-		},
-	}
-	svc := NewGiftService(giftRepo, subRepo, nil, planRepo)
+	planRepo := &mockPlanRepoForGift{plan: testPlan(planID)}
+	svc := NewGiftService(giftRepo, subRepo, nil, planRepo, nil)
 
 	tenantID := uuid.New()
 	buyerID := uuid.New()
 	recipientID := uuid.New()
 
 	// Purchase first
-	gift, _ := svc.PurchaseGift(context.Background(), tenantID, buyerID, planID, 6)
+	gift, _ := svc.PurchaseGift(context.Background(), tenantID, buyerID, planID, "", 6)
 
 	// Redeem
 	sub, err := svc.RedeemGift(context.Background(), tenantID, recipientID, gift.Code)
@@ -193,13 +202,11 @@ func TestRedeemGift_DoubleRedeem(t *testing.T) {
 	giftRepo := newMockGiftRepo()
 	subRepo := &mockSubRepoForGift{}
 	planID := uuid.New()
-	planRepo := &mockPlanRepoForGift{
-		plan: &domain.Plan{ID: planID, Name: "Pro"},
-	}
-	svc := NewGiftService(giftRepo, subRepo, nil, planRepo)
+	planRepo := &mockPlanRepoForGift{plan: testPlan(planID)}
+	svc := NewGiftService(giftRepo, subRepo, nil, planRepo, nil)
 
 	tenantID := uuid.New()
-	gift, _ := svc.PurchaseGift(context.Background(), tenantID, uuid.New(), planID, 3)
+	gift, _ := svc.PurchaseGift(context.Background(), tenantID, uuid.New(), planID, "", 3)
 
 	// First redeem
 	_, err := svc.RedeemGift(context.Background(), tenantID, uuid.New(), gift.Code)
@@ -219,7 +226,7 @@ func TestRedeemGift_DoubleRedeem(t *testing.T) {
 
 func TestRedeemGift_InvalidCode(t *testing.T) {
 	giftRepo := newMockGiftRepo()
-	svc := NewGiftService(giftRepo, &mockSubRepoForGift{}, nil, &mockPlanRepoForGift{})
+	svc := NewGiftService(giftRepo, &mockSubRepoForGift{}, nil, &mockPlanRepoForGift{}, nil)
 
 	_, err := svc.RedeemGift(context.Background(), uuid.New(), uuid.New(), "FAKE-CODE")
 	if err == nil {
@@ -234,13 +241,11 @@ func TestRedeemGift_SubscriptionDuration(t *testing.T) {
 	giftRepo := newMockGiftRepo()
 	subRepo := &mockSubRepoForGift{}
 	planID := uuid.New()
-	planRepo := &mockPlanRepoForGift{
-		plan: &domain.Plan{ID: planID, Name: "Annual"},
-	}
-	svc := NewGiftService(giftRepo, subRepo, nil, planRepo)
+	planRepo := &mockPlanRepoForGift{plan: testPlan(planID)}
+	svc := NewGiftService(giftRepo, subRepo, nil, planRepo, nil)
 
 	tenantID := uuid.New()
-	gift, _ := svc.PurchaseGift(context.Background(), tenantID, uuid.New(), planID, 12)
+	gift, _ := svc.PurchaseGift(context.Background(), tenantID, uuid.New(), planID, "", 12)
 
 	sub, err := svc.RedeemGift(context.Background(), tenantID, uuid.New(), gift.Code)
 	if err != nil {
