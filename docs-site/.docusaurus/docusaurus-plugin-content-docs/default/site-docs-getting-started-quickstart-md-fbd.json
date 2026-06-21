@@ -1,0 +1,19 @@
+{
+  "id": "getting-started/quickstart",
+  "title": "Quickstart Guide",
+  "description": "This guide will walk you through creating your first customer and subscription using the Recurso API.",
+  "source": "@site/docs/getting-started/quickstart.md",
+  "sourceDirName": "getting-started",
+  "slug": "/getting-started/quickstart",
+  "permalink": "/getting-started/quickstart",
+  "draft": false,
+  "unlisted": false,
+  "tags": [],
+  "version": "current",
+  "frontMatter": {},
+  "sidebar": "tutorialSidebar",
+  "previous": {
+    "title": "Installation",
+    "permalink": "/getting-started/installation"
+  }
+}
