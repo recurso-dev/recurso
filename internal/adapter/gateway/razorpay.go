@@ -97,6 +97,39 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 	return id, nil
 }
 
-// Mock Gateway Update needed?
-// Yes, since we changed interface. But mock_gateway.go is separate.
-// We probably need to update mock_gateway.go too.
+func (g *RazorpayGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
+	// Create a new order for the retry attempt
+	data := map[string]interface{}{
+		"amount":   amount,
+		"currency": currency,
+		"receipt":  "retry_" + invoiceID,
+		"notes": map[string]interface{}{
+			"invoice_id":    invoiceID,
+			"retry_payment": "true",
+		},
+	}
+
+	body, err := g.client.Order.Create(data, nil)
+	if err != nil {
+		return nil, fmt.Errorf("razorpay retry payment infra error: %w", err)
+	}
+
+	orderID, ok := body["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("razorpay response missing order id")
+	}
+
+	status, _ := body["status"].(string)
+	if status == "paid" {
+		return &port.PaymentResult{
+			Success:   true,
+			PaymentID: orderID,
+		}, nil
+	}
+
+	return &port.PaymentResult{
+		Success:   false,
+		ErrorCode: "payment_pending",
+		ErrorMsg:  fmt.Sprintf("order created but not yet paid: %s", orderID),
+	}, nil
+}

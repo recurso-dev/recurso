@@ -47,3 +47,10 @@ func (r *SmartRouter) CreateSubscription(ctx context.Context, planID string, tot
 	}
 	return r.Stripe.CreateSubscription(ctx, planID, totalCount, customerEmail, startAt, currency)
 }
+
+func (r *SmartRouter) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
+	if strings.ToUpper(currency) == "INR" {
+		return r.Razorpay.RetryPayment(ctx, invoiceID, amount, currency)
+	}
+	return r.Stripe.RetryPayment(ctx, invoiceID, amount, currency)
+}

@@ -111,3 +111,68 @@ func TestSmartDunningSimulation(t *testing.T) {
 		fmt.Println("✅ Agent successfully converged on the optimal retry window!")
 	}
 }
+
+// TestSmartDunningFullLoop tests: action selection → outcome recording → weight update → improved selection
+func TestSmartDunningFullLoop(t *testing.T) {
+	repo := &mockDunningRepo{weights: make(map[string]domain.DunningWeight)}
+	svc := NewSmartRetryService(repo)
+	svc.epsilon = 0.0 // Pure exploitation for deterministic test
+
+	invoice := &domain.Invoice{
+		Currency:   "INR",
+		RetryCount: 0,
+	}
+
+	// Step 1: With no data, should select default (24h)
+	decision := svc.DecideRetry(context.Background(), invoice, "card_declined")
+	if decision == nil {
+		t.Fatal("expected non-nil decision")
+	}
+	if decision.ContextKey != "INR:card_declined" {
+		t.Errorf("expected context key INR:card_declined, got %s", decision.ContextKey)
+	}
+
+	// Step 2: Record outcomes that make "1h" the best arm
+	for i := 0; i < 50; i++ {
+		// 1h arm: always succeeds
+		err := svc.RecordOutcome(context.Background(), domain.DunningHistory{
+			ID:         uuid.New(),
+			ContextKey: "INR:card_declined",
+			ActionID:   "1h",
+			Reward:     1.0,
+			Outcome:    "success",
+		})
+		if err != nil {
+			t.Fatalf("failed to record outcome: %v", err)
+		}
+
+		// 24h arm: always fails
+		err = svc.RecordOutcome(context.Background(), domain.DunningHistory{
+			ID:         uuid.New(),
+			ContextKey: "INR:card_declined",
+			ActionID:   "24h",
+			Reward:     0.0,
+			Outcome:    "failure",
+		})
+		if err != nil {
+			t.Fatalf("failed to record outcome: %v", err)
+		}
+	}
+
+	// Step 3: After learning, agent should now prefer "1h"
+	action := svc.SelectAction(context.Background(), invoice, "card_declined")
+	if action.ID != "1h" {
+		t.Errorf("after learning, expected agent to select '1h' but got '%s'", action.ID)
+	}
+
+	// Step 4: Verify weights reflect the learning
+	weights, _ := repo.GetWeights(context.Background(), "INR:card_declined")
+	for _, w := range weights {
+		if w.ActionID == "1h" && w.AverageReward < 0.9 {
+			t.Errorf("expected 1h average reward > 0.9, got %f", w.AverageReward)
+		}
+		if w.ActionID == "24h" && w.AverageReward > 0.1 {
+			t.Errorf("expected 24h average reward < 0.1, got %f", w.AverageReward)
+		}
+	}
+}

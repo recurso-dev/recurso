@@ -124,6 +124,47 @@ func (s *StripeGateway) CreateSubscription(ctx context.Context, planID string, t
 	return sub.ID, nil
 }
 
+func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
+	params := &stripe.PaymentIntentParams{
+		Amount:   stripe.Int64(amount),
+		Currency: stripe.String(currency),
+		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
+			Enabled: stripe.Bool(true),
+		},
+		Confirm: stripe.Bool(true),
+		Metadata: map[string]string{
+			"invoice_id":   invoiceID,
+			"retry_payment": "true",
+		},
+	}
+
+	pi, err := s.sc.PaymentIntents.New(params)
+	if err != nil {
+		stripeErr, ok := err.(*stripe.Error)
+		if ok {
+			return &port.PaymentResult{
+				Success:   false,
+				ErrorCode: string(stripeErr.Code),
+				ErrorMsg:  stripeErr.Msg,
+			}, nil
+		}
+		return nil, fmt.Errorf("stripe retry payment infra error: %w", err)
+	}
+
+	if pi.Status == stripe.PaymentIntentStatusSucceeded {
+		return &port.PaymentResult{
+			Success:   true,
+			PaymentID: pi.ID,
+		}, nil
+	}
+
+	return &port.PaymentResult{
+		Success:   false,
+		ErrorCode: string(pi.Status),
+		ErrorMsg:  fmt.Sprintf("payment intent status: %s", pi.Status),
+	}, nil
+}
+
 // Helper for Webhook Handler to call directly if needed
 func (s *StripeGateway) ConstructEvent(payload []byte, header string) (stripe.Event, error) {
 	return webhook.ConstructEvent(payload, header, s.webhookSecret)

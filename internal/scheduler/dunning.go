@@ -35,6 +35,7 @@ func DefaultDunningConfig() DunningConfig {
 type InvoiceRepoForDunning interface {
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
+	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
 }
 
@@ -180,9 +181,11 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 		log.Printf("📧 Sent dunning level %d email for invoice %s to %s", level, invoice.InvoiceNumber, invoice.CustomerEmail)
 	}
 
-	// Update retry info
-	if err := s.invoiceRepo.UpdateRetryInfo(ctx, invoice.ID, nextRetry, invoice.RetryCount+1); err != nil {
+	// Update retry info and hand off to RetryWorker for smart dunning
+	if err := s.invoiceRepo.UpdateRetryInfoWithDunning(ctx, invoice.ID, nextRetry, invoice.RetryCount+1, "worker"); err != nil {
 		log.Printf("Failed to update retry info for invoice %s: %v", invoice.InvoiceNumber, err)
+	} else {
+		log.Printf("Handed invoice %s to RetryWorker for smart dunning", invoice.InvoiceNumber)
 	}
 }
 

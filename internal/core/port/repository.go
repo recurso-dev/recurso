@@ -24,6 +24,7 @@ type InvoiceRepository interface {
 	Update(ctx context.Context, invoice *domain.Invoice) error
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
+	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
 	GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error)

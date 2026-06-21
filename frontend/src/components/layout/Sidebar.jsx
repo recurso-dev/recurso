@@ -134,6 +134,12 @@ const Sidebar = () => {
                         label="Usage"
                         isActive={path.startsWith("/usage")}
                     />
+                    <SidebarItem
+                        to="/dunning"
+                        icon="psychology"
+                        label="Smart Dunning"
+                        isActive={path.startsWith("/dunning")}
+                    />
 
                     <div className="pt-4 pb-2">
                         <p className="px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">

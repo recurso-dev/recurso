@@ -334,9 +334,13 @@ func main() {
 	// Cancellation Handler (P30 - easy cancellation)
 	cancellationHandler := handler.NewCancellationHandler(subscriptionService, consentService, notificationService)
 
+	// Dunning Analytics
+	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
+	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc)
+
 	// Payment Handlers
 	paymentHandler := handler.NewPaymentHandler(paymentGateway, invoiceRepo)
-	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway)
+	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo)
 
 	// 8. Setup Router
 	r := gin.Default()
@@ -462,6 +466,9 @@ func main() {
 		{
 			analytics.GET("/mrr", analyticsHandler.GetMRR)
 			analytics.GET("/usage", analyticsHandler.GetUsageStats)
+			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
+			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
+			analytics.GET("/dunning/history", dunningHandler.GetHistory)
 		}
 		v1.POST("/analytics/ask", analyticsHandler.Ask) // P48 GenAI
 

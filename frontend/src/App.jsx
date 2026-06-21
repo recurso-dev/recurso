@@ -36,6 +36,9 @@ import PortalRedeem from './pages/portal/PortalRedeem'
 import Quotes from './pages/Quotes'
 import CreateQuote from './pages/CreateQuote'
 
+// Smart Dunning
+import DunningDashboard from './pages/DunningDashboard'
+
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
 
@@ -94,6 +97,7 @@ function App() {
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/referrals" element={<Referrals />} />
                             <Route path="/gifts" element={<Gifts />} />
+                            <Route path="/dunning" element={<DunningDashboard />} />
                             <Route path="/settings/irp" element={<IRPSettings />} />
                         </Route>
                     </Route>

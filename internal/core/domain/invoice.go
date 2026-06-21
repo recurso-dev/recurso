@@ -59,6 +59,12 @@ type Invoice struct {
 	// Retry Logic
 	NextRetryAt *time.Time `json:"next_retry_at,omitempty"`
 	RetryCount  int        `json:"retry_count"`
+
+	// Smart Dunning (RL feedback loop)
+	DunningActionID   string `json:"dunning_action_id,omitempty" db:"dunning_action_id"`
+	DunningContextKey string `json:"dunning_context_key,omitempty" db:"dunning_context_key"`
+	LastPaymentError  string `json:"last_payment_error,omitempty" db:"last_payment_error"`
+	DunningManagedBy  string `json:"dunning_managed_by,omitempty" db:"dunning_managed_by"`
 }
 
 // OverdueInvoice contains invoice info with customer details for dunning

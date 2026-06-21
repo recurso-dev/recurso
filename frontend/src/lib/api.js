@@ -81,6 +81,11 @@ export const endpoints = {
   createReferral: (data) => api.post('/referrals', data),
   generateReferralCode: (data) => api.post('/referrals/generate-code', data),
 
+  // Smart Dunning Analytics
+  getDunningOverview: () => api.get('/analytics/dunning/overview'),
+  getDunningWeights: () => api.get('/analytics/dunning/weights'),
+  getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
+
   // E-Invoice (P25)
   getEInvoiceStatus: (invoiceId) => api.get(`/invoices/${invoiceId}/einvoice`),
   retryEInvoice: (invoiceId) => api.post(`/invoices/${invoiceId}/einvoice/retry`),

@@ -63,3 +63,64 @@ func (r *DunningRepository) RecordHistory(ctx context.Context, history domain.Du
 	)
 	return err
 }
+
+// GetAllWeights returns all dunning weights across all contexts
+func (r *DunningRepository) GetAllWeights(ctx context.Context) ([]domain.DunningWeight, error) {
+	query := `
+		SELECT context_key, action_id, average_reward, sample_count, updated_at
+		FROM dunning_weights
+		ORDER BY context_key, action_id
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var weights []domain.DunningWeight
+	for rows.Next() {
+		var w domain.DunningWeight
+		if err := rows.Scan(&w.ContextKey, &w.ActionID, &w.AverageReward, &w.SampleCount, &w.UpdatedAt); err != nil {
+			return nil, err
+		}
+		weights = append(weights, w)
+	}
+	return weights, nil
+}
+
+// GetRecentHistory returns the most recent dunning history entries
+func (r *DunningRepository) GetRecentHistory(ctx context.Context, limit int) ([]domain.DunningHistory, error) {
+	query := `
+		SELECT id, tenant_id, invoice_id, context_key, action_id, retry_interval, outcome, reward, created_at
+		FROM dunning_history
+		ORDER BY created_at DESC
+		LIMIT $1
+	`
+	rows, err := r.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var history []domain.DunningHistory
+	for rows.Next() {
+		var h domain.DunningHistory
+		if err := rows.Scan(&h.ID, &h.TenantID, &h.InvoiceID, &h.ContextKey, &h.ActionID, &h.RetryInterval, &h.Outcome, &h.Reward, &h.CreatedAt); err != nil {
+			return nil, err
+		}
+		history = append(history, h)
+	}
+	return history, nil
+}
+
+// GetHistoryStats returns aggregate stats from dunning history
+func (r *DunningRepository) GetHistoryStats(ctx context.Context) (totalRetries int, totalSuccesses int, err error) {
+	query := `
+		SELECT
+			COUNT(*) as total_retries,
+			COUNT(*) FILTER (WHERE outcome = 'success') as total_successes
+		FROM dunning_history
+	`
+	err = r.db.QueryRowContext(ctx, query).Scan(&totalRetries, &totalSuccesses)
+	return
+}

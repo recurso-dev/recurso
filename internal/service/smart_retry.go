@@ -14,6 +14,14 @@ type DunningRepository interface {
 	RecordHistory(ctx context.Context, history domain.DunningHistory) error
 }
 
+// RetryDecision contains the full details of a retry decision for RL attribution
+type RetryDecision struct {
+	NextRetryAt time.Time
+	Action      domain.DunningAction
+	ContextKey  string
+	ErrorCode   string
+}
+
 type SmartRetryService struct {
 	repo    DunningRepository
 	epsilon float64 // Exploration rate (e.g., 0.1)
@@ -26,16 +34,33 @@ func NewSmartRetryService(repo DunningRepository) *SmartRetryService {
 	}
 }
 
-// GetNextRetryTime calculates the absolute time for the next retry attempt
+// GetNextRetryTime calculates the absolute time for the next retry attempt (backward-compatible wrapper)
 func (s *SmartRetryService) GetNextRetryTime(invoice *domain.Invoice) time.Time {
-	// Max retries safety
-	if invoice.RetryCount >= 10 {
+	decision := s.DecideRetry(context.Background(), invoice, "GENERIC_FAILURE")
+	if decision == nil {
 		return time.Time{}
 	}
+	return decision.NextRetryAt
+}
 
-	// For MVP, we pass "GENERIC_FAILURE" as errorCode if not provided
-	action := s.SelectAction(context.Background(), invoice, "GENERIC_FAILURE")
-	return time.Now().Add(action.Interval)
+// DecideRetry selects the next retry action and returns full decision details for RL attribution
+func (s *SmartRetryService) DecideRetry(ctx context.Context, invoice *domain.Invoice, errorCode string) *RetryDecision {
+	if invoice.RetryCount >= 10 {
+		return nil
+	}
+
+	action := s.SelectAction(ctx, invoice, errorCode)
+	dContext := domain.DunningContext{
+		Currency:  invoice.Currency,
+		ErrorCode: errorCode,
+	}
+
+	return &RetryDecision{
+		NextRetryAt: time.Now().Add(action.Interval),
+		Action:      action,
+		ContextKey:  dContext.Key(),
+		ErrorCode:   errorCode,
+	}
 }
 
 // SelectAction chooses the optimal retry interval based on epsilon-greedy strategy

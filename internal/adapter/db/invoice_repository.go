@@ -27,9 +27,10 @@ func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) err
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, due_date, next_retry_at, retry_count,
-			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message
+			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
+			dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
 	`
 	// amount_paid default 0 if not set
 	amountPaid := int64(0)
@@ -42,6 +43,11 @@ func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) err
 		eInvoiceStatus = nil
 	}
 
+	managedBy := inv.DunningManagedBy
+	if managedBy == "" {
+		managedBy = "scheduler"
+	}
+
 	_, err := r.db.ExecContext(ctx, query,
 		inv.ID, inv.TenantID, inv.SubscriptionID, inv.CustomerID, inv.InvoiceNumber, inv.Status,
 		inv.Currency, inv.Subtotal, inv.TaxAmount, inv.Total, amountPaid,
@@ -49,11 +55,19 @@ func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) err
 		inv.SignedQRCode, eInvoiceStatus, inv.TDSAmount,
 		inv.CreatedAt, inv.DueDate, inv.NextRetryAt, inv.RetryCount,
 		inv.AckDate, inv.EInvoiceRetryCount, inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
+		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey), nilIfEmpty(inv.LastPaymentError), managedBy,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert invoice: %w", err)
 	}
 	return nil
+}
+
+func nilIfEmpty(s string) interface{} {
+	if s == "" {
+		return nil
+	}
+	return s
 }
 
 // CreateWithTx creates an invoice within an existing transaction for atomic operations.
@@ -65,9 +79,10 @@ func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *d
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, due_date, next_retry_at, retry_count,
-			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message
+			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
+			dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
 	`
 	amountPaid := int64(0)
 	if inv.PaidAt != nil {
@@ -79,6 +94,11 @@ func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *d
 		eInvoiceStatus = nil
 	}
 
+	managedBy := inv.DunningManagedBy
+	if managedBy == "" {
+		managedBy = "scheduler"
+	}
+
 	_, err := tx.ExecContext(ctx, query,
 		inv.ID, inv.TenantID, inv.SubscriptionID, inv.CustomerID, inv.InvoiceNumber, inv.Status,
 		inv.Currency, inv.Subtotal, inv.TaxAmount, inv.Total, amountPaid,
@@ -86,6 +106,7 @@ func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *d
 		inv.SignedQRCode, eInvoiceStatus, inv.TDSAmount,
 		inv.CreatedAt, inv.DueDate, inv.NextRetryAt, inv.RetryCount,
 		inv.AckDate, inv.EInvoiceRetryCount, inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
+		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey), nilIfEmpty(inv.LastPaymentError), managedBy,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert invoice in tx: %w", err)
@@ -119,7 +140,9 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, due_date, paid_at, next_retry_at, retry_count,
 			COALESCE(ack_date, ''), e_invoice_retry_count,
-			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, '')
+			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, ''),
+			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
+			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')
 		FROM invoices WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -138,6 +161,8 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
 		&inv.AckDate, &inv.EInvoiceRetryCount,
 		&inv.EInvoiceNextRetryAt, &inv.EInvoiceErrorMessage,
+		&inv.DunningActionID, &inv.DunningContextKey,
+		&inv.LastPaymentError, &inv.DunningManagedBy,
 	)
 
 	inv.HSNCode = hsnCode.String
@@ -161,8 +186,10 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		SET status = $1, amount_paid = $2, paid_at = $3, next_retry_at = $4, retry_count = $5,
 		    tds_amount = $6, signed_qr_code = $7, e_invoice_status = $8, irn = $9,
 		    ack_no = $10, ack_date = $11, e_invoice_retry_count = $12,
-		    e_invoice_next_retry_at = $13, e_invoice_error_message = $14
-		WHERE id = $15
+		    e_invoice_next_retry_at = $13, e_invoice_error_message = $14,
+		    dunning_action_id = $15, dunning_context_key = $16,
+		    last_payment_error = $17, dunning_managed_by = $18
+		WHERE id = $19
 	`
 	amountPaid := inv.Total // Simplification as we update usually for generic payment
 
@@ -171,6 +198,8 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		inv.TDSAmount, inv.SignedQRCode, inv.EInvoiceStatus, inv.IRN,
 		inv.AckNo, inv.AckDate, inv.EInvoiceRetryCount,
 		inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
+		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey),
+		nilIfEmpty(inv.LastPaymentError), nilIfEmpty(inv.DunningManagedBy),
 		inv.ID,
 	)
 	if err != nil {
@@ -181,16 +210,19 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 
 func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
 	query := `
-		SELECT 
+		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
 			currency, subtotal, tax_amount, total, amount_paid,
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count
-		FROM invoices 
-		WHERE status IN ('open', 'past_due') 
-		  AND next_retry_at IS NOT NULL 
+			created_at, due_date, paid_at, next_retry_at, retry_count,
+			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
+			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')
+		FROM invoices
+		WHERE status IN ('open', 'past_due')
+		  AND next_retry_at IS NOT NULL
 		  AND next_retry_at <= $1
+		  AND dunning_managed_by = 'worker'
 		LIMIT 10
 	`
 	rows, err := r.db.QueryContext(ctx, query, time.Now().UTC())
@@ -209,6 +241,8 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &inv.HSNCode, &inv.IRN, &inv.AckNo,
 			&inv.SignedQRCode, &inv.EInvoiceStatus, &inv.TDSAmount,
 			&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
+			&inv.DunningActionID, &inv.DunningContextKey,
+			&inv.LastPaymentError, &inv.DunningManagedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -314,6 +348,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 		WHERE i.status IN ('open', 'past_due')
 			AND i.due_date < CURRENT_TIMESTAMP
 			AND (i.next_retry_at IS NULL OR i.next_retry_at <= CURRENT_TIMESTAMP)
+			AND (i.dunning_managed_by = 'scheduler' OR i.dunning_managed_by IS NULL)
 		ORDER BY i.due_date ASC
 		LIMIT 50
 	`
@@ -349,6 +384,20 @@ func (r *InvoiceRepository) UpdateRetryInfo(ctx context.Context, invoiceID uuid.
 	_, err := r.db.ExecContext(ctx, query, nextRetry, retryCount, invoiceID)
 	if err != nil {
 		return fmt.Errorf("failed to update retry info: %w", err)
+	}
+	return nil
+}
+
+// UpdateRetryInfoWithDunning updates retry info and sets dunning_managed_by for handoff
+func (r *InvoiceRepository) UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error {
+	query := `
+		UPDATE invoices
+		SET next_retry_at = $1, retry_count = $2, status = 'past_due', dunning_managed_by = $3
+		WHERE id = $4
+	`
+	_, err := r.db.ExecContext(ctx, query, nextRetry, retryCount, managedBy, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to update retry info with dunning: %w", err)
 	}
 	return nil
 }

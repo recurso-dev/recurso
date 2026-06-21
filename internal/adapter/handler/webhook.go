@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -9,24 +10,35 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
 	"github.com/recur-so/recurso/internal/service"
 )
 
 type WebhookHandler struct {
-	subService *service.SubscriptionService
-	gateway    port.PaymentGateway
-	logger     *slog.Logger
+	subService   *service.SubscriptionService
+	gateway      port.PaymentGateway
+	retryService *service.SmartRetryService
+	invoiceRepo  port.InvoiceRepository
+	logger       *slog.Logger
 }
 
-func NewWebhookHandler(subService *service.SubscriptionService, gateway port.PaymentGateway) *WebhookHandler {
+func NewWebhookHandler(
+	subService *service.SubscriptionService,
+	gateway port.PaymentGateway,
+	retryService *service.SmartRetryService,
+	invoiceRepo port.InvoiceRepository,
+) *WebhookHandler {
 	return &WebhookHandler{
-		subService: subService,
-		gateway:    gateway,
-		logger:     slog.Default().With("component", "webhook_handler"),
+		subService:   subService,
+		gateway:      gateway,
+		retryService: retryService,
+		invoiceRepo:  invoiceRepo,
+		logger:       slog.Default().With("component", "webhook_handler"),
 	}
 }
 
@@ -120,7 +132,59 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 		}
 
 		h.logger.Info("invoice marked paid via webhook", "invoice_id", invoiceID)
+
+		// 3. Record success outcome for RL if this invoice was managed by smart dunning
+		h.recordDunningSuccess(c.Request.Context(), invoiceID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// recordDunningSuccess records a reward=1.0 outcome if the invoice has an active dunning action
+func (h *WebhookHandler) recordDunningSuccess(ctx context.Context, invoiceID uuid.UUID) {
+	if h.retryService == nil || h.invoiceRepo == nil {
+		return
+	}
+
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil || inv == nil {
+		return
+	}
+
+	if inv.DunningActionID == "" || inv.DunningContextKey == "" {
+		return
+	}
+
+	err = h.retryService.RecordOutcome(ctx, domain.DunningHistory{
+		ID:            uuid.New(),
+		TenantID:      inv.TenantID,
+		InvoiceID:     inv.ID,
+		ContextKey:    inv.DunningContextKey,
+		ActionID:      inv.DunningActionID,
+		RetryInterval: getDunningActionSeconds(inv.DunningActionID),
+		Outcome:       "success",
+		Reward:        1.0,
+		CreatedAt:     time.Now(),
+	})
+	if err != nil {
+		h.logger.Error("failed to record dunning success outcome",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+	} else {
+		h.logger.Info("recorded dunning success outcome via webhook",
+			"invoice_id", invoiceID,
+			"action_id", inv.DunningActionID,
+			"context_key", inv.DunningContextKey,
+		)
+	}
+}
+
+func getDunningActionSeconds(actionID string) int64 {
+	for _, a := range domain.DefaultDunningActions {
+		if a.ID == actionID {
+			return int64(a.Interval.Seconds())
+		}
+	}
+	return 86400
 }
