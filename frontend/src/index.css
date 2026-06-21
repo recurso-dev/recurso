@@ -1,0 +1,249 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Reference Styles from code.html */
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+}
+
+.material-symbols-outlined.fill {
+  font-variation-settings:
+    'FILL' 1;
+}
+
+/* Base body styles */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  @apply bg-gray-50 dark:bg-zinc-950;
+}
+
+.dark body {
+  background-color: rgb(15 23 42);
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 dark:bg-slate-700 rounded-full hover:bg-slate-300 dark:hover:bg-slate-600;
+}
+
+/* ============================================ */
+/* Animation Utilities */
+/* ============================================ */
+
+/* Fade animations */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-down {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out forwards;
+}
+
+.animate-fade-up {
+  animation: fade-up 0.4s ease-out forwards;
+}
+
+.animate-fade-down {
+  animation: fade-down 0.4s ease-out forwards;
+}
+
+/* Slow pulse for backgrounds */
+@keyframes pulse-slow {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+/* Scale animations for buttons/cards */
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out forwards;
+}
+
+/* Slide animations */
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.3s ease-out forwards;
+}
+
+.animate-slide-in-left {
+  animation: slide-in-left 0.3s ease-out forwards;
+}
+
+/* Animation delays */
+.animation-delay-100 {
+  animation-delay: 0.1s;
+}
+
+.animation-delay-200 {
+  animation-delay: 0.2s;
+}
+
+.animation-delay-300 {
+  animation-delay: 0.3s;
+}
+
+.animation-delay-400 {
+  animation-delay: 0.4s;
+}
+
+.animation-delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* ============================================ */
+/* Interactive hover effects */
+/* ============================================ */
+
+/* Card hover lift */
+.hover-lift {
+  @apply transition-all duration-200 ease-out;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  @apply shadow-lg;
+}
+
+/* Glow effect on hover */
+.hover-glow {
+  @apply transition-all duration-300;
+}
+
+.hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+/* Scale on click */
+.active-scale {
+  @apply transition-transform duration-100;
+}
+
+.active-scale:active {
+  transform: scale(0.98);
+}
+
+/* ============================================ */
+/* Status badge styles */
+/* ============================================ */
+
+.badge-success {
+  @apply bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400;
+}
+
+.badge-warning {
+  @apply bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400;
+}
+
+.badge-danger {
+  @apply bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400;
+}
+
+.badge-info {
+  @apply bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400;
+}
+
+.badge-neutral {
+  @apply bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400;
+}
+
+/* ============================================ */
+/* Glassmorphism */
+/* ============================================ */
+
+.glass {
+  @apply bg-white/70 dark:bg-slate-900/70 backdrop-blur-lg border border-slate-200/50 dark:border-slate-700/50;
+}
+
+.glass-dark {
+  @apply bg-slate-900/80 backdrop-blur-lg border border-slate-700/50;
+}
