@@ -33,10 +33,12 @@ type InvoiceRepository interface {
 
 type ReferralRepository interface {
 	Create(ctx context.Context, referral *domain.Referral) error
+	GetByID(ctx context.Context, tenantID uuid.UUID, id uuid.UUID) (*domain.Referral, error)
 	GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Referral, error)
 	GetByReferrerID(ctx context.Context, tenantID uuid.UUID, referrerID uuid.UUID) ([]*domain.Referral, error)
 	GetByReferredID(ctx context.Context, tenantID uuid.UUID, referredID uuid.UUID) (*domain.Referral, error)
 	List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Referral, error)
+	Update(ctx context.Context, referral *domain.Referral) error
 }
 
 type GiftRepository interface {

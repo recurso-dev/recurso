@@ -601,6 +601,7 @@ func main() {
 		v1.GET("/referrals", referralHandler.ListReferrals)
 		v1.POST("/referrals", referralHandler.CreateReferral)
 		v1.POST("/referrals/generate-code", referralHandler.GenerateCode)
+		v1.POST("/referrals/:id/qualify", referralHandler.QualifyReferral)
 		v1.GET("/gifts", giftHandler.ListGifts)
 
 		// Gift API (P43)
