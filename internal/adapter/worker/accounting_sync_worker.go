@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/recur-so/recurso/internal/core/port"
@@ -31,7 +31,7 @@ func (w *AccountingSyncWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	log.Println("Accounting sync worker started")
+	slog.Info("accounting sync worker started")
 
 	for {
 		select {
@@ -44,18 +44,18 @@ func (w *AccountingSyncWorker) Start(ctx context.Context) {
 }
 
 func (w *AccountingSyncWorker) RunSync(ctx context.Context) {
-	log.Println("Running accounting sync for all active connections...")
+	slog.Info("running accounting sync for all active connections")
 
 	conns, err := w.connRepo.GetActiveConnections(ctx)
 	if err != nil {
-		log.Printf("Failed to get active accounting connections: %v", err)
+		slog.Error("failed to get active accounting connections", "error", err)
 		return
 	}
 
 	for _, conn := range conns {
-		log.Printf("Syncing accounting for tenant %s via %s", conn.TenantID, conn.Provider)
+		slog.Info("syncing accounting", "tenant_id", conn.TenantID, "provider", conn.Provider)
 		if err := w.accountingService.SyncAllForTenant(ctx, conn.TenantID); err != nil {
-			log.Printf("Accounting sync failed for tenant %s: %v", conn.TenantID, err)
+			slog.Error("accounting sync failed", "tenant_id", conn.TenantID, "error", err)
 
 			conn.SyncStatus = "error"
 			conn.LastError = err.Error()
@@ -70,5 +70,5 @@ func (w *AccountingSyncWorker) RunSync(ctx context.Context) {
 		_ = w.connRepo.Update(ctx, conn)
 	}
 
-	log.Println("Accounting sync completed")
+	slog.Info("accounting sync completed")
 }

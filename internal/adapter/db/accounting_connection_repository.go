@@ -64,6 +64,9 @@ func (r *AccountingConnectionRepository) ListByTenant(ctx context.Context, tenan
 		}
 		conns = append(conns, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return conns, nil
 }
 
@@ -105,6 +108,9 @@ func (r *AccountingConnectionRepository) GetActiveConnections(ctx context.Contex
 		}
 		conns = append(conns, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return conns, nil
 }
 
@@ -138,6 +144,9 @@ func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenan
 			return nil, err
 		}
 		logs = append(logs, &l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return logs, nil
 }

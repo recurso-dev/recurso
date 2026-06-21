@@ -69,7 +69,7 @@ func ScoreChurn(features *ChurnFeatures) int {
 }
 
 // ExtractFeatures computes churn features from invoices and customer data.
-func ExtractFeatures(customer *domain.Customer, invoices []*domain.Invoice, subscriptions []*domain.Subscription, planRepo port.PlanRepository, ctx context.Context) *ChurnFeatures {
+func ExtractFeatures(ctx context.Context, customer *domain.Customer, invoices []*domain.Invoice, subscriptions []*domain.Subscription, planRepo port.PlanRepository) *ChurnFeatures {
 	features := &ChurnFeatures{}
 
 	// Days since signup

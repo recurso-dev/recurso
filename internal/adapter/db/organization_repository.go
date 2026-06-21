@@ -56,5 +56,8 @@ func (r *OrganizationRepository) ListTenants(ctx context.Context, orgID uuid.UUI
 		}
 		tenants = append(tenants, &t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return tenants, nil
 }

@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -64,7 +64,7 @@ func (s *ChurnService) AnalyzeCustomer(ctx context.Context, customerID uuid.UUID
 		}
 	}
 
-	features := ExtractFeatures(customer, invoices, subscriptions, s.planRepo, ctx)
+	features := ExtractFeatures(ctx, customer, invoices, subscriptions, s.planRepo)
 	score := ScoreChurn(features)
 
 	// Get previous score for alert comparison
@@ -108,7 +108,7 @@ func (s *ChurnService) saveSnapshot(ctx context.Context, tenantID, customerID uu
 		features.CurrentMRR, features.UsageTrend, score, "v1", time.Now(),
 	)
 	if err != nil {
-		log.Printf("Failed to save churn snapshot: %v", err)
+		slog.Error("failed to save churn snapshot", "error", err)
 	}
 }
 
@@ -134,7 +134,7 @@ func (s *ChurnService) checkAlertThresholds(ctx context.Context, tenantID, custo
 				uuid.New(), tenantID, customerID, prevScore, newScore, t.threshold, t.alertType, time.Now(),
 			)
 			if err != nil {
-				log.Printf("Failed to create churn alert: %v", err)
+				slog.Error("failed to create churn alert", "error", err)
 			}
 		}
 	}
@@ -163,7 +163,7 @@ func (s *ChurnService) GetCustomerScore(ctx context.Context, customerID uuid.UUI
 		}
 	}
 
-	features := ExtractFeatures(customer, invoices, subscriptions, s.planRepo, ctx)
+	features := ExtractFeatures(ctx, customer, invoices, subscriptions, s.planRepo)
 	score := ScoreChurn(features)
 
 	return &ChurnScoreResult{
@@ -210,6 +210,9 @@ func (s *ChurnService) GetHighRiskCustomers(ctx context.Context, tenantID uuid.U
 		r.ModelVersion = "v1"
 		results = append(results, &r)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return results, nil
 }
@@ -230,7 +233,7 @@ func (s *ChurnService) AnalyzeAllCustomers(ctx context.Context, tenantID uuid.UU
 
 		for _, customer := range customers {
 			if err := s.AnalyzeCustomer(ctx, customer.ID); err != nil {
-				log.Printf("Failed to analyze customer %s: %v", customer.ID, err)
+				slog.Error("failed to analyze customer", "customer_id", customer.ID, "error", err)
 			}
 		}
 

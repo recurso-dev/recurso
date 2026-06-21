@@ -68,6 +68,9 @@ func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tena
 		}
 		accounts = append(accounts, &va)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return accounts, nil
 }
 
@@ -111,6 +114,9 @@ func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tena
 			return nil, err
 		}
 		payments = append(payments, &p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return payments, nil
 }

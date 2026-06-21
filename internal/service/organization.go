@@ -84,6 +84,9 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 		ByTenant: make([]TenantMRR, 0),
 	}
 
+	// Cache plan lookups to avoid repeated queries for the same plan
+	planCache := make(map[uuid.UUID]*domain.Plan)
+
 	for _, tenant := range tenants {
 		subs, err := s.subRepo.List(ctx, tenant.ID, domain.SubscriptionFilter{Status: "active", Limit: 1000})
 		if err != nil {
@@ -92,9 +95,14 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 
 		var tenantMRR int64
 		for _, sub := range subs {
-			plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
-			if err != nil {
-				continue
+			plan, ok := planCache[sub.PlanID]
+			if !ok {
+				p, err := s.planRepo.GetByID(ctx, sub.PlanID)
+				if err != nil {
+					continue
+				}
+				plan = p
+				planCache[sub.PlanID] = plan
 			}
 			if len(plan.Prices) > 0 {
 				tenantMRR += plan.Prices[0].Amount

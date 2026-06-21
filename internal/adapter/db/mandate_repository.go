@@ -71,6 +71,9 @@ func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 		}
 		mandates = append(mandates, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return mandates, nil
 }
 
@@ -112,6 +115,9 @@ func (r *MandateRepository) GetDueForPreNotification(ctx context.Context) ([]*do
 		}
 		mandates = append(mandates, m)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return mandates, nil
 }
 
@@ -138,6 +144,9 @@ func (r *MandateRepository) GetReadyForDebit(ctx context.Context) ([]*domain.Man
 			return nil, err
 		}
 		mandates = append(mandates, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return mandates, nil
 }

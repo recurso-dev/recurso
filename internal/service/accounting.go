@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -87,25 +87,37 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 			continue
 		}
 
-		// Sync customers
-		customers, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: 1000})
-		if err != nil {
-			log.Printf("Failed to list customers for sync: %v", err)
-			continue
-		}
-
-		for _, customer := range customers {
-			if err := adapter.SyncCustomer(ctx, customer); err != nil {
-				s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "error", err.Error())
-				continue
+		// Sync customers (paginated)
+		customerOffset := 0
+		customerLimit := 100
+		for {
+			customers, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: customerLimit, Offset: customerOffset})
+			if err != nil {
+				slog.Error("failed to list customers for sync", "error", err)
+				break
 			}
-			s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "success", "")
+			if len(customers) == 0 {
+				break
+			}
+
+			for _, customer := range customers {
+				if err := adapter.SyncCustomer(ctx, customer); err != nil {
+					s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "error", err.Error())
+					continue
+				}
+				s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "success", "")
+			}
+
+			if len(customers) < customerLimit {
+				break
+			}
+			customerOffset += customerLimit
 		}
 
 		// Sync invoices
 		invoices, err := s.invoiceRepo.List(ctx, tenantID)
 		if err != nil {
-			log.Printf("Failed to list invoices for sync: %v", err)
+			slog.Error("failed to list invoices for sync", "error", err)
 			continue
 		}
 
@@ -158,6 +170,6 @@ func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.Acco
 	}
 
 	if err := s.connRepo.CreateSyncLog(ctx, syncLog); err != nil {
-		log.Printf("Failed to create sync log: %v", err)
+		slog.Error("failed to create sync log", "error", err)
 	}
 }

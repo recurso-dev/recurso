@@ -105,6 +105,10 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 		}
 		alerts = append(alerts, a)
 	}
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
 
 	if alerts == nil {
 		alerts = []churnAlert{}
