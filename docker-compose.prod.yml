@@ -1,0 +1,52 @@
+services:
+  api:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
+      - API_SECRET=${API_SECRET}
+      - GIN_MODE=release
+    depends_on:
+      - postgres
+    networks:
+      - recurso_net
+
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - recurso_net
+    # Port 5432 is NOT exposed to host in production for security
+
+  tigerbeetle:
+    image: ghcr.io/tigerbeetle/tigerbeetle:latest
+    restart: always
+    command: [ "start", "--addresses=0.0.0.0:3000", "/data/0_0.tigerbeetle" ]
+    volumes:
+      - tigerbeetle_data:/data
+    networks:
+      - recurso_net
+    privileged: true
+    init: true
+    entrypoint: >
+      /bin/sh -c " if [ ! -f /data/0_0.tigerbeetle ]; then
+        ./tigerbeetle format --cluster=0 --replica=0 --replica-count=1 /data/0_0.tigerbeetle;
+      fi; ./tigerbeetle start --addresses=0.0.0.0:3000 /data/0_0.tigerbeetle "
+    # Port 3000/3001 NOT exposed to host
+
+volumes:
+  postgres_data:
+  tigerbeetle_data:
+
+
+networks:
+  recurso_net:
+    driver: bridge

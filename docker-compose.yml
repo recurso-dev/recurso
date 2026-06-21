@@ -1,0 +1,58 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgres://user:password@postgres:5432/recurso?sslmode=disable
+      - API_SECRET=recurso_secret
+      - APP_ENV=development
+      - GIN_MODE=release
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - SMTP_USERNAME=
+      - SMTP_PASSWORD=
+      - SMTP_FROM=noreply@recurso.dev
+    depends_on:
+      - postgres
+      - mailhog
+
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025" # SMTP server
+      - "8025:8025" # Web UI
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=recurso
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  tigerbeetle:
+    image: ghcr.io/tigerbeetle/tigerbeetle:latest
+    command: [ "start", "--addresses=0.0.0.0:3000", "/data/0_0.tigerbeetle" ]
+    volumes:
+      - tigerbeetle_data:/data
+    ports:
+      - "3001:3000"
+    privileged: true
+    init: true
+    # We need to format the data file if it doesn't exist. 
+    # For simplicity in this dev compose, we can use an entrypoint script or just run format manually first.
+    # To make it "just work", let's use a shell trick or init container if needed.
+    # Actually, the official image requires formatting. 
+    # Let's override entrypoint to format-and-start (common dev pattern).
+    entrypoint: >
+      /bin/sh -c " if [ ! -f /data/0_0.tigerbeetle ]; then
+        ./tigerbeetle format --cluster=0 --replica=0 --replica-count=1 /data/0_0.tigerbeetle;
+      fi; ./tigerbeetle start --addresses=0.0.0.0:3000 /data/0_0.tigerbeetle "
+
+volumes:
+  postgres_data:
+  tigerbeetle_data:

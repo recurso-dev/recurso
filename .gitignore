@@ -1,0 +1,40 @@
+# Compiled binaries
+api_bin
+server
+main
+*.exe
+
+# Logs
+*.log
+
+# System files
+.DS_Store
+.vscode/
+
+# Node modules
+node_modules/
+frontend/node_modules/
+website/node_modules/
+docs-site/node_modules/
+sdk/node_modules/
+
+# Build outputs
+frontend/dist/
+website/build/
+docs-site/build/
+
+# Environment
+.env
+.env.local
+.env.production
+
+# Docker volumes
+postgres_data/
+tigerbeetle_data/
+
+# Test coverage
+coverage/
+
+# Temp files
+*.tmp
+*.swp
