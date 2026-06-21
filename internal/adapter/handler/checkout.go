@@ -3,46 +3,140 @@ package handler
 import (
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
 )
 
 type CheckoutHandler struct {
-	invoiceRepo port.InvoiceRepository
+	invoiceRepo    port.InvoiceRepository
+	paymentGateway port.PaymentGateway
 }
 
-func NewCheckoutHandler(repo port.InvoiceRepository) *CheckoutHandler {
-	return &CheckoutHandler{invoiceRepo: repo}
+func NewCheckoutHandler(repo port.InvoiceRepository, gw port.PaymentGateway) *CheckoutHandler {
+	return &CheckoutHandler{
+		invoiceRepo:    repo,
+		paymentGateway: gw,
+	}
 }
 
+// ShowCheckout returns invoice data as JSON for the frontend checkout page.
 func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := uuid.Parse(idStr)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.String(http.StatusBadRequest, "Invalid Invoice ID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
 		return
 	}
 
 	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
 	if err != nil {
-		c.String(http.StatusInternalServerError, "Error fetching invoice")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
 		return
 	}
 	if invoice == nil {
-		c.String(http.StatusNotFound, "Invoice not found")
+		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
 		return
 	}
 
-	// View Model
-	data := gin.H{
-		"InvoiceNumber": invoice.InvoiceNumber,
-		"Status":        string(invoice.Status),
-		"Currency":      invoice.Currency,
-		"DisplayAmount": fmt.Sprintf("%.2f", float64(invoice.Total)/100.0), // Assuming usually 2 decimals
-		"DueDate":       invoice.DueDate.Format("2006-01-02"),
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"id":             invoice.ID,
+			"invoice_number": invoice.InvoiceNumber,
+			"status":         string(invoice.Status),
+			"currency":       invoice.Currency,
+			"subtotal":       invoice.Subtotal,
+			"tax_amount":     invoice.TaxAmount,
+			"total":          invoice.Total,
+			"display_amount": fmt.Sprintf("%.2f", float64(invoice.Total)/100.0),
+			"due_date":       invoice.DueDate.Format("2006-01-02"),
+			"customer_id":    invoice.CustomerID,
+		},
+	})
+}
+
+// InitiatePayment creates a payment order via the gateway and returns the order details.
+func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		return
 	}
 
-	c.HTML(http.StatusOK, "checkout.html", data)
+	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		return
+	}
+	if invoice == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
+		return
+	}
+
+	if invoice.Status == domain.InvoiceStatusPaid {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invoice already paid"})
+		return
+	}
+
+	order, err := h.paymentGateway.CreateOrder(
+		c.Request.Context(),
+		invoice.Total,
+		invoice.Currency,
+		invoice.InvoiceNumber,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create payment order"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"order_id":       order.ID,
+			"amount":         order.Amount,
+			"currency":       order.Currency,
+			"invoice_id":     invoice.ID,
+			"invoice_number": invoice.InvoiceNumber,
+		},
+	})
+}
+
+// CheckoutSuccess marks the invoice as paid and returns a success response.
+func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		return
+	}
+
+	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		return
+	}
+	if invoice == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
+		return
+	}
+
+	if invoice.Status != domain.InvoiceStatusPaid {
+		now := time.Now()
+		invoice.Status = domain.InvoiceStatusPaid
+		invoice.PaidAt = &now
+		invoice.AmountPaid = invoice.Total
+
+		if err := h.invoiceRepo.Update(c.Request.Context(), invoice); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update invoice"})
+			return
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data": gin.H{
+			"status":         "paid",
+			"invoice_id":     invoice.ID,
+			"invoice_number": invoice.InvoiceNumber,
+		},
+	})
 }
