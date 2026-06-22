@@ -472,6 +472,9 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	if sub == nil {
 		return nil, fmt.Errorf("subscription not found")
 	}
+	if sub.TenantID != tenantID {
+		return nil, fmt.Errorf("subscription not found for tenant")
+	}
 
 	// Get customer and plan info for notification
 	customer, _ := s.customerRepo.GetByID(ctx, sub.CustomerID)
@@ -533,6 +536,9 @@ func (s *SubscriptionService) Reactivate(ctx context.Context, tenantID, subscrip
 	}
 	if sub == nil {
 		return nil, fmt.Errorf("subscription not found")
+	}
+	if sub.TenantID != tenantID {
+		return nil, fmt.Errorf("subscription not found for tenant")
 	}
 
 	// Can only reactivate if cancel_at_period_end is true or within grace period

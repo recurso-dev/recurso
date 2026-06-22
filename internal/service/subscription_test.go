@@ -579,3 +579,128 @@ func TestCancel_AtPeriodEnd(t *testing.T) {
 		t.Error("expected CanceledAt to be nil for end-of-period cancel")
 	}
 }
+
+// --- Tenant Isolation Tests ---
+
+func TestCancel_WrongTenant_Rejected(t *testing.T) {
+	subID := uuid.New()
+	ownerTenant := uuid.New()
+	attackerTenant := uuid.New()
+
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID:         subID,
+		TenantID:   ownerTenant,
+		CustomerID: uuid.New(),
+		PlanID:     uuid.New(),
+		Status:     domain.SubscriptionStatusActive,
+	}}
+
+	svc := newTestSubscriptionService(
+		subRepo, &subMockInvoiceRepo{}, &subMockPlanRepo{plan: &domain.Plan{}},
+		&subMockCustomerRepo{customer: &domain.Customer{}},
+		&subMockCouponRepo{}, &subMockGateway{},
+	)
+
+	_, err := svc.Cancel(context.Background(), attackerTenant, subID, true, "test", "")
+	if err == nil {
+		t.Fatal("expected error when cancelling subscription from wrong tenant")
+	}
+	if err.Error() != "subscription not found for tenant" {
+		t.Errorf("error = %q, want 'subscription not found for tenant'", err.Error())
+	}
+	if subRepo.updated != nil {
+		t.Error("subscription should not be updated when tenant doesn't match")
+	}
+}
+
+func TestReactivate_WrongTenant_Rejected(t *testing.T) {
+	subID := uuid.New()
+	ownerTenant := uuid.New()
+	attackerTenant := uuid.New()
+
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID:                subID,
+		TenantID:          ownerTenant,
+		CustomerID:        uuid.New(),
+		PlanID:            uuid.New(),
+		Status:            domain.SubscriptionStatusActive,
+		CancelAtPeriodEnd: true,
+		CurrentPeriodEnd:  time.Now().Add(24 * time.Hour),
+	}}
+
+	svc := newTestSubscriptionService(
+		subRepo, &subMockInvoiceRepo{}, &subMockPlanRepo{plan: &domain.Plan{}},
+		&subMockCustomerRepo{customer: &domain.Customer{}},
+		&subMockCouponRepo{}, &subMockGateway{},
+	)
+
+	_, err := svc.Reactivate(context.Background(), attackerTenant, subID)
+	if err == nil {
+		t.Fatal("expected error when reactivating subscription from wrong tenant")
+	}
+	if err.Error() != "subscription not found for tenant" {
+		t.Errorf("error = %q, want 'subscription not found for tenant'", err.Error())
+	}
+	if subRepo.updated != nil {
+		t.Error("subscription should not be updated when tenant doesn't match")
+	}
+}
+
+func TestCancel_CorrectTenant_Succeeds(t *testing.T) {
+	subID := uuid.New()
+	tenantID := uuid.New()
+
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID:         subID,
+		TenantID:   tenantID,
+		CustomerID: uuid.New(),
+		PlanID:     uuid.New(),
+		Status:     domain.SubscriptionStatusActive,
+	}}
+
+	svc := newTestSubscriptionService(
+		subRepo, &subMockInvoiceRepo{}, &subMockPlanRepo{plan: &domain.Plan{}},
+		&subMockCustomerRepo{customer: &domain.Customer{}},
+		&subMockCouponRepo{}, &subMockGateway{},
+	)
+
+	result, err := svc.Cancel(context.Background(), tenantID, subID, true, "test", "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != "canceled" {
+		t.Errorf("status = %q, want 'canceled'", result.Status)
+	}
+}
+
+func TestReactivate_CorrectTenant_Succeeds(t *testing.T) {
+	subID := uuid.New()
+	tenantID := uuid.New()
+
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID:                subID,
+		TenantID:          tenantID,
+		CustomerID:        uuid.New(),
+		PlanID:            uuid.New(),
+		Status:            domain.SubscriptionStatusActive,
+		CancelAtPeriodEnd: true,
+		CurrentPeriodEnd:  time.Now().Add(24 * time.Hour),
+	}}
+
+	svc := newTestSubscriptionService(
+		subRepo, &subMockInvoiceRepo{}, &subMockPlanRepo{plan: &domain.Plan{}},
+		&subMockCustomerRepo{customer: &domain.Customer{}},
+		&subMockCouponRepo{}, &subMockGateway{},
+	)
+
+	result, err := svc.Reactivate(context.Background(), tenantID, subID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Status != domain.SubscriptionStatusActive {
+		t.Errorf("status = %q, want 'active'", result.Status)
+	}
+	if result.CancelAtPeriodEnd {
+		t.Error("expected CancelAtPeriodEnd to be false after reactivation")
+	}
+}

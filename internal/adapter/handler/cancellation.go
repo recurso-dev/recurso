@@ -65,9 +65,9 @@ type CancelSubscriptionResponse struct {
 
 // CancelSubscription handles POST /v1/subscriptions/:id/cancel
 func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -166,9 +166,9 @@ func (h *CancellationHandler) GetCancellationReasons(c *gin.Context) {
 
 // ReactivateSubscription handles POST /v1/subscriptions/:id/reactivate
 func (h *CancellationHandler) ReactivateSubscription(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
