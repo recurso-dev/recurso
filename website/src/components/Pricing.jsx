@@ -41,7 +41,7 @@ const Pricing = () => {
                 { text: 'Custom SLA', included: false },
             ],
             cta: 'Start Free Trial',
-            ctaLink: '#',
+            ctaLink: 'https://github.com/recur-so/recurso',
             highlighted: true,
         },
         {
@@ -60,7 +60,7 @@ const Pricing = () => {
                 { text: 'Custom development', included: true },
             ],
             cta: 'Contact Sales',
-            ctaLink: '#',
+            ctaLink: 'mailto:sales@recurso.dev',
             highlighted: false,
         },
     ]
@@ -143,16 +143,12 @@ const Pricing = () => {
                     ))}
                 </div>
 
-                {/* FAQ teaser */}
+                {/* Contact teaser */}
                 <div className="text-center mt-16">
                     <p className="text-sm text-gray-500">
                         Have questions?{' '}
-                        <a href="#" className="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
-                            Check our FAQ
-                        </a>
-                        {' '}or{' '}
-                        <a href="#" className="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
-                            contact us
+                        <a href="mailto:sales@recurso.dev" className="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
+                            Contact us
                         </a>
                     </p>
                 </div>

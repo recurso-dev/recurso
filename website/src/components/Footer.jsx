@@ -1,46 +1,32 @@
-import { Github, Twitter, MessageCircle, Youtube } from 'lucide-react'
+import { Github } from 'lucide-react'
 
 const footerLinks = {
     Product: [
         { name: 'Features', href: '#features' },
         { name: 'Pricing', href: '#pricing' },
-        { name: 'Changelog', href: '#' },
-        { name: 'Roadmap', href: '#' },
     ],
     Developers: [
-        { name: 'Documentation', href: '#' },
-        { name: 'API Reference', href: '#' },
-        { name: 'SDKs', href: '#' },
-        { name: 'Examples', href: '#' },
+        { name: 'Documentation', href: 'https://docs.recurso.dev' },
+        { name: 'API Reference', href: 'https://docs.recurso.dev/api-reference/plans' },
     ],
-    Company: [
-        { name: 'About', href: '#' },
-        { name: 'Blog', href: '#' },
-        { name: 'Careers', href: '#' },
+    Community: [
         { name: 'Open Source', href: 'https://github.com/recur-so/recurso' },
-    ],
-    Legal: [
-        { name: 'Privacy', href: '#' },
-        { name: 'Terms', href: '#' },
-        { name: 'Security', href: '#' },
+        { name: 'GitHub Discussions', href: 'https://github.com/recur-so/recurso/discussions' },
     ],
 }
 
 const socialLinks = [
     { icon: Github, href: 'https://github.com/recur-so/recurso', label: 'GitHub' },
-    { icon: Twitter, href: '#', label: 'Twitter' },
-    { icon: MessageCircle, href: '#', label: 'Discord' },
-    { icon: Youtube, href: '#', label: 'YouTube' },
 ]
 
 const Footer = () => {
     return (
         <footer className="border-t border-white/[0.04] bg-[#030303]">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-8 lg:gap-12">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-8 lg:gap-12">
                     {/* Brand column */}
                     <div className="col-span-2">
-                        <a href="#" className="flex items-center gap-2.5 mb-5 group">
+                        <a href="#top" className="flex items-center gap-2.5 mb-5 group">
                             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center">
                                 <span className="text-black font-bold text-lg">R</span>
                             </div>

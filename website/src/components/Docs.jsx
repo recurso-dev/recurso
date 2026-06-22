@@ -1,7 +1,6 @@
 import { Book, Zap, Code, Terminal, ArrowRight, Clock, ExternalLink } from 'lucide-react'
 
-// External docs URL - update this when docs site is deployed
-const DOCS_URL = 'http://localhost:3001'
+const DOCS_URL = 'https://docs.recurso.dev'
 
 const Docs = () => {
     const quickLinks = [
@@ -21,9 +20,9 @@ const Docs = () => {
         },
         {
             icon: Terminal,
-            title: 'SDK Guides',
-            description: 'TypeScript, Python, Go, and more',
-            link: `${DOCS_URL}/sdks`,
+            title: 'Self-Hosting Guide',
+            description: 'Deploy Recurso on your own infrastructure',
+            link: `${DOCS_URL}/self-hosting`,
             time: '',
         },
         {
@@ -38,27 +37,24 @@ const Docs = () => {
     const gettingStarted = [
         {
             step: 1,
-            title: 'Install the SDK',
-            code: 'npm install @recurso/sdk',
+            title: 'Clone and run',
+            code: `git clone https://github.com/recur-so/recurso.git
+cd recurso
+docker compose up`,
         },
         {
             step: 2,
-            title: 'Initialize the client',
-            code: `import Recurso from '@recurso/sdk';
-
-const recurso = new Recurso({
-  apiKey: process.env.RECURSO_API_KEY,
-});`,
+            title: 'Create an API key',
+            code: `# Open the dashboard at http://localhost:3000
+# Navigate to Settings → API Keys → Create Key`,
         },
         {
             step: 3,
             title: 'Create your first subscription',
-            code: `const subscription = await recurso.subscriptions.create({
-  customer_id: 'cust_123',
-  plan_id: 'plan_pro',
-});
-
-console.log(subscription.id);`,
+            code: `curl -X POST http://localhost:3000/v1/subscriptions \\
+  -H "Authorization: Bearer your-api-key" \\
+  -H "Content-Type: application/json" \\
+  -d '{"customer_id": "cust_123", "plan_id": "plan_pro"}'`,
         },
     ]
 
@@ -154,9 +150,9 @@ console.log(subscription.id);`,
 
                     <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
                         <p className="text-gray-400">
-                            Need help? Join our{' '}
-                            <a href="https://discord.gg/recurso" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                Discord community
+                            Need help? Open an issue on{' '}
+                            <a href="https://github.com/recur-so/recurso/discussions" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                                GitHub Discussions
                             </a>
                         </p>
                         <a

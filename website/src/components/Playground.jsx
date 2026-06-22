@@ -10,24 +10,19 @@ const Playground = () => {
     const examples = {
         subscription: {
             title: 'Create a Subscription',
-            code: `import Recurso from '@recurso/sdk';
-
-const recurso = new Recurso('your-api-key');
-
-// Create a subscription for a customer
-const subscription = await recurso.subscriptions.create({
-  customer_id: 'cust_123',
-  plan_id: 'plan_pro_monthly',
-  billing_cycle_anchor: 'now',
-  payment_method: 'pm_card_visa',
-});
-
-console.log('Subscription created:', subscription.id);
-console.log('Status:', subscription.status);
-console.log('Next billing:', subscription.current_period_end);`,
+            code: `curl -X POST http://localhost:3000/v1/subscriptions \\
+  -H "Authorization: Bearer your-api-key" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "customer_id": "cust_123",
+    "plan_id": "plan_pro_monthly",
+    "billing_cycle_anchor": "now",
+    "payment_method": "pm_card_visa"
+  }'`,
             output: `{
   "id": "sub_1234567890",
   "status": "active",
+  "customer_id": "cust_123",
   "plan_id": "plan_pro_monthly",
   "current_period_start": "2024-01-15T00:00:00Z",
   "current_period_end": "2024-02-15T00:00:00Z",
@@ -37,92 +32,65 @@ console.log('Next billing:', subscription.current_period_end);`,
         },
         invoice: {
             title: 'Generate an Invoice',
-            code: `import Recurso from '@recurso/sdk';
-
-const recurso = new Recurso('your-api-key');
-
-// Create an invoice with line items
-const invoice = await recurso.invoices.create({
-  customer_id: 'cust_123',
-  line_items: [
-    { description: 'Pro Plan', amount: 2900 },
-    { description: 'API Usage (10K calls)', amount: 500 },
-  ],
-  auto_send: true,
-  due_days: 14,
-});
-
-console.log('Invoice:', invoice.number);
-console.log('Total:', invoice.total);`,
+            code: `curl -X POST http://localhost:3000/v1/subscriptions/sub_1234567890/advance \\
+  -H "Authorization: Bearer your-api-key" \\
+  -H "Content-Type: application/json"`,
             output: `{
   "id": "inv_abc123",
   "number": "INV-2024-0042",
-  "status": "sent",
-  "subtotal": 3400,
+  "status": "issued",
+  "subscription_id": "sub_1234567890",
+  "subtotal": 2900,
   "tax": 0,
-  "total": 3400,
-  "due_date": "2024-01-29T00:00:00Z",
-  "pdf_url": "https://api.recurso.io/invoices/inv_abc123.pdf"
+  "total": 2900,
+  "due_date": "2024-01-29T00:00:00Z"
 }`,
         },
         usage: {
             title: 'Track Usage',
-            code: `import Recurso from '@recurso/sdk';
-
-const recurso = new Recurso('your-api-key');
-
-// Record usage for a customer
-await recurso.usage.record({
-  subscription_id: 'sub_123',
-  metric: 'api_calls',
-  quantity: 1500,
-  timestamp: new Date(),
-});
-
-// Get usage summary
-const summary = await recurso.usage.summary({
-  subscription_id: 'sub_123',
-  metric: 'api_calls',
-  period: 'current_billing_period',
-});
-
-console.log('Total usage:', summary.total);
-console.log('Billable amount:', summary.amount);`,
+            code: `curl -X POST http://localhost:3000/v1/usage/events \\
+  -H "Authorization: Bearer your-api-key" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "subscription_id": "sub_123",
+    "metric": "api_calls",
+    "quantity": 1500,
+    "timestamp": "2024-01-15T10:30:00Z"
+  }'`,
             output: `{
+  "id": "usage_evt_abc123",
   "subscription_id": "sub_123",
   "metric": "api_calls",
-  "period_start": "2024-01-01T00:00:00Z",
-  "period_end": "2024-01-31T23:59:59Z",
-  "total_usage": 45000,
-  "included_usage": 10000,
-  "overage_usage": 35000,
-  "unit_price": 0.001,
-  "billable_amount": 3500
+  "quantity": 1500,
+  "timestamp": "2024-01-15T10:30:00Z",
+  "created_at": "2024-01-15T10:30:01Z"
 }`,
         },
         webhook: {
             title: 'Handle Webhooks',
             code: `import express from 'express';
-import Recurso from '@recurso/sdk';
+import crypto from 'crypto';
 
 const app = express();
-const recurso = new Recurso('your-api-key');
 
-app.post('/webhooks/recurso', async (req, res) => {
-  const event = recurso.webhooks.verify(
-    req.body,
-    req.headers['recurso-signature'],
-    'your-webhook-secret'
-  );
+app.post('/webhooks/recurso', express.json(), (req, res) => {
+  // Verify webhook signature
+  const signature = req.headers['recurso-signature'];
+  const expected = crypto
+    .createHmac('sha256', 'your-webhook-secret')
+    .update(JSON.stringify(req.body))
+    .digest('hex');
 
-  switch (event.type) {
+  if (signature !== expected) {
+    return res.status(401).json({ error: 'Invalid signature' });
+  }
+
+  switch (req.body.type) {
     case 'invoice.paid':
-      console.log('Invoice paid:', event.data.invoice_id);
-      // Provision access, send receipt, etc.
+      console.log('Invoice paid:', req.body.data.invoice_id);
       break;
     case 'subscription.canceled':
-      console.log('Subscription canceled:', event.data.id);
-      // Revoke access, send survey, etc.
+      console.log('Canceled:', req.body.data.id);
       break;
   }
 
@@ -205,7 +173,7 @@ app.post('/webhooks/recurso', async (req, res) => {
                         <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-white/5">
                             <div className="flex items-center gap-2">
                                 <Terminal className="w-4 h-4 text-primary" />
-                                <span className="text-sm text-gray-300">index.js</span>
+                                <span className="text-sm text-gray-300">{activeTab === 'webhook' ? 'server.js' : 'terminal'}</span>
                             </div>
                             <div className="flex items-center gap-2">
                                 <button

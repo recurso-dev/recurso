@@ -15,7 +15,7 @@ const features = [
         icon: Zap,
         title: 'AI Smart Dunning',
         description: 'Multi-Armed Bandit algorithm optimizes retry timing and channels to maximize revenue recovery.',
-        stat: '23% more recovered',
+        stat: null,
         size: 'large',
         color: 'from-amber-500/10 to-transparent',
         iconBg: 'bg-amber-500/10',
@@ -35,7 +35,7 @@ const features = [
         icon: Shield,
         title: 'AI Churn Prediction',
         description: 'Score every customer\'s risk and trigger retention workflows before they cancel.',
-        stat: '34% less churn',
+        stat: null,
         size: 'medium',
         color: 'from-rose-500/10 to-transparent',
         iconBg: 'bg-rose-500/10',
@@ -45,7 +45,7 @@ const features = [
         icon: CreditCard,
         title: 'Multi-Gateway Routing',
         description: 'Route payments between Stripe and Razorpay automatically based on currency, region, and success rates.',
-        stat: '99.2% success rate',
+        stat: null,
         size: 'large',
         color: 'from-emerald-500/10 to-transparent',
         iconBg: 'bg-emerald-500/10',
@@ -155,28 +155,7 @@ const Features = () => {
                                         {feature.description}
                                     </p>
 
-                                    {feature.stat && (
-                                        <div className="mt-5 pt-5 border-t border-white/[0.06]">
-                                            <span className="text-sm font-semibold text-emerald-400">{feature.stat}</span>
-                                        </div>
-                                    )}
 
-                                    {isLarge && !feature.stat && (
-                                        <div className="mt-6 pt-6 border-t border-white/[0.06]">
-                                            <div className="flex items-center gap-4">
-                                                <div className="flex -space-x-2">
-                                                    {['bg-emerald-600', 'bg-blue-600', 'bg-purple-600'].map((bg, i) => (
-                                                        <div key={i} className={`w-7 h-7 rounded-full ${bg} border-2 border-[#0a0a0a] flex items-center justify-center`}>
-                                                            <span className="text-[9px] font-bold text-white/70">{['S', 'R', 'T'][i]}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <span className="text-xs text-gray-500">
-                                                    Used by 500+ companies
-                                                </span>
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         )

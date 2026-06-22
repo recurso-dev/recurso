@@ -29,7 +29,7 @@ const Navbar = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex items-center justify-between h-16">
                         {/* Logo */}
-                        <a href="#" className="flex items-center gap-2.5 group">
+                        <a href="#top" className="flex items-center gap-2.5 group">
                             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center group-hover:shadow-lg group-hover:shadow-emerald-500/25 transition-shadow">
                                 <span className="text-black font-bold text-lg">R</span>
                             </div>
@@ -60,10 +60,11 @@ const Navbar = () => {
                                 className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors text-sm rounded-lg hover:bg-white/[0.04]"
                             >
                                 <Github className="w-4 h-4" />
-                                <span className="px-2 py-0.5 bg-white/[0.08] rounded-md text-[11px] font-semibold text-gray-300">★ 1.2k</span>
                             </a>
                             <a
-                                href="#"
+                                href="https://github.com/recur-so/recurso"
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="px-5 py-2 text-sm font-semibold text-black bg-emerald-500 rounded-lg hover:bg-emerald-400 transition-all duration-200 glow-ring"
                             >
                                 Get Started
@@ -97,7 +98,9 @@ const Navbar = () => {
                             </a>
                         ))}
                         <a
-                            href="#"
+                            href="https://github.com/recur-so/recurso"
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="block w-full px-4 py-2.5 text-sm font-semibold text-center text-black bg-emerald-500 rounded-lg mt-2"
                         >
                             Get Started

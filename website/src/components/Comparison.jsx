@@ -35,7 +35,7 @@ const Comparison = () => {
         {
             category: 'Developer Experience', features: [
                 { name: 'REST API', recurso: true, stripe: true, chargebee: true },
-                { name: 'TypeScript SDK', recurso: true, stripe: true, chargebee: true },
+                { name: 'REST API', recurso: true, stripe: true, chargebee: true },
                 { name: 'Open source (MIT)', recurso: true, stripe: false, chargebee: false },
                 { name: 'Self-hostable', recurso: true, stripe: false, chargebee: false },
                 { name: 'No vendor lock-in', recurso: true, stripe: false, chargebee: false },
