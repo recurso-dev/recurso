@@ -69,10 +69,9 @@ func (r *SmartRouter) RevokeMandate(ctx context.Context, tokenID string) error {
 }
 
 func (r *SmartRouter) CancelSubscription(ctx context.Context, subscriptionID string) error {
-	if strings.HasPrefix(subscriptionID, "sub_") {
-		// Razorpay subscription IDs start with "sub_"
-		return r.Razorpay.CancelSubscription(ctx, subscriptionID)
-	}
+	// Both Razorpay and Stripe use "sub_" prefixes, so we cannot distinguish by ID alone.
+	// The caller (subscription service) routes explicitly by gateway field.
+	// Default to Stripe as it has a real implementation; Razorpay is a no-op.
 	return r.Stripe.CancelSubscription(ctx, subscriptionID)
 }
 

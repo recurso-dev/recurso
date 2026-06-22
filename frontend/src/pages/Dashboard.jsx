@@ -130,12 +130,13 @@ const Dashboard = () => {
         // Active Count is global, not time-bound usually, but let's recalculate filtering
         const activeCount = rawSubscriptions.filter(s => s.status === 'active').length
 
-        setStats({
+        setStats(prev => ({
+            ...prev,
             netBilling,
             netPayments,
             unpaidInvoices: unpaid,
             activeSubs: activeCount
-        })
+        }))
 
         // --- Prepare Chart Data ---
         const revenueByDate = {}
