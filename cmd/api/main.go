@@ -32,6 +32,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+func getEnvDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
 func main() {
 	// 1. Initialize DB
 	dbURL := os.Getenv("DATABASE_URL")
@@ -92,13 +99,15 @@ func main() {
 	}
 
 	emailSender := email.NewConsoleSender() // Use SMTPSender in production
-	notificationService := service.NewNotificationService(emailSender, "http://localhost:8080")
+	baseURL := getEnvDefault("BASE_URL", "http://localhost:8080")
+	notificationService := service.NewNotificationService(emailSender, baseURL)
 	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
 
 	// Ledger (P5)
 	// We wrap in try-catch in case TB is not running (since docker failed)
 	var ledgerService *service.LedgerService
-	ledgerClient, err := tigerbeetle.NewLedgerClient(0, []string{"127.0.0.1:3001"})
+	tbAddr := getEnvDefault("TIGERBEETLE_ADDRESS", "127.0.0.1:3001")
+	ledgerClient, err := tigerbeetle.NewLedgerClient(0, []string{tbAddr})
 	if err == nil {
 		ledgerService = service.NewLedgerService(ledgerClient)
 		defer ledgerClient.Close()
@@ -275,12 +284,17 @@ func main() {
 	var rdb *redis.Client
 
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
-		opt, _ := redis.ParseURL(redisURL)
-		rdb = redis.NewClient(opt)
-		locker = redisAdapter.NewRedisLocker(rdb)
-		idempotencyStore = redisAdapter.NewRedisIdempotencyStore(rdb, 24*time.Hour)
-		log.Println("Using Redis for Locker and Idempotency")
-	} else {
+		opt, parseErr := redis.ParseURL(redisURL)
+		if parseErr != nil {
+			slog.Error("failed to parse REDIS_URL, falling back to in-memory", "error", parseErr)
+		} else {
+			rdb = redis.NewClient(opt)
+			locker = redisAdapter.NewRedisLocker(rdb)
+			idempotencyStore = redisAdapter.NewRedisIdempotencyStore(rdb, 24*time.Hour)
+			log.Println("Using Redis for Locker and Idempotency")
+		}
+	}
+	if locker == nil {
 		locker = memory.NewNoOpLocker()
 		idempotencyStore = memory.NewInMemoryIdempotencyStore(24 * time.Hour)
 		log.Println("Using In-Memory Locker and Idempotency (Redis not configured)")
@@ -291,7 +305,7 @@ func main() {
 		subscriptionRepo.(*db.SubscriptionRepository),
 		notificationService,
 		locker,
-		"http://localhost:8080",
+		baseURL,
 	)
 	preChargeScheduler.Start()
 	defer preChargeScheduler.Stop()
@@ -302,7 +316,7 @@ func main() {
 		notificationService,
 		locker,
 		scheduler.DefaultDunningConfig(),
-		"http://localhost:8080",
+		baseURL,
 	)
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
@@ -312,7 +326,7 @@ func main() {
 		customerRepo,
 		notificationService,
 		locker,
-		"http://localhost:8080",
+		baseURL,
 	)
 	cardExpiryScheduler.Start()
 	defer cardExpiryScheduler.Stop()
@@ -361,12 +375,12 @@ func main() {
 
 	// GST & PDF (P30)
 	pdfService := service.NewInvoicePDFService(
-		"Your Company Name",
-		"123 Business Street, City, State - 000000",
-		"", // GSTIN - Configure in settings
-		"", // PAN
-		"", // State
-		"Bank: HDFC Bank\nAccount: 00000000000000\nIFSC: HDFC0000000",
+		getEnvDefault("PDF_COMPANY_NAME", "Your Company Name"),
+		getEnvDefault("PDF_COMPANY_ADDRESS", "123 Business Street, City, State - 000000"),
+		getEnvDefault("PDF_COMPANY_GSTIN", ""),
+		getEnvDefault("PDF_COMPANY_PAN", ""),
+		getEnvDefault("PDF_COMPANY_STATE", ""),
+		getEnvDefault("PDF_BANK_DETAILS", "Bank: HDFC Bank\nAccount: 00000000000000\nIFSC: HDFC0000000"),
 	)
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService)
 	gstHandler := handler.NewGSTHandler(gstConfigRepo)
