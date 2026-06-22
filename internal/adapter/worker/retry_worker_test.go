@@ -92,6 +92,9 @@ func (m *mockGateway) RevokeMandate(ctx context.Context, tokenID string) error {
 func (m *mockGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
 	return nil, nil
 }
+func (m *mockGateway) CancelSubscription(ctx context.Context, subscriptionID string) error {
+	return nil
+}
 
 // --- Mock Notifier ---
 

@@ -68,6 +68,14 @@ func (r *SmartRouter) RevokeMandate(ctx context.Context, tokenID string) error {
 	return r.Razorpay.RevokeMandate(ctx, tokenID)
 }
 
+func (r *SmartRouter) CancelSubscription(ctx context.Context, subscriptionID string) error {
+	if strings.HasPrefix(subscriptionID, "sub_") {
+		// Razorpay subscription IDs start with "sub_"
+		return r.Razorpay.CancelSubscription(ctx, subscriptionID)
+	}
+	return r.Stripe.CancelSubscription(ctx, subscriptionID)
+}
+
 // Virtual account operations route to Razorpay
 func (r *SmartRouter) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
 	return r.Razorpay.CreateVirtualAccount(ctx, customerID, invoiceID, amount, description)

@@ -494,10 +494,19 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		return nil, fmt.Errorf("failed to update subscription: %w", err)
 	}
 
-	// TODO: Cancel on payment gateway if applicable
-	// if s.gateway != nil && sub.RazorpaySubscriptionID != "" {
-	// 	_ = s.gateway.CancelSubscription(ctx, sub.RazorpaySubscriptionID)
-	// }
+	// Cancel on payment gateway (best-effort)
+	if s.gateway != nil {
+		if sub.RazorpaySubscriptionID != "" {
+			if err := s.gateway.CancelSubscription(ctx, sub.RazorpaySubscriptionID); err != nil {
+				s.logger.Error("failed to cancel subscription on payment gateway", "error", err, "gateway", "razorpay", "subscription_id", sub.RazorpaySubscriptionID)
+			}
+		}
+		if sub.StripeSubscriptionID != "" {
+			if err := s.gateway.CancelSubscription(ctx, sub.StripeSubscriptionID); err != nil {
+				s.logger.Error("failed to cancel subscription on payment gateway", "error", err, "gateway", "stripe", "subscription_id", sub.StripeSubscriptionID)
+			}
+		}
+	}
 
 	result := &CancelResult{
 		ID:               sub.ID,

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 
 	"github.com/razorpay/razorpay-go"
 	"github.com/recur-so/recurso/internal/core/port"
@@ -206,6 +207,12 @@ func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, 
 		BeneficiaryName: beneficiary,
 		Status:          status,
 	}, nil
+}
+
+func (g *RazorpayGateway) CancelSubscription(ctx context.Context, subscriptionID string) error {
+	// Razorpay subscription cancellation requires additional API integration
+	log.Printf("razorpay CancelSubscription called for %s (no-op)", subscriptionID)
+	return nil
 }
 
 func (g *RazorpayGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {

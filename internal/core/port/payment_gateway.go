@@ -35,6 +35,7 @@ type PaymentGateway interface {
 	ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*PaymentResult, error)
 	RevokeMandate(ctx context.Context, tokenID string) error
 	CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*VirtualAccountResult, error)
+	CancelSubscription(ctx context.Context, subscriptionID string) error
 }
 
 type VirtualAccountResult struct {

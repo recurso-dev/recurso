@@ -124,6 +124,14 @@ func (s *StripeGateway) CreateSubscription(ctx context.Context, planID string, t
 	return sub.ID, nil
 }
 
+func (s *StripeGateway) CancelSubscription(ctx context.Context, subscriptionID string) error {
+	_, err := s.sc.Subscriptions.Cancel(subscriptionID, nil)
+	if err != nil {
+		return fmt.Errorf("stripe cancel subscription failed: %w", err)
+	}
+	return nil
+}
+
 func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
 	params := &stripe.PaymentIntentParams{
 		Amount:   stripe.Int64(amount),

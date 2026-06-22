@@ -66,6 +66,10 @@ func (g *MockGateway) CreateVirtualAccount(ctx context.Context, customerID, invo
 	}, nil
 }
 
+func (g *MockGateway) CancelSubscription(ctx context.Context, subscriptionID string) error {
+	return nil
+}
+
 func (g *MockGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
 	// ~40% success rate for mock simulation
 	if rand.Float64() < 0.4 {
