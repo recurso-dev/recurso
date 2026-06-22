@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -35,7 +35,7 @@ export const endpoints = {
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),
   createKey: (data) => api.post('/developer/keys', data),
-  register: (data) => api.post('/auth/register', data),
+  register: (data) => axios.post('/auth/register', data),
   
   createCustomer: (data) => api.post('/customers', data),
   createPlan: (data) => api.post('/plans', data),
