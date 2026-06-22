@@ -565,8 +565,15 @@ func (s *SubscriptionService) Reactivate(ctx context.Context, tenantID, subscrip
 }
 
 // GetByID retrieves a subscription by ID
-func (s *SubscriptionService) GetByID(ctx context.Context, subscriptionID uuid.UUID) (*domain.Subscription, error) {
-	return s.subRepo.GetByID(ctx, subscriptionID)
+func (s *SubscriptionService) GetByID(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
+	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub != nil && sub.TenantID != tenantID {
+		return nil, fmt.Errorf("subscription not found for tenant")
+	}
+	return sub, nil
 }
 
 // ProrationResult contains the calculation for an upgrade/downgrade
@@ -626,6 +633,9 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	}
 	if sub == nil {
 		return nil, fmt.Errorf("subscription not found")
+	}
+	if sub.TenantID != tenantID {
+		return nil, fmt.Errorf("subscription not found for tenant")
 	}
 
 	// 1.5 Fetch Customer

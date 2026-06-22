@@ -30,9 +30,9 @@ type RecordConsentRequest struct {
 
 // RecordConsent handles POST /v1/consents
 func (h *ConsentHandler) RecordConsent(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -104,9 +104,9 @@ func (h *ConsentHandler) RecordConsent(c *gin.Context) {
 
 // GetCustomerConsents handles GET /v1/customers/:id/consents
 func (h *ConsentHandler) GetCustomerConsents(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -135,9 +135,9 @@ type RevokeConsentRequest struct {
 
 // RevokeConsent handles POST /v1/consents/revoke
 func (h *ConsentHandler) RevokeConsent(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
@@ -163,9 +163,9 @@ func (h *ConsentHandler) RevokeConsent(c *gin.Context) {
 
 // GetSubscriptionConsent handles GET /v1/subscriptions/:id/consent
 func (h *ConsentHandler) GetSubscriptionConsent(c *gin.Context) {
-	tenantID, err := uuid.Parse(c.GetHeader("X-Tenant-ID"))
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID"})
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 		return
 	}
 
