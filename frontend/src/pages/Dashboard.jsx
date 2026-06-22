@@ -11,7 +11,8 @@ const Dashboard = () => {
         netBilling: 0,
         netPayments: 0,
         unpaidInvoices: 0,
-        activeSubs: 0
+        activeSubs: 0,
+        mrr: 0
     })
     const [chartData, setChartData] = useState([])
     const [recentActivity, setRecentActivity] = useState([])
@@ -27,11 +28,12 @@ const Dashboard = () => {
         const fetchData = async () => {
             try {
                 // Parallel fetch
-                const [subsRes, invRes, custRes, planRes] = await Promise.all([
+                const [subsRes, invRes, custRes, planRes, mrrRes] = await Promise.all([
                     endpoints.getSubscriptions({ limit: 1000 }).catch(() => ({ data: { data: [] } })),
                     endpoints.getInvoices({ limit: 1000 }).catch(() => ({ data: { data: [] } })),
                     endpoints.getCustomers({ limit: 1000 }).catch(() => ({ data: { data: [] } })),
-                    endpoints.getPlans({ limit: 1000 }).catch(() => ({ data: { data: [] } }))
+                    endpoints.getPlans({ limit: 1000 }).catch(() => ({ data: { data: [] } })),
+                    endpoints.getMRR().catch(() => ({ data: { mrr: 0 } }))
                 ])
 
                 // Process Metadata Maps
@@ -48,6 +50,10 @@ const Dashboard = () => {
                 // Store Raw Data
                 setRawSubscriptions(subsRes.data.data || [])
                 setRawInvoices(invRes.data.data || [])
+
+                // Store MRR
+                const mrrValue = mrrRes.data?.mrr || mrrRes.data?.data?.mrr || 0
+                setStats(prev => ({ ...prev, mrr: mrrValue }))
 
             } catch (error) {
                 console.error("Dashboard fetch error:", error)
@@ -253,7 +259,7 @@ const Dashboard = () => {
             </div>
 
             {/* Stats Grid - Bento Style */}
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">
                 {/* Net Billing */}
                 <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
                     <div className="flex justify-between items-start">
@@ -295,6 +301,17 @@ const Dashboard = () => {
                     </div>
                     <p className="mt-4 text-3xl font-semibold tracking-tighter text-gray-900 dark:text-white">
                         {loading ? "..." : stats.activeSubs}
+                    </p>
+                </div>
+
+                {/* MRR */}
+                <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900/50">
+                    <div className="flex justify-between items-start">
+                        <p className="text-sm font-medium text-gray-500 dark:text-zinc-500">MRR</p>
+                        <span className="material-symbols-outlined text-gray-400 text-[20px]">monitoring</span>
+                    </div>
+                    <p className="mt-4 text-3xl font-semibold tracking-tighter text-gray-900 dark:text-white">
+                        {loading ? "..." : formatCurrency(stats.mrr)}
                     </p>
                 </div>
             </div>

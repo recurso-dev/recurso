@@ -47,7 +47,9 @@ const SubscriptionDetail = ({ subscription, customer, plan, isOpen, onClose, onR
                     <button className="flex items-center justify-center gap-2 rounded-lg bg-white dark:bg-slate-800 px-3 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm ring-1 ring-inset ring-slate-300 dark:ring-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700">Edit</button>
                     {subscription.status === 'active' && (
                         <button
-                            className="flex items-center justify-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 shadow-sm ring-1 ring-inset ring-amber-300 dark:ring-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                            onClick={handlePause}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 px-3 py-1.5 text-sm font-medium text-amber-700 dark:text-amber-400 shadow-sm ring-1 ring-inset ring-amber-300 dark:ring-amber-600 hover:bg-amber-100 dark:hover:bg-amber-900/50 disabled:opacity-50"
                         >
                             <span className="material-symbols-outlined !text-sm">pause</span>
                             Pause
@@ -55,7 +57,9 @@ const SubscriptionDetail = ({ subscription, customer, plan, isOpen, onClose, onR
                     )}
                     {subscription.status === 'paused' && (
                         <button
-                            className="flex items-center justify-center gap-2 rounded-lg bg-green-50 dark:bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-700 dark:text-green-400 shadow-sm ring-1 ring-inset ring-green-300 dark:ring-green-600 hover:bg-green-100 dark:hover:bg-green-900/50"
+                            onClick={handleResume}
+                            disabled={loading}
+                            className="flex items-center justify-center gap-2 rounded-lg bg-green-50 dark:bg-green-900/30 px-3 py-1.5 text-sm font-medium text-green-700 dark:text-green-400 shadow-sm ring-1 ring-inset ring-green-300 dark:ring-green-600 hover:bg-green-100 dark:hover:bg-green-900/50 disabled:opacity-50"
                         >
                             <span className="material-symbols-outlined !text-sm">play_arrow</span>
                             Resume
