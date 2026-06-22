@@ -33,7 +33,23 @@ func (s *CatalogService) CreatePlan(ctx context.Context, input CreatePlanInput) 
 	if input.Amount < 0 {
 		return nil, fmt.Errorf("amount cannot be negative")
 	}
-	// TODO: Add thorough validation
+	if input.Name == "" {
+		return nil, fmt.Errorf("name is required")
+	}
+	if input.Code == "" {
+		return nil, fmt.Errorf("code is required")
+	}
+	if len(input.Currency) != 3 {
+		return nil, fmt.Errorf("currency must be a 3-letter code")
+	}
+	switch input.IntervalUnit {
+	case "day", "week", "month", "year":
+	default:
+		return nil, fmt.Errorf("interval_unit must be one of: day, week, month, year")
+	}
+	if input.IntervalCount <= 0 {
+		return nil, fmt.Errorf("interval_count must be greater than 0")
+	}
 
 	now := time.Now().UTC()
 	planID := uuid.New()
