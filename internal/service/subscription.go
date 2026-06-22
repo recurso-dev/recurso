@@ -11,6 +11,7 @@ import (
 	"github.com/recur-so/recurso/internal/adapter/db"
 	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/recur-so/recurso/internal/core/service/tax"
 )
 
 type SubscriptionService struct {
@@ -177,6 +178,15 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		total = 0
 	}
 
+	// Calculate Tax (GST)
+	taxEngine := tax.NewGSTEngine("TN")
+	pos := customer.PlaceOfSupply
+	if domain.PtrToString(pos) == "" {
+		pos = nil
+	}
+	taxRes := taxEngine.CalculateTax(total, domain.PtrToString(pos))
+	total = total + taxRes.Total
+
 	subID := uuid.New()
 	invID := uuid.New()
 
@@ -197,8 +207,11 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
-		TaxAmount:      0, // TODO: Tax calculation logic should be here
+		TaxAmount:      taxRes.Total,
 		Total:          total,
+		IGSTAmount:     taxRes.IGST,
+		CGSTAmount:     taxRes.CGST,
+		SGSTAmount:     taxRes.SGST,
 		PaymentTerms:   paymentTerms,
 		CreatedAt:      time.Now().UTC(),
 		DueDate:        dueDate,
