@@ -683,7 +683,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 				invoice.EInvoiceStatus = "GENERATED"
 				invoice.AckNo = resp.AckNo
 			} else {
-				fmt.Printf("Error generating IRN for proration invoice: %v\n", err)
+				s.logger.Error("error generating IRN for proration invoice", "error", err)
 				invoice.EInvoiceStatus = "FAILED"
 			}
 		}

@@ -131,7 +131,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		_, einvErr := s.EInvoiceService.GenerateEInvoice(ctx, inv)
 		if einvErr != nil {
 			// Soft fail: invoice still gets created, e-invoice retried later
-			fmt.Printf("E-invoice generation failed (will retry): %v\n", einvErr)
+			slog.Error("e-invoice generation failed (will retry)", "error", einvErr)
 		}
 	} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
 		// Fallback: direct GSP call (backward compat when EInvoiceService is nil)
@@ -142,7 +142,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 			inv.EInvoiceStatus = "GENERATED"
 			inv.AckNo = resp.AckNo
 		} else {
-			fmt.Printf("Error generating IRN: %v\n", err)
+			slog.Error("error generating IRN", "error", err)
 			inv.EInvoiceStatus = "FAILED"
 		}
 	} else {
