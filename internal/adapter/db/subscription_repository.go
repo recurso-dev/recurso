@@ -194,7 +194,11 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 		argIdx++
 	}
 
-	// TODO: Filter by CustomerID if needed
+	if filter.CustomerID != uuid.Nil {
+		query += fmt.Sprintf(" AND s.customer_id = $%d", argIdx)
+		args = append(args, filter.CustomerID)
+		argIdx++
+	}
 
 	query += " ORDER BY s.created_at DESC"
 
