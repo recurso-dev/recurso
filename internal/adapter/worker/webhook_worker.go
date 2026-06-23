@@ -132,7 +132,6 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 		delivery.DeliveredAt = &now
 		delivery.StatusCode = resp.StatusCode
 		delivery.ResponseBody = string(body)
-		delivery.Attempt++
 		w.deliveryRepo.Update(ctx, delivery)
 	} else {
 		w.retryDelivery(ctx, delivery, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))

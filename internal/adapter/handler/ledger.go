@@ -18,6 +18,12 @@ func NewLedgerHandler(service *service.LedgerService) *LedgerHandler {
 }
 
 func (h *LedgerHandler) GetEntries(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		return
+	}
+
 	accountIDStr := c.Query("account_id")
 	if accountIDStr == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
@@ -30,7 +36,7 @@ func (h *LedgerHandler) GetEntries(c *gin.Context) {
 		return
 	}
 
-	entries, err := h.service.GetEntries(c.Request.Context(), accountID)
+	entries, err := h.service.GetEntries(c.Request.Context(), tenantID.(uuid.UUID), accountID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch ledger entries"})
 		return
