@@ -1,93 +1,102 @@
-# Recurso - Open Source Billing Engine (MVP)
+<p align="center">
+  <img src="website/public/logo.svg" alt="Recurso" width="80" />
+</p>
 
-Recurso is a high-performance, developer-first billing engine built with **Go** and **PostgreSQL**.
+<h1 align="center">Recurso</h1>
+
+<p align="center">
+  Open-source billing engine for SaaS. Built with Go, PostgreSQL, and TigerBeetle.
+</p>
+
+<p align="center">
+  <a href="https://github.com/recur-so/recurso/actions"><img src="https://github.com/recur-so/recurso/workflows/CI/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/recur-so/recurso"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white" alt="Go 1.23+" /></a>
+  <a href="https://github.com/recur-so/recurso/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <a href="https://github.com/recur-so/recurso/stargazers"><img src="https://img.shields.io/github/stars/recur-so/recurso?style=social" alt="GitHub Stars" /></a>
+</p>
+
+<p align="center">
+  <a href="https://recurso.dev">Website</a> &middot;
+  <a href="https://docs.recurso.dev">Docs</a> &middot;
+  <a href="https://docs.recurso.dev/getting-started/quickstart">Quickstart</a> &middot;
+  <a href="https://github.com/recur-so/recurso/discussions">Community</a>
+</p>
+
+---
+
+## Why Recurso?
+
+Most billing platforms charge a percentage of your revenue and lock you into their ecosystem. Recurso is different.
+
+- **Immutable Financial Ledger** — Double-entry accounting powered by TigerBeetle. Every transaction is audit-ready from day one.
+- **India-First Compliance** — Native GST, Place of Supply rules, HSN codes, TDS tracking, and e-invoicing readiness built in, not bolted on.
+- **AI-Powered Dunning** — Smart retry engine analyzes failure patterns and schedules retries with exponential backoff to maximize recovery.
+- **No Success Tax** — Flat infrastructure cost. You don't pay more as your revenue grows.
+- **Truly Open Source** — MIT licensed. Self-host, fork, extend. Full control over your billing data.
 
 ## Features
 
-### Priority 0: The Iron Core (Billing Engine)
-- **Product Catalog**: Create Plans and Prices (Monthly/Yearly/One-time).
-- **Customers**: Manage customer profiles with GSTIN/Tax ID support.
-- **Subscriptions**: Lifecycle management (Active, Past Due, Canceled, Trialing).
-- **Invoicing**: Automatic invoice generation with tax calculation (GST/VAT).
-- **Credit Notes**: Full credit note lifecycle (Issued, Allocated, Refunded) for adjustments.
+- Subscription lifecycle management (trials, upgrades, cancellations, proration)
+- Automatic invoice generation with tax calculation (GST/VAT)
+- Credit notes and refund workflows
+- Usage metering and metered billing
+- Hosted checkout and customer self-service portal
+- Multi-currency payment routing (Stripe, Razorpay)
+- Webhook delivery and email notifications
+- Real-time MRR and revenue analytics
+- Multi-tenant architecture
 
-### Priority 1: Payments & Checkout
-- **Hosted Checkout**: Ready-to-use HTML payment page.
-- **Global Payments**: Smart routing:
-    - **USD/EUR/GBP** -> Stripe (Mock/Simulated)
-    - **INR** -> Razorpay
-- **Webhooks**: Handling `payment.captured` events to mark invoices as PAID.
-- **Notifications**: Email alerts on payment success.
+## Recurso vs. Alternatives
 
-### Priority 2: Intelligence & Self-Service
-- **Smart Retries**: Background worker analyzes failed invoices and schedules retries using exponential backoff.
-- **Customer Portal**: Self-service dashboard for customers to view billing history and pay invoices.
-
-### Priority 3: Scale & Analytics
-- **Usage Metering**: Ingest usage events (e.g., API calls, storage) for metered billing.
-- **Analytics**: Real-time MRR (Monthly Recurring Revenue) calculation.
-- **Financial Ledger**: Double-entry accounting system for audit-ready financial tracking.
-
-### Compliance & Localization
-- **India Stack**: Native GST calculation, Place of Supply rules, and HSN codes.
-- **E-Invoicing**: Data structure readiness for IRP (Invoice Registration Portal) integration.
-- **TDS Tracking**: Track Tax Deducted at Source obligations.
-
-## Getting Started
-
-### Prerequisites
-- Go 1.23+
-- PostgreSQL
-- TigerBeetle (Optional, for Ledger)
-
-### functionality Setup
-
-1.  **Clone & Install Dependencies**
-    ```bash
-    go mod download
-    ```
-
-2.  **Database Setup**
-    Ensure Postgres is running. The app connects to:
-    `postgres://user:password@localhost:5432/recurso?sslmode=disable`
-    *(See `cmd/api/main.go` to configure)*
-
-3.  **Run the Server**
-3.  **Run the Server**
-    ```bash
-    make run
-    # Or build binary: make build
-    ```
-    *Migrations will apply automatically on startup.*
-
-### Developer Commands
-- `make build`: Compile the API
-- `make test`: Run unit tests
-- `make test-e2e`: Run end-to-end verification script
-- `make docker-up`: Start Docker Compose (Dev)
-    *Migrations will apply automatically on startup.*
-
-## API Endpoints
-
-### Core
-- `POST /v1/plans` - Create a Plan
-- `POST /v1/customers` - Create a Customer
-- `POST /v1/subscriptions` - Create a Subscription
-- `POST /v1/credit_notes` - Create a Credit Note
-
-### Finance & Compliance
-- `GET /v1/ledger/accounts` - View Ledger Accounts
-- `POST /v1/tax/validate` - Validate GSTIN
-
-### Checkout & Portal
-- `GET /checkout/:invoice_id` - Payment Page
-- `GET /portal/:customer_id` - Customer Dashboard
-
-### Usage & Analytics
-- `POST /v1/usage/events` - Ingest Metering Events
-- `GET /v1/analytics/mrr` - Get MRR Metrics
+| | **Recurso** | **Chargebee** | **Stripe Billing** |
+|---|---|---|---|
+| **Pricing** | Free (self-hosted) | From $599/mo | 0.5%–0.8% of revenue |
+| **Source Code** | Open (MIT) | Closed | Closed |
+| **India Compliance** | Native GST + e-invoicing | Partial | Limited |
+| **Financial Ledger** | Immutable (TigerBeetle) | None | None |
+| **Smart Dunning** | Built-in AI retries | Add-on | Basic |
+| **Data Ownership** | Full (your infrastructure) | Vendor-hosted | Vendor-hosted |
 
 ## Architecture
-- **Language**: Go (Gin Framework)
-- **Database**: PostgreSQL
-- **Architecture**: Hexagonal (Ports & Adapters)
+
+```
+Go (Gin) API  -->  PostgreSQL (state)  -->  TigerBeetle (ledger)
+      |                                           |
+      +--> Stripe / Razorpay (payments)           |
+      +--> Email notifications                    |
+      +--> Webhooks                               |
+      +--> Background workers (dunning, metering) +
+```
+
+**Stack:** Go 1.23+ &middot; PostgreSQL &middot; TigerBeetle &middot; Hexagonal Architecture (Ports & Adapters)
+
+## Quick Start
+
+```bash
+git clone https://github.com/recur-so/recurso.git && cd recurso
+make docker-up    # starts PostgreSQL + TigerBeetle
+make run          # migrations apply automatically
+```
+
+The API is now running at `http://localhost:8080`. See the [Quickstart Guide](https://docs.recurso.dev/getting-started/quickstart) for a full walkthrough.
+
+## Documentation
+
+- [Getting Started](https://docs.recurso.dev/getting-started/quickstart)
+- [API Reference](https://docs.recurso.dev/api-reference/plans)
+- [Architecture Guide](https://docs.recurso.dev/architecture)
+- [Self-Hosting Guide](https://docs.recurso.dev/deployment)
+
+## Contributing
+
+We welcome contributions of all kinds. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+```bash
+make build        # compile the API
+make test         # run unit tests
+make test-e2e     # run end-to-end tests
+```
+
+## License
+
+Recurso is [MIT licensed](LICENSE).
