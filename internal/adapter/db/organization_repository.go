@@ -34,9 +34,50 @@ func (r *OrganizationRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	return &org, nil
 }
 
+func (r *OrganizationRepository) Update(ctx context.Context, org *domain.Organization) error {
+	query := `UPDATE organizations SET name = $1, owner_email = $2, updated_at = $3 WHERE id = $4`
+	_, err := r.db.ExecContext(ctx, query, org.Name, org.OwnerEmail, org.UpdatedAt, org.ID)
+	return err
+}
+
+func (r *OrganizationRepository) Delete(ctx context.Context, id uuid.UUID) error {
+	// Detach tenants first
+	_, err := r.db.ExecContext(ctx, `UPDATE tenants SET organization_id = NULL, updated_at = NOW() WHERE organization_id = $1`, id)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `DELETE FROM organizations WHERE id = $1`, id)
+	return err
+}
+
+func (r *OrganizationRepository) List(ctx context.Context) ([]*domain.Organization, error) {
+	query := `SELECT id, name, owner_email, created_at, updated_at FROM organizations ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orgs []*domain.Organization
+	for rows.Next() {
+		var org domain.Organization
+		if err := rows.Scan(&org.ID, &org.Name, &org.OwnerEmail, &org.CreatedAt, &org.UpdatedAt); err != nil {
+			return nil, err
+		}
+		orgs = append(orgs, &org)
+	}
+	return orgs, rows.Err()
+}
+
 func (r *OrganizationRepository) AddTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
 	query := `UPDATE tenants SET organization_id = $1, updated_at = NOW() WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, query, orgID, tenantID)
+	return err
+}
+
+func (r *OrganizationRepository) RemoveTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
+	query := `UPDATE tenants SET organization_id = NULL, updated_at = NOW() WHERE id = $1 AND organization_id = $2`
+	_, err := r.db.ExecContext(ctx, query, tenantID, orgID)
 	return err
 }
 

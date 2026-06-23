@@ -375,7 +375,11 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 
 	// Phase 5: Create Revenue Recognition Schedule
 	if s.revrecService != nil {
-		if err := s.revrecService.CreateScheduleForInvoice(ctx, inv); err != nil {
+		var sub *domain.Subscription
+		if inv.SubscriptionID != nil {
+			sub, _ = s.subRepo.GetByID(ctx, *inv.SubscriptionID)
+		}
+		if err := s.revrecService.CreateScheduleForInvoice(ctx, inv, sub); err != nil {
 			s.logger.Error("failed to create revrec schedule", "invoice_id", inv.ID, "error", err)
 			// Don't fail the whole payment mark-paid for now, just log.
 		}

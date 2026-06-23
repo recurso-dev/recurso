@@ -28,9 +28,11 @@ func main() {
 	invoiceRepo := db.NewInvoiceRepository(database)
 	revrecRepo := db.NewRevRecRepository(database)
 	
+	subscriptionRepo := db.NewSubscriptionRepository(database)
+
 	// Services
-	ledgerService := service.NewLedgerService(nil) // Mock TB for now
-	revrecService := service.NewRevRecService(revrecRepo, ledgerService)
+	ledgerService := service.NewLedgerService(nil, nil) // Mock TB + PG for now
+	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
 	
 	// Get a sample invoice
 	var invID, tenantIDStr string
@@ -51,7 +53,7 @@ func main() {
 
 	// Trigger RevRec manually
 	log.Printf("Creating RevRec schedule for invoice %s...", inv.InvoiceNumber)
-	if err := revrecService.CreateScheduleForInvoice(ctx, inv); err != nil {
+	if err := revrecService.CreateScheduleForInvoice(ctx, inv, nil); err != nil {
 		log.Fatalf("failed to create schedule: %v", err)
 	}
 	

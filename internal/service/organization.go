@@ -61,16 +61,59 @@ func (s *OrganizationService) ListTenants(ctx context.Context, orgID uuid.UUID) 
 	return s.orgRepo.ListTenants(ctx, orgID)
 }
 
+func (s *OrganizationService) Update(ctx context.Context, orgID uuid.UUID, name, ownerEmail string) (*domain.Organization, error) {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	if name != "" {
+		org.Name = name
+	}
+	if ownerEmail != "" {
+		org.OwnerEmail = ownerEmail
+	}
+	org.UpdatedAt = time.Now()
+
+	if err := s.orgRepo.Update(ctx, org); err != nil {
+		return nil, fmt.Errorf("failed to update organization: %w", err)
+	}
+	return org, nil
+}
+
+func (s *OrganizationService) Delete(ctx context.Context, orgID uuid.UUID) error {
+	if _, err := s.orgRepo.GetByID(ctx, orgID); err != nil {
+		return fmt.Errorf("organization not found: %w", err)
+	}
+	return s.orgRepo.Delete(ctx, orgID)
+}
+
+func (s *OrganizationService) RemoveTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
+	if _, err := s.orgRepo.GetByID(ctx, orgID); err != nil {
+		return fmt.Errorf("organization not found: %w", err)
+	}
+	return s.orgRepo.RemoveTenant(ctx, orgID, tenantID)
+}
+
+func (s *OrganizationService) List(ctx context.Context) ([]*domain.Organization, error) {
+	return s.orgRepo.List(ctx)
+}
+
+type CurrencyMRR struct {
+	TotalMRR int64       `json:"total_mrr"`
+	Currency string      `json:"currency"`
+	ByTenant []TenantMRR `json:"by_tenant"`
+}
+
 type OrgMRRMetrics struct {
-	TotalMRR int64            `json:"total_mrr"`
-	Currency string           `json:"currency"`
-	ByTenant []TenantMRR      `json:"by_tenant"`
+	ByCurrency []CurrencyMRR `json:"by_currency"`
 }
 
 type TenantMRR struct {
 	TenantID   uuid.UUID `json:"tenant_id"`
 	TenantName string    `json:"tenant_name"`
 	MRR        int64     `json:"mrr"`
+	Currency   string    `json:"currency"`
 }
 
 func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid.UUID) (*OrgMRRMetrics, error) {
@@ -79,13 +122,12 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 		return nil, err
 	}
 
-	metrics := &OrgMRRMetrics{
-		Currency: "USD",
-		ByTenant: make([]TenantMRR, 0),
-	}
-
 	// Cache plan lookups to avoid repeated queries for the same plan
 	planCache := make(map[uuid.UUID]*domain.Plan)
+
+	// Group MRR by currency
+	currencyTotals := make(map[string]int64)
+	currencyTenants := make(map[string][]TenantMRR)
 
 	for _, tenant := range tenants {
 		subs, err := s.subRepo.List(ctx, tenant.ID, domain.SubscriptionFilter{Status: "active", Limit: 1000})
@@ -93,7 +135,9 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 			continue
 		}
 
-		var tenantMRR int64
+		// Per-tenant, per-currency MRR
+		tenantCurrencyMRR := make(map[string]int64)
+
 		for _, sub := range subs {
 			plan, ok := planCache[sub.PlanID]
 			if !ok {
@@ -105,16 +149,31 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 				planCache[sub.PlanID] = plan
 			}
 			if len(plan.Prices) > 0 {
-				tenantMRR += plan.Prices[0].Amount
+				currency := plan.Prices[0].Currency
+				tenantCurrencyMRR[currency] += plan.Prices[0].Amount
 			}
 		}
 
-		metrics.ByTenant = append(metrics.ByTenant, TenantMRR{
-			TenantID:   tenant.ID,
-			TenantName: tenant.Name,
-			MRR:        tenantMRR,
+		for currency, mrr := range tenantCurrencyMRR {
+			currencyTotals[currency] += mrr
+			currencyTenants[currency] = append(currencyTenants[currency], TenantMRR{
+				TenantID:   tenant.ID,
+				TenantName: tenant.Name,
+				MRR:        mrr,
+				Currency:   currency,
+			})
+		}
+	}
+
+	metrics := &OrgMRRMetrics{
+		ByCurrency: make([]CurrencyMRR, 0, len(currencyTotals)),
+	}
+	for currency, total := range currencyTotals {
+		metrics.ByCurrency = append(metrics.ByCurrency, CurrencyMRR{
+			TotalMRR: total,
+			Currency: currency,
+			ByTenant: currencyTenants[currency],
 		})
-		metrics.TotalMRR += tenantMRR
 	}
 
 	return metrics, nil

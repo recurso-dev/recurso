@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 
@@ -31,19 +32,23 @@ func (r *RevRecRepository) CreateSchedule(ctx context.Context, schedule *domain.
 }
 
 func (r *RevRecRepository) CreateEvents(ctx context.Context, events []*domain.RecognitionEvent) error {
-	for _, e := range events {
-		query := `
-			INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
-		`
-		_, err := r.db.ExecContext(ctx, query,
-			e.ID, e.RevenueScheduleID, e.TenantID, e.Amount, e.RecognitionDate, e.Status, e.CreatedAt,
-		)
-		if err != nil {
-			return err
-		}
+	if len(events) == 0 {
+		return nil
 	}
-	return nil
+
+	query := `INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at) VALUES `
+	args := make([]interface{}, 0, len(events)*7)
+	for i, e := range events {
+		if i > 0 {
+			query += ", "
+		}
+		base := i * 7
+		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7)
+		args = append(args, e.ID, e.RevenueScheduleID, e.TenantID, e.Amount, e.RecognitionDate, e.Status, e.CreatedAt)
+	}
+
+	_, err := r.db.ExecContext(ctx, query, args...)
+	return err
 }
 
 func (r *RevRecRepository) GetDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error) {
@@ -81,6 +86,12 @@ func (r *RevRecRepository) GetDueEvents(ctx context.Context, date time.Time) ([]
 func (r *RevRecRepository) MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error {
 	query := `UPDATE recognition_events SET status = 'recognized', ledger_tx_id = $1 WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, query, ledgerTxID, eventID)
+	return err
+}
+
+func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error {
+	query := `UPDATE recognition_events SET status = 'failed' WHERE id = $1`
+	_, err := r.db.ExecContext(ctx, query, eventID)
 	return err
 }
 

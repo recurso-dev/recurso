@@ -105,6 +105,83 @@ func (h *OrganizationHandler) ListTenants(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": tenants})
 }
 
+type updateOrgRequest struct {
+	Name       string `json:"name"`
+	OwnerEmail string `json:"owner_email"`
+}
+
+func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		return
+	}
+
+	var req updateOrgRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	org, err := h.service.Update(c.Request.Context(), id, req.Name, req.OwnerEmail)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": org})
+}
+
+func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		return
+	}
+
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
+	orgID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		return
+	}
+
+	tenantID, err := uuid.Parse(c.Param("tenant_id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant id"})
+		return
+	}
+
+	if err := h.service.RemoveTenant(c.Request.Context(), orgID, tenantID); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "removed"})
+}
+
+func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
+	orgs, err := h.service.List(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if orgs == nil {
+		orgs = []*domain.Organization{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": orgs})
+}
+
 func (h *OrganizationHandler) GetConsolidatedMRR(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {

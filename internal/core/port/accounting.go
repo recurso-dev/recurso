@@ -18,4 +18,6 @@ type AccountingGateway interface {
 type AccountingService interface {
 	SyncCustomer(ctx context.Context, customerID uuid.UUID) error
 	SyncInvoice(ctx context.Context, invoiceID uuid.UUID) error
+	SyncProduct(ctx context.Context, planID string) error
+	SyncAllForTenant(ctx context.Context, tenantID uuid.UUID) error
 }

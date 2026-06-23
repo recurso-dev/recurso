@@ -205,7 +205,7 @@ func main() {
 
 	// Revenue Recognition (P5)
 	revrecRepo := db.NewRevRecRepository(database)
-	revrecService := service.NewRevRecService(revrecRepo, ledgerService)
+	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
 
 	subscriptionService := service.NewSubscriptionService(
 		subscriptionRepo,
@@ -324,7 +324,19 @@ func main() {
 	dunningCampaignWorker := worker.NewDunningCampaignWorker(dunningCampaignService)
 
 	// Phase 2: Accounting Sync Worker (daily)
-	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
+	oauthConfigs := map[string]*accounting.OAuthConfig{
+		"quickbooks": {
+			ClientID:     getEnvDefault("QBO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("QBO_CLIENT_SECRET", ""),
+			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+		},
+		"xero": {
+			ClientID:     getEnvDefault("XERO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("XERO_CLIENT_SECRET", ""),
+			TokenURL:     "https://identity.xero.com/connect/token",
+		},
+	}
+	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, oauthConfigs, 24*time.Hour)
 
 	// Start Workers in Background
 	go retryWorker.Start(context.Background())
@@ -468,6 +480,9 @@ func main() {
 	webhookHandler.SetMandateService(mandateService)
 	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
 	webhookHandler.SetDunningCampaignService(dunningCampaignService)
+
+	// Revenue Recognition Handler
+	revrecHandler := handler.NewRevRecHandler(revrecService)
 
 	// Cancel Flow & Dunning Campaign Handlers
 	cancelFlowHandler := handler.NewCancelFlowHandler(cancelFlowService)
@@ -698,11 +713,18 @@ func main() {
 		v1.POST("/payments/offline", offlinePaymentHandler.RecordOfflinePayment)
 		v1.GET("/payments/offline", offlinePaymentHandler.ListOfflinePayments)
 
+		// Revenue Recognition Report
+		v1.GET("/finance/revrec/report", revrecHandler.GetReport)
+
 		// Phase 2: Organizations (Multi-Entity)
+		v1.GET("/organizations", orgHandler.ListOrganizations)
 		v1.POST("/organizations", orgHandler.CreateOrganization)
 		v1.GET("/organizations/:id", orgHandler.GetOrganization)
+		v1.PUT("/organizations/:id", orgHandler.UpdateOrganization)
+		v1.DELETE("/organizations/:id", orgHandler.DeleteOrganization)
 		v1.POST("/organizations/:id/tenants", orgHandler.AddTenant)
 		v1.GET("/organizations/:id/tenants", orgHandler.ListTenants)
+		v1.DELETE("/organizations/:id/tenants/:tenant_id", orgHandler.RemoveTenant)
 		v1.GET("/organizations/:id/analytics/mrr", orgHandler.GetConsolidatedMRR)
 
 		// Phase 2: Accounting / ERP Integrations
