@@ -88,7 +88,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		pos = nil
 	}
 
-	taxRes := taxEngine.CalculateTax(subtotal, domain.PtrToString(pos))
+	taxRes := taxEngine.CalculateTaxLegacy(subtotal, domain.PtrToString(pos))
 
 	total := subtotal + taxRes.Total
 
@@ -200,7 +200,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	if domain.PtrToString(pos) == "" {
 		pos = nil
 	}
-	taxRes := taxEngine.CalculateTax(subtotal, domain.PtrToString(pos))
+	taxRes := taxEngine.CalculateTaxLegacy(subtotal, domain.PtrToString(pos))
 	total := subtotal + taxRes.Total
 
 	now := time.Now()

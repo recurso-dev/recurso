@@ -112,7 +112,7 @@ func newTestSubscriptionService(
 		custRepo,
 		couponRepo,
 		&subMockNotifier{},
-		NewLedgerService(nil),
+		NewLedgerService(nil, nil),
 		gw,
 		gsp.NewMockGSPAdapter(),
 		nil, // txManager

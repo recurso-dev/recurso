@@ -17,6 +17,30 @@ const (
 	AccountTypeExpense   AccountType = 5
 )
 
+// Chart of Accounts — standard account codes
+const (
+	AccountCodeAR               = 1100 // Accounts Receivable (Asset)
+	AccountCodeCash             = 1000 // Cash (Asset)
+	AccountCodeRevenue          = 4000 // Revenue (Income)
+	AccountCodeDeferredRevenue  = 2100 // Deferred Revenue (Liability)
+	AccountCodeRecognizedRevenue = 4100 // Recognized Revenue (Income)
+	AccountCodeTaxPayable       = 2200 // Tax Payable (Liability)
+	AccountCodeRefunds          = 5000 // Refunds (Expense)
+)
+
+// StandardChartOfAccounts returns the default accounts for a tenant
+func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
+	return []*LedgerAccount{
+		{ID: uuid.New(), TenantID: tenantID, Name: "Cash", Type: AccountTypeAsset, Code: AccountCodeCash, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Accounts Receivable", Type: AccountTypeAsset, Code: AccountCodeAR, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Deferred Revenue", Type: AccountTypeLiability, Code: AccountCodeDeferredRevenue, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Tax Payable", Type: AccountTypeLiability, Code: AccountCodeTaxPayable, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Revenue", Type: AccountTypeRevenue, Code: AccountCodeRevenue, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Recognized Revenue", Type: AccountTypeRevenue, Code: AccountCodeRecognizedRevenue, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Refunds", Type: AccountTypeExpense, Code: AccountCodeRefunds, LedgerID: 1},
+	}
+}
+
 // LedgerAccount represents a financial account in the ledger.
 type LedgerAccount struct {
 	ID            uuid.UUID   `json:"id" db:"id"`
@@ -35,25 +59,47 @@ type LedgerAccount struct {
 
 // Transaction (Transfer) represents a movement of funds between two accounts.
 type LedgerTransaction struct {
-	ID              uuid.UUID `json:"id"`
-	DebitAccountID  uuid.UUID `json:"debit_account_id"`
-	CreditAccountID uuid.UUID `json:"credit_account_id"`
-	Amount          uint64    `json:"amount"` // Atomic units
-	LedgerID        uint32    `json:"ledger_id"`
-	Code            uint16    `json:"code"` // Transaction Type (e.g. 1=Invoice, 2=Payment)
-	Timestamp       time.Time `json:"timestamp"`
+	ID              uuid.UUID `json:"id" db:"id"`
+	DebitAccountID  uuid.UUID `json:"debit_account_id" db:"debit_account_id"`
+	CreditAccountID uuid.UUID `json:"credit_account_id" db:"credit_account_id"`
+	Amount          uint64    `json:"amount" db:"amount"`
+	LedgerID        uint32    `json:"ledger_id" db:"ledger_id"`
+	Code            uint16    `json:"code" db:"code"`
+	ReferenceID     uuid.UUID `json:"reference_id" db:"reference_id"` // Invoice/Payment ID
+	Description     string    `json:"description" db:"description"`
+	Timestamp       time.Time `json:"timestamp" db:"created_at"`
 }
 
-// Helper struct for uint128 since Go doesn't have it native, 
+// Helper struct for uint128 since Go doesn't have it native,
 // strictly for domain representation before mapping to TB client.
 type uint128 struct {
 	High uint64
 	Low  uint64
 }
 
-// UUIDToUint128 converts UUID to custom Uint128 for domain usage
+// UUIDToUint128 converts UUID to custom Uint128 for domain usage via bit-shifting
 func UUIDToUint128(id uuid.UUID) uint128 {
-	// Not implemented perfectly here without bit shifting
-	// Just a placeholder to check compilation
-	return uint128{High: 0, Low: 0}
+	b := id[:]
+	var high, low uint64
+	for i := 0; i < 8; i++ {
+		high = (high << 8) | uint64(b[i])
+	}
+	for i := 8; i < 16; i++ {
+		low = (low << 8) | uint64(b[i])
+	}
+	return uint128{High: high, Low: low}
+}
+
+// Uint128ToUUID converts a uint128 back to a UUID
+func Uint128ToUUID(v uint128) uuid.UUID {
+	var b [16]byte
+	for i := 7; i >= 0; i-- {
+		b[i] = byte(v.High & 0xFF)
+		v.High >>= 8
+	}
+	for i := 15; i >= 8; i-- {
+		b[i] = byte(v.Low & 0xFF)
+		v.Low >>= 8
+	}
+	return uuid.UUID(b)
 }

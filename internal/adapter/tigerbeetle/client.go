@@ -89,13 +89,22 @@ func (c *LedgerClient) CreateTransfers(ctx context.Context, transfers []*domain.
 		dr, _ := tbtypes.HexStringToUint128(tx.DebitAccountID.String())
 		cr, _ := tbtypes.HexStringToUint128(tx.CreditAccountID.String())
 
+		// Store reference ID (invoice/payment) in UserData128 for traceability
+		refU128 := tbtypes.Uint128{}
+		if tx.ReferenceID != (uuid.UUID{}) {
+			ref, refErr := tbtypes.HexStringToUint128(tx.ReferenceID.String())
+			if refErr == nil {
+				refU128 = ref
+			}
+		}
+
 		tbTransfers[i] = tbtypes.Transfer{
 			ID:              id,
 			DebitAccountID:  dr,
 			CreditAccountID: cr,
 			Amount:          tbtypes.ToUint128(tx.Amount),
 			PendingID:       tbtypes.Uint128{}, // Not pending
-			UserData128:     tbtypes.Uint128{},
+			UserData128:     refU128,
 			UserData64:      0,
 			UserData32:      0,
 			Timeout:         0,

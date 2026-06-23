@@ -1,6 +1,6 @@
 module github.com/recur-so/recurso
 
-go 1.20
+go 1.23
 
 require (
 	github.com/bsm/redislock v0.9.4

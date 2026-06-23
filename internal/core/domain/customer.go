@@ -25,6 +25,8 @@ type Customer struct {
 	CardLast4       *string                `json:"card_last4,omitempty" db:"card_last4"`
 	CardExpMonth    *int                   `json:"card_exp_month,omitempty" db:"card_exp_month"`
 	CardExpYear     *int                   `json:"card_exp_year,omitempty" db:"card_exp_year"`
+	CardTokenID     *string                `json:"card_token_id,omitempty" db:"card_token_id"`
+	CardFingerprint *string                `json:"card_fingerprint,omitempty" db:"card_fingerprint"`
 	CreatedAt       time.Time              `json:"created_at"`
 }
 

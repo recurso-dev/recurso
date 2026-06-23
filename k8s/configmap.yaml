@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: recurso-config
+  namespace: recurso
+data:
+  APP_ENV: "production"
+  PORT: "8080"
+  COMPANY_COUNTRY: "IN"
+  COMPANY_STATE: "TN"
+  DUNNING_STRATEGY: "thompson_sampling"
+  PDF_COMPANY_NAME: "Recurso Inc."
+  PDF_COMPANY_ADDRESS: "123 Business Street, City, State - 000000"

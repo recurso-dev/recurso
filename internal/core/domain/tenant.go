@@ -11,6 +11,7 @@ type Tenant struct {
 	Name           string     `json:"name"`
 	Email          string     `json:"email"`
 	DataRegion     string     `json:"data_region" db:"data_region"`
+	BaseCurrency   string     `json:"base_currency" db:"base_currency"` // Default: "USD"
 	OrganizationID *uuid.UUID `json:"organization_id,omitempty" db:"organization_id"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`

@@ -147,6 +147,9 @@ func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConne
 	case "xero":
 		adapter := accounting.NewXeroAdapter(conn.AccessToken, conn.RealmID)
 		return adapter
+	case "tally":
+		adapter := accounting.NewTallyAdapter("")
+		return adapter
 	default:
 		return s.gateway // Fall back to default (mock)
 	}

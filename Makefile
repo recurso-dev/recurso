@@ -1,6 +1,8 @@
-.PHONY: build run test test-e2e clean docker-up docker-down
+.PHONY: build run test test-e2e clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
+IMAGE_NAME=ghcr.io/recur-so/recurso
+IMAGE_TAG?=latest
 
 build:
 	go build -o $(BINARY_NAME) cmd/api/main.go
@@ -19,15 +21,33 @@ clean:
 	go clean
 	rm -f $(BINARY_NAME)
 
+lint:
+	golangci-lint run --timeout=5m ./...
+
 docker-up:
 	docker-compose up -d
 
 docker-down:
 	docker-compose down
 
+docker-build:
+	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+k8s-deploy:
+	kubectl apply -f k8s/namespace.yaml
+	kubectl apply -f k8s/configmap.yaml
+	kubectl apply -f k8s/secret.yaml
+	kubectl apply -f k8s/deployment.yaml
+	kubectl apply -f k8s/service.yaml
+	kubectl apply -f k8s/ingress.yaml
+
+k8s-status:
+	kubectl -n recurso get pods
+	kubectl -n recurso get svc
+	kubectl -n recurso get ingress
+
 docs:
 	cd docs-site && npm start
 
 website:
 	cd website && npm run dev
-
