@@ -142,7 +142,8 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			COALESCE(ack_date, ''), e_invoice_retry_count,
 			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, ''),
 			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
-			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')
+			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler'),
+			COALESCE(payment_wall_active, FALSE)
 		FROM invoices WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -163,6 +164,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.EInvoiceNextRetryAt, &inv.EInvoiceErrorMessage,
 		&inv.DunningActionID, &inv.DunningContextKey,
 		&inv.LastPaymentError, &inv.DunningManagedBy,
+		&inv.PaymentWallActive,
 	)
 
 	inv.HSNCode = hsnCode.String
@@ -188,8 +190,9 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		    ack_no = $10, ack_date = $11, e_invoice_retry_count = $12,
 		    e_invoice_next_retry_at = $13, e_invoice_error_message = $14,
 		    dunning_action_id = $15, dunning_context_key = $16,
-		    last_payment_error = $17, dunning_managed_by = $18
-		WHERE id = $19
+		    last_payment_error = $17, dunning_managed_by = $18,
+		    payment_wall_active = $19
+		WHERE id = $20
 	`
 	amountPaid := inv.Total // Simplification as we update usually for generic payment
 
@@ -200,6 +203,7 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
 		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey),
 		nilIfEmpty(inv.LastPaymentError), nilIfEmpty(inv.DunningManagedBy),
+		inv.PaymentWallActive,
 		inv.ID,
 	)
 	if err != nil {

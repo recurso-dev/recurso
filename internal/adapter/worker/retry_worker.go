@@ -12,10 +12,11 @@ import (
 )
 
 type RetryWorker struct {
-	invoiceRepo  port.InvoiceRepository
-	retryService *service.SmartRetryService
-	gateway      port.PaymentGateway
-	notifier     port.Notifier
+	invoiceRepo            port.InvoiceRepository
+	retryService           *service.SmartRetryService
+	gateway                port.PaymentGateway
+	notifier               port.Notifier
+	dunningCampaignService *service.DunningCampaignService
 }
 
 func NewRetryWorker(
@@ -30,6 +31,10 @@ func NewRetryWorker(
 		gateway:      gateway,
 		notifier:     notifier,
 	}
+}
+
+func (w *RetryWorker) SetDunningCampaignService(svc *service.DunningCampaignService) {
+	w.dunningCampaignService = svc
 }
 
 // Start runs the worker loop.
@@ -122,6 +127,13 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 		inv.LastPaymentError = ""
 		if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
 			log.Printf("Worker: Failed to mark invoice %s as paid: %v", inv.ID, updateErr)
+		}
+
+		// Mark dunning campaign as recovered
+		if w.dunningCampaignService != nil {
+			if err := w.dunningCampaignService.MarkRecovered(ctx, inv.ID); err != nil {
+				log.Printf("Worker: Failed to mark dunning campaign recovered for %s: %v", inv.ID, err)
+			}
 		}
 		return
 	}

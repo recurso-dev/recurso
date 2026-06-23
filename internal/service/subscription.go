@@ -184,7 +184,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	if domain.PtrToString(pos) == "" {
 		pos = nil
 	}
-	taxRes := taxEngine.CalculateTax(total, domain.PtrToString(pos))
+	taxRes := taxEngine.CalculateTaxLegacy(total, domain.PtrToString(pos))
 	total = total + taxRes.Total
 
 	subID := uuid.New()
@@ -746,6 +746,29 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	if s.gateway != nil && sub.RazorpaySubscriptionID != "" {
 		// Mock implementation call to gateway update
 		// s.gateway.UpdateSubscription(ctx, sub.RazorpaySubscriptionID, newPlan.Code)
+	}
+
+	return sub, nil
+}
+
+// ExtendCurrentPeriod extends a subscription's current period end by the given number of days
+func (s *SubscriptionService) ExtendCurrentPeriod(ctx context.Context, tenantID, subscriptionID uuid.UUID, days int) (*domain.Subscription, error) {
+	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subscription: %w", err)
+	}
+	if sub == nil {
+		return nil, fmt.Errorf("subscription not found")
+	}
+	if sub.TenantID != tenantID {
+		return nil, fmt.Errorf("subscription not found for tenant")
+	}
+
+	sub.CurrentPeriodEnd = sub.CurrentPeriodEnd.AddDate(0, 0, days)
+	sub.UpdatedAt = time.Now().UTC()
+
+	if err := s.subRepo.Update(ctx, sub); err != nil {
+		return nil, fmt.Errorf("failed to extend subscription period: %w", err)
 	}
 
 	return sub, nil

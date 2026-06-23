@@ -17,6 +17,7 @@ import (
 	"github.com/recur-so/recurso/internal/adapter/ai"
 	"github.com/recur-so/recurso/internal/adapter/db"
 	"github.com/recur-so/recurso/internal/adapter/email"
+	"github.com/recur-so/recurso/internal/adapter/fx"
 	"github.com/recur-so/recurso/internal/adapter/gateway"
 	"github.com/recur-so/recurso/internal/adapter/gsp"
 	"github.com/recur-so/recurso/internal/adapter/handler"
@@ -25,8 +26,11 @@ import (
 	"github.com/recur-so/recurso/internal/adapter/notification"
 	redisAdapter "github.com/recur-so/recurso/internal/adapter/redis"
 	"github.com/recur-so/recurso/internal/adapter/tigerbeetle"
+	"github.com/recur-so/recurso/internal/adapter/vault"
+	"github.com/recur-so/recurso/internal/adapter/sms"
 	"github.com/recur-so/recurso/internal/adapter/worker"
 	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/recur-so/recurso/internal/core/service/tax"
 	"github.com/recur-so/recurso/internal/scheduler"
 	"github.com/recur-so/recurso/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -103,17 +107,17 @@ func main() {
 	notificationService := service.NewNotificationService(emailSender, baseURL)
 	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
 
-	// Ledger (P5)
-	// We wrap in try-catch in case TB is not running (since docker failed)
+	// Ledger (P5) — dual-write: PG (always) + TigerBeetle (optional)
+	ledgerRepo := db.NewLedgerRepository(database)
 	var ledgerService *service.LedgerService
 	tbAddr := getEnvDefault("TIGERBEETLE_ADDRESS", "127.0.0.1:3001")
 	ledgerClient, err := tigerbeetle.NewLedgerClient(0, []string{tbAddr})
 	if err == nil {
-		ledgerService = service.NewLedgerService(ledgerClient)
+		ledgerService = service.NewLedgerService(ledgerClient, ledgerRepo)
 		defer ledgerClient.Close()
 	} else {
-		slog.Warn("TigerBeetle not connected — ledger disabled", "error", err)
-		ledgerService = service.NewLedgerService(nil)
+		slog.Warn("TigerBeetle not connected — ledger PG-only mode", "error", err)
+		ledgerService = service.NewLedgerService(nil, ledgerRepo)
 	}
 
 	// 5. Initialize Gateways
@@ -131,6 +135,17 @@ func main() {
 
 	// Smart Router routes based on Currency (INR -> Razorpay, USD -> Stripe)
 	paymentGateway := gateway.NewSmartRouter(razorpayGateway, stripeGateway)
+
+	// Card Vault — uses Stripe if key exists, else Mock for dev
+	var cardVault port.CardVault
+	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
+		cardVault = vault.NewStripeVault(key)
+		log.Println("Using Stripe Card Vault")
+	} else {
+		cardVault = vault.NewMockVault()
+		log.Println("Using Mock Card Vault")
+	}
+	_ = cardVault // Available for SmartRouter or payment handlers
 
 	// P25: IRP & GST Config Repositories
 	irpConfigRepo := db.NewIRPConfigRepository(database)
@@ -161,6 +176,23 @@ func main() {
 		gspAdapter = gsp.NewMockGSPAdapter() // P25 Mock GSP
 		log.Println("Using Mock GSP Adapter (NIC_PRIVATE_KEY_PATH not set)")
 	}
+
+	// FX Provider — OXR if key set, else static rates
+	var fxProvider port.ExchangeRateProvider
+	if oxrKey := os.Getenv("OPENEXCHANGERATES_APP_ID"); oxrKey != "" {
+		fxProvider = fx.NewOpenExchangeRatesProvider(oxrKey)
+		log.Println("Using OpenExchangeRates FX provider")
+	} else {
+		fxProvider = fx.NewStaticRatesProvider()
+		log.Println("Using Static FX rates provider")
+	}
+	_ = fxProvider // Available for invoice service
+
+	// Tax Engine — dispatches to GST/VAT/SalesTax based on company country
+	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
+	companyState := getEnvDefault("COMPANY_STATE", "TN")
+	taxEngine := tax.NewTaxEngine(companyCountry, companyState)
+	_ = taxEngine // Available for invoice/subscription services
 
 	// 4. Initialize Core Services (Invoice)
 	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter) // P15, P25
@@ -210,10 +242,30 @@ func main() {
 	// AI Service (P45)
 	dunningRepo := db.NewDunningRepository(database)
 	retryService := service.NewSmartRetryService(dunningRepo)
+	if strategy := os.Getenv("DUNNING_STRATEGY"); strategy != "" {
+		retryService.SetStrategy(service.BanditStrategy(strategy))
+		slog.Info("Dunning strategy set", "strategy", strategy)
+	}
 	churnService := service.NewChurnService(customerRepo, invoiceRepo)
 	churnService.SetSubscriptionRepo(subscriptionRepo)
 	churnService.SetPlanRepo(planRepo)
 	churnService.SetDB(database)
+
+	// Cancel Flows
+	cancelFlowRepo := db.NewCancelFlowRepository(database)
+	cancelFlowService := service.NewCancelFlowService(cancelFlowRepo, subscriptionService, notificationService)
+
+	// Dunning Campaigns
+	dunningCampaignRepo := db.NewDunningCampaignRepository(database)
+	var smsSender port.SMSSender
+	if twilioSID := os.Getenv("TWILIO_ACCOUNT_SID"); twilioSID != "" {
+		smsSender = sms.NewTwilioSMSSender(twilioSID, os.Getenv("TWILIO_AUTH_TOKEN"), os.Getenv("TWILIO_FROM_NUMBER"))
+		log.Println("Using Twilio SMS Sender")
+	} else {
+		smsSender = sms.NewConsoleSMSSender()
+		log.Println("Using Console SMS Sender (Mock)")
+	}
+	dunningCampaignService := service.NewDunningCampaignService(dunningCampaignRepo, invoiceRepo, customerRepo, notificationService, smsSender)
 
 	// Analytics
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
@@ -260,12 +312,16 @@ func main() {
 
 	// 6. Initialize Workers
 	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, paymentGateway, notifier)
+	retryWorker.SetDunningCampaignService(dunningCampaignService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
 
 	// P25: E-Invoice Retry Worker
 	einvoiceWorker := worker.NewEInvoiceRetryWorker(invoiceRepo, einvoiceService)
+
+	// Dunning Campaign Worker
+	dunningCampaignWorker := worker.NewDunningCampaignWorker(dunningCampaignService)
 
 	// Phase 2: Accounting Sync Worker (daily)
 	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
@@ -276,6 +332,7 @@ func main() {
 	go churnWorker.Start(context.Background())
 	go revrecWorker.Start(context.Background())
 	go einvoiceWorker.Start(context.Background())
+	go dunningCampaignWorker.Start(context.Background())
 	go acctSyncWorker.Start(context.Background())
 
 	// Distributed Locking & Redis
@@ -410,6 +467,11 @@ func main() {
 	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
 	webhookHandler.SetMandateService(mandateService)
 	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
+	webhookHandler.SetDunningCampaignService(dunningCampaignService)
+
+	// Cancel Flow & Dunning Campaign Handlers
+	cancelFlowHandler := handler.NewCancelFlowHandler(cancelFlowService)
+	dunningCampaignHandler := handler.NewDunningCampaignHandler(dunningCampaignService)
 
 	// 8. Setup Router
 	r := gin.Default()
@@ -656,6 +718,29 @@ func main() {
 		v1.GET("/churn/high-risk", churnHandler.GetHighRiskCustomers)
 		v1.GET("/churn/alerts", churnHandler.GetAlerts)
 		v1.POST("/churn/alerts/:id/ack", churnHandler.AcknowledgeAlert)
+
+		// Cancel Flows (Retention Interventions)
+		v1.GET("/cancel-flows", cancelFlowHandler.ListFlows)
+		v1.POST("/cancel-flows", cancelFlowHandler.CreateFlow)
+		v1.GET("/cancel-flows/:id", cancelFlowHandler.GetFlow)
+		v1.PUT("/cancel-flows/:id", cancelFlowHandler.UpdateFlow)
+		v1.POST("/cancel-flows/:id/steps", cancelFlowHandler.CreateStep)
+		v1.PUT("/cancel-flows/steps/:id", cancelFlowHandler.UpdateStep)
+		v1.DELETE("/cancel-flows/steps/:id", cancelFlowHandler.DeleteStep)
+		v1.POST("/cancel-flows/sessions/start", cancelFlowHandler.StartSession)
+		v1.POST("/cancel-flows/sessions/:id/submit", cancelFlowHandler.SubmitStep)
+		v1.GET("/cancel-flows/sessions/:id", cancelFlowHandler.GetSession)
+		v1.GET("/cancel-flows/stats", cancelFlowHandler.GetStats)
+
+		// Dunning Campaigns (Multi-Channel)
+		v1.GET("/dunning-campaigns", dunningCampaignHandler.ListCampaigns)
+		v1.POST("/dunning-campaigns", dunningCampaignHandler.CreateCampaign)
+		v1.GET("/dunning-campaigns/:id", dunningCampaignHandler.GetCampaign)
+		v1.PUT("/dunning-campaigns/:id", dunningCampaignHandler.UpdateCampaign)
+		v1.POST("/dunning-campaigns/:id/steps", dunningCampaignHandler.CreateStep)
+		v1.PUT("/dunning-campaigns/steps/:id", dunningCampaignHandler.UpdateStep)
+		v1.DELETE("/dunning-campaigns/steps/:id", dunningCampaignHandler.DeleteStep)
+		v1.GET("/invoices/:id/payment-wall", dunningCampaignHandler.GetPaymentWallStatus)
 	}
 
 	// 9. Start Server

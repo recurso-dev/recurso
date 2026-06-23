@@ -563,3 +563,23 @@ const GSTInvoiceTemplate = `
     {{if .IRN}}IRN: {{.IRN}}{{end}}
 </p>
 `
+
+// DunningCampaignEmailTemplate for configurable dunning campaign emails
+const DunningCampaignEmailTemplate = `
+<h1>{{.Subject}}</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>{{.Body}}</p>
+
+<div class="info-box">
+    <div class="info-row">
+        <span class="info-label">Invoice</span>
+        <span class="info-value">{{.InvoiceNumber}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Amount Due</span>
+        <span class="info-value amount">{{.Amount}}</span>
+    </div>
+</div>
+
+<p>Please take action to avoid service interruption.</p>
+`

@@ -23,17 +23,18 @@ import (
 )
 
 type WebhookHandler struct {
-	subService          *service.SubscriptionService
-	gateway             port.PaymentGateway
-	retryService        *service.SmartRetryService
-	invoiceRepo         port.InvoiceRepository
-	subRepo             port.SubscriptionRepository
-	customerRepo        port.CustomerRepository
-	notificationService *service.NotificationService
-	mandateService      *service.MandateService
-	offlinePaymentSvc   *service.OfflinePaymentService
-	stripeWebhookSecret string
-	logger              *slog.Logger
+	subService              *service.SubscriptionService
+	gateway                 port.PaymentGateway
+	retryService            *service.SmartRetryService
+	invoiceRepo             port.InvoiceRepository
+	subRepo                 port.SubscriptionRepository
+	customerRepo            port.CustomerRepository
+	notificationService     *service.NotificationService
+	mandateService          *service.MandateService
+	offlinePaymentSvc       *service.OfflinePaymentService
+	dunningCampaignService  *service.DunningCampaignService
+	stripeWebhookSecret     string
+	logger                  *slog.Logger
 }
 
 func NewWebhookHandler(
@@ -65,6 +66,10 @@ func (h *WebhookHandler) SetMandateService(svc *service.MandateService) {
 
 func (h *WebhookHandler) SetOfflinePaymentService(svc *service.OfflinePaymentService) {
 	h.offlinePaymentSvc = svc
+}
+
+func (h *WebhookHandler) SetDunningCampaignService(svc *service.DunningCampaignService) {
+	h.dunningCampaignService = svc
 }
 
 // RazorpayWebhookPayload is a simplified structure
@@ -137,6 +142,11 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	// Handle virtual_account.credited for offline payment reconciliation
 	if event.Event == "virtual_account.credited" {
 		h.handleVirtualAccountCredited(c, body)
+		return
+	}
+
+	if event.Event == "payment.failed" {
+		h.handleRazorpayPaymentFailed(c, event)
 		return
 	}
 
@@ -311,6 +321,13 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event s
 	h.logger.Info("invoice marked past_due via stripe webhook", "invoice_id", invoiceID)
 	h.recordDunningFailure(ctx, invoiceID)
 
+	// Trigger dunning campaign
+	if h.dunningCampaignService != nil {
+		if err := h.dunningCampaignService.TriggerCampaign(ctx, invoiceID, "payment_failed"); err != nil {
+			h.logger.Error("failed to trigger dunning campaign", "error", err, "invoice_id", invoiceID)
+		}
+	}
+
 	// Send payment failed notification
 	if h.notificationService != nil && h.customerRepo != nil {
 		customer, custErr := h.customerRepo.GetByID(ctx, inv.CustomerID)
@@ -419,6 +436,13 @@ func (h *WebhookHandler) recordDunningFailure(ctx context.Context, invoiceID uui
 
 // recordDunningSuccess records a reward=1.0 outcome if the invoice has an active dunning action
 func (h *WebhookHandler) recordDunningSuccess(ctx context.Context, invoiceID uuid.UUID) {
+	// Mark dunning campaign as recovered
+	if h.dunningCampaignService != nil {
+		if err := h.dunningCampaignService.MarkRecovered(ctx, invoiceID); err != nil {
+			h.logger.Error("failed to mark dunning campaign recovered", "error", err, "invoice_id", invoiceID)
+		}
+	}
+
 	if h.retryService == nil || h.invoiceRepo == nil {
 		return
 	}
@@ -569,5 +593,55 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 	}
 
 	h.logger.Info("virtual account payment reconciled via webhook", "va_id", vaID, "amount", amount)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func (h *WebhookHandler) handleRazorpayPaymentFailed(c *gin.Context, event RazorpayWebhookPayload) {
+	invoiceIDStr := event.Payload.Payment.Entity.Notes.InvoiceID
+	if invoiceIDStr == "" {
+		h.logger.Info("razorpay payment.failed ignored — no invoice_id in notes",
+			"payment_id", event.Payload.Payment.Entity.ID,
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no invoice_id"})
+		return
+	}
+
+	invoiceID, err := uuid.Parse(invoiceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid invoice_id in razorpay webhook", "invoice_id", invoiceIDStr)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "invalid invoice_id"})
+		return
+	}
+
+	ctx := c.Request.Context()
+
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil || inv == nil {
+		h.logger.Error("failed to fetch invoice for razorpay payment failure",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		return
+	}
+
+	inv.Status = domain.InvoiceStatusPastDue
+	if err := h.invoiceRepo.Update(ctx, inv); err != nil {
+		h.logger.Error("failed to update invoice to past_due via razorpay",
+			"invoice_id", invoiceID,
+			"error", err,
+		)
+	}
+
+	h.recordDunningFailure(ctx, invoiceID)
+
+	// Trigger dunning campaign
+	if h.dunningCampaignService != nil {
+		if err := h.dunningCampaignService.TriggerCampaign(ctx, invoiceID, "payment_failed"); err != nil {
+			h.logger.Error("failed to trigger dunning campaign via razorpay", "error", err, "invoice_id", invoiceID)
+		}
+	}
+
+	h.logger.Info("razorpay payment failure processed", "invoice_id", invoiceID)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }

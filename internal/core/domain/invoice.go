@@ -56,6 +56,11 @@ type Invoice struct {
 	PaidAt       *time.Time `json:"paid_at,omitempty"`
 	PaymentTerms string     `json:"payment_terms"` // P15
 
+	// Multi-Currency (FX)
+	ExchangeRate      float64 `json:"exchange_rate,omitempty" db:"exchange_rate"`
+	BaseCurrencyTotal int64   `json:"base_currency_total,omitempty" db:"base_currency_total"`
+	BaseCurrency      string  `json:"base_currency,omitempty" db:"base_currency"`
+
 	// Retry Logic
 	NextRetryAt *time.Time `json:"next_retry_at,omitempty"`
 	RetryCount  int        `json:"retry_count"`
@@ -65,6 +70,9 @@ type Invoice struct {
 	DunningContextKey string `json:"dunning_context_key,omitempty" db:"dunning_context_key"`
 	LastPaymentError  string `json:"last_payment_error,omitempty" db:"last_payment_error"`
 	DunningManagedBy  string `json:"dunning_managed_by,omitempty" db:"dunning_managed_by"`
+
+	// Dunning Campaign (payment wall)
+	PaymentWallActive bool `json:"payment_wall_active" db:"payment_wall_active"`
 }
 
 // OverdueInvoice contains invoice info with customer details for dunning
