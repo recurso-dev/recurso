@@ -8,7 +8,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"math"
 	"net/http"
 	"time"
 
@@ -120,16 +122,20 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 	}
 	defer resp.Body.Close()
 
+	// Read response body (up to 1KB)
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
+
 	// Handle Response
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		// Success
 		now := time.Now()
 		delivery.DeliveredAt = &now
 		delivery.StatusCode = resp.StatusCode
-		delivery.ResponseBody = "OK" // Simplified
+		delivery.ResponseBody = string(body)
+		delivery.Attempt++
 		w.deliveryRepo.Update(ctx, delivery)
 	} else {
-		w.retryDelivery(ctx, delivery, fmt.Sprintf("HTTP %d", resp.StatusCode))
+		w.retryDelivery(ctx, delivery, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 }
 
@@ -139,18 +145,20 @@ func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.Even
 	delivery.ResponseBody = reason
 
 	if delivery.Attempt >= 5 {
-		// Consistently failing, stop retrying? Or just schedule for very late?
-		// For now, we update it but NextRetryAt logic (which handles the backoff)
-		// implies we need a NextRetryAt field in domain.EventDelivery.
-		// Checking domain model: `Attempts` exists. `DeliveredAt` exists.
-		// `NextRetryAt` was NOT in the viewed domain model.
-		// I'll add `NextRetryAt` to domain model too.
-
-		// For now, simple implementation: just update.
+		// Max attempts exhausted — mark as delivered (failed) so ListPending stops picking it up
+		now := time.Now()
+		delivery.DeliveredAt = &now
+		w.deliveryRepo.Update(ctx, delivery)
+		return
 	}
 
-	// For "NextRetryAt", we need that field to query effectively.
-	// If it's not in DB, we rely on "LastUpdated" + "Attempt" count logic in the SQL query.
+	// Exponential backoff: 2^attempt * 30s, capped at 24h
+	backoff := time.Duration(math.Min(
+		float64(time.Duration(1<<uint(delivery.Attempt))*30*time.Second),
+		float64(24*time.Hour),
+	))
+	nextRetry := time.Now().Add(backoff)
+	delivery.NextRetryAt = &nextRetry
 
 	w.deliveryRepo.Update(ctx, delivery)
 }

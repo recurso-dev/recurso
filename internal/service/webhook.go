@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log/slog"
 	"net/url"
 
 	"github.com/google/uuid"
@@ -120,11 +121,23 @@ func (s *WebhookService) PublishEvent(ctx context.Context, input PublishEventInp
 		return nil, err
 	}
 
-	// Note: In a production system, you would queue delivery to webhooks here
-	// For now, we just log the event. Webhook delivery could be done via:
-	// 1. Background worker polling for undelivered events
-	// 2. Message queue (RabbitMQ, SQS, etc.)
-	// 3. Synchronous HTTP calls (not recommended for production)
+	// Create EventDelivery records for all matching endpoints (best-effort)
+	endpoints, err := s.endpointRepo.GetByTenantAndEventType(ctx, input.TenantID, input.Type)
+	if err != nil {
+		slog.Error("failed to fetch webhook endpoints", "error", err, "tenant_id", input.TenantID, "event_type", input.Type)
+	}
+	for _, endpoint := range endpoints {
+		delivery := &domain.EventDelivery{
+			ID:                uuid.New(),
+			EventID:           event.ID,
+			WebhookEndpointID: endpoint.ID,
+			Attempt:           0,
+			NextRetryAt:       nil, // immediate first attempt
+		}
+		if err := s.deliveryRepo.Create(ctx, delivery); err != nil {
+			slog.Error("failed to create webhook delivery", "error", err, "event_id", event.ID, "endpoint_id", endpoint.ID)
+		}
+	}
 
 	return event, nil
 }

@@ -366,6 +366,13 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		return err
 	}
 
+	// Record payment in ledger
+	if s.ledger != nil {
+		if err := s.ledger.RecordPayment(ctx, inv); err != nil {
+			s.logger.Error("ledger payment write failed", "error", err, "invoice_id", inv.ID)
+		}
+	}
+
 	// Phase 5: Create Revenue Recognition Schedule
 	if s.revrecService != nil {
 		if err := s.revrecService.CreateScheduleForInvoice(ctx, inv); err != nil {

@@ -2,60 +2,164 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/recur-so/recurso/internal/adapter/tigerbeetle"
 	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/recur-so/recurso/internal/core/port"
 )
 
 // LedgerService orchestrates financial movements.
+// Dual-write: always writes to PG (pgRepo), and to TigerBeetle (tbClient) if connected.
 type LedgerService struct {
-	client *tigerbeetle.LedgerClient
+	tbClient *tigerbeetle.LedgerClient
+	pgRepo   port.LedgerRepository
 }
 
-func NewLedgerService(client *tigerbeetle.LedgerClient) *LedgerService {
-	return &LedgerService{client: client}
+func NewLedgerService(tbClient *tigerbeetle.LedgerClient, pgRepo port.LedgerRepository) *LedgerService {
+	return &LedgerService{tbClient: tbClient, pgRepo: pgRepo}
+}
+
+// SetupTenantAccounts creates the standard chart of accounts for a new tenant.
+func (s *LedgerService) SetupTenantAccounts(ctx context.Context, tenantID uuid.UUID) error {
+	accounts := domain.TenantChartOfAccounts(tenantID)
+	for _, acc := range accounts {
+		// Write to PG
+		if s.pgRepo != nil {
+			if err := s.pgRepo.CreateAccount(ctx, acc); err != nil {
+				return err
+			}
+		}
+		// Write to TB
+		if s.tbClient != nil {
+			acc.UserData128 = domain.UUIDToUint128(tenantID)
+			if err := s.tbClient.CreateAccounts(ctx, []*domain.LedgerAccount{acc}); err != nil {
+				slog.Warn("TB CreateAccounts failed (non-fatal)", "error", err)
+			}
+		}
+	}
+	return nil
 }
 
 // CreateCustomerAccounts creates the necessary sub-ledgers for a customer (AR).
 func (s *LedgerService) CreateCustomerAccounts(ctx context.Context, customerID uuid.UUID) error {
-	accounts := []*domain.LedgerAccount{
-		{
-			ID:            customerID, // Simple mapping: Customer ID = AR Account ID
-			Name:          "Accounts Receivable",
-			Type:          domain.AccountTypeAsset,
-			Code:          1000,
-			LedgerID:      1,
-			UserData128:   domain.UUIDToUint128(customerID), // Helper needed
-			CreditsPosted: 0,
-			DebitsPosted:  0,
-		},
+	account := &domain.LedgerAccount{
+		ID:          customerID,
+		Name:        "Accounts Receivable",
+		Type:        domain.AccountTypeAsset,
+		Code:        domain.AccountCodeAR,
+		LedgerID:    1,
+		UserData128: domain.UUIDToUint128(customerID),
 	}
-	return s.client.CreateAccounts(ctx, accounts)
+
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateAccount(ctx, account); err != nil {
+			slog.Warn("PG CreateAccount failed", "error", err)
+		}
+	}
+
+	if s.tbClient != nil {
+		return s.tbClient.CreateAccounts(ctx, []*domain.LedgerAccount{account})
+	}
+	return nil
 }
 
 // RecordInvoice posts the invoice amount to the ledger.
 // Debit: Customer AR (Asset)
-// Credit: Revenue (Equity/Revenue)
+// Credit: Revenue
 func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoice) error {
 	txID := uuid.New()
-	
-	// For simplicity, assumed Revenue Account is fixed ID 1 (created at bootstrap)
-	// In reality, each Plan might have a Revenue Account.
-	revenueAccountID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+
+	// Look up revenue account dynamically
+	var revenueAccountID uuid.UUID
+	if s.pgRepo != nil {
+		revenueAcct, err := s.pgRepo.GetAccountByTenantAndCode(ctx, invoice.TenantID, domain.AccountCodeRevenue)
+		if err == nil && revenueAcct != nil {
+			revenueAccountID = revenueAcct.ID
+		}
+	}
+	if revenueAccountID == uuid.Nil {
+		revenueAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	}
 
 	transfer := &domain.LedgerTransaction{
 		ID:              txID,
 		DebitAccountID:  invoice.CustomerID, // AR
-		CreditAccountID: revenueAccountID,   // Revenue
+		CreditAccountID: revenueAccountID,
 		Amount:          uint64(invoice.Total),
 		LedgerID:        1,
 		Code:            1, // Invoice
+		ReferenceID:     invoice.ID,
+		Description:     "Invoice " + invoice.InvoiceNumber,
 		Timestamp:       time.Now(),
 	}
 
-	return s.client.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+	// Always write to PG
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed", "error", err)
+		}
+	}
+
+	// Write to TB if connected
+	if s.tbClient != nil {
+		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+	}
+	return nil
+}
+
+// RecordPayment posts a payment to the ledger when an invoice is marked paid.
+// Debit: Cash (Asset)
+// Credit: Customer AR (Asset) — reduces the receivable
+func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
+	txID := uuid.New()
+
+	// Look up cash account dynamically
+	var cashAccountID uuid.UUID
+	if s.pgRepo != nil {
+		cashAcct, err := s.pgRepo.GetAccountByTenantAndCode(ctx, invoice.TenantID, domain.AccountCodeCash)
+		if err == nil && cashAcct != nil {
+			cashAccountID = cashAcct.ID
+		}
+	}
+	if cashAccountID == uuid.Nil {
+		cashAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000004")
+	}
+
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  cashAccountID,      // Cash
+		CreditAccountID: invoice.CustomerID, // AR
+		Amount:          uint64(invoice.Total),
+		LedgerID:        1,
+		Code:            3, // Payment
+		ReferenceID:     invoice.ID,
+		Description:     "Payment for " + invoice.InvoiceNumber,
+		Timestamp:       time.Now(),
+	}
+
+	// Always write to PG
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed for payment", "error", err)
+		}
+	}
+
+	// Write to TB if connected
+	if s.tbClient != nil {
+		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+	}
+	return nil
+}
+
+// ListAccounts returns all ledger accounts for a tenant.
+func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
+	if s.pgRepo != nil {
+		return s.pgRepo.GetAccountsByTenant(ctx, tenantID)
+	}
+	return nil, nil
 }
 
 // RecordRecognition moves funds from Deferred Revenue to Recognized Revenue.
@@ -64,10 +168,23 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, amount int64) (uuid.UUID, error) {
 	txID := uuid.New()
 
-	// In production, these account IDs would be fetched from Tenant settings.
-	// For MVP, using fixed IDs.
-	deferredAccountID := uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	recognizedAccountID := uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	var deferredAccountID, recognizedAccountID uuid.UUID
+	if s.pgRepo != nil {
+		da, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeDeferredRevenue)
+		if err == nil && da != nil {
+			deferredAccountID = da.ID
+		}
+		ra, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeRecognizedRevenue)
+		if err == nil && ra != nil {
+			recognizedAccountID = ra.ID
+		}
+	}
+	if deferredAccountID == uuid.Nil {
+		deferredAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
+	}
+	if recognizedAccountID == uuid.Nil {
+		recognizedAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	}
 
 	transfer := &domain.LedgerTransaction{
 		ID:              txID,
@@ -76,36 +193,59 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 		Amount:          uint64(amount),
 		LedgerID:        1,
 		Code:            2, // Revenue Recognition
+		Description:     "Revenue recognition",
 		Timestamp:       time.Now(),
 	}
 
-	if err := s.client.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
-		return uuid.Nil, err
+	// Always write to PG
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed", "error", err)
+		}
+	}
+
+	// Write to TB if connected
+	if s.tbClient != nil {
+		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
+			return uuid.Nil, err
+		}
 	}
 	return txID, nil
 }
 
 // GetEntries fetches ledger entries (transfers) for a given account.
+// Prefers PG as source of truth; falls back to TB if PG is unavailable.
 func (s *LedgerService) GetEntries(ctx context.Context, accountID uuid.UUID) ([]*domain.LedgerTransaction, error) {
-	transfers, err := s.client.GetAccountTransfers(ctx, accountID)
-	if err != nil {
-		return nil, err
+	// Try PG first
+	if s.pgRepo != nil {
+		entries, err := s.pgRepo.GetTransactionsByAccount(ctx, accountID)
+		if err == nil {
+			return entries, nil
+		}
+		slog.Warn("PG GetTransactionsByAccount failed, trying TB", "error", err)
 	}
 
-	var entries []*domain.LedgerTransaction
-	for _, tx := range transfers {
-		bi := tx.Amount.BigInt()
-		entries = append(entries, &domain.LedgerTransaction{
-			ID:              uuid.MustParse(tx.ID.String()), // This might need better UUID conversion from Uint128
-			DebitAccountID:  uuid.MustParse(tx.DebitAccountID.String()),
-			CreditAccountID: uuid.MustParse(tx.CreditAccountID.String()),
-			Amount:          (&bi).Uint64(),
-			LedgerID:        tx.Ledger,
-			Code:            tx.Code,
-			// Timestamp conversion from uint64 nanoseconds? TB uses nanoseconds from epoch??
-			// For MVP, we might just use 'now' or decode properly if library supports it.
-			// Actually best to leave timestamp empty if format conversion is hard, UI can fallback.
-		})
+	// Fallback to TB
+	if s.tbClient != nil {
+		transfers, err := s.tbClient.GetAccountTransfers(ctx, accountID)
+		if err != nil {
+			return nil, err
+		}
+
+		var entries []*domain.LedgerTransaction
+		for _, tx := range transfers {
+			bi := tx.Amount.BigInt()
+			entries = append(entries, &domain.LedgerTransaction{
+				ID:              uuid.MustParse(tx.ID.String()),
+				DebitAccountID:  uuid.MustParse(tx.DebitAccountID.String()),
+				CreditAccountID: uuid.MustParse(tx.CreditAccountID.String()),
+				Amount:          (&bi).Uint64(),
+				LedgerID:        tx.Ledger,
+				Code:            tx.Code,
+			})
+		}
+		return entries, nil
 	}
-	return entries, nil
+
+	return nil, nil
 }

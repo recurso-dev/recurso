@@ -44,10 +44,10 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 		prefix = prefix[:8]
 	}
 
-	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, type, is_active, created_at) 
+	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, type, is_active, created_at)
 	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
 	_, err = r.db.ExecContext(ctx, query,
-		key.ID, key.TenantID, key.KeyValue, string(hash), prefix, key.Type, key.IsActive, key.CreatedAt,
+		key.ID, key.TenantID, "", string(hash), prefix, key.Type, key.IsActive, key.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -59,9 +59,7 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 	return nil
 }
 
-// GetTenantByKey validates an API key. Strategy:
-// 1. If key_hash column exists and is populated, use prefix lookup + bcrypt compare
-// 2. Fallback: plaintext comparison (for backward compatibility during migration)
+// GetTenantByKey validates an API key using prefix lookup + bcrypt compare.
 func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) (*domain.Tenant, error) {
 	// Try hashed lookup first (prefix match + bcrypt verify)
 	prefix := keyValue
@@ -75,38 +73,23 @@ func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) 
 		JOIN api_keys k ON t.id = k.tenant_id
 		WHERE k.key_prefix = $1 AND k.is_active = TRUE AND k.key_hash IS NOT NULL
 	`, prefix)
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var t domain.Tenant
-			var keyHash string
-			if err := rows.Scan(&t.ID, &t.Name, &t.Email, &keyHash); err != nil {
-				continue
-			}
-			// bcrypt compare
-			if bcrypt.CompareHashAndPassword([]byte(keyHash), []byte(keyValue)) == nil {
-				return &t, nil
-			}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query API keys: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t domain.Tenant
+		var keyHash string
+		if err := rows.Scan(&t.ID, &t.Name, &t.Email, &keyHash); err != nil {
+			continue
+		}
+		// bcrypt compare
+		if bcrypt.CompareHashAndPassword([]byte(keyHash), []byte(keyValue)) == nil {
+			return &t, nil
 		}
 	}
 
-	// Fallback: plaintext comparison (backward compatibility for un-migrated keys)
-	query := `
-		SELECT t.id, t.name, t.email 
-		FROM tenants t
-		JOIN api_keys k ON t.id = k.tenant_id
-		WHERE k.key_value = $1 AND k.is_active = TRUE AND k.key_hash IS NULL
-	`
-	row := r.db.QueryRowContext(ctx, query, keyValue)
-	var t domain.Tenant
-	if err := row.Scan(&t.ID, &t.Name, &t.Email); err != nil {
-		return nil, err
-	}
-
-	r.logger.Warn("API key used without hash — run migration to hash existing keys",
-		"tenant_id", t.ID,
-	)
-	return &t, nil
+	return nil, fmt.Errorf("invalid API key")
 }
 
 func (r *TenantRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error) {
