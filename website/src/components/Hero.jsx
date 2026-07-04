@@ -90,7 +90,7 @@ const Hero = () => {
                     {/* CTAs */}
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16 animate-fade-up delay-300">
                         <a
-                            href="https://github.com/recur-so/recurso"
+                            href="https://github.com/swapnull-in/recur-so"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="group flex items-center gap-2 px-8 py-4 bg-emerald-500 text-black font-bold rounded-xl hover:bg-emerald-400 transition-all duration-300 glow-green glow-ring text-base"

@@ -54,7 +54,7 @@ const Navbar = () => {
                         {/* Right side */}
                         <div className="hidden md:flex items-center gap-3">
                             <a
-                                href="https://github.com/recur-so/recurso"
+                                href="https://github.com/swapnull-in/recur-so"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="flex items-center gap-2 px-3 py-2 text-gray-400 hover:text-white transition-colors text-sm rounded-lg hover:bg-white/[0.04]"
@@ -62,7 +62,7 @@ const Navbar = () => {
                                 <Github className="w-4 h-4" />
                             </a>
                             <a
-                                href="https://github.com/recur-so/recurso"
+                                href="https://github.com/swapnull-in/recur-so"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="px-5 py-2 text-sm font-semibold text-black bg-emerald-500 rounded-lg hover:bg-emerald-400 transition-all duration-200 glow-ring"
@@ -98,7 +98,7 @@ const Navbar = () => {
                             </a>
                         ))}
                         <a
-                            href="https://github.com/recur-so/recurso"
+                            href="https://github.com/swapnull-in/recur-so"
                             target="_blank"
                             rel="noopener noreferrer"
                             className="block w-full px-4 py-2.5 text-sm font-semibold text-center text-black bg-emerald-500 rounded-lg mt-2"

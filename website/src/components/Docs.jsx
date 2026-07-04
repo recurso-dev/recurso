@@ -8,7 +8,7 @@ const Docs = () => {
             icon: Zap,
             title: 'Quick Start',
             description: 'Get up and running in under 5 minutes',
-            link: `${DOCS_URL}/getting-started`,
+            link: `${DOCS_URL}/quickstart`,
             time: '5 min',
         },
         {
@@ -22,14 +22,14 @@ const Docs = () => {
             icon: Terminal,
             title: 'Self-Hosting Guide',
             description: 'Deploy Recurso on your own infrastructure',
-            link: `${DOCS_URL}/self-hosting`,
+            link: `${DOCS_URL}/going-to-production`,
             time: '',
         },
         {
             icon: Book,
             title: 'Tutorials',
             description: 'Step-by-step guides for common use cases',
-            link: `${DOCS_URL}/tutorials`,
+            link: `${DOCS_URL}/end-to-end`,
             time: '',
         },
     ]
@@ -38,20 +38,20 @@ const Docs = () => {
         {
             step: 1,
             title: 'Clone and run',
-            code: `git clone https://github.com/recur-so/recurso.git
+            code: `git clone https://github.com/swapnull-in/recur-so.git
 cd recurso
 docker compose up`,
         },
         {
             step: 2,
             title: 'Create an API key',
-            code: `# Open the dashboard at http://localhost:3000
+            code: `# Start the dashboard: cd frontend && npm run dev (http://localhost:5173)
 # Navigate to Settings → API Keys → Create Key`,
         },
         {
             step: 3,
             title: 'Create your first subscription',
-            code: `curl -X POST http://localhost:3000/v1/subscriptions \\
+            code: `curl -X POST http://localhost:8080/v1/subscriptions \\
   -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json" \\
   -d '{"customer_id": "cust_123", "plan_id": "plan_pro"}'`,
@@ -116,7 +116,7 @@ docker compose up`,
                             <p className="text-gray-400">Build your first subscription in 3 steps</p>
                         </div>
                         <a
-                            href={`${DOCS_URL}/getting-started`}
+                            href={`${DOCS_URL}/quickstart`}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="hidden sm:flex items-center gap-2 text-primary hover:underline"
@@ -151,7 +151,7 @@ docker compose up`,
                     <div className="mt-8 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
                         <p className="text-gray-400">
                             Need help? Open an issue on{' '}
-                            <a href="https://github.com/recur-so/recurso/discussions" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                            <a href="https://github.com/swapnull-in/recur-so/discussions" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
                                 GitHub Discussions
                             </a>
                         </p>

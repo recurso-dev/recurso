@@ -6,7 +6,7 @@ const CTA = () => {
 
     const links = [
         { icon: BookOpen, label: 'Documentation', href: 'https://docs.recurso.dev', color: 'bg-blue-500/10 text-blue-400', hoverBg: 'hover:bg-blue-500/15' },
-        { icon: Github, label: 'GitHub', href: 'https://github.com/recur-so/recurso', color: 'bg-gray-500/10 text-gray-400', hoverBg: 'hover:bg-gray-500/15' },
+        { icon: Github, label: 'GitHub', href: 'https://github.com/swapnull-in/recur-so', color: 'bg-gray-500/10 text-gray-400', hoverBg: 'hover:bg-gray-500/15' },
         { icon: FileCode, label: 'API Reference', href: 'https://docs.recurso.dev/api-reference/plans', color: 'bg-emerald-500/10 text-emerald-400', hoverBg: 'hover:bg-emerald-500/15' },
     ]
 
@@ -33,7 +33,7 @@ const CTA = () => {
                 {/* CTA Buttons */}
                 <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
                     <a
-                        href="https://github.com/recur-so/recurso"
+                        href="https://github.com/swapnull-in/recur-so"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="group flex items-center gap-2 px-10 py-4 bg-emerald-500 text-black font-bold rounded-xl hover:bg-emerald-400 transition-all duration-300 glow-green-intense glow-ring text-base"
@@ -43,7 +43,7 @@ const CTA = () => {
                     </a>
 
                     <a
-                        href="https://github.com/recur-so/recurso"
+                        href="https://github.com/swapnull-in/recur-so"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex items-center gap-2 px-8 py-4 glass-strong text-white font-semibold rounded-xl hover:bg-white/[0.06] transition-all duration-300"

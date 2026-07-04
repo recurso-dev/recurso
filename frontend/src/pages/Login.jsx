@@ -1,17 +1,38 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import axios from 'axios'
+import { API_BASE } from '../lib/api'
 import { useAuth } from '../auth/AuthProvider'
 
 const Login = () => {
     const [key, setKey] = useState('')
+    const [error, setError] = useState(null)
+    const [checking, setChecking] = useState(false)
     const { login } = useAuth()
     const navigate = useNavigate()
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault()
-        if (!key) return
-        login(key)
-        navigate('/')
+        if (!key || checking) return
+        setChecking(true)
+        setError(null)
+        try {
+            // Validate the key before storing it so a typo fails here,
+            // not on the first dashboard request.
+            await axios.get(`${API_BASE}/account`, {
+                headers: { Authorization: `Bearer ${key}` },
+            })
+            login(key)
+            navigate('/')
+        } catch (err) {
+            if (err?.response?.status === 401 || err?.response?.status === 403) {
+                setError('That API key was rejected. Check it and try again.')
+            } else {
+                setError('Could not reach the API to verify the key. Is the server running?')
+            }
+        } finally {
+            setChecking(false)
+        }
     }
 
     return (
@@ -67,11 +88,16 @@ const Login = () => {
                             />
                         </div>
 
+                        {error && (
+                            <p className="text-sm text-red-500" role="alert">{error}</p>
+                        )}
+
                         <button
                             type="submit"
-                            className="flex w-full items-center justify-center rounded-lg bg-primary px-5 py-3 text-base font-bold text-white transition-colors hover:bg-primary/90"
+                            disabled={checking}
+                            className="flex w-full items-center justify-center rounded-lg bg-primary px-5 py-3 text-base font-bold text-white transition-colors hover:bg-primary/90 disabled:opacity-60"
                         >
-                            Log in
+                            {checking ? 'Verifying…' : 'Log in'}
                         </button>
                     </form>
 

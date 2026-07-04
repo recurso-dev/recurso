@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
 import { endpoints as api } from '../lib/api'
 
 const Usage = () => {
@@ -38,6 +39,19 @@ const Usage = () => {
         return true
     })
 
+    const totalUnits = filteredData.reduce((acc, curr) => acc + curr.total_quantity, 0)
+
+    // Aggregate per dimension for the chart (stats are lifetime aggregates,
+    // so a per-dimension breakdown is the honest visualization).
+    const byDimension = Object.values(
+        filteredData.reduce((acc, curr) => {
+            const key = curr.dimension || 'unknown'
+            acc[key] = acc[key] || { dimension: key, units: 0 }
+            acc[key].units += curr.total_quantity
+            return acc
+        }, {})
+    )
+
     // Click outside handler
     useEffect(() => {
         const close = () => {
@@ -54,6 +68,19 @@ const Usage = () => {
             <div className="flex flex-wrap items-center justify-between gap-4 pb-6">
                 <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Usage Metering</h1>
                 <button
+                    onClick={() => {
+                        const rows = [
+                            ['customer_id', 'plan_id', 'dimension', 'total_quantity'],
+                            ...filteredData.map(d => [d.customer_id, d.plan_id, d.dimension, d.total_quantity]),
+                        ]
+                        const csv = rows.map(r => r.join(',')).join('\n')
+                        const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = 'usage-export.csv'
+                        a.click()
+                        URL.revokeObjectURL(url)
+                    }}
                     className="flex h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary px-4 text-sm font-bold text-white shadow-sm transition-all hover:bg-primary/90"
                 >
                     <span className="truncate">Export Data</span>
@@ -66,7 +93,7 @@ const Usage = () => {
                 {/* Customer Filter */}
                 <div className="relative">
                     <button
-                        onClick={(e) => { e.stopPropagation(); setIsCustomerOpen(!isCustomerOpen); setIsPlanOpen(false); setIsTimeOpen(false) }}
+                        onClick={(e) => { e.stopPropagation(); setIsCustomerOpen(!isCustomerOpen); setIsPlanOpen(false) }}
                         className="flex h-9 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 pl-4 pr-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
                         <p className="text-slate-900 dark:text-white text-sm font-medium leading-normal">
@@ -87,7 +114,7 @@ const Usage = () => {
                 {/* Plan Filter */}
                 <div className="relative">
                     <button
-                        onClick={(e) => { e.stopPropagation(); setIsPlanOpen(!isPlanOpen); setIsCustomerOpen(false); setIsTimeOpen(false) }}
+                        onClick={(e) => { e.stopPropagation(); setIsPlanOpen(!isPlanOpen); setIsCustomerOpen(false) }}
                         className="flex h-9 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 pl-4 pr-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
                     >
                         <p className="text-slate-900 dark:text-white text-sm font-medium leading-normal">
@@ -112,19 +139,22 @@ const Usage = () => {
                 <div className="flex flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
                     <p className="text-slate-600 dark:text-slate-400 text-base font-medium leading-normal">Total Units Consumed</p>
                     <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight">
-                        {usageStats.reduce((acc, curr) => acc + curr.total_quantity, 0).toLocaleString()}
+                        {totalUnits.toLocaleString()}
                     </p>
                     <p className="text-emerald-500 text-base font-medium leading-normal">Lifetime</p>
                 </div>
-                {/* Other cards kept as mocks/placeholders for now since we lack revenue/customer count in UsageStats */}
                 <div className="flex flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                    <p className="text-slate-600 dark:text-slate-400 text-base font-medium leading-normal">Metered Revenue (Est.)</p>
-                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight">$0</p>
-                    <p className="text-slate-500 text-base font-medium leading-normal">Not calculated</p>
+                    <p className="text-slate-600 dark:text-slate-400 text-base font-medium leading-normal">Customers Metered</p>
+                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight">
+                        {[...new Set(filteredData.map(d => d.customer_id))].length}
+                    </p>
+                    <p className="text-slate-500 text-base font-medium leading-normal">With recorded usage</p>
                 </div>
                 <div className="flex flex-col gap-2 rounded-lg p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
                     <p className="text-slate-600 dark:text-slate-400 text-base font-medium leading-normal">Active Dimensions</p>
-                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight">{usageStats.length}</p>
+                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight">
+                        {[...new Set(filteredData.map(d => d.dimension))].length}
+                    </p>
                     <p className="text-emerald-500 text-base font-medium leading-normal">Types</p>
                 </div>
             </div>
@@ -133,38 +163,27 @@ const Usage = () => {
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mb-8">
                 {/* Main Chart */}
                 <div className="flex min-w-72 flex-col gap-2 rounded-lg border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900 shadow-sm lg:col-span-3">
-                    <p className="text-slate-900 dark:text-white text-base font-medium leading-normal">Usage Over Time</p>
-                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight truncate">890,123 Units</p>
-                    <div className="flex gap-1">
-                        <p className="text-slate-600 dark:text-slate-400 text-base font-normal leading-normal">Last 30 Days</p>
-                        <p className="text-emerald-500 text-base font-medium leading-normal">+12.5%</p>
-                    </div>
-                    {/* SVG Chart Placeholder */}
+                    <p className="text-slate-900 dark:text-white text-base font-medium leading-normal">Usage by Dimension</p>
+                    <p className="text-slate-900 dark:text-white tracking-tight text-3xl font-bold leading-tight truncate">
+                        {totalUnits.toLocaleString()} Units
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400 text-base font-normal leading-normal">All recorded usage</p>
                     <div className="relative flex-1 w-full min-h-[180px] py-4">
-                        <svg
-                            className="w-full h-full"
-                            viewBox="0 0 478 150"
-                            fill="none"
-                            xmlns="http://www.w3.org/2000/svg"
-                            preserveAspectRatio="none"
-                        >
-                            <defs>
-                                <linearGradient id="paint0_linear" x1="239" y1="0" x2="239" y2="150" gradientUnits="userSpaceOnUse">
-                                    <stop stopColor="#6366F1" stopOpacity="0.2" />
-                                    <stop offset="1" stopColor="#6366F1" stopOpacity="0" />
-                                </linearGradient>
-                            </defs>
-                            <path
-                                d="M0 109C18 109 18 21 36 21C54 21 54 41 72 41C90 41 90 93 108 93C127 93 127 33 145 33C163 33 163 101 181 101C199 101 199 61 217 61C236 61 236 45 254 45C272 45 272 121 290 121C308 121 308 149 326 149C344 149 344 1 363 1C381 1 381 81 399 81C417 81 417 129 435 129C453 129 453 25 472 25V150H0V109Z"
-                                fill="url(#paint0_linear)"
-                            />
-                            <path
-                                d="M0 109C18 109 18 21 36 21C54 21 54 41 72 41C90 41 90 93 108 93C127 93 127 33 145 33C163 33 163 101 181 101C199 101 199 61 217 61C236 61 236 45 254 45C272 45 272 121 290 121C308 121 308 149 326 149C344 149 344 1 363 1C381 1 381 81 399 81C417 81 417 129 435 129C453 129 453 25 472 25"
-                                stroke="#6366F1"
-                                strokeWidth="3"
-                                strokeLinecap="round"
-                            />
-                        </svg>
+                        {byDimension.length > 0 ? (
+                            <ResponsiveContainer width="100%" height={180}>
+                                <BarChart data={byDimension}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#334155" opacity={0.2} />
+                                    <XAxis dataKey="dimension" tick={{ fontSize: 12 }} stroke="#94a3b8" />
+                                    <YAxis tick={{ fontSize: 12 }} stroke="#94a3b8" width={60} />
+                                    <Tooltip formatter={(v) => v.toLocaleString()} />
+                                    <Bar dataKey="units" fill="#6366F1" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <div className="flex h-full min-h-[180px] items-center justify-center text-sm text-slate-500">
+                                No usage recorded yet.
+                            </div>
+                        )}
                     </div>
                 </div>
 
@@ -172,13 +191,19 @@ const Usage = () => {
                 <div className="flex min-w-72 flex-col gap-2 rounded-lg border border-slate-200 dark:border-slate-800 p-6 bg-white dark:bg-slate-900 shadow-sm lg:col-span-2">
                     <p className="text-slate-900 dark:text-white text-base font-medium leading-normal">Usage by Metric</p>
                     <div className="grid min-h-[180px] grid-flow-col gap-6 grid-rows-[1fr_auto] items-end justify-items-center px-3 pt-8 pb-2">
-                        {usageStats.length > 0 ? usageStats.map((stat, idx) => (
-                            <div key={idx} className="flex flex-col items-center gap-2 w-full">
-                                <div className="bg-primary/20 dark:bg-primary/30 w-full rounded-t-sm" style={{ height: '100px' }}></div>
-                                <p className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">{stat.dimension}</p>
-                                <p className="text-slate-900 dark:text-white text-xs">{stat.total_quantity}</p>
-                            </div>
-                        )) : (
+                        {byDimension.length > 0 ? byDimension.map((stat, idx) => {
+                            const max = Math.max(...byDimension.map(d => d.units), 1)
+                            return (
+                                <div key={idx} className="flex flex-col items-center gap-2 w-full">
+                                    <div
+                                        className="bg-primary/20 dark:bg-primary/30 w-full rounded-t-sm"
+                                        style={{ height: `${Math.max(8, Math.round((stat.units / max) * 120))}px` }}
+                                    ></div>
+                                    <p className="text-slate-600 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">{stat.dimension}</p>
+                                    <p className="text-slate-900 dark:text-white text-xs">{stat.units.toLocaleString()}</p>
+                                </div>
+                            )
+                        }) : (
                             <p className="col-span-full text-slate-500 text-sm">No usage data found.</p>
                         )}
                     </div>

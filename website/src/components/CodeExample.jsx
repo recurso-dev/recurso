@@ -1,5 +1,5 @@
 const codeSnippet = `# Create a subscription
-curl -X POST http://localhost:3000/v1/subscriptions \\
+curl -X POST http://localhost:8080/v1/subscriptions \\
   -H "Authorization: Bearer $RECURSO_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -8,11 +8,11 @@ curl -X POST http://localhost:3000/v1/subscriptions \\
   }'
 
 # Generate an invoice
-curl -X POST http://localhost:3000/v1/subscriptions/sub_123/advance \\
+curl -X POST http://localhost:8080/v1/subscriptions/sub_123/advance \\
   -H "Authorization: Bearer $RECURSO_API_KEY"
 
 # Record usage
-curl -X POST http://localhost:3000/v1/usage/events \\
+curl -X POST http://localhost:8080/v1/usage/events \\
   -H "Authorization: Bearer $RECURSO_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

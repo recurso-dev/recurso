@@ -10,8 +10,8 @@ const footerLinks = {
         { name: 'API Reference', href: 'https://docs.recurso.dev/api-reference/plans' },
     ],
     Community: [
-        { name: 'Open Source', href: 'https://github.com/recur-so/recurso' },
-        { name: 'GitHub Discussions', href: 'https://github.com/recur-so/recurso/discussions' },
+        { name: 'Open Source', href: 'https://github.com/swapnull-in/recur-so' },
+        { name: 'GitHub Discussions', href: 'https://github.com/swapnull-in/recur-so/discussions' },
     ],
     Legal: [
         { name: 'Terms of Service', href: 'https://docs.recurso.dev/legal/terms-of-service' },
@@ -20,7 +20,7 @@ const footerLinks = {
 }
 
 const socialLinks = [
-    { icon: Github, href: 'https://github.com/recur-so/recurso', label: 'GitHub' },
+    { icon: Github, href: 'https://github.com/swapnull-in/recur-so', label: 'GitHub' },
 ]
 
 const Footer = () => {

@@ -10,7 +10,7 @@ const Playground = () => {
     const examples = {
         subscription: {
             title: 'Create a Subscription',
-            code: `curl -X POST http://localhost:3000/v1/subscriptions \\
+            code: `curl -X POST http://localhost:8080/v1/subscriptions \\
   -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -32,7 +32,7 @@ const Playground = () => {
         },
         invoice: {
             title: 'Generate an Invoice',
-            code: `curl -X POST http://localhost:3000/v1/subscriptions/sub_1234567890/advance \\
+            code: `curl -X POST http://localhost:8080/v1/subscriptions/sub_1234567890/advance \\
   -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json"`,
             output: `{
@@ -48,7 +48,7 @@ const Playground = () => {
         },
         usage: {
             title: 'Track Usage',
-            code: `curl -X POST http://localhost:3000/v1/usage/events \\
+            code: `curl -X POST http://localhost:8080/v1/usage/events \\
   -H "Authorization: Bearer your-api-key" \\
   -H "Content-Type: application/json" \\
   -d '{

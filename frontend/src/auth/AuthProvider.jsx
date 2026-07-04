@@ -16,7 +16,7 @@ export const AuthProvider = ({ children }) => {
     }
 
     return (
-        <AuthContext.Provider value={{ apiKey, isAuthenticated: !!apiKey, login, logout }}>
+        <AuthContext.Provider value={{ apiKey, isAuthenticated: !!apiKey, loading: false, login, logout }}>
             {children}
         </AuthContext.Provider>
     )

@@ -21,7 +21,7 @@ const Pricing = () => {
                 { text: 'Managed hosting', included: false },
             ],
             cta: 'Get Started',
-            ctaLink: 'https://github.com/recur-so/recurso',
+            ctaLink: 'https://github.com/swapnull-in/recur-so',
             highlighted: false,
         },
         {
@@ -30,6 +30,7 @@ const Pricing = () => {
             period: '/month',
             description: 'For growing SaaS businesses',
             badge: 'Most Popular',
+            priceNote: '+ $0.05 per transaction after included volume',
             features: [
                 { text: 'Everything in Open Source', included: true },
                 { text: 'Managed cloud hosting', included: true },
@@ -41,7 +42,7 @@ const Pricing = () => {
                 { text: 'Custom SLA', included: false },
             ],
             cta: 'Start Free Trial',
-            ctaLink: 'https://github.com/recur-so/recurso',
+            ctaLink: 'https://github.com/swapnull-in/recur-so',
             highlighted: true,
         },
         {
@@ -110,6 +111,9 @@ const Pricing = () => {
                             <div className="mb-8">
                                 <span className="text-5xl font-extrabold text-white tracking-tight">{plan.price}</span>
                                 {plan.period && <span className="text-gray-500 ml-1">{plan.period}</span>}
+                                {plan.priceNote && (
+                                    <p className="text-xs text-gray-500 mt-2">{plan.priceNote}</p>
+                                )}
                             </div>
 
                             <ul className="space-y-3 mb-8">
