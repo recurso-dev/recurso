@@ -89,7 +89,7 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 	// Basic safety checks
 	sqlQuery = strings.TrimSpace(sqlQuery)
 	if strings.HasPrefix(sqlQuery, "ERROR:") {
-		return nil, "", fmt.Errorf(sqlQuery)
+		return nil, "", fmt.Errorf("%s", sqlQuery)
 	}
 
 	// Force SELECT check
