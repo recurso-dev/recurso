@@ -84,6 +84,14 @@ The API is now running at `http://localhost:8080`. To start the React dashboard:
 cd frontend && npm install && npm run dev
 ```
 
+Want something to look at right away? Load demo data (a sample tenant with
+plans, customers, subscriptions, and invoices), then log in to the dashboard
+with API key `sk_test_12345`:
+
+```bash
+make seed   # WARNING: wipes existing data in the dev database
+```
+
 See the [Quickstart Guide](https://docs.recurso.dev/quickstart) for a full walkthrough.
 
 ## SDKs

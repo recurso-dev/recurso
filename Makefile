@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
+.PHONY: build run seed test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
 IMAGE_NAME=ghcr.io/swapnull-in/recur-so
@@ -11,6 +11,12 @@ build:
 
 run:
 	go run cmd/api/main.go
+
+# DESTRUCTIVE: wipes all data in the target database, then loads demo data
+# (tenant "Acme SaaS Corp", API key sk_test_12345, plans/customers/invoices).
+seed:
+	@echo "WARNING: this wipes ALL data in $${DATABASE_URL:-the local dev database} and loads demo data."
+	go run cmd/seed/main.go
 
 test:
 	go test -v ./...

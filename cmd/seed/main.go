@@ -363,4 +363,8 @@ func main() {
 	log.Println("🪝 Webhooks Created")
 
 	log.Println("✅ Seeding Complete!")
+	log.Println("")
+	log.Println("Demo tenant: Acme SaaS Corp")
+	log.Println("Dashboard login API key: sk_test_12345")
+	log.Println("Start the dashboard with: cd frontend && npm run dev")
 }
