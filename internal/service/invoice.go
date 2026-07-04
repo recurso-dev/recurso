@@ -4,12 +4,12 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/core/service/tax"
 )
 
 type InvoiceService struct {
@@ -62,33 +62,29 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// 3. Calculate Amounts
 	subtotal := price.Amount
 
-	// P15: Add Unbilled Charges
+	// P15: Add Unbilled Charges. Charges in a different currency than the
+	// plan price cannot be summed into this invoice; they stay unbilled.
 	charges, err := s.UnbilledChargeRepo.ListBySubscriptionID(sub.ID)
+	var billableCharges []*domain.UnbilledCharge
 	if err == nil {
 		for _, c := range charges {
+			if c.Currency != "" && !strings.EqualFold(c.Currency, price.Currency) {
+				slog.Warn("skipping unbilled charge with mismatched currency",
+					"charge_id", c.ID, "charge_currency", c.Currency, "invoice_currency", price.Currency)
+				continue
+			}
+			billableCharges = append(billableCharges, c)
 			subtotal += c.Amount
 		}
 	}
 
-	// Calculate Tax (P24)
-	// Initialize Tax Engine (TODO: Move to struct/dependency injection)
-	// Assume Org State is "TN" (Tamil Nadu)
-	taxEngine := tax.NewGSTEngine("TN")
-
-	// Determine Place of Supply
-	// If customer has PlaceOfSupply set, use it. Else fall back to some logic or treat as intra-state/inter-state default.
+	// Determine Place of Supply; empty is handled by the GST engine as IGST.
 	pos := customer.PlaceOfSupply
 	if domain.PtrToString(pos) == "" {
-		// Try to infer from Address? For now assume it matches Org State if not set (Consumer) or handle as ERROR?
-		// Let's assume consumer in same state for simplicity if missing, OR better, default to Inter-state (IGST) to be safe/conservative?
-		// Actually for B2C SaaS in India, if location unknown, it's complicated.
-		// Let's default to "TN" if missing to keep it simple for local dev, or empty string -> IGST.
-		pos = domain.StringPtr("TN") // Defaulting to Intra-state for dev simplicity? Or Inter-state.
-		// Let's use empty string which GSTEngine handles as IGST.
 		pos = nil
 	}
 
-	taxRes := taxEngine.CalculateTaxLegacy(subtotal, domain.PtrToString(pos))
+	taxRes := calculateInvoiceGST(price.Currency, subtotal, pos)
 
 	total := subtotal + taxRes.Total
 
@@ -154,10 +150,10 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
 	}
 
-	// P15: Mark Charges as Invoiced
-	if len(charges) > 0 {
+	// P15: Mark Charges as Invoiced (only the ones actually billed)
+	if len(billableCharges) > 0 {
 		var ids []uuid.UUID
-		for _, c := range charges {
+		for _, c := range billableCharges {
 			ids = append(ids, c.ID)
 		}
 		_ = s.UnbilledChargeRepo.MarkAsInvoiced(ids)
@@ -195,12 +191,11 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
 
-	taxEngine := tax.NewGSTEngine("TN")
 	pos := customer.PlaceOfSupply
 	if domain.PtrToString(pos) == "" {
 		pos = nil
 	}
-	taxRes := taxEngine.CalculateTaxLegacy(subtotal, domain.PtrToString(pos))
+	taxRes := calculateInvoiceGST(price.Currency, subtotal, pos)
 	total := subtotal + taxRes.Total
 
 	now := time.Now()

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -20,6 +21,16 @@ type LedgerService struct {
 
 func NewLedgerService(tbClient *tigerbeetle.LedgerClient, pgRepo port.LedgerRepository) *LedgerService {
 	return &LedgerService{tbClient: tbClient, pgRepo: pgRepo}
+}
+
+// ledgerAmount converts a money amount to the ledger's unsigned representation.
+// Negative amounts (e.g. a credit posted through the wrong path) must never
+// wrap into huge uint64 postings.
+func ledgerAmount(amount int64) (uint64, error) {
+	if amount < 0 {
+		return 0, fmt.Errorf("ledger amount must be non-negative, got %d", amount)
+	}
+	return uint64(amount), nil
 }
 
 // SetupTenantAccounts creates the standard chart of accounts for a new tenant.
@@ -70,6 +81,10 @@ func (s *LedgerService) CreateCustomerAccounts(ctx context.Context, customerID u
 // Debit: Customer AR (Asset)
 // Credit: Revenue
 func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoice) error {
+	amount, err := ledgerAmount(invoice.Total)
+	if err != nil {
+		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+	}
 	txID := uuid.New()
 
 	// Look up revenue account dynamically
@@ -88,7 +103,7 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 		ID:              txID,
 		DebitAccountID:  invoice.CustomerID, // AR
 		CreditAccountID: revenueAccountID,
-		Amount:          uint64(invoice.Total),
+		Amount:          amount,
 		LedgerID:        1,
 		Code:            1, // Invoice
 		ReferenceID:     invoice.ID,
@@ -96,10 +111,12 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 		Timestamp:       time.Now(),
 	}
 
-	// Always write to PG
+	// Always write to PG; a failed write means the invoice has no ledger
+	// entry, so surface it to the caller rather than losing it in a log line.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
 			slog.Error("PG CreateTransaction failed", "error", err)
+			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 		}
 	}
 
@@ -114,6 +131,10 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 // Debit: Cash (Asset)
 // Credit: Customer AR (Asset) — reduces the receivable
 func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
+	amount, err := ledgerAmount(invoice.Total)
+	if err != nil {
+		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+	}
 	txID := uuid.New()
 
 	// Look up cash account dynamically
@@ -132,7 +153,7 @@ func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoi
 		ID:              txID,
 		DebitAccountID:  cashAccountID,      // Cash
 		CreditAccountID: invoice.CustomerID, // AR
-		Amount:          uint64(invoice.Total),
+		Amount:          amount,
 		LedgerID:        1,
 		Code:            3, // Payment
 		ReferenceID:     invoice.ID,
@@ -140,10 +161,11 @@ func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoi
 		Timestamp:       time.Now(),
 	}
 
-	// Always write to PG
+	// Always write to PG; surface failures so callers can retry/reconcile.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
 			slog.Error("PG CreateTransaction failed for payment", "error", err)
+			return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
 		}
 	}
 
@@ -166,6 +188,10 @@ func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([
 // Debit: Deferred Revenue (Liability)
 // Credit: Recognized Revenue (Income)
 func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, amount int64) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, err
+	}
 	txID := uuid.New()
 
 	var deferredAccountID, recognizedAccountID uuid.UUID
@@ -190,17 +216,18 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 		ID:              txID,
 		DebitAccountID:  deferredAccountID,
 		CreditAccountID: recognizedAccountID,
-		Amount:          uint64(amount),
+		Amount:          amt,
 		LedgerID:        1,
 		Code:            2, // Revenue Recognition
 		Description:     "Revenue recognition",
 		Timestamp:       time.Now(),
 	}
 
-	// Always write to PG
+	// Always write to PG; surface failures so callers can retry/reconcile.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
 			slog.Error("PG CreateTransaction failed", "error", err)
+			return uuid.Nil, fmt.Errorf("ledger write failed for revenue recognition: %w", err)
 		}
 	}
 

@@ -11,26 +11,25 @@ import (
 	"github.com/recur-so/recurso/internal/adapter/db"
 	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/core/service/tax"
 )
 
 type SubscriptionService struct {
-	subRepo         port.SubscriptionRepository
-	invoiceRepo     port.InvoiceRepository
-	planRepo        port.PlanRepository
-	customerRepo    port.CustomerRepository
-	couponRepo      port.CouponRepository
-	notifier        port.Notifier
-	ledger          *LedgerService
-	gateway         port.PaymentGateway
-	gspAdapter      port.GSPAdapter
+	subRepo             port.SubscriptionRepository
+	invoiceRepo         port.InvoiceRepository
+	planRepo            port.PlanRepository
+	customerRepo        port.CustomerRepository
+	couponRepo          port.CouponRepository
+	notifier            port.Notifier
+	ledger              *LedgerService
+	gateway             port.PaymentGateway
+	gspAdapter          port.GSPAdapter
 	notificationService *NotificationService
 	einvoiceService     *EInvoiceService
 	txManager           *db.TxManager
-	subRepoImpl     *db.SubscriptionRepository // Concrete type for TX methods
-	invRepoImpl     *db.InvoiceRepository      // Concrete type for TX methods
-	revrecService   *RevRecService
-	logger          *slog.Logger
+	subRepoImpl         *db.SubscriptionRepository // Concrete type for TX methods
+	invRepoImpl         *db.InvoiceRepository      // Concrete type for TX methods
+	revrecService       *RevRecService
+	logger              *slog.Logger
 }
 
 func NewSubscriptionService(
@@ -178,13 +177,12 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		total = 0
 	}
 
-	// Calculate Tax (GST)
-	taxEngine := tax.NewGSTEngine("TN")
+	// Calculate Tax (GST, INR only)
 	pos := customer.PlaceOfSupply
 	if domain.PtrToString(pos) == "" {
 		pos = nil
 	}
-	taxRes := taxEngine.CalculateTaxLegacy(total, domain.PtrToString(pos))
+	taxRes := calculateInvoiceGST(price.Currency, total, pos)
 	total = total + taxRes.Total
 
 	subID := uuid.New()
@@ -361,6 +359,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	now := time.Now().UTC()
 	inv.Status = domain.InvoiceStatusPaid
 	inv.PaidAt = &now
+	inv.AmountPaid = inv.Total
 
 	if err := s.invoiceRepo.Update(ctx, inv); err != nil {
 		return err

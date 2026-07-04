@@ -20,39 +20,63 @@ func NewSmartRouter(razorpay port.PaymentGateway, stripe port.PaymentGateway) *S
 	}
 }
 
-func (r *SmartRouter) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+// gatewayFor returns the gateway for a currency, or an error when that
+// gateway was not configured (previously a nil-pointer panic).
+func (r *SmartRouter) gatewayFor(currency string) (port.PaymentGateway, error) {
 	if strings.ToUpper(currency) == "INR" {
-		return r.Razorpay.CreateOrder(ctx, amount, currency, receipt)
+		if r.Razorpay == nil {
+			return nil, fmt.Errorf("razorpay gateway not configured for currency %s", currency)
+		}
+		return r.Razorpay, nil
 	}
-	return r.Stripe.CreateOrder(ctx, amount, currency, receipt)
+	if r.Stripe == nil {
+		return nil, fmt.Errorf("stripe gateway not configured for currency %s", currency)
+	}
+	return r.Stripe, nil
+}
+
+func (r *SmartRouter) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+	gw, err := r.gatewayFor(currency)
+	if err != nil {
+		return nil, err
+	}
+	return gw.CreateOrder(ctx, amount, currency, receipt)
 }
 
 func (r *SmartRouter) VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error {
 	// This is tricky because we detect gateway by ID format
 	if strings.HasPrefix(orderID, "order_") { // Razorpay Order IDs start with order_
+		if r.Razorpay == nil {
+			return fmt.Errorf("razorpay gateway not configured")
+		}
 		return r.Razorpay.VerifyPayment(ctx, orderID, paymentID, signature)
 	}
 	if strings.HasPrefix(orderID, "pi_") { // Stripe PaymentIntent
+		if r.Stripe == nil {
+			return fmt.Errorf("stripe gateway not configured")
+		}
 		return r.Stripe.VerifyPayment(ctx, orderID, paymentID, signature)
 	}
-	
+
 	// Fallback/Error
 	// Try Razorpay default if unsure? Or error.
 	return fmt.Errorf("unknown gateway for order ID: %s", orderID)
 }
 
 func (r *SmartRouter) CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error) {
-	if strings.ToUpper(currency) == "INR" {
-		return r.Razorpay.CreateSubscription(ctx, planID, totalCount, customerEmail, startAt, currency)
+	gw, err := r.gatewayFor(currency)
+	if err != nil {
+		return "", err
 	}
-	return r.Stripe.CreateSubscription(ctx, planID, totalCount, customerEmail, startAt, currency)
+	return gw.CreateSubscription(ctx, planID, totalCount, customerEmail, startAt, currency)
 }
 
 func (r *SmartRouter) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
-	if strings.ToUpper(currency) == "INR" {
-		return r.Razorpay.RetryPayment(ctx, invoiceID, amount, currency)
+	gw, err := r.gatewayFor(currency)
+	if err != nil {
+		return nil, err
 	}
-	return r.Stripe.RetryPayment(ctx, invoiceID, amount, currency)
+	return gw.RetryPayment(ctx, invoiceID, amount, currency)
 }
 
 // Mandate operations always route to Razorpay (UPI is India-only)
