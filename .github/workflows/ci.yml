@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 env:
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.25"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
@@ -23,10 +23,9 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
-          args: --timeout=5m
 
   test:
     name: Test
@@ -81,7 +80,7 @@ jobs:
           govulncheck ./...
 
       - name: Trivy filesystem & config scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -160,7 +159,7 @@ jobs:
           tags: recurso-scan:${{ github.sha }}
 
       - name: Trivy image scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: image
           image-ref: recurso-scan:${{ github.sha }}

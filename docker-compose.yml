@@ -13,9 +13,12 @@ services:
       - SMTP_USERNAME=
       - SMTP_PASSWORD=
       - SMTP_FROM=noreply@recurso.dev
+    restart: unless-stopped
     depends_on:
-      - postgres
-      - mailhog
+      postgres:
+        condition: service_healthy
+      mailhog:
+        condition: service_started
 
   mailhog:
     image: mailhog/mailhog
@@ -33,6 +36,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d recurso"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
   tigerbeetle:
     image: ghcr.io/tigerbeetle/tigerbeetle:latest
