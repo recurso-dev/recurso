@@ -12,9 +12,11 @@ metadata:
 spec:
   tls:
     - hosts:
+        # NOTE: change this (and the rule host below) to the domain you operate
         - api.recurso.dev
       secretName: recurso-tls
   rules:
+    # NOTE: change this host to the operator's domain before applying
     - host: api.recurso.dev
       http:
         paths:

@@ -1,0 +1,81 @@
+# Self-Hosting Recurso
+
+A concise runbook for running Recurso in production with Docker Compose, plus pointers for Kubernetes.
+
+## Quick start (Docker Compose)
+
+```bash
+git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
+
+# 1. Configure
+cp .env.example .env
+# Edit .env — at minimum set POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
+# and API_SECRET. See .env.example for the full annotated list
+# (payments, SMTP, AI, etc. all degrade gracefully to mocks if unset).
+
+# 2. Launch
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 3. Verify
+curl http://localhost:8080/health   # API
+curl http://localhost/              # Frontend (SPA served by nginx)
+```
+
+The stack:
+
+| Service       | Image                              | Ports (host)           | Notes                                              |
+|---------------|------------------------------------|------------------------|----------------------------------------------------|
+| `frontend`    | built from `frontend/Dockerfile`   | 80 → 8080              | Unprivileged nginx; serves the SPA, proxies `/v1`, `/auth`, `/portal/api`, `/portal/auth`, `/checkout` to the API |
+| `api`         | built from root `Dockerfile`       | 8080 → 8080            | Runs DB migrations automatically on boot           |
+| `postgres`    | `postgres:15-alpine`               | not exposed            | System of record                                   |
+| `tigerbeetle` | `ghcr.io/tigerbeetle/tigerbeetle`  | not exposed            | Optional high-performance ledger                   |
+
+The frontend container proxies API traffic internally (`API_UPSTREAM=http://api:8080`), so for a single-box deployment you can put TLS termination (Caddy, Traefik, or a cloud load balancer) in front of port 80 and optionally stop publishing port 8080. If browsers reach the API directly on 8080 instead, set `CORS_ORIGIN` in `.env`.
+
+Upgrades:
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Migrations are applied by the API at startup; no separate migration step is needed.
+
+## Where the data lives
+
+- **`postgres_data` volume** — the source of truth. All business data (customers, subscriptions, invoices, ledger entries, configuration) lives in PostgreSQL. This is the volume you must protect.
+- **`tigerbeetle_data` volume** — the TigerBeetle ledger data file. In this setup the ledger is dual-written: PostgreSQL always, TigerBeetle when reachable. TigerBeetle is therefore **optional and rebuildable from PostgreSQL** — losing this volume does not lose financial data (the API falls back to PG-only ledger mode if TigerBeetle is unavailable).
+
+## Backups
+
+**PostgreSQL (essential).** A nightly `pg_dump` cron on the host:
+
+```cron
+# /etc/cron.d/recurso-backup — 02:30 nightly, keep 14 days
+30 2 * * * root docker compose -f /opt/recur-so/docker-compose.prod.yml exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" -Fc "$POSTGRES_DB" > /var/backups/recurso/recurso-$(date +\%F).dump \
+  && find /var/backups/recurso -name '*.dump' -mtime +14 -delete
+```
+
+Restore with `pg_restore -U <user> -d <db> --clean <file>.dump` into a fresh postgres container. Test restores periodically, and ship the dump directory off-host (e.g. `rclone`/S3).
+
+**Volume snapshots.** If your host or cloud supports filesystem/block snapshots (ZFS, LVM, EBS), snapshotting the Docker volume directory is a good complement. For a fully consistent snapshot, stop the stack first (`docker compose ... stop`), snapshot, then start — or rely on `pg_dump` for consistency and use snapshots as a secondary layer.
+
+**TigerBeetle.** No backup required in this deployment: it is an optional accelerator and the ledger is authoritative in PostgreSQL. If the volume is lost, remove it and restart — the container reformats a fresh data file and the API continues (worst case in PG-only mode until it reconnects).
+
+## Kubernetes
+
+Manifests live in `k8s/` (namespace, deployment, service, ingress, configmap, secret, RBAC, network policy). They deploy the **API only** — bring your own managed PostgreSQL (set `DATABASE_URL` in `recurso-secrets`) and, optionally, serve the frontend image behind your ingress.
+
+```bash
+kubectl apply -f k8s/namespace.yaml
+kubectl apply -f k8s/               # review configmap.yaml and secret.yaml first
+```
+
+Before applying:
+
+- Put real values in `k8s/secret.yaml` (or replace it with an ExternalSecret/SealedSecret).
+- Change the host in `k8s/ingress.yaml` from `api.recurso.dev` to your own domain (see the comments in that file); it assumes ingress-nginx + cert-manager.
+- The deployment pulls `ghcr.io/swapnull-in/recur-so:latest`; pin a tag for production.
+
+Health probes hit `/health` on port 8080; the deployment runs 2 replicas as non-root with a read-only root filesystem.

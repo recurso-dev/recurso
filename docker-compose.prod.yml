@@ -1,4 +1,21 @@
 services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Leave empty so the SPA uses relative paths and nginx proxies to the API
+        - VITE_API_BASE_URL=${VITE_API_BASE_URL:-}
+        - VITE_RAZORPAY_KEY_ID=${RAZORPAY_KEY_ID:-}
+    restart: always
+    ports:
+      - "80:8080"
+    environment:
+      - API_UPSTREAM=http://api:8080
+    depends_on:
+      - api
+    networks:
+      - recurso_net
+
   api:
     build: .
     restart: always
@@ -8,6 +25,7 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       - API_SECRET=${API_SECRET}
       - GIN_MODE=release
+      - TIGERBEETLE_ADDRESS=tigerbeetle:3000
     depends_on:
       - postgres
     networks:
