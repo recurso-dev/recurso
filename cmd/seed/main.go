@@ -25,7 +25,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	log.Println("Running Migrations (Pre-Wipe)...")
 	if err := db.RunMigrations(dbURL); err != nil {
@@ -38,10 +38,8 @@ func main() {
 		"invoices", "subscriptions", "customers", "prices", "plans", "api_keys", "tenants", "users",
 	}
 	for _, t := range tables {
-		if _, err := conn.Exec("TRUNCATE TABLE " + t + " CASCADE"); err != nil {
-			// Ignore if table doesn't exist
-			// log.Printf("Truncate %s failed: %v", t, err)
-		}
+		// Ignore errors (e.g. table doesn't exist)
+		_, _ = conn.Exec("TRUNCATE TABLE " + t + " CASCADE")
 	}
 
 	log.Println("🌱 Starting Seed...")
@@ -255,7 +253,9 @@ func main() {
 		Email:     "extra@demo.com",
 		CreatedAt: time.Now(),
 	}
-	customerRepo.Create(ctx, extraCust)
+	if err := customerRepo.Create(ctx, extraCust); err != nil {
+		log.Printf("Failed to create extra customer: %v", err)
+	}
 
 	// --- Coupons ---
 	couponID := uuid.New()
@@ -299,30 +299,38 @@ func main() {
 	log.Println("📊 Usage Events Created")
 
 	// --- Credit Notes ---
-	conn.Exec(`INSERT INTO credit_notes (id, tenant_id, customer_id, amount, balance, currency, status, reason, created_at)
+	if _, err := conn.Exec(`INSERT INTO credit_notes (id, tenant_id, customer_id, amount, balance, currency, status, reason, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-		uuid.New(), tenantID, extraCustID, 5000, 5000, "USD", "issued", "Service Downtime Compensation")
+		uuid.New(), tenantID, extraCustID, 5000, 5000, "USD", "issued", "Service Downtime Compensation"); err != nil {
+		log.Printf("Failed to create credit note: %v", err)
+	}
 
 	log.Println("💵 Credit Notes Created")
 
 	// --- Quotes ---
-	conn.Exec(`INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status, subtotal, total, currency, created_at)
+	if _, err := conn.Exec(`INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status, subtotal, total, currency, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
-		uuid.New(), tenantID, extraCustID, "QT-1001", "draft", 50000, 50000, "USD")
+		uuid.New(), tenantID, extraCustID, "QT-1001", "draft", 50000, 50000, "USD"); err != nil {
+		log.Printf("Failed to create quote 1: %v", err)
+	}
 
-	conn.Exec(`INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status, subtotal, total, currency, created_at)
+	if _, err := conn.Exec(`INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status, subtotal, total, currency, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW() - interval '2 days')`,
-		uuid.New(), tenantID, extraCustID, "QT-0999", "accepted", 120000, 120000, "USD")
+		uuid.New(), tenantID, extraCustID, "QT-0999", "accepted", 120000, 120000, "USD"); err != nil {
+		log.Printf("Failed to create quote 2: %v", err)
+	}
 
 	log.Println("📜 Quotes Created")
 
 	// --- Ledger Accounts ---
 	// 1000: Assets, 4000: Revenue
-	conn.Exec(`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency) VALUES
+	if _, err := conn.Exec(`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency) VALUES
 		($1, $2, 'Cash', 'asset', 1001, 1, 'USD'),
 		($3, $2, 'Accounts Receivable', 'asset', 1002, 1, 'USD'),
 		($4, $2, 'Subscription Revenue', 'revenue', 4001, 1, 'USD')`,
-		uuid.New(), tenantID, uuid.New(), uuid.New())
+		uuid.New(), tenantID, uuid.New(), uuid.New()); err != nil {
+		log.Printf("Failed to create ledger accounts: %v", err)
+	}
 
 	log.Println("📒 Ledger Accounts Created")
 

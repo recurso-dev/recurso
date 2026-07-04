@@ -76,7 +76,7 @@ func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to query API keys: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var t domain.Tenant
 		var keyHash string
@@ -114,7 +114,7 @@ func (r *TenantRepository) ListTenants(ctx context.Context) ([]*domain.Tenant, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tenants []*domain.Tenant
 	for rows.Next() {
@@ -133,7 +133,7 @@ func (r *TenantRepository) ListAPIKeys(ctx context.Context, tenantID uuid.UUID) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []*domain.APIKey
 	for rows.Next() {

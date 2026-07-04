@@ -97,7 +97,7 @@ func (r *CancelFlowRepository) ListFlowsByTenant(ctx context.Context, tenantID u
 	if err != nil {
 		return nil, fmt.Errorf("failed to list cancel flows: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var flows []*domain.CancelFlow
 	for rows.Next() {
@@ -152,7 +152,7 @@ func (r *CancelFlowRepository) GetStepsByFlow(ctx context.Context, flowID uuid.U
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cancel flow steps: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var steps []domain.CancelFlowStep
 	for rows.Next() {
@@ -346,7 +346,7 @@ func (r *CancelFlowRepository) GetSessionStats(ctx context.Context, tenantID uui
 	if err != nil {
 		return nil, fmt.Errorf("failed to get reason breakdown: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var reason string
@@ -359,4 +359,3 @@ func (r *CancelFlowRepository) GetSessionStats(ctx context.Context, tenantID uui
 
 	return stats, rows.Err()
 }
-

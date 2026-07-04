@@ -38,7 +38,7 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Subscription ID"})
 		return
 	}
-	
+
 	custID, err := uuid.Parse(req.CustomerID)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Customer ID"})
@@ -59,7 +59,7 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	// But let's inject anyway.
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if ok { // If ok, inject. If not (unauth?), usage handler is auth...
-		ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+		ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 		if err := h.repo.RecordEvent(ctx, event); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record event"})
 			return
@@ -67,9 +67,9 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	} else {
 		// If auth middleware didn't run?
 		if err := h.repo.RecordEvent(c.Request.Context(), event); err != nil {
-             c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record event"})
-             return
-        }
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record event"})
+			return
+		}
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"status": "recorded", "event_id": event.ID})

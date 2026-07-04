@@ -6,6 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/service"
 )
 
@@ -54,9 +55,9 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
 		return
 	}
-	
+
 	// Inject TenantID into context for Service/Repo
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
 	mrr, err := h.svc.GetMRR(ctx)
 	if err != nil {
@@ -72,8 +73,8 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
 		return
 	}
-	
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
 	stats, err := h.svc.GetUsageStats(ctx, tenantID)
 	if err != nil {

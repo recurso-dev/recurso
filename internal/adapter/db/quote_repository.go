@@ -145,7 +145,7 @@ func (r *QuoteRepository) List(ctx context.Context, tenantID uuid.UUID, filter d
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var quotes []*domain.Quote
 	for rows.Next() {

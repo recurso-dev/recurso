@@ -73,10 +73,10 @@ func (s *ChurnService) AnalyzeCustomer(ctx context.Context, customerID uuid.UUID
 	// Update risk in DB
 	factors := map[string]interface{}{
 		"payment_failure_rate": features.PaymentFailureRate,
-		"avg_days_to_pay":     features.AvgDaysToPay,
-		"months_active":       features.MonthsActive,
-		"failed_invoices_90d": features.FailedInvoices90d,
-		"model_version":       "v1",
+		"avg_days_to_pay":      features.AvgDaysToPay,
+		"months_active":        features.MonthsActive,
+		"failed_invoices_90d":  features.FailedInvoices90d,
+		"model_version":        "v1",
 	}
 
 	if err := s.customerRepo.UpdateRisk(ctx, customerID, score, factors); err != nil {
@@ -192,7 +192,7 @@ func (s *ChurnService) GetHighRiskCustomers(ctx context.Context, tenantID uuid.U
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []*ChurnScoreResult
 	for rows.Next() {

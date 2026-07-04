@@ -62,7 +62,7 @@ func (r *RevRecRepository) GetDueEvents(ctx context.Context, date time.Time) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []*domain.RecognitionEvent
 	for rows.Next() {

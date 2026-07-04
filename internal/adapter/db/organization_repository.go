@@ -56,7 +56,7 @@ func (r *OrganizationRepository) List(ctx context.Context) ([]*domain.Organizati
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var orgs []*domain.Organization
 	for rows.Next() {
@@ -87,7 +87,7 @@ func (r *OrganizationRepository) ListTenants(ctx context.Context, orgID uuid.UUI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var tenants []*domain.Tenant
 	for rows.Next() {

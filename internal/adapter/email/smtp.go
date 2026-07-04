@@ -46,7 +46,7 @@ func (s *SMTPSender) Send(ctx context.Context, msg port.EmailMessage) error {
 	// Build message
 	var message strings.Builder
 	for k, v := range headers {
-		message.WriteString(fmt.Sprintf("%s: %s\r\n", k, v))
+		fmt.Fprintf(&message, "%s: %s\r\n", k, v)
 	}
 	message.WriteString("\r\n")
 	message.WriteString(msg.HTMLBody)
@@ -66,13 +66,13 @@ func (s *SMTPSender) Send(ctx context.Context, msg port.EmailMessage) error {
 		if err != nil {
 			return fmt.Errorf("TLS dial failed: %w", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		client, err := smtp.NewClient(conn, s.config.Host)
 		if err != nil {
 			return fmt.Errorf("SMTP client create failed: %w", err)
 		}
-		defer client.Close()
+		defer func() { _ = client.Close() }()
 
 		if err := client.Auth(auth); err != nil {
 			return fmt.Errorf("SMTP auth failed: %w", err)

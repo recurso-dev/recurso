@@ -23,18 +23,18 @@ import (
 )
 
 type WebhookHandler struct {
-	subService              *service.SubscriptionService
-	gateway                 port.PaymentGateway
-	retryService            *service.SmartRetryService
-	invoiceRepo             port.InvoiceRepository
-	subRepo                 port.SubscriptionRepository
-	customerRepo            port.CustomerRepository
-	notificationService     *service.NotificationService
-	mandateService          *service.MandateService
-	offlinePaymentSvc       *service.OfflinePaymentService
-	dunningCampaignService  *service.DunningCampaignService
-	stripeWebhookSecret     string
-	logger                  *slog.Logger
+	subService             *service.SubscriptionService
+	gateway                port.PaymentGateway
+	retryService           *service.SmartRetryService
+	invoiceRepo            port.InvoiceRepository
+	subRepo                port.SubscriptionRepository
+	customerRepo           port.CustomerRepository
+	notificationService    *service.NotificationService
+	mandateService         *service.MandateService
+	offlinePaymentSvc      *service.OfflinePaymentService
+	dunningCampaignService *service.DunningCampaignService
+	stripeWebhookSecret    string
+	logger                 *slog.Logger
 }
 
 func NewWebhookHandler(
@@ -376,7 +376,7 @@ func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, event st
 	}
 
 	// Use Cancel with tenant context
-	ctxWithTenant := context.WithValue(ctx, "tenant_id", sub.TenantID)
+	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, sub.TenantID)
 	_, err = h.subService.Cancel(ctxWithTenant, sub.TenantID, sub.ID, true, "stripe_webhook", "subscription deleted in Stripe")
 	if err != nil {
 		h.logger.Error("failed to cancel subscription via stripe webhook",
@@ -558,9 +558,9 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 		Payload struct {
 			VirtualAccount struct {
 				Entity struct {
-					ID            string `json:"id"`
-					AmountPaid    int64  `json:"amount_paid"`
-					AmountExpected int64 `json:"amount_expected"`
+					ID             string `json:"id"`
+					AmountPaid     int64  `json:"amount_paid"`
+					AmountExpected int64  `json:"amount_expected"`
 				} `json:"entity"`
 			} `json:"virtual_account"`
 			Payment struct {

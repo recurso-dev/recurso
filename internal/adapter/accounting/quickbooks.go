@@ -103,7 +103,7 @@ func (a *QuickBooksAdapter) SyncCustomer(ctx context.Context, customer *domain.C
 	if err != nil {
 		return fmt.Errorf("QuickBooks customer sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
@@ -115,8 +115,8 @@ func (a *QuickBooksAdapter) SyncCustomer(ctx context.Context, customer *domain.C
 func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) error {
 	lineItems := []map[string]interface{}{
 		{
-			"Amount":     float64(invoice.Subtotal) / 100,
-			"DetailType": "SalesItemLineDetail",
+			"Amount":      float64(invoice.Subtotal) / 100,
+			"DetailType":  "SalesItemLineDetail",
 			"Description": fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
 			"SalesItemLineDetail": map[string]interface{}{
 				"UnitPrice": float64(invoice.Subtotal) / 100,
@@ -163,7 +163,7 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 	if err != nil {
 		return fmt.Errorf("QuickBooks invoice sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
@@ -204,7 +204,7 @@ func (a *QuickBooksAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) 
 	if err != nil {
 		return fmt.Errorf("QuickBooks product sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
@@ -233,7 +233,7 @@ func (a *QuickBooksAdapter) findCustomerByEmail(ctx context.Context, email strin
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("query failed: status %d", resp.StatusCode)
@@ -276,7 +276,7 @@ func (a *QuickBooksAdapter) findItemByName(ctx context.Context, name string) (st
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("query failed: status %d", resp.StatusCode)

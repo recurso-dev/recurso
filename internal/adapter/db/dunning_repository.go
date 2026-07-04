@@ -25,7 +25,7 @@ func (r *DunningRepository) GetWeights(ctx context.Context, contextKey string) (
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var weights []domain.DunningWeight
 	for rows.Next() {
@@ -75,7 +75,7 @@ func (r *DunningRepository) GetAllWeights(ctx context.Context) ([]domain.Dunning
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var weights []domain.DunningWeight
 	for rows.Next() {
@@ -100,7 +100,7 @@ func (r *DunningRepository) GetRecentHistory(ctx context.Context, limit int) ([]
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var history []domain.DunningHistory
 	for rows.Next() {

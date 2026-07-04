@@ -23,7 +23,7 @@ func (r *PlanRepository) Create(ctx context.Context, plan *domain.Plan) error {
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// 1. Insert Plan
 	query := `
@@ -56,10 +56,10 @@ func (r *PlanRepository) Create(ctx context.Context, plan *domain.Plan) error {
 }
 
 func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Plan, error) {
-	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("tenant_id missing from context")
-	
+
 	}
 
 	plan := &domain.Plan{}
@@ -84,7 +84,7 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var p domain.Price
@@ -100,7 +100,7 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 func (r *PlanRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Plan, error) {
 	// Implementation similar to GetByID but using tenant_id + code index
 	// Skipping for brevity in P0 implementation
-	return nil, nil 
+	return nil, nil
 }
 
 func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
@@ -127,14 +127,13 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 	if filter.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argIdx)
 		args = append(args, filter.Offset)
-		argIdx++
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var plans []*domain.Plan
 	for rows.Next() {
@@ -142,23 +141,23 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Code, &p.IntervalUnit, &p.IntervalCount, &p.Active, &p.CreatedAt); err != nil {
 			return nil, err
 		}
-		
+
 		// Fetch Prices for each plan (N+1 but acceptable for MVP Catalog size)
 		priceQuery := `SELECT id, plan_id, currency, amount, type, created_at FROM prices WHERE plan_id = $1`
 		pRows, err := r.db.QueryContext(ctx, priceQuery, p.ID)
 		if err != nil {
 			return nil, err
 		}
-		
+
 		for pRows.Next() {
 			var price domain.Price
 			if err := pRows.Scan(&price.ID, &price.PlanID, &price.Currency, &price.Amount, &price.Type, &price.CreatedAt); err != nil {
-				pRows.Close()
+				_ = pRows.Close()
 				return nil, err
 			}
 			p.Prices = append(p.Prices, price)
 		}
-		pRows.Close()
+		_ = pRows.Close()
 
 		plans = append(plans, &p)
 	}

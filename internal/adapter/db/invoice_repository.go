@@ -115,7 +115,7 @@ func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *d
 }
 
 func (r *InvoiceRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
-	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("tenant_id missing from context")
 	}
@@ -233,7 +233,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 	if err != nil {
 		return nil, fmt.Errorf("failed to query retry invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invoices []*domain.Invoice
 	for rows.Next() {
@@ -271,7 +271,7 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch customer invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invoices []*domain.Invoice
 	for rows.Next() {
@@ -313,7 +313,7 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invoices []*domain.Invoice
 	for rows.Next() {
@@ -360,7 +360,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 	if err != nil {
 		return nil, fmt.Errorf("failed to query overdue invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invoices []domain.OverdueInvoice
 	for rows.Next() {
@@ -428,7 +428,7 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 	if err != nil {
 		return nil, fmt.Errorf("failed to query failed e-invoices: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var invoices []*domain.Invoice
 	for rows.Next() {

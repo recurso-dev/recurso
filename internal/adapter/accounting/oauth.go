@@ -48,7 +48,7 @@ func RefreshAccessToken(ctx context.Context, config *OAuthConfig, conn *domain.A
 	if err != nil {
 		return fmt.Errorf("token refresh request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("token refresh failed with status %d", resp.StatusCode)
@@ -88,7 +88,7 @@ func ExchangeCode(ctx context.Context, config *OAuthConfig, code string) (*OAuth
 	if err != nil {
 		return nil, fmt.Errorf("token exchange request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("token exchange failed with status %d", resp.StatusCode)

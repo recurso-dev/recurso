@@ -74,9 +74,9 @@ func (n *NICAdapter) authenticate(ctx context.Context, config *domain.IRPConfig)
 
 	// Build auth request
 	authPayload := map[string]string{
-		"UserName":  config.Username,
-		"Password":  config.Password,
-		"AppKey":    config.ClientID,
+		"UserName":                config.Username,
+		"Password":                config.Password,
+		"AppKey":                  config.ClientID,
 		"ForceRefreshAccessToken": "true",
 	}
 
@@ -99,7 +99,7 @@ func (n *NICAdapter) authenticate(ctx context.Context, config *domain.IRPConfig)
 	if err != nil {
 		return nil, fmt.Errorf("auth request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -107,11 +107,11 @@ func (n *NICAdapter) authenticate(ctx context.Context, config *domain.IRPConfig)
 	}
 
 	var authResp struct {
-		Status int    `json:"Status"`
+		Status int `json:"Status"`
 		Data   struct {
-			AuthToken    string `json:"AuthToken"`
-			Sek          string `json:"Sek"`
-			TokenExpiry  string `json:"TokenExpiry"`
+			AuthToken   string `json:"AuthToken"`
+			Sek         string `json:"Sek"`
+			TokenExpiry string `json:"TokenExpiry"`
 		} `json:"Data"`
 		ErrorDetails []struct {
 			ErrorCode    string `json:"error_code"`
@@ -236,7 +236,7 @@ func (n *NICAdapter) GenerateIRNFull(ctx context.Context, req *port.EInvoiceRequ
 			ErrorMessage: fmt.Sprintf("API call failed: %v", err),
 		}, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -244,8 +244,8 @@ func (n *NICAdapter) GenerateIRNFull(ctx context.Context, req *port.EInvoiceRequ
 	}
 
 	var apiResp struct {
-		Status int    `json:"Status"`
-		Data   string `json:"Data"` // encrypted response
+		Status       int    `json:"Status"`
+		Data         string `json:"Data"` // encrypted response
 		ErrorDetails []struct {
 			ErrorCode    string `json:"error_code"`
 			ErrorMessage string `json:"error_message"`
@@ -278,10 +278,10 @@ func (n *NICAdapter) GenerateIRNFull(ctx context.Context, req *port.EInvoiceRequ
 	}
 
 	var irnData struct {
-		Irn          string `json:"Irn"`
-		AckNo        int64  `json:"AckNo"`
-		AckDt        string `json:"AckDt"`
-		SignedQRCode string `json:"SignedQRCode"`
+		Irn           string `json:"Irn"`
+		AckNo         int64  `json:"AckNo"`
+		AckDt         string `json:"AckDt"`
+		SignedQRCode  string `json:"SignedQRCode"`
 		SignedInvoice string `json:"SignedInvoice"`
 	}
 

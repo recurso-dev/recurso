@@ -328,7 +328,7 @@ func TestRetryWorker_GatewayError(t *testing.T) {
 		t.Error("expected NextRetryAt to be set for 5min retry")
 	}
 	if updated.NextRetryAt != nil {
-		diff := updated.NextRetryAt.Sub(time.Now())
+		diff := time.Until(*updated.NextRetryAt)
 		if diff < 4*time.Minute || diff > 6*time.Minute {
 			t.Errorf("expected ~5min retry, got %v", diff)
 		}

@@ -74,17 +74,15 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 			"email": customerEmail,
 		},
 	}
+	// Razorpay 'start_at' is optional; if omitted the subscription starts immediately.
 	if startAt != nil {
 		data["start_at"] = *startAt
-	} else {
-		// Default to immediate (or rather, now + 1hr delay required by Razorpay sometimes? 
-		// Actually Razorpay 'start_at' is optional, if omitted it starts immediately)
 	}
 
 	// Because razorpay-go might not have Subscription helper in old versions or it's named differently.
-	// Looking at library, it usually has `Subscription.Create`. 
+	// Looking at library, it usually has `Subscription.Create`.
 	// If `g.client.Subscription` is available.
-	
+
 	body, err := g.client.Subscription.Create(data, nil)
 	if err != nil {
 		return "", fmt.Errorf("razorpay create subscription failed: %v", err)
@@ -100,13 +98,13 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 
 func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	data := map[string]interface{}{
-		"type":         "link",
-		"amount":       0,
-		"currency":     "INR",
-		"description":  "UPI AutoPay Mandate",
+		"type":        "link",
+		"amount":      0,
+		"currency":    "INR",
+		"description": "UPI AutoPay Mandate",
 		"subscription_registration": map[string]interface{}{
-			"method":     "emandate",
-			"auth_type":  "netbanking",
+			"method":    "emandate",
+			"auth_type": "netbanking",
 			"bank_account": map[string]interface{}{
 				"beneficiary_name": customerEmail,
 			},
@@ -172,8 +170,8 @@ func (g *RazorpayGateway) RevokeMandate(ctx context.Context, tokenID string) err
 
 func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
 	data := map[string]interface{}{
-		"receivers":   map[string]interface{}{"types": []string{"bank_account"}},
-		"description": description,
+		"receivers":       map[string]interface{}{"types": []string{"bank_account"}},
+		"description":     description,
 		"amount_expected": amount,
 		"notes": map[string]interface{}{
 			"customer_id": customerID,

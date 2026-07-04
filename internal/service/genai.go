@@ -102,7 +102,7 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 	if err != nil {
 		return nil, sqlQuery, fmt.Errorf("failed to execute AI-generated query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	// 3. Parse Results into dynamic slice of maps
 	columns, err := rows.Columns()

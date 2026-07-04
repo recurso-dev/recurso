@@ -62,7 +62,7 @@ func (r *UsageRepository) GetUsageStats(ctx context.Context, tenantID uuid.UUID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query usage stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var stats []*domain.UsageStats
 	for rows.Next() {
@@ -74,4 +74,3 @@ func (r *UsageRepository) GetUsageStats(ctx context.Context, tenantID uuid.UUID)
 	}
 	return stats, nil
 }
-

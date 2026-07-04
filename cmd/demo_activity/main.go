@@ -81,7 +81,7 @@ func post(endpoint string, body interface{}) map[string]interface{} {
 	if err != nil {
 		log.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
 		b, _ := io.ReadAll(resp.Body)
@@ -89,7 +89,9 @@ func post(endpoint string, body interface{}) map[string]interface{} {
 	}
 
 	var res map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&res)
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		log.Fatalf("Failed to decode response: %v", err)
+	}
 	return res
 }
 
@@ -102,9 +104,11 @@ func get(endpoint string) map[string]interface{} {
 	if err != nil {
 		log.Fatalf("Request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var res map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&res)
+	if err := json.NewDecoder(resp.Body).Decode(&res); err != nil {
+		log.Fatalf("Failed to decode response: %v", err)
+	}
 	return res
 }

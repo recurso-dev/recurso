@@ -51,7 +51,7 @@ func (r *AccountingConnectionRepository) ListByTenant(ctx context.Context, tenan
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var conns []*domain.AccountingConnection
 	for rows.Next() {
@@ -95,7 +95,7 @@ func (r *AccountingConnectionRepository) GetActiveConnections(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var conns []*domain.AccountingConnection
 	for rows.Next() {
@@ -133,7 +133,7 @@ func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenan
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var logs []*domain.AccountingSyncLog
 	for rows.Next() {

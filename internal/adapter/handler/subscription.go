@@ -55,7 +55,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 		PaymentTerms:      req.PaymentTerms,
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.CreateSubscription(ctx, input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -72,7 +72,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		return
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
 	// Parse query params
 	status := c.Query("status")
@@ -117,7 +117,7 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 		return
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	invs, err := h.service.ListInvoices(ctx, tenantID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -154,7 +154,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 
 	newPlanID, _ := uuid.Parse(req.PlanID)
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.UpdateSubscription(ctx, tenantID, subscriptionID, newPlanID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

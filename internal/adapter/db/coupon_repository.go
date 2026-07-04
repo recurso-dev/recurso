@@ -37,7 +37,7 @@ func (r *CouponRepository) Create(ctx context.Context, coupon *domain.Coupon) er
 }
 
 func (r *CouponRepository) GetByCode(ctx context.Context, code string) (*domain.Coupon, error) {
-	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
 
 	query := `
 		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, created_at, updated_at
@@ -92,7 +92,7 @@ func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*dom
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var coupons []*domain.Coupon
 	for rows.Next() {

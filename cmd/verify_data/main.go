@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to DB: %v", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	ctx := context.Background()
 	tenantRepo := db.NewTenantRepository(conn.DB)

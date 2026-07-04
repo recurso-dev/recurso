@@ -97,7 +97,7 @@ func (r *DunningCampaignRepository) ListCampaignsByTenant(ctx context.Context, t
 	if err != nil {
 		return nil, fmt.Errorf("failed to list dunning campaigns: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var campaigns []*domain.DunningCampaign
 	for rows.Next() {
@@ -153,7 +153,7 @@ func (r *DunningCampaignRepository) GetStepsByCampaign(ctx context.Context, camp
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dunning campaign steps: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var steps []domain.DunningCampaignStep
 	for rows.Next() {
@@ -267,7 +267,7 @@ func (r *DunningCampaignRepository) GetDueExecutions(ctx context.Context, now ti
 	if err != nil {
 		return nil, fmt.Errorf("failed to get due executions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var executions []*domain.DunningCampaignExecution
 	for rows.Next() {

@@ -752,11 +752,9 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		return nil, fmt.Errorf("failed to update subscription: %w", err)
 	}
 
-	// Sync with Gateway (Razorpay/Stripe)
-	if s.gateway != nil && sub.RazorpaySubscriptionID != "" {
-		// Mock implementation call to gateway update
-		// s.gateway.UpdateSubscription(ctx, sub.RazorpaySubscriptionID, newPlan.Code)
-	}
+	// Sync with Gateway (Razorpay/Stripe) — not implemented yet.
+	// When s.gateway != nil && sub.RazorpaySubscriptionID != "":
+	// s.gateway.UpdateSubscription(ctx, sub.RazorpaySubscriptionID, newPlan.Code)
 
 	return sub, nil
 }

@@ -93,12 +93,12 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Xero customer sync failed: %w", err)
+		return fmt.Errorf("xero customer sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Xero API error: status %d", resp.StatusCode)
+		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
 	}
 
 	return nil
@@ -153,12 +153,12 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Xero invoice sync failed: %w", err)
+		return fmt.Errorf("xero invoice sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Xero API error: status %d", resp.StatusCode)
+		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
 	}
 
 	return nil
@@ -195,12 +195,12 @@ func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error 
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("Xero product sync failed: %w", err)
+		return fmt.Errorf("xero product sync failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Xero API error: status %d", resp.StatusCode)
+		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
 	}
 
 	return nil
@@ -226,7 +226,7 @@ func (a *XeroAdapter) findContactByEmail(ctx context.Context, email string) (str
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("query failed: status %d", resp.StatusCode)
@@ -267,7 +267,7 @@ func (a *XeroAdapter) findItemByName(ctx context.Context, name string) (string, 
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return "", fmt.Errorf("query failed: status %d", resp.StatusCode)

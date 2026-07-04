@@ -50,9 +50,9 @@ func (v *MockVault) Tokenize(ctx context.Context, cardNumber, expMonth, expYear,
 		Last4:       last4,
 	}
 
-	// Parse exp month/year
-	fmt.Sscanf(expMonth, "%d", &token.ExpMonth)
-	fmt.Sscanf(expYear, "%d", &token.ExpYear)
+	// Parse exp month/year (best-effort; zero values on parse failure)
+	_, _ = fmt.Sscanf(expMonth, "%d", &token.ExpMonth)
+	_, _ = fmt.Sscanf(expYear, "%d", &token.ExpYear)
 
 	v.mu.Lock()
 	v.tokens[tokenID] = token

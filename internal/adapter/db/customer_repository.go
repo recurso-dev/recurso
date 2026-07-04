@@ -110,7 +110,7 @@ func (r *CustomerRepository) UpdateRisk(ctx context.Context, customerID uuid.UUI
 }
 
 func (r *CustomerRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error) {
-	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("tenant_id missing from context")
 	}
@@ -199,9 +199,10 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 	args := []interface{}{tenantID}
 	argIdx := 2
 
-	if filter.Status == "active" {
+	switch filter.Status {
+	case "active":
 		query += " AND EXISTS (SELECT 1 FROM subscriptions s WHERE s.customer_id = customers.id AND s.status = 'active')"
-	} else if filter.Status == "inactive" {
+	case "inactive":
 		query += " AND NOT EXISTS (SELECT 1 FROM subscriptions s WHERE s.customer_id = customers.id AND s.status = 'active')"
 	}
 
@@ -233,14 +234,13 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 	if filter.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argIdx)
 		args = append(args, filter.Offset)
-		argIdx++
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var customers []*domain.Customer
 	for rows.Next() {
@@ -302,7 +302,7 @@ func (r *CustomerRepository) GetCustomersWithExpiringCards(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var results []CustomerWithExpiringCard
 	for rows.Next() {

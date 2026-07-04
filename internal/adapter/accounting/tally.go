@@ -112,7 +112,7 @@ func (a *TallyAdapter) appendRecord(record tallyRecord) error {
 	if err != nil {
 		return fmt.Errorf("failed to open tally export file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	line, err := json.Marshal(record)
 	if err != nil {

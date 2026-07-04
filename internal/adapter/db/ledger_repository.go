@@ -43,7 +43,7 @@ func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uui
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ledger accounts: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var accounts []*domain.LedgerAccount
 	for rows.Next() {
@@ -116,7 +116,7 @@ func (r *LedgerRepository) GetTransactionsByAccount(ctx context.Context, tenantI
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ledger transactions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var txns []*domain.LedgerTransaction
 	for rows.Next() {

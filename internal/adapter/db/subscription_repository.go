@@ -64,7 +64,7 @@ func (r *SubscriptionRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, s
 }
 
 func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Subscription, error) {
-	tenantID, ok := ctx.Value("tenant_id").(uuid.UUID)
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	if !ok {
 		return nil, fmt.Errorf("tenant_id missing from context")
 	}
@@ -147,7 +147,7 @@ func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active subscriptions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var subs []*domain.Subscription
 	for rows.Next() {
@@ -215,14 +215,13 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 	if filter.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", argIdx)
 		args = append(args, filter.Offset)
-		argIdx++
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var subs []*domain.Subscription
 	for rows.Next() {
@@ -308,7 +307,7 @@ func (r *SubscriptionRepository) GetSubscriptionsDueTomorrow(ctx context.Context
 	if err != nil {
 		return nil, fmt.Errorf("failed to query subscriptions due tomorrow: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var subs []SubscriptionWithCustomer
 	for rows.Next() {

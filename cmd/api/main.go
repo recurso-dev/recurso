@@ -25,9 +25,9 @@ import (
 	"github.com/recur-so/recurso/internal/adapter/middleware"
 	"github.com/recur-so/recurso/internal/adapter/notification"
 	redisAdapter "github.com/recur-so/recurso/internal/adapter/redis"
+	"github.com/recur-so/recurso/internal/adapter/sms"
 	"github.com/recur-so/recurso/internal/adapter/tigerbeetle"
 	"github.com/recur-so/recurso/internal/adapter/vault"
-	"github.com/recur-so/recurso/internal/adapter/sms"
 	"github.com/recur-so/recurso/internal/adapter/worker"
 	"github.com/recur-so/recurso/internal/core/port"
 	"github.com/recur-so/recurso/internal/core/service/tax"
@@ -59,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer database.Close()
+	defer func() { _ = database.Close() }()
 
 	// 2. Run Migrations
 	if err := db.RunMigrations(dbURL); err != nil {

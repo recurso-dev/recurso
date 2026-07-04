@@ -61,7 +61,7 @@ func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var mandates []*domain.Mandate
 	for rows.Next() {
@@ -105,7 +105,7 @@ func (r *MandateRepository) GetDueForPreNotification(ctx context.Context) ([]*do
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var mandates []*domain.Mandate
 	for rows.Next() {
@@ -135,7 +135,7 @@ func (r *MandateRepository) GetReadyForDebit(ctx context.Context) ([]*domain.Man
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var mandates []*domain.Mandate
 	for rows.Next() {

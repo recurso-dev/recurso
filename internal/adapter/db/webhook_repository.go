@@ -69,7 +69,7 @@ func (r *WebhookEndpointRepository) ListByTenantID(ctx context.Context, tenantID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var endpoints []*domain.WebhookEndpoint
 	for rows.Next() {
@@ -124,7 +124,7 @@ func (r *WebhookEndpointRepository) GetByTenantAndEventType(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var endpoints []*domain.WebhookEndpoint
 	for rows.Next() {
@@ -217,7 +217,7 @@ func (r *EventRepository) ListByTenantID(ctx context.Context, tenantID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []*domain.Event
 	for rows.Next() {
@@ -296,7 +296,7 @@ func (r *EventDeliveryRepository) ListByEventID(ctx context.Context, eventID uui
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deliveries []*domain.EventDelivery
 	for rows.Next() {
@@ -331,7 +331,7 @@ func (r *EventDeliveryRepository) ListPending(ctx context.Context, limit int) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var deliveries []*domain.EventDelivery
 	for rows.Next() {

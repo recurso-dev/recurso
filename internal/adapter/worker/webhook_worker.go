@@ -120,7 +120,7 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 		w.retryDelivery(ctx, delivery, err.Error())
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Read response body (up to 1KB)
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
@@ -132,7 +132,9 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 		delivery.DeliveredAt = &now
 		delivery.StatusCode = resp.StatusCode
 		delivery.ResponseBody = string(body)
-		w.deliveryRepo.Update(ctx, delivery)
+		if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
+			log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+		}
 	} else {
 		w.retryDelivery(ctx, delivery, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
 	}
@@ -147,7 +149,9 @@ func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.Even
 		// Max attempts exhausted — mark as delivered (failed) so ListPending stops picking it up
 		now := time.Now()
 		delivery.DeliveredAt = &now
-		w.deliveryRepo.Update(ctx, delivery)
+		if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
+			log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+		}
 		return
 	}
 
@@ -159,13 +163,17 @@ func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.Even
 	nextRetry := time.Now().Add(backoff)
 	delivery.NextRetryAt = &nextRetry
 
-	w.deliveryRepo.Update(ctx, delivery)
+	if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
+		log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+	}
 }
 
 func (w *WebhookWorker) failDelivery(ctx context.Context, delivery *domain.EventDelivery, code int, reason string) {
 	delivery.StatusCode = code
 	delivery.ResponseBody = reason
-	w.deliveryRepo.Update(ctx, delivery)
+	if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
+		log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+	}
 }
 
 func computeSignature(secret string, payload []byte) string {

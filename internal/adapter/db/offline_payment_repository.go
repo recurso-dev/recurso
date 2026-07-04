@@ -52,7 +52,7 @@ func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tena
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var accounts []*domain.VirtualAccount
 	for rows.Next() {
@@ -100,7 +100,7 @@ func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tena
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var payments []*domain.OfflinePayment
 	for rows.Next() {

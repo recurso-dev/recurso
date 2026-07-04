@@ -51,7 +51,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		UpdatedAt:      time.Now(),
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	if err := h.repo.Create(ctx, coupon); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create coupon"})
 		return

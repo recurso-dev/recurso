@@ -96,12 +96,9 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 		return
 	}
 
-	// Revoke consent if requested
+	// Revoke consent if requested (best-effort: errors are ignored so the request doesn't fail)
 	if req.RevokeConsent {
-		if err := h.consentService.RevokeSubscriptionConsent(c.Request.Context(), tenantID, subscriptionID); err != nil {
-			// Log but don't fail the request
-			// log.Printf("Failed to revoke consent for subscription %s: %v", subscriptionID, err)
-		}
+		_ = h.consentService.RevokeSubscriptionConsent(c.Request.Context(), tenantID, subscriptionID)
 	}
 
 	// Send cancellation confirmation email

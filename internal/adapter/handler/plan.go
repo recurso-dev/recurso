@@ -51,7 +51,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 		Currency:      req.Currency,
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	plan, err := h.service.CreatePlan(ctx, input)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -68,25 +68,25 @@ func (h *CatalogHandler) ListPlans(c *gin.Context) {
 		return
 	}
 
-	ctx := context.WithValue(c.Request.Context(), "tenant_id", tenantID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
 	// Parse query params
 	search := c.Query("q")
-	
+
 	limit := 10
 	if l := c.Query("limit"); l != "" {
 		if v, err := strconv.Atoi(l); err == nil && v > 0 {
 			limit = v
 		}
 	}
-	
+
 	offset := 0
 	if p := c.Query("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
 			offset = (v - 1) * limit
 		}
 	}
-	
+
 	filter := domain.PlanFilter{
 		Search: search,
 		Limit:  limit,

@@ -57,7 +57,7 @@ func (p *OpenExchangeRatesProvider) fetchRates(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("OXR API request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("OXR API error: status %d", resp.StatusCode)

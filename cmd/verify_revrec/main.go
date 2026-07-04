@@ -9,6 +9,7 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	"github.com/recur-so/recurso/internal/adapter/db"
+	"github.com/recur-so/recurso/internal/core/domain"
 	"github.com/recur-so/recurso/internal/service"
 )
 
@@ -27,24 +28,24 @@ func main() {
 	// Repos
 	invoiceRepo := db.NewInvoiceRepository(database)
 	revrecRepo := db.NewRevRecRepository(database)
-	
+
 	subscriptionRepo := db.NewSubscriptionRepository(database)
 
 	// Services
 	ledgerService := service.NewLedgerService(nil, nil) // Mock TB + PG for now
 	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
-	
+
 	// Get a sample invoice
 	var invID, tenantIDStr string
 	err = database.QueryRow("SELECT id, tenant_id FROM invoices LIMIT 1").Scan(&invID, &tenantIDStr)
 	if err != nil {
 		log.Fatalf("failed to get sample invoice: %v", err)
 	}
-	
+
 	log.Printf("Found sample invoice: %s (Tenant: %s)", invID, tenantIDStr)
-	
+
 	tenantID := uuid.MustParse(tenantIDStr)
-	ctx := context.WithValue(context.Background(), "tenant_id", tenantID)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenantID)
 
 	inv, err := invoiceRepo.GetByID(ctx, uuid.MustParse(invID))
 	if err != nil {
@@ -56,15 +57,19 @@ func main() {
 	if err := revrecService.CreateScheduleForInvoice(ctx, inv, nil); err != nil {
 		log.Fatalf("failed to create schedule: %v", err)
 	}
-	
+
 	log.Println("✅ Revenue Recognition schedule created successfully!")
-	
+
 	// Verify in DB
 	var count int
-	database.QueryRow("SELECT count(*) FROM revenue_schedules WHERE invoice_id = $1", inv.ID).Scan(&count)
+	if err := database.QueryRow("SELECT count(*) FROM revenue_schedules WHERE invoice_id = $1", inv.ID).Scan(&count); err != nil {
+		log.Fatalf("failed to count schedules: %v", err)
+	}
 	log.Printf("Schedules in DB: %d", count)
-	
-	database.QueryRow("SELECT count(*) FROM recognition_events WHERE tenant_id = $1", inv.TenantID).Scan(&count)
+
+	if err := database.QueryRow("SELECT count(*) FROM recognition_events WHERE tenant_id = $1", inv.TenantID).Scan(&count); err != nil {
+		log.Fatalf("failed to count recognition events: %v", err)
+	}
 	log.Printf("Total Recognition Events in DB: %d", count)
 
 	// Test processing
@@ -73,9 +78,11 @@ func main() {
 		log.Fatalf("failed to process due events: %v", err)
 	}
 
-	database.QueryRow("SELECT count(*) FROM recognition_events WHERE tenant_id = $1 AND status = 'recognized'", inv.TenantID).Scan(&count)
+	if err := database.QueryRow("SELECT count(*) FROM recognition_events WHERE tenant_id = $1 AND status = 'recognized'", inv.TenantID).Scan(&count); err != nil {
+		log.Fatalf("failed to count recognized events: %v", err)
+	}
 	log.Printf("Recognized Events in DB: %d", count)
-	
+
 	if count > 0 {
 		log.Println("✅ Revenue Recognition processing verified!")
 	} else {

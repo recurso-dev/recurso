@@ -31,7 +31,7 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 	if err != nil {
 		return fmt.Errorf("failed to create credit note: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	if rows.Next() {
 		return rows.Scan(&creditNote.ID)
@@ -53,7 +53,6 @@ func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, fil
 	if filter.Status != nil {
 		query += fmt.Sprintf(" AND status = $%d", argIdx)
 		args = append(args, *filter.Status)
-		argIdx++
 	}
 
 	query += ` ORDER BY created_at DESC`

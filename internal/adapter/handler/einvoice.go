@@ -171,7 +171,7 @@ func (h *EInvoiceHandler) TestIRPConnection(c *gin.Context) {
 	// Try to get config
 	config, err := h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "sandbox")
 	if err != nil || config == nil {
-		config, err = h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
+		config, _ = h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
 	}
 
 	if config == nil {

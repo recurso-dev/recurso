@@ -67,15 +67,15 @@ func (h *ChurnHandler) GetHighRiskCustomers(c *gin.Context) {
 }
 
 type churnAlert struct {
-	ID           uuid.UUID `json:"id"`
-	TenantID     uuid.UUID `json:"tenant_id"`
-	CustomerID   uuid.UUID `json:"customer_id"`
-	PreviousScore int     `json:"previous_score"`
-	NewScore     int       `json:"new_score"`
-	Threshold    int       `json:"threshold"`
-	AlertType    string    `json:"alert_type"`
-	Acknowledged bool      `json:"acknowledged"`
-	CreatedAt    time.Time `json:"created_at"`
+	ID            uuid.UUID `json:"id"`
+	TenantID      uuid.UUID `json:"tenant_id"`
+	CustomerID    uuid.UUID `json:"customer_id"`
+	PreviousScore int       `json:"previous_score"`
+	NewScore      int       `json:"new_score"`
+	Threshold     int       `json:"threshold"`
+	AlertType     string    `json:"alert_type"`
+	Acknowledged  bool      `json:"acknowledged"`
+	CreatedAt     time.Time `json:"created_at"`
 }
 
 func (h *ChurnHandler) GetAlerts(c *gin.Context) {
@@ -93,7 +93,7 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var alerts []churnAlert
 	for rows.Next() {

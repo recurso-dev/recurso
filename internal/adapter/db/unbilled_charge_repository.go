@@ -46,7 +46,7 @@ func (r *UnbilledChargeRepository) ListBySubscriptionID(subscriptionID uuid.UUID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var charges []*domain.UnbilledCharge
 	for rows.Next() {
