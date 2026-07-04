@@ -5,33 +5,109 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Recurso = void 0;
 const axios_1 = __importDefault(require("axios"));
+/**
+ * Official Node.js SDK for the Recurso billing API.
+ *
+ * Method coverage mirrors the REST surface: list endpoints accept filter
+ * params, mutations are grouped per resource, and lifecycle actions
+ * (cancel, pause, resume, ...) live on their resource.
+ */
 class Recurso {
     constructor(apiKey, baseURL = 'http://localhost:8080') {
+        this.get = async (path, params) => (await this.client.get(path, { params })).data;
+        this.post = async (path, data) => (await this.client.post(path, data)).data;
+        this.put = async (path, data) => (await this.client.put(path, data)).data;
+        this.del = async (path) => (await this.client.delete(path)).data;
+        this.account = {
+            get: () => this.get('/v1/account'),
+            update: (data) => this.put('/v1/account', data),
+        };
         this.customers = {
-            create: async (data) => {
-                // Default to US if not provided to satisfy backend "len=2" requirement for now
-                const payload = { country: 'US', ...data };
-                const res = await this.client.post('/v1/customers', payload);
-                return res.data;
-            },
+            create: (data) => this.post('/v1/customers', { country: 'US', ...data }),
+            list: (params) => this.get('/v1/customers', params),
+            updatePaymentMethod: (id, data) => this.put(`/v1/customers/${id}/payment-method`, data),
+            churn: (id) => this.get(`/v1/customers/${id}/churn`),
+            consents: (id) => this.get(`/v1/customers/${id}/consents`),
         };
         this.plans = {
-            create: async (data) => {
-                const res = await this.client.post('/v1/plans', { interval_count: 1, ...data });
-                return res.data;
-            },
+            create: (data) => this.post('/v1/plans', { interval_count: 1, ...data }),
+            list: (params) => this.get('/v1/plans', params),
         };
         this.subscriptions = {
-            create: async (data) => {
-                const res = await this.client.post('/v1/subscriptions', data);
-                return res.data;
-            },
+            create: (data) => this.post('/v1/subscriptions', data),
+            list: (params) => this.get('/v1/subscriptions', params),
+            update: (id, data) => this.put(`/v1/subscriptions/${id}`, data),
+            cancel: (id, data) => this.post(`/v1/subscriptions/${id}/cancel`, data),
+            pause: (id, data) => this.post(`/v1/subscriptions/${id}/pause`, data),
+            resume: (id) => this.post(`/v1/subscriptions/${id}/resume`),
+            reactivate: (id) => this.post(`/v1/subscriptions/${id}/reactivate`),
+            /** Bill N future periods immediately (advance invoicing). */
+            advance: (id, data) => this.post(`/v1/subscriptions/${id}/advance`, data),
+            charges: (id) => this.get(`/v1/subscriptions/${id}/charges`),
+            addCharge: (id, data) => this.post(`/v1/subscriptions/${id}/charges`, data),
+        };
+        this.invoices = {
+            list: (params) => this.get('/v1/invoices', params),
+            /** Public PDF download URL for an invoice. */
+            pdfUrl: (id) => `${this.client.defaults.baseURL}/v1/invoices/${id}/pdf`,
+            eInvoiceStatus: (id) => this.get(`/v1/invoices/${id}/einvoice`),
+            retryEInvoice: (id) => this.post(`/v1/invoices/${id}/einvoice/retry`),
+            cancelEInvoice: (id, data) => this.post(`/v1/invoices/${id}/einvoice/cancel`, data),
         };
         this.coupons = {
-            create: async (data) => {
-                const res = await this.client.post('/v1/coupons', data);
-                return res.data;
-            }
+            create: (data) => this.post('/v1/coupons', data),
+            list: (params) => this.get('/v1/coupons', params),
+        };
+        this.usage = {
+            /** Record a metered usage event against a subscription. */
+            record: (data) => this.post('/v1/usage/events', data),
+        };
+        this.creditNotes = {
+            create: (data) => this.post('/v1/credit-notes', data),
+            list: (params) => this.get('/v1/credit-notes', params),
+        };
+        this.quotes = {
+            create: (data) => this.post('/v1/quotes', data),
+            list: (params) => this.get('/v1/quotes', params),
+            get: (id) => this.get(`/v1/quotes/${id}`),
+            update: (id, data) => this.put(`/v1/quotes/${id}`, data),
+            send: (id) => this.post(`/v1/quotes/${id}/send`),
+            accept: (id) => this.post(`/v1/quotes/${id}/accept`),
+            decline: (id) => this.post(`/v1/quotes/${id}/decline`),
+            /** Convert an accepted quote into a subscription. */
+            convert: (id) => this.post(`/v1/quotes/${id}/convert`),
+            delete: (id) => this.del(`/v1/quotes/${id}`),
+        };
+        this.webhooks = {
+            /** Register an endpoint to receive event deliveries. */
+            create: (data) => this.post('/v1/webhooks', data),
+            list: () => this.get('/v1/webhooks'),
+            delete: (id) => this.del(`/v1/webhooks/${id}`),
+        };
+        this.events = {
+            list: (params) => this.get('/v1/events', params),
+            types: () => this.get('/v1/events/types'),
+        };
+        this.mandates = {
+            create: (data) => this.post('/v1/mandates', data),
+            list: (params) => this.get('/v1/mandates', params),
+            get: (id) => this.get(`/v1/mandates/${id}`),
+            revoke: (id) => this.post(`/v1/mandates/${id}/revoke`),
+        };
+        this.gifts = {
+            purchase: (data) => this.post('/v1/gifts/purchase', data),
+            redeem: (data) => this.post('/v1/gifts/redeem', data),
+            list: (params) => this.get('/v1/gifts', params),
+        };
+        this.referrals = {
+            create: (data) => this.post('/v1/referrals', data),
+            list: (params) => this.get('/v1/referrals', params),
+            generateCode: (data) => this.post('/v1/referrals/generate-code', data),
+            qualify: (id) => this.post(`/v1/referrals/${id}/qualify`),
+        };
+        this.ledger = {
+            accounts: () => this.get('/v1/ledger/accounts'),
+            entries: (params) => this.get('/v1/ledger/entries', params),
         };
         this.client = axios_1.default.create({
             baseURL,

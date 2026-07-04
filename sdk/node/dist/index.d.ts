@@ -1,6 +1,29 @@
+/** Common list-endpoint query parameters (all optional, server-side). */
+export interface ListParams {
+    page?: number;
+    limit?: number;
+    q?: string;
+    status?: string;
+    [key: string]: unknown;
+}
+/**
+ * Official Node.js SDK for the Recurso billing API.
+ *
+ * Method coverage mirrors the REST surface: list endpoints accept filter
+ * params, mutations are grouped per resource, and lifecycle actions
+ * (cancel, pause, resume, ...) live on their resource.
+ */
 export declare class Recurso {
     private client;
     constructor(apiKey: string, baseURL?: string);
+    private get;
+    private post;
+    private put;
+    private del;
+    account: {
+        get: () => Promise<any>;
+        update: (data: Record<string, unknown>) => Promise<any>;
+    };
     customers: {
         create: (data: {
             email: string;
@@ -10,7 +33,12 @@ export declare class Recurso {
             state?: string;
             zip?: string;
             country?: string;
+            [key: string]: unknown;
         }) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+        updatePaymentMethod: (id: string, data: Record<string, unknown>) => Promise<any>;
+        churn: (id: string) => Promise<any>;
+        consents: (id: string) => Promise<any>;
     };
     plans: {
         create: (data: {
@@ -18,16 +46,41 @@ export declare class Recurso {
             code: string;
             amount: number;
             currency: string;
-            interval_unit: "month" | "year";
+            interval_unit: "day" | "week" | "month" | "year";
             interval_count?: number;
+            [key: string]: unknown;
         }) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
     };
     subscriptions: {
         create: (data: {
             customer_id: string;
             plan_id: string;
             coupon_code?: string;
+            start_date?: string;
+            payment_terms?: string;
+            [key: string]: unknown;
         }) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+        update: (id: string, data: Record<string, unknown>) => Promise<any>;
+        cancel: (id: string, data?: Record<string, unknown>) => Promise<any>;
+        pause: (id: string, data?: Record<string, unknown>) => Promise<any>;
+        resume: (id: string) => Promise<any>;
+        reactivate: (id: string) => Promise<any>;
+        /** Bill N future periods immediately (advance invoicing). */
+        advance: (id: string, data: {
+            periods: number;
+        }) => Promise<any>;
+        charges: (id: string) => Promise<any>;
+        addCharge: (id: string, data: Record<string, unknown>) => Promise<any>;
+    };
+    invoices: {
+        list: (params?: ListParams) => Promise<any>;
+        /** Public PDF download URL for an invoice. */
+        pdfUrl: (id: string) => string;
+        eInvoiceStatus: (id: string) => Promise<any>;
+        retryEInvoice: (id: string) => Promise<any>;
+        cancelEInvoice: (id: string, data?: Record<string, unknown>) => Promise<any>;
     };
     coupons: {
         create: (data: {
@@ -35,6 +88,74 @@ export declare class Recurso {
             discount_type: "percent" | "amount";
             discount_value: number;
             duration: "forever" | "once";
+            [key: string]: unknown;
+        }) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+    };
+    usage: {
+        /** Record a metered usage event against a subscription. */
+        record: (data: {
+            subscription_id: string;
+            customer_id: string;
+            dimension: string;
+            quantity: number;
+        }) => Promise<any>;
+    };
+    creditNotes: {
+        create: (data: Record<string, unknown>) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+    };
+    quotes: {
+        create: (data: Record<string, unknown>) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+        get: (id: string) => Promise<any>;
+        update: (id: string, data: Record<string, unknown>) => Promise<any>;
+        send: (id: string) => Promise<any>;
+        accept: (id: string) => Promise<any>;
+        decline: (id: string) => Promise<any>;
+        /** Convert an accepted quote into a subscription. */
+        convert: (id: string) => Promise<any>;
+        delete: (id: string) => Promise<any>;
+    };
+    webhooks: {
+        /** Register an endpoint to receive event deliveries. */
+        create: (data: {
+            url: string;
+            event_types?: string[];
+            [key: string]: unknown;
+        }) => Promise<any>;
+        list: () => Promise<any>;
+        delete: (id: string) => Promise<any>;
+    };
+    events: {
+        list: (params?: ListParams) => Promise<any>;
+        types: () => Promise<any>;
+    };
+    mandates: {
+        create: (data: Record<string, unknown>) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+        get: (id: string) => Promise<any>;
+        revoke: (id: string) => Promise<any>;
+    };
+    gifts: {
+        purchase: (data: Record<string, unknown>) => Promise<any>;
+        redeem: (data: {
+            code: string;
+            [key: string]: unknown;
+        }) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+    };
+    referrals: {
+        create: (data: Record<string, unknown>) => Promise<any>;
+        list: (params?: ListParams) => Promise<any>;
+        generateCode: (data: Record<string, unknown>) => Promise<any>;
+        qualify: (id: string) => Promise<any>;
+    };
+    ledger: {
+        accounts: () => Promise<any>;
+        entries: (params?: {
+            account_id?: string;
+            [key: string]: unknown;
         }) => Promise<any>;
     };
 }
