@@ -9,7 +9,8 @@ vi.mock('../../lib/api', () => ({
         getSubscriptions: vi.fn(),
         getInvoices: vi.fn(),
         getCustomers: vi.fn(),
-        getPlans: vi.fn()
+        getPlans: vi.fn(),
+        getMRR: vi.fn()
     }
 }));
 
@@ -46,6 +47,7 @@ describe('Dashboard Component', () => {
         endpoints.getInvoices.mockResolvedValue({ data: { data: [] } });
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
         endpoints.getPlans.mockResolvedValue({ data: { data: [] } });
+        endpoints.getMRR.mockResolvedValue({ data: { mrr: 0 } });
     });
 
     it('displays loading state initially', async () => {

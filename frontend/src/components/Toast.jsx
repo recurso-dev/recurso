@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 
 const ToastContext = createContext(null);
 
@@ -19,12 +19,14 @@ export function ToastProvider({ children }) {
     }, duration);
   }, []);
 
-  const toast = {
+  // Stable identity: consumers put `toast` in effect deps, so a new object
+  // per render turns every error toast into an infinite refetch loop.
+  const toast = useMemo(() => ({
     success: (msg) => addToast(msg, 'success'),
     error: (msg) => addToast(msg, 'error'),
     info: (msg) => addToast(msg, 'info'),
     warning: (msg) => addToast(msg, 'warning'),
-  };
+  }), [addToast]);
 
   return (
     <ToastContext.Provider value={toast}>

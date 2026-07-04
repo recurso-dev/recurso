@@ -101,8 +101,14 @@ describe('Customers Page', () => {
         expect(screen.getByText('Carol Davis')).toBeInTheDocument();
     });
 
-    it('filters by search text', async () => {
-        endpoints.getCustomers.mockResolvedValue({ data: { data: mockCustomers } });
+    it('filters by search text (server-side via q param)', async () => {
+        // Search is server-side: the page debounces 500ms and refetches with q.
+        endpoints.getCustomers.mockImplementation((params = {}) => {
+            const data = params.q
+                ? mockCustomers.filter(c => c.name.toLowerCase().includes(params.q.toLowerCase()))
+                : mockCustomers;
+            return Promise.resolve({ data: { data } });
+        });
 
         render(<Customers />, { wrapper });
 
@@ -113,12 +119,27 @@ describe('Customers Page', () => {
         const searchInput = screen.getByPlaceholderText('Search by name or email...');
         await userEvent.type(searchInput, 'bob');
 
-        expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+        // Wait out the debounce + refetch.
+        await waitFor(() => {
+            expect(endpoints.getCustomers).toHaveBeenCalledWith(
+                expect.objectContaining({ q: 'bob' })
+            );
+        }, { timeout: 2000 });
+
+        await waitFor(() => {
+            expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+        });
         expect(screen.getByText('Bob Jones')).toBeInTheDocument();
     });
 
-    it('filters by active/inactive status', async () => {
-        endpoints.getCustomers.mockResolvedValue({ data: { data: mockCustomers } });
+    it('filters by active/inactive status (server-side via status param)', async () => {
+        // Status filtering is server-side: the page refetches with status.
+        endpoints.getCustomers.mockImplementation((params = {}) => {
+            let data = mockCustomers;
+            if (params.status === 'inactive') data = mockCustomers.filter(c => c.activeSubs === 0);
+            if (params.status === 'active') data = mockCustomers.filter(c => c.activeSubs > 0);
+            return Promise.resolve({ data: { data } });
+        });
 
         render(<Customers />, { wrapper });
 
@@ -131,17 +152,27 @@ describe('Customers Page', () => {
         const inactiveBtn = filterButtons.find(b => b.textContent === 'Inactive');
         fireEvent.click(inactiveBtn);
 
+        await waitFor(() => {
+            expect(endpoints.getCustomers).toHaveBeenCalledWith(
+                expect.objectContaining({ status: 'inactive' })
+            );
+        });
+
         // Only Bob (activeSubs=0) should show
-        expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
+        });
         expect(screen.getByText('Bob Jones')).toBeInTheDocument();
         expect(screen.queryByText('Carol Davis')).not.toBeInTheDocument();
 
-        // Click "Active" filter button 
+        // Click "Active" filter button
         const activeBtn = filterButtons.find(b => b.textContent === 'Active');
         fireEvent.click(activeBtn);
 
         // Alice and Carol should show (activeSubs > 0)
-        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+        });
         expect(screen.getByText('Carol Davis')).toBeInTheDocument();
         expect(screen.queryByText('Bob Jones')).not.toBeInTheDocument();
     });
