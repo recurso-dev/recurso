@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { endpoints } from '../../lib/api'
+import { API_BASE, endpoints } from '../../lib/api'
 
 const EInvoiceStatusBadge = ({ status }) => {
     if (!status || status === 'PENDING') return <span className="text-sm text-slate-400">Pending</span>
@@ -226,7 +226,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
                             {/* Actions */}
                             <div className="mt-8 flex gap-3">
                                 <a
-                                    href={`http://localhost:8080/v1/invoices/${invoice.id}/pdf`}
+                                    href={`${API_BASE}/invoices/${invoice.id}/pdf`}
                                     target="_blank"
                                     rel="noreferrer"
                                     className="flex-1 flex justify-center items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace('/v1', '') || 'http://localhost:8080'
+import { API_ROOT as API_BASE } from '../lib/api'
 
 export default function Checkout() {
   const { id } = useParams()

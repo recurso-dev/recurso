@@ -38,3 +38,10 @@ coverage/
 # Temp files
 *.tmp
 *.swp
+
+# Local tooling and generated artifacts
+.agent-skills/
+api_response.json
+
+# Design-tool exports (kept out of the repo)
+stitch_dashboard_home_screen*/

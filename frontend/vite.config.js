@@ -21,6 +21,28 @@ export default defineConfig({
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
         secure: false,
+      },
+      // Backend portal endpoints; SPA pages live at /portal/login etc.,
+      // which don't collide with these two prefixes.
+      '/portal/api': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/portal/auth': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        secure: false,
+      },
+      // /checkout/:id is both an SPA page (browser navigation) and a JSON
+      // API (fetch). Route page loads to the SPA, everything else to the API.
+      '/checkout': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        secure: false,
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) return '/index.html'
+        },
       }
     }
   }

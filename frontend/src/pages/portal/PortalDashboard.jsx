@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+import { API_ROOT as API_BASE } from '../../lib/api'
 
 const PortalDashboard = () => {
     const [profile, setProfile] = useState(null)

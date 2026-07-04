@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS idx_subscriptions_stripe_subscription_id;

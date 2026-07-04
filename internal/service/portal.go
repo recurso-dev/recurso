@@ -119,20 +119,7 @@ func (s *PortalService) ValidateSession(ctx context.Context, token string) (*dom
 
 // GetCustomerInvoices returns invoices for a customer
 func (s *PortalService) GetCustomerInvoices(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
-	// Get all invoices and filter by customer
-	invoices, err := s.invoiceRepo.List(ctx, uuid.Nil) // All tenants
-	if err != nil {
-		return nil, err
-	}
-
-	var customerInvoices []*domain.Invoice
-	for _, inv := range invoices {
-		if inv.CustomerID == customerID {
-			customerInvoices = append(customerInvoices, inv)
-		}
-	}
-
-	return customerInvoices, nil
+	return s.invoiceRepo.GetByCustomerID(ctx, customerID)
 }
 
 // GetCustomer returns the customer profile

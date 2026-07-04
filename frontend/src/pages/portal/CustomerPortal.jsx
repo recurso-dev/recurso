@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import { DocumentTextIcon, CreditCardIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080/v1';
+import { API_BASE as API_BASE_URL } from '../../lib/api';
 
 export default function CustomerPortal() {
     const { tenantId, customerId } = useParams();
@@ -143,7 +143,7 @@ export default function CustomerPortal() {
                                             </td>
                                             <td className="px-6 py-4 text-right">
                                                 <a
-                                                    href={`${API_BASE_URL.replace('/v1', '')}/v1/invoices/${inv.id}/pdf`}
+                                                    href={`${API_BASE_URL}/invoices/${inv.id}/pdf`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors"

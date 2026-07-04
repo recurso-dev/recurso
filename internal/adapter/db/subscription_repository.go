@@ -98,6 +98,11 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 	return sub, nil
 }
 
+// GetByStripeSubscriptionID intentionally has no tenant_id filter: it exists
+// for the Stripe webhook handler, which must resolve the owning tenant from
+// the subscription itself. A unique index on stripe_subscription_id
+// (migration 000047) guarantees at most one match. Do not call this from
+// tenant-scoped request paths — use GetByID with a tenant_id instead.
 func (r *SubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*domain.Subscription, error) {
 	sub := &domain.Subscription{}
 	query := `

@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+import { API_ROOT as API_BASE } from '../../lib/api'
 
 const PortalVerify = () => {
     const [searchParams] = useSearchParams()

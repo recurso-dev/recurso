@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+// Single source of truth for API locations. In dev both resolve to relative
+// paths served by the Vite proxy; in prod set VITE_API_BASE_URL (e.g.
+// "https://api.recurso.dev/v1").
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/v1';
+// Server root for non-/v1 routes (/auth, /portal, /checkout).
+export const API_ROOT = API_BASE.replace(/\/v1\/?$/, '');
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || '/v1',
+  baseURL: API_BASE,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -82,8 +89,8 @@ export const endpoints = {
   generateReferralCode: (data) => api.post('/referrals/generate-code', data),
 
   // Checkout (public, uses base URL without /v1)
-  getCheckoutInvoice: (id) => axios.get(`${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/v1').replace('/v1', '')}/checkout/${id}`),
-  initiateCheckoutPayment: (id) => axios.post(`${(import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/v1').replace('/v1', '')}/checkout/${id}/pay`),
+  getCheckoutInvoice: (id) => axios.get(`${API_ROOT}/checkout/${id}`),
+  initiateCheckoutPayment: (id) => axios.post(`${API_ROOT}/checkout/${id}/pay`),
 
   // Smart Dunning Analytics
   getDunningOverview: () => api.get('/analytics/dunning/overview'),

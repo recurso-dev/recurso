@@ -1,4 +1,4 @@
-.PHONY: build run test test-e2e clean docker-up docker-down lint docker-build k8s-deploy k8s-status
+.PHONY: build run test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
 IMAGE_NAME=ghcr.io/recur-so/recurso
@@ -16,6 +16,12 @@ test:
 test-e2e:
 	@chmod +x scripts/e2e_test.sh
 	./scripts/e2e_test.sh
+
+# Phase verification scripts; require the dev stack (make docker-up) with
+# APP_ENV=development and ALLOW_DEV_BYPASS=true.
+test-verify:
+	@chmod +x scripts/verify/*.sh
+	@for s in scripts/verify/verify_p*.sh; do echo "== $$s =="; $$s || exit 1; done
 
 clean:
 	go clean
