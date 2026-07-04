@@ -41,6 +41,8 @@ docker-build:
 
 k8s-deploy:
 	kubectl apply -f k8s/namespace.yaml
+	kubectl apply -f k8s/rbac.yaml
+	kubectl apply -f k8s/networkpolicy.yaml
 	kubectl apply -f k8s/configmap.yaml
 	kubectl apply -f k8s/secret.yaml
 	kubectl apply -f k8s/deployment.yaml

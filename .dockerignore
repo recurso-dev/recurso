@@ -1,0 +1,28 @@
+.git
+.github
+.agent-skills
+.claude
+.gemini
+
+# Not part of the API image
+frontend
+website
+docs-site
+docs
+pitch
+k8s
+sdk
+scripts
+data
+
+# Local artifacts
+node_modules
+*.log
+api_bin
+main
+server
+coverage
+postgres_data
+tigerbeetle_data
+.env
+.env.*

@@ -1,0 +1,36 @@
+# Default-deny all ingress in the namespace, then explicitly allow
+# traffic from the ingress controller to the API pods. Egress stays open:
+# the API needs Postgres, TigerBeetle, SMTP, and external payment/GSP APIs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: recurso
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-to-api
+  namespace: recurso
+spec:
+  podSelector:
+    matchLabels:
+      app: recurso
+      component: api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # nginx ingress controller (standard namespace label)
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+        # pods within the recurso namespace (e.g. jobs, sidecars)
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080

@@ -18,9 +18,24 @@ spec:
         app: recurso
         component: api
     spec:
+      serviceAccountName: recurso-api
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: api
           image: ghcr.io/recur-so/recurso:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # Writable scratch space (Tally exports default to /tmp/tally-exports)
+            - name: tmp
+              mountPath: /tmp
           ports:
             - containerPort: 8080
               protocol: TCP
@@ -52,3 +67,6 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+      volumes:
+        - name: tmp
+          emptyDir: {}

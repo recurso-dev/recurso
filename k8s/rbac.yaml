@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: recurso-api
+  namespace: recurso
+  labels:
+    app: recurso
+    component: api
+# The API never talks to the Kubernetes API, so it gets a dedicated
+# ServiceAccount with no roles and no mounted token.
+automountServiceAccountToken: false
