@@ -191,6 +191,43 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 	return customer, nil
 }
 
+// FindByEmailAcrossTenants is cross-tenant by design: portal login
+// identifies customers by email alone, before any tenant is known.
+// Never call it from tenant-scoped request paths.
+func (r *CustomerRepository) FindByEmailAcrossTenants(ctx context.Context, email string) ([]*domain.Customer, error) {
+	query := `
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		FROM customers WHERE lower(email) = lower($1)
+		ORDER BY created_at DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, email)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var customers []*domain.Customer
+	for rows.Next() {
+		var c domain.Customer
+		var addressJSON []byte
+		if err := rows.Scan(
+			&c.ID, &c.TenantID, &c.Email, &c.Name,
+			&c.Phone, &c.TaxID,
+			&c.BillingAddress.Line1, &c.BillingAddress.City, &c.BillingAddress.State, &c.BillingAddress.Zip, &c.BillingAddress.Country,
+			&addressJSON, &c.LedgerAccountID, &c.ReferralCode,
+			&c.CardBrand, &c.CardLast4, &c.CardExpMonth, &c.CardExpYear,
+			&c.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if c.BillingAddress.Line1 == "" && len(addressJSON) > 0 {
+			_ = json.Unmarshal(addressJSON, &c.BillingAddress)
+		}
+		customers = append(customers, &c)
+	}
+	return customers, nil
+}
+
 func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error) {
 	query := `
 		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at

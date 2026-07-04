@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -41,12 +42,13 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 		return
 	}
 
-	// In development, return the link for testing
-	// In production, this would just return a success message
-	c.JSON(http.StatusOK, gin.H{
-		"message":   "Login link sent to your email",
-		"_dev_link": "/portal/verify?token=" + link.Token, // Remove in production
-	})
+	resp := gin.H{"message": "Login link sent to your email"}
+	// Expose the link in the response only in development; in production the
+	// token must travel exclusively via email.
+	if os.Getenv("APP_ENV") == "development" {
+		resp["_dev_link"] = "/portal/verify?token=" + link.Token
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 // VerifyMagicLink verifies the magic link and creates a session

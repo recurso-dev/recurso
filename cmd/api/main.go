@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -102,7 +104,22 @@ func main() {
 		log.Println("Using Console Notifier (Mock)")
 	}
 
-	emailSender := email.NewConsoleSender() // Use SMTPSender in production
+	var emailSender port.EmailSender = email.NewConsoleSender()
+	if host := os.Getenv("SMTP_HOST"); host != "" {
+		smtpPort, _ := strconv.Atoi(getEnvDefault("SMTP_PORT", "587"))
+		emailSender = email.NewSMTPSender(email.SMTPConfig{
+			Host:     host,
+			Port:     smtpPort,
+			Username: os.Getenv("SMTP_USERNAME"),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     getEnvDefault("SMTP_FROM", "noreply@localhost"),
+			FromName: getEnvDefault("SMTP_FROM_NAME", "Recurso"),
+			UseTLS:   os.Getenv("SMTP_USE_TLS") == "true",
+		})
+		log.Println("Using SMTP Email Sender")
+	} else {
+		log.Println("Using Console Email Sender (emails are logged, not sent — set SMTP_HOST for real delivery)")
+	}
 	baseURL := getEnvDefault("BASE_URL", "http://localhost:8080")
 	notificationService := service.NewNotificationService(emailSender, baseURL)
 	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
@@ -121,8 +138,14 @@ func main() {
 	}
 
 	// 5. Initialize Gateways
-	// Using MockGateway as "Razorpay" for dev environment validation without keys
-	razorpayGateway := gateway.NewMockGateway()
+	var razorpayGateway port.PaymentGateway
+	if keyID := os.Getenv("RAZORPAY_KEY_ID"); keyID != "" {
+		razorpayGateway = gateway.NewRazorpayGateway(keyID, os.Getenv("RAZORPAY_KEY_SECRET"))
+		log.Println("Using Real Razorpay Gateway")
+	} else {
+		razorpayGateway = gateway.NewMockGateway()
+		log.Println("Using Razorpay Gateway (Mock — set RAZORPAY_KEY_ID for real payments)")
+	}
 
 	var stripeGateway port.PaymentGateway
 	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
@@ -286,8 +309,11 @@ func main() {
 	// Webhooks & Events (P24)
 	webhookService := service.NewWebhookService(webhookEndpointRepo, eventRepo, eventDeliveryRepo)
 
-	// Accounting (P41)
+	// Accounting (P41). Real QuickBooks/Xero adapters exist but need
+	// per-connection OAuth tokens; wiring them through the connection store
+	// is tracked for a future release. Until then sync runs in mock mode.
 	accountingGateway := accounting.NewMockAccountingAdapter()
+	log.Println("Accounting sync running in MOCK mode — QuickBooks/Xero writes are simulated")
 	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
 	accountingService.SetConnectionRepo(acctConnRepo)
 
@@ -405,18 +431,14 @@ func main() {
 	mandateDebitScheduler.Start()
 	defer mandateDebitScheduler.Stop()
 
-	// Graceful shutdown handler
-	go func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-		<-sigChan
-		log.Println("Shutting down gracefully...")
+	// Graceful shutdown: on SIGINT/SIGTERM stop schedulers, then drain the
+	// HTTP server (srv.Shutdown below) so in-flight requests complete.
+	shutdownSchedulers := func() {
 		preChargeScheduler.Stop()
 		dunningScheduler.Stop()
 		cardExpiryScheduler.Stop()
 		mandateDebitScheduler.Stop()
-		os.Exit(0)
-	}()
+	}
 
 	// 7. Initialize Handlers
 	catalogHandler := handler.NewCatalogHandler(catalogService)
@@ -435,7 +457,10 @@ func main() {
 	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService)                           // P24
 
 	// Portal (P25)
-	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, giftService)
+	// PORTAL_URL is where the customer-facing portal SPA is served; magic
+	// link emails point there. Defaults to the API base URL for dev.
+	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
+	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
 
 	// Quotes (P27)
@@ -772,8 +797,24 @@ func main() {
 	}
 
 	serverAddr := fmt.Sprintf(":%s", port)
+	srv := &http.Server{Addr: serverAddr, Handler: r}
+
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		log.Println("Shutting down gracefully...")
+		shutdownSchedulers()
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		}
+	}()
+
 	log.Printf("Starting Recurso API on %s", serverAddr)
-	if err := r.Run(serverAddr); err != nil {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Server failed: %v", err)
 	}
+	log.Println("Server stopped")
 }

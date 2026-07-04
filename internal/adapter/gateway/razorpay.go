@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"log/slog"
 
 	"github.com/razorpay/razorpay-go"
 	"github.com/recur-so/recurso/internal/core/port"
@@ -164,8 +163,9 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, tokenID strin
 }
 
 func (g *RazorpayGateway) RevokeMandate(ctx context.Context, tokenID string) error {
-	// Razorpay token deletion via API
-	return nil
+	// A silent no-op here would leave a mandate chargeable while the system
+	// reports it revoked — fail loudly until token deletion is implemented.
+	return fmt.Errorf("razorpay mandate revocation is not implemented yet; revoke token %s via the Razorpay dashboard", tokenID)
 }
 
 func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
@@ -208,9 +208,9 @@ func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, 
 }
 
 func (g *RazorpayGateway) CancelSubscription(ctx context.Context, subscriptionID string) error {
-	// Razorpay subscription cancellation requires additional API integration
-	slog.Warn("razorpay CancelSubscription not implemented", "subscription_id", subscriptionID)
-	return nil
+	// Unreachable via SmartRouter (which routes cancels to Stripe), but fail
+	// loudly for any direct caller rather than pretending the cancel worked.
+	return fmt.Errorf("razorpay subscription cancellation is not implemented yet (subscription %s)", subscriptionID)
 }
 
 func (g *RazorpayGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {

@@ -19,6 +19,16 @@ type mockCustomerRepo struct {
 	updateCalled bool
 }
 
+func (m *mockCustomerRepo) FindByEmailAcrossTenants(ctx context.Context, email string) ([]*domain.Customer, error) {
+	var out []*domain.Customer
+	for _, c := range m.customers {
+		if c.Email == email {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
 func newMockCustomerRepo() *mockCustomerRepo {
 	return &mockCustomerRepo{
 		customers: make(map[uuid.UUID]*domain.Customer),

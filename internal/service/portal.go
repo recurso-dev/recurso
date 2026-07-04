@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"html"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +20,8 @@ type PortalService struct {
 	magicLinkRepo port.MagicLinkRepository
 	sessionRepo   port.PortalSessionRepository
 	giftService   *GiftService
+	emailSender   port.EmailSender
+	portalBaseURL string
 }
 
 func NewPortalService(
@@ -25,6 +30,8 @@ func NewPortalService(
 	magicLinkRepo port.MagicLinkRepository,
 	sessionRepo port.PortalSessionRepository,
 	giftService *GiftService,
+	emailSender port.EmailSender,
+	portalBaseURL string,
 ) *PortalService {
 	return &PortalService{
 		customerRepo:  customerRepo,
@@ -32,16 +39,17 @@ func NewPortalService(
 		magicLinkRepo: magicLinkRepo,
 		sessionRepo:   sessionRepo,
 		giftService:   giftService,
+		emailSender:   emailSender,
+		portalBaseURL: portalBaseURL,
 	}
 }
 
-// RequestMagicLink creates a magic link for customer login
+// RequestMagicLink creates a magic link for customer login and emails it.
 func (s *PortalService) RequestMagicLink(ctx context.Context, email string) (*domain.MagicLink, error) {
-	// Find customer by email using filter
-	filter := domain.CustomerFilter{
-		Email: email,
-	}
-	customers, err := s.customerRepo.List(ctx, uuid.Nil, filter) // Search across all tenants
+	// Portal login happens before any tenant is known, so this lookup is
+	// intentionally cross-tenant. Most recent customer wins when the same
+	// email exists in multiple tenants.
+	customers, err := s.customerRepo.FindByEmailAcrossTenants(ctx, email)
 	if err != nil {
 		return nil, err
 	}
@@ -62,8 +70,24 @@ func (s *PortalService) RequestMagicLink(ctx context.Context, email string) (*do
 		return nil, err
 	}
 
-	// In production, send email here
-	// For now, return the link for testing
+	if s.emailSender != nil {
+		loginURL := fmt.Sprintf("%s/portal/verify?token=%s", s.portalBaseURL, link.Token)
+		msg := port.EmailMessage{
+			To:      customer.Email,
+			ToName:  domain.PtrToString(customer.Name),
+			Subject: "Your login link",
+			HTMLBody: fmt.Sprintf(
+				`<p>Hi %s,</p><p>Click the link below to sign in to your billing portal. It expires in %s.</p><p><a href="%s">Sign in to the portal</a></p><p>If you didn't request this, you can ignore this email.</p>`,
+				html.EscapeString(domain.PtrToString(customer.Name)), db.MagicLinkExpiry, loginURL,
+			),
+			TextBody: fmt.Sprintf("Sign in to your billing portal: %s (expires in %s)", loginURL, db.MagicLinkExpiry),
+		}
+		if err := s.emailSender.Send(ctx, msg); err != nil {
+			// The link is created; delivery failure shouldn't 500 the request,
+			// but it must be visible in logs.
+			slog.Error("failed to send magic link email", "error", err, "customer_id", customer.ID)
+		}
+	}
 
 	return link, nil
 }
