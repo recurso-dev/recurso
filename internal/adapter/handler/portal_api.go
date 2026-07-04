@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/service"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 // PortalAPIHandler handles customer-facing portal endpoints

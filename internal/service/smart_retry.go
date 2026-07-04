@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // BanditStrategy defines which multi-armed bandit algorithm to use

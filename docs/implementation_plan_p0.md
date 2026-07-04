@@ -4,7 +4,7 @@
 Translate the approved documents (`feature_specs_p0.md`, `database_design.md`, `api_contract.md`) into working code.
 
 ## 1. Project Setup
-- **Module**: `github.com/recur-so/recurso`
+- **Module**: `github.com/swapnull-in/recur-so`
 - **Structure**:
     - `cmd/api`: Main entry point.
     - `internal/core`: Domain types (Plans, Customers).

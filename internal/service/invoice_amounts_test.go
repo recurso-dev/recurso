@@ -7,9 +7,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/adapter/gsp"
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/adapter/gsp"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // --- Mocks for invoice amount tests ---

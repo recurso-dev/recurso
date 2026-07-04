@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // ConsoleSender implements EmailSender by logging to console (for development)

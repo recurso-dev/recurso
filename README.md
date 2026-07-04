@@ -9,17 +9,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/recur-so/recurso/actions"><img src="https://github.com/recur-so/recurso/workflows/CI/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/recur-so/recurso"><img src="https://img.shields.io/badge/Go-1.23+-00ADD8?logo=go&logoColor=white" alt="Go 1.23+" /></a>
-  <a href="https://github.com/recur-so/recurso/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
-  <a href="https://github.com/recur-so/recurso/stargazers"><img src="https://img.shields.io/github/stars/recur-so/recurso?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/swapnull-in/recur-so/actions"><img src="https://github.com/swapnull-in/recur-so/workflows/CI/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/swapnull-in/recur-so"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+" /></a>
+  <a href="https://github.com/swapnull-in/recur-so/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <a href="https://github.com/swapnull-in/recur-so/stargazers"><img src="https://img.shields.io/github/stars/swapnull-in/recur-so?style=social" alt="GitHub Stars" /></a>
 </p>
 
 <p align="center">
   <a href="https://recurso.dev">Website</a> &middot;
   <a href="https://docs.recurso.dev">Docs</a> &middot;
-  <a href="https://docs.recurso.dev/getting-started/quickstart">Quickstart</a> &middot;
-  <a href="https://github.com/recur-so/recurso/discussions">Community</a>
+  <a href="https://docs.recurso.dev/quickstart">Quickstart</a> &middot;
+  <a href="https://github.com/swapnull-in/recur-so/discussions">Community</a>
 </p>
 
 ---
@@ -68,24 +68,41 @@ Go (Gin) API  -->  PostgreSQL (state)  -->  TigerBeetle (ledger)
       +--> Background workers (dunning, metering) +
 ```
 
-**Stack:** Go 1.23+ &middot; PostgreSQL &middot; TigerBeetle &middot; Hexagonal Architecture (Ports & Adapters)
+**Stack:** Go 1.25+ &middot; PostgreSQL &middot; TigerBeetle &middot; Hexagonal Architecture (Ports & Adapters)
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/recur-so/recurso.git && cd recurso
+git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
 make docker-up    # starts PostgreSQL + TigerBeetle
 make run          # migrations apply automatically
 ```
 
-The API is now running at `http://localhost:8080`. See the [Quickstart Guide](https://docs.recurso.dev/getting-started/quickstart) for a full walkthrough.
+The API is now running at `http://localhost:8080`. To start the React dashboard:
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+See the [Quickstart Guide](https://docs.recurso.dev/quickstart) for a full walkthrough.
+
+## SDKs
+
+- **Node.js** — a typed client for the Recurso API lives in [`sdk/node`](sdk/node).
+  It is not yet published to npm; install it from the repository:
+
+  ```bash
+  git clone https://github.com/swapnull-in/recur-so.git
+  npm install ./recur-so/sdk/node
+  ```
 
 ## Documentation
 
-- [Getting Started](https://docs.recurso.dev/getting-started/quickstart)
-- [API Reference](https://docs.recurso.dev/api-reference/plans)
-- [Architecture Guide](https://docs.recurso.dev/architecture)
-- [Self-Hosting Guide](https://docs.recurso.dev/deployment)
+- [Getting Started](https://docs.recurso.dev/quickstart)
+- [API Reference](https://docs.recurso.dev/api-reference/introduction)
+- [Core Concepts](https://docs.recurso.dev/concepts)
+- [Going to Production](https://docs.recurso.dev/going-to-production)
+- [Self-Hosting Runbook](docs/deployment.md)
 
 ## Contributing
 

@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/recur-so/recurso/internal/service"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 // DunningCampaignWorker polls for due campaign steps and processes them

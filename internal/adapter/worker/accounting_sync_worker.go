@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/recur-so/recurso/internal/adapter/accounting"
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/service"
+	"github.com/swapnull-in/recur-so/internal/adapter/accounting"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 type AccountingSyncWorker struct {

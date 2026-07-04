@@ -15,13 +15,11 @@ main
 node_modules/
 frontend/node_modules/
 website/node_modules/
-docs-site/node_modules/
 sdk/node_modules/
 
 # Build outputs
 frontend/dist/
 website/build/
-docs-site/build/
 
 # Environment
 .env

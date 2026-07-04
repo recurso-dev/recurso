@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/adapter/email"
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/adapter/email"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // NotificationService handles sending notifications for billing events

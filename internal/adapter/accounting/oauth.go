@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 type OAuthConfig struct {

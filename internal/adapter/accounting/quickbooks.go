@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 type QuickBooksAdapter struct {

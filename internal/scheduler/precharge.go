@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/adapter/db"
-	"github.com/recur-so/recurso/internal/adapter/email"
-	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/service"
+	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/email"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 // PreChargeScheduler handles 24-hour pre-charge notifications

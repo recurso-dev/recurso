@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // HSN code to GST rate mapping

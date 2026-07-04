@@ -7,7 +7,6 @@
 # Not part of the API image
 frontend
 website
-docs-site
 docs
 pitch
 k8s

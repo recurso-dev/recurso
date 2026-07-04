@@ -3,8 +3,8 @@ package service
 import (
 	"strings"
 
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/service/tax"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/service/tax"
 )
 
 // calculateInvoiceGST applies Indian GST for INR amounts. Invoices in other

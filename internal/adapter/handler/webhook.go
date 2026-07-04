@@ -15,11 +15,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/service"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/webhook"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 type WebhookHandler struct {

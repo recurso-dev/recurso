@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 type UnbilledChargeRepository struct {

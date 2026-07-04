@@ -2,7 +2,7 @@ package port
 
 import (
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 type UnbilledChargeRepository interface {

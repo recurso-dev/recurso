@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/domain"
-	"github.com/recur-so/recurso/internal/core/port"
 	"github.com/redis/go-redis/v9"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // RedisIdempotencyStore implements IdempotencyStore using Redis

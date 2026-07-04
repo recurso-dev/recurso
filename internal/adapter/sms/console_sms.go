@@ -4,7 +4,7 @@ import (
 	"context"
 	"log"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // ConsoleSMSSender logs SMS messages to console (for development)

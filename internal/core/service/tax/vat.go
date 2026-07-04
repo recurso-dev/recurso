@@ -3,7 +3,7 @@ package tax
 import (
 	"context"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // EU VAT standard rates by country (as of 2024)

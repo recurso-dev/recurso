@@ -30,7 +30,7 @@ recurso/
 
 ### [NEW] Core Module
 #### [NEW] [go.mod](file:///Users/swapnull/Documents/Workspace/recur-so/go.mod)
-- Initialize new Go module `github.com/recur-so/recurso`.
+- Initialize new Go module `github.com/swapnull-in/recur-so`.
 
 ### [NEW] Ledger Service (TigerBeetle)
 #### [NEW] [internal/core/ledger/types.go](file:///Users/swapnull/Documents/Workspace/recur-so/internal/core/ledger/types.go)

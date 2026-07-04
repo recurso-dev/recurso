@@ -8,7 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/recur-so/recurso/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/db"
 )
 
 // AuthMiddleware checks for a valid API Key using the DB.

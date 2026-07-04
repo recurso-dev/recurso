@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // routeSpy tracks which gateway methods were called and with what arguments.

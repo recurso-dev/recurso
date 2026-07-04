@@ -5,8 +5,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/service"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 // EInvoiceRetryWorker polls for FAILED e-invoices and retries them with exponential backoff.

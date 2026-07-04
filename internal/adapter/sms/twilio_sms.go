@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/recur-so/recurso/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // TwilioSMSSender sends SMS via Twilio REST API

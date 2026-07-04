@@ -1,11 +1,13 @@
 .PHONY: build run test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
-IMAGE_NAME=ghcr.io/recur-so/recurso
+IMAGE_NAME=ghcr.io/swapnull-in/recur-so
 IMAGE_TAG?=latest
+VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
+LDFLAGS=-X main.version=$(VERSION)
 
 build:
-	go build -o $(BINARY_NAME) cmd/api/main.go
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) cmd/api/main.go
 
 run:
 	go run cmd/api/main.go
@@ -37,7 +39,7 @@ docker-down:
 	docker-compose down
 
 docker-build:
-	docker build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+	docker build --build-arg VERSION=$(VERSION) -t $(IMAGE_NAME):$(IMAGE_TAG) .
 
 k8s-deploy:
 	kubectl apply -f k8s/namespace.yaml
@@ -53,9 +55,6 @@ k8s-status:
 	kubectl -n recurso get pods
 	kubectl -n recurso get svc
 	kubectl -n recurso get ingress
-
-docs:
-	cd docs-site && npm start
 
 website:
 	cd website && npm run dev

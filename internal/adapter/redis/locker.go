@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/bsm/redislock"
-	"github.com/recur-so/recurso/internal/core/port"
 	"github.com/redis/go-redis/v9"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // RedisLocker implements Locker using Redis

@@ -15,28 +15,33 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	"github.com/recur-so/recurso/internal/adapter/accounting"
-	"github.com/recur-so/recurso/internal/adapter/ai"
-	"github.com/recur-so/recurso/internal/adapter/db"
-	"github.com/recur-so/recurso/internal/adapter/email"
-	"github.com/recur-so/recurso/internal/adapter/fx"
-	"github.com/recur-so/recurso/internal/adapter/gateway"
-	"github.com/recur-so/recurso/internal/adapter/gsp"
-	"github.com/recur-so/recurso/internal/adapter/handler"
-	"github.com/recur-so/recurso/internal/adapter/memory"
-	"github.com/recur-so/recurso/internal/adapter/middleware"
-	"github.com/recur-so/recurso/internal/adapter/notification"
-	redisAdapter "github.com/recur-so/recurso/internal/adapter/redis"
-	"github.com/recur-so/recurso/internal/adapter/sms"
-	"github.com/recur-so/recurso/internal/adapter/tigerbeetle"
-	"github.com/recur-so/recurso/internal/adapter/vault"
-	"github.com/recur-so/recurso/internal/adapter/worker"
-	"github.com/recur-so/recurso/internal/core/port"
-	"github.com/recur-so/recurso/internal/core/service/tax"
-	"github.com/recur-so/recurso/internal/scheduler"
-	"github.com/recur-so/recurso/internal/service"
 	"github.com/redis/go-redis/v9"
+	"github.com/swapnull-in/recur-so/internal/adapter/accounting"
+	"github.com/swapnull-in/recur-so/internal/adapter/ai"
+	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/email"
+	"github.com/swapnull-in/recur-so/internal/adapter/fx"
+	"github.com/swapnull-in/recur-so/internal/adapter/gateway"
+	"github.com/swapnull-in/recur-so/internal/adapter/gsp"
+	"github.com/swapnull-in/recur-so/internal/adapter/handler"
+	"github.com/swapnull-in/recur-so/internal/adapter/memory"
+	"github.com/swapnull-in/recur-so/internal/adapter/middleware"
+	"github.com/swapnull-in/recur-so/internal/adapter/notification"
+	redisAdapter "github.com/swapnull-in/recur-so/internal/adapter/redis"
+	"github.com/swapnull-in/recur-so/internal/adapter/sms"
+	"github.com/swapnull-in/recur-so/internal/adapter/tigerbeetle"
+	"github.com/swapnull-in/recur-so/internal/adapter/vault"
+	"github.com/swapnull-in/recur-so/internal/adapter/worker"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/swapnull-in/recur-so/internal/scheduler"
+	"github.com/swapnull-in/recur-so/internal/service"
 )
+
+// version is stamped at build time via:
+//
+//	go build -ldflags "-X main.version=v0.1.0"
+var version = "dev"
 
 func getEnvDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
@@ -579,9 +584,13 @@ func main() {
 
 		c.JSON(httpStatus, gin.H{
 			"status":     status,
-			"version":    "1.0.0",
+			"version":    version,
 			"components": components,
 		})
+	})
+
+	r.GET("/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": version})
 	})
 
 	// Public Routes — stricter rate limit (20 req/min per IP)

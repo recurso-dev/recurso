@@ -1,4 +1,4 @@
-module github.com/recur-so/recurso
+module github.com/swapnull-in/recur-so
 
 go 1.25.0
 

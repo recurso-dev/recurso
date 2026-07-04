@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/recur-so/recurso/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // TallyAdapter exports data as JSONL files for Tally ERP import.
