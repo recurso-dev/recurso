@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { endpoints } from '../lib/api'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import SetupChecklist from '../components/SetupChecklist'
 
 const Dashboard = () => {
     // UI State
@@ -258,6 +259,16 @@ const Dashboard = () => {
                     </select>
                 </div>
             </div>
+
+            {/* Getting Started Checklist (hidden while loading and once fully set up) */}
+            {!loading && (
+                <SetupChecklist
+                    plans={Object.keys(plans).length}
+                    customers={Object.keys(customers).length}
+                    subscriptions={rawSubscriptions}
+                    invoices={rawInvoices}
+                />
+            )}
 
             {/* Stats Grid - Bento Style */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5 mb-8">

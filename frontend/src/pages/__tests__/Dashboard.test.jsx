@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Dashboard from '../Dashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
@@ -57,7 +58,7 @@ describe('Dashboard Component', () => {
 
         endpoints.getSubscriptions.mockReturnValue(pendingPromise);
 
-        render(<Dashboard />);
+        render(<MemoryRouter><Dashboard /></MemoryRouter>);
         expect(screen.getAllByText('...')[0]).toBeInTheDocument();
 
         // Resolve it
@@ -83,7 +84,7 @@ describe('Dashboard Component', () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
         endpoints.getPlans.mockResolvedValue({ data: { data: [] } });
 
-        render(<Dashboard />);
+        render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
         // Use findBy to wait for the element to appear
         // Wait for loading to finish
@@ -97,7 +98,7 @@ describe('Dashboard Component', () => {
         endpoints.getInvoices.mockResolvedValue({ data: { data: [] } });
         endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
 
-        render(<Dashboard />);
+        render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
         await waitFor(() => {
             expect(screen.getByText('No recent activity')).toBeInTheDocument();
