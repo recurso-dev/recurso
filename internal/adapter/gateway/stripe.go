@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
@@ -189,6 +190,34 @@ func (s *StripeGateway) RevokeMandate(ctx context.Context, customerID, tokenID s
 
 func (s *StripeGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
 	return nil, ErrNotSupported
+}
+
+// Refund issues a (possibly partial) refund via the Stripe Refunds API.
+// paymentID may be a PaymentIntent (pi_*) or a Charge (ch_*); currency is
+// implied by the original payment, so the argument is unused here.
+func (s *StripeGateway) Refund(ctx context.Context, paymentID string, amount int64, currency string) (*port.RefundResult, error) {
+	params := &stripe.RefundParams{
+		Amount: stripe.Int64(amount),
+	}
+	switch {
+	case strings.HasPrefix(paymentID, "pi_"):
+		params.PaymentIntent = stripe.String(paymentID)
+	case strings.HasPrefix(paymentID, "ch_"):
+		params.Charge = stripe.String(paymentID)
+	default:
+		return nil, fmt.Errorf("stripe refund: unrecognized payment id %q (expected pi_* or ch_*)", paymentID)
+	}
+	params.Context = ctx
+
+	ref, err := s.sc.Refunds.New(params)
+	if err != nil {
+		return nil, fmt.Errorf("stripe refund failed for %s: %w", paymentID, err)
+	}
+
+	return &port.RefundResult{
+		RefundID: ref.ID,
+		Status:   string(ref.Status),
+	}, nil
 }
 
 // Helper for Webhook Handler to call directly if needed

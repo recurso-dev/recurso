@@ -21,10 +21,12 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 	query := `
 		INSERT INTO credit_notes (
 			tenant_id, customer_id, invoice_id, reference, amount, balance,
-			currency, status, reason, created_at, updated_at
+			currency, status, reason, type, refund_status, refund_id,
+			refund_message, created_at, updated_at
 		) VALUES (
 			:tenant_id, :customer_id, :invoice_id, :reference, :amount, :balance,
-			:currency, :status, :reason, :created_at, :updated_at
+			:currency, :status, :reason, :type, :refund_status, :refund_id,
+			:refund_message, :created_at, :updated_at
 		) RETURNING id`
 
 	rows, err := r.db.NamedQueryContext(ctx, query, creditNote)
@@ -37,6 +39,49 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 		return rows.Scan(&creditNote.ID)
 	}
 	return fmt.Errorf("failed to return id from create credit note")
+}
+
+// UpdateRefund persists the outcome of a gateway refund attempt on a
+// refund-type credit note.
+func (r *CreditNoteRepository) UpdateRefund(ctx context.Context, id uuid.UUID, status domain.CreditNoteRefundStatus, refundID *string, message string) error {
+	query := `
+		UPDATE credit_notes
+		SET refund_status = $1, refund_id = $2, refund_message = $3, updated_at = NOW()
+		WHERE id = $4`
+
+	res, err := r.db.ExecContext(ctx, query, status, refundID, message, id)
+	if err != nil {
+		return fmt.Errorf("failed to update credit note refund state: %w", err)
+	}
+	if rows, err := res.RowsAffected(); err == nil && rows == 0 {
+		return fmt.Errorf("credit note %s not found", id)
+	}
+	return nil
+}
+
+// SumActiveRefundsForInvoice returns the total amount of refund-type credit
+// notes already issued against an invoice (excluding voided notes and failed
+// refunds). Used for the over-refund guard.
+func (r *CreditNoteRepository) SumActiveRefundsForInvoice(ctx context.Context, invoiceID uuid.UUID) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM credit_notes
+		WHERE invoice_id = $1
+		  AND type = $2
+		  AND status <> $3
+		  AND refund_status IN ($4, $5, $6)`
+
+	var total int64
+	err := r.db.GetContext(ctx, &total, query,
+		invoiceID,
+		domain.CreditNoteTypeRefund,
+		domain.CreditNoteStatusVoid,
+		domain.RefundStatusPending, domain.RefundStatusProcessed, domain.RefundStatusManualRequired,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to sum refunds for invoice: %w", err)
+	}
+	return total, nil
 }
 
 func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.CreditNoteFilter) ([]*domain.CreditNote, error) {

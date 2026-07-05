@@ -19,6 +19,12 @@ type PaymentResult struct {
 	ErrorMsg  string
 }
 
+// RefundResult represents the outcome of a gateway refund call.
+type RefundResult struct {
+	RefundID string // gateway-side refund id (Stripe re_*, Razorpay rfnd_*)
+	Status   string // gateway-reported status, e.g. "succeeded", "processed", "pending"
+}
+
 type MandateResult struct {
 	TokenID        string
 	SubscriptionID string
@@ -41,6 +47,11 @@ type PaymentGateway interface {
 	RevokeMandate(ctx context.Context, customerID, tokenID string) error
 	CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*VirtualAccountResult, error)
 	CancelSubscription(ctx context.Context, subscriptionID string) error
+	// Refund returns money for a previously captured payment. paymentID is the
+	// gateway-side payment identifier recorded when the invoice was paid
+	// (Stripe pi_*/ch_*, Razorpay pay_*). amount is in minor units and may be
+	// less than the original charge (partial refund).
+	Refund(ctx context.Context, paymentID string, amount int64, currency string) (*RefundResult, error)
 }
 
 type VirtualAccountResult struct {

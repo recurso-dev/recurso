@@ -106,6 +106,138 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 	return nil
 }
 
+// InvoiceLedgerMismatch describes an invoice whose ledger postings for a
+// given transaction code are missing or do not sum to the expected amount.
+// Read-only reconciliation result; never written back.
+type InvoiceLedgerMismatch struct {
+	InvoiceID uuid.UUID // invoice whose ledger postings disagree
+	Expected  int64     // amount the invoice says should be posted (total or amount_paid)
+	Found     int64     // sum of matching ledger transaction amounts
+	TxCount   int       // number of matching ledger transactions (0 = missing entirely)
+}
+
+// OrphanLedgerTransaction is a ledger transaction whose reference_id points
+// to no existing invoice.
+type OrphanLedgerTransaction struct {
+	TransactionID uuid.UUID
+	Code          uint16
+	Amount        int64
+	ReferenceID   uuid.UUID
+}
+
+// CountReconciliationScope returns how many invoices are subject to
+// reconciliation for a tenant: all non-draft invoices, and the paid subset.
+func (r *LedgerRepository) CountReconciliationScope(ctx context.Context, tenantID uuid.UUID) (nonDraft int, paid int, err error) {
+	err = r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FILTER (WHERE status <> 'draft'),
+		        COUNT(*) FILTER (WHERE status = 'paid')
+		 FROM invoices WHERE tenant_id = $1`, tenantID).Scan(&nonDraft, &paid)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to count reconciliation scope: %w", err)
+	}
+	return nonDraft, paid, nil
+}
+
+// GetInvoiceLedgerMismatches returns non-draft invoices whose Code-1
+// (invoice) ledger postings are missing or do not sum to the invoice total.
+// At most limit rows are returned; the second return value is the total
+// number of mismatched invoices regardless of limit.
+func (r *LedgerRepository) GetInvoiceLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
+		FROM (
+			SELECT i.id, i.total AS expected,
+			       COALESCE(SUM(t.amount), 0) AS found,
+			       COUNT(t.id) AS tx_count
+			FROM invoices i
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 1
+			WHERE i.tenant_id = $1 AND i.status <> 'draft'
+			GROUP BY i.id, i.total
+		) sub
+		WHERE sub.tx_count = 0 OR sub.found <> sub.expected
+		ORDER BY sub.id
+		LIMIT $2`
+	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
+}
+
+// GetPaymentLedgerMismatches returns paid invoices whose Code-3 (payment)
+// ledger postings are missing or do not sum to amount_paid. At most limit
+// rows are returned; the second return value is the total mismatch count.
+func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
+		FROM (
+			SELECT i.id, COALESCE(i.amount_paid, 0) AS expected,
+			       COALESCE(SUM(t.amount), 0) AS found,
+			       COUNT(t.id) AS tx_count
+			FROM invoices i
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 3
+			WHERE i.tenant_id = $1 AND i.status = 'paid'
+			GROUP BY i.id, i.amount_paid
+		) sub
+		WHERE sub.tx_count = 0 OR sub.found <> sub.expected
+		ORDER BY sub.id
+		LIMIT $2`
+	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
+}
+
+func (r *LedgerRepository) queryInvoiceMismatches(ctx context.Context, query string, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query invoice ledger mismatches: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var mismatches []InvoiceLedgerMismatch
+	total := 0
+	for rows.Next() {
+		var m InvoiceLedgerMismatch
+		if err := rows.Scan(&m.InvoiceID, &m.Expected, &m.Found, &m.TxCount, &total); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan invoice ledger mismatch: %w", err)
+		}
+		mismatches = append(mismatches, m)
+	}
+	return mismatches, total, rows.Err()
+}
+
+// GetOrphanLedgerTransactions returns Code 1/3 ledger transactions for a
+// tenant (scoped via account ownership) whose reference_id matches no
+// invoice. At most limit rows are returned; the second return value is the
+// total orphan count regardless of limit.
+func (r *LedgerRepository) GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]OrphanLedgerTransaction, int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT sub.id, sub.code, sub.amount, sub.reference_id, COUNT(*) OVER () AS total
+		FROM (
+			SELECT t.id, t.code, t.amount, t.reference_id
+			FROM ledger_transactions t
+			WHERE t.code IN (1, 3)
+			  AND t.reference_id IS NOT NULL
+			  AND NOT EXISTS (SELECT 1 FROM invoices i WHERE i.id = t.reference_id)
+			  AND EXISTS (
+				SELECT 1 FROM ledger_accounts la
+				WHERE la.tenant_id = $1
+				  AND (la.id = t.debit_account_id OR la.id = t.credit_account_id)
+			  )
+		) sub
+		ORDER BY sub.id
+		LIMIT $2`, tenantID, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query orphan ledger transactions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var orphans []OrphanLedgerTransaction
+	total := 0
+	for rows.Next() {
+		var o OrphanLedgerTransaction
+		if err := rows.Scan(&o.TransactionID, &o.Code, &o.Amount, &o.ReferenceID, &total); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan orphan ledger transaction: %w", err)
+		}
+		orphans = append(orphans, o)
+	}
+	return orphans, total, rows.Err()
+}
+
 func (r *LedgerRepository) GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.debit_account_id, t.credit_account_id, t.amount, t.ledger_id, t.code, COALESCE(t.reference_id, '00000000-0000-0000-0000-000000000000'), COALESCE(t.description, ''), t.created_at

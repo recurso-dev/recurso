@@ -180,6 +180,17 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 
 		h.logger.Info("invoice marked paid via webhook", "invoice_id", invoiceID)
 
+		// Persist the gateway payment id — refunds are issued against it.
+		if paymentID := event.Payload.Payment.Entity.ID; paymentID != "" && h.invoiceRepo != nil {
+			if err := h.invoiceRepo.SetGatewayPaymentID(c.Request.Context(), invoiceID, paymentID); err != nil {
+				h.logger.Error("failed to record gateway payment id",
+					"invoice_id", invoiceID,
+					"payment_id", paymentID,
+					"error", err,
+				)
+			}
+		}
+
 		// 3. Record success outcome for RL if this invoice was managed by smart dunning
 		h.recordDunningSuccess(c.Request.Context(), invoiceID)
 	}
@@ -270,6 +281,18 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 	}
 
 	h.logger.Info("invoice marked paid via stripe webhook", "invoice_id", invoiceID)
+
+	// Persist the gateway payment id — refunds are issued against it.
+	if h.invoiceRepo != nil && pi.ID != "" {
+		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, pi.ID); err != nil {
+			h.logger.Error("failed to record gateway payment id",
+				"invoice_id", invoiceID,
+				"payment_id", pi.ID,
+				"error", err,
+			)
+		}
+	}
+
 	h.recordDunningSuccess(ctx, invoiceID)
 	return nil
 }

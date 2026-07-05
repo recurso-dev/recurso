@@ -107,6 +107,7 @@ func (m *acctSyncCustomerRepo) UpdatePaymentMethod(ctx context.Context, customer
 // --- Mock InvoiceRepository ---
 
 type acctSyncInvoiceRepo struct {
+	port.InvoiceRepository
 	invoice *domain.Invoice
 }
 

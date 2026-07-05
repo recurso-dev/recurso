@@ -245,6 +245,31 @@ func (g *RazorpayGateway) CancelSubscription(ctx context.Context, subscriptionID
 	return fmt.Errorf("razorpay subscription cancellation is not implemented yet (subscription %s)", subscriptionID)
 }
 
+// Refund issues a (possibly partial) refund via Razorpay's payment refund API
+// (POST /v1/payments/{payment_id}/refund). paymentID must be a captured
+// payment id (pay_*); amount is in paise. currency is implied by the payment.
+func (g *RazorpayGateway) Refund(ctx context.Context, paymentID string, amount int64, currency string) (*port.RefundResult, error) {
+	if !strings.HasPrefix(paymentID, "pay_") {
+		return nil, fmt.Errorf("razorpay refund: unrecognized payment id %q (expected pay_*)", paymentID)
+	}
+
+	body, err := g.client.Payment.Refund(paymentID, int(amount), map[string]interface{}{}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("razorpay refund failed for %s: %w", paymentID, err)
+	}
+
+	refundID, ok := body["id"].(string)
+	if !ok {
+		return nil, fmt.Errorf("razorpay refund response for %s missing refund id", paymentID)
+	}
+	status, _ := body["status"].(string)
+
+	return &port.RefundResult{
+		RefundID: refundID,
+		Status:   status,
+	}, nil
+}
+
 func (g *RazorpayGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
 	// Create a new order for the retry attempt
 	data := map[string]interface{}{

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -28,7 +29,11 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 
 	cn, err := h.service.Create(c.Request.Context(), tenantID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrCreditNoteValidation) {
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -37,14 +42,14 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 
 func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
-	
+
 	var filter domain.CreditNoteFilter
 	if customerIDStr := c.Query("customer_id"); customerIDStr != "" {
 		if id, err := uuid.Parse(customerIDStr); err == nil {
 			filter.CustomerID = &id
 		}
 	}
-	
+
 	// Status filter logic can be added later
 
 	cns, err := h.service.List(c.Request.Context(), tenantID, filter)

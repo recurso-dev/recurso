@@ -143,7 +143,8 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, ''),
 			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
 			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler'),
-			COALESCE(payment_wall_active, FALSE)
+			COALESCE(payment_wall_active, FALSE),
+			COALESCE(gateway_payment_id, '')
 		FROM invoices WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -165,6 +166,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.DunningActionID, &inv.DunningContextKey,
 		&inv.LastPaymentError, &inv.DunningManagedBy,
 		&inv.PaymentWallActive,
+		&inv.GatewayPaymentID,
 	)
 
 	inv.HSNCode = hsnCode.String
@@ -467,6 +469,22 @@ func (r *InvoiceRepository) UpdateEInvoiceStatus(ctx context.Context, invoiceID 
 	_, err := r.db.ExecContext(ctx, query, status, irn, ackNo, signedQR, ackDate, errorMsg, invoiceID)
 	if err != nil {
 		return fmt.Errorf("failed to update e-invoice status: %w", err)
+	}
+	return nil
+}
+
+// SetGatewayPaymentID records the gateway-side payment identifier (Stripe
+// pi_*/ch_*, Razorpay pay_*) that settled the invoice. Called from the
+// payment-success webhook paths; the id is what refunds are issued against.
+func (r *InvoiceRepository) SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error {
+	query := `
+		UPDATE invoices
+		SET gateway_payment_id = $1
+		WHERE id = $2
+	`
+	_, err := r.db.ExecContext(ctx, query, gatewayPaymentID, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to set gateway payment id: %w", err)
 	}
 	return nil
 }

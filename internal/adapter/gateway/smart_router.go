@@ -99,6 +99,30 @@ func (r *SmartRouter) CancelSubscription(ctx context.Context, subscriptionID str
 	return r.Stripe.CancelSubscription(ctx, subscriptionID)
 }
 
+// Refund routes by the gateway payment id prefix (mirrors VerifyPayment's
+// prefix routing): Stripe issues pi_/ch_ ids, Razorpay issues pay_ ids.
+// Unknown prefixes (e.g. mock-era ids) fall back to currency routing.
+func (r *SmartRouter) Refund(ctx context.Context, paymentID string, amount int64, currency string) (*port.RefundResult, error) {
+	switch {
+	case strings.HasPrefix(paymentID, "pi_") || strings.HasPrefix(paymentID, "ch_"):
+		if r.Stripe == nil {
+			return nil, fmt.Errorf("stripe gateway not configured for refund of %s", paymentID)
+		}
+		return r.Stripe.Refund(ctx, paymentID, amount, currency)
+	case strings.HasPrefix(paymentID, "pay_"):
+		if r.Razorpay == nil {
+			return nil, fmt.Errorf("razorpay gateway not configured for refund of %s", paymentID)
+		}
+		return r.Razorpay.Refund(ctx, paymentID, amount, currency)
+	}
+
+	gw, err := r.gatewayFor(currency)
+	if err != nil {
+		return nil, err
+	}
+	return gw.Refund(ctx, paymentID, amount, currency)
+}
+
 // Virtual account operations route to Razorpay
 func (r *SmartRouter) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
 	return r.Razorpay.CreateVirtualAccount(ctx, customerID, invoiceID, amount, description)

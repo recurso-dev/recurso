@@ -176,6 +176,59 @@ func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoi
 	return nil
 }
 
+// RecordRefund posts a refund to the ledger.
+// Debit: Refunds (Expense)
+// Credit: Cash (Asset)
+func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) error {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return fmt.Errorf("refund %s: %w", creditNoteID, err)
+	}
+	txID := uuid.New()
+
+	var refundsAccountID, cashAccountID uuid.UUID
+	if s.pgRepo != nil {
+		if ra, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeRefunds); err == nil && ra != nil {
+			refundsAccountID = ra.ID
+		}
+		if ca, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeCash); err == nil && ca != nil {
+			cashAccountID = ca.ID
+		}
+	}
+	if refundsAccountID == uuid.Nil {
+		refundsAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000005")
+	}
+	if cashAccountID == uuid.Nil {
+		cashAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000004")
+	}
+
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  refundsAccountID,
+		CreditAccountID: cashAccountID,
+		Amount:          amt,
+		LedgerID:        1,
+		Code:            4, // Refund
+		ReferenceID:     creditNoteID,
+		Description:     description,
+		Timestamp:       time.Now(),
+	}
+
+	// Always write to PG; surface failures so callers can retry/reconcile.
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed for refund", "error", err)
+			return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
+		}
+	}
+
+	// Write to TB if connected
+	if s.tbClient != nil {
+		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+	}
+	return nil
+}
+
 // ListAccounts returns all ledger accounts for a tenant.
 func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
 	if s.pgRepo != nil {

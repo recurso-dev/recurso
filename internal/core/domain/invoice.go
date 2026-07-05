@@ -35,13 +35,13 @@ type Invoice struct {
 	Total     int64  `json:"total" db:"total"`
 
 	// Compliance P24
-	IGSTAmount     int64  `json:"igst_amount" db:"igst_amount"`
-	CGSTAmount     int64  `json:"cgst_amount" db:"cgst_amount"`
-	SGSTAmount     int64  `json:"sgst_amount" db:"sgst_amount"`
-	HSNCode        string `json:"hsn_code" db:"hsn_code"`
-	IRN            string `json:"irn" db:"irn"`
-	AckNo          string `json:"ack_no" db:"ack_no"`
-	SignedQRCode   string `json:"signed_qr_code" db:"signed_qr_code"`     // P25
+	IGSTAmount           int64      `json:"igst_amount" db:"igst_amount"`
+	CGSTAmount           int64      `json:"cgst_amount" db:"cgst_amount"`
+	SGSTAmount           int64      `json:"sgst_amount" db:"sgst_amount"`
+	HSNCode              string     `json:"hsn_code" db:"hsn_code"`
+	IRN                  string     `json:"irn" db:"irn"`
+	AckNo                string     `json:"ack_no" db:"ack_no"`
+	SignedQRCode         string     `json:"signed_qr_code" db:"signed_qr_code"`                   // P25
 	EInvoiceStatus       string     `json:"e_invoice_status" db:"e_invoice_status"`               // P25
 	AckDate              string     `json:"ack_date" db:"ack_date"`                               // P25: IRP acknowledgement date
 	EInvoiceRetryCount   int        `json:"e_invoice_retry_count" db:"e_invoice_retry_count"`     // P25: E-invoice retry attempts
@@ -50,6 +50,12 @@ type Invoice struct {
 	TDSAmount            int64      `json:"tds_amount" db:"tds_amount"`                           // P25: Deducted by customer
 
 	Status InvoiceStatus `json:"status" db:"status"`
+
+	// GatewayPaymentID is the gateway-side identifier of the payment that
+	// settled this invoice (Stripe pi_*/ch_*, Razorpay pay_*). Populated by
+	// the payment-success webhook handlers; empty for offline payments and
+	// invoices paid before this field existed. Required for API refunds.
+	GatewayPaymentID string `json:"gateway_payment_id,omitempty" db:"gateway_payment_id"`
 
 	CreatedAt    time.Time  `json:"created_at"`
 	DueDate      time.Time  `json:"due_date"`

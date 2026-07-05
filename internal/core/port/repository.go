@@ -26,6 +26,9 @@ type InvoiceRepository interface {
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
 	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
+	// SetGatewayPaymentID records the gateway-side payment identifier that
+	// settled the invoice (needed later for API refunds).
+	SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
 	GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error)
 	UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error

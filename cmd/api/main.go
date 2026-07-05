@@ -132,14 +132,20 @@ func main() {
 	ledgerRepo := db.NewLedgerRepository(database)
 	var ledgerService *service.LedgerService
 	tbAddr := getEnvDefault("TIGERBEETLE_ADDRESS", "127.0.0.1:3001")
+	var tbClientForRecon *tigerbeetle.LedgerClient
 	ledgerClient, err := tigerbeetle.NewLedgerClient(0, []string{tbAddr})
 	if err == nil {
 		ledgerService = service.NewLedgerService(ledgerClient, ledgerRepo)
+		tbClientForRecon = ledgerClient
 		defer ledgerClient.Close()
 	} else {
 		slog.Warn("TigerBeetle not connected — ledger PG-only mode", "error", err)
 		ledgerService = service.NewLedgerService(nil, ledgerRepo)
 	}
+
+	// Ledger reconciliation: on-demand drift detection between billing
+	// records (invoices) and the Postgres ledger.
+	reconciliationService := service.NewReconciliationService(ledgerRepo, tbClientForRecon)
 
 	// 5. Initialize Gateways
 	var razorpayGateway port.PaymentGateway
@@ -227,8 +233,9 @@ func main() {
 
 	catalogService := service.NewCatalogService(planRepo)
 	customerService := service.NewCustomerService(customerRepo)
-	tenantService := service.NewTenantService(tenantRepo)                           // P8 Service
-	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo) // P23
+	tenantService := service.NewTenantService(tenantRepo)                                                        // P8 Service
+	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
+	creditNoteService.SetLedgerService(ledgerService)
 	txManager := db.NewTxManager(database)
 
 	// Revenue Recognition (P5)
@@ -455,6 +462,11 @@ func main() {
 	mandateDebitScheduler.Start()
 	defer mandateDebitScheduler.Stop()
 
+	// Ledger Reconciliation Scheduler (daily) — warns when ledger disagrees with billing records
+	reconciliationScheduler := scheduler.NewReconciliationScheduler(tenantRepo, reconciliationService, locker)
+	reconciliationScheduler.Start()
+	defer reconciliationScheduler.Stop()
+
 	// Graceful shutdown: on SIGINT/SIGTERM stop schedulers, then drain the
 	// HTTP server (srv.Shutdown below) so in-flight requests complete.
 	shutdownSchedulers := func() {
@@ -462,6 +474,7 @@ func main() {
 		dunningScheduler.Stop()
 		cardExpiryScheduler.Stop()
 		mandateDebitScheduler.Stop()
+		reconciliationScheduler.Stop()
 	}
 
 	// 7. Initialize Handlers
@@ -477,6 +490,7 @@ func main() {
 	tenantHandler := handler.NewTenantHandler(tenantService)                                            // P8 Handler
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
+	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
 	creditNoteHandler := handler.NewCreditNoteHandler(creditNoteService)                                // P23
 	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService)                           // P24
 
@@ -695,6 +709,9 @@ func main() {
 		// Ledger (P22)
 		v1.GET("/ledger/accounts", ledgerHandler.ListAccounts)
 		v1.GET("/ledger/entries", ledgerHandler.GetEntries)
+
+		// Ledger Reconciliation — on-demand drift report for the caller's tenant
+		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
 
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)

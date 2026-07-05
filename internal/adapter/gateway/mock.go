@@ -14,12 +14,21 @@ type MockGateway struct {
 	mu          sync.Mutex
 	revokeCalls []MockRevokeCall
 	RevokeErr   error // if set, RevokeMandate returns this error
+	refundCalls []MockRefundCall
+	RefundErr   error // if set, Refund returns this error
 }
 
 // MockRevokeCall records the arguments of a RevokeMandate invocation.
 type MockRevokeCall struct {
 	CustomerID string
 	TokenID    string
+}
+
+// MockRefundCall records the arguments of a Refund invocation.
+type MockRefundCall struct {
+	PaymentID string
+	Amount    int64
+	Currency  string
 }
 
 func NewMockGateway() *MockGateway {
@@ -76,6 +85,28 @@ func (g *MockGateway) RevokeCalls() []MockRevokeCall {
 	defer g.mu.Unlock()
 	calls := make([]MockRevokeCall, len(g.revokeCalls))
 	copy(calls, g.revokeCalls)
+	return calls
+}
+
+func (g *MockGateway) Refund(ctx context.Context, paymentID string, amount int64, currency string) (*port.RefundResult, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.refundCalls = append(g.refundCalls, MockRefundCall{PaymentID: paymentID, Amount: amount, Currency: currency})
+	if g.RefundErr != nil {
+		return nil, g.RefundErr
+	}
+	return &port.RefundResult{
+		RefundID: "rfnd_mock_" + uuid.New().String(),
+		Status:   "processed",
+	}, nil
+}
+
+// RefundCalls returns a copy of the recorded Refund invocations.
+func (g *MockGateway) RefundCalls() []MockRefundCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	calls := make([]MockRefundCall, len(g.refundCalls))
+	copy(calls, g.refundCalls)
 	return calls
 }
 

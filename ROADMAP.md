@@ -41,28 +41,38 @@ can sign off on the output.
       tax needs a TaxJar/Avalara integration (invoices are marked
       sales_tax_stub until then). EU VAT rates are a static table needing
       a maintenance story.
-- [ ] **Proration invoice tax** — UpdateSubscription's proration invoices
-      still hardcode TaxAmount 0; route them through the TaxResolver.
+- [x] **Proration invoice tax** — plan-change charges route through the
+      TaxResolver like any other invoice.
 - [ ] **CA review of the GST/e-invoicing engine** 🔒 — external chartered
       accountant validates tax math and e-invoice output. Existential for
       an India-first billing product.
-- [ ] **Gateway refunds end-to-end** — credit notes exist; verify/implement
-      the actual Stripe/Razorpay refund API calls behind them.
-- [ ] **Ledger reconciliation job** — scheduled PG↔TigerBeetle (and
-      invoice↔ledger) drift detection with a report; dual-write failures
-      are loud now, but drift needs a detector.
+- [x] **Gateway refunds end-to-end** — credit notes of type "refund" call
+      the real Stripe/Razorpay refund APIs with over-refund guards, honest
+      manual_required/refund_failed states, gateway payment ids captured
+      from payment webhooks, and a Refunds-vs-Cash ledger reversal.
+- [ ] **Refund webhook consumption** — pending refunds don't auto-advance
+      to processed (charge.refunded / refund.processed not consumed); and
+      mandate-debit payments store an order id, not the pay_* id refunds
+      need.
+- [x] **Ledger reconciliation job** — GET /v1/finance/reconciliation and a
+      daily scheduler detect missing/mismatched invoice and payment
+      postings and orphaned transactions (set-based SQL, capped listings).
+      TigerBeetle comparison is explicitly skipped until its client gains
+      an enumeration API.
 - [ ] **Idempotency coverage audit** — Redis idempotency store exists;
       verify every money-mutating endpoint honors idempotency keys.
 - [ ] **Load test with published numbers** — invoices/minute, webhook
       throughput, p99s on a reference box; publish in docs.
-- [ ] **Security posture page** — PCI scope statement (gateway tokens only,
-      no PANs), key hashing, tenancy isolation model, disclosure policy.
+- [x] **Security posture page** — docs/security.md covers PCI scope,
+      credential handling, tenancy isolation, webhook verification, and a
+      disclosure channel (security@recurso.dev inbox needs creating 🔒).
 - [ ] **Backup/restore drill** — actually restore from a pg_dump into a
       fresh stack and document the verified procedure.
 - [ ] **Consistent API error envelope** — handlers currently return two
       error shapes (bare string / `{code,message}`); standardize.
-- [ ] **TigerBeetle HA guidance** — multi-replica setup docs, or an honest
-      "PG-only mode is the supported HA path" statement.
+- [x] **TigerBeetle HA guidance** — documented: stateless API replicas +
+      Postgres as source of truth is the supported HA path; single-node
+      TigerBeetle is an optional accelerator.
 
 ## Track 2 — Product depth
 

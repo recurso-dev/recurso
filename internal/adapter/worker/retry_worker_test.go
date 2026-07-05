@@ -14,6 +14,7 @@ import (
 // --- Mock InvoiceRepository ---
 
 type mockInvoiceRepo struct {
+	port.InvoiceRepository
 	invoices []*domain.Invoice
 	updated  []*domain.Invoice
 }
@@ -63,6 +64,7 @@ func (m *mockInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, invoiceID uu
 // --- Mock PaymentGateway ---
 
 type mockGateway struct {
+	port.PaymentGateway
 	result *port.PaymentResult
 	err    error
 }
