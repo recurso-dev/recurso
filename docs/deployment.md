@@ -106,3 +106,20 @@ DATABASE_URL=postgres://... go run ./cmd/import \
 
 CSV mode: `-plans-csv plans.csv -customers-csv customers.csv
 -subscriptions-csv subs.csv` (see the flag help for expected columns).
+
+## High availability
+
+The supported HA posture for v0.1.x:
+
+- **PostgreSQL is the source of truth** for all state including the ledger.
+  Run it with your standard HA tooling (managed Postgres, Patroni, or
+  streaming replicas) and the backup regimen above.
+- **The API is stateless** — run multiple replicas behind a load balancer
+  (the K8s Deployment ships with 2). Schedulers use a distributed lock via
+  Redis when configured, so replicas don't double-run jobs; set REDIS_URL
+  in multi-replica deployments.
+- **TigerBeetle is single-node in the provided manifests.** Clustered
+  TigerBeetle (--replica-count > 1) is not yet part of the supported setup;
+  until it is, treat TigerBeetle as an optional accelerator and rely on the
+  PostgreSQL ledger, which the API does automatically when TigerBeetle is
+  unreachable.

@@ -700,6 +700,18 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// If NetAmount is positive, charge user immediately or add to next bill
 	// If NetAmount is negative, add credit
 	if proration.NetAmount != 0 {
+		// Proration charges are taxable like any other invoice; credits
+		// (negative amounts) carry no tax here.
+		var taxRes InvoiceTax
+		if proration.NetAmount > 0 {
+			customer, custErr := s.customerRepo.GetByID(ctx, sub.CustomerID)
+			if custErr == nil && customer != nil {
+				taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, newPlan.Prices[0].Currency, proration.NetAmount)
+			} else {
+				s.logger.Warn("proration tax skipped: customer lookup failed", "error", custErr, "customer_id", sub.CustomerID)
+			}
+		}
+
 		invoice := &domain.Invoice{
 			ID:             uuid.New(),
 			TenantID:       tenantID,
@@ -709,8 +721,11 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			Status:         domain.InvoiceStatusOpen, // Or Draft if adding to next bill
 			Currency:       newPlan.Prices[0].Currency,
 			Subtotal:       proration.NetAmount,
-			TaxAmount:      0,
-			Total:          proration.NetAmount,
+			TaxAmount:      taxRes.Total,
+			IGSTAmount:     taxRes.IGST,
+			CGSTAmount:     taxRes.CGST,
+			SGSTAmount:     taxRes.SGST,
+			Total:          proration.NetAmount + taxRes.Total,
 			CreatedAt:      now,
 			DueDate:        now,
 		}
