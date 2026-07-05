@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
 
 	"github.com/razorpay/razorpay-go"
 	"github.com/swapnull-in/recur-so/internal/core/port"
@@ -124,12 +125,14 @@ func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, vpa 
 
 	tokenID, _ := body["token_id"].(string)
 	subID, _ := body["id"].(string)
+	customerID, _ := body["customer_id"].(string)
 	shortURL, _ := body["short_url"].(string)
 	status, _ := body["status"].(string)
 
 	return &port.MandateResult{
 		TokenID:        tokenID,
 		SubscriptionID: subID,
+		CustomerID:     customerID,
 		AuthURL:        shortURL,
 		Status:         status,
 	}, nil
@@ -162,10 +165,39 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, tokenID strin
 	}, nil
 }
 
-func (g *RazorpayGateway) RevokeMandate(ctx context.Context, tokenID string) error {
-	// A silent no-op here would leave a mandate chargeable while the system
-	// reports it revoked — fail loudly until token deletion is implemented.
-	return fmt.Errorf("razorpay mandate revocation is not implemented yet; revoke token %s via the Razorpay dashboard", tokenID)
+func (g *RazorpayGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+	if tokenID == "" {
+		return fmt.Errorf("razorpay revoke mandate: token id is required")
+	}
+	if customerID == "" {
+		// Razorpay's token deletion API is customer-scoped
+		// (DELETE /v1/customers/{customer_id}/tokens/{token_id}), so a revoke
+		// without the customer id cannot be performed via the API. Fail loudly
+		// rather than pretend the token was deleted.
+		return fmt.Errorf("razorpay revoke mandate: customer id is required to delete token %s", tokenID)
+	}
+
+	if _, err := g.client.Token.Delete(customerID, tokenID, nil, nil); err != nil {
+		if isRazorpayTokenGone(err) {
+			// Token already deleted or never existed at the gateway: the
+			// desired end state (not chargeable) holds, so revoke is idempotent.
+			return nil
+		}
+		return fmt.Errorf("razorpay revoke mandate failed for token %s: %w", tokenID, err)
+	}
+	return nil
+}
+
+// isRazorpayTokenGone reports whether the error from the Razorpay token
+// deletion API indicates the token (or its customer) no longer exists.
+// razorpay-go surfaces API failures as typed errors carrying only the
+// human-readable description, so we have to match on the message.
+func isRazorpayTokenGone(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "already deleted") ||
+		strings.Contains(msg, "no such token")
 }
 
 func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {

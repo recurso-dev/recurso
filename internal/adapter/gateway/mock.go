@@ -4,12 +4,23 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"sync"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
-type MockGateway struct{}
+type MockGateway struct {
+	mu          sync.Mutex
+	revokeCalls []MockRevokeCall
+	RevokeErr   error // if set, RevokeMandate returns this error
+}
+
+// MockRevokeCall records the arguments of a RevokeMandate invocation.
+type MockRevokeCall struct {
+	CustomerID string
+	TokenID    string
+}
 
 func NewMockGateway() *MockGateway {
 	return &MockGateway{}
@@ -39,6 +50,7 @@ func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, vpa stri
 	return &port.MandateResult{
 		TokenID:        "tok_mock_" + uuid.New().String(),
 		SubscriptionID: "sub_mock_" + uuid.New().String(),
+		CustomerID:     "cust_mock_" + uuid.New().String(),
 		AuthURL:        "https://mock.razorpay.com/authorize/" + uuid.New().String(),
 		Status:         "created",
 	}, nil
@@ -51,8 +63,20 @@ func (g *MockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, a
 	}, nil
 }
 
-func (g *MockGateway) RevokeMandate(ctx context.Context, tokenID string) error {
-	return nil
+func (g *MockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.revokeCalls = append(g.revokeCalls, MockRevokeCall{CustomerID: customerID, TokenID: tokenID})
+	return g.RevokeErr
+}
+
+// RevokeCalls returns a copy of the recorded RevokeMandate invocations.
+func (g *MockGateway) RevokeCalls() []MockRevokeCall {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	calls := make([]MockRevokeCall, len(g.revokeCalls))
+	copy(calls, g.revokeCalls)
+	return calls
 }
 
 func (g *MockGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {

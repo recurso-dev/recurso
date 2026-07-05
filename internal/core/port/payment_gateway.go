@@ -22,6 +22,7 @@ type PaymentResult struct {
 type MandateResult struct {
 	TokenID        string
 	SubscriptionID string
+	CustomerID     string // gateway-side customer id (e.g. Razorpay cust_*), needed for token revocation
 	AuthURL        string
 	Status         string
 }
@@ -33,7 +34,11 @@ type PaymentGateway interface {
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)
 	CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
 	ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*PaymentResult, error)
-	RevokeMandate(ctx context.Context, tokenID string) error
+	// RevokeMandate deletes the recurring-payment token at the gateway.
+	// customerID is the gateway-side customer id (required by Razorpay's
+	// DELETE /v1/customers/{customer_id}/tokens/{token_id} API).
+	// Implementations must treat an already-deleted token as success.
+	RevokeMandate(ctx context.Context, customerID, tokenID string) error
 	CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*VirtualAccountResult, error)
 	CancelSubscription(ctx context.Context, subscriptionID string) error
 }

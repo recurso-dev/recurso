@@ -26,6 +26,7 @@ type Mandate struct {
 	VPA                    string        `json:"vpa,omitempty" db:"vpa"`
 	RazorpayTokenID        string        `json:"razorpay_token_id,omitempty" db:"razorpay_token_id"`
 	RazorpaySubscriptionID string        `json:"razorpay_subscription_id,omitempty" db:"razorpay_subscription_id"`
+	RazorpayCustomerID     string        `json:"razorpay_customer_id,omitempty" db:"razorpay_customer_id"`
 	MaxAmount              int64         `json:"max_amount" db:"max_amount"`
 	Frequency              string        `json:"frequency" db:"frequency"`
 	Status                 MandateStatus `json:"status" db:"status"`

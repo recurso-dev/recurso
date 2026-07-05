@@ -11,8 +11,8 @@ import (
 )
 
 type MandateService struct {
-	mandateRepo port.MandateRepository
-	gateway     port.PaymentGateway
+	mandateRepo  port.MandateRepository
+	gateway      port.PaymentGateway
 	customerRepo port.CustomerRepository
 	invoiceRepo  port.InvoiceRepository
 }
@@ -67,6 +67,7 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 		VPA:                    input.VPA,
 		RazorpayTokenID:        result.TokenID,
 		RazorpaySubscriptionID: result.SubscriptionID,
+		RazorpayCustomerID:     result.CustomerID,
 		MaxAmount:              input.MaxAmount,
 		Frequency:              input.Frequency,
 		Status:                 domain.MandateStatusCreated,
@@ -84,7 +85,10 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 	}, nil
 }
 
-func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID string) error {
+// HandleAuthorization activates a mandate when the gateway confirms the token.
+// razorpayCustomerID may be empty; when present it is persisted so the token
+// can later be revoked via Razorpay's customer-scoped token deletion API.
+func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID, razorpayCustomerID string) error {
 	mandate, err := s.mandateRepo.GetByRazorpayTokenID(ctx, tokenID)
 	if err != nil {
 		return fmt.Errorf("mandate not found for token %s: %w", tokenID, err)
@@ -94,6 +98,9 @@ func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID string
 	mandate.Status = domain.MandateStatusActive
 	mandate.AuthorizedAt = &now
 	mandate.ActivatedAt = &now
+	if razorpayCustomerID != "" {
+		mandate.RazorpayCustomerID = razorpayCustomerID
+	}
 
 	return s.mandateRepo.Update(ctx, mandate)
 }
@@ -112,21 +119,21 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 	// Create invoice for this debit
 	now := time.Now()
 	invoice := &domain.Invoice{
-		ID:            invoiceID,
-		TenantID:      mandate.TenantID,
-		CustomerID:    mandate.CustomerID,
+		ID:             invoiceID,
+		TenantID:       mandate.TenantID,
+		CustomerID:     mandate.CustomerID,
 		SubscriptionID: mandate.SubscriptionID,
-		InvoiceNumber: fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
-		BillingReason: "mandate_debit",
-		AmountDue:     amount,
-		AmountPaid:    amount,
-		Currency:      currency,
-		Subtotal:      amount,
-		Total:         amount,
-		Status:        domain.InvoiceStatusPaid,
-		CreatedAt:     now,
-		DueDate:       now,
-		PaidAt:        &now,
+		InvoiceNumber:  fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
+		BillingReason:  "mandate_debit",
+		AmountDue:      amount,
+		AmountPaid:     amount,
+		Currency:       currency,
+		Subtotal:       amount,
+		Total:          amount,
+		Status:         domain.InvoiceStatusPaid,
+		CreatedAt:      now,
+		DueDate:        now,
+		PaidAt:         &now,
 	}
 
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
@@ -149,7 +156,7 @@ func (s *MandateService) Revoke(ctx context.Context, mandateID uuid.UUID) error 
 	}
 
 	if mandate.RazorpayTokenID != "" {
-		if err := s.gateway.RevokeMandate(ctx, mandate.RazorpayTokenID); err != nil {
+		if err := s.gateway.RevokeMandate(ctx, mandate.RazorpayCustomerID, mandate.RazorpayTokenID); err != nil {
 			return fmt.Errorf("failed to revoke mandate at gateway: %w", err)
 		}
 	}

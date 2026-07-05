@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
 	"github.com/stripe/stripe-go/v76/webhook"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 type StripeGateway struct {
@@ -141,7 +141,7 @@ func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amou
 		},
 		Confirm: stripe.Bool(true),
 		Metadata: map[string]string{
-			"invoice_id":   invoiceID,
+			"invoice_id":    invoiceID,
 			"retry_payment": "true",
 		},
 	}
@@ -183,7 +183,7 @@ func (s *StripeGateway) ExecuteMandateDebit(ctx context.Context, tokenID string,
 	return nil, ErrNotSupported
 }
 
-func (s *StripeGateway) RevokeMandate(ctx context.Context, tokenID string) error {
+func (s *StripeGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
 	return ErrNotSupported
 }
 

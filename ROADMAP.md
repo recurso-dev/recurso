@@ -26,8 +26,10 @@ can sign off on the output.
       UUIDs as provider refs (CustomerRef/ContactID); invoice sync will 4xx
       against real books until synced entities' provider IDs are stored and
       reused (AccountingSyncLog.ExternalID is never populated today).
-- [ ] **Razorpay mandate revocation** — real token deletion; a revoked
-      mandate must actually stop being chargeable. *(in progress)*
+- [x] **Razorpay mandate revocation** — real customer-scoped token
+      deletion (idempotent), Razorpay customer id captured at creation and
+      backfilled from the activation webhook; legacy mandates without a
+      stored customer id fail loudly instead of fake-revoking.
 - [ ] **Non-INR tax at invoice time** — VAT and US sales-tax engines exist
       (`internal/core/service/tax/`) but are not wired into invoice
       generation; non-INR invoices currently carry zero tax. Required

@@ -88,8 +88,8 @@ func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, tokenID string, a
 	return r.Razorpay.ExecuteMandateDebit(ctx, tokenID, amount, currency, invoiceID)
 }
 
-func (r *SmartRouter) RevokeMandate(ctx context.Context, tokenID string) error {
-	return r.Razorpay.RevokeMandate(ctx, tokenID)
+func (r *SmartRouter) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+	return r.Razorpay.RevokeMandate(ctx, customerID, tokenID)
 }
 
 func (r *SmartRouter) CancelSubscription(ctx context.Context, subscriptionID string) error {

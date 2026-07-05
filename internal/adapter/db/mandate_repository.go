@@ -19,12 +19,12 @@ func NewMandateRepository(db *sql.DB) *MandateRepository {
 
 func (r *MandateRepository) Create(ctx context.Context, mandate *domain.Mandate) error {
 	query := `INSERT INTO mandates (id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status, next_debit_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status, next_debit_at, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
 	_, err := r.db.ExecContext(ctx, query,
 		mandate.ID, mandate.TenantID, mandate.CustomerID, mandate.SubscriptionID,
 		mandate.MandateType, mandate.PaymentMethod, mandate.VPA,
-		mandate.RazorpayTokenID, mandate.RazorpaySubscriptionID,
+		mandate.RazorpayTokenID, mandate.RazorpaySubscriptionID, mandate.RazorpayCustomerID,
 		mandate.MaxAmount, mandate.Frequency, mandate.Status,
 		mandate.NextDebitAt, mandate.CreatedAt, mandate.UpdatedAt,
 	)
@@ -33,7 +33,7 @@ func (r *MandateRepository) Create(ctx context.Context, mandate *domain.Mandate)
 
 func (r *MandateRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status,
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates WHERE id = $1`
@@ -43,7 +43,7 @@ func (r *MandateRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 
 func (r *MandateRepository) GetByRazorpayTokenID(ctx context.Context, tokenID string) (*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status,
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates WHERE razorpay_token_id = $1`
@@ -53,7 +53,7 @@ func (r *MandateRepository) GetByRazorpayTokenID(ctx context.Context, tokenID st
 
 func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status,
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates WHERE tenant_id = $1 ORDER BY created_at DESC`
@@ -79,12 +79,12 @@ func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 
 func (r *MandateRepository) Update(ctx context.Context, mandate *domain.Mandate) error {
 	query := `UPDATE mandates SET status = $1, razorpay_token_id = $2, razorpay_subscription_id = $3,
-		authorized_at = $4, activated_at = $5, revoked_at = $6, last_debit_at = $7,
-		next_debit_at = $8, pre_debit_notified = $9, updated_at = $10, subscription_id = $11
-		WHERE id = $12`
+		razorpay_customer_id = $4, authorized_at = $5, activated_at = $6, revoked_at = $7, last_debit_at = $8,
+		next_debit_at = $9, pre_debit_notified = $10, updated_at = $11, subscription_id = $12
+		WHERE id = $13`
 	_, err := r.db.ExecContext(ctx, query,
 		mandate.Status, mandate.RazorpayTokenID, mandate.RazorpaySubscriptionID,
-		mandate.AuthorizedAt, mandate.ActivatedAt, mandate.RevokedAt,
+		mandate.RazorpayCustomerID, mandate.AuthorizedAt, mandate.ActivatedAt, mandate.RevokedAt,
 		mandate.LastDebitAt, mandate.NextDebitAt, mandate.PreDebitNotified,
 		time.Now(), mandate.SubscriptionID, mandate.ID,
 	)
@@ -93,7 +93,7 @@ func (r *MandateRepository) Update(ctx context.Context, mandate *domain.Mandate)
 
 func (r *MandateRepository) GetDueForPreNotification(ctx context.Context) ([]*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status,
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates
@@ -123,7 +123,7 @@ func (r *MandateRepository) GetDueForPreNotification(ctx context.Context) ([]*do
 
 func (r *MandateRepository) GetReadyForDebit(ctx context.Context) ([]*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, max_amount, frequency, status,
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates
@@ -156,7 +156,7 @@ func (r *MandateRepository) scanMandate(row *sql.Row) (*domain.Mandate, error) {
 	err := row.Scan(
 		&m.ID, &m.TenantID, &m.CustomerID, &m.SubscriptionID,
 		&m.MandateType, &m.PaymentMethod, &m.VPA,
-		&m.RazorpayTokenID, &m.RazorpaySubscriptionID,
+		&m.RazorpayTokenID, &m.RazorpaySubscriptionID, &m.RazorpayCustomerID,
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,
@@ -173,7 +173,7 @@ func (r *MandateRepository) scanMandateRow(rows *sql.Rows) (*domain.Mandate, err
 	err := rows.Scan(
 		&m.ID, &m.TenantID, &m.CustomerID, &m.SubscriptionID,
 		&m.MandateType, &m.PaymentMethod, &m.VPA,
-		&m.RazorpayTokenID, &m.RazorpaySubscriptionID,
+		&m.RazorpayTokenID, &m.RazorpaySubscriptionID, &m.RazorpayCustomerID,
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,

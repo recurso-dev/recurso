@@ -520,7 +520,8 @@ func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
 		Payload struct {
 			Token struct {
 				Entity struct {
-					ID string `json:"id"`
+					ID         string `json:"id"`
+					CustomerID string `json:"customer_id"`
 				} `json:"entity"`
 			} `json:"token"`
 		} `json:"payload"`
@@ -537,7 +538,8 @@ func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
 		return
 	}
 
-	if err := h.mandateService.HandleAuthorization(c.Request.Context(), tokenID); err != nil {
+	customerID := payload.Payload.Token.Entity.CustomerID
+	if err := h.mandateService.HandleAuthorization(c.Request.Context(), tokenID, customerID); err != nil {
 		h.logger.Error("failed to handle mandate authorization", "token_id", tokenID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
