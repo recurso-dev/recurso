@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-07-05
+
+### Added
+
+- **Subscriber migration tool** (`cmd/import`) — import plans, customers,
+  and subscriptions from another billing system (Stripe Billing, Chargebee,
+  spreadsheets) via JSON or CSV. Writes directly to the database without
+  generating invoices or calling payment gateways, so migrated customers
+  are never double-billed mid-cycle; the renewal worker issues each
+  subscription's next invoice at its imported `current_period_end`.
+  Idempotent (plans by code, customers by email, subscriptions by
+  `external_id`) with a `-dry-run` mode. See `cmd/import/example.json`
+  and the "Migrating an existing subscriber base" section of
+  `docs/deployment.md`.
+- **`make seed`** — one-command demo dataset (tenant, plans, customers,
+  subscriptions, invoices) for first-time exploration; prints the demo
+  dashboard API key when done. Destructive: wipes the target database.
+
 ## [0.1.0] - 2026-07-04
 
 First public release of Recurso, an open-source, self-hosted subscription
