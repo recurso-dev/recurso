@@ -7,10 +7,10 @@ VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS=-X main.version=$(VERSION)
 
 build:
-	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) cmd/api/main.go
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/api
 
 run:
-	go run cmd/api/main.go
+	go run ./cmd/api
 
 # DESTRUCTIVE: wipes all data in the target database, then loads demo data
 # (tenant "Acme SaaS Corp", API key sk_test_12345, plans/customers/invoices).

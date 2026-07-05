@@ -10,7 +10,7 @@ RUN go mod download
 
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o recurso-api cmd/api/main.go
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o recurso-api ./cmd/api
 
 # Run Stage
 FROM alpine:3.21
