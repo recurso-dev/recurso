@@ -19,8 +19,13 @@ policies), CI with security scanning, tagged releases to GHCR.
 The bar: a company can run real revenue through Recurso and an accountant
 can sign off on the output.
 
-- [ ] **Real QuickBooks/Xero sync** — OAuth token refresh, per-connection
-      adapter routing, honest failure states. *(in progress)*
+- [x] **Real QuickBooks/Xero sync** — OAuth token refresh with rotation,
+      per-connection adapter routing, invalid-grant deactivation, Xero
+      tenant-ID resolution, reconnect-upsert.
+- [ ] **Accounting external-ID mapping** — adapters still pass internal
+      UUIDs as provider refs (CustomerRef/ContactID); invoice sync will 4xx
+      against real books until synced entities' provider IDs are stored and
+      reused (AccountingSyncLog.ExternalID is never populated today).
 - [ ] **Razorpay mandate revocation** — real token deletion; a revoked
       mandate must actually stop being chargeable. *(in progress)*
 - [ ] **Non-INR tax at invoice time** — VAT and US sales-tax engines exist

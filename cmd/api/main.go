@@ -314,13 +314,38 @@ func main() {
 	// Webhooks & Events (P24)
 	webhookService := service.NewWebhookService(webhookEndpointRepo, eventRepo, eventDeliveryRepo)
 
-	// Accounting (P41). Real QuickBooks/Xero adapters exist but need
-	// per-connection OAuth tokens; wiring them through the connection store
-	// is tracked for a future release. Until then sync runs in mock mode.
+	// Accounting (P41). Syncs run through real QuickBooks/Xero adapters
+	// built from per-connection OAuth tokens; the mock gateway is only the
+	// fallback for unknown providers. OAuth client credentials are needed
+	// to complete the connect flow and to refresh expired tokens.
+	oauthConfigs := map[string]*accounting.OAuthConfig{
+		"quickbooks": {
+			ClientID:     getEnvDefault("QBO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("QBO_CLIENT_SECRET", ""),
+			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+		},
+		"xero": {
+			ClientID:     getEnvDefault("XERO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("XERO_CLIENT_SECRET", ""),
+			TokenURL:     "https://identity.xero.com/connect/token",
+		},
+	}
+	qboConfigured := oauthConfigs["quickbooks"].ClientID != ""
+	xeroConfigured := oauthConfigs["xero"].ClientID != ""
+	switch {
+	case qboConfigured && xeroConfigured:
+		log.Println("Accounting sync configured for QuickBooks and Xero")
+	case qboConfigured:
+		log.Println("Accounting sync configured for QuickBooks (set XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable Xero)")
+	case xeroConfigured:
+		log.Println("Accounting sync configured for Xero (set QBO_CLIENT_ID/QBO_CLIENT_SECRET to enable QuickBooks)")
+	default:
+		log.Println("Accounting sync running in MOCK mode — set QBO_CLIENT_ID/QBO_CLIENT_SECRET or XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable real providers")
+	}
 	accountingGateway := accounting.NewMockAccountingAdapter()
-	log.Println("Accounting sync running in MOCK mode — QuickBooks/Xero writes are simulated")
 	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
 	accountingService.SetConnectionRepo(acctConnRepo)
+	accountingService.SetOAuthConfigs(oauthConfigs)
 
 	// Phase 2: Mandate Service
 	mandateService := service.NewMandateService(mandateRepo, paymentGateway, customerRepo, invoiceRepo)
@@ -354,20 +379,9 @@ func main() {
 	// Dunning Campaign Worker
 	dunningCampaignWorker := worker.NewDunningCampaignWorker(dunningCampaignService)
 
-	// Phase 2: Accounting Sync Worker (daily)
-	oauthConfigs := map[string]*accounting.OAuthConfig{
-		"quickbooks": {
-			ClientID:     getEnvDefault("QBO_CLIENT_ID", ""),
-			ClientSecret: getEnvDefault("QBO_CLIENT_SECRET", ""),
-			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
-		},
-		"xero": {
-			ClientID:     getEnvDefault("XERO_CLIENT_ID", ""),
-			ClientSecret: getEnvDefault("XERO_CLIENT_SECRET", ""),
-			TokenURL:     "https://identity.xero.com/connect/token",
-		},
-	}
-	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, oauthConfigs, 24*time.Hour)
+	// Phase 2: Accounting Sync Worker (daily). Token refresh happens inside
+	// the accounting service per connection.
+	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
 
 	// Start Workers in Background
 	go retryWorker.Start(context.Background())

@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,12 +14,20 @@ import (
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
+// tokenRefreshWindow is how close to expiry a token may get before we
+// proactively refresh it. QuickBooks access tokens live ~1h, Xero ~30min.
+const tokenRefreshWindow = 5 * time.Minute
+
 type AccountingService struct {
 	gateway      port.AccountingGateway
 	customerRepo port.CustomerRepository
 	invoiceRepo  port.InvoiceRepository
 	planRepo     port.PlanRepository
 	connRepo     port.AccountingConnectionRepository
+	oauthConfigs map[string]*accounting.OAuthConfig
+
+	// adapterFactory overrides real adapter construction (used by tests).
+	adapterFactory func(*domain.AccountingConnection) port.AccountingGateway
 }
 
 func NewAccountingService(
@@ -38,12 +48,19 @@ func (s *AccountingService) SetConnectionRepo(repo port.AccountingConnectionRepo
 	s.connRepo = repo
 }
 
+// SetOAuthConfigs provides the per-provider OAuth client credentials used to
+// refresh expired connection tokens before syncing.
+func (s *AccountingService) SetOAuthConfigs(configs map[string]*accounting.OAuthConfig) {
+	s.oauthConfigs = configs
+}
+
 func (s *AccountingService) SyncCustomer(ctx context.Context, customerID uuid.UUID) error {
 	customer, err := s.customerRepo.GetByID(ctx, customerID)
 	if err != nil {
 		return err
 	}
-	return s.gateway.SyncCustomer(ctx, customer)
+	return s.syncEntityAcrossConnections(ctx, customer.TenantID, "customer", customer.ID,
+		func(gw port.AccountingGateway) error { return gw.SyncCustomer(ctx, customer) })
 }
 
 func (s *AccountingService) SyncInvoice(ctx context.Context, invoiceID uuid.UUID) error {
@@ -51,7 +68,8 @@ func (s *AccountingService) SyncInvoice(ctx context.Context, invoiceID uuid.UUID
 	if err != nil {
 		return err
 	}
-	return s.gateway.SyncInvoice(ctx, invoice)
+	return s.syncEntityAcrossConnections(ctx, invoice.TenantID, "invoice", invoice.ID,
+		func(gw port.AccountingGateway) error { return gw.SyncInvoice(ctx, invoice) })
 }
 
 func (s *AccountingService) SyncProduct(ctx context.Context, planID string) error {
@@ -63,7 +81,96 @@ func (s *AccountingService) SyncProduct(ctx context.Context, planID string) erro
 	if err != nil {
 		return err
 	}
-	return s.gateway.SyncProduct(ctx, plan)
+	return s.syncEntityAcrossConnections(ctx, plan.TenantID, "product", plan.ID,
+		func(gw port.AccountingGateway) error { return gw.SyncProduct(ctx, plan) })
+}
+
+// syncEntityAcrossConnections routes a single-entity sync through every
+// active accounting connection for the tenant, refreshing OAuth tokens first.
+func (s *AccountingService) syncEntityAcrossConnections(ctx context.Context, tenantID uuid.UUID, entityType string, entityID uuid.UUID, sync func(port.AccountingGateway) error) error {
+	if s.connRepo == nil {
+		return fmt.Errorf("accounting connection repository not configured")
+	}
+
+	conns, err := s.connRepo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to list connections: %w", err)
+	}
+
+	var errs []error
+	for _, conn := range conns {
+		if !conn.IsActive {
+			continue
+		}
+
+		if err := s.ensureFreshToken(ctx, conn); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", conn.Provider, err))
+			continue
+		}
+
+		adapter := s.getAdapterForConnection(conn)
+		if adapter == nil {
+			continue
+		}
+
+		if err := sync(adapter); err != nil {
+			s.logSyncResult(ctx, conn, entityType, entityID, "create", "error", err.Error())
+			errs = append(errs, fmt.Errorf("%s: %w", conn.Provider, err))
+			continue
+		}
+		s.logSyncResult(ctx, conn, entityType, entityID, "create", "success", "")
+	}
+
+	return errors.Join(errs...)
+}
+
+// ensureFreshToken refreshes the connection's OAuth token when it is expired
+// or within tokenRefreshWindow of expiry. Rotated tokens are persisted before
+// any sync uses them. On failure the connection is marked errored (and
+// deactivated when the refresh token is definitively rejected) and an error
+// is returned so callers skip the connection rather than sync with a dead
+// token.
+func (s *AccountingService) ensureFreshToken(ctx context.Context, conn *domain.AccountingConnection) error {
+	if conn.TokenExpiresAt == nil {
+		return nil // provider without token expiry (e.g. tally)
+	}
+	if time.Until(*conn.TokenExpiresAt) > tokenRefreshWindow {
+		return nil // token still comfortably valid
+	}
+
+	if conn.RefreshToken == "" {
+		return s.markConnectionError(ctx, conn, false,
+			fmt.Errorf("access token expired and no refresh token available"))
+	}
+
+	config, ok := s.oauthConfigs[conn.Provider]
+	if !ok || config == nil || config.ClientID == "" {
+		return s.markConnectionError(ctx, conn, false,
+			fmt.Errorf("no OAuth credentials configured for provider %q", conn.Provider))
+	}
+
+	if err := accounting.RefreshAccessToken(ctx, config, conn, s.connRepo); err != nil {
+		return s.markConnectionError(ctx, conn, accounting.IsInvalidGrant(err), err)
+	}
+
+	slog.Info("refreshed accounting OAuth token", "connection_id", conn.ID, "provider", conn.Provider)
+	return nil
+}
+
+// markConnectionError records a token failure on the connection. When the
+// refresh token was definitively rejected (invalid_grant) the connection is
+// deactivated so it is not retried until the merchant reconnects.
+func (s *AccountingService) markConnectionError(ctx context.Context, conn *domain.AccountingConnection, deactivate bool, cause error) error {
+	conn.SyncStatus = "error"
+	conn.LastError = cause.Error()
+	if deactivate {
+		conn.IsActive = false
+		conn.LastError = "refresh token rejected (invalid_grant); reconnect required: " + cause.Error()
+	}
+	if err := s.connRepo.Update(ctx, conn); err != nil {
+		slog.Error("failed to persist connection error state", "connection_id", conn.ID, "error", err)
+	}
+	return cause
 }
 
 // SyncAllForTenant syncs all entities for a given tenant using the appropriate adapter.
@@ -79,6 +186,12 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 
 	for _, conn := range conns {
 		if !conn.IsActive {
+			continue
+		}
+
+		if err := s.ensureFreshToken(ctx, conn); err != nil {
+			slog.Error("skipping connection, token refresh failed",
+				"connection_id", conn.ID, "provider", conn.Provider, "error", err)
 			continue
 		}
 
@@ -133,6 +246,7 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 		now := time.Now()
 		conn.LastSyncAt = &now
 		conn.SyncStatus = "synced"
+		conn.LastError = ""
 		_ = s.connRepo.Update(ctx, conn)
 	}
 
@@ -140,9 +254,13 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 }
 
 func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConnection) port.AccountingGateway {
+	if s.adapterFactory != nil {
+		return s.adapterFactory(conn)
+	}
+
 	switch conn.Provider {
 	case "quickbooks":
-		adapter := accounting.NewQuickBooksAdapter(conn.AccessToken, conn.RealmID, false)
+		adapter := accounting.NewQuickBooksAdapter(conn.AccessToken, conn.RealmID, os.Getenv("QBO_SANDBOX") == "true")
 		return adapter
 	case "xero":
 		adapter := accounting.NewXeroAdapter(conn.AccessToken, conn.RealmID)

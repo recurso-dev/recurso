@@ -145,6 +145,38 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 		realmID = tokenResp.RealmID
 	}
 
+	// Xero does not return an organisation ID from the token endpoint, but
+	// every Xero API call requires it in the Xero-tenant-id header.
+	if provider == "xero" && realmID == "" {
+		realmID, err = accounting.FetchXeroTenantID(c.Request.Context(), tokenResp.AccessToken)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve Xero organisation: " + err.Error()})
+			return
+		}
+	}
+
+	// Reconnect flow: update the existing connection (e.g. one deactivated
+	// after an invalid_grant) instead of creating a duplicate.
+	if existing, err := h.connRepo.GetByTenantAndProvider(c.Request.Context(), tenantID, provider); err == nil && existing != nil {
+		existing.AccessToken = tokenResp.AccessToken
+		existing.RefreshToken = tokenResp.RefreshToken
+		existing.TokenExpiresAt = &expiresAt
+		if realmID != "" {
+			existing.RealmID = realmID
+		}
+		existing.SyncStatus = "idle"
+		existing.LastError = ""
+		existing.IsActive = true
+
+		if err := h.connRepo.Update(c.Request.Context(), existing); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update connection: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "connected", "connection_id": existing.ID})
+		return
+	}
+
 	conn := &domain.AccountingConnection{
 		ID:             uuid.New(),
 		TenantID:       tenantID,
