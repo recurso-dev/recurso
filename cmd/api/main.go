@@ -593,6 +593,11 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"version": version})
 	})
 
+	// OpenAPI specification (public): GET /openapi.yaml, GET /openapi.json
+	if err := registerOpenAPIRoutes(r); err != nil {
+		log.Fatalf("Failed to register OpenAPI routes: %v", err)
+	}
+
 	// Public Routes — stricter rate limit (20 req/min per IP)
 	publicLimit := middleware.RateLimitMiddleware(rdb, 20, time.Minute)
 

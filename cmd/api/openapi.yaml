@@ -1,0 +1,2027 @@
+openapi: 3.1.0
+info:
+  title: Recurso API
+  version: 1.0.0
+  description: |
+    The Recurso billing engine REST API.
+
+    Authenticate by passing your API key as a bearer token:
+
+        Authorization: Bearer <api_key>
+
+    Obtain an API key by registering a tenant via `POST /auth/register`.
+    All authenticated endpoints live under the `/v1` prefix. Mutating
+    endpoints support idempotency via the `X-Idempotency-Key` header.
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: https://billing.example.com
+    description: Example deployment — substitute the base URL of your own Recurso deployment.
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: System
+    description: Health, version, and API metadata
+  - name: Auth
+    description: Tenant registration
+  - name: Plans
+    description: Product catalog plans
+  - name: Customers
+    description: Customer management
+  - name: Subscriptions
+    description: Subscription lifecycle
+  - name: Invoices
+    description: Invoices, PDFs, and Indian GST e-invoicing
+  - name: Coupons
+    description: Discounts
+  - name: Usage
+    description: Metered usage events
+  - name: Credit Notes
+    description: Customer credits
+  - name: Quotes
+    description: Quote-to-invoice lifecycle
+  - name: Webhooks
+    description: Webhook endpoint management and event feed
+  - name: Analytics
+    description: Revenue analytics
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [System]
+      summary: Health check
+      description: Reports overall service health plus per-component status (Postgres, Redis, TigerBeetle).
+      security: []
+      responses:
+        '200':
+          description: Service is healthy (or degraded but serving).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+        '503':
+          description: A critical dependency (Postgres) is down.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /version:
+    get:
+      operationId: getVersion
+      tags: [System]
+      summary: Build version
+      security: []
+      responses:
+        '200':
+          description: The running build version.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                    examples: [dev, v0.1.0]
+
+  /openapi.yaml:
+    get:
+      operationId: getOpenAPIYAML
+      tags: [System]
+      summary: This OpenAPI document (YAML)
+      security: []
+      responses:
+        '200':
+          description: The OpenAPI 3.1 specification in YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /openapi.json:
+    get:
+      operationId: getOpenAPIJSON
+      tags: [System]
+      summary: This OpenAPI document (JSON)
+      security: []
+      responses:
+        '200':
+          description: The OpenAPI 3.1 specification in JSON.
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /auth/register:
+    post:
+      operationId: registerTenant
+      tags: [Auth]
+      summary: Register a tenant (signup)
+      description: Creates a tenant and returns its first API key. The key is shown only once.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        '201':
+          description: Tenant registered.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tenant:
+                    $ref: '#/components/schemas/Tenant'
+                  api_key:
+                    type: string
+                    description: The raw API key. Store it securely — it is not retrievable later.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/plans:
+    post:
+      operationId: createPlan
+      tags: [Plans]
+      summary: Create a plan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePlanRequest'
+      responses:
+        '201':
+          description: Plan created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listPlans
+      tags: [Plans]
+      summary: List plans
+      parameters:
+        - $ref: '#/components/parameters/SearchQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Plans for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/customers:
+    post:
+      operationId: createCustomer
+      tags: [Customers]
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Customer created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listCustomers
+      tags: [Customers]
+      summary: List customers
+      parameters:
+        - $ref: '#/components/parameters/SearchQuery'
+        - name: country
+          in: query
+          description: Filter by ISO 3166-1 alpha-2 country code.
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by customer status.
+          schema:
+            type: string
+            enum: [active, inactive]
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Customers for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/customers/{id}/payment-method:
+    put:
+      operationId: updateCustomerPaymentMethod
+      tags: [Customers]
+      summary: Update a customer's card on file
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [card_brand, card_last4, card_exp_month, card_exp_year]
+              properties:
+                card_brand:
+                  type: string
+                  examples: [visa]
+                card_last4:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                card_exp_month:
+                  type: integer
+                  minimum: 1
+                  maximum: 12
+                card_exp_year:
+                  type: integer
+                  minimum: 2020
+      responses:
+        '200':
+          description: Payment method updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: ok
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions:
+    post:
+      operationId: createSubscription
+      tags: [Subscriptions]
+      summary: Create a subscription
+      description: Creates the subscription, applies an optional coupon, and generates the first invoice.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSubscriptionRequest'
+      responses:
+        '201':
+          description: Subscription created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listSubscriptions
+      tags: [Subscriptions]
+      summary: List subscriptions
+      parameters:
+        - name: status
+          in: query
+          description: Filter by subscription status.
+          schema:
+            $ref: '#/components/schemas/SubscriptionStatus'
+        - $ref: '#/components/parameters/SearchQuery'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Page'
+      responses:
+        '200':
+          description: Subscriptions for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}:
+    put:
+      operationId: updateSubscription
+      tags: [Subscriptions]
+      summary: Change a subscription's plan (upgrade/downgrade)
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id]
+              properties:
+                plan_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Updated subscription.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/cancel:
+    post:
+      operationId: cancelSubscription
+      tags: [Subscriptions]
+      summary: Cancel a subscription
+      description: Defaults to cancellation at period end unless `immediately` is true.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelSubscriptionRequest'
+      responses:
+        '200':
+          description: Cancellation accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelSubscriptionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/reactivate:
+    post:
+      operationId: reactivateSubscription
+      tags: [Subscriptions]
+      summary: Reactivate a cancelled subscription
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Subscription reactivated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/pause:
+    post:
+      operationId: pauseSubscription
+      tags: [Subscriptions]
+      summary: Pause a subscription
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Paused subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/resume:
+    post:
+      operationId: resumeSubscription
+      tags: [Subscriptions]
+      summary: Resume a paused subscription
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Resumed subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/charges:
+    post:
+      operationId: addUnbilledCharge
+      tags: [Subscriptions]
+      summary: Add an unbilled (ad-hoc) charge
+      description: The charge is picked up on the subscription's next invoice.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency, description]
+              properties:
+                amount:
+                  type: integer
+                  format: int64
+                  description: Amount in the lowest currency unit (e.g. cents/paise).
+                currency:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Charge recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UnbilledCharge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listUnbilledCharges
+      tags: [Subscriptions]
+      summary: List unbilled charges for a subscription
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Pending unbilled charges.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UnbilledCharge'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/advance:
+    post:
+      operationId: generateAdvanceInvoice
+      tags: [Subscriptions]
+      summary: Generate an advance invoice
+      description: Bills the subscription ahead of time for the given number of periods.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [periods]
+              properties:
+                periods:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Advance invoice created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/invoices:
+    get:
+      operationId: listInvoices
+      tags: [Invoices]
+      summary: List invoices
+      responses:
+        '200':
+          description: Invoices for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/invoices/{id}/pdf:
+    get:
+      operationId: downloadInvoicePDF
+      tags: [Invoices]
+      summary: Download a printable invoice
+      description: Returns a print-ready HTML rendering of the invoice (public, rate-limited).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Print-ready invoice document.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /v1/invoices/{id}/einvoice:
+    get:
+      operationId: getEInvoiceStatus
+      tags: [Invoices]
+      summary: Get e-invoice (IRN) status
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: E-invoice status details.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EInvoiceStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/invoices/{id}/einvoice/retry:
+    post:
+      operationId: retryEInvoice
+      tags: [Invoices]
+      summary: Retry e-invoice generation
+      description: Manually retries IRN generation for a failed e-invoice.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Retry initiated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    description: GSP response for the retry attempt.
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/invoices/{id}/einvoice/cancel:
+    post:
+      operationId: cancelEInvoice
+      tags: [Invoices]
+      summary: Cancel an e-invoice (IRN)
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cancel_code, reason]
+              properties:
+                cancel_code:
+                  type: integer
+                  description: IRP cancellation code (e.g. 1 = duplicate, 3 = data entry mistake).
+                reason:
+                  type: string
+      responses:
+        '200':
+          description: E-invoice cancelled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/coupons:
+    post:
+      operationId: createCoupon
+      tags: [Coupons]
+      summary: Create a coupon
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, discount_type, discount_value, duration]
+              properties:
+                code:
+                  type: string
+                discount_type:
+                  type: string
+                  enum: [percent, amount]
+                discount_value:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Percentage (0-100) when `discount_type` is `percent`, otherwise amount in the lowest currency unit.
+                duration:
+                  type: string
+                  enum: [forever, once, repeating]
+                duration_months:
+                  type: integer
+                  description: Required when `duration` is `repeating`.
+      responses:
+        '201':
+          description: Coupon created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listCoupons
+      tags: [Coupons]
+      summary: List coupons
+      responses:
+        '200':
+          description: Coupons for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Coupon'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/usage/events:
+    post:
+      operationId: recordUsageEvent
+      tags: [Usage]
+      summary: Record a usage event
+      description: Reports metered usage against a subscription dimension (e.g. `api_calls`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subscription_id, customer_id, dimension, quantity]
+              properties:
+                subscription_id:
+                  type: string
+                  format: uuid
+                customer_id:
+                  type: string
+                  format: uuid
+                dimension:
+                  type: string
+                  examples: [api_calls]
+                quantity:
+                  type: integer
+                  format: int64
+      responses:
+        '201':
+          description: Event recorded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: recorded
+                  event_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/credit-notes:
+    post:
+      operationId: createCreditNote
+      tags: [Credit Notes]
+      summary: Create a credit note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, amount, currency]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                invoice_id:
+                  type: [string, 'null']
+                  format: uuid
+                amount:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Amount in the lowest currency unit.
+                currency:
+                  type: string
+                reason:
+                  type: string
+      responses:
+        '201':
+          description: Credit note issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreditNote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listCreditNotes
+      tags: [Credit Notes]
+      summary: List credit notes
+      parameters:
+        - name: customer_id
+          in: query
+          description: Filter by customer.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Credit notes for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CreditNote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes:
+    post:
+      operationId: createQuote
+      tags: [Quotes]
+      summary: Create a quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteRequest'
+      responses:
+        '201':
+          description: Quote created (status `draft`).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listQuotes
+      tags: [Quotes]
+      summary: List quotes
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/QuoteStatus'
+        - name: customer_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: search
+          in: query
+          description: Free-text search.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Quotes for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Quote'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes/{id}:
+    get:
+      operationId: getQuote
+      tags: [Quotes]
+      summary: Retrieve a quote
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The quote.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateQuote
+      tags: [Quotes]
+      summary: Update a draft quote
+      description: Only quotes in `draft` status are editable.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateQuoteRequest'
+      responses:
+        '200':
+          description: Updated quote.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Quote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteQuote
+      tags: [Quotes]
+      summary: Delete a draft quote
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Quote deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes/{id}/send:
+    post:
+      operationId: sendQuote
+      tags: [Quotes]
+      summary: Send a quote to the customer
+      description: Transitions the quote from `draft` to `sent`.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Quote sent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteActionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes/{id}/accept:
+    post:
+      operationId: acceptQuote
+      tags: [Quotes]
+      summary: Mark a quote as accepted
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Quote accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteActionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes/{id}/decline:
+    post:
+      operationId: declineQuote
+      tags: [Quotes]
+      summary: Mark a quote as declined
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Quote declined.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QuoteActionResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/quotes/{id}/convert:
+    post:
+      operationId: convertQuoteToInvoice
+      tags: [Quotes]
+      summary: Convert an accepted quote to an invoice
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '201':
+          description: Invoice created from the quote.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invoice'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/webhooks:
+    post:
+      operationId: createWebhookEndpoint
+      tags: [Webhooks]
+      summary: Create a webhook endpoint
+      description: The signing `secret` is returned only in this response.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url, events]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  description: Event types to deliver (see `GET /v1/events/types`).
+                  items:
+                    type: string
+      responses:
+        '201':
+          description: Endpoint created (includes the signing secret).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/WebhookEndpoint'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listWebhookEndpoints
+      tags: [Webhooks]
+      summary: List webhook endpoints
+      responses:
+        '200':
+          description: Webhook endpoints (secrets omitted).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookEndpoint'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/webhooks/{id}:
+    delete:
+      operationId: deleteWebhookEndpoint
+      tags: [Webhooks]
+      summary: Delete a webhook endpoint
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Endpoint deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/events:
+    get:
+      operationId: listEvents
+      tags: [Webhooks]
+      summary: List events
+      description: Chronological feed of billing events emitted for this tenant.
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Events for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/events/types:
+    get:
+      operationId: listEventTypes
+      tags: [Webhooks]
+      summary: List supported event types
+      responses:
+        '200':
+          description: All event types that can be subscribed to.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: string
+                      examples: [invoice.paid]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/analytics/mrr:
+    get:
+      operationId: getMRR
+      tags: [Analytics]
+      summary: Monthly recurring revenue
+      description: Current MRR across active subscriptions. Responses are cached for up to 5 minutes.
+      responses:
+        '200':
+          description: Current MRR.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MRRMetrics'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: Tenant API key obtained from `POST /auth/register` or `POST /v1/developer/keys`.
+
+  parameters:
+    PathID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SearchQuery:
+      name: q
+      in: query
+      description: Free-text search filter.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      description: Maximum number of records to return.
+      schema:
+        type: integer
+        minimum: 1
+    Page:
+      name: page
+      in: query
+      description: 1-based page number.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+  responses:
+    BadRequest:
+      description: The request body or parameters are invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          description: Error detail — either a plain message or a structured code/message pair.
+          oneOf:
+            - type: string
+            - type: object
+              properties:
+                code:
+                  type: string
+                  examples: [BAD_REQUEST]
+                message:
+                  type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        version:
+          type: string
+        components:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              status:
+                type: string
+              error:
+                type: string
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        data_region:
+          type: string
+        base_currency:
+          type: string
+          description: ISO 4217 code (default USD).
+        organization_id:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreatePlanRequest:
+      type: object
+      required: [name, code, interval_unit, interval_count, amount, currency]
+      properties:
+        name:
+          type: string
+        code:
+          type: string
+          description: Unique plan code (e.g. `gold-monthly`).
+        interval_unit:
+          type: string
+          enum: [day, week, month, year]
+        interval_count:
+          type: integer
+          minimum: 1
+        amount:
+          type: integer
+          format: int64
+          description: Price in the lowest currency unit (e.g. cents/paise).
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+          description: ISO 4217 code.
+
+    Plan:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        code:
+          type: string
+        interval_unit:
+          type: string
+          enum: [day, week, month, year]
+        interval_count:
+          type: integer
+        active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        prices:
+          type: array
+          items:
+            $ref: '#/components/schemas/Price'
+
+    Price:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        currency:
+          type: string
+          description: ISO 4217 code.
+        amount:
+          type: integer
+          format: int64
+          description: Price in the lowest currency unit.
+        type:
+          type: string
+          enum: [recurring, one_time]
+        created_at:
+          type: string
+          format: date-time
+
+    CreateCustomerRequest:
+      type: object
+      required: [email, name]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        phone:
+          type: string
+        tax_id:
+          type: string
+        gstin:
+          type: string
+          description: Indian GST identification number (B2B customers).
+        tax_type:
+          type: string
+          enum: [business, consumer]
+        place_of_supply:
+          type: string
+          description: Indian state code for GST place of supply.
+        line1:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: ISO 3166-1 alpha-2 code.
+
+    BillingAddress:
+      type: object
+      properties:
+        line1:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        zip:
+          type: string
+        country:
+          type: string
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: [string, 'null']
+        phone:
+          type: string
+        tax_id:
+          type: [string, 'null']
+        billing_address:
+          $ref: '#/components/schemas/BillingAddress'
+        ledger_account_id:
+          type: string
+          format: uuid
+        gstin:
+          type: [string, 'null']
+        tax_type:
+          type: string
+        place_of_supply:
+          type: [string, 'null']
+        referral_code:
+          type: [string, 'null']
+        risk_score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        risk_factors:
+          type: [object, 'null']
+        card_brand:
+          type: string
+        card_last4:
+          type: string
+        card_exp_month:
+          type: integer
+        card_exp_year:
+          type: integer
+        card_token_id:
+          type: string
+        card_fingerprint:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    SubscriptionStatus:
+      type: string
+      enum: [trialing, active, past_due, paused, canceled, unpaid]
+
+    CreateSubscriptionRequest:
+      type: object
+      required: [customer_id, plan_id]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        coupon_code:
+          type: string
+        start_date:
+          type: string
+          format: date-time
+        billing_anchor_type:
+          type: string
+          enum: [acquisition, first_of_month]
+        payment_terms:
+          type: string
+          enum: [net0, net15, net30, net60]
+
+    Subscription:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/SubscriptionStatus'
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancel_at_period_end:
+          type: boolean
+        canceled_at:
+          type: string
+          format: date-time
+        cancellation_reason:
+          type: string
+        cancellation_feedback:
+          type: string
+        billing_anchor:
+          type: string
+          format: date-time
+        billing_anchor_type:
+          type: string
+        billing_anchor_day:
+          type: integer
+        payment_terms:
+          type: string
+        coupon_id:
+          type: string
+          format: uuid
+        reference_id:
+          type: string
+        mandate_id:
+          type: string
+          format: uuid
+        razorpay_subscription_id:
+          type: string
+        stripe_subscription_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CancelSubscriptionRequest:
+      type: object
+      required: [reason]
+      properties:
+        cancel_at_period_end:
+          type: boolean
+          description: Defaults to true when `immediately` is false.
+        immediately:
+          type: boolean
+        reason:
+          type: string
+          enum:
+            - too_expensive
+            - not_using
+            - switching_competitor
+            - missing_features
+            - technical_issues
+            - customer_service
+            - temporary_pause
+            - other
+        feedback:
+          type: string
+        revoke_consent:
+          type: boolean
+          description: Also revoke the recurring-payment consent (RBI compliance).
+
+    CancelSubscriptionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+        cancel_at_period_end:
+          type: boolean
+        cancelled_at:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        cancellation_reason:
+          type: string
+        message:
+          type: string
+
+    UnbilledCharge:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+          description: Amount in the lowest currency unit.
+        currency:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, invoiced, canceled]
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Invoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: [string, 'null']
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+        billing_reason:
+          type: string
+        amount_due:
+          type: integer
+          format: int64
+        amount_paid:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        subtotal:
+          type: integer
+          format: int64
+        tax_amount:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        igst_amount:
+          type: integer
+          format: int64
+        cgst_amount:
+          type: integer
+          format: int64
+        sgst_amount:
+          type: integer
+          format: int64
+        hsn_code:
+          type: string
+        irn:
+          type: string
+          description: Invoice Reference Number issued by the IRP (Indian e-invoicing).
+        ack_no:
+          type: string
+        signed_qr_code:
+          type: string
+        e_invoice_status:
+          type: string
+        ack_date:
+          type: string
+        e_invoice_retry_count:
+          type: integer
+        e_invoice_next_retry_at:
+          type: [string, 'null']
+          format: date-time
+        e_invoice_error_message:
+          type: string
+        tds_amount:
+          type: integer
+          format: int64
+        status:
+          type: string
+          enum: [draft, open, paid, void, uncollectible, past_due]
+        created_at:
+          type: string
+          format: date-time
+        due_date:
+          type: string
+          format: date-time
+        paid_at:
+          type: string
+          format: date-time
+        payment_terms:
+          type: string
+        exchange_rate:
+          type: number
+        base_currency_total:
+          type: integer
+          format: int64
+        base_currency:
+          type: string
+        next_retry_at:
+          type: string
+          format: date-time
+        retry_count:
+          type: integer
+        payment_wall_active:
+          type: boolean
+
+    EInvoiceStatus:
+      type: object
+      properties:
+        invoice_id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+        e_invoice_status:
+          type: string
+        irn:
+          type: string
+        ack_no:
+          type: string
+        ack_date:
+          type: string
+        signed_qr_code:
+          type: string
+        retry_count:
+          type: integer
+        next_retry_at:
+          type: [string, 'null']
+          format: date-time
+        error_message:
+          type: string
+
+    Coupon:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        discount_type:
+          type: string
+          enum: [percent, amount]
+        discount_value:
+          type: integer
+          format: int64
+        duration:
+          type: string
+          enum: [forever, once, repeating]
+        duration_months:
+          type: [integer, 'null']
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CreditNote:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: [string, 'null']
+          format: uuid
+        reference:
+          type: [string, 'null']
+        amount:
+          type: integer
+          format: int64
+        balance:
+          type: integer
+          format: int64
+          description: Remaining unapplied credit.
+        currency:
+          type: string
+        status:
+          type: string
+          enum: [issued, used, void]
+        reason:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        customer:
+          $ref: '#/components/schemas/Customer'
+
+    QuoteStatus:
+      type: string
+      enum: [draft, sent, accepted, declined, expired]
+
+    LineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          type: integer
+          description: Price per unit in the lowest currency unit.
+        amount:
+          type: integer
+          description: quantity x unit_price, in the lowest currency unit.
+
+    CreateQuoteRequest:
+      type: object
+      required: [customer_id, line_items]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        line_items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/LineItem'
+        currency:
+          type: string
+        valid_until:
+          type: [string, 'null']
+          format: date-time
+        notes:
+          type: string
+        terms:
+          type: string
+        tax_amount:
+          type: integer
+        discount_amount:
+          type: integer
+
+    Quote:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        quote_number:
+          type: string
+        status:
+          $ref: '#/components/schemas/QuoteStatus'
+        line_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/LineItem'
+        subtotal:
+          type: integer
+        tax_amount:
+          type: integer
+        discount_amount:
+          type: integer
+        total:
+          type: integer
+        currency:
+          type: string
+        valid_until:
+          type: [string, 'null']
+          format: date-time
+        notes:
+          type: string
+        terms:
+          type: string
+        invoice_id:
+          type: [string, 'null']
+          format: uuid
+          description: Set once the quote has been converted to an invoice.
+        accepted_at:
+          type: [string, 'null']
+          format: date-time
+        declined_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    QuoteActionResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/Quote'
+        message:
+          type: string
+
+    WebhookEndpoint:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        url:
+          type: string
+          format: uri
+        secret:
+          type: string
+          description: HMAC signing secret. Returned only on creation.
+        events:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Event:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          examples: [invoice.paid]
+        object_type:
+          type: string
+        object_id:
+          type: string
+          format: uuid
+        data:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    MRRMetrics:
+      type: object
+      properties:
+        currency:
+          type: string
+        amount:
+          type: integer
+          format: int64
+          description: MRR in the lowest currency unit.
