@@ -29,6 +29,7 @@ type SubscriptionService struct {
 	subRepoImpl         *db.SubscriptionRepository // Concrete type for TX methods
 	invRepoImpl         *db.InvoiceRepository      // Concrete type for TX methods
 	revrecService       *RevRecService
+	taxResolver         *TaxResolver
 	logger              *slog.Logger
 }
 
@@ -44,6 +45,7 @@ func NewSubscriptionService(
 	gspAdapter port.GSPAdapter,
 	txManager *db.TxManager,
 	revrecService *RevRecService,
+	taxResolver *TaxResolver,
 ) *SubscriptionService {
 	// Try to extract concrete types for TX methods
 	var subImpl *db.SubscriptionRepository
@@ -53,6 +55,11 @@ func NewSubscriptionService(
 	}
 	if ir, ok := invoiceRepo.(*db.InvoiceRepository); ok {
 		invImpl = ir
+	}
+	if taxResolver == nil {
+		// Env-default resolver (IN/TN) preserves historical behavior when no
+		// resolver is wired.
+		taxResolver = NewTaxResolver(nil, "", "")
 	}
 
 	return &SubscriptionService{
@@ -70,6 +77,7 @@ func NewSubscriptionService(
 		subRepoImpl:     subImpl,
 		invRepoImpl:     invImpl,
 		revrecService:   revrecService,
+		taxResolver:     taxResolver,
 		logger:          slog.Default().With("service", "subscription"),
 	}
 }
@@ -177,12 +185,10 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		total = 0
 	}
 
-	// Calculate Tax (GST, INR only)
-	pos := customer.PlaceOfSupply
-	if domain.PtrToString(pos) == "" {
-		pos = nil
-	}
-	taxRes := calculateInvoiceGST(price.Currency, total, pos)
+	// Jurisdiction-aware tax on the post-discount amount: tenant GST config
+	// (India) or env company defaults decide the engine; buyer location
+	// decides the treatment.
+	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, input.TenantID, customer, price.Currency, total)
 	total = total + taxRes.Total
 
 	subID := uuid.New()

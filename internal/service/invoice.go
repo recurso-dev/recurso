@@ -20,6 +20,7 @@ type InvoiceService struct {
 	SubscriptionRepo   port.SubscriptionRepository   // P15
 	GSPAdapter         port.GSPAdapter               // P25
 	EInvoiceService    *EInvoiceService              // P25: E-invoice service
+	TaxResolver        *TaxResolver                  // Jurisdiction-aware tax
 }
 
 func NewInvoiceService(
@@ -29,7 +30,13 @@ func NewInvoiceService(
 	ucRepo port.UnbilledChargeRepository,
 	subRepo port.SubscriptionRepository,
 	gspAdapter port.GSPAdapter,
+	taxResolver *TaxResolver,
 ) *InvoiceService {
+	if taxResolver == nil {
+		// Env-default resolver (IN/TN) preserves historical behavior when no
+		// resolver is wired.
+		taxResolver = NewTaxResolver(nil, "", "")
+	}
 	return &InvoiceService{
 		InvoiceRepo:        invRepo,
 		PlanRepo:           planRepo,
@@ -37,6 +44,7 @@ func NewInvoiceService(
 		UnbilledChargeRepo: ucRepo,
 		SubscriptionRepo:   subRepo,
 		GSPAdapter:         gspAdapter,
+		TaxResolver:        taxResolver,
 	}
 }
 
@@ -78,13 +86,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		}
 	}
 
-	// Determine Place of Supply; empty is handled by the GST engine as IGST.
-	pos := customer.PlaceOfSupply
-	if domain.PtrToString(pos) == "" {
-		pos = nil
-	}
-
-	taxRes := calculateInvoiceGST(price.Currency, subtotal, pos)
+	// Jurisdiction-aware tax: tenant GST config (India) or env company
+	// defaults decide the engine; buyer location decides the treatment.
+	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
 
 	total := subtotal + taxRes.Total
 
@@ -191,11 +195,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
 
-	pos := customer.PlaceOfSupply
-	if domain.PtrToString(pos) == "" {
-		pos = nil
-	}
-	taxRes := calculateInvoiceGST(price.Currency, subtotal, pos)
+	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
 	total := subtotal + taxRes.Total
 
 	now := time.Now()

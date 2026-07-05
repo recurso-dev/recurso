@@ -13,6 +13,13 @@ import (
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
+// XeroAdapter syncs entities to Xero.
+//
+// Update gap: this adapter only creates objects. Xero's POST endpoints act
+// as upserts when the payload carries the provider ID (e.g. ContactID), but
+// we do not resend already-synced entities: the service layer enforces
+// create-once semantics via accounting_entity_mappings, so subsequent local
+// changes are NOT pushed to Xero.
 type XeroAdapter struct {
 	baseURL     string
 	accessToken string
@@ -32,11 +39,14 @@ func (a *XeroAdapter) SetCredentials(accessToken, xeroTenantID string) {
 	a.tenantID = xeroTenantID
 }
 
-func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) error {
+// SyncCustomer creates the customer as a Xero Contact and returns the
+// provider ContactID. If a contact with the same email already exists, its
+// ContactID is returned without creating a duplicate.
+func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) (string, error) {
 	// Check for existing contact by email to avoid duplicates
 	existing, err := a.findContactByEmail(ctx, customer.Email)
 	if err == nil && existing != "" {
-		return nil
+		return existing, nil
 	}
 
 	name := ""
@@ -79,32 +89,33 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 		"Contacts": []map[string]interface{}{contactData},
 	}
 
-	body, err := json.Marshal(contact)
+	respBody, err := a.post(ctx, "/Contacts", contact)
 	if err != nil {
-		return fmt.Errorf("failed to marshal customer: %w", err)
+		return "", fmt.Errorf("xero customer sync failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/Contacts", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	var created struct {
+		Contacts []struct {
+			ContactID string `json:"ContactID"`
+		} `json:"Contacts"`
 	}
-
-	a.setHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("xero customer sync failed: %w", err)
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse xero contact response: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
+	if len(created.Contacts) == 0 || created.Contacts[0].ContactID == "" {
+		return "", fmt.Errorf("xero contact response missing ContactID")
 	}
-
-	return nil
+	return created.Contacts[0].ContactID, nil
 }
 
-func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) error {
+// SyncInvoice creates the invoice in Xero and returns the provider
+// InvoiceID. customerExternalID must be the Xero ContactID (from a prior
+// SyncCustomer) — Xero rejects invoices referencing unknown contacts.
+func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, customerExternalID string) (string, error) {
+	if customerExternalID == "" {
+		return "", fmt.Errorf("xero invoice sync requires the customer's Xero ContactID")
+	}
+
 	lineItems := []map[string]interface{}{
 		{
 			"Description": fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
@@ -122,7 +133,7 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) 
 	invoiceData := map[string]interface{}{
 		"Type": "ACCREC",
 		"Contact": map[string]string{
-			"ContactID": invoice.CustomerID.String(),
+			"ContactID": customerExternalID,
 		},
 		"LineItems":    lineItems,
 		"CurrencyCode": invoice.Currency,
@@ -139,36 +150,33 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) 
 		"Invoices": []map[string]interface{}{invoiceData},
 	}
 
-	body, err := json.Marshal(xeroInvoice)
+	respBody, err := a.post(ctx, "/Invoices", xeroInvoice)
 	if err != nil {
-		return fmt.Errorf("failed to marshal invoice: %w", err)
+		return "", fmt.Errorf("xero invoice sync failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/Invoices", bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	var created struct {
+		Invoices []struct {
+			InvoiceID string `json:"InvoiceID"`
+		} `json:"Invoices"`
 	}
-
-	a.setHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("xero invoice sync failed: %w", err)
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse xero invoice response: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
+	if len(created.Invoices) == 0 || created.Invoices[0].InvoiceID == "" {
+		return "", fmt.Errorf("xero invoice response missing InvoiceID")
 	}
-
-	return nil
+	return created.Invoices[0].InvoiceID, nil
 }
 
-func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error {
+// SyncProduct creates the plan as a Xero Item and returns the provider
+// ItemID. If an item with the same name already exists, its ItemID is
+// returned without creating a duplicate.
+func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
 	// Check for existing item by name to avoid duplicates
 	existing, err := a.findItemByName(ctx, plan.Name)
 	if err == nil && existing != "" {
-		return nil
+		return existing, nil
 	}
 
 	item := map[string]interface{}{
@@ -181,29 +189,55 @@ func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error 
 		},
 	}
 
-	body, err := json.Marshal(item)
+	respBody, err := a.post(ctx, "/Items", item)
 	if err != nil {
-		return fmt.Errorf("failed to marshal product: %w", err)
+		return "", fmt.Errorf("xero product sync failed: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+"/Items", bytes.NewReader(body))
+	var created struct {
+		Items []struct {
+			ItemID string `json:"ItemID"`
+		} `json:"Items"`
+	}
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse xero item response: %w", err)
+	}
+	if len(created.Items) == 0 || created.Items[0].ItemID == "" {
+		return "", fmt.Errorf("xero item response missing ItemID")
+	}
+	return created.Items[0].ItemID, nil
+}
+
+// post sends a JSON payload to the Xero API and returns the raw response
+// body.
+func (a *XeroAdapter) post(ctx context.Context, path string, payload interface{}) ([]byte, error) {
+	body, err := json.Marshal(payload)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", a.baseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	a.setHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("xero product sync failed: %w", err)
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("xero API error: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("xero API error: status %d", resp.StatusCode)
 	}
 
-	return nil
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	return respBody, nil
 }
 
 // escapeXeroFilter escapes double quotes in Xero OData filter values

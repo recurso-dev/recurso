@@ -33,7 +33,6 @@ import (
 	"github.com/swapnull-in/recur-so/internal/adapter/vault"
 	"github.com/swapnull-in/recur-so/internal/adapter/worker"
 	"github.com/swapnull-in/recur-so/internal/core/port"
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
 	"github.com/swapnull-in/recur-so/internal/scheduler"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
@@ -216,14 +215,15 @@ func main() {
 	}
 	_ = fxProvider // Available for invoice service
 
-	// Tax Engine — dispatches to GST/VAT/SalesTax based on company country
+	// Tax Resolver — per-tenant GST config decides the seller jurisdiction
+	// (India + state) when present; env company defaults otherwise. Dispatches
+	// to GST/VAT/SalesTax engines per invoice.
 	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
 	companyState := getEnvDefault("COMPANY_STATE", "TN")
-	taxEngine := tax.NewTaxEngine(companyCountry, companyState)
-	_ = taxEngine // Available for invoice/subscription services
+	taxResolver := service.NewTaxResolver(gstConfigRepo, companyCountry, companyState)
 
 	// 4. Initialize Core Services (Invoice)
-	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter) // P15, P25
+	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter, taxResolver) // P15, P25
 
 	catalogService := service.NewCatalogService(planRepo)
 	customerService := service.NewCustomerService(customerRepo)
@@ -247,6 +247,7 @@ func main() {
 		gspAdapter,
 		txManager,
 		revrecService,
+		taxResolver,
 	)
 
 	// P25: E-Invoice Service
@@ -266,6 +267,9 @@ func main() {
 
 	// Phase 2: Accounting Connection Repository
 	acctConnRepo := db.NewAccountingConnectionRepository(database)
+
+	// Accounting entity mappings (internal ID -> provider ID per connection)
+	acctMappingRepo := db.NewAccountingMappingRepository(database)
 
 	// AI Service (P45)
 	dunningRepo := db.NewDunningRepository(database)
@@ -345,6 +349,7 @@ func main() {
 	accountingGateway := accounting.NewMockAccountingAdapter()
 	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
 	accountingService.SetConnectionRepo(acctConnRepo)
+	accountingService.SetMappingRepo(acctMappingRepo)
 	accountingService.SetOAuthConfigs(oauthConfigs)
 
 	// Phase 2: Mandate Service

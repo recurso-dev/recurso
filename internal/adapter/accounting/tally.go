@@ -37,7 +37,10 @@ type tallyRecord struct {
 	Data      interface{} `json:"data"`
 }
 
-func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) error {
+// SyncCustomer appends the customer to the JSONL export. Tally has no API
+// that returns a provider-side ID, so the export filename is returned as a
+// synthetic external ID.
+func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) (string, error) {
 	name := ""
 	if customer.Name != nil {
 		name = *customer.Name
@@ -60,7 +63,11 @@ func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Custom
 	return a.appendRecord(record)
 }
 
-func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) error {
+// SyncInvoice appends the invoice to the JSONL export. customerExternalID is
+// accepted for interface parity but unused: Tally imports reference the
+// internal customer_id embedded in the record.
+func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, customerExternalID string) (string, error) {
+	_ = customerExternalID
 	record := tallyRecord{
 		Type:      "invoice",
 		ID:        invoice.ID.String(),
@@ -84,7 +91,9 @@ func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice)
 	return a.appendRecord(record)
 }
 
-func (a *TallyAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error {
+// SyncProduct appends the plan to the JSONL export and returns the export
+// filename as a synthetic external ID.
+func (a *TallyAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
 	record := tallyRecord{
 		Type:      "product",
 		ID:        plan.ID.String(),
@@ -101,7 +110,9 @@ func (a *TallyAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error
 	return a.appendRecord(record)
 }
 
-func (a *TallyAdapter) appendRecord(record tallyRecord) error {
+// appendRecord writes the record to the current day's export file and
+// returns the filename as a synthetic external ID.
+func (a *TallyAdapter) appendRecord(record tallyRecord) (string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -110,21 +121,21 @@ func (a *TallyAdapter) appendRecord(record tallyRecord) error {
 
 	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open tally export file: %w", err)
+		return "", fmt.Errorf("failed to open tally export file: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
 	line, err := json.Marshal(record)
 	if err != nil {
-		return fmt.Errorf("failed to marshal tally record: %w", err)
+		return "", fmt.Errorf("failed to marshal tally record: %w", err)
 	}
 
 	if _, err := f.Write(append(line, '\n')); err != nil {
-		return fmt.Errorf("failed to write tally record: %w", err)
+		return "", fmt.Errorf("failed to write tally record: %w", err)
 	}
 
 	slog.Debug("Tally export record written", "type", record.Type, "id", record.ID)
-	return nil
+	return filename, nil
 }
 
 func ptrStr(s *string) string {

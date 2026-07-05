@@ -117,6 +117,7 @@ func newTestSubscriptionService(
 		gsp.NewMockGSPAdapter(),
 		nil, // txManager
 		nil, // revrecService
+		nil, // taxResolver (nil -> env-default IN/TN resolver)
 	)
 }
 

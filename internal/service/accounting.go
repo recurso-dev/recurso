@@ -24,6 +24,7 @@ type AccountingService struct {
 	invoiceRepo  port.InvoiceRepository
 	planRepo     port.PlanRepository
 	connRepo     port.AccountingConnectionRepository
+	mappingRepo  port.AccountingMappingRepository
 	oauthConfigs map[string]*accounting.OAuthConfig
 
 	// adapterFactory overrides real adapter construction (used by tests).
@@ -48,6 +49,13 @@ func (s *AccountingService) SetConnectionRepo(repo port.AccountingConnectionRepo
 	s.connRepo = repo
 }
 
+// SetMappingRepo provides the store for internal-to-external entity ID
+// mappings. Without it, every sync re-runs the adapter create path (the
+// adapters still dedupe by email/name where the provider allows a lookup).
+func (s *AccountingService) SetMappingRepo(repo port.AccountingMappingRepository) {
+	s.mappingRepo = repo
+}
+
 // SetOAuthConfigs provides the per-provider OAuth client credentials used to
 // refresh expired connection tokens before syncing.
 func (s *AccountingService) SetOAuthConfigs(configs map[string]*accounting.OAuthConfig) {
@@ -59,8 +67,11 @@ func (s *AccountingService) SyncCustomer(ctx context.Context, customerID uuid.UU
 	if err != nil {
 		return err
 	}
-	return s.syncEntityAcrossConnections(ctx, customer.TenantID, "customer", customer.ID,
-		func(gw port.AccountingGateway) error { return gw.SyncCustomer(ctx, customer) })
+	return s.forEachActiveConnection(ctx, customer.TenantID,
+		func(conn *domain.AccountingConnection, gw port.AccountingGateway) error {
+			_, err := s.syncCustomerToConnection(ctx, conn, gw, customer, true)
+			return err
+		})
 }
 
 func (s *AccountingService) SyncInvoice(ctx context.Context, invoiceID uuid.UUID) error {
@@ -68,8 +79,10 @@ func (s *AccountingService) SyncInvoice(ctx context.Context, invoiceID uuid.UUID
 	if err != nil {
 		return err
 	}
-	return s.syncEntityAcrossConnections(ctx, invoice.TenantID, "invoice", invoice.ID,
-		func(gw port.AccountingGateway) error { return gw.SyncInvoice(ctx, invoice) })
+	return s.forEachActiveConnection(ctx, invoice.TenantID,
+		func(conn *domain.AccountingConnection, gw port.AccountingGateway) error {
+			return s.syncInvoiceToConnection(ctx, conn, gw, invoice)
+		})
 }
 
 func (s *AccountingService) SyncProduct(ctx context.Context, planID string) error {
@@ -81,13 +94,15 @@ func (s *AccountingService) SyncProduct(ctx context.Context, planID string) erro
 	if err != nil {
 		return err
 	}
-	return s.syncEntityAcrossConnections(ctx, plan.TenantID, "product", plan.ID,
-		func(gw port.AccountingGateway) error { return gw.SyncProduct(ctx, plan) })
+	return s.forEachActiveConnection(ctx, plan.TenantID,
+		func(conn *domain.AccountingConnection, gw port.AccountingGateway) error {
+			return s.syncProductToConnection(ctx, conn, gw, plan)
+		})
 }
 
-// syncEntityAcrossConnections routes a single-entity sync through every
-// active accounting connection for the tenant, refreshing OAuth tokens first.
-func (s *AccountingService) syncEntityAcrossConnections(ctx context.Context, tenantID uuid.UUID, entityType string, entityID uuid.UUID, sync func(port.AccountingGateway) error) error {
+// forEachActiveConnection routes work through every active accounting
+// connection for the tenant, refreshing OAuth tokens first.
+func (s *AccountingService) forEachActiveConnection(ctx context.Context, tenantID uuid.UUID, fn func(*domain.AccountingConnection, port.AccountingGateway) error) error {
 	if s.connRepo == nil {
 		return fmt.Errorf("accounting connection repository not configured")
 	}
@@ -113,15 +128,129 @@ func (s *AccountingService) syncEntityAcrossConnections(ctx context.Context, ten
 			continue
 		}
 
-		if err := sync(adapter); err != nil {
-			s.logSyncResult(ctx, conn, entityType, entityID, "create", "error", err.Error())
+		if err := fn(conn, adapter); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", conn.Provider, err))
-			continue
 		}
-		s.logSyncResult(ctx, conn, entityType, entityID, "create", "success", "")
 	}
 
 	return errors.Join(errs...)
+}
+
+// syncCustomerToConnection ensures the customer exists on the provider's
+// books and returns its provider-side ID. When a mapping already exists the
+// adapter is not called again (create-once semantics; see the update gap
+// notes on the adapters). logSkip controls whether the mapping-exists
+// short-circuit is recorded in the sync log — explicit customer syncs log
+// it, the implicit ensure-before-invoice path does not.
+func (s *AccountingService) syncCustomerToConnection(ctx context.Context, conn *domain.AccountingConnection, gw port.AccountingGateway, customer *domain.Customer, logSkip bool) (string, error) {
+	if extID, ok := s.lookupMapping(ctx, conn, "customer", customer.ID); ok {
+		if logSkip {
+			s.logSyncResult(ctx, conn, "customer", customer.ID, extID, "skip", "exists", "")
+		}
+		return extID, nil
+	}
+
+	extID, err := gw.SyncCustomer(ctx, customer)
+	if err != nil {
+		s.logSyncResult(ctx, conn, "customer", customer.ID, "", "create", "error", err.Error())
+		return "", err
+	}
+
+	s.upsertMapping(ctx, conn, "customer", customer.ID, extID)
+	s.logSyncResult(ctx, conn, "customer", customer.ID, extID, "create", "success", "")
+	return extID, nil
+}
+
+// syncInvoiceToConnection syncs one invoice to one connection, first making
+// sure the invoice's customer has a provider-side ID to reference.
+func (s *AccountingService) syncInvoiceToConnection(ctx context.Context, conn *domain.AccountingConnection, gw port.AccountingGateway, invoice *domain.Invoice) error {
+	if extID, ok := s.lookupMapping(ctx, conn, "invoice", invoice.ID); ok {
+		// Already on the provider's books. Updates are not pushed (see
+		// adapter update-gap notes); record the skip and move on.
+		s.logSyncResult(ctx, conn, "invoice", invoice.ID, extID, "skip", "exists", "")
+		return nil
+	}
+
+	customer, err := s.customerRepo.GetByID(ctx, invoice.CustomerID)
+	if err != nil {
+		err = fmt.Errorf("failed to load customer %s for invoice: %w", invoice.CustomerID, err)
+		s.logSyncResult(ctx, conn, "invoice", invoice.ID, "", "create", "error", err.Error())
+		return err
+	}
+
+	customerExtID, err := s.syncCustomerToConnection(ctx, conn, gw, customer, false)
+	if err != nil {
+		err = fmt.Errorf("customer sync failed: %w", err)
+		s.logSyncResult(ctx, conn, "invoice", invoice.ID, "", "create", "error", err.Error())
+		return err
+	}
+
+	extID, err := gw.SyncInvoice(ctx, invoice, customerExtID)
+	if err != nil {
+		s.logSyncResult(ctx, conn, "invoice", invoice.ID, "", "create", "error", err.Error())
+		return err
+	}
+
+	s.upsertMapping(ctx, conn, "invoice", invoice.ID, extID)
+	s.logSyncResult(ctx, conn, "invoice", invoice.ID, extID, "create", "success", "")
+	return nil
+}
+
+// syncProductToConnection syncs one plan to one connection with the same
+// create-once semantics as customers.
+func (s *AccountingService) syncProductToConnection(ctx context.Context, conn *domain.AccountingConnection, gw port.AccountingGateway, plan *domain.Plan) error {
+	if extID, ok := s.lookupMapping(ctx, conn, "product", plan.ID); ok {
+		s.logSyncResult(ctx, conn, "product", plan.ID, extID, "skip", "exists", "")
+		return nil
+	}
+
+	extID, err := gw.SyncProduct(ctx, plan)
+	if err != nil {
+		s.logSyncResult(ctx, conn, "product", plan.ID, "", "create", "error", err.Error())
+		return err
+	}
+
+	s.upsertMapping(ctx, conn, "product", plan.ID, extID)
+	s.logSyncResult(ctx, conn, "product", plan.ID, extID, "create", "success", "")
+	return nil
+}
+
+// lookupMapping returns the stored external ID for the entity on this
+// connection, if any. A nil mapping repo behaves as "no mapping".
+func (s *AccountingService) lookupMapping(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID) (string, bool) {
+	if s.mappingRepo == nil {
+		return "", false
+	}
+	m, err := s.mappingRepo.Get(ctx, conn.ID, entityType, entityID)
+	if err != nil {
+		slog.Error("failed to look up accounting mapping",
+			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
+		return "", false
+	}
+	if m == nil || m.ExternalID == "" {
+		return "", false
+	}
+	return m.ExternalID, true
+}
+
+// upsertMapping records the provider-side ID returned by an adapter. Empty
+// external IDs (e.g. providers without stable IDs) are not stored.
+func (s *AccountingService) upsertMapping(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID string) {
+	if s.mappingRepo == nil || externalID == "" {
+		return
+	}
+	m := &domain.AccountingEntityMapping{
+		ID:           uuid.New(),
+		TenantID:     conn.TenantID,
+		ConnectionID: conn.ID,
+		EntityType:   entityType,
+		EntityID:     entityID,
+		ExternalID:   externalID,
+	}
+	if err := s.mappingRepo.Upsert(ctx, m); err != nil {
+		slog.Error("failed to upsert accounting mapping",
+			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
+	}
 }
 
 // ensureFreshToken refreshes the connection's OAuth token when it is expired
@@ -214,11 +343,7 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 			}
 
 			for _, customer := range customers {
-				if err := adapter.SyncCustomer(ctx, customer); err != nil {
-					s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "error", err.Error())
-					continue
-				}
-				s.logSyncResult(ctx, conn, "customer", customer.ID, "create", "success", "")
+				_, _ = s.syncCustomerToConnection(ctx, conn, adapter, customer, true)
 			}
 
 			if len(customers) < customerLimit {
@@ -235,11 +360,7 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 		}
 
 		for _, invoice := range invoices {
-			if err := adapter.SyncInvoice(ctx, invoice); err != nil {
-				s.logSyncResult(ctx, conn, "invoice", invoice.ID, "create", "error", err.Error())
-				continue
-			}
-			s.logSyncResult(ctx, conn, "invoice", invoice.ID, "create", "success", "")
+			_ = s.syncInvoiceToConnection(ctx, conn, adapter, invoice)
 		}
 
 		// Update connection status
@@ -273,7 +394,7 @@ func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConne
 	}
 }
 
-func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, action, status, errMsg string) {
+func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID, action, status, errMsg string) {
 	if s.connRepo == nil {
 		return
 	}
@@ -284,6 +405,7 @@ func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.Acco
 		ConnectionID: conn.ID,
 		EntityType:   entityType,
 		EntityID:     entityID,
+		ExternalID:   externalID,
 		Action:       action,
 		Status:       status,
 		ErrorMessage: errMsg,

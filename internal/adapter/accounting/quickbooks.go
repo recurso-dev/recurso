@@ -13,6 +13,14 @@ import (
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
+// QuickBooksAdapter syncs entities to QuickBooks Online.
+//
+// Update gap: this adapter only creates objects. A true QBO update requires
+// fetching the object first to obtain its current SyncToken and issuing a
+// sparse update; that is not implemented yet. The service layer enforces
+// create-once semantics via accounting_entity_mappings — once a mapping
+// exists the adapter is not called again for that entity, so subsequent
+// local changes are NOT pushed to QuickBooks.
 type QuickBooksAdapter struct {
 	baseURL          string
 	accessToken      string
@@ -43,12 +51,14 @@ func (a *QuickBooksAdapter) SetIncomeAccountRef(ref string) {
 	a.incomeAccountRef = ref
 }
 
-func (a *QuickBooksAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) error {
+// SyncCustomer creates the customer in QuickBooks and returns the provider
+// Customer.Id. If a customer with the same email already exists, its Id is
+// returned without creating a duplicate.
+func (a *QuickBooksAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) (string, error) {
 	// Check for existing customer by email to avoid duplicates
 	existing, err := a.findCustomerByEmail(ctx, customer.Email)
 	if err == nil && existing != "" {
-		// Customer already exists, skip creation
-		return nil
+		return existing, nil
 	}
 
 	name := ""
@@ -86,33 +96,38 @@ func (a *QuickBooksAdapter) SyncCustomer(ctx context.Context, customer *domain.C
 		qbCustomer["ResaleNum"] = *customer.TaxID
 	}
 
-	body, err := json.Marshal(qbCustomer)
+	respBody, err := a.create(ctx, "customer", qbCustomer)
 	if err != nil {
-		return fmt.Errorf("failed to marshal customer: %w", err)
+		return "", fmt.Errorf("QuickBooks customer sync failed: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/v3/company/%s/customer", a.baseURL, a.realmID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	var created struct {
+		Customer struct {
+			Id string `json:"Id"`
+		} `json:"Customer"`
 	}
-
-	a.setHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("QuickBooks customer sync failed: %w", err)
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse QuickBooks customer response: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
+	if created.Customer.Id == "" {
+		return "", fmt.Errorf("QuickBooks customer response missing Id")
 	}
-
-	return nil
+	return created.Customer.Id, nil
 }
 
-func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice) error {
+// SyncInvoice creates the invoice in QuickBooks and returns the provider
+// Invoice.Id. customerExternalID must be the QuickBooks Customer.Id (from a
+// prior SyncCustomer), used as CustomerRef.value — QBO rejects unknown refs.
+//
+// Note: line items are sent as bare SalesItemLineDetail entries with a
+// Description and no ItemRef; QuickBooks tolerates this by attributing the
+// line to its default item. Mapping plan/product ItemRefs onto invoice lines
+// is a known gap.
+func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, customerExternalID string) (string, error) {
+	if customerExternalID == "" {
+		return "", fmt.Errorf("QuickBooks invoice sync requires the customer's QuickBooks Id (CustomerRef)")
+	}
+
 	lineItems := []map[string]interface{}{
 		{
 			"Amount":      float64(invoice.Subtotal) / 100,
@@ -127,7 +142,7 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 
 	qbInvoice := map[string]interface{}{
 		"CustomerRef": map[string]string{
-			"value": invoice.CustomerID.String(),
+			"value": customerExternalID,
 		},
 		"Line":        lineItems,
 		"DocNumber":   invoice.InvoiceNumber,
@@ -146,37 +161,33 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 		qbInvoice["DueDate"] = invoice.DueDate.Format("2006-01-02")
 	}
 
-	body, err := json.Marshal(qbInvoice)
+	respBody, err := a.create(ctx, "invoice", qbInvoice)
 	if err != nil {
-		return fmt.Errorf("failed to marshal invoice: %w", err)
+		return "", fmt.Errorf("QuickBooks invoice sync failed: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/v3/company/%s/invoice", a.baseURL, a.realmID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	var created struct {
+		Invoice struct {
+			Id string `json:"Id"`
+		} `json:"Invoice"`
 	}
-
-	a.setHeaders(req)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("QuickBooks invoice sync failed: %w", err)
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse QuickBooks invoice response: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	if resp.StatusCode >= 400 {
-		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
+	if created.Invoice.Id == "" {
+		return "", fmt.Errorf("QuickBooks invoice response missing Id")
 	}
-
-	return nil
+	return created.Invoice.Id, nil
 }
 
-func (a *QuickBooksAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) error {
+// SyncProduct creates the plan as a QuickBooks service Item and returns the
+// provider Item.Id. If an item with the same name already exists, its Id is
+// returned without creating a duplicate.
+func (a *QuickBooksAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
 	// Check for existing item by name to avoid duplicates
 	existing, err := a.findItemByName(ctx, plan.Name)
 	if err == nil && existing != "" {
-		return nil
+		return existing, nil
 	}
 
 	qbItem := map[string]interface{}{
@@ -187,30 +198,56 @@ func (a *QuickBooksAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) 
 		},
 	}
 
-	body, err := json.Marshal(qbItem)
+	respBody, err := a.create(ctx, "item", qbItem)
 	if err != nil {
-		return fmt.Errorf("failed to marshal product: %w", err)
+		return "", fmt.Errorf("QuickBooks product sync failed: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/v3/company/%s/item", a.baseURL, a.realmID)
+	var created struct {
+		Item struct {
+			Id string `json:"Id"`
+		} `json:"Item"`
+	}
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return "", fmt.Errorf("failed to parse QuickBooks item response: %w", err)
+	}
+	if created.Item.Id == "" {
+		return "", fmt.Errorf("QuickBooks item response missing Id")
+	}
+	return created.Item.Id, nil
+}
+
+// create POSTs a payload to the QBO create endpoint for the given object
+// type and returns the raw response body.
+func (a *QuickBooksAdapter) create(ctx context.Context, objectType string, payload map[string]interface{}) ([]byte, error) {
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal %s: %w", objectType, err)
+	}
+
+	url := fmt.Sprintf("%s/v3/company/%s/%s", a.baseURL, a.realmID, objectType)
 	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	a.setHeaders(req)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("QuickBooks product sync failed: %w", err)
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("QuickBooks API error: status %d", resp.StatusCode)
 	}
 
-	return nil
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	return respBody, nil
 }
 
 // escapeQBOValue escapes single quotes for QuickBooks query language

@@ -71,6 +71,7 @@ func newMarkPaidService(invRepo port.InvoiceRepository, ledgerRepo port.LedgerRe
 		nil, // gspAdapter
 		nil, // txManager
 		nil, // revrecService
+		nil, // taxResolver
 	)
 }
 

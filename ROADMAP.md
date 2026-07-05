@@ -22,20 +22,27 @@ can sign off on the output.
 - [x] **Real QuickBooks/Xero sync** — OAuth token refresh with rotation,
       per-connection adapter routing, invalid-grant deactivation, Xero
       tenant-ID resolution, reconnect-upsert.
-- [ ] **Accounting external-ID mapping** — adapters still pass internal
-      UUIDs as provider refs (CustomerRef/ContactID); invoice sync will 4xx
-      against real books until synced entities' provider IDs are stored and
-      reused (AccountingSyncLog.ExternalID is never populated today).
+- [x] **Accounting external-ID mapping** — provider IDs stored per
+      connection and reused; customers sync before invoices and real
+      CustomerRef/ContactID values are sent; create-once semantics prevent
+      duplicates in the books.
+- [ ] **Accounting sync updates** — create-once only today: local edits to
+      already-synced entities aren't pushed (QBO SyncToken sparse update /
+      Xero POST-with-ID), and QBO invoice lines lack ItemRef mapping.
 - [x] **Razorpay mandate revocation** — real customer-scoped token
       deletion (idempotent), Razorpay customer id captured at creation and
       backfilled from the activation webhook; legacy mandates without a
       stored customer id fail loudly instead of fake-revoking.
-- [ ] **Non-INR tax at invoice time** — VAT and US sales-tax engines exist
-      (`internal/core/service/tax/`) but are not wired into invoice
-      generation; non-INR invoices currently carry zero tax. Required
-      before the "global billing" claim is fully honest.
-- [ ] **Per-tenant tax configuration** — org state is hardcoded to "TN";
-      GST org state, GSTIN, and jurisdiction must come from tenant settings.
+- [x] **Jurisdiction-aware invoice tax** — TaxResolver selects GST / EU
+      VAT / US sales tax by seller+buyer jurisdiction; GST uses the
+      tenant's configured state (not hardcoded "TN"); Indian non-INR
+      invoices are zero-rated exports with LUT-aware notes.
+- [ ] **US sales tax provider** — the US engine is a 0%-rate stub; real US
+      tax needs a TaxJar/Avalara integration (invoices are marked
+      sales_tax_stub until then). EU VAT rates are a static table needing
+      a maintenance story.
+- [ ] **Proration invoice tax** — UpdateSubscription's proration invoices
+      still hardcode TaxAmount 0; route them through the TaxResolver.
 - [ ] **CA review of the GST/e-invoicing engine** 🔒 — external chartered
       accountant validates tax math and e-invoice output. Existential for
       an India-first billing product.

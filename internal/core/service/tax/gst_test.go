@@ -49,7 +49,7 @@ func TestGSTCalculator(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			res := engine.CalculateTaxLegacy(tt.amount, tt.pos)
-			
+
 			if res.Total != tt.expectedTotal {
 				t.Errorf("Total: got %d, want %d", res.Total, tt.expectedTotal)
 			}

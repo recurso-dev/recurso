@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/adapter/gsp"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
-	"github.com/swapnull-in/recur-so/internal/adapter/gsp"
 )
 
 // --- Mocks ---
@@ -85,7 +85,7 @@ func TestGenerateInvoice_EInvoice_B2B(t *testing.T) {
 	mockSubRepo := &MockSubscriptionRepo{}
 	mockGSP := gsp.NewMockGSPAdapter()
 
-	svc := NewInvoiceService(mockInvRepo, mockPlanRepo, mockCustRepo, mockUCRepo, mockSubRepo, mockGSP)
+	svc := NewInvoiceService(mockInvRepo, mockPlanRepo, mockCustRepo, mockUCRepo, mockSubRepo, mockGSP, nil)
 
 	// Setup Input
 	subID := uuid.New()
@@ -151,7 +151,7 @@ func TestGenerateInvoice_EInvoice_Consumer(t *testing.T) {
 	mockSubRepo := &MockSubscriptionRepo{}
 	mockGSP := gsp.NewMockGSPAdapter()
 
-	svc := NewInvoiceService(mockInvRepo, mockPlanRepo, mockCustRepo, mockUCRepo, mockSubRepo, mockGSP)
+	svc := NewInvoiceService(mockInvRepo, mockPlanRepo, mockCustRepo, mockUCRepo, mockSubRepo, mockGSP, nil)
 
 	// Setup Input
 	subID := uuid.New()

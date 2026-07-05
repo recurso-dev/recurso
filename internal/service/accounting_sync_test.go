@@ -187,37 +187,79 @@ func (m *acctSyncPlanRepo) List(ctx context.Context, tenantID uuid.UUID, filter 
 	return nil, nil
 }
 
+// --- Mock AccountingMappingRepository ---
+
+type acctSyncMappingRepo struct {
+	mappings map[string]*domain.AccountingEntityMapping
+	upserts  []*domain.AccountingEntityMapping
+}
+
+func newAcctSyncMappingRepo() *acctSyncMappingRepo {
+	return &acctSyncMappingRepo{mappings: map[string]*domain.AccountingEntityMapping{}}
+}
+
+func acctMappingKey(connectionID uuid.UUID, entityType string, entityID uuid.UUID) string {
+	return connectionID.String() + "|" + entityType + "|" + entityID.String()
+}
+
+func (m *acctSyncMappingRepo) Upsert(ctx context.Context, mapping *domain.AccountingEntityMapping) error {
+	m.upserts = append(m.upserts, mapping)
+	m.mappings[acctMappingKey(mapping.ConnectionID, mapping.EntityType, mapping.EntityID)] = mapping
+	return nil
+}
+
+func (m *acctSyncMappingRepo) Get(ctx context.Context, connectionID uuid.UUID, entityType string, entityID uuid.UUID) (*domain.AccountingEntityMapping, error) {
+	return m.mappings[acctMappingKey(connectionID, entityType, entityID)], nil
+}
+
+func (m *acctSyncMappingRepo) seed(conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID string) {
+	m.mappings[acctMappingKey(conn.ID, entityType, entityID)] = &domain.AccountingEntityMapping{
+		ID:           uuid.New(),
+		TenantID:     conn.TenantID,
+		ConnectionID: conn.ID,
+		EntityType:   entityType,
+		EntityID:     entityID,
+		ExternalID:   externalID,
+	}
+}
+
 // --- Recording gateway used via the adapter factory ---
 
 type acctSyncRecordingGateway struct {
-	err       error
-	customers []*domain.Customer
-	invoices  []*domain.Invoice
-	plans     []*domain.Plan
+	err                error
+	customers          []*domain.Customer
+	invoices           []*domain.Invoice
+	invoiceCustomerIDs []string // customerExternalID passed to each SyncInvoice
+	plans              []*domain.Plan
 }
 
-func (g *acctSyncRecordingGateway) SyncCustomer(ctx context.Context, c *domain.Customer) error {
+func acctExtCustomerID(c *domain.Customer) string { return "ext-cust-" + c.ID.String() }
+func acctExtInvoiceID(inv *domain.Invoice) string { return "ext-inv-" + inv.ID.String() }
+func acctExtProductID(p *domain.Plan) string      { return "ext-plan-" + p.ID.String() }
+
+func (g *acctSyncRecordingGateway) SyncCustomer(ctx context.Context, c *domain.Customer) (string, error) {
 	if g.err != nil {
-		return g.err
+		return "", g.err
 	}
 	g.customers = append(g.customers, c)
-	return nil
+	return acctExtCustomerID(c), nil
 }
 
-func (g *acctSyncRecordingGateway) SyncInvoice(ctx context.Context, inv *domain.Invoice) error {
+func (g *acctSyncRecordingGateway) SyncInvoice(ctx context.Context, inv *domain.Invoice, customerExternalID string) (string, error) {
 	if g.err != nil {
-		return g.err
+		return "", g.err
 	}
 	g.invoices = append(g.invoices, inv)
-	return nil
+	g.invoiceCustomerIDs = append(g.invoiceCustomerIDs, customerExternalID)
+	return acctExtInvoiceID(inv), nil
 }
 
-func (g *acctSyncRecordingGateway) SyncProduct(ctx context.Context, plan *domain.Plan) error {
+func (g *acctSyncRecordingGateway) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
 	if g.err != nil {
-		return g.err
+		return "", g.err
 	}
 	g.plans = append(g.plans, plan)
-	return nil
+	return acctExtProductID(plan), nil
 }
 
 // --- Helpers ---
@@ -490,16 +532,21 @@ func TestSyncCustomerRoutesThroughActiveConnections(t *testing.T) {
 	if logEntry.EntityType != "customer" || logEntry.EntityID != customer.ID || logEntry.Status != "success" {
 		t.Errorf("unexpected sync log: %+v", logEntry)
 	}
+	if logEntry.ExternalID != acctExtCustomerID(customer) {
+		t.Errorf("sync log external id = %q, want %q", logEntry.ExternalID, acctExtCustomerID(customer))
+	}
 }
 
 func TestSyncInvoiceRecordsErrorAndReturnsIt(t *testing.T) {
 	tenantID := uuid.New()
-	invoice := &domain.Invoice{ID: uuid.New(), TenantID: tenantID}
+	name := "Acme"
+	customer := &domain.Customer{ID: uuid.New(), TenantID: tenantID, Email: "acme@example.com", Name: &name}
+	invoice := &domain.Invoice{ID: uuid.New(), TenantID: tenantID, CustomerID: customer.ID}
 
 	conn := acctSyncConn(tenantID, "quickbooks", time.Hour, true)
 	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
 
-	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{}, &acctSyncInvoiceRepo{invoice: invoice}, &acctSyncPlanRepo{})
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{customer: customer}, &acctSyncInvoiceRepo{invoice: invoice}, &acctSyncPlanRepo{})
 
 	gw := &acctSyncRecordingGateway{err: errors.New("QuickBooks API error: status 401")}
 	svc.adapterFactory = func(c *domain.AccountingConnection) port.AccountingGateway { return gw }
@@ -508,12 +555,18 @@ func TestSyncInvoiceRecordsErrorAndReturnsIt(t *testing.T) {
 	if err == nil {
 		t.Fatal("SyncInvoice returned nil, want gateway error")
 	}
-	if len(connRepo.syncLogs) != 1 {
-		t.Fatalf("got %d sync logs, want 1", len(connRepo.syncLogs))
+	// The customer sync (attempted first) fails, then the invoice sync is
+	// recorded as failed too.
+	if len(connRepo.syncLogs) != 2 {
+		t.Fatalf("got %d sync logs, want 2 (customer error + invoice error)", len(connRepo.syncLogs))
 	}
-	logEntry := connRepo.syncLogs[0]
-	if logEntry.EntityType != "invoice" || logEntry.Status != "error" || logEntry.ErrorMessage == "" {
-		t.Errorf("unexpected sync log: %+v", logEntry)
+	custLog := connRepo.syncLogs[0]
+	if custLog.EntityType != "customer" || custLog.Status != "error" || custLog.ErrorMessage == "" {
+		t.Errorf("unexpected customer sync log: %+v", custLog)
+	}
+	invLog := connRepo.syncLogs[1]
+	if invLog.EntityType != "invoice" || invLog.Status != "error" || invLog.ErrorMessage == "" {
+		t.Errorf("unexpected invoice sync log: %+v", invLog)
 	}
 }
 
@@ -548,5 +601,197 @@ func TestSyncCustomerWithoutConnRepoErrors(t *testing.T) {
 
 	if err := svc.SyncCustomer(context.Background(), customer.ID); err == nil {
 		t.Fatal("SyncCustomer returned nil without a connection repository, want error")
+	}
+}
+
+// --- Tests: external-ID mapping ---
+
+// acctSyncInvoiceFixture wires a service with one active connection, a
+// mapping repo, and a recording gateway for invoice sync tests.
+func acctSyncInvoiceFixture(t *testing.T) (*AccountingService, *acctSyncConnRepo, *acctSyncMappingRepo, *acctSyncRecordingGateway, *domain.AccountingConnection, *domain.Customer, *domain.Invoice) {
+	t.Helper()
+	tenantID := uuid.New()
+	name := "Acme"
+	customer := &domain.Customer{ID: uuid.New(), TenantID: tenantID, Email: "acme@example.com", Name: &name}
+	invoice := &domain.Invoice{ID: uuid.New(), TenantID: tenantID, CustomerID: customer.ID, InvoiceNumber: "INV-001"}
+
+	conn := acctSyncConn(tenantID, "quickbooks", time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	mappingRepo := newAcctSyncMappingRepo()
+
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{customer: customer}, &acctSyncInvoiceRepo{invoice: invoice}, &acctSyncPlanRepo{})
+	svc.SetMappingRepo(mappingRepo)
+
+	gw := &acctSyncRecordingGateway{}
+	svc.adapterFactory = func(c *domain.AccountingConnection) port.AccountingGateway { return gw }
+	return svc, connRepo, mappingRepo, gw, conn, customer, invoice
+}
+
+func TestSyncInvoiceSyncsCustomerFirstAndPassesExternalID(t *testing.T) {
+	svc, connRepo, mappingRepo, gw, conn, customer, invoice := acctSyncInvoiceFixture(t)
+
+	if err := svc.SyncInvoice(context.Background(), invoice.ID); err != nil {
+		t.Fatalf("SyncInvoice returned error: %v", err)
+	}
+
+	if len(gw.customers) != 1 || gw.customers[0].ID != customer.ID {
+		t.Fatalf("customer was not synced before the invoice (got %d customer syncs)", len(gw.customers))
+	}
+	if len(gw.invoices) != 1 {
+		t.Fatalf("got %d invoice syncs, want 1", len(gw.invoices))
+	}
+	if gw.invoiceCustomerIDs[0] != acctExtCustomerID(customer) {
+		t.Errorf("invoice sync received customer external id %q, want %q", gw.invoiceCustomerIDs[0], acctExtCustomerID(customer))
+	}
+
+	// Both mappings persisted from the gateway-returned IDs.
+	custMapping, _ := mappingRepo.Get(context.Background(), conn.ID, "customer", customer.ID)
+	if custMapping == nil || custMapping.ExternalID != acctExtCustomerID(customer) {
+		t.Errorf("customer mapping = %+v, want external id %q", custMapping, acctExtCustomerID(customer))
+	}
+	invMapping, _ := mappingRepo.Get(context.Background(), conn.ID, "invoice", invoice.ID)
+	if invMapping == nil || invMapping.ExternalID != acctExtInvoiceID(invoice) {
+		t.Errorf("invoice mapping = %+v, want external id %q", invMapping, acctExtInvoiceID(invoice))
+	}
+	if custMapping != nil && custMapping.TenantID != conn.TenantID {
+		t.Errorf("mapping tenant = %s, want %s", custMapping.TenantID, conn.TenantID)
+	}
+
+	// Sync logs carry the external IDs.
+	if len(connRepo.syncLogs) != 2 {
+		t.Fatalf("got %d sync logs, want 2 (customer + invoice)", len(connRepo.syncLogs))
+	}
+	custLog, invLog := connRepo.syncLogs[0], connRepo.syncLogs[1]
+	if custLog.EntityType != "customer" || custLog.Status != "success" || custLog.ExternalID != acctExtCustomerID(customer) {
+		t.Errorf("unexpected customer sync log: %+v", custLog)
+	}
+	if invLog.EntityType != "invoice" || invLog.Status != "success" || invLog.ExternalID != acctExtInvoiceID(invoice) {
+		t.Errorf("unexpected invoice sync log: %+v", invLog)
+	}
+}
+
+func TestSyncInvoiceUsesExistingCustomerMapping(t *testing.T) {
+	svc, connRepo, mappingRepo, gw, conn, customer, invoice := acctSyncInvoiceFixture(t)
+	mappingRepo.seed(conn, "customer", customer.ID, "qb-cust-42")
+
+	if err := svc.SyncInvoice(context.Background(), invoice.ID); err != nil {
+		t.Fatalf("SyncInvoice returned error: %v", err)
+	}
+
+	if len(gw.customers) != 0 {
+		t.Errorf("customer was re-synced despite an existing mapping (%d syncs)", len(gw.customers))
+	}
+	if len(gw.invoiceCustomerIDs) != 1 || gw.invoiceCustomerIDs[0] != "qb-cust-42" {
+		t.Errorf("invoice sync received customer external id %v, want [qb-cust-42]", gw.invoiceCustomerIDs)
+	}
+	// Only the invoice should be logged; the implicit customer lookup is not.
+	if len(connRepo.syncLogs) != 1 || connRepo.syncLogs[0].EntityType != "invoice" {
+		t.Errorf("unexpected sync logs: %+v", connRepo.syncLogs)
+	}
+}
+
+func TestSyncInvoiceExistingMappingSkipsRecreate(t *testing.T) {
+	svc, connRepo, mappingRepo, gw, conn, _, invoice := acctSyncInvoiceFixture(t)
+	mappingRepo.seed(conn, "invoice", invoice.ID, "qb-inv-7")
+
+	if err := svc.SyncInvoice(context.Background(), invoice.ID); err != nil {
+		t.Fatalf("SyncInvoice returned error: %v", err)
+	}
+
+	if len(gw.invoices) != 0 || len(gw.customers) != 0 {
+		t.Errorf("gateway was called despite existing invoice mapping (invoices=%d customers=%d)", len(gw.invoices), len(gw.customers))
+	}
+	if len(mappingRepo.upserts) != 0 {
+		t.Errorf("mapping was re-upserted on skip: %+v", mappingRepo.upserts)
+	}
+	if len(connRepo.syncLogs) != 1 {
+		t.Fatalf("got %d sync logs, want 1", len(connRepo.syncLogs))
+	}
+	logEntry := connRepo.syncLogs[0]
+	if logEntry.Action != "skip" || logEntry.Status != "exists" || logEntry.ExternalID != "qb-inv-7" {
+		t.Errorf("unexpected skip log: %+v", logEntry)
+	}
+}
+
+func TestSyncCustomerUpsertsMappingAndSkipsSecondSync(t *testing.T) {
+	tenantID := uuid.New()
+	name := "Acme"
+	customer := &domain.Customer{ID: uuid.New(), TenantID: tenantID, Email: "acme@example.com", Name: &name}
+
+	conn := acctSyncConn(tenantID, "xero", time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	mappingRepo := newAcctSyncMappingRepo()
+
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{customer: customer}, &acctSyncInvoiceRepo{}, &acctSyncPlanRepo{})
+	svc.SetMappingRepo(mappingRepo)
+
+	gw := &acctSyncRecordingGateway{}
+	svc.adapterFactory = func(c *domain.AccountingConnection) port.AccountingGateway { return gw }
+
+	if err := svc.SyncCustomer(context.Background(), customer.ID); err != nil {
+		t.Fatalf("first SyncCustomer returned error: %v", err)
+	}
+	if len(mappingRepo.upserts) != 1 || mappingRepo.upserts[0].ExternalID != acctExtCustomerID(customer) {
+		t.Fatalf("mapping not upserted from gateway id: %+v", mappingRepo.upserts)
+	}
+
+	// Second sync must not re-create on the provider.
+	if err := svc.SyncCustomer(context.Background(), customer.ID); err != nil {
+		t.Fatalf("second SyncCustomer returned error: %v", err)
+	}
+	if len(gw.customers) != 1 {
+		t.Errorf("gateway called %d times, want 1 (create-once)", len(gw.customers))
+	}
+	if len(connRepo.syncLogs) != 2 {
+		t.Fatalf("got %d sync logs, want 2", len(connRepo.syncLogs))
+	}
+	second := connRepo.syncLogs[1]
+	if second.Action != "skip" || second.Status != "exists" || second.ExternalID != acctExtCustomerID(customer) {
+		t.Errorf("unexpected second sync log: %+v", second)
+	}
+}
+
+func TestSyncProductUpsertsMappingAndSkipsSecondSync(t *testing.T) {
+	tenantID := uuid.New()
+	plan := &domain.Plan{ID: uuid.New(), TenantID: tenantID, Name: "Pro Monthly"}
+
+	conn := acctSyncConn(tenantID, "quickbooks", time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	mappingRepo := newAcctSyncMappingRepo()
+
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{}, &acctSyncInvoiceRepo{}, &acctSyncPlanRepo{plan: plan})
+	svc.SetMappingRepo(mappingRepo)
+
+	gw := &acctSyncRecordingGateway{}
+	svc.adapterFactory = func(c *domain.AccountingConnection) port.AccountingGateway { return gw }
+
+	if err := svc.SyncProduct(context.Background(), plan.ID.String()); err != nil {
+		t.Fatalf("first SyncProduct returned error: %v", err)
+	}
+	if err := svc.SyncProduct(context.Background(), plan.ID.String()); err != nil {
+		t.Fatalf("second SyncProduct returned error: %v", err)
+	}
+
+	if len(gw.plans) != 1 {
+		t.Errorf("gateway called %d times, want 1 (create-once)", len(gw.plans))
+	}
+	m, _ := mappingRepo.Get(context.Background(), conn.ID, "product", plan.ID)
+	if m == nil || m.ExternalID != acctExtProductID(plan) {
+		t.Errorf("product mapping = %+v, want external id %q", m, acctExtProductID(plan))
+	}
+	if len(connRepo.syncLogs) != 2 || connRepo.syncLogs[1].Status != "exists" {
+		t.Errorf("unexpected sync logs: %+v", connRepo.syncLogs)
+	}
+}
+
+func TestSyncInvoiceFailedCustomerSyncDoesNotUpsertMapping(t *testing.T) {
+	svc, _, mappingRepo, gw, _, _, invoice := acctSyncInvoiceFixture(t)
+	gw.err = errors.New("QuickBooks API error: status 401")
+
+	if err := svc.SyncInvoice(context.Background(), invoice.ID); err == nil {
+		t.Fatal("SyncInvoice returned nil, want gateway error")
+	}
+	if len(mappingRepo.upserts) != 0 {
+		t.Errorf("mappings upserted despite gateway failure: %+v", mappingRepo.upserts)
 	}
 }

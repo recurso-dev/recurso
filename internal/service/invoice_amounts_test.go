@@ -87,7 +87,9 @@ func newInvAmtService(
 	ucRepo *mockUCRepoForInvAmt,
 	subRepo *mockSubRepoForInvAmt,
 ) *InvoiceService {
-	return NewInvoiceService(invRepo, planRepo, custRepo, ucRepo, subRepo, gsp.NewMockGSPAdapter())
+	// nil resolver -> env-default IN/TN, matching the historical behavior
+	// these tests assert.
+	return NewInvoiceService(invRepo, planRepo, custRepo, ucRepo, subRepo, gsp.NewMockGSPAdapter(), nil)
 }
 
 // --- GenerateInvoice arithmetic tests ---
