@@ -72,6 +72,19 @@ Go (Gin) API  -->  PostgreSQL (state)  -->  TigerBeetle (ledger)
 
 ## Quick Start
 
+One command from clone to a populated dashboard — builds and starts the full stack (API, dashboard, PostgreSQL, TigerBeetle, Mailhog) and loads demo data:
+
+```bash
+git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
+make demo
+```
+
+Then open the dashboard at `http://localhost:5173` and log in with API key `sk_test_12345`. Emails sent by the system land in Mailhog at `http://localhost:8025`.
+
+### Step by step
+
+Prefer to run pieces individually?
+
 ```bash
 git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
 make docker-up    # starts PostgreSQL + TigerBeetle

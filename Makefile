@@ -1,4 +1,4 @@
-.PHONY: build run seed test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
+.PHONY: build run seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
 IMAGE_NAME=ghcr.io/swapnull-in/recur-so
@@ -17,6 +17,30 @@ run:
 seed:
 	@echo "WARNING: this wipes ALL data in $${DATABASE_URL:-the local dev database} and loads demo data."
 	go run cmd/seed/main.go
+
+# One-command demo: builds and starts the full stack (API + dashboard),
+# waits for the API to become healthy, then loads demo data.
+demo:
+	docker-compose up -d --build
+	@echo "Waiting for API at http://localhost:8080/health ..."
+	@for i in $$(seq 1 60); do \
+		if curl -sf http://localhost:8080/health > /dev/null 2>&1; then \
+			echo "API is up."; break; \
+		fi; \
+		if [ $$i -eq 60 ]; then \
+			echo "ERROR: API did not become healthy within 60s." >&2; exit 1; \
+		fi; \
+		sleep 1; \
+	done
+	DATABASE_URL="postgres://user:password@localhost:5432/recurso?sslmode=disable" go run cmd/seed/main.go
+	@echo ""
+	@echo "=================================================================="
+	@echo "  Recurso demo is ready!"
+	@echo ""
+	@echo "  Dashboard:  http://localhost:5173  (log in with API key sk_test_12345)"
+	@echo "  API:        http://localhost:8080"
+	@echo "  Emails:     http://localhost:8025  (Mailhog)"
+	@echo "=================================================================="
 
 test:
 	go test -v ./...
