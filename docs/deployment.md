@@ -79,3 +79,30 @@ Before applying:
 - The deployment pulls `ghcr.io/swapnull-in/recur-so:latest`; pin a tag for production.
 
 Health probes hit `/health` on port 8080; the deployment runs 2 replicas as non-root with a read-only root filesystem.
+
+## Migrating an existing subscriber base
+
+`cmd/import` loads plans, customers, and subscriptions from another billing
+system directly into the database — without generating invoices or calling
+payment gateways, so migrated customers are never double-billed mid-cycle.
+The renewal worker issues each subscription's next invoice at its imported
+`current_period_end`.
+
+```bash
+# 1. Register your production tenant first (POST /auth/register) and note
+#    the tenant UUID.
+
+# 2. Prepare the data — JSON (see cmd/import/example.json) or CSVs.
+
+# 3. Dry-run: validates everything, writes nothing.
+DATABASE_URL=postgres://... go run ./cmd/import \
+  -tenant <tenant-uuid> -input data.json -dry-run
+
+# 4. Import for real. Idempotent: plans match by code, customers by email,
+#    subscriptions by external_id — re-running skips what already exists.
+DATABASE_URL=postgres://... go run ./cmd/import \
+  -tenant <tenant-uuid> -input data.json
+```
+
+CSV mode: `-plans-csv plans.csv -customers-csv customers.csv
+-subscriptions-csv subs.csv` (see the flag help for expected columns).

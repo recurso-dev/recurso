@@ -1,0 +1,56 @@
+{
+  "plans": [
+    {
+      "code": "PRO-USD",
+      "name": "Pro Plan",
+      "amount": 2900,
+      "currency": "USD",
+      "interval_unit": "month",
+      "interval_count": 1
+    },
+    {
+      "code": "BASIC-INR",
+      "name": "Basic Plan",
+      "amount": 50000,
+      "currency": "INR",
+      "interval_unit": "month",
+      "interval_count": 1
+    }
+  ],
+  "customers": [
+    {
+      "email": "jane@example.com",
+      "name": "Jane User",
+      "country": "US",
+      "state": "CA",
+      "zip": "90210"
+    },
+    {
+      "email": "ramesh.gupta@example.in",
+      "name": "Ramesh Gupta",
+      "country": "IN",
+      "state": "MH",
+      "zip": "400001",
+      "gstin": "27DQBPS8356J1Z1",
+      "place_of_supply": "MH"
+    }
+  ],
+  "subscriptions": [
+    {
+      "external_id": "sub_stripe_1KxYz",
+      "customer_email": "jane@example.com",
+      "plan_code": "PRO-USD",
+      "status": "active",
+      "current_period_start": "2026-06-15T00:00:00Z",
+      "current_period_end": "2026-07-15T00:00:00Z"
+    },
+    {
+      "external_id": "sub_chargebee_9QrSt",
+      "customer_email": "ramesh.gupta@example.in",
+      "plan_code": "BASIC-INR",
+      "status": "active",
+      "current_period_start": "2026-07-01T00:00:00Z",
+      "current_period_end": "2026-08-01T00:00:00Z"
+    }
+  ]
+}
