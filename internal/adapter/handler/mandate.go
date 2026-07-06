@@ -28,19 +28,19 @@ type createMandateRequest struct {
 func (h *MandateHandler) CreateMandate(c *gin.Context) {
 	var req createMandateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	customerID, err := uuid.Parse(req.CustomerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
 		return
 	}
 
@@ -55,7 +55,7 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 	if req.SubscriptionID != "" {
 		subID, err := uuid.Parse(req.SubscriptionID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subscription_id"})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription_id")
 			return
 		}
 		input.SubscriptionID = &subID
@@ -63,7 +63,7 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 
 	result, err := h.service.CreateMandate(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -73,13 +73,13 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 func (h *MandateHandler) ListMandates(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	mandates, err := h.service.List(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -93,13 +93,13 @@ func (h *MandateHandler) ListMandates(c *gin.Context) {
 func (h *MandateHandler) GetMandate(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mandate id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid mandate id")
 		return
 	}
 
 	mandate, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "mandate not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "mandate not found")
 		return
 	}
 
@@ -109,12 +109,12 @@ func (h *MandateHandler) GetMandate(c *gin.Context) {
 func (h *MandateHandler) RevokeMandate(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mandate id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid mandate id")
 		return
 	}
 
 	if err := h.service.Revoke(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

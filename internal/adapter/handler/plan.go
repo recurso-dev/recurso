@@ -31,13 +31,13 @@ type createPlanRequest struct {
 func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 	var req createPlanRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	plan, err := h.service.CreatePlan(ctx, input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 func (h *CatalogHandler) ListPlans(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -95,7 +95,7 @@ func (h *CatalogHandler) ListPlans(c *gin.Context) {
 
 	plans, err := h.service.ListPlans(ctx, tenantID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

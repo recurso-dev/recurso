@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
+	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 )
 
 // RateLimitMiddleware implements a fixed-window rate limiter using Redis
@@ -50,8 +51,7 @@ func RateLimitMiddleware(rdb *redis.Client, limit int, window time.Duration) gin
 		}
 
 		if count > int64(limit) {
-			c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many requests"})
-			c.Abort()
+			httperr.Abort(c, http.StatusTooManyRequests, httperr.CodeRateLimited, "Too many requests")
 			return
 		}
 

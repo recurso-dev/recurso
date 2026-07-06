@@ -32,7 +32,7 @@ const PortalLogin = () => {
                     setDevLink(data._dev_link)
                 }
             } else {
-                setError(data.error || 'Failed to send login link')
+                setError(data.error?.message || 'Failed to send login link')
             }
         } catch (err) {
             setError('Network error. Please try again.')

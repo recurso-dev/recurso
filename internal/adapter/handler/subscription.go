@@ -32,13 +32,13 @@ type createSubscriptionRequest struct {
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	var req createSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -58,7 +58,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.CreateSubscription(ctx, input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -68,7 +68,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -101,7 +101,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 
 	subs, err := h.service.ListSubscriptions(ctx, tenantID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if subs == nil {
@@ -113,14 +113,14 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	invs, err := h.service.ListInvoices(ctx, tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if invs == nil {
@@ -136,19 +136,19 @@ type updateSubscriptionRequest struct {
 func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	subscriptionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
 		return
 	}
 
 	var req updateSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -157,7 +157,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.UpdateSubscription(ctx, tenantID, subscriptionID, newPlanID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -168,19 +168,19 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	subID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
 		return
 	}
 
 	sub, err := h.service.PauseSubscription(c.Request.Context(), tenantID, subID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -191,19 +191,19 @@ func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 func (h *SubscriptionHandler) ResumeSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	subID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
 		return
 	}
 
 	sub, err := h.service.ResumeSubscription(c.Request.Context(), tenantID, subID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 

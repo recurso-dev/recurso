@@ -20,7 +20,7 @@ func NewDunningHandler(svc *service.DunningAnalyticsService) *DunningHandler {
 func (h *DunningHandler) GetOverview(c *gin.Context) {
 	overview, err := h.svc.GetOverview(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch dunning overview"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning overview")
 		return
 	}
 	c.JSON(http.StatusOK, overview)
@@ -29,7 +29,7 @@ func (h *DunningHandler) GetOverview(c *gin.Context) {
 func (h *DunningHandler) GetWeights(c *gin.Context) {
 	weights, err := h.svc.GetWeightsByContext(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch dunning weights"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning weights")
 		return
 	}
 	if weights == nil {
@@ -48,7 +48,7 @@ func (h *DunningHandler) GetHistory(c *gin.Context) {
 
 	history, err := h.svc.GetRecentHistory(c.Request.Context(), limit)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch dunning history"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning history")
 		return
 	}
 	if history == nil {

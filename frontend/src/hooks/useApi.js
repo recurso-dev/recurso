@@ -25,8 +25,9 @@ export function useApi(apiFn, { immediate = true, initialData = null } = {}) {
       }
     } catch (err) {
       if (mountedRef.current) {
-        const message = err?.response?.data?.error?.message
-          || err?.response?.data?.error
+        const apiError = err?.response?.data?.error;
+        const message = apiError?.message
+          || (typeof apiError === 'string' ? apiError : null)
           || err?.message
           || 'Something went wrong';
         setError(message);

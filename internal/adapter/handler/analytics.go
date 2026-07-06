@@ -25,7 +25,7 @@ func NewAnalyticsHandler(svc *service.AnalyticsService, genaiSvc *service.GenAIS
 func (h *AnalyticsHandler) Ask(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -33,13 +33,13 @@ func (h *AnalyticsHandler) Ask(c *gin.Context) {
 		Question string `json:"question" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	data, sqlQuery, err := h.genaiSvc.Ask(c.Request.Context(), tenantID, req.Question)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "query": sqlQuery})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -52,7 +52,7 @@ func (h *AnalyticsHandler) Ask(c *gin.Context) {
 func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -61,7 +61,7 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 
 	mrr, err := h.svc.GetMRR(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate MRR"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to calculate MRR")
 		return
 	}
 	c.JSON(http.StatusOK, mrr)
@@ -70,7 +70,7 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 
 	stats, err := h.svc.GetUsageStats(ctx, tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch usage stats"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch usage stats")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": stats})

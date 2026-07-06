@@ -38,7 +38,7 @@ func NewGSTHandler(gstConfigRepo *db.GSTConfigRepository) *GSTHandler {
 func (h *GSTHandler) GetConfig(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -75,19 +75,19 @@ func (h *GSTHandler) GetConfig(c *gin.Context) {
 func (h *GSTHandler) UpdateConfig(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var config GSTConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	// Validate GSTIN format
 	if config.GSTIN != "" && !validateGSTIN(config.GSTIN) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid GSTIN format"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid GSTIN format")
 		return
 	}
 
@@ -112,7 +112,7 @@ func (h *GSTHandler) UpdateConfig(c *gin.Context) {
 			HasLUT:    config.HasLUT,
 		}
 		if err := h.gstConfigRepo.Upsert(c.Request.Context(), tenantID, dbConfig); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save GST configuration"})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to save GST configuration")
 			return
 		}
 	}
@@ -128,7 +128,7 @@ func (h *GSTHandler) ValidateGSTIN(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 

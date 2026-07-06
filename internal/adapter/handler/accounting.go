@@ -33,13 +33,13 @@ func NewAccountingHandler(connRepo port.AccountingConnectionRepository, accounti
 func (h *AccountingHandler) ListConnections(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	conns, err := h.connRepo.ListByTenant(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 			Scopes:       []string{"openid", "profile", "email", "accounting.transactions", "accounting.contacts"},
 		}
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "unsupported provider")
 		return
 	}
 
@@ -97,14 +97,14 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	realmID := c.Query("realmId") // QuickBooks specific
 
 	if code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "missing authorization code"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "missing authorization code")
 		return
 	}
 
 	// Verify and parse tenant ID from HMAC-signed state
 	tenantID, err := verifyOAuthState(state)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or tampered state"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or tampered state")
 		return
 	}
 
@@ -130,13 +130,13 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 			TokenURL:     "https://identity.xero.com/connect/token",
 		}
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported provider"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "unsupported provider")
 		return
 	}
 
 	tokenResp, err := accounting.ExchangeCode(c.Request.Context(), config, code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "token exchange failed: " + err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "token exchange failed: "+err.Error())
 		return
 	}
 
@@ -150,7 +150,7 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	if provider == "xero" && realmID == "" {
 		realmID, err = accounting.FetchXeroTenantID(c.Request.Context(), tokenResp.AccessToken)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve Xero organisation: " + err.Error()})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to resolve Xero organisation: "+err.Error())
 			return
 		}
 	}
@@ -169,7 +169,7 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 		existing.IsActive = true
 
 		if err := h.connRepo.Update(c.Request.Context(), existing); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update connection: " + err.Error()})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to update connection: "+err.Error())
 			return
 		}
 
@@ -191,7 +191,7 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	}
 
 	if err := h.connRepo.Create(c.Request.Context(), conn); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to save connection: " + err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save connection: "+err.Error())
 		return
 	}
 
@@ -201,29 +201,29 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 func (h *AccountingHandler) Disconnect(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid connection id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid connection id")
 		return
 	}
 
 	// Verify the connection belongs to this tenant before deleting
 	conn, err := h.connRepo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "connection not found")
 		return
 	}
 	if conn.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "connection not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "connection not found")
 		return
 	}
 
 	if err := h.connRepo.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -233,12 +233,12 @@ func (h *AccountingHandler) Disconnect(c *gin.Context) {
 func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	if err := h.accountingService.SyncAllForTenant(c.Request.Context(), tenantID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -248,13 +248,13 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	logs, err := h.connRepo.ListSyncLogs(c.Request.Context(), tenantID, 50)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

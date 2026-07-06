@@ -26,19 +26,19 @@ type createVirtualAccountRequest struct {
 func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 	var req createVirtualAccountRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	customerID, err := uuid.Parse(req.CustomerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 	if req.InvoiceID != "" {
 		invoiceID, err := uuid.Parse(req.InvoiceID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice_id"})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice_id")
 			return
 		}
 		input.InvoiceID = &invoiceID
@@ -59,7 +59,7 @@ func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 
 	va, err := h.service.CreateVirtualAccount(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -69,13 +69,13 @@ func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 func (h *OfflinePaymentHandler) ListVirtualAccounts(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	accounts, err := h.service.ListVirtualAccounts(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -100,19 +100,19 @@ type recordOfflinePaymentRequest struct {
 func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 	var req recordOfflinePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	customerID, err := uuid.Parse(req.CustomerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
 		return
 	}
 
@@ -135,7 +135,7 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 	if req.InvoiceID != "" {
 		invoiceID, err := uuid.Parse(req.InvoiceID)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice_id"})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice_id")
 			return
 		}
 		input.InvoiceID = &invoiceID
@@ -143,7 +143,7 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 
 	payment, err := h.service.RecordOfflinePayment(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -153,13 +153,13 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 func (h *OfflinePaymentHandler) ListOfflinePayments(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	payments, err := h.service.ListOfflinePayments(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

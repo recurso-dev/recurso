@@ -26,13 +26,13 @@ func NewChurnHandler(churnService *service.ChurnService, db *sql.DB) *ChurnHandl
 func (h *ChurnHandler) GetCustomerChurn(c *gin.Context) {
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
 		return
 	}
 
 	result, err := h.churnService.GetCustomerScore(c.Request.Context(), customerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -42,7 +42,7 @@ func (h *ChurnHandler) GetCustomerChurn(c *gin.Context) {
 func (h *ChurnHandler) GetHighRiskCustomers(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -55,7 +55,7 @@ func (h *ChurnHandler) GetHighRiskCustomers(c *gin.Context) {
 
 	results, err := h.churnService.GetHighRiskCustomers(c.Request.Context(), tenantID, threshold)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -81,7 +81,7 @@ type churnAlert struct {
 func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -90,7 +90,7 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 
 	rows, err := h.db.QueryContext(c.Request.Context(), query, tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	defer func() { _ = rows.Close() }()
@@ -100,13 +100,13 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 		var a churnAlert
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.CustomerID, &a.PreviousScore, &a.NewScore,
 			&a.Threshold, &a.AlertType, &a.Acknowledged, &a.CreatedAt); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 			return
 		}
 		alerts = append(alerts, a)
 	}
 	if err := rows.Err(); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -120,26 +120,26 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 func (h *ChurnHandler) AcknowledgeAlert(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	alertID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid alert id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid alert id")
 		return
 	}
 
 	query := `UPDATE churn_alerts SET acknowledged = TRUE WHERE id = $1 AND tenant_id = $2`
 	result, err := h.db.ExecContext(c.Request.Context(), query, alertID, tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
 	rows, _ := result.RowsAffected()
 	if rows == 0 {
-		c.JSON(http.StatusNotFound, gin.H{"error": "alert not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "alert not found")
 		return
 	}
 

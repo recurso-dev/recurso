@@ -24,13 +24,13 @@ func (h *QuoteHandler) CreateQuote(c *gin.Context) {
 
 	var req domain.CreateQuoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	quote, err := h.quoteService.CreateQuote(c.Request.Context(), tenantID, req)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -41,13 +41,13 @@ func (h *QuoteHandler) CreateQuote(c *gin.Context) {
 func (h *QuoteHandler) GetQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	quote, err := h.quoteService.GetQuote(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "quote not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *QuoteHandler) ListQuotes(c *gin.Context) {
 
 	quotes, err := h.quoteService.ListQuotes(c.Request.Context(), tenantID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -77,23 +77,23 @@ func (h *QuoteHandler) ListQuotes(c *gin.Context) {
 func (h *QuoteHandler) UpdateQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	var req domain.CreateQuoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	quote, err := h.quoteService.UpdateQuote(c.Request.Context(), id, req)
 	if err != nil {
 		if err == service.ErrQuoteNotEditable {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -104,16 +104,16 @@ func (h *QuoteHandler) UpdateQuote(c *gin.Context) {
 func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	if err := h.quoteService.DeleteQuote(c.Request.Context(), id); err != nil {
 		if err == service.ErrQuoteNotEditable {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -124,13 +124,13 @@ func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 func (h *QuoteHandler) SendQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	quote, err := h.quoteService.SendQuote(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -141,13 +141,13 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 func (h *QuoteHandler) AcceptQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	quote, err := h.quoteService.AcceptQuote(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -158,13 +158,13 @@ func (h *QuoteHandler) AcceptQuote(c *gin.Context) {
 func (h *QuoteHandler) DeclineQuote(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	quote, err := h.quoteService.DeclineQuote(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -175,13 +175,13 @@ func (h *QuoteHandler) DeclineQuote(c *gin.Context) {
 func (h *QuoteHandler) ConvertToInvoice(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid quote id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid quote id")
 		return
 	}
 
 	invoice, err := h.quoteService.ConvertToInvoice(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 

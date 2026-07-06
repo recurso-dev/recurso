@@ -23,13 +23,13 @@ func NewCancelFlowHandler(s *service.CancelFlowService) *CancelFlowHandler {
 func (h *CancelFlowHandler) ListFlows(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	flows, err := h.service.ListFlows(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -46,13 +46,13 @@ type createFlowRequest struct {
 func (h *CancelFlowHandler) CreateFlow(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var req createFlowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -74,7 +74,7 @@ func (h *CancelFlowHandler) CreateFlow(c *gin.Context) {
 	}
 
 	if err := h.service.CreateFlow(c.Request.Context(), flow); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -85,23 +85,23 @@ func (h *CancelFlowHandler) CreateFlow(c *gin.Context) {
 func (h *CancelFlowHandler) GetFlow(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid flow id")
 		return
 	}
 
 	flow, err := h.service.GetFlowByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if flow == nil || flow.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "flow not found")
 		return
 	}
 
@@ -119,29 +119,29 @@ type updateFlowRequest struct {
 func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid flow id")
 		return
 	}
 
 	var req updateFlowRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	flow, err := h.service.GetFlowByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if flow == nil || flow.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "flow not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "flow not found")
 		return
 	}
 
@@ -160,7 +160,7 @@ func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 	flow.UpdatedAt = time.Now().UTC()
 
 	if err := h.service.UpdateFlow(c.Request.Context(), flow); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -168,22 +168,22 @@ func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 }
 
 type createStepRequest struct {
-	StepOrder int                        `json:"step_order" binding:"required"`
-	StepType  domain.CancelFlowStepType  `json:"step_type" binding:"required"`
-	Config    json.RawMessage            `json:"config"`
+	StepOrder int                       `json:"step_order" binding:"required"`
+	StepType  domain.CancelFlowStepType `json:"step_type" binding:"required"`
+	Config    json.RawMessage           `json:"config"`
 }
 
 // CreateStep adds a step to a cancel flow
 func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 	flowID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid flow id")
 		return
 	}
 
 	var req createStepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -202,7 +202,7 @@ func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 	}
 
 	if err := h.service.CreateStep(c.Request.Context(), step); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -210,22 +210,22 @@ func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 }
 
 type updateStepRequest struct {
-	StepOrder *int                        `json:"step_order"`
-	StepType  *domain.CancelFlowStepType  `json:"step_type"`
-	Config    json.RawMessage             `json:"config"`
+	StepOrder *int                       `json:"step_order"`
+	StepType  *domain.CancelFlowStepType `json:"step_type"`
+	Config    json.RawMessage            `json:"config"`
 }
 
 // UpdateStep updates a cancel flow step
 func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid step id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
 	var req updateStepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -241,7 +241,7 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 	}
 
 	if err := h.service.UpdateStep(c.Request.Context(), step); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -252,12 +252,12 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 func (h *CancelFlowHandler) DeleteStep(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid step id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
 	if err := h.service.DeleteStep(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -273,13 +273,13 @@ type startSessionRequest struct {
 func (h *CancelFlowHandler) StartSession(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var req startSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -289,7 +289,7 @@ func (h *CancelFlowHandler) StartSession(c *gin.Context) {
 		SubscriptionID: uuid.MustParse(req.SubscriptionID),
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -305,19 +305,19 @@ type submitStepRequest struct {
 func (h *CancelFlowHandler) SubmitStep(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	sessionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid session id")
 		return
 	}
 
 	var req submitStepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -328,7 +328,7 @@ func (h *CancelFlowHandler) SubmitStep(c *gin.Context) {
 		Response:  req.Response,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -339,23 +339,23 @@ func (h *CancelFlowHandler) SubmitStep(c *gin.Context) {
 func (h *CancelFlowHandler) GetSession(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid session id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid session id")
 		return
 	}
 
 	session, err := h.service.GetSession(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if session == nil || session.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "session not found")
 		return
 	}
 
@@ -366,25 +366,25 @@ func (h *CancelFlowHandler) GetSession(c *gin.Context) {
 func (h *CancelFlowHandler) GetStats(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	flowIDStr := c.Query("flow_id")
 	if flowIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "flow_id query parameter required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "flow_id query parameter required")
 		return
 	}
 
 	flowID, err := uuid.Parse(flowIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid flow_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid flow_id")
 		return
 	}
 
 	stats, err := h.service.GetFlowStats(c.Request.Context(), tenantID, flowID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

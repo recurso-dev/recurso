@@ -19,7 +19,7 @@ func NewReferralHandler(referralService *service.ReferralService) *ReferralHandl
 func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -27,7 +27,7 @@ func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 
 	referrals, err := h.referralService.ListReferrals(c.Request.Context(), tenantID.(uuid.UUID), pagination.Limit, pagination.Offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -47,13 +47,13 @@ type CreateReferralRequest struct {
 func (h *ReferralHandler) CreateReferral(c *gin.Context) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var req CreateReferralRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -77,7 +77,7 @@ func (h *ReferralHandler) CreateReferral(c *gin.Context) {
 		if err == service.ErrSelfReferral || err == service.ErrAlreadyReferred {
 			status = http.StatusBadRequest
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		respondErrorStatus(c, status, err.Error())
 		return
 	}
 
@@ -91,19 +91,19 @@ type GenerateCodeRequest struct {
 func (h *ReferralHandler) QualifyReferral(c *gin.Context) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	referralID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid referral ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid referral ID")
 		return
 	}
 
 	referral, err := h.referralService.QualifyReferral(c.Request.Context(), tenantID.(uuid.UUID), referralID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -113,19 +113,19 @@ func (h *ReferralHandler) QualifyReferral(c *gin.Context) {
 func (h *ReferralHandler) GenerateCode(c *gin.Context) {
 	tenantID, exists := c.Get("tenant_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var req GenerateCodeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	code, err := h.referralService.GenerateCode(c.Request.Context(), tenantID.(uuid.UUID), req.CustomerID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

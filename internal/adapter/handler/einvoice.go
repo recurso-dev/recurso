@@ -28,13 +28,13 @@ func NewEInvoiceHandler(einvoiceService *service.EInvoiceService, irpConfigRepo 
 func (h *EInvoiceHandler) GetEInvoiceStatus(c *gin.Context) {
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
 	status, err := h.einvoiceService.GetEInvoiceStatus(c.Request.Context(), invoiceID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
 		return
 	}
 
@@ -46,13 +46,13 @@ func (h *EInvoiceHandler) GetEInvoiceStatus(c *gin.Context) {
 func (h *EInvoiceHandler) RetryEInvoice(c *gin.Context) {
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
 	resp, err := h.einvoiceService.RetryFailedEInvoice(c.Request.Context(), invoiceID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *EInvoiceHandler) RetryEInvoice(c *gin.Context) {
 func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
@@ -76,12 +76,12 @@ func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
 		Reason     string `json:"reason" binding:"required"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	if err := h.einvoiceService.CancelEInvoice(c.Request.Context(), invoiceID, req.CancelCode, req.Reason); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -93,14 +93,14 @@ func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
 func (h *EInvoiceHandler) GetIRPConfig(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	// Try production first, then sandbox
 	config, err := h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if config == nil {
@@ -133,13 +133,13 @@ func (h *EInvoiceHandler) GetIRPConfig(c *gin.Context) {
 func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var config domain.IRPConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -149,7 +149,7 @@ func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 	}
 
 	if err := h.irpConfigRepo.Upsert(c.Request.Context(), &config); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -164,7 +164,7 @@ func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 func (h *EInvoiceHandler) TestIRPConnection(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -175,7 +175,7 @@ func (h *EInvoiceHandler) TestIRPConnection(c *gin.Context) {
 	}
 
 	if config == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No IRP configuration found. Please save credentials first."})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "No IRP configuration found. Please save credentials first.")
 		return
 	}
 

@@ -32,6 +32,11 @@ func TestEmbeddedOpenAPISpecParses(t *testing.T) {
 		t.Fatal("'paths' must be a non-empty object")
 	}
 
+	// The spec must cover the full public API surface (~110 registered routes).
+	if len(paths) < 100 {
+		t.Errorf("expected at least 100 documented paths, got %d", len(paths))
+	}
+
 	// Spot-check a few core routes that must be documented.
 	for _, p := range []string{
 		"/auth/register",
@@ -43,6 +48,19 @@ func TestEmbeddedOpenAPISpecParses(t *testing.T) {
 		"/v1/webhooks",
 		"/v1/analytics/mrr",
 		"/health",
+		// Newly documented surface area.
+		"/checkout/{id}/pay",
+		"/webhooks/stripe",
+		"/webhooks/razorpay",
+		"/portal/auth/request",
+		"/portal/api/profile",
+		"/v1/finance/reconciliation",
+		"/v1/accounting/connect/{provider}",
+		"/v1/cancel-flows/sessions/start",
+		"/v1/dunning-campaigns/{id}/steps",
+		"/v1/mandates/{id}/revoke",
+		"/v1/organizations/{id}/analytics/mrr",
+		"/v1/settings/irp/test",
 	} {
 		if _, ok := paths[p]; !ok {
 			t.Errorf("expected path %q to be documented", p)

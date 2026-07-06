@@ -30,13 +30,13 @@ type CreateCouponRequest struct {
 func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 	var req CreateCouponRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 	coupon := &domain.Coupon{
@@ -53,7 +53,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	if err := h.repo.Create(ctx, coupon); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create coupon"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to create coupon")
 		return
 	}
 
@@ -63,13 +63,13 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 func (h *CouponHandler) ListCoupons(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	coupons, err := h.repo.List(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to list coupons"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to list coupons")
 		return
 	}
 

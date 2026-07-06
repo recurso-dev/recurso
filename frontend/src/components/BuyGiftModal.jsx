@@ -45,7 +45,7 @@ const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
             setGiftCode(response.data.code)
             if (onSuccess) onSuccess()
         } catch (err) {
-            setError(err.response?.data?.error || err.message)
+            setError(err.response?.data?.error?.message || err.message)
         } finally {
             setLoading(false)
         }

@@ -41,7 +41,7 @@ const PortalRedeem = () => {
                     navigate('/portal/login')
                     return
                 }
-                throw new Error(data.error || 'Failed to redeem gift')
+                throw new Error(data.error?.message || 'Failed to redeem gift')
             }
 
             setStatus({ type: 'success', message: 'Gift redeemed successfully! Redirecting...' })

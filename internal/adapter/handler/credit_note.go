@@ -23,7 +23,7 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	var req domain.CreateCreditNoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -33,7 +33,7 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 		if errors.Is(err, service.ErrCreditNoteValidation) {
 			status = http.StatusBadRequest
 		}
-		c.JSON(status, gin.H{"error": err.Error()})
+		respondErrorStatus(c, status, err.Error())
 		return
 	}
 
@@ -54,7 +54,7 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 
 	cns, err := h.service.List(c.Request.Context(), tenantID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

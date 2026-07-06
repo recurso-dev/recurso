@@ -92,14 +92,14 @@ func (h *PortalHandler) GetPortalData(c *gin.Context) {
 	customerIDStr := c.Param("customer_id")
 	customerID, err := uuid.Parse(customerIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid customer ID format"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid customer ID format")
 		return
 	}
 
 	tenantIDStr := c.Param("tenant_id")
 	tenantID, err := uuid.Parse(tenantIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid tenant ID format"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid tenant ID format")
 		return
 	}
 
@@ -109,7 +109,7 @@ func (h *PortalHandler) GetPortalData(c *gin.Context) {
 	customer, err := h.customerService.GetCustomer(ctx, tenantID, customerID)
 	if err != nil {
 		log.Printf("Error fetching customer for portal: %v", err)
-		c.JSON(http.StatusNotFound, gin.H{"error": "Customer not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "Customer not found")
 		return
 	}
 

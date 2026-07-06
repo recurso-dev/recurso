@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 )
 
 // AuthMiddleware checks for a valid API Key using the DB.
@@ -20,12 +21,7 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 		// 1. Extract Token
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":    "UNAUTHORIZED",
-					"message": "Authorization header required",
-				},
-			})
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "Authorization header required")
 			return
 		}
 
@@ -65,12 +61,7 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 				"ip", c.ClientIP(),
 				"user_agent", c.GetHeader("User-Agent"),
 			)
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": gin.H{
-					"code":    "INVALID_API_KEY",
-					"message": "Invalid API Key",
-				},
-			})
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeInvalidAPIKey, "Invalid API Key")
 			return
 		}
 

@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
@@ -25,46 +26,75 @@ func (w *responseWriter) WriteString(s string) (int, error) {
 	return w.ResponseWriter.WriteString(s)
 }
 
-// IdempotencyMiddleware ensures that requests with the same Idempotency-Key
-// return the same response without re-processing.
+// mutatingMethods are the HTTP methods covered by idempotency replay.
+// Applied group-wide, this covers every money-mutating POST
+// (subscriptions, charges, advance invoices, credit notes, usage events,
+// e-invoice retries, gift purchases, offline payments, quote conversion, ...)
+// as well as PUT/PATCH/DELETE.
+var mutatingMethods = map[string]bool{
+	http.MethodPost:   true,
+	http.MethodPut:    true,
+	http.MethodPatch:  true,
+	http.MethodDelete: true,
+}
+
+// IdempotencyMiddleware ensures that mutating requests carrying the same
+// Idempotency-Key return the stored response (status, headers, body)
+// without re-processing.
+//
+// Behavior:
+//   - The Idempotency-Key header is RECOMMENDED but not required. Requests
+//     without it are processed normally and never replayed.
+//   - Keys are scoped per tenant, HTTP method, and request path, so the
+//     same key sent to different endpoints (or by different tenants) is
+//     processed independently.
+//   - Only mutating methods (POST/PUT/PATCH/DELETE) participate; GETs pass
+//     through untouched.
+//   - 5xx responses are NOT stored, so transient server failures can be
+//     retried with the same key.
+//   - Storage errors degrade gracefully: the request is processed as if no
+//     key were present (works with the Redis store or the in-memory
+//     fallback used when Redis is not configured).
+//
+// Known limitation: two concurrent requests with the same key may both be
+// processed; the last completed response wins the stored slot.
 func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. Check for Header
+		// 1. Only mutating methods are subject to idempotency replay.
+		if !mutatingMethods[c.Request.Method] {
+			c.Next()
+			return
+		}
+
+		// 2. Check for header (recommended, not enforced).
 		key := c.GetHeader("Idempotency-Key")
 		if key == "" {
 			c.Next()
 			return
 		}
 
-		// 2. Identify Tenant (Scope key by tenant for security)
-		// Assuming AuthMiddleware has already run and set tenant_id
-		// If not, we might process it anyway or wait?
-		// Better to run AFTER auth middleware.
-		var tenantIDPrefix string
+		// 3. Scope key by tenant (set by AuthMiddleware), method, and path
+		// so a reused key cannot replay a response from another endpoint
+		// or another tenant.
+		tenantScope := "global"
 		if tID, ok := c.Get("tenant_id"); ok {
-			tenantIDPrefix = fmt.Sprintf("%v:", tID)
-		} else {
-			// If unauthenticated (e.g. login tokens), maybe scope by IP?
-			// For this system, critical actions are authenticated.
-			tenantIDPrefix = "global:"
+			tenantScope = fmt.Sprintf("%v", tID)
 		}
+		storageKey := fmt.Sprintf("idem:%s:%s:%s:%s", tenantScope, c.Request.Method, c.Request.URL.Path, key)
 
-		storageKey := fmt.Sprintf("%s%s", tenantIDPrefix, key)
-
-		// 3. Check Storage (Hit)
+		// 4. Check storage (hit -> replay).
 		cached, err := store.Get(c.Request.Context(), storageKey)
 		if err != nil {
-			// On error, log and proceed primarily? Or fail closed?
-			// Proceeding effectively disables idempotency which is safer than blocking.
+			// Storage unavailable: proceed without idempotency rather than
+			// blocking the request (graceful degradation).
 			c.Next()
 			return
 		}
 
 		if cached != nil {
-			// HIT: Return cached response
+			// HIT: replay stored response.
 			c.Header("X-Idempotency-Hit", "true")
 
-			// Replay headers
 			for k, v := range cached.Headers {
 				c.Header(k, v)
 			}
@@ -74,22 +104,23 @@ func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 			return
 		}
 
-		// 4. Wrap Writer (Miss)
+		// 5. MISS: wrap writer to capture the response.
 		w := &responseWriter{
 			ResponseWriter: c.Writer,
 			body:           &bytes.Buffer{},
 		}
 		c.Writer = w
 
-		// 5. Process Request
+		// 6. Process request.
 		c.Next()
 
-		// 6. Store Response (After successful processing)
-		// Only store success/failure codes that are deterministic?
-		// Usually we store 2xx, 4xx, 5xx (except transient).
+		// 7. Store the response for replay. Skip 5xx so transient server
+		// failures remain retryable with the same key.
 		status := c.Writer.Status()
+		if status >= http.StatusInternalServerError {
+			return
+		}
 
-		// Capture headers
 		headers := make(map[string]string)
 		for k, v := range c.Writer.Header() {
 			if len(v) > 0 {
@@ -103,9 +134,8 @@ func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 			Headers: headers,
 		}
 
-		// Asynchronously save to avoid blocking response?
-		// Better to wait to ensure consistency for client immediately checking?
-		// Let's blocking save for consistency.
+		// Blocking save so a client immediately retrying sees the stored
+		// response consistently.
 		_ = store.Set(c.Request.Context(), storageKey, res)
 	}
 }

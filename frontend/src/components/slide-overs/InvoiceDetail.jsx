@@ -35,7 +35,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
             await endpoints.retryEInvoice(invoice.id)
             setActionMessage({ type: 'success', text: 'E-invoice retry initiated successfully.' })
         } catch (err) {
-            setActionMessage({ type: 'error', text: err?.response?.data?.error || 'Retry failed' })
+            setActionMessage({ type: 'error', text: err?.response?.data?.error?.message || 'Retry failed' })
         } finally {
             setRetrying(false)
         }
@@ -49,7 +49,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
             setActionMessage({ type: 'success', text: 'E-invoice cancelled successfully.' })
             setShowCancelModal(false)
         } catch (err) {
-            setActionMessage({ type: 'error', text: err?.response?.data?.error || 'Cancellation failed' })
+            setActionMessage({ type: 'error', text: err?.response?.data?.error?.message || 'Cancellation failed' })
         } finally {
             setCancelling(false)
         }

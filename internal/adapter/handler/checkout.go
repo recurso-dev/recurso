@@ -27,17 +27,17 @@ func NewCheckoutHandler(repo port.InvoiceRepository, gw port.PaymentGateway) *Ch
 func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
 	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
 		return
 	}
 	if invoice == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
 		return
 	}
 
@@ -61,22 +61,22 @@ func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
 	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
 		return
 	}
 	if invoice == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
 		return
 	}
 
 	if invoice.Status == domain.InvoiceStatusPaid {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invoice already paid"})
+		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "invoice already paid")
 		return
 	}
 
@@ -87,7 +87,7 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		invoice.InvoiceNumber,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create payment order"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to create payment order")
 		return
 	}
 
@@ -106,17 +106,17 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
 	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
 		return
 	}
 	if invoice == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "invoice not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
 		return
 	}
 
@@ -127,7 +127,7 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 		invoice.AmountPaid = invoice.Total
 
 		if err := h.invoiceRepo.Update(c.Request.Context(), invoice); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update invoice"})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to update invoice")
 			return
 		}
 	}

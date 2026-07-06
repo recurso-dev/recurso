@@ -22,13 +22,13 @@ func NewReconciliationHandler(service *service.ReconciliationService) *Reconcili
 func (h *ReconciliationHandler) RunReconciliation(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	report, err := h.service.Run(c.Request.Context(), tenantID.(uuid.UUID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to run reconciliation"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to run reconciliation")
 		return
 	}
 

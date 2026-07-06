@@ -34,7 +34,7 @@ export default function Checkout() {
       const res = await fetch(`${API_BASE}/checkout/${id}/pay`, { method: 'POST' })
       if (!res.ok) {
         const data = await res.json()
-        throw new Error(data.error || 'Payment failed')
+        throw new Error(data.error?.message || 'Payment failed')
       }
       const orderData = await res.json()
 

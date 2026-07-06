@@ -37,13 +37,13 @@ type createCustomerRequest struct {
 func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	var req createCustomerRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	customer, err := h.service.CreateCustomer(ctx, input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -83,13 +83,13 @@ type updatePaymentMethodRequest struct {
 func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid customer id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
 		return
 	}
 
 	var req updatePaymentMethodRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 
 	ctx := c.Request.Context()
 	if err := h.service.UpdatePaymentMethod(ctx, input); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -113,7 +113,7 @@ func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -148,7 +148,7 @@ func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 
 	customers, err := h.service.ListCustomers(ctx, tenantID, filter)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if customers == nil {

@@ -67,19 +67,19 @@ type CancelSubscriptionResponse struct {
 func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "Unauthorized")
 		return
 	}
 
 	subscriptionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid subscription ID")
 		return
 	}
 
 	var req CancelSubscriptionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -92,7 +92,7 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 	// Cancel the subscription
 	subscription, err := h.subscriptionService.Cancel(c.Request.Context(), tenantID, subscriptionID, cancelImmediately, string(req.Reason), req.Feedback)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to cancel subscription"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to cancel subscription")
 		return
 	}
 
@@ -165,19 +165,19 @@ func (h *CancellationHandler) GetCancellationReasons(c *gin.Context) {
 func (h *CancellationHandler) ReactivateSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "Unauthorized")
 		return
 	}
 
 	subscriptionID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid subscription ID")
 		return
 	}
 
 	subscription, err := h.subscriptionService.Reactivate(c.Request.Context(), tenantID, subscriptionID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to reactivate subscription"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to reactivate subscription")
 		return
 	}
 

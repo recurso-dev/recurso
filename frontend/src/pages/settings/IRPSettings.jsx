@@ -43,7 +43,7 @@ const IRPSettings = () => {
             await endpoints.updateIRPConfig(config)
             toast.success('IRP configuration saved successfully')
         } catch (err) {
-            toast.error(err?.response?.data?.error || 'Failed to save configuration')
+            toast.error(err?.response?.data?.error?.message || 'Failed to save configuration')
         } finally {
             setSaving(false)
         }
@@ -56,7 +56,7 @@ const IRPSettings = () => {
             const response = await endpoints.testIRPConfig()
             setTestResult(response.data)
         } catch (err) {
-            setTestResult({ success: false, message: err?.response?.data?.error || 'Connection test failed' })
+            setTestResult({ success: false, message: err?.response?.data?.error?.message || 'Connection test failed' })
         } finally {
             setTesting(false)
         }

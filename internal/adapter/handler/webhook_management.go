@@ -53,13 +53,13 @@ func toWebhookEndpointResponse(e *domain.WebhookEndpoint, includeSecret bool) We
 func (h *WebhookManagementHandler) CreateEndpoint(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	var req CreateEndpointRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -71,7 +71,7 @@ func (h *WebhookManagementHandler) CreateEndpoint(c *gin.Context) {
 
 	endpoint, err := h.webhookService.CreateEndpoint(c.Request.Context(), input)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -83,13 +83,13 @@ func (h *WebhookManagementHandler) CreateEndpoint(c *gin.Context) {
 func (h *WebhookManagementHandler) ListEndpoints(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	endpoints, err := h.webhookService.ListEndpoints(c.Request.Context(), tenantID.(uuid.UUID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -106,12 +106,12 @@ func (h *WebhookManagementHandler) DeleteEndpoint(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid id")
 		return
 	}
 
 	if err := h.webhookService.DeleteEndpoint(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -143,7 +143,7 @@ func toEventResponse(e *domain.Event) EventResponse {
 func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
@@ -162,7 +162,7 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 
 	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

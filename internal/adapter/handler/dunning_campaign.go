@@ -22,13 +22,13 @@ func NewDunningCampaignHandler(s *service.DunningCampaignService) *DunningCampai
 func (h *DunningCampaignHandler) ListCampaigns(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	campaigns, err := h.service.ListCampaigns(c.Request.Context(), tenantID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -44,13 +44,13 @@ type createCampaignRequest struct {
 func (h *DunningCampaignHandler) CreateCampaign(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	var req createCampaignRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -66,7 +66,7 @@ func (h *DunningCampaignHandler) CreateCampaign(c *gin.Context) {
 	}
 
 	if err := h.service.CreateCampaign(c.Request.Context(), campaign); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -77,23 +77,23 @@ func (h *DunningCampaignHandler) CreateCampaign(c *gin.Context) {
 func (h *DunningCampaignHandler) GetCampaign(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid campaign id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid campaign id")
 		return
 	}
 
 	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if campaign == nil || campaign.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "campaign not found")
 		return
 	}
 
@@ -110,29 +110,29 @@ type updateCampaignRequest struct {
 func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid campaign id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid campaign id")
 		return
 	}
 
 	var req updateCampaignRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 	if campaign == nil || campaign.TenantID != tenantID {
-		c.JSON(http.StatusNotFound, gin.H{"error": "campaign not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "campaign not found")
 		return
 	}
 
@@ -148,7 +148,7 @@ func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 	campaign.UpdatedAt = time.Now().UTC()
 
 	if err := h.service.UpdateCampaign(c.Request.Context(), campaign); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -169,13 +169,13 @@ type createCampaignStepRequest struct {
 func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
 	campaignID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid campaign id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid campaign id")
 		return
 	}
 
 	var req createCampaignStepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -193,7 +193,7 @@ func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
 	}
 
 	if err := h.service.CreateStep(c.Request.Context(), step); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -201,26 +201,26 @@ func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
 }
 
 type updateCampaignStepRequest struct {
-	StepOrder     *int    `json:"step_order"`
-	Channel       string  `json:"channel"`
-	DelayHours    *int    `json:"delay_hours"`
-	TemplateName  string  `json:"template_name"`
-	Subject       string  `json:"subject"`
-	Body          string  `json:"body"`
-	IsPaymentWall *bool   `json:"is_payment_wall"`
+	StepOrder     *int   `json:"step_order"`
+	Channel       string `json:"channel"`
+	DelayHours    *int   `json:"delay_hours"`
+	TemplateName  string `json:"template_name"`
+	Subject       string `json:"subject"`
+	Body          string `json:"body"`
+	IsPaymentWall *bool  `json:"is_payment_wall"`
 }
 
 // UpdateStep updates a dunning campaign step
 func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid step id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
 	var req updateCampaignStepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -242,7 +242,7 @@ func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 	}
 
 	if err := h.service.UpdateStep(c.Request.Context(), step); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -253,12 +253,12 @@ func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 func (h *DunningCampaignHandler) DeleteStep(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid step id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
 	if err := h.service.DeleteStep(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -269,13 +269,13 @@ func (h *DunningCampaignHandler) DeleteStep(c *gin.Context) {
 func (h *DunningCampaignHandler) GetPaymentWallStatus(c *gin.Context) {
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
 		return
 	}
 
 	active, err := h.service.GetPaymentWallStatus(c.Request.Context(), invoiceID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

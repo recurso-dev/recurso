@@ -24,7 +24,7 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 	invoiceIDStr := c.Param("id")
 	invoiceID, err := uuid.Parse(invoiceIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid invoice id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
 		return
 	}
 
@@ -72,7 +72,7 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 
 	html, err := h.pdfService.GenerateInvoiceHTML(data)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate invoice"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to generate invoice")
 		return
 	}
 

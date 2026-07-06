@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -17,15 +18,13 @@ func PortalAuthMiddleware(portalService *service.PortalService) gin.HandlerFunc 
 		}
 
 		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "unauthorized")
 			return
 		}
 
 		session, err := portalService.ValidateSession(c.Request.Context(), token)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-			c.Abort()
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, err.Error())
 			return
 		}
 

@@ -27,7 +27,7 @@ type RequestMagicLinkRequest struct {
 func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 	var req RequestMagicLinkRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "valid email required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "valid email required")
 		return
 	}
 
@@ -38,7 +38,7 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "If this email exists, a login link has been sent"})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -55,13 +55,13 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "token required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "token required")
 		return
 	}
 
 	session, err := h.portalService.VerifyMagicLink(c.Request.Context(), token)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, err.Error())
 		return
 	}
 
@@ -78,13 +78,13 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 func (h *PortalAPIHandler) GetInvoices(c *gin.Context) {
 	customerID, exists := c.Get("portal_customer_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	invoices, err := h.portalService.GetCustomerInvoices(c.Request.Context(), customerID.(uuid.UUID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -95,13 +95,13 @@ func (h *PortalAPIHandler) GetInvoices(c *gin.Context) {
 func (h *PortalAPIHandler) GetProfile(c *gin.Context) {
 	customerID, exists := c.Get("portal_customer_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	customer, err := h.portalService.GetCustomer(c.Request.Context(), customerID.(uuid.UUID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -116,18 +116,18 @@ type PortalRedeemGiftRequest struct {
 func (h *PortalAPIHandler) RedeemGift(c *gin.Context) {
 	customerID, exists := c.Get("portal_customer_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	var req PortalRedeemGiftRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "code required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "code required")
 		return
 	}
 
 	if err := h.portalService.RedeemGift(c.Request.Context(), customerID.(uuid.UUID), req.Code); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 

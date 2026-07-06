@@ -105,7 +105,7 @@ const CreateQuote = () => {
             await endpoints.createQuote(payload)
             navigate('/quotes')
         } catch (err) {
-            setError(err.response?.data?.error || 'Failed to create quote')
+            setError(err.response?.data?.error?.message || 'Failed to create quote')
         } finally {
             setLoading(false)
         }

@@ -25,13 +25,13 @@ type createOrgRequest struct {
 func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 	var req createOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	org, err := h.service.Create(c.Request.Context(), req.Name, req.OwnerEmail)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -41,13 +41,13 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	org, err := h.service.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "organization not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "organization not found")
 		return
 	}
 
@@ -61,24 +61,24 @@ type addTenantRequest struct {
 func (h *OrganizationHandler) AddTenant(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	var req addTenantRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	tenantID, err := uuid.Parse(req.TenantID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid tenant_id")
 		return
 	}
 
 	if err := h.service.AddTenant(c.Request.Context(), orgID, tenantID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -88,13 +88,13 @@ func (h *OrganizationHandler) AddTenant(c *gin.Context) {
 func (h *OrganizationHandler) ListTenants(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	tenants, err := h.service.ListTenants(c.Request.Context(), orgID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -113,19 +113,19 @@ type updateOrgRequest struct {
 func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	var req updateOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	org, err := h.service.Update(c.Request.Context(), id, req.Name, req.OwnerEmail)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -135,12 +135,12 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -150,18 +150,18 @@ func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	tenantID, err := uuid.Parse(c.Param("tenant_id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid tenant id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid tenant id")
 		return
 	}
 
 	if err := h.service.RemoveTenant(c.Request.Context(), orgID, tenantID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -171,7 +171,7 @@ func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
 func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
 	orgs, err := h.service.List(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -185,13 +185,13 @@ func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
 func (h *OrganizationHandler) GetConsolidatedMRR(c *gin.Context) {
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid organization id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
 	metrics, err := h.service.GetConsolidatedMRR(c.Request.Context(), orgID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

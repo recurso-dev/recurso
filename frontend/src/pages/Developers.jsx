@@ -83,7 +83,7 @@ const Developers = () => {
             fetchWebhooks()
         } catch (error) {
             console.error("Failed to create webhook:", error)
-            alert('Failed to create webhook: ' + (error.response?.data?.error || error.message))
+            alert('Failed to create webhook: ' + (error.response?.data?.error?.message || error.message))
         }
     }
 

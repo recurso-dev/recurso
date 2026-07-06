@@ -4,34 +4,28 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 )
 
-// Standard API error codes
+// Standard API error codes (snake_case machine codes; see httperr package).
 const (
-	ErrCodeBadRequest    = "BAD_REQUEST"
-	ErrCodeUnauthorized  = "UNAUTHORIZED"
-	ErrCodeNotFound      = "NOT_FOUND"
-	ErrCodeConflict      = "CONFLICT"
-	ErrCodeInternalError = "INTERNAL_ERROR"
-	ErrCodeValidation    = "VALIDATION_ERROR"
-	ErrCodeInvalidAPIKey = "INVALID_API_KEY"
-	ErrCodeRateLimited   = "RATE_LIMITED"
+	ErrCodeBadRequest    = httperr.CodeValidationFailed
+	ErrCodeUnauthorized  = httperr.CodeUnauthorized
+	ErrCodeNotFound      = httperr.CodeNotFound
+	ErrCodeConflict      = httperr.CodeConflict
+	ErrCodeInternalError = httperr.CodeInternalError
+	ErrCodeValidation    = httperr.CodeValidationFailed
+	ErrCodeInvalidAPIKey = httperr.CodeInvalidAPIKey
+	ErrCodeRateLimited   = httperr.CodeRateLimited
 )
 
-// APIError represents a standardized error response
-type APIError struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-}
+// APIError represents a standardized error response.
+type APIError = httperr.APIError
 
-// RespondError sends a standardized error response
+// RespondError sends a standardized error response in the canonical shape
+// {"error": {"code": "...", "message": "..."}}.
 func RespondError(c *gin.Context, status int, code, message string) {
-	c.JSON(status, gin.H{
-		"error": APIError{
-			Code:    code,
-			Message: message,
-		},
-	})
+	httperr.Respond(c, status, code, message)
 }
 
 // RespondBadRequest sends a 400 error

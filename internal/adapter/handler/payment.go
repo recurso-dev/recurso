@@ -24,23 +24,23 @@ type createOrderRequest struct {
 func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	var req createOrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	id, err := uuid.Parse(req.InvoiceID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Invoice ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid Invoice ID")
 		return
 	}
 
 	invoice, err := h.invoiceRepo.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Database error")
 		return
 	}
 	if invoice == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Invoice not found"})
+		respondError(c, http.StatusNotFound, codeNotFound, "Invoice not found")
 		return
 	}
 
@@ -52,7 +52,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		invoice.InvoiceNumber,
 	)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gateway error: " + err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Gateway error: "+err.Error())
 		return
 	}
 

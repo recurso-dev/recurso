@@ -20,25 +20,25 @@ func NewLedgerHandler(service *service.LedgerService) *LedgerHandler {
 func (h *LedgerHandler) GetEntries(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	accountIDStr := c.Query("account_id")
 	if accountIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "account_id is required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "account_id is required")
 		return
 	}
 
 	accountID, err := uuid.Parse(accountIDStr)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid account_id"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid account_id")
 		return
 	}
 
 	entries, err := h.service.GetEntries(c.Request.Context(), tenantID.(uuid.UUID), accountID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch ledger entries"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch ledger entries")
 		return
 	}
 
@@ -52,13 +52,13 @@ func (h *LedgerHandler) GetEntries(c *gin.Context) {
 func (h *LedgerHandler) ListAccounts(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
 
 	accounts, err := h.service.ListAccounts(c.Request.Context(), tenantID.(uuid.UUID))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch accounts"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch accounts")
 		return
 	}
 

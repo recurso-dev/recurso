@@ -29,19 +29,19 @@ type recordEventRequest struct {
 func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	var req recordEventRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
 	subID, err := uuid.Parse(req.SubscriptionID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Subscription ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid Subscription ID")
 		return
 	}
 
 	custID, err := uuid.Parse(req.CustomerID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Customer ID"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid Customer ID")
 		return
 	}
 
@@ -61,13 +61,13 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	if ok { // If ok, inject. If not (unauth?), usage handler is auth...
 		ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 		if err := h.repo.RecordEvent(ctx, event); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record event"})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to record event")
 			return
 		}
 	} else {
 		// If auth middleware didn't run?
 		if err := h.repo.RecordEvent(c.Request.Context(), event); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to record event"})
+			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to record event")
 			return
 		}
 	}

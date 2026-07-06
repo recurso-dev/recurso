@@ -20,7 +20,7 @@ func NewRevRecHandler(revrecService *service.RevRecService) *RevRecHandler {
 func (h *RevRecHandler) GetReport(c *gin.Context) {
 	tid, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "tenant_id missing"})
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
 
@@ -28,25 +28,25 @@ func (h *RevRecHandler) GetReport(c *gin.Context) {
 	yearStr := c.Query("year")
 
 	if monthStr == "" || yearStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "month and year query parameters are required"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "month and year query parameters are required")
 		return
 	}
 
 	month, err := strconv.Atoi(monthStr)
 	if err != nil || month < 1 || month > 12 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid month"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid month")
 		return
 	}
 
 	year, err := strconv.Atoi(yearStr)
 	if err != nil || year < 2000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid year"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid year")
 		return
 	}
 
 	report, err := h.revrecService.GetReport(c.Request.Context(), tid, month, year)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 

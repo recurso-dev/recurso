@@ -47,6 +47,42 @@ tags:
     description: Webhook endpoint management and event feed
   - name: Analytics
     description: Revenue analytics
+  - name: Checkout
+    description: Public hosted checkout for invoices
+  - name: Payments
+    description: Payment order creation
+  - name: Inbound Webhooks
+    description: Receivers for payment-gateway callbacks (Razorpay, Stripe)
+  - name: Customer Portal
+    description: Customer-facing portal — magic-link auth and session-scoped data
+  - name: Developer
+    description: API key management
+  - name: Account
+    description: Tenant account settings
+  - name: Finance
+    description: Ledger accounts, entries, reconciliation, and revenue recognition
+  - name: Settings
+    description: Tax (GST) and e-invoicing (IRP) configuration
+  - name: Consents
+    description: Consent records for RBI-compliant recurring billing
+  - name: Referrals
+    description: Customer referral program
+  - name: Gifts
+    description: Gift subscriptions
+  - name: Mandates
+    description: UPI Autopay mandates
+  - name: Offline Payments
+    description: Virtual accounts and manually recorded payments
+  - name: Organizations
+    description: Multi-entity organizations grouping several tenants
+  - name: Accounting
+    description: QuickBooks / Xero accounting integrations
+  - name: Churn
+    description: Churn risk scoring and alerts
+  - name: Cancel Flows
+    description: Configurable retention flows shown at cancellation time
+  - name: Dunning
+    description: Dunning analytics and multi-channel dunning campaigns
 
 paths:
   /health:
@@ -1216,6 +1252,2568 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /checkout/{id}:
+    get:
+      operationId: showCheckout
+      tags: [Checkout]
+      summary: Fetch checkout data for an invoice
+      description: Returns the invoice summary rendered by the hosted checkout page. Public and rate-limited.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Invoice summary for checkout.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CheckoutInvoice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /checkout/{id}/pay:
+    post:
+      operationId: initiateCheckoutPayment
+      tags: [Checkout]
+      summary: Initiate payment for an invoice
+      description: Creates a payment order on the configured gateway for an unpaid invoice.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Gateway order created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      order_id:
+                        type: string
+                      amount:
+                        type: integer
+                        format: int64
+                        description: Amount in the lowest currency unit.
+                      currency:
+                        type: string
+                      invoice_id:
+                        type: string
+                        format: uuid
+                      invoice_number:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /checkout/{id}/success:
+    get:
+      operationId: checkoutSuccess
+      tags: [Checkout]
+      summary: Confirm checkout success
+      description: Marks the invoice as paid (demo flow) and returns a confirmation payload.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Invoice confirmed paid.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        const: paid
+                      invoice_id:
+                        type: string
+                        format: uuid
+                      invoice_number:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /payments/order:
+    post:
+      operationId: createPaymentOrder
+      tags: [Payments]
+      summary: Create a gateway payment order for an invoice
+      description: |
+        Creates a payment order on the configured payment gateway. Public and rate-limited.
+        Note: the response uses the gateway port's Go field names (capitalized) verbatim.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [invoice_id]
+              properties:
+                invoice_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Gateway order.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaymentOrder'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/razorpay:
+    post:
+      operationId: handleRazorpayWebhook
+      tags: [Inbound Webhooks]
+      summary: Razorpay webhook receiver
+      description: |
+        Inbound receiver for Razorpay events (payment captured/failed, mandate lifecycle,
+        virtual-account credits). The raw body must be signed with the
+        `X-Razorpay-Signature` HMAC header; unsigned or tampered requests are rejected.
+        This endpoint is called by Razorpay, not by API consumers.
+      security: []
+      parameters:
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 signature of the raw request body.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Razorpay event payload.
+      responses:
+        '200':
+          description: Event processed (or deliberately ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  reason:
+                    type: string
+                    description: Present when the event was ignored.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webhooks/stripe:
+    post:
+      operationId: handleStripeWebhook
+      tags: [Inbound Webhooks]
+      summary: Stripe webhook receiver
+      description: |
+        Inbound receiver for Stripe events. The raw body must be signed with the
+        `Stripe-Signature` header; unsigned or tampered requests are rejected.
+        This endpoint is called by Stripe, not by API consumers.
+      security: []
+      parameters:
+        - name: Stripe-Signature
+          in: header
+          required: true
+          description: Stripe webhook signature header.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Stripe event payload.
+      responses:
+        '200':
+          description: Event processed (or deliberately ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  reason:
+                    type: string
+                    description: Present when the event was ignored.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/invoices/{id}/preview:
+    get:
+      operationId: previewInvoiceHTML
+      tags: [Invoices]
+      summary: Preview an invoice as HTML
+      description: Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Print-ready invoice document.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /portal/{customer_id}:
+    get:
+      operationId: showPortalDashboard
+      tags: [Customer Portal]
+      summary: Legacy HTML customer dashboard
+      description: Server-rendered HTML dashboard listing the customer's invoices. Public, rate-limited.
+      security: []
+      parameters:
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: HTML dashboard.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Invalid customer ID (plain text).
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Customer not found (plain text).
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /v1/portal/{tenant_id}/{customer_id}:
+    get:
+      operationId: getPortalData
+      tags: [Customer Portal]
+      summary: Read-only portal data (JSON)
+      description: Unauthenticated, rate-limited JSON payload consumed by the React portal — customer profile, subscriptions, and invoices.
+      security: []
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: customer_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Portal payload.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  customer:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: [string, 'null']
+                      email:
+                        type: string
+                        format: email
+                  subscriptions:
+                    type: [array, 'null']
+                    items:
+                      $ref: '#/components/schemas/Subscription'
+                  invoices:
+                    type: [array, 'null']
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /portal/auth/request:
+    post:
+      operationId: requestPortalMagicLink
+      tags: [Customer Portal]
+      summary: Request a magic login link
+      description: Emails a passwordless login link to the customer. Always responds positively so email existence is not revealed.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Link sent (or silently skipped for unknown emails).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  _dev_link:
+                    type: string
+                    description: Verification link — exposed only when APP_ENV=development.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /portal/auth/verify:
+    get:
+      operationId: verifyPortalMagicLink
+      tags: [Customer Portal]
+      summary: Verify a magic link and start a session
+      description: Exchanges the emailed token for a 7-day portal session. The session token is also set as the `portal_session` cookie.
+      security: []
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  session_token:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/profile:
+    get:
+      operationId: getPortalProfile
+      tags: [Customer Portal]
+      summary: Get the logged-in customer's profile
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: The customer profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/invoices:
+    get:
+      operationId: getPortalInvoices
+      tags: [Customer Portal]
+      summary: List the logged-in customer's invoices
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: The customer's invoices.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invoice'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/redeem:
+    post:
+      operationId: portalRedeemGift
+      tags: [Customer Portal]
+      summary: Redeem a gift code as the logged-in customer
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Gift redeemed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/logout:
+    post:
+      operationId: portalLogout
+      tags: [Customer Portal]
+      summary: Log out of the customer portal
+      description: Clears the `portal_session` cookie.
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: Logged out.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /v1/analytics/usage:
+    get:
+      operationId: getUsageStats
+      tags: [Analytics]
+      summary: Aggregate usage by dimension
+      description: Total metered quantity per usage dimension. Responses are cached for up to 5 minutes.
+      responses:
+        '200':
+          description: Usage totals per dimension.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UsageStats'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/analytics/dunning/overview:
+    get:
+      operationId: getDunningOverview
+      tags: [Dunning]
+      summary: Dunning retry overview
+      description: Aggregate retry counts and success rate for the smart dunning engine. Cached for up to 5 minutes.
+      responses:
+        '200':
+          description: Dunning overview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningOverview'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/analytics/dunning/weights:
+    get:
+      operationId: getDunningWeights
+      tags: [Dunning]
+      summary: Learned dunning retry weights
+      description: Expected-reward weights learned per customer context and retry action. Cached for up to 5 minutes.
+      responses:
+        '200':
+          description: Learned weights.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DunningWeight'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/analytics/dunning/history:
+    get:
+      operationId: getDunningHistory
+      tags: [Dunning]
+      summary: Recent dunning retry attempts
+      description: Chronological log of individual retry attempts and outcomes. Cached for up to 5 minutes.
+      parameters:
+        - name: limit
+          in: query
+          description: Maximum records to return (values outside 1-200 fall back to 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Retry history.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DunningHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/analytics/ask:
+    post:
+      operationId: askAnalytics
+      tags: [Analytics]
+      summary: Ask a natural-language analytics question
+      description: Uses an LLM to translate the question into tenant-scoped SQL, runs it, and returns both the rows and the generated query.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question:
+                  type: string
+                  examples: ["What was my MRR growth over the last 3 months?"]
+      responses:
+        '200':
+          description: Query result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    description: Result rows for the generated SQL query.
+                  query:
+                    type: string
+                    description: The generated SQL that produced the rows.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/developer/keys:
+    get:
+      operationId: listAPIKeys
+      tags: [Developer]
+      summary: List API keys
+      responses:
+        '200':
+          description: API keys for the tenant (raw key values are never returned here).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/APIKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createAPIKey
+      tags: [Developer]
+      summary: Create an API key
+      description: Generates a new secret key. The raw `key_value` is returned only in this response.
+      responses:
+        '201':
+          description: Key created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/account:
+    get:
+      operationId: getAccount
+      tags: [Account]
+      summary: Get the tenant account
+      responses:
+        '200':
+          description: The tenant account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Tenant'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateAccount
+      tags: [Account]
+      summary: Update the tenant account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Updated account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/ledger/accounts:
+    get:
+      operationId: listLedgerAccounts
+      tags: [Finance]
+      summary: List ledger accounts
+      description: Double-entry ledger accounts (cash, accounts receivable, revenue, etc.) for the tenant.
+      responses:
+        '200':
+          description: Ledger accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LedgerAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/ledger/entries:
+    get:
+      operationId: listLedgerEntries
+      tags: [Finance]
+      summary: List ledger entries for an account
+      parameters:
+        - name: account_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Ledger transfers touching the account.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LedgerTransaction'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/finance/reconciliation:
+    get:
+      operationId: runReconciliation
+      tags: [Finance]
+      summary: Run an on-demand ledger reconciliation
+      description: |
+        Reconciles the tenant's invoices against its Postgres ledger entries and
+        returns the computed drift report. Nothing is persisted. TigerBeetle is
+        not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+      responses:
+        '200':
+          description: Reconciliation report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReconciliationReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/finance/revrec/report:
+    get:
+      operationId: getRevRecReport
+      tags: [Finance]
+      summary: Revenue recognition report
+      description: Recognized vs. deferred revenue for the requested month.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 2000
+      responses:
+        '200':
+          description: Revenue recognition report for the period.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    description: Report payload (recognized/deferred totals and breakdown rows).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/settings/gst:
+    get:
+      operationId: getGSTConfig
+      tags: [Settings]
+      summary: Get GST configuration
+      description: Returns the tenant's Indian GST configuration, or sensible defaults when unconfigured.
+      responses:
+        '200':
+          description: GST configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GSTConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateGSTConfig
+      tags: [Settings]
+      summary: Update GST configuration
+      description: When a GSTIN is supplied without a state code, the state is derived from the GSTIN prefix.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GSTConfig'
+      responses:
+        '200':
+          description: Configuration saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GSTConfig'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/settings/gst/validate:
+    post:
+      operationId: validateGSTIN
+      tags: [Settings]
+      summary: Validate a GSTIN
+      description: Checks the GSTIN format and, when valid, returns the parsed state and PAN components.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gstin:
+                  type: string
+                  minLength: 15
+                  maxLength: 15
+      responses:
+        '200':
+          description: Validation result (returned for both valid and invalid GSTINs).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  valid:
+                    type: boolean
+                  state_code:
+                    type: string
+                    description: Present when valid.
+                  state_name:
+                    type: string
+                    description: Present when valid.
+                  pan:
+                    type: string
+                    description: Present when valid.
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/settings/irp:
+    get:
+      operationId: getIRPConfig
+      tags: [Settings]
+      summary: Get IRP (e-invoicing) configuration
+      description: Returns the tenant's Invoice Registration Portal credentials with secrets masked.
+      responses:
+        '200':
+          description: IRP configuration (client secret and password masked).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/IRPConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateIRPConfig
+      tags: [Settings]
+      summary: Create or update IRP credentials
+      description: Upserts IRP credentials for the tenant. `environment` defaults to `sandbox`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IRPConfig'
+      responses:
+        '200':
+          description: Configuration saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/IRPConfig'
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/settings/irp/test:
+    post:
+      operationId: testIRPConnection
+      tags: [Settings]
+      summary: Test the IRP connection
+      description: Validates that saved IRP credentials are complete and enabled.
+      responses:
+        '200':
+          description: Test outcome (also returned when credentials are incomplete or disabled).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/consents:
+    post:
+      operationId: recordConsent
+      tags: [Consents]
+      summary: Record customer consent
+      description: Captures a consent record (RBI recurring-billing compliance) with an IP/user-agent audit trail taken from the request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, consent_type, granted]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                subscription_id:
+                  type: string
+                  format: uuid
+                consent_type:
+                  type: string
+                  enum: [recurring_billing, email_marketing, data_processing, terms_of_service, privacy_policy]
+                granted:
+                  type: boolean
+                consent_text:
+                  type: string
+                  description: Exact text shown to the customer. Defaults to the standard recurring-billing text.
+      responses:
+        '201':
+          description: Consent recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/consents/revoke:
+    post:
+      operationId: revokeConsent
+      tags: [Consents]
+      summary: Revoke a consent record
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [consent_id]
+              properties:
+                consent_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Consent revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/customers/{id}/consents:
+    get:
+      operationId: listCustomerConsents
+      tags: [Consents]
+      summary: List a customer's consents
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Consent records for the customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    const: list
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Consent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/subscriptions/{id}/consent:
+    get:
+      operationId: getSubscriptionConsent
+      tags: [Consents]
+      summary: Get the consent tied to a subscription
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The subscription's recurring-billing consent.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Consent'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/cancellation-reasons:
+    get:
+      operationId: listCancellationReasons
+      tags: [Subscriptions]
+      summary: List cancellation reasons
+      description: The fixed set of reasons accepted by `POST /v1/subscriptions/{id}/cancel`.
+      responses:
+        '200':
+          description: Available cancellation reasons.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  object:
+                    type: string
+                    const: list
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          examples: [too_expensive]
+                        label:
+                          type: string
+                        allows_feedback:
+                          type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/referrals:
+    get:
+      operationId: listReferrals
+      tags: [Referrals]
+      summary: List referrals
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Referrals for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Referral'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createReferral
+      tags: [Referrals]
+      summary: Create a referral
+      description: Links a referrer to a referred customer. Self-referrals and duplicate referrals are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [referrer_id, referred_id]
+              properties:
+                referrer_id:
+                  type: string
+                  format: uuid
+                referred_id:
+                  type: string
+                  format: uuid
+                reward_amount:
+                  type: integer
+                  format: int64
+                  default: 500
+                  description: Reward in the lowest currency unit (defaults to 500 = $5.00).
+                currency:
+                  type: string
+                  default: USD
+      responses:
+        '201':
+          description: Referral created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Referral'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/referrals/generate-code:
+    post:
+      operationId: generateReferralCode
+      tags: [Referrals]
+      summary: Generate a referral code for a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The customer's referral code.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      code:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/referrals/{id}/qualify:
+    post:
+      operationId: qualifyReferral
+      tags: [Referrals]
+      summary: Mark a referral as qualified
+      description: Transitions the referral to `qualified` and issues the reward credit.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Qualified referral.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Referral'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/gifts:
+    get:
+      operationId: listGifts
+      tags: [Gifts]
+      summary: List gift subscriptions
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+      responses:
+        '200':
+          description: Gifts for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Gift'
+                  meta:
+                    $ref: '#/components/schemas/PageMeta'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/gifts/purchase:
+    post:
+      operationId: purchaseGift
+      tags: [Gifts]
+      summary: Purchase a gift subscription
+      description: Buys a plan as a gift and returns the redemption code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [buyer_customer_id, plan_id, duration_months]
+              properties:
+                buyer_customer_id:
+                  type: string
+                  format: uuid
+                plan_id:
+                  type: string
+                  format: uuid
+                recipient_email:
+                  type: string
+                  format: email
+                duration_months:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Gift purchased.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Gift'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/gifts/redeem:
+    post:
+      operationId: redeemGift
+      tags: [Gifts]
+      summary: Redeem a gift code
+      description: Redeems a gift code for a customer and starts the gifted subscription.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, recipient_customer_id]
+              properties:
+                code:
+                  type: string
+                recipient_customer_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The subscription created by the redemption.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Subscription'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/mandates:
+    post:
+      operationId: createMandate
+      tags: [Mandates]
+      summary: Create a UPI Autopay mandate
+      description: Registers the mandate with the payment gateway and returns an authorization URL for the customer.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, vpa, max_amount, frequency]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                subscription_id:
+                  type: string
+                  format: uuid
+                vpa:
+                  type: string
+                  description: Customer UPI VPA (e.g. `name@bank`).
+                max_amount:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Maximum per-debit amount in the lowest currency unit.
+                frequency:
+                  type: string
+                  enum: [weekly, monthly, quarterly, yearly]
+      responses:
+        '201':
+          description: Mandate created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mandate:
+                    $ref: '#/components/schemas/Mandate'
+                  auth_url:
+                    type: string
+                    format: uri
+                    description: URL where the customer authorizes the mandate.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listMandates
+      tags: [Mandates]
+      summary: List mandates
+      responses:
+        '200':
+          description: Mandates for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Mandate'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/mandates/{id}:
+    get:
+      operationId: getMandate
+      tags: [Mandates]
+      summary: Retrieve a mandate
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The mandate.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Mandate'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/mandates/{id}/revoke:
+    post:
+      operationId: revokeMandate
+      tags: [Mandates]
+      summary: Revoke a mandate
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Mandate revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: revoked
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/virtual-accounts:
+    post:
+      operationId: createVirtualAccount
+      tags: [Offline Payments]
+      summary: Create a virtual account
+      description: Provisions a virtual bank account (via Razorpay) that the customer can wire money to.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, amount]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                invoice_id:
+                  type: string
+                  format: uuid
+                amount:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Expected amount in the lowest currency unit.
+      responses:
+        '201':
+          description: Virtual account created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VirtualAccount'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listVirtualAccounts
+      tags: [Offline Payments]
+      summary: List virtual accounts
+      responses:
+        '200':
+          description: Virtual accounts for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/VirtualAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/payments/offline:
+    post:
+      operationId: recordOfflinePayment
+      tags: [Offline Payments]
+      summary: Record an offline payment
+      description: Manually records a bank transfer, cash, or cheque payment (optionally against an invoice).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, payment_type, amount]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                invoice_id:
+                  type: string
+                  format: uuid
+                payment_type:
+                  type: string
+                  enum: [bank_transfer, cash, cheque]
+                amount:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Amount in the lowest currency unit.
+                currency:
+                  type: string
+                  default: INR
+                reference_number:
+                  type: string
+                notes:
+                  type: string
+                recorded_by:
+                  type: string
+      responses:
+        '201':
+          description: Payment recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfflinePayment'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listOfflinePayments
+      tags: [Offline Payments]
+      summary: List offline payments
+      responses:
+        '200':
+          description: Offline payments for the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/OfflinePayment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/organizations:
+    get:
+      operationId: listOrganizations
+      tags: [Organizations]
+      summary: List organizations
+      responses:
+        '200':
+          description: All organizations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createOrganization
+      tags: [Organizations]
+      summary: Create an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, owner_email]
+              properties:
+                name:
+                  type: string
+                owner_email:
+                  type: string
+                  format: email
+      responses:
+        '201':
+          description: Organization created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/organizations/{id}:
+    get:
+      operationId: getOrganization
+      tags: [Organizations]
+      summary: Retrieve an organization
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateOrganization
+      tags: [Organizations]
+      summary: Update an organization
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                owner_email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Updated organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Organization'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteOrganization
+      tags: [Organizations]
+      summary: Delete an organization
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Organization deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/organizations/{id}/tenants:
+    post:
+      operationId: addOrganizationTenant
+      tags: [Organizations]
+      summary: Attach a tenant to an organization
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Tenant attached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: added
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listOrganizationTenants
+      tags: [Organizations]
+      summary: List an organization's tenants
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Tenants in the organization.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tenant'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/organizations/{id}/tenants/{tenant_id}:
+    delete:
+      operationId: removeOrganizationTenant
+      tags: [Organizations]
+      summary: Detach a tenant from an organization
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Tenant detached.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: removed
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/organizations/{id}/analytics/mrr:
+    get:
+      operationId: getOrganizationMRR
+      tags: [Organizations]
+      summary: Consolidated MRR across an organization's tenants
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: MRR grouped by currency and tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OrgMRRMetrics'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/accounting/connections:
+    get:
+      operationId: listAccountingConnections
+      tags: [Accounting]
+      summary: List accounting connections
+      responses:
+        '200':
+          description: Connections for the tenant (OAuth tokens are never serialized).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccountingConnection'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/accounting/connect/{provider}:
+    post:
+      operationId: connectAccountingProvider
+      tags: [Accounting]
+      summary: Start an accounting OAuth flow
+      description: Returns the provider authorization URL. The state parameter is HMAC-signed with the tenant identity.
+      parameters:
+        - $ref: '#/components/parameters/AccountingProvider'
+      responses:
+        '200':
+          description: Authorization URL to redirect the user to.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  auth_url:
+                    type: string
+                    format: uri
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/accounting/callback/{provider}:
+    get:
+      operationId: accountingOAuthCallback
+      tags: [Accounting]
+      summary: OAuth callback for accounting providers
+      description: Redirect target for QuickBooks/Xero. Exchanges the authorization code for tokens and stores (or refreshes) the connection.
+      parameters:
+        - $ref: '#/components/parameters/AccountingProvider'
+        - name: code
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: true
+          description: HMAC-signed state issued by the connect endpoint.
+          schema:
+            type: string
+        - name: realmId
+          in: query
+          required: false
+          description: QuickBooks company (realm) ID.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Connection stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: connected
+                  connection_id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/accounting/connections/{id}:
+    delete:
+      operationId: disconnectAccounting
+      tags: [Accounting]
+      summary: Disconnect an accounting integration
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Connection removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: disconnected
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/accounting/sync:
+    post:
+      operationId: triggerAccountingSync
+      tags: [Accounting]
+      summary: Trigger a sync to connected accounting systems
+      responses:
+        '200':
+          description: Sync started.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: sync_triggered
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/accounting/sync/status:
+    get:
+      operationId: getAccountingSyncStatus
+      tags: [Accounting]
+      summary: Recent accounting sync log
+      description: The 50 most recent per-entity sync results.
+      responses:
+        '200':
+          description: Sync log entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AccountingSyncLog'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/customers/{id}/churn:
+    get:
+      operationId: getCustomerChurn
+      tags: [Churn]
+      summary: Churn risk score for a customer
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Churn score and contributing features.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ChurnScoreResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/churn/high-risk:
+    get:
+      operationId: listHighRiskCustomers
+      tags: [Churn]
+      summary: List high-churn-risk customers
+      parameters:
+        - name: threshold
+          in: query
+          description: Minimum churn score (0-100) to include.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 70
+      responses:
+        '200':
+          description: Customers at or above the threshold.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChurnScoreResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/churn/alerts:
+    get:
+      operationId: listChurnAlerts
+      tags: [Churn]
+      summary: List unacknowledged churn alerts
+      description: Up to 100 unacknowledged alerts, newest first.
+      responses:
+        '200':
+          description: Open churn alerts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChurnAlert'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/churn/alerts/{id}/ack:
+    post:
+      operationId: acknowledgeChurnAlert
+      tags: [Churn]
+      summary: Acknowledge a churn alert
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Alert acknowledged.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: acknowledged
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/cancel-flows:
+    get:
+      operationId: listCancelFlows
+      tags: [Cancel Flows]
+      summary: List cancel flows
+      responses:
+        '200':
+          description: Cancel flows for the tenant (returned as a bare array).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CancelFlow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createCancelFlow
+      tags: [Cancel Flows]
+      summary: Create a cancel flow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                is_default:
+                  type: boolean
+                cooldown_days:
+                  type: integer
+                  default: 30
+                  description: Days a customer must wait after accepting an offer before re-entering the flow.
+      responses:
+        '201':
+          description: Flow created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/cancel-flows/{id}:
+    get:
+      operationId: getCancelFlow
+      tags: [Cancel Flows]
+      summary: Retrieve a cancel flow with its steps
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The flow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateCancelFlow
+      tags: [Cancel Flows]
+      summary: Update a cancel flow
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_active:
+                  type: boolean
+                is_default:
+                  type: boolean
+                cooldown_days:
+                  type: integer
+      responses:
+        '200':
+          description: Updated flow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlow'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/cancel-flows/{id}/steps:
+    post:
+      operationId: createCancelFlowStep
+      tags: [Cancel Flows]
+      summary: Add a step to a cancel flow
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step_order, step_type]
+              properties:
+                step_order:
+                  type: integer
+                  minimum: 1
+                step_type:
+                  $ref: '#/components/schemas/CancelFlowStepType'
+                config:
+                  type: object
+                  description: Step-type-specific configuration (survey options, offer details, ...). Defaults to `{}`.
+      responses:
+        '201':
+          description: Step created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlowStep'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/cancel-flows/steps/{id}:
+    put:
+      operationId: updateCancelFlowStep
+      tags: [Cancel Flows]
+      summary: Update a cancel flow step
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step_order:
+                  type: integer
+                step_type:
+                  $ref: '#/components/schemas/CancelFlowStepType'
+                config:
+                  type: object
+      responses:
+        '200':
+          description: Updated step.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlowStep'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteCancelFlowStep
+      tags: [Cancel Flows]
+      summary: Delete a cancel flow step
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Step deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/cancel-flows/sessions/start:
+    post:
+      operationId: startCancelFlowSession
+      tags: [Cancel Flows]
+      summary: Start a cancel flow session
+      description: Begins the tenant's default flow for a customer/subscription. Rejected while the customer's offer cooldown is active.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, subscription_id]
+              properties:
+                customer_id:
+                  type: string
+                  format: uuid
+                subscription_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Session started.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StartSessionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/cancel-flows/sessions/{id}:
+    get:
+      operationId: getCancelFlowSession
+      tags: [Cancel Flows]
+      summary: Retrieve a cancel flow session
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelFlowSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/cancel-flows/sessions/{id}/submit:
+    post:
+      operationId: submitCancelFlowStep
+      tags: [Cancel Flows]
+      summary: Submit a step response in a session
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [response]
+              properties:
+                step_index:
+                  type: integer
+                  minimum: 0
+                response:
+                  description: Step-type-specific response payload (e.g. selected survey reason, offer accepted flag).
+      responses:
+        '200':
+          description: Step processed; indicates the next step or completion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmitStepResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/cancel-flows/stats:
+    get:
+      operationId: getCancelFlowStats
+      tags: [Cancel Flows]
+      summary: Cancel flow analytics
+      parameters:
+        - name: flow_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Aggregated statistics for the flow.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowStats'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/dunning-campaigns:
+    get:
+      operationId: listDunningCampaigns
+      tags: [Dunning]
+      summary: List dunning campaigns
+      responses:
+        '200':
+          description: Campaigns for the tenant (returned as a bare array).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DunningCampaign'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createDunningCampaign
+      tags: [Dunning]
+      summary: Create a dunning campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, trigger_event]
+              properties:
+                name:
+                  type: string
+                trigger_event:
+                  type: string
+                  examples: [payment_failed, invoice_overdue]
+      responses:
+        '201':
+          description: Campaign created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningCampaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/dunning-campaigns/{id}:
+    get:
+      operationId: getDunningCampaign
+      tags: [Dunning]
+      summary: Retrieve a dunning campaign with its steps
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The campaign.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningCampaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      operationId: updateDunningCampaign
+      tags: [Dunning]
+      summary: Update a dunning campaign
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                is_active:
+                  type: boolean
+                trigger_event:
+                  type: string
+      responses:
+        '200':
+          description: Updated campaign.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningCampaign'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/dunning-campaigns/{id}/steps:
+    post:
+      operationId: createDunningCampaignStep
+      tags: [Dunning]
+      summary: Add a step to a dunning campaign
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step_order, channel]
+              properties:
+                step_order:
+                  type: integer
+                  minimum: 1
+                channel:
+                  type: string
+                  enum: [email, sms, in_app]
+                delay_hours:
+                  type: integer
+                  minimum: 0
+                template_name:
+                  type: string
+                subject:
+                  type: string
+                body:
+                  type: string
+                is_payment_wall:
+                  type: boolean
+                  description: When true, this step activates the payment wall on the overdue invoice.
+      responses:
+        '201':
+          description: Step created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningCampaignStep'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/dunning-campaigns/steps/{id}:
+    put:
+      operationId: updateDunningCampaignStep
+      tags: [Dunning]
+      summary: Update a dunning campaign step
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                step_order:
+                  type: integer
+                channel:
+                  type: string
+                  enum: [email, sms, in_app]
+                delay_hours:
+                  type: integer
+                template_name:
+                  type: string
+                subject:
+                  type: string
+                body:
+                  type: string
+                is_payment_wall:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated step.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DunningCampaignStep'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteDunningCampaignStep
+      tags: [Dunning]
+      summary: Delete a dunning campaign step
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Step deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: deleted
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/invoices/{id}/payment-wall:
+    get:
+      operationId: getPaymentWallStatus
+      tags: [Dunning]
+      summary: Payment wall status for an invoice
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Whether the payment wall is active for the invoice.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invoice_id:
+                    type: string
+                    format: uuid
+                  payment_wall_active:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1223,6 +3821,11 @@ components:
       scheme: bearer
       bearerFormat: API key
       description: Tenant API key obtained from `POST /auth/register` or `POST /v1/developer/keys`.
+    portalSession:
+      type: apiKey
+      in: cookie
+      name: portal_session
+      description: Customer-portal session cookie issued by `GET /portal/auth/verify`.
 
   parameters:
     PathID:
@@ -1253,6 +3856,23 @@ components:
         type: integer
         minimum: 1
         default: 1
+    PerPage:
+      name: per_page
+      in: query
+      description: Records per page (capped at 250).
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 250
+        default: 50
+    AccountingProvider:
+      name: provider
+      in: path
+      required: true
+      description: Accounting provider.
+      schema:
+        type: string
+        enum: [quickbooks, xero]
 
   responses:
     BadRequest:
@@ -1277,18 +3897,20 @@ components:
   schemas:
     Error:
       type: object
+      required: [error]
       properties:
         error:
-          description: Error detail — either a plain message or a structured code/message pair.
-          oneOf:
-            - type: string
-            - type: object
-              properties:
-                code:
-                  type: string
-                  examples: [BAD_REQUEST]
-                message:
-                  type: string
+          type: object
+          description: Structured error detail.
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+              examples: [BAD_REQUEST, UNAUTHORIZED, NOT_FOUND, CONFLICT, VALIDATION_ERROR, INVALID_API_KEY, RATE_LIMITED, INTERNAL_ERROR]
+            message:
+              type: string
+              description: Human-readable explanation.
 
     HealthResponse:
       type: object
@@ -2025,3 +4647,967 @@ components:
           type: integer
           format: int64
           description: MRR in the lowest currency unit.
+
+    PageMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+          description: Present only on endpoints that report a total count.
+
+    CheckoutInvoice:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_number:
+          type: string
+        status:
+          type: string
+        currency:
+          type: string
+        subtotal:
+          type: integer
+          format: int64
+        tax_amount:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+        display_amount:
+          type: string
+          description: Human-readable major-unit amount (e.g. "118.00").
+        due_date:
+          type: string
+          format: date
+        customer_id:
+          type: string
+          format: uuid
+
+    PaymentOrder:
+      type: object
+      description: Gateway payment order. Field names are capitalized because the gateway port struct is serialized verbatim.
+      properties:
+        ID:
+          type: string
+          description: Gateway order ID.
+        Amount:
+          type: integer
+          format: int64
+          description: Amount in the lowest currency unit.
+        Currency:
+          type: string
+        Receipt:
+          type: string
+          description: Receipt reference (the invoice number).
+
+    UsageStats:
+      type: object
+      properties:
+        dimension:
+          type: string
+          examples: [api_calls]
+        total_quantity:
+          type: integer
+          format: int64
+
+    DunningOverview:
+      type: object
+      properties:
+        total_retries:
+          type: integer
+        total_successes:
+          type: integer
+        success_rate:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    DunningWeight:
+      type: object
+      properties:
+        context_key:
+          type: string
+          description: Customer context bucket the weight was learned for.
+        action_id:
+          type: string
+          description: Retry action identifier (e.g. 1h, 24h, 3d, 7d).
+        average_reward:
+          type: number
+          description: Learned success rate (0.0-1.0).
+        sample_count:
+          type: integer
+          format: int64
+        updated_at:
+          type: string
+          format: date-time
+
+    DunningHistory:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: string
+          format: uuid
+        context_key:
+          type: string
+        action_id:
+          type: string
+        retry_interval:
+          type: integer
+          format: int64
+          description: Retry interval in seconds.
+        outcome:
+          type: string
+          enum: [success, failure]
+        reward:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        key_value:
+          type: string
+          description: Raw API key. Populated only in the creation response — never on list.
+        key_prefix:
+          type: string
+          description: First characters of the key, for display and lookup.
+        type:
+          type: string
+          examples: [secret]
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    LedgerAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          examples: [Accounts Receivable]
+        type:
+          type: string
+          enum: [asset, liability, equity, revenue, expense]
+        code:
+          type: integer
+          description: Chart-of-accounts code (e.g. 1000 for Cash).
+        ledger_id:
+          type: integer
+        user_data_128:
+          type: object
+          description: Internal TigerBeetle user data (opaque).
+        credits_posted:
+          type: integer
+          format: int64
+          minimum: 0
+        debits_posted:
+          type: integer
+          format: int64
+          minimum: 0
+        currency:
+          type: string
+        balance:
+          type: integer
+          format: int64
+          description: Cached balance snapshot in the lowest currency unit.
+        created_at:
+          type: string
+          format: date-time
+
+    LedgerTransaction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        debit_account_id:
+          type: string
+          format: uuid
+        credit_account_id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+          minimum: 0
+        ledger_id:
+          type: integer
+        code:
+          type: integer
+          description: Transfer code (1 = invoice posting, 3 = payment posting).
+        reference_id:
+          type: string
+          format: uuid
+          description: Invoice or payment ID the transfer references.
+        description:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    ReconciliationDiscrepancy:
+      type: object
+      properties:
+        type:
+          type: string
+          description: Discrepancy category (e.g. missing/incorrect invoice or payment posting, orphan transaction).
+        invoice_id:
+          type: [string, 'null']
+          format: uuid
+        transaction_id:
+          type: [string, 'null']
+          format: uuid
+        reference_id:
+          type: [string, 'null']
+          format: uuid
+        expected_amount:
+          type: integer
+          format: int64
+        found_amount:
+          type: integer
+          format: int64
+
+    ReconciliationReport:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        invoices_checked:
+          type: integer
+        paid_invoices_checked:
+          type: integer
+        total_discrepancies:
+          type: integer
+        discrepancies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReconciliationDiscrepancy'
+        truncated:
+          type: boolean
+          description: True when more discrepancies exist than are listed.
+        tb_compared:
+          type: boolean
+          description: Whether TigerBeetle was included in the comparison.
+        tb_skip_reason:
+          type: string
+
+    GSTConfig:
+      type: object
+      properties:
+        gstin:
+          type: string
+          minLength: 15
+          maxLength: 15
+        state_code:
+          type: string
+          description: Two-digit Indian state code (derived from the GSTIN when omitted).
+        state_name:
+          type: string
+        sac_code:
+          type: string
+          examples: ['998314']
+        gst_rate:
+          type: number
+          examples: [18.0]
+        pan:
+          type: string
+        legal_name:
+          type: string
+        trade_name:
+          type: string
+        address:
+          type: string
+        has_lut:
+          type: boolean
+          description: Letter of Undertaking on file (zero-rated exports).
+
+    IRPConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        environment:
+          type: string
+          enum: [sandbox, production]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+          description: Masked (first 4 characters + ****) in GET responses.
+        username:
+          type: string
+        password:
+          type: string
+          description: Masked (****) in GET responses.
+        gstin:
+          type: string
+        is_enabled:
+          type: boolean
+
+    Consent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: [string, 'null']
+          format: uuid
+        consent_type:
+          type: string
+          enum: [recurring_billing, email_marketing, data_processing, terms_of_service, privacy_policy]
+        granted:
+          type: boolean
+        granted_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+        ip_address:
+          type: string
+        user_agent:
+          type: string
+        consent_text:
+          type: string
+          description: Exact text shown to the customer.
+        version:
+          type: string
+          description: Version of the consent text.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Referral:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        referrer_id:
+          type: string
+          format: uuid
+        referred_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+        status:
+          type: string
+          enum: [pending, qualified, rewarded]
+        reward_amount:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        qualified_at:
+          type: [string, 'null']
+          format: date-time
+
+    Gift:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          description: Redemption code.
+        plan_id:
+          type: string
+          format: uuid
+        buyer_customer_id:
+          type: string
+          format: uuid
+        recipient_email:
+          type: string
+        status:
+          type: string
+          enum: [purchased, redeemed]
+        redeemed_by_customer_id:
+          type: [string, 'null']
+          format: uuid
+        redeemed_at:
+          type: [string, 'null']
+          format: date-time
+        duration_months:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    Mandate:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: [string, 'null']
+          format: uuid
+        mandate_type:
+          type: string
+        payment_method:
+          type: string
+        vpa:
+          type: string
+        razorpay_token_id:
+          type: string
+        razorpay_subscription_id:
+          type: string
+        razorpay_customer_id:
+          type: string
+        max_amount:
+          type: integer
+          format: int64
+        frequency:
+          type: string
+          enum: [weekly, monthly, quarterly, yearly]
+        status:
+          type: string
+          enum: [created, authorized, active, paused, revoked]
+        authorized_at:
+          type: [string, 'null']
+          format: date-time
+        activated_at:
+          type: [string, 'null']
+          format: date-time
+        revoked_at:
+          type: [string, 'null']
+          format: date-time
+        last_debit_at:
+          type: [string, 'null']
+          format: date-time
+        next_debit_at:
+          type: [string, 'null']
+          format: date-time
+        pre_debit_notified:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    VirtualAccount:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: [string, 'null']
+          format: uuid
+        account_number:
+          type: string
+        ifsc_code:
+          type: string
+        bank_name:
+          type: string
+        beneficiary_name:
+          type: string
+        razorpay_va_id:
+          type: string
+        status:
+          type: string
+        amount_expected:
+          type: integer
+          format: int64
+        amount_received:
+          type: integer
+          format: int64
+        closed_at:
+          type: [string, 'null']
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    OfflinePayment:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: [string, 'null']
+          format: uuid
+        payment_type:
+          type: string
+          enum: [bank_transfer, cash, cheque]
+        amount:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        reference_number:
+          type: string
+        notes:
+          type: string
+        recorded_by:
+          type: string
+        recorded_at:
+          type: string
+          format: date-time
+
+    Organization:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        owner_email:
+          type: string
+          format: email
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    TenantMRR:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+        mrr:
+          type: integer
+          format: int64
+        currency:
+          type: string
+
+    CurrencyMRR:
+      type: object
+      properties:
+        total_mrr:
+          type: integer
+          format: int64
+        currency:
+          type: string
+        by_tenant:
+          type: array
+          items:
+            $ref: '#/components/schemas/TenantMRR'
+
+    OrgMRRMetrics:
+      type: object
+      properties:
+        by_currency:
+          type: array
+          items:
+            $ref: '#/components/schemas/CurrencyMRR'
+
+    AccountingConnection:
+      type: object
+      description: OAuth access/refresh tokens are stored server-side and never serialized.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [quickbooks, xero]
+        token_expires_at:
+          type: [string, 'null']
+          format: date-time
+        realm_id:
+          type: string
+          description: QuickBooks company ID / Xero organisation ID.
+        last_sync_at:
+          type: [string, 'null']
+          format: date-time
+        sync_status:
+          type: string
+          examples: [idle]
+        last_error:
+          type: string
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    AccountingSyncLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        connection_id:
+          type: string
+          format: uuid
+        entity_type:
+          type: string
+          examples: [invoice]
+        entity_id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+          description: ID assigned by the accounting provider.
+        action:
+          type: string
+        status:
+          type: string
+        error_message:
+          type: string
+        synced_at:
+          type: string
+          format: date-time
+
+    ChurnFeatures:
+      type: object
+      properties:
+        days_since_signup:
+          type: integer
+        total_invoices:
+          type: integer
+        failed_invoices_90d:
+          type: integer
+        payment_failure_rate:
+          type: number
+        avg_days_to_pay:
+          type: number
+        plan_downgrades:
+          type: integer
+        months_active:
+          type: integer
+        current_mrr:
+          type: integer
+          format: int64
+        usage_trend:
+          type: number
+
+    ChurnScoreResult:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        risk_level:
+          type: string
+          enum: [low, medium, high, critical]
+        features:
+          $ref: '#/components/schemas/ChurnFeatures'
+        model_version:
+          type: string
+
+    ChurnAlert:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        previous_score:
+          type: integer
+        new_score:
+          type: integer
+        threshold:
+          type: integer
+        alert_type:
+          type: string
+        acknowledged:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    CancelFlowStepType:
+      type: string
+      enum: [survey, offer, confirmation]
+
+    CancelFlow:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        is_active:
+          type: boolean
+        is_default:
+          type: boolean
+        cooldown_days:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/CancelFlowStep'
+
+    CancelFlowStep:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        flow_id:
+          type: string
+          format: uuid
+        step_order:
+          type: integer
+        step_type:
+          $ref: '#/components/schemas/CancelFlowStepType'
+        config:
+          description: Step-type-specific configuration (arbitrary JSON).
+        created_at:
+          type: string
+          format: date-time
+
+    CancelFlowSession:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        flow_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress, completed, cancelled, saved]
+        current_step_index:
+          type: integer
+        cancellation_reason:
+          type: string
+        feedback:
+          type: string
+        offer_presented:
+          description: The retention offer shown, if any (arbitrary JSON).
+        offer_accepted:
+          type: boolean
+        saved_by_offer:
+          type: boolean
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+
+    StartSessionResult:
+      type: object
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        flow_id:
+          type: string
+          format: uuid
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/CancelFlowStep'
+        first_step:
+          oneOf:
+            - $ref: '#/components/schemas/CancelFlowStep'
+            - type: 'null'
+
+    SubmitStepResult:
+      type: object
+      properties:
+        session_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [in_progress, completed, cancelled, saved]
+        next_step:
+          $ref: '#/components/schemas/CancelFlowStep'
+        saved_by_offer:
+          type: boolean
+        completed:
+          type: boolean
+
+    FlowStats:
+      type: object
+      properties:
+        total_sessions:
+          type: integer
+        completed_count:
+          type: integer
+        saved_count:
+          type: integer
+        save_rate:
+          type: number
+        reason_breakdown:
+          type: object
+          additionalProperties:
+            type: integer
+        offer_accept_rate:
+          type: number
+
+    DunningCampaign:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        is_active:
+          type: boolean
+        trigger_event:
+          type: string
+          examples: [payment_failed, invoice_overdue]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/DunningCampaignStep'
+
+    DunningCampaignStep:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        campaign_id:
+          type: string
+          format: uuid
+        step_order:
+          type: integer
+        channel:
+          type: string
+          enum: [email, sms, in_app]
+        delay_hours:
+          type: integer
+        template_name:
+          type: string
+        subject:
+          type: string
+        body:
+          type: string
+        is_payment_wall:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time

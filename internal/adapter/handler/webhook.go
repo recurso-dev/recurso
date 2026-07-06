@@ -103,7 +103,7 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		h.logger.Error("failed to read webhook body", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "failed to read body")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 				"signature", signature,
 				"ip", c.ClientIP(),
 			)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+			respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
 			return
 		}
 	} else {
@@ -127,7 +127,7 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	var event RazorpayWebhookPayload
 	if err := json.Unmarshal(body, &event); err != nil {
 		h.logger.Error("invalid webhook JSON", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid JSON")
 		return
 	}
 
@@ -174,7 +174,7 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 				"invoice_id", invoiceID,
 				"error", err,
 			)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 			return
 		}
 
@@ -203,7 +203,7 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		h.logger.Error("failed to read stripe webhook body", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to read body"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "failed to read body")
 		return
 	}
 
@@ -216,14 +216,14 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 				"error", err,
 				"ip", c.ClientIP(),
 			)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid signature"})
+			respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
 			return
 		}
 	} else {
 		h.logger.Warn("STRIPE_WEBHOOK_SECRET not set — skipping signature verification")
 		if err := json.Unmarshal(body, &event); err != nil {
 			h.logger.Error("invalid stripe webhook JSON", "error", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON"})
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid JSON")
 			return
 		}
 	}
@@ -244,7 +244,7 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	}
 
 	if handlerErr != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": handlerErr.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, handlerErr.Error())
 		return
 	}
 
@@ -551,7 +551,7 @@ func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		h.logger.Error("failed to parse token.confirmed payload", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid payload")
 		return
 	}
 
@@ -564,7 +564,7 @@ func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
 	customerID := payload.Payload.Token.Entity.CustomerID
 	if err := h.mandateService.HandleAuthorization(c.Request.Context(), tokenID, customerID); err != nil {
 		h.logger.Error("failed to handle mandate authorization", "token_id", tokenID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -598,7 +598,7 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 	}
 	if err := json.Unmarshal(body, &payload); err != nil {
 		h.logger.Error("failed to parse virtual_account.credited payload", "error", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid payload"})
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid payload")
 		return
 	}
 
@@ -613,7 +613,7 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 
 	if err := h.offlinePaymentSvc.ReconcileVirtualAccount(c.Request.Context(), vaID, amount, paymentID); err != nil {
 		h.logger.Error("failed to reconcile virtual account", "va_id", vaID, "error", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
 
@@ -646,7 +646,7 @@ func (h *WebhookHandler) handleRazorpayPaymentFailed(c *gin.Context, event Razor
 			"invoice_id", invoiceID,
 			"error", err,
 		)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch invoice"})
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
 		return
 	}
 
