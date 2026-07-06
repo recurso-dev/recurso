@@ -30,9 +30,8 @@ can sign off on the output.
       (QBO SyncToken sparse updates with stale-token retry, Xero
       POST-with-ID upserts, deleted-at-provider recreate), and QBO invoice
       lines carry real ItemRefs.
-- [ ] **Accounting sync efficiency** — daily sync now re-pushes every
-      mapped entity (no changed-since dirty tracking); Xero invoice lines
-      link items by Code, which isn't plumbed through yet.
+- [x] **Accounting sync efficiency** — changed-since dirty tracking
+      (force flag on manual sync), and Xero lines link items by Code.
 - [x] **Razorpay mandate revocation** — real customer-scoped token
       deletion (idempotent), Razorpay customer id captured at creation and
       backfilled from the activation webhook; legacy mandates without a
