@@ -1988,8 +1988,11 @@ paths:
       summary: Run an on-demand ledger reconciliation
       description: |
         Reconciles the tenant's invoices against its Postgres ledger entries and
-        returns the computed drift report. Nothing is persisted. TigerBeetle is
-        not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+        returns the computed drift report. Nothing is persisted. When TigerBeetle
+        is connected its transfers are enumerated and compared against the
+        PostgreSQL ledger (missing_in_tigerbeetle / missing_in_postgres /
+        tb_amount_mismatch); otherwise `tb_compared` is false with the
+        reason in `tb_skip_reason`.
       responses:
         '200':
           description: Reconciliation report.
@@ -3882,11 +3885,8 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                entitlements:
-                  type: array
-                  items: { $ref: "#/components/schemas/EntitlementInput" }
+              type: array
+              items: { $ref: "#/components/schemas/EntitlementInput" }
       responses:
         "200":
           description: Updated entitlement set
