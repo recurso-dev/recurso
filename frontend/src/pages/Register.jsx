@@ -119,9 +119,8 @@ const Register = () => {
                             />
                         </div>
 
-                        {/* Password Field Mock (Not used by backend yet, visually represented) 
-                            Backend only needs Name and Email for now.
-                        */}
+                        {/* No password field: registration is API-key based —
+                            the backend only needs a workspace name and email. */}
 
                         <div className="flex items-start">
                             <input

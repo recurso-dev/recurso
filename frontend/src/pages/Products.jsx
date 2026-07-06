@@ -32,14 +32,15 @@ const Products = () => {
                 // Backend returns plans. We map them to "product" structure for the UI.
                 const plans = response.data.data || []
 
-                // MOCK/Transform: Since "Plans" are simpler in backend, we adapt here.
+                // The backend's catalog unit is the Plan; this page presents
+                // plans as "products" with their price points as variants.
                 const transformed = plans.map(p => ({
                     id: p.id,
                     name: p.name,
                     description: p.description || 'No description',
                     status: p.active ? 'active' : 'archived',
-                    plans: p.prices ? p.prices.length : 0, // Count prices/variations as "plans" count proxy
-                    updated_at: p.created_at // Use created_at if updated_at is missing
+                    prices: p.prices ? p.prices.length : 0,
+                    created_at: p.created_at
                 }))
                 setProducts(transformed)
             } catch (error) {
@@ -131,16 +132,15 @@ const Products = () => {
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Product Name</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Description</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Plans</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Last Updated</th>
-                                <th className="px-6 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider"></th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Prices</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Created</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                             {loading ? (
-                                <tr><td colSpan="6" className="p-8 text-center text-slate-500">Loading products...</td></tr>
+                                <tr><td colSpan="5" className="p-8 text-center text-slate-500">Loading products...</td></tr>
                             ) : filteredProducts.length === 0 ? (
-                                <tr><td colSpan="6" className="p-8 text-center text-slate-500">No products found.</td></tr>
+                                <tr><td colSpan="5" className="p-8 text-center text-slate-500">No products found.</td></tr>
                             ) : (
                                 filteredProducts.map((product) => (
                                     <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
@@ -152,14 +152,9 @@ const Products = () => {
                                                 {product.status.charAt(0).toUpperCase() + product.status.slice(1)}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{product.plans}</td>
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{product.prices}</td>
                                         <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
-                                            {new Date(product.updated_at).toLocaleDateString()}
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                            <button className="text-slate-400 hover:text-primary dark:hover:text-primary transition-colors">
-                                                <span className="material-symbols-outlined">more_horiz</span>
-                                            </button>
+                                            {new Date(product.created_at).toLocaleDateString()}
                                         </td>
                                     </tr>
                                 ))

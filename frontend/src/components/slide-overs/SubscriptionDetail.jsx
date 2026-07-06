@@ -117,7 +117,9 @@ const SubscriptionDetail = ({ subscription, customer, plan, isOpen, onClose, onR
                     </div>
                 </div>
 
-                {/* Timeline (Mock) */}
+                {/* Timeline derived from the subscription's real dates
+                    (created_at / current_period_end); there is no per-
+                    subscription event history endpoint yet. */}
                 <h3 className="text-slate-900 dark:text-white text-base font-semibold leading-tight tracking-tight pt-8 pb-4 border-t border-slate-200 dark:border-slate-800 mt-8">Timeline</h3>
                 <div className="flow-root">
                     <ul className="-mb-8">

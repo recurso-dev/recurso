@@ -42,6 +42,9 @@ import Checkout from './pages/Checkout'
 // Smart Dunning
 import DunningDashboard from './pages/DunningDashboard'
 
+// Finance
+import FinanceReconciliation from './pages/FinanceReconciliation'
+
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
 
@@ -94,6 +97,7 @@ function App() {
                             <Route path="/usage" element={<Usage />} />
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/ledger" element={<Ledger />} />
+                            <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
                             <Route path="/quotes" element={<Quotes />} />

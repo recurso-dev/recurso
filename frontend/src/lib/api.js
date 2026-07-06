@@ -38,6 +38,8 @@ export const endpoints = {
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),
+  // On-demand ledger reconciliation (computed per request, never persisted).
+  runReconciliation: () => api.get('/finance/reconciliation'),
   
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),
@@ -47,6 +49,9 @@ export const endpoints = {
   createCustomer: (data) => api.post('/customers', data),
   createPlan: (data) => api.post('/plans', data),
   getPlanEntitlements: (id) => api.get(`/plans/${id}/entitlements`),
+  // PUT semantics: the body is the plan's full desired entitlement set;
+  // entries absent from the array are removed server-side.
+  setPlanEntitlements: (id, entitlements) => api.put(`/plans/${id}/entitlements`, entitlements),
   createSubscription: (data) => api.post('/subscriptions', data),
   updateSubscription: (id, data) => api.put(`/subscriptions/${id}`, data),
   cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),

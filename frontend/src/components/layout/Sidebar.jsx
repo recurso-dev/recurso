@@ -129,6 +129,12 @@ const Sidebar = () => {
                         isActive={path.startsWith("/ledger")}
                     />
                     <SidebarItem
+                        to="/finance/reconciliation"
+                        icon="fact_check"
+                        label="Reconciliation"
+                        isActive={path.startsWith("/finance/reconciliation")}
+                    />
+                    <SidebarItem
                         to="/usage"
                         icon="bar_chart"
                         label="Usage"

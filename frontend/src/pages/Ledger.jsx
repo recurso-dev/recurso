@@ -86,7 +86,7 @@ const Ledger = () => {
                         ))}
                     </select>
                 </div>
-                {/* Account Summary Cards - Mock or Real if account has balance */}
+                {/* Selected account's current balance from the accounts API */}
                 <div className="md:col-span-2 flex gap-4">
                     {selectedAccountId && accounts.find(a => a.id === selectedAccountId) && (
                         <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg shadow-sm">

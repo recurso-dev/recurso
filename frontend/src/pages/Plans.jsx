@@ -200,17 +200,9 @@ const Plans = () => {
                 </div >
             </div >
 
-            {/* Pagination Mock */}
+            {/* Result count (the plans list is fetched in a single page) */}
             <div className="flex items-center justify-between pt-6 text-sm text-slate-600 dark:text-slate-400">
-                <p>Showing <span className="font-medium">{plans.length > 0 ? 1 : 0}</span> to <span className="font-medium">{plans.length}</span> of <span className="font-medium">{plans.length}</span> results</p>
-                <div className="flex items-center justify-center gap-2">
-                    <button disabled className="flex size-9 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 disabled:opacity-50">
-                        <span className="material-symbols-outlined text-base">chevron_left</span>
-                    </button>
-                    <button disabled className="flex size-9 items-center justify-center rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 disabled:opacity-50">
-                        <span className="material-symbols-outlined text-base">chevron_right</span>
-                    </button>
-                </div>
+                <p>Showing <span className="font-medium">{plans.length}</span> {plans.length === 1 ? 'plan' : 'plans'}</p>
             </div>
 
             <PlanDetail
