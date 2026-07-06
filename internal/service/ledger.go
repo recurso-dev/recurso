@@ -77,6 +77,50 @@ func (s *LedgerService) CreateCustomerAccounts(ctx context.Context, customerID u
 	return nil
 }
 
+// ensureCustomerAR guarantees the customer's AR sub-ledger account exists
+// before a posting references it. CreateAccount is ON CONFLICT DO NOTHING,
+// so this is an idempotent no-op after the first call — and it self-heals
+// customers created before AR provisioning was wired into every path.
+func (s *LedgerService) ensureCustomerAR(ctx context.Context, tenantID, customerID uuid.UUID) {
+	if s.pgRepo == nil {
+		return
+	}
+	_ = s.pgRepo.CreateAccount(ctx, &domain.LedgerAccount{
+		ID:       customerID,
+		TenantID: tenantID,
+		Name:     "Accounts Receivable",
+		Type:     domain.AccountTypeAsset,
+		Code:     domain.AccountCodeAR,
+		LedgerID: 1,
+	})
+}
+
+// getOrCreateTenantAccount resolves a tenant's account by code, creating it
+// when absent. The old behavior fell back to hardcoded placeholder UUIDs,
+// which can never satisfy the ledger_transactions FK — every posting for a
+// tenant without a provisioned chart of accounts failed. Self-heals tenants
+// registered before chart provisioning existed.
+func (s *LedgerService) getOrCreateTenantAccount(ctx context.Context, tenantID uuid.UUID, code int, name string, accType domain.AccountType) (uuid.UUID, error) {
+	if s.pgRepo == nil {
+		return uuid.Nil, fmt.Errorf("ledger repository not configured")
+	}
+	if acc, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, code); err == nil && acc != nil {
+		return acc.ID, nil
+	}
+	acc := &domain.LedgerAccount{
+		ID:       uuid.New(),
+		TenantID: tenantID,
+		Name:     name,
+		Type:     accType,
+		Code:     code,
+		LedgerID: 1,
+	}
+	if err := s.pgRepo.CreateAccount(ctx, acc); err != nil {
+		return uuid.Nil, fmt.Errorf("failed to provision %s account for tenant %s: %w", name, tenantID, err)
+	}
+	return acc.ID, nil
+}
+
 // RecordInvoice posts the invoice amount to the ledger.
 // Debit: Customer AR (Asset)
 // Credit: Revenue
@@ -85,18 +129,12 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	if err != nil {
 		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 	}
+	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
 	txID := uuid.New()
 
-	// Look up revenue account dynamically
-	var revenueAccountID uuid.UUID
-	if s.pgRepo != nil {
-		revenueAcct, err := s.pgRepo.GetAccountByTenantAndCode(ctx, invoice.TenantID, domain.AccountCodeRevenue)
-		if err == nil && revenueAcct != nil {
-			revenueAccountID = revenueAcct.ID
-		}
-	}
-	if revenueAccountID == uuid.Nil {
-		revenueAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	revenueAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+	if err != nil {
+		return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 	}
 
 	transfer := &domain.LedgerTransaction{
@@ -135,18 +173,12 @@ func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoi
 	if err != nil {
 		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 	}
+	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
 	txID := uuid.New()
 
-	// Look up cash account dynamically
-	var cashAccountID uuid.UUID
-	if s.pgRepo != nil {
-		cashAcct, err := s.pgRepo.GetAccountByTenantAndCode(ctx, invoice.TenantID, domain.AccountCodeCash)
-		if err == nil && cashAcct != nil {
-			cashAccountID = cashAcct.ID
-		}
-	}
-	if cashAccountID == uuid.Nil {
-		cashAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000004")
+	cashAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	if err != nil {
+		return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
 	}
 
 	transfer := &domain.LedgerTransaction{
@@ -186,20 +218,13 @@ func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, cr
 	}
 	txID := uuid.New()
 
-	var refundsAccountID, cashAccountID uuid.UUID
-	if s.pgRepo != nil {
-		if ra, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeRefunds); err == nil && ra != nil {
-			refundsAccountID = ra.ID
-		}
-		if ca, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeCash); err == nil && ca != nil {
-			cashAccountID = ca.ID
-		}
+	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	if err != nil {
+		return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
 	}
-	if refundsAccountID == uuid.Nil {
-		refundsAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000005")
-	}
-	if cashAccountID == uuid.Nil {
-		cashAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000004")
+	cashAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	if err != nil {
+		return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
 	}
 
 	transfer := &domain.LedgerTransaction{
@@ -247,22 +272,13 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 	}
 	txID := uuid.New()
 
-	var deferredAccountID, recognizedAccountID uuid.UUID
-	if s.pgRepo != nil {
-		da, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeDeferredRevenue)
-		if err == nil && da != nil {
-			deferredAccountID = da.ID
-		}
-		ra, err := s.pgRepo.GetAccountByTenantAndCode(ctx, tenantID, domain.AccountCodeRecognizedRevenue)
-		if err == nil && ra != nil {
-			recognizedAccountID = ra.ID
-		}
+	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
 	}
-	if deferredAccountID == uuid.Nil {
-		deferredAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000002")
-	}
-	if recognizedAccountID == uuid.Nil {
-		recognizedAccountID = uuid.MustParse("00000000-0000-0000-0000-000000000003")
+	recognizedAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRecognizedRevenue, "Recognized Revenue", domain.AccountTypeRevenue)
+	if err != nil {
+		return uuid.Nil, err
 	}
 
 	transfer := &domain.LedgerTransaction{

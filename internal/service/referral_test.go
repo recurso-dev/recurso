@@ -10,12 +10,12 @@ import (
 
 // --- Mock ReferralRepository ---
 type mockReferralRepo struct {
-	referrals      []*domain.Referral
-	byReferredID   *domain.Referral
-	byID           map[uuid.UUID]*domain.Referral
-	created        []*domain.Referral
-	updated        []*domain.Referral
-	createErr      error
+	referrals    []*domain.Referral
+	byReferredID *domain.Referral
+	byID         map[uuid.UUID]*domain.Referral
+	created      []*domain.Referral
+	updated      []*domain.Referral
+	createErr    error
 }
 
 func newMockReferralRepo() *mockReferralRepo {

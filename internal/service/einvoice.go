@@ -191,16 +191,16 @@ func (s *EInvoiceService) GetEInvoiceStatus(ctx context.Context, invoiceID uuid.
 	}
 
 	return map[string]interface{}{
-		"invoice_id":        invoice.ID,
-		"invoice_number":    invoice.InvoiceNumber,
-		"e_invoice_status":  invoice.EInvoiceStatus,
-		"irn":               invoice.IRN,
-		"ack_no":            invoice.AckNo,
-		"ack_date":          invoice.AckDate,
-		"signed_qr_code":    invoice.SignedQRCode,
-		"retry_count":       invoice.EInvoiceRetryCount,
-		"next_retry_at":     invoice.EInvoiceNextRetryAt,
-		"error_message":     invoice.EInvoiceErrorMessage,
+		"invoice_id":       invoice.ID,
+		"invoice_number":   invoice.InvoiceNumber,
+		"e_invoice_status": invoice.EInvoiceStatus,
+		"irn":              invoice.IRN,
+		"ack_no":           invoice.AckNo,
+		"ack_date":         invoice.AckDate,
+		"signed_qr_code":   invoice.SignedQRCode,
+		"retry_count":      invoice.EInvoiceRetryCount,
+		"next_retry_at":    invoice.EInvoiceNextRetryAt,
+		"error_message":    invoice.EInvoiceErrorMessage,
 	}, nil
 }
 

@@ -124,11 +124,11 @@ func ExtractFeatures(ctx context.Context, customer *domain.Customer, invoices []
 
 // ChurnScoreResult is returned by the churn scoring endpoint.
 type ChurnScoreResult struct {
-	CustomerID uuid.UUID      `json:"customer_id"`
-	Score      int            `json:"score"`
-	RiskLevel  string         `json:"risk_level"`
-	Features   *ChurnFeatures `json:"features"`
-	ModelVersion string       `json:"model_version"`
+	CustomerID   uuid.UUID      `json:"customer_id"`
+	Score        int            `json:"score"`
+	RiskLevel    string         `json:"risk_level"`
+	Features     *ChurnFeatures `json:"features"`
+	ModelVersion string         `json:"model_version"`
 }
 
 func RiskLevel(score int) string {

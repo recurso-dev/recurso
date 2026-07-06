@@ -16,7 +16,7 @@ type AnalyticsService struct {
 }
 
 func NewAnalyticsService(
-	subRepo port.SubscriptionRepository, 
+	subRepo port.SubscriptionRepository,
 	invoiceRepo port.InvoiceRepository,
 	planRepo port.PlanRepository,
 	usageRepo port.UsageRepository,
@@ -53,13 +53,13 @@ func (s *AnalyticsService) GetMRR(ctx context.Context) (*MRRMetrics, error) {
 			// Skip or Log error? Skipping for robustness
 			continue
 		}
-		
+
 		// Simple Calc: Assuming 1 Price is Monthly.
 		// If implementation requires multiple prices or yearly, we'd normalize here.
 		if len(plan.Prices) > 0 {
 			totalMRR += plan.Prices[0].Amount
 		}
 	}
-	
+
 	return &MRRMetrics{Currency: "USD", Amount: totalMRR}, nil
 }

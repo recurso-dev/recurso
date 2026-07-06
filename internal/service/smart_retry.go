@@ -42,7 +42,7 @@ type weightCacheEntry struct {
 
 type SmartRetryService struct {
 	repo           DunningRepository
-	epsilon        float64        // Exploration rate (e.g., 0.1)
+	epsilon        float64 // Exploration rate (e.g., 0.1)
 	strategy       BanditStrategy
 	totalDecisions int64
 

@@ -59,7 +59,7 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustom
 		Phone:         input.Phone,
 		TaxID:         &input.TaxID,
 		GSTIN:         &input.GSTIN,         // P24
-		TaxType:       taxType,             // P25
+		TaxType:       taxType,              // P25
 		PlaceOfSupply: &input.PlaceOfSupply, // P24
 		BillingAddress: domain.BillingAddress{
 			Line1:   input.Line1,

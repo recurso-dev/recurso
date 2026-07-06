@@ -67,13 +67,19 @@ can sign off on the output.
       tenant+method+path (was tenant-only: reused keys replayed the wrong
       endpoint's response), never caches 5xx (transient failures were
       stored for 24h), covers all money-mutating v1 endpoints.
-- [ ] **Load test with published numbers** — invoices/minute, webhook
-      throughput, p99s on a reference box; publish in docs.
+- [x] **Load test with published numbers** — docs/performance.md:
+      7,814 req/s authenticated reads, ~34,600 invoices/min with full
+      ledger posting, p99 under 70ms. The test itself found and fixed
+      three production bugs: per-request bcrypt (~126 req/s cap),
+      single-registration-per-database (unique empty key_value), and
+      ledger postings failing for all API-created tenants (missing
+      account provisioning).
 - [x] **Security posture page** — docs/security.md covers PCI scope,
       credential handling, tenancy isolation, webhook verification, and a
       disclosure channel (security@recurso.dev inbox needs creating 🔒).
-- [ ] **Backup/restore drill** — actually restore from a pg_dump into a
-      fresh stack and document the verified procedure.
+- [x] **Backup/restore drill** — performed against ~58k invoices:
+      volumes destroyed, restored from pg_dump, counts identical, keys
+      still authenticate. Documented in docs/performance.md.
 - [x] **Consistent API error envelope** — every handler returns
       `{"error": {"code", "message"}}` (369 sites, snake_case taxonomy);
       OpenAPI Error schema matches; frontend parse sites updated.

@@ -558,8 +558,12 @@ func main() {
 	// Global Middleware (Phase 47)
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
-	// Rate Limit: 500 requests per minute
-	r.Use(middleware.RateLimitMiddleware(rdb, 500, time.Minute))
+	// Rate limit (per key/IP): RATE_LIMIT_PER_MINUTE, default 500.
+	rateLimit, _ := strconv.Atoi(getEnvDefault("RATE_LIMIT_PER_MINUTE", "500"))
+	if rateLimit <= 0 {
+		rateLimit = 500
+	}
+	r.Use(middleware.RateLimitMiddleware(rdb, rateLimit, time.Minute))
 
 	// CORS Middleware - configurable origin
 	allowedOrigin := os.Getenv("CORS_ORIGIN")

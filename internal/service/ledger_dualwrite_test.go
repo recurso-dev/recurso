@@ -14,10 +14,11 @@ import (
 
 type mockLedgerRepoForLedger struct {
 	port.LedgerRepository
-	accountsByCode map[int]*domain.LedgerAccount
-	lookupErr      error
-	createTxErr    error
-	transactions   []*domain.LedgerTransaction
+	accountsByCode  map[int]*domain.LedgerAccount
+	lookupErr       error
+	createTxErr     error
+	transactions    []*domain.LedgerTransaction
+	accountsCreated []*domain.LedgerAccount
 }
 
 func (m *mockLedgerRepoForLedger) GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error) {
@@ -28,6 +29,11 @@ func (m *mockLedgerRepoForLedger) GetAccountByTenantAndCode(ctx context.Context,
 		return acct, nil
 	}
 	return nil, errors.New("account not found")
+}
+
+func (m *mockLedgerRepoForLedger) CreateAccount(ctx context.Context, acc *domain.LedgerAccount) error {
+	m.accountsCreated = append(m.accountsCreated, acc)
+	return nil
 }
 
 func (m *mockLedgerRepoForLedger) CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error {
@@ -86,7 +92,9 @@ func TestLedgerRecordInvoice_DebitsARCreditsRevenue(t *testing.T) {
 	}
 }
 
-func TestLedgerRecordInvoice_FallbackRevenueAccount(t *testing.T) {
+func TestLedgerRecordInvoice_ProvisionsRevenueAccount(t *testing.T) {
+	// A tenant without a chart of accounts gets one created on first
+	// posting (the old hardcoded fallback UUIDs violated the FK).
 	repo := &mockLedgerRepoForLedger{lookupErr: errors.New("no accounts")}
 	svc := NewLedgerService(nil, repo)
 
@@ -104,9 +112,17 @@ func TestLedgerRecordInvoice_FallbackRevenueAccount(t *testing.T) {
 	if len(repo.transactions) != 1 {
 		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
 	}
-	want := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-	if repo.transactions[0].CreditAccountID != want {
-		t.Errorf("CreditAccountID = %v, want fallback revenue account %v", repo.transactions[0].CreditAccountID, want)
+	var revenueAcct *domain.LedgerAccount
+	for _, a := range repo.accountsCreated {
+		if a.Code == domain.AccountCodeRevenue {
+			revenueAcct = a
+		}
+	}
+	if revenueAcct == nil {
+		t.Fatal("expected a Revenue account to be provisioned")
+	}
+	if repo.transactions[0].CreditAccountID != revenueAcct.ID {
+		t.Errorf("CreditAccountID = %v, want provisioned revenue account %v", repo.transactions[0].CreditAccountID, revenueAcct.ID)
 	}
 }
 
@@ -192,7 +208,7 @@ func TestLedgerRecordPayment_DebitsCashCreditsAR(t *testing.T) {
 	}
 }
 
-func TestLedgerRecordPayment_FallbackCashAccount(t *testing.T) {
+func TestLedgerRecordPayment_ProvisionsCashAccount(t *testing.T) {
 	repo := &mockLedgerRepoForLedger{lookupErr: errors.New("no accounts")}
 	svc := NewLedgerService(nil, repo)
 
@@ -208,9 +224,17 @@ func TestLedgerRecordPayment_FallbackCashAccount(t *testing.T) {
 	if len(repo.transactions) != 1 {
 		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
 	}
-	want := uuid.MustParse("00000000-0000-0000-0000-000000000004")
-	if repo.transactions[0].DebitAccountID != want {
-		t.Errorf("DebitAccountID = %v, want fallback cash account %v", repo.transactions[0].DebitAccountID, want)
+	var cashAcct *domain.LedgerAccount
+	for _, a := range repo.accountsCreated {
+		if a.Code == domain.AccountCodeCash {
+			cashAcct = a
+		}
+	}
+	if cashAcct == nil {
+		t.Fatal("expected a Cash account to be provisioned")
+	}
+	if repo.transactions[0].DebitAccountID != cashAcct.ID {
+		t.Errorf("DebitAccountID = %v, want provisioned cash account %v", repo.transactions[0].DebitAccountID, cashAcct.ID)
 	}
 }
 

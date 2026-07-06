@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"crypto/sha256"
 	"log/slog"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,10 +15,53 @@ import (
 	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 )
 
+// verifiedKeyCache remembers API keys that already passed bcrypt
+// verification, keyed by their SHA-256 (never the plaintext). Without it
+// every request pays a full bcrypt compare (~60-100ms of CPU), capping the
+// whole API at ~100 rps. Entries expire so key revocation takes effect
+// within the TTL.
+type verifiedKeyCache struct {
+	mu      sync.RWMutex
+	entries map[[32]byte]verifiedKeyEntry
+}
+
+type verifiedKeyEntry struct {
+	tenantID  uuid.UUID
+	expiresAt time.Time
+}
+
+const (
+	verifiedKeyTTL      = 5 * time.Minute
+	verifiedKeyCacheMax = 10000
+)
+
+func (vc *verifiedKeyCache) get(token string) (uuid.UUID, bool) {
+	k := sha256.Sum256([]byte(token))
+	vc.mu.RLock()
+	e, ok := vc.entries[k]
+	vc.mu.RUnlock()
+	if !ok || time.Now().After(e.expiresAt) {
+		return uuid.Nil, false
+	}
+	return e.tenantID, true
+}
+
+func (vc *verifiedKeyCache) put(token string, tenantID uuid.UUID) {
+	k := sha256.Sum256([]byte(token))
+	vc.mu.Lock()
+	defer vc.mu.Unlock()
+	if len(vc.entries) >= verifiedKeyCacheMax {
+		// Simple pressure valve: drop everything rather than evict finely.
+		vc.entries = make(map[[32]byte]verifiedKeyEntry, verifiedKeyCacheMax/4)
+	}
+	vc.entries[k] = verifiedKeyEntry{tenantID: tenantID, expiresAt: time.Now().Add(verifiedKeyTTL)}
+}
+
 // AuthMiddleware checks for a valid API Key using the DB.
 // API keys are validated against the tenants/api_keys table.
 func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 	logger := slog.Default().With("middleware", "auth")
+	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
 
 	return func(c *gin.Context) {
 		// 1. Extract Token
@@ -54,7 +100,14 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 			)
 		}
 
-		// 3. Validate against DB
+		// 3. Cache of already-verified keys (avoids per-request bcrypt)
+		if tenantID, ok := cache.get(token); ok {
+			c.Set("tenant_id", tenantID)
+			c.Next()
+			return
+		}
+
+		// 4. Validate against DB (bcrypt compare)
 		tenant, err := repo.GetTenantByKey(c.Request.Context(), token)
 		if err != nil {
 			logger.Warn("invalid API key attempt",
@@ -65,7 +118,8 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 			return
 		}
 
-		// 4. Set Tenant Context
+		// 5. Cache and set tenant context
+		cache.put(token, tenant.ID)
 		c.Set("tenant_id", tenant.ID)
 		c.Next()
 	}

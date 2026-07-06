@@ -50,6 +50,10 @@ func (m *mockLedgerRepoForMarkPaid) GetAccountByTenantAndCode(ctx context.Contex
 	return nil, errors.New("account not found")
 }
 
+func (m *mockLedgerRepoForMarkPaid) CreateAccount(ctx context.Context, acc *domain.LedgerAccount) error {
+	return nil
+}
+
 func (m *mockLedgerRepoForMarkPaid) CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error {
 	if m.createTxErr != nil {
 		return m.createTxErr

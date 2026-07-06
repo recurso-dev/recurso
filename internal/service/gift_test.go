@@ -85,9 +85,9 @@ type mockPlanRepoForGift struct {
 func (m *mockPlanRepoForGift) GetByID(ctx context.Context, id uuid.UUID) (*domain.Plan, error) {
 	return m.plan, nil
 }
-func (m *mockPlanRepoForGift) Create(ctx context.Context, p *domain.Plan) error       { return nil }
-func (m *mockPlanRepoForGift) Update(ctx context.Context, p *domain.Plan) error       { return nil }
-func (m *mockPlanRepoForGift) Delete(ctx context.Context, id uuid.UUID) error         { return nil }
+func (m *mockPlanRepoForGift) Create(ctx context.Context, p *domain.Plan) error { return nil }
+func (m *mockPlanRepoForGift) Update(ctx context.Context, p *domain.Plan) error { return nil }
+func (m *mockPlanRepoForGift) Delete(ctx context.Context, id uuid.UUID) error   { return nil }
 func (m *mockPlanRepoForGift) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
 	return nil, nil
 }

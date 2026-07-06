@@ -42,10 +42,10 @@ type StartSessionInput struct {
 
 // StartSessionResult contains the result of starting a cancel session
 type StartSessionResult struct {
-	SessionID uuid.UUID                `json:"session_id"`
-	FlowID    uuid.UUID                `json:"flow_id"`
-	Steps     []domain.CancelFlowStep  `json:"steps"`
-	FirstStep *domain.CancelFlowStep   `json:"first_step"`
+	SessionID uuid.UUID               `json:"session_id"`
+	FlowID    uuid.UUID               `json:"flow_id"`
+	Steps     []domain.CancelFlowStep `json:"steps"`
+	FirstStep *domain.CancelFlowStep  `json:"first_step"`
 }
 
 // StartSession creates a new cancel flow session and returns the flow steps
@@ -117,11 +117,11 @@ type SubmitStepInput struct {
 
 // SubmitStepResult contains the result of submitting a step
 type SubmitStepResult struct {
-	SessionID    uuid.UUID                    `json:"session_id"`
+	SessionID    uuid.UUID                      `json:"session_id"`
 	Status       domain.CancelFlowSessionStatus `json:"status"`
-	NextStep     *domain.CancelFlowStep       `json:"next_step,omitempty"`
-	SavedByOffer bool                         `json:"saved_by_offer"`
-	Completed    bool                         `json:"completed"`
+	NextStep     *domain.CancelFlowStep         `json:"next_step,omitempty"`
+	SavedByOffer bool                           `json:"saved_by_offer"`
+	Completed    bool                           `json:"completed"`
 }
 
 // SubmitStep processes a step response in the cancel flow

@@ -11,9 +11,9 @@ import (
 )
 
 type OrganizationService struct {
-	orgRepo     port.OrganizationRepository
-	subRepo     port.SubscriptionRepository
-	planRepo    port.PlanRepository
+	orgRepo  port.OrganizationRepository
+	subRepo  port.SubscriptionRepository
+	planRepo port.PlanRepository
 }
 
 func NewOrganizationService(

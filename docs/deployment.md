@@ -61,6 +61,10 @@ Restore with `pg_restore -U <user> -d <db> --clean <file>.dump` into a fresh pos
 
 **Volume snapshots.** If your host or cloud supports filesystem/block snapshots (ZFS, LVM, EBS), snapshotting the Docker volume directory is a good complement. For a fully consistent snapshot, stop the stack first (`docker compose ... stop`), snapshot, then start — or rely on `pg_dump` for consistency and use snapshots as a secondary layer.
 
+**Drill status.** The full backup → destroy → restore cycle was executed
+and verified on 2026-07-06 (see docs/performance.md for the procedure and
+integrity checks).
+
 **TigerBeetle.** No backup required in this deployment: it is an optional accelerator and the ledger is authoritative in PostgreSQL. If the volume is lost, remove it and restart — the container reformats a fresh data file and the API continues (worst case in PG-only mode until it reconnects).
 
 ## Kubernetes

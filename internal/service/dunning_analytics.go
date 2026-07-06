@@ -22,9 +22,9 @@ func NewDunningAnalyticsService(repo DunningAnalyticsRepository) *DunningAnalyti
 }
 
 type DunningOverview struct {
-	TotalRetries    int     `json:"total_retries"`
-	TotalSuccesses  int     `json:"total_successes"`
-	SuccessRate     float64 `json:"success_rate"`
+	TotalRetries   int     `json:"total_retries"`
+	TotalSuccesses int     `json:"total_successes"`
+	SuccessRate    float64 `json:"success_rate"`
 }
 
 func (s *DunningAnalyticsService) GetOverview(ctx context.Context) (*DunningOverview, error) {
