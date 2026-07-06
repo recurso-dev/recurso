@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.currency_mrr import CurrencyMRR
+    from ..models.fx_snapshot import FXSnapshot
 
 
 T = TypeVar("T", bound="OrgMRRMetrics")
@@ -20,9 +21,15 @@ class OrgMRRMetrics:
     """
     Attributes:
         by_currency (list[CurrencyMRR] | Unset):
+        normalized_mrr (int | Unset):
+        reporting_currency (str | Unset):
+        fx (FXSnapshot | Unset):
     """
 
     by_currency: list[CurrencyMRR] | Unset = UNSET
+    normalized_mrr: int | Unset = UNSET
+    reporting_currency: str | Unset = UNSET
+    fx: FXSnapshot | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -33,17 +40,32 @@ class OrgMRRMetrics:
                 by_currency_item = by_currency_item_data.to_dict()
                 by_currency.append(by_currency_item)
 
+        normalized_mrr = self.normalized_mrr
+
+        reporting_currency = self.reporting_currency
+
+        fx: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.fx, Unset):
+            fx = self.fx.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
         if by_currency is not UNSET:
             field_dict["by_currency"] = by_currency
+        if normalized_mrr is not UNSET:
+            field_dict["normalized_mrr"] = normalized_mrr
+        if reporting_currency is not UNSET:
+            field_dict["reporting_currency"] = reporting_currency
+        if fx is not UNSET:
+            field_dict["fx"] = fx
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.currency_mrr import CurrencyMRR
+        from ..models.fx_snapshot import FXSnapshot
 
         d = dict(src_dict)
         _by_currency = d.pop("by_currency", UNSET)
@@ -55,8 +77,22 @@ class OrgMRRMetrics:
 
                 by_currency.append(by_currency_item)
 
+        normalized_mrr = d.pop("normalized_mrr", UNSET)
+
+        reporting_currency = d.pop("reporting_currency", UNSET)
+
+        _fx = d.pop("fx", UNSET)
+        fx: FXSnapshot | Unset
+        if isinstance(_fx, Unset):
+            fx = UNSET
+        else:
+            fx = FXSnapshot.from_dict(_fx)
+
         org_mrr_metrics = cls(
             by_currency=by_currency,
+            normalized_mrr=normalized_mrr,
+            reporting_currency=reporting_currency,
+            fx=fx,
         )
 
         org_mrr_metrics.additional_properties = d

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-07-06
+
+### Added
+
+- **Webhook delivery tracking** — GET /v1/events/{id}/deliveries and
+  GET /v1/webhooks/{id}/deliveries expose per-delivery status, attempts,
+  response codes and errors; POST /v1/events/{id}/redeliver re-queues
+  delivery idempotently.
+- **FX-normalized MRR** — tenant and org MRR convert across currencies
+  to a reporting currency (tenant BaseCurrency, else REPORTING_CURRENCY)
+  with the rates, source (live / static-fallback), and timestamp in the
+  response; unconvertible currencies are flagged, never silently mixed.
+- **Refund lifecycle completion** — Stripe and Razorpay refund webhooks
+  advance pending refunds to processed or refund_failed (with the
+  gateway's reason); mandate-collected invoices now capture a
+  refundable payment id.
+- SDKs: Node gains delivery/redeliver/MRR methods (17 resources, 64
+  methods, 75 tests); Python regenerated with the new endpoints
+  (10-check smoke). Docs updated across API reference and guides.
+
+### Fixed
+
+- Payment-success webhook processing (Stripe and Razorpay) failed with
+  a tenant-context error and returned 500 before recording anything —
+  handlers now resolve the invoice's tenant themselves.
+- The dashboard MRR tile always showed $0 (read a field the API never
+  returned).
+- Delivery worker retries no longer erase the failing HTTP status code.
+- The new-customer form's oversized styling, stale state on country
+  switch, and literal \n placeholder.
+
 ## [0.2.1] - 2026-07-06
 
 ### Added

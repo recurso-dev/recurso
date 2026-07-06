@@ -21,11 +21,17 @@ class CurrencyMRR:
     Attributes:
         total_mrr (int | Unset):
         currency (str | Unset):
+        converted_mrr (int | Unset):
+        rate (float | Unset):
+        fx_error (str | Unset): Present only when this currency could not be converted.
         by_tenant (list[TenantMRR] | Unset):
     """
 
     total_mrr: int | Unset = UNSET
     currency: str | Unset = UNSET
+    converted_mrr: int | Unset = UNSET
+    rate: float | Unset = UNSET
+    fx_error: str | Unset = UNSET
     by_tenant: list[TenantMRR] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -33,6 +39,12 @@ class CurrencyMRR:
         total_mrr = self.total_mrr
 
         currency = self.currency
+
+        converted_mrr = self.converted_mrr
+
+        rate = self.rate
+
+        fx_error = self.fx_error
 
         by_tenant: list[dict[str, Any]] | Unset = UNSET
         if not isinstance(self.by_tenant, Unset):
@@ -48,6 +60,12 @@ class CurrencyMRR:
             field_dict["total_mrr"] = total_mrr
         if currency is not UNSET:
             field_dict["currency"] = currency
+        if converted_mrr is not UNSET:
+            field_dict["converted_mrr"] = converted_mrr
+        if rate is not UNSET:
+            field_dict["rate"] = rate
+        if fx_error is not UNSET:
+            field_dict["fx_error"] = fx_error
         if by_tenant is not UNSET:
             field_dict["by_tenant"] = by_tenant
 
@@ -62,6 +80,12 @@ class CurrencyMRR:
 
         currency = d.pop("currency", UNSET)
 
+        converted_mrr = d.pop("converted_mrr", UNSET)
+
+        rate = d.pop("rate", UNSET)
+
+        fx_error = d.pop("fx_error", UNSET)
+
         _by_tenant = d.pop("by_tenant", UNSET)
         by_tenant: list[TenantMRR] | Unset = UNSET
         if _by_tenant is not UNSET:
@@ -74,6 +98,9 @@ class CurrencyMRR:
         currency_mrr = cls(
             total_mrr=total_mrr,
             currency=currency,
+            converted_mrr=converted_mrr,
+            rate=rate,
+            fx_error=fx_error,
             by_tenant=by_tenant,
         )
 

@@ -7,8 +7,8 @@ import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
+from ...models.entitlement_input import EntitlementInput
 from ...models.error import Error
-from ...models.set_plan_entitlements_body import SetPlanEntitlementsBody
 from ...models.set_plan_entitlements_response_200 import SetPlanEntitlementsResponse200
 from ...types import Response
 
@@ -16,7 +16,7 @@ from ...types import Response
 def _get_kwargs(
     id: UUID,
     *,
-    body: SetPlanEntitlementsBody,
+    body: list[EntitlementInput],
 ) -> dict[str, Any]:
     headers: dict[str, Any] = {}
 
@@ -27,7 +27,10 @@ def _get_kwargs(
         ),
     }
 
-    _kwargs["json"] = body.to_dict()
+    _kwargs["json"] = []
+    for body_item_data in body:
+        body_item = body_item_data.to_dict()
+        _kwargs["json"].append(body_item)
 
     headers["Content-Type"] = "application/json"
 
@@ -79,7 +82,7 @@ def sync_detailed(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: SetPlanEntitlementsBody,
+    body: list[EntitlementInput],
 ) -> Response[Error | SetPlanEntitlementsResponse200]:
     """Replace a plan's entitlement set
 
@@ -87,7 +90,7 @@ def sync_detailed(
 
     Args:
         id (UUID):
-        body (SetPlanEntitlementsBody):
+        body (list[EntitlementInput]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -113,7 +116,7 @@ def sync(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: SetPlanEntitlementsBody,
+    body: list[EntitlementInput],
 ) -> Error | SetPlanEntitlementsResponse200 | None:
     """Replace a plan's entitlement set
 
@@ -121,7 +124,7 @@ def sync(
 
     Args:
         id (UUID):
-        body (SetPlanEntitlementsBody):
+        body (list[EntitlementInput]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -142,7 +145,7 @@ async def asyncio_detailed(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: SetPlanEntitlementsBody,
+    body: list[EntitlementInput],
 ) -> Response[Error | SetPlanEntitlementsResponse200]:
     """Replace a plan's entitlement set
 
@@ -150,7 +153,7 @@ async def asyncio_detailed(
 
     Args:
         id (UUID):
-        body (SetPlanEntitlementsBody):
+        body (list[EntitlementInput]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -174,7 +177,7 @@ async def asyncio(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: SetPlanEntitlementsBody,
+    body: list[EntitlementInput],
 ) -> Error | SetPlanEntitlementsResponse200 | None:
     """Replace a plan's entitlement set
 
@@ -182,7 +185,7 @@ async def asyncio(
 
     Args:
         id (UUID):
-        body (SetPlanEntitlementsBody):
+        body (list[EntitlementInput]):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

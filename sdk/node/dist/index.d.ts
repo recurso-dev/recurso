@@ -126,10 +126,27 @@ export declare class Recurso {
         }) => Promise<any>;
         list: () => Promise<any>;
         delete: (id: string) => Promise<any>;
+        /**
+         * Recent delivery attempts to an endpoint, newest first. Filter by
+         * derived status (pending | succeeded | failed) and paginate with
+         * limit/offset.
+         */
+        deliveries: (id: string, params?: {
+            limit?: number;
+            offset?: number;
+            status?: "pending" | "succeeded" | "failed";
+        }) => Promise<any>;
     };
     events: {
         list: (params?: ListParams) => Promise<any>;
         types: () => Promise<any>;
+        /** Delivery attempts of an event across all webhook endpoints. */
+        deliveries: (id: string) => Promise<any>;
+        /**
+         * Re-enqueue delivery of an event to every active subscribed
+         * endpoint (202: {event_id, deliveries_queued}). Idempotent.
+         */
+        redeliver: (id: string) => Promise<any>;
     };
     mandates: {
         create: (data: Record<string, unknown>) => Promise<any>;
@@ -171,6 +188,14 @@ export declare class Recurso {
         forCustomer: (customerId: string) => Promise<any>;
         /** Fast single-feature check: {feature_key, granted, limit_value}. */
         check: (customerId: string, feature: string) => Promise<any>;
+    };
+    analytics: {
+        /**
+         * Monthly recurring revenue, FX-normalized to the tenant's reporting
+         * currency: {mrr, normalized_mrr, reporting_currency, breakdown[],
+         * fx: {rates, source, as_of}}.
+         */
+        mrr: () => Promise<any>;
     };
     ledger: {
         accounts: () => Promise<any>;

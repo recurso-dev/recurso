@@ -57,8 +57,11 @@ def sync_detailed(
     """Run an on-demand ledger reconciliation
 
      Reconciles the tenant's invoices against its Postgres ledger entries and
-    returns the computed drift report. Nothing is persisted. TigerBeetle is
-    not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+    returns the computed drift report. Nothing is persisted. When TigerBeetle
+    is connected its transfers are enumerated and compared against the
+    PostgreSQL ledger (missing_in_tigerbeetle / missing_in_postgres /
+    tb_amount_mismatch); otherwise `tb_compared` is false with the
+    reason in `tb_skip_reason`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -84,8 +87,11 @@ def sync(
     """Run an on-demand ledger reconciliation
 
      Reconciles the tenant's invoices against its Postgres ledger entries and
-    returns the computed drift report. Nothing is persisted. TigerBeetle is
-    not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+    returns the computed drift report. Nothing is persisted. When TigerBeetle
+    is connected its transfers are enumerated and compared against the
+    PostgreSQL ledger (missing_in_tigerbeetle / missing_in_postgres /
+    tb_amount_mismatch); otherwise `tb_compared` is false with the
+    reason in `tb_skip_reason`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -107,8 +113,11 @@ async def asyncio_detailed(
     """Run an on-demand ledger reconciliation
 
      Reconciles the tenant's invoices against its Postgres ledger entries and
-    returns the computed drift report. Nothing is persisted. TigerBeetle is
-    not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+    returns the computed drift report. Nothing is persisted. When TigerBeetle
+    is connected its transfers are enumerated and compared against the
+    PostgreSQL ledger (missing_in_tigerbeetle / missing_in_postgres /
+    tb_amount_mismatch); otherwise `tb_compared` is false with the
+    reason in `tb_skip_reason`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -132,8 +141,11 @@ async def asyncio(
     """Run an on-demand ledger reconciliation
 
      Reconciles the tenant's invoices against its Postgres ledger entries and
-    returns the computed drift report. Nothing is persisted. TigerBeetle is
-    not compared; the report says so via `tb_compared`/`tb_skip_reason`.
+    returns the computed drift report. Nothing is persisted. When TigerBeetle
+    is connected its transfers are enumerated and compared against the
+    PostgreSQL ledger (missing_in_tigerbeetle / missing_in_postgres /
+    tb_amount_mismatch); otherwise `tb_compared` is false with the
+    reason in `tb_skip_reason`.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.

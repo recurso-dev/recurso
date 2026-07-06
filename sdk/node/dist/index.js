@@ -83,10 +83,23 @@ class Recurso {
             create: (data) => this.post('/v1/webhooks', data),
             list: () => this.get('/v1/webhooks'),
             delete: (id) => this.del(`/v1/webhooks/${id}`),
+            /**
+             * Recent delivery attempts to an endpoint, newest first. Filter by
+             * derived status (pending | succeeded | failed) and paginate with
+             * limit/offset.
+             */
+            deliveries: (id, params) => this.get(`/v1/webhooks/${id}/deliveries`, params),
         };
         this.events = {
             list: (params) => this.get('/v1/events', params),
             types: () => this.get('/v1/events/types'),
+            /** Delivery attempts of an event across all webhook endpoints. */
+            deliveries: (id) => this.get(`/v1/events/${id}/deliveries`),
+            /**
+             * Re-enqueue delivery of an event to every active subscribed
+             * endpoint (202: {event_id, deliveries_queued}). Idempotent.
+             */
+            redeliver: (id) => this.post(`/v1/events/${id}/redeliver`),
         };
         this.mandates = {
             create: (data) => this.post('/v1/mandates', data),
@@ -120,6 +133,14 @@ class Recurso {
             forCustomer: (customerId) => this.get(`/v1/customers/${customerId}/entitlements`),
             /** Fast single-feature check: {feature_key, granted, limit_value}. */
             check: (customerId, feature) => this.get('/v1/entitlements/check', { customer_id: customerId, feature }),
+        };
+        this.analytics = {
+            /**
+             * Monthly recurring revenue, FX-normalized to the tenant's reporting
+             * currency: {mrr, normalized_mrr, reporting_currency, breakdown[],
+             * fx: {rates, source, as_of}}.
+             */
+            mrr: () => this.get('/v1/analytics/mrr'),
         };
         this.ledger = {
             accounts: () => this.get('/v1/ledger/accounts'),

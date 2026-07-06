@@ -101,6 +101,48 @@ def main() -> int:
 
     check("core endpoints exist with expected signatures", endpoints)
 
+    # --- delivery tracking, redelivery, and FX-normalized MRR ------------
+    def delivery_and_mrr_endpoints():
+        from recurso.api.analytics import get_mrr
+        from recurso.api.webhooks import (
+            list_event_deliveries,
+            list_webhook_endpoint_deliveries,
+            redeliver_event,
+        )
+
+        assert_endpoint(list_event_deliveries, sync_params=["id", "client"])
+        assert_endpoint(
+            list_webhook_endpoint_deliveries,
+            sync_params=["id", "client", "limit", "offset", "status"],
+        )
+        assert_endpoint(redeliver_event, sync_params=["id", "client"])
+        assert_endpoint(get_mrr, sync_params=["client"])
+
+    check("delivery tracking + MRR endpoints exist with expected signatures", delivery_and_mrr_endpoints)
+
+    def redeliver_kwargs():
+        from uuid import UUID
+
+        from recurso.api.webhooks import redeliver_event
+
+        kwargs = redeliver_event._get_kwargs(id=UUID("00000000-0000-0000-0000-000000000003"))
+        assert kwargs["method"] == "post"
+        assert kwargs["url"] == "/v1/events/00000000-0000-0000-0000-000000000003/redeliver"
+
+    check("redeliver_event builds POST /v1/events/{id}/redeliver", redeliver_kwargs)
+
+    def fx_models():
+        from recurso.models import EventDeliveryStatus, FXSnapshotSource, MRRMetrics
+
+        # FX provenance is part of the MRR response contract.
+        fields = {f.name for f in MRRMetrics.__attrs_attrs__}
+        for expected in ("mrr", "normalized_mrr", "reporting_currency", "breakdown", "fx"):
+            assert expected in fields, f"MRRMetrics missing {expected!r} (has {sorted(fields)})"
+        assert {s.value for s in FXSnapshotSource} >= {"live", "static-fallback"}
+        assert {s.value for s in EventDeliveryStatus} == {"pending", "succeeded", "failed"}
+
+    check("MRRMetrics carries FX provenance; delivery status enum matches API", fx_models)
+
     # --- request models serialize as the API expects --------------------
     def plan_model():
         from recurso.models import CreatePlanRequest, CreatePlanRequestIntervalUnit

@@ -214,11 +214,20 @@ const cases: Record<string, MethodCase[]> = {
         },
         { method: 'list', call: (r) => r.webhooks.list(), verb: 'get', path: '/v1/webhooks' },
         { method: 'delete', call: (r) => r.webhooks.delete('wh_1'), verb: 'delete', path: '/v1/webhooks/wh_1' },
+        {
+            method: 'deliveries',
+            call: (r) => r.webhooks.deliveries('wh_1', { limit: 25, offset: 50, status: 'failed' }),
+            verb: 'get',
+            path: '/v1/webhooks/wh_1/deliveries',
+            params: { limit: 25, offset: 50, status: 'failed' },
+        },
     ],
 
     events: [
         { method: 'list', call: (r) => r.events.list(listParams), verb: 'get', path: '/v1/events', params: listParams },
         { method: 'types', call: (r) => r.events.types(), verb: 'get', path: '/v1/events/types' },
+        { method: 'deliveries', call: (r) => r.events.deliveries('evt_1'), verb: 'get', path: '/v1/events/evt_1/deliveries' },
+        { method: 'redeliver', call: (r) => r.events.redeliver('evt_1'), verb: 'post', path: '/v1/events/evt_1/redeliver' },
     ],
 
     mandates: [
@@ -287,6 +296,10 @@ const cases: Record<string, MethodCase[]> = {
             path: '/v1/entitlements/check',
             params: { customer_id: 'cus_1', feature: 'sso' },
         },
+    ],
+
+    analytics: [
+        { method: 'mrr', call: (r) => r.analytics.mrr(), verb: 'get', path: '/v1/analytics/mrr' },
     ],
 
     ledger: [
