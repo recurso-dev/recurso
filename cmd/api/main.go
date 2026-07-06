@@ -307,6 +307,12 @@ func main() {
 	}
 	dunningCampaignService := service.NewDunningCampaignService(dunningCampaignRepo, invoiceRepo, customerRepo, notificationService, smsSender)
 
+	// Dunning Recovery Attribution — provable recovered revenue
+	recoveredPaymentRepo := db.NewRecoveredPaymentRepository(database)
+	dunningRecoveryService := service.NewDunningRecoveryService(recoveredPaymentRepo, os.Getenv("DUNNING_STRATEGY"))
+	dunningRecoveryService.SetCampaignLookup(dunningCampaignRepo)
+	subscriptionService.SetRecoveryRecorder(dunningRecoveryService)
+
 	// Analytics
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
 
@@ -383,6 +389,7 @@ func main() {
 	// 6. Initialize Workers
 	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, paymentGateway, notifier)
 	retryWorker.SetDunningCampaignService(dunningCampaignService)
+	retryWorker.SetRecoveryRecorder(dunningRecoveryService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
@@ -573,7 +580,7 @@ func main() {
 
 	// Dunning Analytics
 	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
-	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc)
+	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc, dunningRecoveryService)
 
 	// Phase 2: New Handlers
 	mandateHandler := handler.NewMandateHandler(mandateService)
@@ -740,6 +747,7 @@ func main() {
 			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
 			analytics.GET("/dunning/history", dunningHandler.GetHistory)
+			analytics.GET("/dunning/recovered", dunningHandler.GetRecovered)
 		}
 		v1.POST("/analytics/ask", analyticsHandler.Ask) // P48 GenAI
 

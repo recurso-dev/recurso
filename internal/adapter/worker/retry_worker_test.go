@@ -133,6 +133,17 @@ func (m *mockDunningRepo) RecordHistory(ctx context.Context, history domain.Dunn
 	return nil
 }
 
+// --- Mock RecoveryRecorder ---
+
+type mockRecoveryRecorder struct {
+	recorded []*domain.Invoice
+}
+
+func (m *mockRecoveryRecorder) RecordIfRecovered(ctx context.Context, inv *domain.Invoice) bool {
+	m.recorded = append(m.recorded, inv)
+	return true
+}
+
 // --- Tests ---
 
 func TestRetryWorker_PaymentSuccess(t *testing.T) {
@@ -186,6 +197,79 @@ func TestRetryWorker_PaymentSuccess(t *testing.T) {
 	}
 	if dunningRepo.history[0].Reward != 1.0 {
 		t.Errorf("expected reward=1.0, got %f", dunningRepo.history[0].Reward)
+	}
+}
+
+func TestRetryWorker_PaymentSuccess_RecordsRecoveryWithDunningSnapshot(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID:                uuid.New(),
+		TenantID:          uuid.New(),
+		InvoiceNumber:     "INV-005",
+		Total:             10000,
+		Currency:          "USD",
+		Status:            domain.InvoiceStatusPastDue,
+		RetryCount:        2,
+		DunningActionID:   "24h",
+		DunningContextKey: "USD:insufficient_funds",
+		NextRetryAt:       &now,
+	}
+
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: true, PaymentID: "pay_456"}}
+	retrySvc := service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)})
+	recorder := &mockRecoveryRecorder{}
+
+	w := NewRetryWorker(repo, retrySvc, gw, &mockNotifier{})
+	w.SetRecoveryRecorder(recorder)
+	w.processRetries(context.Background())
+
+	if len(recorder.recorded) != 1 {
+		t.Fatalf("expected 1 recovery recording, got %d", len(recorder.recorded))
+	}
+	snap := recorder.recorded[0]
+	// The snapshot must retain the attribution fields that the paid update clears.
+	if snap.RetryCount != 2 {
+		t.Errorf("snapshot RetryCount = %d, want 2", snap.RetryCount)
+	}
+	if snap.DunningActionID != "24h" {
+		t.Errorf("snapshot DunningActionID = %q, want 24h (pre-clear value)", snap.DunningActionID)
+	}
+	if snap.PaidAt == nil {
+		t.Error("snapshot PaidAt should be set at payment time")
+	}
+	// The persisted invoice still has its dunning fields cleared.
+	if len(repo.updated) != 1 || repo.updated[0].DunningActionID != "" {
+		t.Error("stored invoice should have DunningActionID cleared")
+	}
+}
+
+func TestRetryWorker_PaymentFailure_NoRecoveryRecorded(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID:                uuid.New(),
+		TenantID:          uuid.New(),
+		InvoiceNumber:     "INV-006",
+		Total:             10000,
+		Currency:          "USD",
+		Status:            domain.InvoiceStatusPastDue,
+		RetryCount:        1,
+		DunningActionID:   "1h",
+		DunningContextKey: "USD:card_declined",
+		NextRetryAt:       &now,
+	}
+
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: false, ErrorCode: "card_declined"}}
+	retrySvc := service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)})
+	recorder := &mockRecoveryRecorder{}
+
+	w := NewRetryWorker(repo, retrySvc, gw, &mockNotifier{})
+	w.SetRecoveryRecorder(recorder)
+	w.processRetries(context.Background())
+
+	if len(recorder.recorded) != 0 {
+		t.Fatalf("failed payment must not record a recovery, got %d", len(recorder.recorded))
 	}
 }
 
