@@ -5,6 +5,65 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-06
+
+### Added
+
+- **Entitlement engine v1** — plan-level feature grants (booleans and
+  limits), effective-entitlement resolution per customer (union across
+  active and trialing subscriptions: any-true booleans, max limits), a
+  single-query `GET /v1/entitlements/check` fast path for feature gating,
+  Node SDK support, and plan-detail UI.
+- **Recovery attribution** — invoices that collect after failed attempts
+  are recorded with amount, attempts, strategy, and days-to-recover;
+  `GET /v1/analytics/dunning/recovered` serves totals and a 12-month
+  series; the dunning dashboard shows recovered revenue.
+- **TigerBeetle reconciliation** — the ledger reconciler now enumerates
+  TigerBeetle transfers (paginated) and reports missing/mismatched
+  entries against PostgreSQL instead of skipping the comparison.
+- **Health alerting** — `ALERT_WEBHOOK_URL` (JSON or Slack format) fires
+  on component state transitions; SEV1 incident runbook in
+  `docs/incident-runbook.md`.
+- **Jurisdiction-aware tax** — GST computed from each tenant's own
+  registration state, zero-rated exports (LUT-aware), EU VAT with B2B
+  reverse charge, US sales-tax engine (0% stub, explicitly marked).
+- **Real accounting sync** — QuickBooks/Xero OAuth token refresh with
+  rotation, provider external-ID mapping (no more duplicate books
+  entries), true update pushes (QBO SyncToken sparse updates, Xero
+  upserts), QBO invoice line ItemRefs.
+- **Gateway refunds** — refund credit notes call the real Stripe/Razorpay
+  refund APIs with over-refund guards, honest manual-required states,
+  and a Refunds-vs-Cash ledger reversal.
+- **Ledger reconciliation endpoint** — `GET /v1/finance/reconciliation`
+  plus a daily scheduled drift check.
+- Consistent API error envelope (`{"error": {"code", "message"}}`),
+  hardened idempotency (scoped keys, no 5xx caching), OpenAPI spec
+  covering the full 113-path surface, `RATE_LIMIT_PER_MINUTE` knob,
+  published performance numbers (docs/performance.md), verified
+  backup/restore drill.
+
+### Fixed
+
+- Per-request bcrypt capped the API at ~126 req/s — verified-key cache
+  takes authenticated reads to ~7,800 req/s (p99 27ms).
+- Only one tenant could register per database (unique constraint on the
+  always-empty hashed key column).
+- Ledger postings failed for all API-created tenants/customers — AR and
+  chart-of-accounts provisioning is now self-healing on first posting.
+- Portal magic-link login could never match a customer; links are now
+  actually emailed.
+- Razorpay mandate revocation really revokes (customer-scoped token
+  deletion) instead of silently succeeding.
+
+### Known limitations
+
+- US sales tax remains a 0%-rate stub pending a TaxJar/Avalara
+  integration; EU VAT rates are a static table.
+- Accounting sync re-pushes all mapped entities daily (no dirty
+  tracking); Xero invoice lines don't yet reference synced items.
+- Refund webhooks (charge.refunded / refund.processed) are not consumed,
+  so pending refunds don't auto-advance.
+
 ## [0.1.1] - 2026-07-05
 
 ### Added
