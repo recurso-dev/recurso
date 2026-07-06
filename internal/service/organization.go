@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,10 @@ type OrganizationService struct {
 	orgRepo  port.OrganizationRepository
 	subRepo  port.SubscriptionRepository
 	planRepo port.PlanRepository
+
+	fxProvider        port.ExchangeRateProvider
+	fxFallback        port.ExchangeRateProvider
+	reportingCurrency string
 }
 
 func NewOrganizationService(
@@ -22,9 +27,21 @@ func NewOrganizationService(
 	planRepo port.PlanRepository,
 ) *OrganizationService {
 	return &OrganizationService{
-		orgRepo:  orgRepo,
-		subRepo:  subRepo,
-		planRepo: planRepo,
+		orgRepo:           orgRepo,
+		subRepo:           subRepo,
+		planRepo:          planRepo,
+		reportingCurrency: "USD",
+	}
+}
+
+// SetFX wires the FX provider used to normalize consolidated MRR, an optional
+// static fallback, and the org-level reporting currency (REPORTING_CURRENCY
+// env; organizations have no per-org currency setting yet).
+func (s *OrganizationService) SetFX(provider, fallback port.ExchangeRateProvider, reportingCurrency string) {
+	s.fxProvider = provider
+	s.fxFallback = fallback
+	if reportingCurrency != "" {
+		s.reportingCurrency = reportingCurrency
 	}
 }
 
@@ -103,10 +120,19 @@ type CurrencyMRR struct {
 	TotalMRR int64       `json:"total_mrr"`
 	Currency string      `json:"currency"`
 	ByTenant []TenantMRR `json:"by_tenant"`
+
+	// FX normalization into the reporting currency.
+	ConvertedMRR int64   `json:"converted_mrr"`      // TotalMRR in the reporting currency
+	Rate         float64 `json:"rate"`               // rate applied (currency -> reporting)
+	FXError      string  `json:"fx_error,omitempty"` // set when conversion failed; excluded from the total
 }
 
 type OrgMRRMetrics struct {
 	ByCurrency []CurrencyMRR `json:"by_currency"`
+
+	NormalizedMRR     int64       `json:"normalized_mrr"`
+	ReportingCurrency string      `json:"reporting_currency"`
+	FX                *FXSnapshot `json:"fx,omitempty"`
 }
 
 type TenantMRR struct {
@@ -165,16 +191,33 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 		}
 	}
 
+	reporting := s.reportingCurrency
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+
 	metrics := &OrgMRRMetrics{
-		ByCurrency: make([]CurrencyMRR, 0, len(currencyTotals)),
+		ByCurrency:        make([]CurrencyMRR, 0, len(currencyTotals)),
+		ReportingCurrency: reporting,
 	}
 	for currency, total := range currencyTotals {
-		metrics.ByCurrency = append(metrics.ByCurrency, CurrencyMRR{
+		entry := CurrencyMRR{
 			TotalMRR: total,
 			Currency: currency,
 			ByTenant: currencyTenants[currency],
-		})
+		}
+		converted, rate, err := normalizer.convert(ctx, total, currency, reporting)
+		if err != nil {
+			entry.FXError = err.Error()
+		} else {
+			entry.ConvertedMRR = converted
+			entry.Rate = rate
+			metrics.NormalizedMRR += converted
+		}
+		metrics.ByCurrency = append(metrics.ByCurrency, entry)
 	}
+	sort.Slice(metrics.ByCurrency, func(i, j int) bool {
+		return metrics.ByCurrency[i].Currency < metrics.ByCurrency[j].Currency
+	})
+	metrics.FX = normalizer.snapshot()
 
 	return metrics, nil
 }

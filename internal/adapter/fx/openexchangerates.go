@@ -82,6 +82,14 @@ func (p *OpenExchangeRatesProvider) fetchRates(ctx context.Context) error {
 	return nil
 }
 
+// RateMetadata reports rate provenance. AsOf is zero until the first
+// successful fetch; callers should treat a zero AsOf as "not yet fetched".
+func (p *OpenExchangeRatesProvider) RateMetadata() port.RateMetadata {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return port.RateMetadata{Source: "live", AsOf: p.fetchedAt}
+}
+
 func (p *OpenExchangeRatesProvider) GetRate(ctx context.Context, from, to string) (float64, error) {
 	if from == to {
 		return 1.0, nil

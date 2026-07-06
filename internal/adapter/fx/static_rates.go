@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
@@ -11,8 +12,9 @@ import (
 // StaticRatesProvider stores admin-configured exchange rates in memory.
 // Useful for development or when real-time rates are not needed.
 type StaticRatesProvider struct {
-	mu    sync.RWMutex
-	rates map[string]float64 // key: "FROM:TO", value: rate
+	mu        sync.RWMutex
+	rates     map[string]float64 // key: "FROM:TO", value: rate
+	updatedAt time.Time          // when the rates were last seeded/changed
 }
 
 func NewStaticRatesProvider() *StaticRatesProvider {
@@ -21,6 +23,7 @@ func NewStaticRatesProvider() *StaticRatesProvider {
 	}
 	// Seed with common defaults (rates relative to USD)
 	p.seedDefaults()
+	p.updatedAt = time.Now().UTC()
 	return p
 }
 
@@ -51,6 +54,15 @@ func (p *StaticRatesProvider) SetRate(from, to string, rate float64) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.rates[from+":"+to] = rate
+	p.updatedAt = time.Now().UTC()
+}
+
+// RateMetadata reports rate provenance: static rates are always flagged as
+// "static-fallback" so downstream reporting is honest about their freshness.
+func (p *StaticRatesProvider) RateMetadata() port.RateMetadata {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return port.RateMetadata{Source: "static-fallback", AsOf: p.updatedAt}
 }
 
 func (p *StaticRatesProvider) GetRate(ctx context.Context, from, to string) (float64, error) {

@@ -59,7 +59,7 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 	// Inject TenantID into context for Service/Repo
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
-	mrr, err := h.svc.GetMRR(ctx)
+	mrr, err := h.svc.GetMRR(ctx, tenantID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to calculate MRR")
 		return

@@ -1,12 +1,28 @@
 package port
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ExchangeRate represents a currency conversion rate
 type ExchangeRate struct {
 	From string  // Source currency (ISO 3-letter)
 	To   string  // Target currency (ISO 3-letter)
 	Rate float64 // Conversion rate (1 unit of From = Rate units of To)
+}
+
+// RateMetadata describes the provenance of exchange rates so that
+// FX-normalized figures (e.g. MRR reporting) are auditable.
+type RateMetadata struct {
+	Source string    // "live" or "static-fallback"
+	AsOf   time.Time // when the rates were last refreshed
+}
+
+// RateMetadataProvider is optionally implemented by ExchangeRateProvider
+// implementations to expose where their rates came from and how fresh they are.
+type RateMetadataProvider interface {
+	RateMetadata() RateMetadata
 }
 
 // ExchangeRateProvider fetches and converts between currencies
