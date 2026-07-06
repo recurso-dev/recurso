@@ -18,6 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/swapnull-in/recur-so/internal/adapter/accounting"
 	"github.com/swapnull-in/recur-so/internal/adapter/ai"
+	"github.com/swapnull-in/recur-so/internal/adapter/alerting"
 	"github.com/swapnull-in/recur-so/internal/adapter/db"
 	"github.com/swapnull-in/recur-so/internal/adapter/email"
 	"github.com/swapnull-in/recur-so/internal/adapter/fx"
@@ -468,6 +469,48 @@ func main() {
 	reconciliationScheduler.Start()
 	defer reconciliationScheduler.Stop()
 
+	// Operational alerting (solo-operator safety net) — POSTs to
+	// ALERT_WEBHOOK_URL on component state transitions; no-op when unset.
+	// See docs/incident-runbook.md.
+	alerter := alerting.NewFromEnv()
+	if _, isNoop := alerter.(alerting.NoopAlerter); isNoop {
+		log.Println("Alerting disabled (set ALERT_WEBHOOK_URL to enable health alerts)")
+	} else {
+		log.Println("Alerting enabled via ALERT_WEBHOOK_URL")
+	}
+	healthChecks := []scheduler.ComponentCheck{
+		{
+			Name:     "postgres",
+			Severity: alerting.SeverityCritical, // system of record — money movement at risk
+			Check:    func(ctx context.Context) error { return database.PingContext(ctx) },
+		},
+	}
+	if rdb != nil { // mirror /health: redis only reported when configured
+		redisClient := rdb
+		healthChecks = append(healthChecks, scheduler.ComponentCheck{
+			Name:     "redis",
+			Severity: alerting.SeverityWarning, // optional: locking/rate-limit degrade
+			Check:    func(ctx context.Context) error { return redisClient.Ping(ctx).Err() },
+		})
+	}
+	// TigerBeetle's client has no liveness probe, so mirror /health exactly:
+	// boot-time connection state. Disconnected at boot fires one warning on
+	// the first evaluation, then stays silent (PG-only ledger mode is safe).
+	tbConnected := tbClientForRecon != nil
+	healthChecks = append(healthChecks, scheduler.ComponentCheck{
+		Name:     "tigerbeetle",
+		Severity: alerting.SeverityWarning, // optional accelerator; ledger is authoritative in PG
+		Check: func(ctx context.Context) error {
+			if !tbConnected {
+				return errors.New("not connected at startup (ledger running PG-only)")
+			}
+			return nil
+		},
+	})
+	healthAlertScheduler := scheduler.NewHealthAlertScheduler(alerter, healthChecks, 0) // 0 = 60s default
+	healthAlertScheduler.Start()
+	defer healthAlertScheduler.Stop()
+
 	// Graceful shutdown: on SIGINT/SIGTERM stop schedulers, then drain the
 	// HTTP server (srv.Shutdown below) so in-flight requests complete.
 	shutdownSchedulers := func() {
@@ -476,6 +519,7 @@ func main() {
 		cardExpiryScheduler.Stop()
 		mandateDebitScheduler.Stop()
 		reconciliationScheduler.Stop()
+		healthAlertScheduler.Stop()
 	}
 
 	// 7. Initialize Handlers

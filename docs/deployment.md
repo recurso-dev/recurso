@@ -67,6 +67,20 @@ integrity checks).
 
 **TigerBeetle.** No backup required in this deployment: it is an optional accelerator and the ledger is authoritative in PostgreSQL. If the volume is lost, remove it and restart — the container reformats a fresh data file and the API continues (worst case in PG-only mode until it reconnects).
 
+## Alerting
+
+The API ships with a built-in health watcher: every 60 seconds it evaluates the same component checks as `GET /health` (PostgreSQL, Redis if configured, TigerBeetle) and POSTs an alert to `ALERT_WEBHOOK_URL` on **state transitions only** — one alert when a component goes down (PostgreSQL = `critical`, Redis/TigerBeetle = `warning`), one when it recovers. No repeats while the state is steady, and no alerts at all if the variable is unset.
+
+```bash
+# .env — see .env.example (Observability section) for details
+ALERT_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/XXXX
+ALERT_WEBHOOK_FORMAT=slack   # json (default) | slack
+```
+
+`json` posts `{"severity","title","body","source":"recurso","timestamp"}`; `slack` posts `{"text": "..."}` so a Slack incoming webhook works directly. Deliveries are one POST with a 10s timeout, no retries — pair this with an external uptime check on `/health` (the watcher runs inside the API process, so it can't tell you the process itself died).
+
+When an alert fires, follow **[docs/incident-runbook.md](incident-runbook.md)** — severity definitions, first commands, and the SEV1 money-movement procedure.
+
 ## Kubernetes
 
 Manifests live in `k8s/` (namespace, deployment, service, ingress, configmap, secret, RBAC, network policy). They deploy the **API only** — bring your own managed PostgreSQL (set `DATABASE_URL` in `recurso-secrets`) and, optionally, serve the frontend image behind your ingress.
