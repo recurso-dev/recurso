@@ -131,6 +131,30 @@ def main() -> int:
 
     check("redeliver_event builds POST /v1/events/{id}/redeliver", redeliver_kwargs)
 
+    # --- usage platform: windowed queries, dimension catalog, period usage
+    def usage_platform_endpoints():
+        from recurso.api.usage import get_subscription_usage, list_usage_dimensions, query_usage
+
+        assert_endpoint(
+            query_usage,
+            sync_params=["client", "subscription_id", "customer_id", "dimension", "from_", "to", "granularity"],
+        )
+        assert_endpoint(list_usage_dimensions, sync_params=["client"])
+        assert_endpoint(get_subscription_usage, sync_params=["id", "client"])
+
+    check("usage platform endpoints exist with expected signatures", usage_platform_endpoints)
+
+    def subscription_usage_kwargs():
+        from uuid import UUID
+
+        from recurso.api.usage import get_subscription_usage
+
+        kwargs = get_subscription_usage._get_kwargs(id=UUID("00000000-0000-0000-0000-000000000004"))
+        assert kwargs["method"] == "get"
+        assert kwargs["url"] == "/v1/subscriptions/00000000-0000-0000-0000-000000000004/usage"
+
+    check("get_subscription_usage builds GET /v1/subscriptions/{id}/usage", subscription_usage_kwargs)
+
     def fx_models():
         from recurso.models import EventDeliveryStatus, FXSnapshotSource, MRRMetrics
 

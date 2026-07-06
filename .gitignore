@@ -45,3 +45,6 @@ api_response.json
 stitch_dashboard_home_screen*/
 import
 seed
+
+# iCloud conflict copies (this workspace lives under ~/Documents)
+* 2.*

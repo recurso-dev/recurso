@@ -188,6 +188,7 @@ from .list_quotes_response_200 import ListQuotesResponse200
 from .list_referrals_response_200 import ListReferralsResponse200
 from .list_subscriptions_response_200 import ListSubscriptionsResponse200
 from .list_unbilled_charges_response_200 import ListUnbilledChargesResponse200
+from .list_usage_dimensions_response_200 import ListUsageDimensionsResponse200
 from .list_virtual_accounts_response_200 import ListVirtualAccountsResponse200
 from .list_webhook_endpoint_deliveries_response_200 import ListWebhookEndpointDeliveriesResponse200
 from .list_webhook_endpoint_deliveries_status import ListWebhookEndpointDeliveriesStatus
@@ -213,6 +214,9 @@ from .price import Price
 from .price_type import PriceType
 from .purchase_gift_body import PurchaseGiftBody
 from .qualify_referral_response_200 import QualifyReferralResponse200
+from .query_usage_granularity import QueryUsageGranularity
+from .query_usage_response_200 import QueryUsageResponse200
+from .query_usage_response_200_granularity import QueryUsageResponse200Granularity
 from .quote import Quote
 from .quote_action_response import QuoteActionResponse
 from .quote_status import QuoteStatus
@@ -250,7 +254,9 @@ from .submit_cancel_flow_step_body import SubmitCancelFlowStepBody
 from .submit_step_result import SubmitStepResult
 from .submit_step_result_status import SubmitStepResultStatus
 from .subscription import Subscription
+from .subscription_dimension_usage import SubscriptionDimensionUsage
 from .subscription_status import SubscriptionStatus
+from .subscription_usage import SubscriptionUsage
 from .tenant import Tenant
 from .tenant_mrr import TenantMRR
 from .test_irp_connection_response_200 import TestIRPConnectionResponse200
@@ -273,6 +279,8 @@ from .update_organization_body import UpdateOrganizationBody
 from .update_organization_response_200 import UpdateOrganizationResponse200
 from .update_quote_response_200 import UpdateQuoteResponse200
 from .update_subscription_body import UpdateSubscriptionBody
+from .usage_bucket import UsageBucket
+from .usage_dimension import UsageDimension
 from .usage_stats import UsageStats
 from .validate_gstin_body import ValidateGSTINBody
 from .validate_gstin_response_200 import ValidateGSTINResponse200
@@ -467,6 +475,7 @@ __all__ = (
     "ListReferralsResponse200",
     "ListSubscriptionsResponse200",
     "ListUnbilledChargesResponse200",
+    "ListUsageDimensionsResponse200",
     "ListVirtualAccountsResponse200",
     "ListWebhookEndpointDeliveriesResponse200",
     "ListWebhookEndpointDeliveriesStatus",
@@ -492,6 +501,9 @@ __all__ = (
     "PriceType",
     "PurchaseGiftBody",
     "QualifyReferralResponse200",
+    "QueryUsageGranularity",
+    "QueryUsageResponse200",
+    "QueryUsageResponse200Granularity",
     "Quote",
     "QuoteActionResponse",
     "QuoteStatus",
@@ -529,7 +541,9 @@ __all__ = (
     "SubmitStepResult",
     "SubmitStepResultStatus",
     "Subscription",
+    "SubscriptionDimensionUsage",
     "SubscriptionStatus",
+    "SubscriptionUsage",
     "Tenant",
     "TenantMRR",
     "TestIRPConnectionResponse200",
@@ -552,6 +566,8 @@ __all__ = (
     "UpdateOrganizationResponse200",
     "UpdateQuoteResponse200",
     "UpdateSubscriptionBody",
+    "UsageBucket",
+    "UsageDimension",
     "UsageStats",
     "ValidateGSTINBody",
     "ValidateGSTINResponse200",

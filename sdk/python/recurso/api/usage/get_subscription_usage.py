@@ -1,42 +1,38 @@
 from http import HTTPStatus
 from typing import Any
+from urllib.parse import quote
+from uuid import UUID
 
 import httpx
 
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.error import Error
-from ...models.record_usage_event_body import RecordUsageEventBody
-from ...models.record_usage_event_response_201 import RecordUsageEventResponse201
+from ...models.subscription_usage import SubscriptionUsage
 from ...types import Response
 
 
 def _get_kwargs(
-    *,
-    body: RecordUsageEventBody,
+    id: UUID,
 ) -> dict[str, Any]:
-    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
-        "method": "post",
-        "url": "/v1/usage/events",
+        "method": "get",
+        "url": "/v1/subscriptions/{id}/usage".format(
+            id=quote(str(id), safe=""),
+        ),
     }
 
-    _kwargs["json"] = body.to_dict()
-
-    headers["Content-Type"] = "application/json"
-
-    _kwargs["headers"] = headers
     return _kwargs
 
 
 def _parse_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Error | RecordUsageEventResponse201 | None:
-    if response.status_code == 201:
-        response_201 = RecordUsageEventResponse201.from_dict(response.json())
+) -> Error | SubscriptionUsage | None:
+    if response.status_code == 200:
+        response_200 = SubscriptionUsage.from_dict(response.json())
 
-        return response_201
+        return response_200
 
     if response.status_code == 400:
         response_400 = Error.from_dict(response.json())
@@ -61,7 +57,7 @@ def _parse_response(
 
 def _build_response(
     *, client: AuthenticatedClient | Client, response: httpx.Response
-) -> Response[Error | RecordUsageEventResponse201]:
+) -> Response[Error | SubscriptionUsage]:
     return Response(
         status_code=HTTPStatus(response.status_code),
         content=response.content,
@@ -71,29 +67,30 @@ def _build_response(
 
 
 def sync_detailed(
+    id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: RecordUsageEventBody,
-) -> Response[Error | RecordUsageEventResponse201]:
-    """Record a usage event
+) -> Response[Error | SubscriptionUsage]:
+    r"""Current-period usage for a subscription
 
-     Reports metered usage against a subscription dimension (e.g. `api_calls`). The subscription must
-    belong to the authenticated tenant (404 otherwise) and `customer_id` must match the subscription's
-    customer (400 otherwise).
+     Per-dimension usage inside the subscription's current billing period plus lifetime totals — the
+    \"you've used 4,231 of 10,000 api_calls\" view. When the customer holds an entitlement limit for a
+    feature_key equal to the dimension name, `limit_value` and `remaining` are populated (null
+    otherwise; `remaining` may be negative when over the limit).
 
     Args:
-        body (RecordUsageEventBody):
+        id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | RecordUsageEventResponse201]
+        Response[Error | SubscriptionUsage]
     """
 
     kwargs = _get_kwargs(
-        body=body,
+        id=id,
     )
 
     response = client.get_httpx_client().request(
@@ -104,57 +101,59 @@ def sync_detailed(
 
 
 def sync(
+    id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: RecordUsageEventBody,
-) -> Error | RecordUsageEventResponse201 | None:
-    """Record a usage event
+) -> Error | SubscriptionUsage | None:
+    r"""Current-period usage for a subscription
 
-     Reports metered usage against a subscription dimension (e.g. `api_calls`). The subscription must
-    belong to the authenticated tenant (404 otherwise) and `customer_id` must match the subscription's
-    customer (400 otherwise).
+     Per-dimension usage inside the subscription's current billing period plus lifetime totals — the
+    \"you've used 4,231 of 10,000 api_calls\" view. When the customer holds an entitlement limit for a
+    feature_key equal to the dimension name, `limit_value` and `remaining` are populated (null
+    otherwise; `remaining` may be negative when over the limit).
 
     Args:
-        body (RecordUsageEventBody):
+        id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | RecordUsageEventResponse201
+        Error | SubscriptionUsage
     """
 
     return sync_detailed(
+        id=id,
         client=client,
-        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
+    id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: RecordUsageEventBody,
-) -> Response[Error | RecordUsageEventResponse201]:
-    """Record a usage event
+) -> Response[Error | SubscriptionUsage]:
+    r"""Current-period usage for a subscription
 
-     Reports metered usage against a subscription dimension (e.g. `api_calls`). The subscription must
-    belong to the authenticated tenant (404 otherwise) and `customer_id` must match the subscription's
-    customer (400 otherwise).
+     Per-dimension usage inside the subscription's current billing period plus lifetime totals — the
+    \"you've used 4,231 of 10,000 api_calls\" view. When the customer holds an entitlement limit for a
+    feature_key equal to the dimension name, `limit_value` and `remaining` are populated (null
+    otherwise; `remaining` may be negative when over the limit).
 
     Args:
-        body (RecordUsageEventBody):
+        id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Response[Error | RecordUsageEventResponse201]
+        Response[Error | SubscriptionUsage]
     """
 
     kwargs = _get_kwargs(
-        body=body,
+        id=id,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -163,30 +162,31 @@ async def asyncio_detailed(
 
 
 async def asyncio(
+    id: UUID,
     *,
     client: AuthenticatedClient | Client,
-    body: RecordUsageEventBody,
-) -> Error | RecordUsageEventResponse201 | None:
-    """Record a usage event
+) -> Error | SubscriptionUsage | None:
+    r"""Current-period usage for a subscription
 
-     Reports metered usage against a subscription dimension (e.g. `api_calls`). The subscription must
-    belong to the authenticated tenant (404 otherwise) and `customer_id` must match the subscription's
-    customer (400 otherwise).
+     Per-dimension usage inside the subscription's current billing period plus lifetime totals — the
+    \"you've used 4,231 of 10,000 api_calls\" view. When the customer holds an entitlement limit for a
+    feature_key equal to the dimension name, `limit_value` and `remaining` are populated (null
+    otherwise; `remaining` may be negative when over the limit).
 
     Args:
-        body (RecordUsageEventBody):
+        id (UUID):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
         httpx.TimeoutException: If the request takes longer than Client.timeout.
 
     Returns:
-        Error | RecordUsageEventResponse201
+        Error | SubscriptionUsage
     """
 
     return (
         await asyncio_detailed(
+            id=id,
             client=client,
-            body=body,
         )
     ).parsed

@@ -789,7 +789,10 @@ paths:
       operationId: recordUsageEvent
       tags: [Usage]
       summary: Record a usage event
-      description: Reports metered usage against a subscription dimension (e.g. `api_calls`).
+      description: >
+        Reports metered usage against a subscription dimension (e.g. `api_calls`).
+        The subscription must belong to the authenticated tenant (404 otherwise)
+        and `customer_id` must match the subscription's customer (400 otherwise).
       requestBody:
         required: true
         content:
@@ -828,6 +831,8 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/credit-notes:
     post:

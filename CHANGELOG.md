@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2026-07-07
+
+### Added
+
+- **US sales tax via TaxJar** — set TAXJAR_API_KEY and US invoices get
+  live jurisdiction rates (24h per-location cache, retry-once, invoices
+  never blocked by lookup failures: they ship at 0% flagged
+  sales_tax_error for review). Unconfigured stays the honest
+  sales_tax_stub. Nexus-state configuration is not yet modeled.
+- **Usage platform depth** — GET /v1/usage (time-bucketed windows),
+  GET /v1/subscriptions/{id}/usage (current-period and lifetime usage
+  per dimension with entitlement limit and remaining headroom),
+  GET /v1/usage/dimensions catalog.
+- **Accounting sync efficiency** — changed-since dirty tracking (daily
+  sync pushes only what changed; manual sync forces a full re-push);
+  Xero invoice lines now reference synced Items by code.
+- SDKs: Node usage.query/usage.dimensions/subscriptions.usage (78
+  tests); Python regenerated (12-check smoke). New docs: US sales tax
+  compliance page, usage windowing and entitlement-headroom patterns,
+  incremental-sync semantics.
+
+### Fixed
+
+- **Security**: POST /v1/usage/events accepted events against any
+  tenant's subscription; it now enforces subscription ownership and
+  customer match.
+- Stale usage docs described fictional request fields; corrected to the
+  real API.
+
 ## [0.2.2] - 2026-07-06
 
 ### Added
