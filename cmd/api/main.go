@@ -79,6 +79,7 @@ func main() {
 	customerRepo := db.NewCustomerRepository(dbx)
 	subscriptionRepo := db.NewSubscriptionRepository(database)
 	invoiceRepo := db.NewInvoiceRepository(database)
+	entitlementRepo := db.NewEntitlementRepository(database) // Entitlement Engine v1
 	usageRepo := db.NewUsageRepository(database)
 	couponRepo := db.NewCouponRepository(database)                   // P7
 	tenantRepo := db.NewTenantRepository(database)                   // P8
@@ -232,6 +233,7 @@ func main() {
 	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter, taxResolver) // P15, P25
 
 	catalogService := service.NewCatalogService(planRepo)
+	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
 	customerService := service.NewCustomerService(customerRepo)
 	tenantService := service.NewTenantService(tenantRepo)                                                        // P8 Service
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
@@ -480,6 +482,7 @@ func main() {
 
 	// 7. Initialize Handlers
 	catalogHandler := handler.NewCatalogHandler(catalogService)
+	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway)
@@ -671,6 +674,12 @@ func main() {
 	{
 		v1.POST("/plans", catalogHandler.CreatePlan)
 		v1.GET("/plans", catalogHandler.ListPlans)
+
+		// Entitlement Engine v1
+		v1.PUT("/plans/:id/entitlements", entitlementHandler.SetPlanEntitlements)
+		v1.GET("/plans/:id/entitlements", entitlementHandler.GetPlanEntitlements)
+		v1.GET("/customers/:id/entitlements", entitlementHandler.GetCustomerEntitlements)
+		v1.GET("/entitlements/check", entitlementHandler.CheckEntitlement)
 
 		v1.POST("/customers", customerHandler.CreateCustomer)
 		v1.GET("/customers", customerHandler.ListCustomers)
