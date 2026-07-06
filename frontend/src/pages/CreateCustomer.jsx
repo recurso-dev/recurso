@@ -95,7 +95,7 @@ const CreateCustomer = () => {
                                                         <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Customer Name <span className="text-red-500">*</span></p>
                                                         <input
                                                             required
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                             placeholder="e.g., Acme Corporation"
                                                             value={formData.name}
                                                             onChange={e => setFormData({ ...formData, name: e.target.value })}
@@ -106,7 +106,7 @@ const CreateCustomer = () => {
                                                         <input
                                                             required
                                                             type="email"
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                             placeholder="e.g., billing@acme.com"
                                                             value={formData.email}
                                                             onChange={e => setFormData({ ...formData, email: e.target.value })}
@@ -115,7 +115,7 @@ const CreateCustomer = () => {
                                                     <label className="flex flex-col flex-1">
                                                         <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Phone Number</p>
                                                         <input
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                             placeholder="e.g., +1 (555) 123-4567"
                                                             value={formData.phone}
                                                             onChange={e => setFormData({ ...formData, phone: e.target.value })}
@@ -134,8 +134,8 @@ const CreateCustomer = () => {
                                                     <label className="flex flex-col flex-1">
                                                         <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Billing Address</p>
                                                         <textarea
-                                                            className="form-textarea flex w-full min-w-0 flex-1 resize-vertical overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary min-h-[88px] placeholder:text-slate-500 dark:placeholder:text-slate-500 p-3 text-sm font-normal transition-all"
-                                                            placeholder="123 Main Street\nAnytown, USA 12345"
+                                                            className="form-textarea flex w-full min-w-0 flex-1 resize-vertical rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all min-h-[88px]"
+                                                            placeholder="123 Main Street, Anytown, USA 12345"
                                                             value={formData.address}
                                                             onChange={e => setFormData({ ...formData, address: e.target.value })}
                                                         ></textarea>
@@ -144,9 +144,9 @@ const CreateCustomer = () => {
                                                         <label className="flex flex-col flex-1">
                                                             <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Country</p>
                                                             <select
-                                                                className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                                className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                                 value={formData.country}
-                                                                onChange={e => setFormData({ ...formData, country: e.target.value })}
+                                                                onChange={e => setFormData({ ...formData, country: e.target.value, state: '' })}
                                                             >
                                                                 <option>United States</option>
                                                                 <option>India</option>
@@ -160,7 +160,7 @@ const CreateCustomer = () => {
                                                             </p>
                                                             {formData.country === 'India' ? (
                                                                 <select
-                                                                    className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                                    className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                                     value={formData.state}
                                                                     onChange={e => setFormData({ ...formData, state: e.target.value })}
                                                                 >
@@ -176,7 +176,7 @@ const CreateCustomer = () => {
                                                                 </select>
                                                             ) : (
                                                                 <input // Use input for other countries for now to allow free text or select for US
-                                                                    className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                                    className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                                     placeholder="e.g. California"
                                                                     value={formData.state}
                                                                     onChange={e => setFormData({ ...formData, state: e.target.value })}
@@ -189,7 +189,7 @@ const CreateCustomer = () => {
                                                             {formData.country === 'India' ? 'GSTIN (Goods and Services Tax ID)' : 'Tax ID / VAT Number'}
                                                         </p>
                                                         <input
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800/50 focus:border-primary !h-28 placeholder:text-slate-500 dark:placeholder:text-slate-500 px-6 text-xl font-normal transition-all"
+                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
                                                             placeholder={formData.country === 'India' ? "e.g., 29ABCDE1234F1Z5" : "e.g., EU123456789"}
                                                             value={formData.tax_id}
                                                             onChange={e => setFormData({ ...formData, tax_id: e.target.value })}
