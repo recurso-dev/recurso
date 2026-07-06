@@ -34,6 +34,15 @@ func (r *AccountingMappingRepository) Upsert(ctx context.Context, m *domain.Acco
 	return err
 }
 
+// Delete removes the mapping for the given connection/entity. Deleting a
+// mapping that does not exist is a no-op.
+func (r *AccountingMappingRepository) Delete(ctx context.Context, connectionID uuid.UUID, entityType string, entityID uuid.UUID) error {
+	query := `DELETE FROM accounting_entity_mappings
+		WHERE connection_id = $1 AND entity_type = $2 AND entity_id = $3`
+	_, err := r.db.ExecContext(ctx, query, connectionID, entityType, entityID)
+	return err
+}
+
 // Get returns the mapping for the given connection/entity, or (nil, nil)
 // when no mapping exists.
 func (r *AccountingMappingRepository) Get(ctx context.Context, connectionID uuid.UUID, entityType string, entityID uuid.UUID) (*domain.AccountingEntityMapping, error) {

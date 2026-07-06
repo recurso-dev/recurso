@@ -357,6 +357,7 @@ func main() {
 	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
 	accountingService.SetConnectionRepo(acctConnRepo)
 	accountingService.SetMappingRepo(acctMappingRepo)
+	accountingService.SetSubscriptionRepo(subscriptionRepo) // resolve plan ItemRefs on invoice lines
 	accountingService.SetOAuthConfigs(oauthConfigs)
 
 	// Phase 2: Mandate Service

@@ -11,11 +11,18 @@ import (
 	"time"
 
 	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // TallyAdapter exports data as JSONL files for Tally ERP import.
 // Tally uses XML/CSV import natively; this JSONL intermediate format
 // can be converted by a separate tool or script.
+//
+// Update semantics: the export is append-only. When the caller passes a
+// known externalID the adapter still appends a new record — it merely tags
+// it action="update" so the downstream import tool can apply
+// last-record-wins per internal ID. Nothing is rewritten in place and
+// port.ErrExternalGone is never returned.
 type TallyAdapter struct {
 	exportDir string
 	mu        sync.Mutex
@@ -33,14 +40,24 @@ func NewTallyAdapter(exportDir string) *TallyAdapter {
 type tallyRecord struct {
 	Type      string      `json:"type"`
 	ID        string      `json:"id"`
+	Action    string      `json:"action"` // "create" or "update" (append-only; import applies last-record-wins)
 	Timestamp string      `json:"timestamp"`
 	Data      interface{} `json:"data"`
 }
 
-// SyncCustomer appends the customer to the JSONL export. Tally has no API
-// that returns a provider-side ID, so the export filename is returned as a
-// synthetic external ID.
-func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) (string, error) {
+// tallyAction tags the exported record so the import tool can distinguish
+// first-time exports from re-exports of changed entities.
+func tallyAction(externalID string) string {
+	if externalID == "" {
+		return "create"
+	}
+	return "update"
+}
+
+// SyncCustomer appends the customer to the JSONL export (append-only; see
+// the adapter comment). Tally has no API that returns a provider-side ID, so
+// the export filename is returned as a synthetic external ID.
+func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer, externalID string) (string, error) {
 	name := ""
 	if customer.Name != nil {
 		name = *customer.Name
@@ -49,6 +66,7 @@ func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Custom
 	record := tallyRecord{
 		Type:      "customer",
 		ID:        customer.ID.String(),
+		Action:    tallyAction(externalID),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Data: map[string]interface{}{
 			"name":    name,
@@ -63,14 +81,15 @@ func (a *TallyAdapter) SyncCustomer(ctx context.Context, customer *domain.Custom
 	return a.appendRecord(record)
 }
 
-// SyncInvoice appends the invoice to the JSONL export. customerExternalID is
-// accepted for interface parity but unused: Tally imports reference the
-// internal customer_id embedded in the record.
-func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, customerExternalID string) (string, error) {
-	_ = customerExternalID
+// SyncInvoice appends the invoice to the JSONL export (append-only; see the
+// adapter comment). refs is accepted for interface parity but unused: Tally
+// imports reference the internal customer_id embedded in the record.
+func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, refs port.InvoiceSyncRefs, externalID string) (string, error) {
+	_ = refs
 	record := tallyRecord{
 		Type:      "invoice",
 		ID:        invoice.ID.String(),
+		Action:    tallyAction(externalID),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Data: map[string]interface{}{
 			"invoice_number": invoice.InvoiceNumber,
@@ -91,12 +110,14 @@ func (a *TallyAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice,
 	return a.appendRecord(record)
 }
 
-// SyncProduct appends the plan to the JSONL export and returns the export
-// filename as a synthetic external ID.
-func (a *TallyAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
+// SyncProduct appends the plan to the JSONL export (append-only; see the
+// adapter comment) and returns the export filename as a synthetic external
+// ID.
+func (a *TallyAdapter) SyncProduct(ctx context.Context, plan *domain.Plan, externalID string) (string, error) {
 	record := tallyRecord{
 		Type:      "product",
 		ID:        plan.ID.String(),
+		Action:    tallyAction(externalID),
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Data: map[string]interface{}{
 			"name":           plan.Name,

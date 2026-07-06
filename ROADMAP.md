@@ -26,9 +26,13 @@ can sign off on the output.
       connection and reused; customers sync before invoices and real
       CustomerRef/ContactID values are sent; create-once semantics prevent
       duplicates in the books.
-- [ ] **Accounting sync updates** — create-once only today: local edits to
-      already-synced entities aren't pushed (QBO SyncToken sparse update /
-      Xero POST-with-ID), and QBO invoice lines lack ItemRef mapping.
+- [x] **Accounting sync updates** — mapped entities now update in place
+      (QBO SyncToken sparse updates with stale-token retry, Xero
+      POST-with-ID upserts, deleted-at-provider recreate), and QBO invoice
+      lines carry real ItemRefs.
+- [ ] **Accounting sync efficiency** — daily sync now re-pushes every
+      mapped entity (no changed-since dirty tracking); Xero invoice lines
+      link items by Code, which isn't plumbed through yet.
 - [x] **Razorpay mandate revocation** — real customer-scoped token
       deletion (idempotent), Razorpay customer id captured at creation and
       backfilled from the activation webhook; legacy mandates without a
@@ -59,8 +63,10 @@ can sign off on the output.
       postings and orphaned transactions (set-based SQL, capped listings).
       TigerBeetle comparison is explicitly skipped until its client gains
       an enumeration API.
-- [ ] **Idempotency coverage audit** — Redis idempotency store exists;
-      verify every money-mutating endpoint honors idempotency keys.
+- [x] **Idempotency coverage audit** — middleware now scopes keys by
+      tenant+method+path (was tenant-only: reused keys replayed the wrong
+      endpoint's response), never caches 5xx (transient failures were
+      stored for 24h), covers all money-mutating v1 endpoints.
 - [ ] **Load test with published numbers** — invoices/minute, webhook
       throughput, p99s on a reference box; publish in docs.
 - [x] **Security posture page** — docs/security.md covers PCI scope,
@@ -68,8 +74,9 @@ can sign off on the output.
       disclosure channel (security@recurso.dev inbox needs creating 🔒).
 - [ ] **Backup/restore drill** — actually restore from a pg_dump into a
       fresh stack and document the verified procedure.
-- [ ] **Consistent API error envelope** — handlers currently return two
-      error shapes (bare string / `{code,message}`); standardize.
+- [x] **Consistent API error envelope** — every handler returns
+      `{"error": {"code", "message"}}` (369 sites, snake_case taxonomy);
+      OpenAPI Error schema matches; frontend parse sites updated.
 - [x] **TigerBeetle HA guidance** — documented: stateless API replicas +
       Postgres as source of truth is the supported HA path; single-node
       TigerBeetle is an optional accelerator.
@@ -92,6 +99,8 @@ can sign off on the output.
 - [x] Dashboard getting-started checklist.
 - [ ] **Publish `recurso-node` to npm** 🔒 (metadata is ready).
 - [ ] **Make GHCR image public** 🔒 (one toggle in GitHub package settings).
+- [x] OpenAPI spec covers the full surface: 109 paths / 137 operations,
+      zero missing registered routes, redocly-clean, minimum-path test.
 - [ ] Wire Mintlify API playground to the served OpenAPI spec.
 - [ ] Generated Python SDK from OpenAPI (then Go).
 - [ ] Postman collection (export from OpenAPI, link in docs).

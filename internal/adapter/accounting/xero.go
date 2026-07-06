@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,15 +12,17 @@ import (
 	"strings"
 
 	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // XeroAdapter syncs entities to Xero.
 //
-// Update gap: this adapter only creates objects. Xero's POST endpoints act
-// as upserts when the payload carries the provider ID (e.g. ContactID), but
-// we do not resend already-synced entities: the service layer enforces
-// create-once semantics via accounting_entity_mappings, so subsequent local
-// changes are NOT pushed to Xero.
+// Create-or-update semantics: Xero's POST endpoints act as upserts when the
+// payload carries the provider ID (ContactID, InvoiceID, ItemID), so when the
+// caller passes a known externalID the adapter simply POSTs with that ID
+// embedded. When Xero responds 404 for a carried ID (object deleted at the
+// provider), port.ErrExternalGone is returned so the service can clear the
+// stale mapping and re-create.
 type XeroAdapter struct {
 	baseURL     string
 	accessToken string
@@ -39,14 +42,17 @@ func (a *XeroAdapter) SetCredentials(accessToken, xeroTenantID string) {
 	a.tenantID = xeroTenantID
 }
 
-// SyncCustomer creates the customer as a Xero Contact and returns the
-// provider ContactID. If a contact with the same email already exists, its
-// ContactID is returned without creating a duplicate.
-func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer) (string, error) {
-	// Check for existing contact by email to avoid duplicates
-	existing, err := a.findContactByEmail(ctx, customer.Email)
-	if err == nil && existing != "" {
-		return existing, nil
+// SyncCustomer creates or updates the customer as a Xero Contact and returns
+// the provider ContactID. With an externalID the payload carries that
+// ContactID and Xero updates in place; without one a contact is created
+// (deduping by email — if a contact with the same email already exists, its
+// ContactID is returned instead).
+func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Customer, externalID string) (string, error) {
+	if externalID == "" {
+		// Check for existing contact by email to avoid duplicates
+		if existing, err := a.findContactByEmail(ctx, customer.Email); err == nil && existing != "" {
+			return existing, nil
+		}
 	}
 
 	name := ""
@@ -57,6 +63,9 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 	contactData := map[string]interface{}{
 		"Name":         name,
 		"EmailAddress": customer.Email,
+	}
+	if externalID != "" {
+		contactData["ContactID"] = externalID
 	}
 
 	// Add phone
@@ -91,6 +100,9 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 
 	respBody, err := a.post(ctx, "/Contacts", contact)
 	if err != nil {
+		if externalID != "" && isXeroGone(err) {
+			return "", fmt.Errorf("xero contact %s: %w", externalID, port.ErrExternalGone)
+		}
 		return "", fmt.Errorf("xero customer sync failed: %w", err)
 	}
 
@@ -108,11 +120,16 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 	return created.Contacts[0].ContactID, nil
 }
 
-// SyncInvoice creates the invoice in Xero and returns the provider
-// InvoiceID. customerExternalID must be the Xero ContactID (from a prior
-// SyncCustomer) — Xero rejects invoices referencing unknown contacts.
-func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, customerExternalID string) (string, error) {
-	if customerExternalID == "" {
+// SyncInvoice creates or updates the invoice in Xero and returns the provider
+// InvoiceID. refs.CustomerExternalID must be the Xero ContactID (from a prior
+// SyncCustomer) — Xero rejects invoices referencing unknown contacts. With an
+// externalID the payload carries that InvoiceID and Xero updates in place.
+//
+// refs.ProductExternalID is ignored: Xero invoice lines reference items by
+// item Code, not ItemID, so linking lines to the synced item would need the
+// code round-tripped as well. Lines are sent with description + AccountCode.
+func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, refs port.InvoiceSyncRefs, externalID string) (string, error) {
+	if refs.CustomerExternalID == "" {
 		return "", fmt.Errorf("xero invoice sync requires the customer's Xero ContactID")
 	}
 
@@ -133,12 +150,15 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 	invoiceData := map[string]interface{}{
 		"Type": "ACCREC",
 		"Contact": map[string]string{
-			"ContactID": customerExternalID,
+			"ContactID": refs.CustomerExternalID,
 		},
 		"LineItems":    lineItems,
 		"CurrencyCode": invoice.Currency,
 		"Status":       "AUTHORISED",
 		"Reference":    invoice.InvoiceNumber,
+	}
+	if externalID != "" {
+		invoiceData["InvoiceID"] = externalID
 	}
 
 	// Add due date
@@ -152,6 +172,9 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 
 	respBody, err := a.post(ctx, "/Invoices", xeroInvoice)
 	if err != nil {
+		if externalID != "" && isXeroGone(err) {
+			return "", fmt.Errorf("xero invoice %s: %w", externalID, port.ErrExternalGone)
+		}
 		return "", fmt.Errorf("xero invoice sync failed: %w", err)
 	}
 
@@ -169,28 +192,37 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 	return created.Invoices[0].InvoiceID, nil
 }
 
-// SyncProduct creates the plan as a Xero Item and returns the provider
-// ItemID. If an item with the same name already exists, its ItemID is
-// returned without creating a duplicate.
-func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (string, error) {
-	// Check for existing item by name to avoid duplicates
-	existing, err := a.findItemByName(ctx, plan.Name)
-	if err == nil && existing != "" {
-		return existing, nil
+// SyncProduct creates or updates the plan as a Xero Item and returns the
+// provider ItemID. With an externalID the payload carries that ItemID and
+// Xero updates in place; without one an item is created (deduping by name —
+// if an item with the same name already exists, its ItemID is returned
+// instead).
+func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan, externalID string) (string, error) {
+	if externalID == "" {
+		// Check for existing item by name to avoid duplicates
+		if existing, err := a.findItemByName(ctx, plan.Name); err == nil && existing != "" {
+			return existing, nil
+		}
+	}
+
+	itemData := map[string]interface{}{
+		"Code":        plan.ID.String()[:8],
+		"Name":        plan.Name,
+		"Description": plan.Name,
+	}
+	if externalID != "" {
+		itemData["ItemID"] = externalID
 	}
 
 	item := map[string]interface{}{
-		"Items": []map[string]interface{}{
-			{
-				"Code":        plan.ID.String()[:8],
-				"Name":        plan.Name,
-				"Description": plan.Name,
-			},
-		},
+		"Items": []map[string]interface{}{itemData},
 	}
 
 	respBody, err := a.post(ctx, "/Items", item)
 	if err != nil {
+		if externalID != "" && isXeroGone(err) {
+			return "", fmt.Errorf("xero item %s: %w", externalID, port.ErrExternalGone)
+		}
 		return "", fmt.Errorf("xero product sync failed: %w", err)
 	}
 
@@ -208,8 +240,24 @@ func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan) (strin
 	return created.Items[0].ItemID, nil
 }
 
+// xeroAPIError is an HTTP-level failure from the Xero API.
+type xeroAPIError struct {
+	status int
+}
+
+func (e *xeroAPIError) Error() string {
+	return fmt.Sprintf("xero API error: status %d", e.status)
+}
+
+// isXeroGone reports whether the error is Xero saying the object referenced
+// by the payload's provider ID does not exist (404 on an ID-carrying POST).
+func isXeroGone(err error) bool {
+	var apiErr *xeroAPIError
+	return errors.As(err, &apiErr) && apiErr.status == http.StatusNotFound
+}
+
 // post sends a JSON payload to the Xero API and returns the raw response
-// body.
+// body. HTTP >=400 responses are returned as *xeroAPIError.
 func (a *XeroAdapter) post(ctx context.Context, path string, payload interface{}) ([]byte, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -230,7 +278,7 @@ func (a *XeroAdapter) post(ctx context.Context, path string, payload interface{}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("xero API error: status %d", resp.StatusCode)
+		return nil, &xeroAPIError{status: resp.StatusCode}
 	}
 
 	respBody, err := io.ReadAll(resp.Body)
