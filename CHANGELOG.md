@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2026-07-06
+
+### Added
+
+- **Python SDK** (`sdk/python`) — generated from the served OpenAPI spec:
+  typed models, sync and async clients, 32 API modules, quickstart README,
+  no-network smoke test.
+- **Node SDK test suite** — 71 tests with 100% client coverage, including
+  a reflection guard that fails when a method ships untested; SDK builds
+  and tests now gate CI.
+- **Dashboard**: entitlements editing on plan detail (PUT-replace
+  semantics with validation), a Finance > Reconciliation page (summary
+  cards, TigerBeetle comparison badge, discrepancy table, "Books
+  balanced" zero state), and event payload/type visibility on the
+  Developers page.
+- Docs: entitlements guide + API reference, recovered-revenue and
+  reconciliation pages, performance numbers, error-envelope taxonomy,
+  and an interactive API playground wired to the full spec.
+
+### Fixed
+
+- The create-API-key dialog displayed an empty key (read the wrong
+  response field); key listings now show real prefix/type/status/date.
+- Removed remaining mock content from the dashboard (fake usage tiers,
+  dead buttons, mock pagination).
+- OpenAPI corrections: PUT /v1/plans/{id}/entitlements takes a bare
+  JSON array; reconciliation documents the TigerBeetle comparison.
+
 ## [0.2.0] - 2026-07-06
 
 ### Added
