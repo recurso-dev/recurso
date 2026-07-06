@@ -3814,6 +3814,151 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+
+  /v1/analytics/dunning/recovered:
+    get:
+      tags: [Analytics]
+      summary: Recovered revenue attribution
+      description: >-
+        Totals and a last-12-months series of revenue recovered by the
+        dunning/retry engine (invoices paid after at least one failed
+        attempt).
+      operationId: getDunningRecovered
+      responses:
+        "200":
+          description: Recovery attribution report
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recovered_amount_total:
+                    type: object
+                    additionalProperties: { type: integer, format: int64 }
+                    description: Total recovered, in minor units, keyed by currency.
+                  recovered_count: { type: integer }
+                  avg_attempts: { type: number }
+                  avg_days_to_recover: { type: number }
+                  monthly:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        month: { type: string }
+                        currency: { type: string }
+                        amount: { type: integer, format: int64 }
+                        count: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/plans/{id}/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: List a plan's entitlements
+      operationId: getPlanEntitlements
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Entitlements granted by the plan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Entitlement" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Entitlements]
+      summary: Replace a plan's entitlement set
+      description: Full replacement — feature keys absent from the request are removed.
+      operationId: setPlanEntitlements
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                entitlements:
+                  type: array
+                  items: { $ref: "#/components/schemas/EntitlementInput" }
+      responses:
+        "200":
+          description: Updated entitlement set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Entitlement" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/customers/{id}/entitlements:
+    get:
+      tags: [Entitlements]
+      summary: Effective entitlements for a customer
+      description: >-
+        Union over the customer's active and trialing subscriptions' plans —
+        booleans are granted if any plan grants them; limits resolve to the
+        maximum across plans.
+      operationId: getCustomerEntitlements
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Effective entitlement set with granting plan ids
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        feature_key: { type: string }
+                        kind: { type: string, enum: [boolean, limit] }
+                        bool_value: { type: boolean, nullable: true }
+                        limit_value: { type: integer, format: int64, nullable: true }
+                        plan_ids:
+                          type: array
+                          items: { type: string, format: uuid }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/entitlements/check:
+    get:
+      tags: [Entitlements]
+      summary: Fast single-feature entitlement check
+      description: The hot path for feature gating — one indexed query.
+      operationId: checkEntitlement
+      parameters:
+        - { name: customer_id, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: feature, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Grant answer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  feature_key: { type: string }
+                  granted: { type: boolean }
+                  limit_value: { type: integer, format: int64, nullable: true }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -3895,6 +4040,23 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    Entitlement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        plan_id: { type: string, format: uuid }
+        feature_key: { type: string }
+        kind: { type: string, enum: [boolean, limit] }
+        bool_value: { type: boolean, nullable: true }
+        limit_value: { type: integer, format: int64, nullable: true }
+    EntitlementInput:
+      type: object
+      required: [feature_key, kind]
+      properties:
+        feature_key: { type: string }
+        kind: { type: string, enum: [boolean, limit] }
+        bool_value: { type: boolean }
+        limit_value: { type: integer, format: int64 }
     Error:
       type: object
       required: [error]

@@ -156,22 +156,20 @@ items feed Tracks 1–3; the rest are recorded so the vision doesn't get
 re-derived every quarter.
 
 **Build now (prerequisites for the monetization wedge):**
-- [ ] **Recovery attribution** — measure what dunning actually recovers:
-      when a failed invoice later collects, record the recovered amount,
-      attempts, and strategy; expose totals via analytics. This turns the
-      smart-retry engine into a provable-ROI number and is the prerequisite
-      for any cloud-exclusive "network-trained" dunning moat (the open-core
-      extraction answer: the code is MIT, the cross-tenant model isn't).
-- [ ] **Entitlement engine v1** — plan-level feature grants (booleans and
-      limits), effective-entitlement resolution per customer from active
-      subscriptions, a fast check endpoint, SDK support. Makes Recurso
-      load-bearing in the customer's application, not just their books.
-- [ ] **TigerBeetle reconciliation** — paginate GetAccountTransfers (or
-      timestamp-windowed queries) so the reconciler can actually compare
-      TB against PG; until then TB stays clearly labeled optional-mirror.
-- [ ] **Incident runbook + alerting** — SEV1 money-movement runbook and a
-      health-alert hook (webhook/email on /health degradation) before the
-      first cloud customer exists (solo-operator risk).
+- [x] **Recovery attribution** — recovered_payments records amount,
+      attempts, strategy, and days-to-recover whenever a previously-failed
+      invoice collects; GET /v1/analytics/dunning/recovered serves totals
+      and a 12-month series; DunningDashboard shows recovered revenue.
+- [x] **Entitlement engine v1** — plan-level boolean/limit grants,
+      union resolution across active+trialing subscriptions (any-true /
+      max-limit), single-query check endpoint, Node SDK resource, plan
+      detail UI.
+- [x] **TigerBeetle reconciliation** — paginated transfer enumeration;
+      the reconciler now reports missing-in-TB / missing-in-PG / amount
+      mismatches with tb_compared=true when connected.
+- [x] **Incident runbook + alerting** — docs/incident-runbook.md (SEV
+      definitions, stop-the-bleeding, triage table, honest gaps) and
+      ALERT_WEBHOOK_URL transition-based health alerting.
 
 **Next (Phase 2, after design partners):**
 - Usage platform depth (seats, storage, active-user dimensions; credits)
