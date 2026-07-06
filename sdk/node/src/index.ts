@@ -186,6 +186,33 @@ export class Recurso {
         qualify: (id: string) => this.post(`/v1/referrals/${id}/qualify`),
     };
 
+    public entitlements = {
+        /**
+         * Replace a plan's full entitlement set (PUT semantics: feature
+         * keys absent from the list are removed).
+         */
+        setForPlan: (
+            planId: string,
+            list: Array<{
+                feature_key: string;
+                kind: 'boolean' | 'limit';
+                bool_value?: boolean;
+                limit_value?: number;
+            }>,
+        ) => this.put(`/v1/plans/${planId}/entitlements`, list),
+        getForPlan: (planId: string) => this.get(`/v1/plans/${planId}/entitlements`),
+        /**
+         * Effective entitlements for a customer: the union over the plans
+         * of their active/trialing subscriptions (boolean: any-true wins;
+         * limit: max across plans).
+         */
+        forCustomer: (customerId: string) =>
+            this.get(`/v1/customers/${customerId}/entitlements`),
+        /** Fast single-feature check: {feature_key, granted, limit_value}. */
+        check: (customerId: string, feature: string) =>
+            this.get('/v1/entitlements/check', { customer_id: customerId, feature }),
+    };
+
     public ledger = {
         accounts: () => this.get('/v1/ledger/accounts'),
         entries: (params?: { account_id?: string; [key: string]: unknown }) =>

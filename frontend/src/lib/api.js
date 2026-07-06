@@ -46,6 +46,7 @@ export const endpoints = {
   
   createCustomer: (data) => api.post('/customers', data),
   createPlan: (data) => api.post('/plans', data),
+  getPlanEntitlements: (id) => api.get(`/plans/${id}/entitlements`),
   createSubscription: (data) => api.post('/subscriptions', data),
   updateSubscription: (id, data) => api.put(`/subscriptions/${id}`, data),
   cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),

@@ -151,6 +151,27 @@ export declare class Recurso {
         generateCode: (data: Record<string, unknown>) => Promise<any>;
         qualify: (id: string) => Promise<any>;
     };
+    entitlements: {
+        /**
+         * Replace a plan's full entitlement set (PUT semantics: feature
+         * keys absent from the list are removed).
+         */
+        setForPlan: (planId: string, list: Array<{
+            feature_key: string;
+            kind: "boolean" | "limit";
+            bool_value?: boolean;
+            limit_value?: number;
+        }>) => Promise<any>;
+        getForPlan: (planId: string) => Promise<any>;
+        /**
+         * Effective entitlements for a customer: the union over the plans
+         * of their active/trialing subscriptions (boolean: any-true wins;
+         * limit: max across plans).
+         */
+        forCustomer: (customerId: string) => Promise<any>;
+        /** Fast single-feature check: {feature_key, granted, limit_value}. */
+        check: (customerId: string, feature: string) => Promise<any>;
+    };
     ledger: {
         accounts: () => Promise<any>;
         entries: (params?: {

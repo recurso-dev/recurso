@@ -105,6 +105,22 @@ class Recurso {
             generateCode: (data) => this.post('/v1/referrals/generate-code', data),
             qualify: (id) => this.post(`/v1/referrals/${id}/qualify`),
         };
+        this.entitlements = {
+            /**
+             * Replace a plan's full entitlement set (PUT semantics: feature
+             * keys absent from the list are removed).
+             */
+            setForPlan: (planId, list) => this.put(`/v1/plans/${planId}/entitlements`, list),
+            getForPlan: (planId) => this.get(`/v1/plans/${planId}/entitlements`),
+            /**
+             * Effective entitlements for a customer: the union over the plans
+             * of their active/trialing subscriptions (boolean: any-true wins;
+             * limit: max across plans).
+             */
+            forCustomer: (customerId) => this.get(`/v1/customers/${customerId}/entitlements`),
+            /** Fast single-feature check: {feature_key, granted, limit_value}. */
+            check: (customerId, feature) => this.get('/v1/entitlements/check', { customer_id: customerId, feature }),
+        };
         this.ledger = {
             accounts: () => this.get('/v1/ledger/accounts'),
             entries: (params) => this.get('/v1/ledger/entries', params),

@@ -1,7 +1,19 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import SlideOver from '../ui/SlideOver'
+import { endpoints } from '../../lib/api'
 
 const PlanDetail = ({ plan, isOpen, onClose }) => {
+    const [entitlements, setEntitlements] = useState([])
+
+    useEffect(() => {
+        if (!isOpen || !plan?.id) return
+        let cancelled = false
+        endpoints.getPlanEntitlements(plan.id)
+            .then((res) => { if (!cancelled) setEntitlements(res.data?.data || []) })
+            .catch(() => { if (!cancelled) setEntitlements([]) })
+        return () => { cancelled = true }
+    }, [isOpen, plan?.id])
+
     if (!plan) return null
 
     const price = plan.prices && plan.prices[0]
@@ -61,19 +73,26 @@ const PlanDetail = ({ plan, isOpen, onClose }) => {
                     </div>
                 </div>
 
-                {/* Features (Mock for now as backend model might not have them) */}
+                {/* Entitlements (read-only) */}
                 <div>
-                    <h3 className="text-base font-semibold leading-tight text-slate-900 dark:text-white mb-4">Features</h3>
-                    <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-green-500 text-sm">check</span>
-                            <p className="text-sm text-slate-700 dark:text-slate-300">Standard Support</p>
+                    <h3 className="text-base font-semibold leading-tight text-slate-900 dark:text-white mb-4">Entitlements</h3>
+                    {entitlements.length === 0 ? (
+                        <p className="text-sm text-slate-500 dark:text-slate-400">No entitlements configured for this plan.</p>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            {entitlements.map((ent) => (
+                                <div key={ent.feature_key} className="flex items-center gap-3">
+                                    <span className={`material-symbols-outlined text-sm ${ent.kind === 'boolean' && !ent.bool_value ? 'text-slate-400' : 'text-green-500'}`}>
+                                        {ent.kind === 'boolean' && !ent.bool_value ? 'close' : 'check'}
+                                    </span>
+                                    <p className="text-sm font-mono text-slate-700 dark:text-slate-300">{ent.feature_key}</p>
+                                    {ent.kind === 'limit' && (
+                                        <span className="text-xs text-slate-500 dark:text-slate-400">limit: {ent.limit_value?.toLocaleString()}</span>
+                                    )}
+                                </div>
+                            ))}
                         </div>
-                        <div className="flex items-center gap-3">
-                            <span className="material-symbols-outlined text-green-500 text-sm">check</span>
-                            <p className="text-sm text-slate-700 dark:text-slate-300">Basic Analytics</p>
-                        </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Usage-Based Tiers (Mock) */}
