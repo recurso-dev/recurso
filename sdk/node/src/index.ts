@@ -98,6 +98,12 @@ export class Recurso {
         charges: (id: string) => this.get(`/v1/subscriptions/${id}/charges`),
         addCharge: (id: string, data: Record<string, unknown>) =>
             this.post(`/v1/subscriptions/${id}/charges`, data),
+        /**
+         * Current billing period's usage per dimension plus lifetime
+         * totals, with the customer's entitlement limit/remaining joined
+         * in where a feature_key matches the dimension name.
+         */
+        usage: (id: string) => this.get(`/v1/subscriptions/${id}/usage`),
     };
 
     public invoices = {
@@ -130,6 +136,22 @@ export class Recurso {
             dimension: string;
             quantity: number;
         }) => this.post('/v1/usage/events', data),
+        /**
+         * Time-windowed usage buckets: {data: [{period, dimension,
+         * quantity}], from, to, granularity}. At least one of
+         * subscription_id or customer_id is required; the window defaults
+         * to the last 30 days at day granularity.
+         */
+        query: (params: {
+            subscription_id?: string;
+            customer_id?: string;
+            dimension?: string;
+            from?: string;
+            to?: string;
+            granularity?: 'day' | 'month';
+        }) => this.get('/v1/usage', params),
+        /** The tenant's dimension catalog with first/last seen and event counts. */
+        dimensions: () => this.get('/v1/usage/dimensions'),
     };
 
     public creditNotes = {

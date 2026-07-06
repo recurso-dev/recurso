@@ -45,6 +45,12 @@ class Recurso {
             advance: (id, data) => this.post(`/v1/subscriptions/${id}/advance`, data),
             charges: (id) => this.get(`/v1/subscriptions/${id}/charges`),
             addCharge: (id, data) => this.post(`/v1/subscriptions/${id}/charges`, data),
+            /**
+             * Current billing period's usage per dimension plus lifetime
+             * totals, with the customer's entitlement limit/remaining joined
+             * in where a feature_key matches the dimension name.
+             */
+            usage: (id) => this.get(`/v1/subscriptions/${id}/usage`),
         };
         this.invoices = {
             list: (params) => this.get('/v1/invoices', params),
@@ -61,6 +67,15 @@ class Recurso {
         this.usage = {
             /** Record a metered usage event against a subscription. */
             record: (data) => this.post('/v1/usage/events', data),
+            /**
+             * Time-windowed usage buckets: {data: [{period, dimension,
+             * quantity}], from, to, granularity}. At least one of
+             * subscription_id or customer_id is required; the window defaults
+             * to the last 30 days at day granularity.
+             */
+            query: (params) => this.get('/v1/usage', params),
+            /** The tenant's dimension catalog with first/last seen and event counts. */
+            dimensions: () => this.get('/v1/usage/dimensions'),
         };
         this.creditNotes = {
             create: (data) => this.post('/v1/credit-notes', data),

@@ -146,6 +146,7 @@ const cases: Record<string, MethodCase[]> = {
             path: '/v1/subscriptions/sub_1/charges',
             body,
         },
+        { method: 'usage', call: (r) => r.subscriptions.usage('sub_1'), verb: 'get', path: '/v1/subscriptions/sub_1/usage' },
     ],
 
     invoices: [
@@ -185,6 +186,27 @@ const cases: Record<string, MethodCase[]> = {
             path: '/v1/usage/events',
             body: { subscription_id: 'sub_1', customer_id: 'cus_1', dimension: 'api_calls', quantity: 42 },
         },
+        {
+            method: 'query',
+            call: (r) =>
+                r.usage.query({
+                    subscription_id: 'sub_1',
+                    dimension: 'api_calls',
+                    from: '2026-06-01T00:00:00Z',
+                    to: '2026-07-01T00:00:00Z',
+                    granularity: 'day',
+                }),
+            verb: 'get',
+            path: '/v1/usage',
+            params: {
+                subscription_id: 'sub_1',
+                dimension: 'api_calls',
+                from: '2026-06-01T00:00:00Z',
+                to: '2026-07-01T00:00:00Z',
+                granularity: 'day',
+            },
+        },
+        { method: 'dimensions', call: (r) => r.usage.dimensions(), verb: 'get', path: '/v1/usage/dimensions' },
     ],
 
     creditNotes: [
