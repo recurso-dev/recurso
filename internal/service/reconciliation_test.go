@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/adapter/db"
 	"github.com/swapnull-in/recur-so/internal/adapter/tigerbeetle"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // --- Mock repo for reconciliation tests ---
@@ -28,6 +30,15 @@ type mockReconciliationRepo struct {
 	orphanRows  []db.OrphanLedgerTransaction
 	orphanTotal int
 	orphanErr   error
+
+	accounts    []*domain.LedgerAccount
+	accountsErr error
+
+	txCount    int
+	txCountErr error
+
+	txSummaries []db.LedgerTransactionSummary
+	txSummErr   error
 
 	gotLimits []int
 }
@@ -61,6 +72,54 @@ func (m *mockReconciliationRepo) GetOrphanLedgerTransactions(ctx context.Context
 		return nil, 0, m.orphanErr
 	}
 	return m.orphanRows, m.orphanTotal, nil
+}
+
+func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
+	if m.accountsErr != nil {
+		return nil, m.accountsErr
+	}
+	return m.accounts, nil
+}
+
+func (m *mockReconciliationRepo) CountLedgerTransactionsByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	if m.txCountErr != nil {
+		return 0, m.txCountErr
+	}
+	return m.txCount, nil
+}
+
+func (m *mockReconciliationRepo) GetLedgerTransactionSummaries(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.LedgerTransactionSummary, error) {
+	if m.txSummErr != nil {
+		return nil, m.txSummErr
+	}
+	return m.txSummaries, nil
+}
+
+// fakeTBReader is a test double for the narrow TigerBeetle view the
+// reconciler consumes (TBTransferReader).
+type fakeTBReader struct {
+	connected bool
+	transfers map[uuid.UUID][]tigerbeetle.TransferRecord // keyed by account ID
+	err       error
+	gotCalls  int
+}
+
+func (f *fakeTBReader) Connected() bool { return f.connected }
+
+func (f *fakeTBReader) EnumerateAccountTransfers(ctx context.Context, accountID uuid.UUID, maxTransfers int) ([]tigerbeetle.TransferRecord, error) {
+	f.gotCalls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.transfers[accountID], nil
+}
+
+// newTBService builds a reconciliation service whose TB view is the given
+// fake. Same package, so the unexported field is assigned directly.
+func newTBService(repo *mockReconciliationRepo, tb TBTransferReader) *ReconciliationService {
+	svc := NewReconciliationService(repo, nil)
+	svc.tb = tb
+	return svc
 }
 
 // --- Tests ---
@@ -286,7 +345,9 @@ func TestReconciliationCapsListedDiscrepancies(t *testing.T) {
 	}
 }
 
-func TestReconciliationTBConnectedButNotComparable(t *testing.T) {
+func TestReconciliationTBClientNotConnected(t *testing.T) {
+	// A zero-value LedgerClient has no live TB connection; the comparison
+	// pass must skip honestly rather than pretend an empty ledger matched.
 	repo := &mockReconciliationRepo{}
 	svc := NewReconciliationService(repo, &tigerbeetle.LedgerClient{})
 
@@ -295,10 +356,218 @@ func TestReconciliationTBConnectedButNotComparable(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if report.TBCompared {
-		t.Error("TBCompared = true, want false (no enumeration API)")
+		t.Error("TBCompared = true, want false (client not connected)")
 	}
 	if report.TBSkipReason == "" {
 		t.Error("TBSkipReason must explain the skipped TB comparison")
+	}
+}
+
+func TestReconciliationTBMatchingSets(t *testing.T) {
+	cashID, arID := uuid.New(), uuid.New()
+	tx1, tx2, ref := uuid.New(), uuid.New(), uuid.New()
+
+	repo := &mockReconciliationRepo{
+		accounts: []*domain.LedgerAccount{{ID: cashID}, {ID: arID}},
+		txCount:  2,
+		txSummaries: []db.LedgerTransactionSummary{
+			{TransactionID: tx1, Amount: 5000},
+			{TransactionID: tx2, Amount: 7500},
+		},
+	}
+	// The same transfer is visible from both accounts (debit and credit
+	// side); the comparison must dedupe by ID.
+	transfers := []tigerbeetle.TransferRecord{
+		{ID: tx1, DebitAccountID: arID, CreditAccountID: cashID, Amount: 5000, Code: 1, ReferenceID: ref},
+		{ID: tx2, DebitAccountID: cashID, CreditAccountID: arID, Amount: 7500, Code: 3, ReferenceID: ref},
+	}
+	tb := &fakeTBReader{connected: true, transfers: map[uuid.UUID][]tigerbeetle.TransferRecord{
+		cashID: transfers,
+		arID:   transfers,
+	}}
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !report.TBCompared {
+		t.Fatalf("TBCompared = false (reason %q), want true", report.TBSkipReason)
+	}
+	if report.TBSkipReason != "" {
+		t.Errorf("TBSkipReason = %q, want empty", report.TBSkipReason)
+	}
+	if report.TotalDiscrepancies != 0 || len(report.Discrepancies) != 0 {
+		t.Errorf("discrepancies = %d listed / %d total, want 0/0: %+v",
+			len(report.Discrepancies), report.TotalDiscrepancies, report.Discrepancies)
+	}
+	if report.TBAccountsChecked != 2 {
+		t.Errorf("TBAccountsChecked = %d, want 2", report.TBAccountsChecked)
+	}
+	if report.TBTransfersChecked != 2 {
+		t.Errorf("TBTransfersChecked = %d, want 2 (deduped)", report.TBTransfersChecked)
+	}
+	if tb.gotCalls != 2 {
+		t.Errorf("enumeration calls = %d, want 2 (one per account)", tb.gotCalls)
+	}
+}
+
+func TestReconciliationTBMissingInTigerBeetle(t *testing.T) {
+	accID := uuid.New()
+	txID := uuid.New()
+	repo := &mockReconciliationRepo{
+		accounts:    []*domain.LedgerAccount{{ID: accID}},
+		txCount:     1,
+		txSummaries: []db.LedgerTransactionSummary{{TransactionID: txID, Amount: 4200}},
+	}
+	tb := &fakeTBReader{connected: true} // TB has nothing
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !report.TBCompared {
+		t.Fatalf("TBCompared = false (reason %q), want true", report.TBSkipReason)
+	}
+	if report.TotalDiscrepancies != 1 || len(report.Discrepancies) != 1 {
+		t.Fatalf("expected exactly 1 discrepancy, got %d listed / %d total",
+			len(report.Discrepancies), report.TotalDiscrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyMissingInTigerBeetle {
+		t.Errorf("Type = %q, want %q", d.Type, DiscrepancyMissingInTigerBeetle)
+	}
+	if d.TransactionID == nil || *d.TransactionID != txID {
+		t.Errorf("TransactionID = %v, want %v", d.TransactionID, txID)
+	}
+	if d.ExpectedAmount != 4200 || d.FoundAmount != 0 {
+		t.Errorf("amounts = (%d, %d), want (4200, 0)", d.ExpectedAmount, d.FoundAmount)
+	}
+}
+
+func TestReconciliationTBMissingInPostgres(t *testing.T) {
+	accID := uuid.New()
+	txID := uuid.New()
+	refID := uuid.New()
+	repo := &mockReconciliationRepo{
+		accounts: []*domain.LedgerAccount{{ID: accID}},
+	}
+	tb := &fakeTBReader{connected: true, transfers: map[uuid.UUID][]tigerbeetle.TransferRecord{
+		accID: {{ID: txID, Amount: 999, Code: 1, ReferenceID: refID}},
+	}}
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !report.TBCompared {
+		t.Fatalf("TBCompared = false (reason %q), want true", report.TBSkipReason)
+	}
+	if report.TotalDiscrepancies != 1 || len(report.Discrepancies) != 1 {
+		t.Fatalf("expected exactly 1 discrepancy, got %d listed / %d total",
+			len(report.Discrepancies), report.TotalDiscrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyMissingInPostgres {
+		t.Errorf("Type = %q, want %q", d.Type, DiscrepancyMissingInPostgres)
+	}
+	if d.TransactionID == nil || *d.TransactionID != txID {
+		t.Errorf("TransactionID = %v, want %v", d.TransactionID, txID)
+	}
+	if d.ReferenceID == nil || *d.ReferenceID != refID {
+		t.Errorf("ReferenceID = %v, want %v", d.ReferenceID, refID)
+	}
+	if d.FoundAmount != 999 || d.ExpectedAmount != 0 {
+		t.Errorf("amounts = (%d, %d), want (0, 999)", d.ExpectedAmount, d.FoundAmount)
+	}
+}
+
+func TestReconciliationTBAmountMismatch(t *testing.T) {
+	accID := uuid.New()
+	txID := uuid.New()
+	repo := &mockReconciliationRepo{
+		accounts:    []*domain.LedgerAccount{{ID: accID}},
+		txCount:     1,
+		txSummaries: []db.LedgerTransactionSummary{{TransactionID: txID, Amount: 5000}},
+	}
+	tb := &fakeTBReader{connected: true, transfers: map[uuid.UUID][]tigerbeetle.TransferRecord{
+		accID: {{ID: txID, Amount: 4500, Code: 1}},
+	}}
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !report.TBCompared {
+		t.Fatalf("TBCompared = false (reason %q), want true", report.TBSkipReason)
+	}
+	if report.TotalDiscrepancies != 1 || len(report.Discrepancies) != 1 {
+		t.Fatalf("expected exactly 1 discrepancy, got %d listed / %d total",
+			len(report.Discrepancies), report.TotalDiscrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyTBAmountMismatch {
+		t.Errorf("Type = %q, want %q", d.Type, DiscrepancyTBAmountMismatch)
+	}
+	if d.TransactionID == nil || *d.TransactionID != txID {
+		t.Errorf("TransactionID = %v, want %v", d.TransactionID, txID)
+	}
+	if d.ExpectedAmount != 5000 || d.FoundAmount != 4500 {
+		t.Errorf("amounts = (%d, %d), want (5000, 4500)", d.ExpectedAmount, d.FoundAmount)
+	}
+}
+
+func TestReconciliationTBEnumerationErrorSkips(t *testing.T) {
+	accID := uuid.New()
+	invoiceID := uuid.New()
+	repo := &mockReconciliationRepo{
+		accounts:     []*domain.LedgerAccount{{ID: accID}},
+		invoiceRows:  []db.InvoiceLedgerMismatch{{InvoiceID: invoiceID, Expected: 100, Found: 0, TxCount: 0}},
+		invoiceTotal: 1,
+	}
+	tb := &fakeTBReader{connected: true, err: errors.New("tb cluster unreachable")}
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("TB enumeration errors must not fail the report, got: %v", err)
+	}
+	if report.TBCompared {
+		t.Error("TBCompared = true, want false (enumeration failed)")
+	}
+	if !strings.Contains(report.TBSkipReason, "tb cluster unreachable") {
+		t.Errorf("TBSkipReason = %q, want it to carry the enumeration error", report.TBSkipReason)
+	}
+	// The Postgres-side reconciliation must be unaffected.
+	if report.TotalDiscrepancies != 1 || len(report.Discrepancies) != 1 {
+		t.Errorf("PG discrepancies lost: %d listed / %d total, want 1/1",
+			len(report.Discrepancies), report.TotalDiscrepancies)
+	}
+}
+
+func TestReconciliationTBRowGuardSkips(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		accounts: []*domain.LedgerAccount{{ID: uuid.New()}},
+		txCount:  MaxTBComparedRows + 1,
+	}
+	tb := &fakeTBReader{connected: true}
+	svc := newTBService(repo, tb)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.TBCompared {
+		t.Error("TBCompared = true, want false (row-count memory guard)")
+	}
+	if report.TBSkipReason == "" || !strings.Contains(report.TBSkipReason, "guard") {
+		t.Errorf("TBSkipReason = %q, want it to mention the comparison guard", report.TBSkipReason)
+	}
+	if tb.gotCalls != 0 {
+		t.Errorf("enumeration calls = %d, want 0 (guard must trip before enumerating)", tb.gotCalls)
 	}
 }
 

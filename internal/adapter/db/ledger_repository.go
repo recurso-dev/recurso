@@ -238,6 +238,64 @@ func (r *LedgerRepository) GetOrphanLedgerTransactions(ctx context.Context, tena
 	return orphans, total, rows.Err()
 }
 
+// LedgerTransactionSummary is the minimal projection of a ledger transaction
+// used to diff Postgres against TigerBeetle: the shared transaction ID and
+// the posted amount. Read-only reconciliation input; never written back.
+type LedgerTransactionSummary struct {
+	TransactionID uuid.UUID
+	Amount        int64
+}
+
+// CountLedgerTransactionsByTenant returns how many ledger transactions touch
+// any of the tenant's ledger accounts. Used to bound the in-memory
+// TigerBeetle comparison pass before loading rows.
+func (r *LedgerRepository) CountLedgerTransactionsByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM ledger_transactions t
+		WHERE EXISTS (
+			SELECT 1 FROM ledger_accounts la
+			WHERE la.tenant_id = $1
+			  AND (la.id = t.debit_account_id OR la.id = t.credit_account_id)
+		)`, tenantID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count tenant ledger transactions: %w", err)
+	}
+	return count, nil
+}
+
+// GetLedgerTransactionSummaries returns id+amount for every ledger
+// transaction touching one of the tenant's accounts, ordered by id, up to
+// limit rows. Read-only; callers guard the row count first via
+// CountLedgerTransactionsByTenant.
+func (r *LedgerRepository) GetLedgerTransactionSummaries(ctx context.Context, tenantID uuid.UUID, limit int) ([]LedgerTransactionSummary, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT t.id, t.amount
+		FROM ledger_transactions t
+		WHERE EXISTS (
+			SELECT 1 FROM ledger_accounts la
+			WHERE la.tenant_id = $1
+			  AND (la.id = t.debit_account_id OR la.id = t.credit_account_id)
+		)
+		ORDER BY t.id
+		LIMIT $2`, tenantID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ledger transaction summaries: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var summaries []LedgerTransactionSummary
+	for rows.Next() {
+		var s LedgerTransactionSummary
+		if err := rows.Scan(&s.TransactionID, &s.Amount); err != nil {
+			return nil, fmt.Errorf("failed to scan ledger transaction summary: %w", err)
+		}
+		summaries = append(summaries, s)
+	}
+	return summaries, rows.Err()
+}
+
 func (r *LedgerRepository) GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.debit_account_id, t.credit_account_id, t.amount, t.ledger_id, t.code, COALESCE(t.reference_id, '00000000-0000-0000-0000-000000000000'), COALESCE(t.description, ''), t.created_at
