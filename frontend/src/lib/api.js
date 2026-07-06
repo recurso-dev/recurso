@@ -96,6 +96,7 @@ export const endpoints = {
   getDunningOverview: () => api.get('/analytics/dunning/overview'),
   getDunningWeights: () => api.get('/analytics/dunning/weights'),
   getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
+  getDunningRecovered: () => api.get('/analytics/dunning/recovered'),
 
   // E-Invoice (P25)
   getEInvoiceStatus: (invoiceId) => api.get(`/invoices/${invoiceId}/einvoice`),

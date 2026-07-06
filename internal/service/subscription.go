@@ -30,6 +30,7 @@ type SubscriptionService struct {
 	invRepoImpl         *db.InvoiceRepository      // Concrete type for TX methods
 	revrecService       *RevRecService
 	taxResolver         *TaxResolver
+	recoveryRecorder    PaymentRecoveryRecorder
 	logger              *slog.Logger
 }
 
@@ -90,6 +91,11 @@ func (s *SubscriptionService) SetEInvoiceService(einvoiceSvc *EInvoiceService) {
 // SetNotificationService injects the NotificationService after construction.
 func (s *SubscriptionService) SetNotificationService(ns *NotificationService) {
 	s.notificationService = ns
+}
+
+// SetRecoveryRecorder injects the dunning recovery recorder after construction.
+func (s *SubscriptionService) SetRecoveryRecorder(rr PaymentRecoveryRecorder) {
+	s.recoveryRecorder = rr
 }
 
 type CreateSubscriptionInput struct {
@@ -369,6 +375,12 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 
 	if err := s.invoiceRepo.Update(ctx, inv); err != nil {
 		return err
+	}
+
+	// Dunning recovery attribution: if this invoice needed retries or dunning
+	// to get paid, record it as recovered revenue (idempotent, non-fatal).
+	if s.recoveryRecorder != nil {
+		s.recoveryRecorder.RecordIfRecovered(ctx, inv)
 	}
 
 	// Record payment in ledger

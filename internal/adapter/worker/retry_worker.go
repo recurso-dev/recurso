@@ -11,12 +11,19 @@ import (
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
+// RecoveryRecorder records recovered-revenue attribution when a retried
+// payment succeeds. Implemented by service.DunningRecoveryService.
+type RecoveryRecorder interface {
+	RecordIfRecovered(ctx context.Context, inv *domain.Invoice) bool
+}
+
 type RetryWorker struct {
 	invoiceRepo            port.InvoiceRepository
 	retryService           *service.SmartRetryService
 	gateway                port.PaymentGateway
 	notifier               port.Notifier
 	dunningCampaignService *service.DunningCampaignService
+	recoveryRecorder       RecoveryRecorder
 }
 
 func NewRetryWorker(
@@ -35,6 +42,10 @@ func NewRetryWorker(
 
 func (w *RetryWorker) SetDunningCampaignService(svc *service.DunningCampaignService) {
 	w.dunningCampaignService = svc
+}
+
+func (w *RetryWorker) SetRecoveryRecorder(rr RecoveryRecorder) {
+	w.recoveryRecorder = rr
 }
 
 // Start runs the worker loop.
@@ -121,12 +132,18 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 		now := time.Now()
 		inv.Status = domain.InvoiceStatusPaid
 		inv.PaidAt = &now
+		// Snapshot before dunning fields are cleared — recovery attribution
+		// needs retry_count and the action that was in effect at payment time.
+		recoverySnapshot := *inv
 		inv.NextRetryAt = nil
 		inv.DunningActionID = ""
 		inv.DunningContextKey = ""
 		inv.LastPaymentError = ""
 		if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
 			log.Printf("Worker: Failed to mark invoice %s as paid: %v", inv.ID, updateErr)
+		} else if w.recoveryRecorder != nil {
+			// Recovered revenue attribution (idempotent, non-fatal)
+			w.recoveryRecorder.RecordIfRecovered(ctx, &recoverySnapshot)
 		}
 
 		// Mark dunning campaign as recovered
