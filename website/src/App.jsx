@@ -1,27 +1,27 @@
+import AnnouncementBar from './components/AnnouncementBar'
 import Navbar from './components/Navbar'
 import Hero from './components/Hero'
-import Features from './components/Features'
-import CodeExample from './components/CodeExample'
-import UseCases from './components/UseCases'
+import Products from './components/Products'
+import CodeSection from './components/CodeSection'
+import India from './components/India'
 import Comparison from './components/Comparison'
-import Playground from './components/Playground'
-import Docs from './components/Docs'
+import OpenSource from './components/OpenSource'
 import Pricing from './components/Pricing'
 import CTA from './components/CTA'
 import Footer from './components/Footer'
 
 function App() {
     return (
-        <div className="grain min-h-screen bg-[#050505]">
+        <div className="min-h-screen bg-surface">
+            <AnnouncementBar />
             <Navbar />
             <main>
                 <Hero />
-                <Features />
-                <Playground />
-                <CodeExample />
-                <UseCases />
+                <Products />
+                <CodeSection />
+                <India />
                 <Comparison />
-                <Docs />
+                <OpenSource />
                 <Pricing />
                 <CTA />
             </main>

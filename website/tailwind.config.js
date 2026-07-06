@@ -7,42 +7,34 @@ export default {
   theme: {
     extend: {
       colors: {
-        primary: '#10B981',
-        dark: {
-          950: '#050505',
-          900: '#0a0a0a',
-          800: '#121212',
-          700: '#1a1a1a',
-          600: '#222222',
-          500: '#2a2a2a',
-        }
+        brand: {
+          DEFAULT: '#10B981',
+          light: '#34D399',
+          dark: '#059669',
+        },
+        surface: {
+          DEFAULT: '#0c0e14',   // page background
+          75: '#0f121a',        // alternate section background
+          100: '#11141d',       // card background
+          200: '#161a26',       // raised card / hover background
+          300: '#1c2130',       // active background
+        },
+        line: {
+          DEFAULT: '#1f2330',   // default border
+          strong: '#2c3244',    // hover / emphasized border
+        },
+        fg: {
+          DEFAULT: '#e8eaf0',   // headings
+          muted: '#9ba1b0',     // body copy
+          subtle: '#6b7280',    // captions / labels
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
       },
-      animation: {
-        'glow': 'glow 2s ease-in-out infinite alternate',
-        'float': 'float 6s ease-in-out infinite',
-        'float-slow': 'float-slow 8s ease-in-out infinite',
-        'pulse-slow': 'pulse 5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-      },
-      keyframes: {
-        glow: {
-          '0%': { boxShadow: '0 0 20px rgba(16, 185, 129, 0.2)' },
-          '100%': { boxShadow: '0 0 40px rgba(16, 185, 129, 0.4)' },
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-20px)' },
-        },
-        'float-slow': {
-          '0%, 100%': { transform: 'translateY(0) rotate(0deg)' },
-          '50%': { transform: 'translateY(-10px) rotate(1deg)' },
-        },
-      },
-      backgroundImage: {
-        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+      maxWidth: {
+        site: '80rem',
       },
     },
   },
