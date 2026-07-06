@@ -178,3 +178,152 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 func (h *WebhookManagementHandler) GetEventTypes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": domain.AllEventTypes()})
 }
+
+// EventDeliveryResponse is the API response for a webhook delivery attempt
+type EventDeliveryResponse struct {
+	ID                string `json:"id"`
+	EventID           string `json:"event_id"`
+	WebhookEndpointID string `json:"webhook_endpoint_id"`
+	EndpointURL       string `json:"endpoint_url,omitempty"`
+	Status            string `json:"status"`
+	Attempts          int    `json:"attempts"`
+	LastStatusCode    int    `json:"last_status_code,omitempty"`
+	LastError         string `json:"last_error,omitempty"`
+	NextRetryAt       string `json:"next_retry_at,omitempty"`
+	DeliveredAt       string `json:"delivered_at,omitempty"`
+	CreatedAt         string `json:"created_at"`
+}
+
+func toEventDeliveryResponse(d *domain.EventDelivery, endpointURL string) EventDeliveryResponse {
+	resp := EventDeliveryResponse{
+		ID:                d.ID.String(),
+		EventID:           d.EventID.String(),
+		WebhookEndpointID: d.WebhookEndpointID.String(),
+		EndpointURL:       endpointURL,
+		Status:            d.DeliveryStatus(),
+		Attempts:          d.Attempt,
+		LastStatusCode:    d.StatusCode,
+		CreatedAt:         d.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	// response_body holds the failure reason recorded by the delivery worker
+	// (transport error or "HTTP <code>: <body>"). On success it holds the
+	// receiver's 2xx body, which is not an error — omit it.
+	if resp.Status != domain.DeliveryStatusSucceeded {
+		resp.LastError = d.ResponseBody
+	}
+	if d.NextRetryAt != nil {
+		resp.NextRetryAt = d.NextRetryAt.Format("2006-01-02T15:04:05Z")
+	}
+	if d.DeliveredAt != nil {
+		resp.DeliveredAt = d.DeliveredAt.Format("2006-01-02T15:04:05Z")
+	}
+	return resp
+}
+
+// respondWebhookServiceError maps webhook service errors to the error envelope.
+func respondWebhookServiceError(c *gin.Context, err error) {
+	switch err {
+	case service.ErrEventNotFound, service.ErrEndpointNotFound:
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+	case service.ErrInvalidDeliveryStatus:
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+	default:
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	}
+}
+
+// ListEventDeliveries returns delivery attempts for an event across endpoints
+func (h *WebhookManagementHandler) ListEventDeliveries(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid id")
+		return
+	}
+
+	details, err := h.webhookService.ListEventDeliveries(c.Request.Context(), tenantID.(uuid.UUID), eventID)
+	if err != nil {
+		respondWebhookServiceError(c, err)
+		return
+	}
+
+	response := make([]EventDeliveryResponse, 0, len(details))
+	for _, d := range details {
+		response = append(response, toEventDeliveryResponse(d.Delivery, d.EndpointURL))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+// ListEndpointDeliveries returns recent deliveries for a webhook endpoint
+func (h *WebhookManagementHandler) ListEndpointDeliveries(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	endpointID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid id")
+		return
+	}
+
+	limit := 50
+	offset := 0
+	if l := c.Query("limit"); l != "" {
+		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
+			limit = parsed
+		}
+	}
+	if o := c.Query("offset"); o != "" {
+		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
+			offset = parsed
+		}
+	}
+
+	deliveries, endpoint, err := h.webhookService.ListEndpointDeliveries(
+		c.Request.Context(), tenantID.(uuid.UUID), endpointID, c.Query("status"), limit, offset)
+	if err != nil {
+		respondWebhookServiceError(c, err)
+		return
+	}
+
+	response := make([]EventDeliveryResponse, 0, len(deliveries))
+	for _, d := range deliveries {
+		response = append(response, toEventDeliveryResponse(d, endpoint.URL))
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": response})
+}
+
+// RedeliverEvent re-enqueues delivery of an event to its subscribed endpoints
+func (h *WebhookManagementHandler) RedeliverEvent(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	eventID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid id")
+		return
+	}
+
+	queued, err := h.webhookService.RedeliverEvent(c.Request.Context(), tenantID.(uuid.UUID), eventID)
+	if err != nil {
+		respondWebhookServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusAccepted, gin.H{"data": gin.H{
+		"event_id":          eventID.String(),
+		"deliveries_queued": queued,
+	}})
+}

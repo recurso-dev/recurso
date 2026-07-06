@@ -30,5 +30,9 @@ type EventDeliveryRepository interface {
 	Create(ctx context.Context, delivery *domain.EventDelivery) error
 	Update(ctx context.Context, delivery *domain.EventDelivery) error
 	ListByEventID(ctx context.Context, eventID uuid.UUID) ([]*domain.EventDelivery, error)
+	// ListByEndpointID returns recent deliveries for a webhook endpoint,
+	// newest first. status filters by derived delivery status
+	// (pending/succeeded/failed); empty string returns all.
+	ListByEndpointID(ctx context.Context, endpointID uuid.UUID, status string, limit, offset int) ([]*domain.EventDelivery, error)
 	ListPending(ctx context.Context, limit int) ([]*domain.EventDelivery, error)
 }

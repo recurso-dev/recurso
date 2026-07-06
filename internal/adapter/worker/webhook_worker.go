@@ -117,7 +117,8 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 	// Send
 	resp, err := w.httpClient.Do(req)
 	if err != nil {
-		w.retryDelivery(ctx, delivery, err.Error())
+		// Transport failure: no HTTP status to record.
+		w.retryDelivery(ctx, delivery, 0, err.Error())
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -136,13 +137,13 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 			log.Printf("Error updating delivery %v: %v", delivery.ID, err)
 		}
 	} else {
-		w.retryDelivery(ctx, delivery, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
+		w.retryDelivery(ctx, delivery, resp.StatusCode, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
 	}
 }
 
-func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.EventDelivery, reason string) {
+func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.EventDelivery, code int, reason string) {
 	delivery.Attempt++
-	delivery.StatusCode = 0
+	delivery.StatusCode = code // last response code (0 for transport errors)
 	delivery.ResponseBody = reason
 
 	if delivery.Attempt >= 5 {

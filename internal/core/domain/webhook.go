@@ -42,6 +42,27 @@ type EventDelivery struct {
 	CreatedAt         time.Time  `json:"created_at" db:"created_at"`
 }
 
+// Delivery status values derived from the stored delivery fields.
+const (
+	DeliveryStatusPending   = "pending"
+	DeliveryStatusSucceeded = "succeeded"
+	DeliveryStatusFailed    = "failed"
+)
+
+// DeliveryStatus derives a human-readable status from the stored fields.
+// A delivery is pending until the worker marks it terminal (delivered_at set):
+// succeeded when the recorded response was 2xx, failed otherwise (retries
+// exhausted or the request could not be built).
+func (d *EventDelivery) DeliveryStatus() string {
+	if d.DeliveredAt == nil {
+		return DeliveryStatusPending
+	}
+	if d.StatusCode >= 200 && d.StatusCode < 300 {
+		return DeliveryStatusSucceeded
+	}
+	return DeliveryStatusFailed
+}
+
 // Common event types
 const (
 	EventTypeInvoiceCreated       = "invoice.created"

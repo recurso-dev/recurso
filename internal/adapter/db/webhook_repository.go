@@ -319,6 +319,51 @@ func (r *EventDeliveryRepository) ListByEventID(ctx context.Context, eventID uui
 	return deliveries, nil
 }
 
+func (r *EventDeliveryRepository) ListByEndpointID(ctx context.Context, endpointID uuid.UUID, status string, limit, offset int) ([]*domain.EventDelivery, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+		SELECT id, event_id, webhook_endpoint_id, status_code, response_body, attempt, next_retry_at, delivered_at, created_at
+		FROM event_deliveries WHERE webhook_endpoint_id = $1
+	`
+	switch status {
+	case domain.DeliveryStatusPending:
+		query += ` AND delivered_at IS NULL`
+	case domain.DeliveryStatusSucceeded:
+		query += ` AND delivered_at IS NOT NULL AND status_code BETWEEN 200 AND 299`
+	case domain.DeliveryStatusFailed:
+		query += ` AND delivered_at IS NOT NULL AND (status_code < 200 OR status_code > 299)`
+	}
+	query += ` ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+	rows, err := r.db.QueryContext(ctx, query, endpointID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var deliveries []*domain.EventDelivery
+	for rows.Next() {
+		var delivery domain.EventDelivery
+		if err := rows.Scan(
+			&delivery.ID,
+			&delivery.EventID,
+			&delivery.WebhookEndpointID,
+			&delivery.StatusCode,
+			&delivery.ResponseBody,
+			&delivery.Attempt,
+			&delivery.NextRetryAt,
+			&delivery.DeliveredAt,
+			&delivery.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		deliveries = append(deliveries, &delivery)
+	}
+	return deliveries, nil
+}
+
 func (r *EventDeliveryRepository) ListPending(ctx context.Context, limit int) ([]*domain.EventDelivery, error) {
 	query := `
 		SELECT id, event_id, webhook_endpoint_id, status_code, response_body, attempt, next_retry_at, delivered_at, created_at
