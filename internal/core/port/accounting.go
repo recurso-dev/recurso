@@ -25,6 +25,10 @@ type InvoiceSyncRefs struct {
 	// invoice (QuickBooks Item.Id), when known. Optional: adapters fall back
 	// to bare description-only lines without it.
 	ProductExternalID string
+	// ProductCode is the internal plan code for the same plan. Xero links
+	// invoice lines to items by item Code (not ItemID), so the Xero adapter
+	// sets it as the line's ItemCode. Optional; other providers ignore it.
+	ProductCode string
 }
 
 // AccountingGateway defines the interface for external accounting platforms
@@ -58,5 +62,9 @@ type AccountingService interface {
 	SyncCustomer(ctx context.Context, customerID uuid.UUID) error
 	SyncInvoice(ctx context.Context, invoiceID uuid.UUID) error
 	SyncProduct(ctx context.Context, planID string) error
-	SyncAllForTenant(ctx context.Context, tenantID uuid.UUID) error
+	// SyncAllForTenant pushes the tenant's entities to every active
+	// connection. With force=false, entities unchanged since their last
+	// successful sync are skipped; force=true re-pushes everything (the
+	// manual sync endpoint's escape hatch).
+	SyncAllForTenant(ctx context.Context, tenantID uuid.UUID, force bool) error
 }

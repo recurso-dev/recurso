@@ -20,5 +20,8 @@ type AccountingEntityMapping struct {
 	EntityID     uuid.UUID `json:"entity_id" db:"entity_id"`
 	ExternalID   string    `json:"external_id" db:"external_id"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	// UpdatedAt is written exclusively by the sync upsert (every successful
+	// push refreshes it), so it doubles as the last-synced timestamp: the
+	// bulk sync skips entities whose source updated_at is not after it.
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

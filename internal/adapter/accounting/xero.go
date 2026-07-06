@@ -125,22 +125,25 @@ func (a *XeroAdapter) SyncCustomer(ctx context.Context, customer *domain.Custome
 // SyncCustomer) — Xero rejects invoices referencing unknown contacts. With an
 // externalID the payload carries that InvoiceID and Xero updates in place.
 //
-// refs.ProductExternalID is ignored: Xero invoice lines reference items by
-// item Code, not ItemID, so linking lines to the synced item would need the
-// code round-tripped as well. Lines are sent with description + AccountCode.
+// Xero invoice lines reference items by item Code, not ItemID, so
+// refs.ProductExternalID is ignored; when refs.ProductCode is set it is
+// attached to the line as ItemCode (matching the Code that SyncProduct gives
+// the item). Without it the line is sent bare with description + AccountCode.
 func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, refs port.InvoiceSyncRefs, externalID string) (string, error) {
 	if refs.CustomerExternalID == "" {
 		return "", fmt.Errorf("xero invoice sync requires the customer's Xero ContactID")
 	}
 
-	lineItems := []map[string]interface{}{
-		{
-			"Description": fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
-			"Quantity":    1,
-			"UnitAmount":  float64(invoice.Subtotal) / 100,
-			"AccountCode": "200", // Default sales account
-		},
+	lineItem := map[string]interface{}{
+		"Description": fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
+		"Quantity":    1,
+		"UnitAmount":  float64(invoice.Subtotal) / 100,
+		"AccountCode": "200", // Default sales account
 	}
+	if refs.ProductCode != "" {
+		lineItem["ItemCode"] = xeroItemCode(refs.ProductCode)
+	}
+	lineItems := []map[string]interface{}{lineItem}
 
 	// Add tax line if applicable
 	if invoice.TaxAmount > 0 {
@@ -197,6 +200,10 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 // Xero updates in place; without one an item is created (deduping by name —
 // if an item with the same name already exists, its ItemID is returned
 // instead).
+//
+// The item always carries a Code derived from the plan's code — Xero links
+// invoice lines to items by that Code (see SyncInvoice), so it must match
+// the ItemCode the invoice lines carry.
 func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan, externalID string) (string, error) {
 	if externalID == "" {
 		// Check for existing item by name to avoid duplicates
@@ -205,8 +212,12 @@ func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan, extern
 		}
 	}
 
+	code := plan.Code
+	if code == "" {
+		code = plan.ID.String()[:8] // plans always have a code; defensive fallback
+	}
 	itemData := map[string]interface{}{
-		"Code":        plan.ID.String()[:8],
+		"Code":        xeroItemCode(code),
 		"Name":        plan.Name,
 		"Description": plan.Name,
 	}
@@ -238,6 +249,18 @@ func (a *XeroAdapter) SyncProduct(ctx context.Context, plan *domain.Plan, extern
 		return "", fmt.Errorf("xero item response missing ItemID")
 	}
 	return created.Items[0].ItemID, nil
+}
+
+// xeroItemCode normalizes a plan code into a Xero Item Code. Xero caps item
+// codes at 30 characters; applying the same truncation to the item's Code
+// (SyncProduct) and the invoice line's ItemCode (SyncInvoice) keeps them
+// linked even for long plan codes.
+func xeroItemCode(code string) string {
+	const maxLen = 30
+	if len(code) > maxLen {
+		return code[:maxLen]
+	}
+	return code
 }
 
 // xeroAPIError is an HTTP-level failure from the Xero API.

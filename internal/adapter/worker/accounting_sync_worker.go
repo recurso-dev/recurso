@@ -64,7 +64,9 @@ func (w *AccountingSyncWorker) RunSync(ctx context.Context) {
 		synced[conn.TenantID] = true
 
 		slog.Info("syncing accounting", "tenant_id", conn.TenantID)
-		if err := w.accountingService.SyncAllForTenant(ctx, conn.TenantID); err != nil {
+		// Scheduled runs are incremental (force=false): entities unchanged
+		// since their last successful sync are skipped.
+		if err := w.accountingService.SyncAllForTenant(ctx, conn.TenantID, false); err != nil {
 			slog.Error("accounting sync failed", "tenant_id", conn.TenantID, "error", err)
 		}
 	}

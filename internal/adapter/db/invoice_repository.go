@@ -138,7 +138,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			currency, subtotal, tax_amount, total, amount_paid,
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count,
+			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count,
 			COALESCE(ack_date, ''), e_invoice_retry_count,
 			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, ''),
 			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
@@ -160,7 +160,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
 		&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 		&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
-		&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
+		&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
 		&inv.AckDate, &inv.EInvoiceRetryCount,
 		&inv.EInvoiceNextRetryAt, &inv.EInvoiceErrorMessage,
 		&inv.DunningActionID, &inv.DunningContextKey,
@@ -193,7 +193,8 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		    e_invoice_next_retry_at = $13, e_invoice_error_message = $14,
 		    dunning_action_id = $15, dunning_context_key = $16,
 		    last_payment_error = $17, dunning_managed_by = $18,
-		    payment_wall_active = $19
+		    payment_wall_active = $19,
+		    updated_at = NOW()
 		WHERE id = $20
 	`
 	amountPaid := inv.Total // Simplification as we update usually for generic payment
@@ -264,8 +265,8 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 			currency, subtotal, tax_amount, total, amount_paid,
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count
-		FROM invoices 
+			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count
+		FROM invoices
 		WHERE customer_id = $1
 		ORDER BY created_at DESC
 	`
@@ -285,7 +286,7 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 			&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
-			&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
+			&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
 		); err != nil {
 			return nil, err
 		}
@@ -306,8 +307,8 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 			currency, subtotal, tax_amount, total, amount_paid,
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count
-		FROM invoices 
+			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count
+		FROM invoices
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC
 	`
@@ -327,7 +328,7 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 			&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
-			&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
+			&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
 		); err != nil {
 			return nil, err
 		}

@@ -57,7 +57,11 @@ type Invoice struct {
 	// invoices paid before this field existed. Required for API refunds.
 	GatewayPaymentID string `json:"gateway_payment_id,omitempty" db:"gateway_payment_id"`
 
-	CreatedAt    time.Time  `json:"created_at"`
+	CreatedAt time.Time `json:"created_at"`
+	// UpdatedAt is bumped by InvoiceRepository.Update. The accounting sync
+	// compares it against the invoice's mapping to skip unchanged invoices;
+	// a zero value means "unknown" and always syncs.
+	UpdatedAt    time.Time  `json:"updated_at" db:"updated_at"`
 	DueDate      time.Time  `json:"due_date"`
 	PaidAt       *time.Time `json:"paid_at,omitempty"`
 	PaymentTerms string     `json:"payment_terms"` // P15

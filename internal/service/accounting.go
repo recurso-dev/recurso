@@ -226,13 +226,14 @@ func (s *AccountingService) syncInvoiceToConnection(ctx context.Context, conn *d
 	}
 
 	refs := port.InvoiceSyncRefs{CustomerExternalID: customerExtID}
-	productExtID, err := s.invoiceProductRef(ctx, conn, gw, invoice)
+	productExtID, productCode, err := s.invoiceProductRef(ctx, conn, gw, invoice)
 	if err != nil {
 		// Non-fatal: the invoice still syncs with bare description lines.
 		slog.Warn("could not resolve product ref for invoice; syncing with bare description lines",
 			"invoice_id", invoice.ID, "connection_id", conn.ID, "error", err)
 	} else {
 		refs.ProductExternalID = productExtID
+		refs.ProductCode = productCode
 	}
 
 	_, err = s.syncEntity(ctx, conn, "invoice", invoice.ID, func(externalID string) (string, error) {
@@ -241,28 +242,34 @@ func (s *AccountingService) syncInvoiceToConnection(ctx context.Context, conn *d
 	return err
 }
 
-// invoiceProductRef resolves the provider-side item ID for the plan backing
-// the invoice's subscription, creating the item on the provider first if it
-// has never been synced (same ensure-pattern as customers). Returns "" with
-// no error when the invoice has no plan linkage (one-off invoice) or no
-// subscription repository is wired.
-func (s *AccountingService) invoiceProductRef(ctx context.Context, conn *domain.AccountingConnection, gw port.AccountingGateway, invoice *domain.Invoice) (string, error) {
+// invoiceProductRef resolves the provider-side item ID and internal plan code
+// for the plan backing the invoice's subscription, creating the item on the
+// provider first if it has never been synced (same ensure-pattern as
+// customers). The code is what Xero uses to link invoice lines to items
+// (QuickBooks uses the ID). Returns empty values with no error when the
+// invoice has no plan linkage (one-off invoice) or no subscription
+// repository is wired.
+func (s *AccountingService) invoiceProductRef(ctx context.Context, conn *domain.AccountingConnection, gw port.AccountingGateway, invoice *domain.Invoice) (extID, code string, err error) {
 	if invoice.SubscriptionID == nil || s.subscriptionRepo == nil {
-		return "", nil
+		return "", "", nil
 	}
 
 	sub, err := s.subscriptionRepo.GetByID(ctx, *invoice.SubscriptionID)
 	if err != nil {
-		return "", fmt.Errorf("failed to load subscription %s: %w", *invoice.SubscriptionID, err)
+		return "", "", fmt.Errorf("failed to load subscription %s: %w", *invoice.SubscriptionID, err)
 	}
 	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
 	if err != nil {
-		return "", fmt.Errorf("failed to load plan %s: %w", sub.PlanID, err)
+		return "", "", fmt.Errorf("failed to load plan %s: %w", sub.PlanID, err)
 	}
 
-	return s.ensureEntityRef(ctx, conn, "product", plan.ID, func() (string, error) {
+	extID, err = s.ensureEntityRef(ctx, conn, "product", plan.ID, func() (string, error) {
 		return gw.SyncProduct(ctx, plan, "")
 	})
+	if err != nil {
+		return "", "", err
+	}
+	return extID, plan.Code, nil
 }
 
 // syncProductToConnection pushes one plan to one connection with the same
@@ -375,8 +382,12 @@ func (s *AccountingService) markConnectionError(ctx context.Context, conn *domai
 	return cause
 }
 
-// SyncAllForTenant syncs all entities for a given tenant using the appropriate adapter.
-func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.UUID) error {
+// SyncAllForTenant syncs all entities for a given tenant using the
+// appropriate adapter. Entities that have not changed since their last
+// successful sync (source updated_at not after the mapping's last-synced
+// timestamp) are skipped unless force is set — the manual sync endpoint
+// forces a full re-push, the daily worker does not.
+func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.UUID, force bool) error {
 	if s.connRepo == nil {
 		return fmt.Errorf("accounting connection repository not configured")
 	}
@@ -402,6 +413,8 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 			continue
 		}
 
+		var synced, skipped int
+
 		// Sync customers (paginated)
 		customerOffset := 0
 		customerLimit := 100
@@ -416,7 +429,12 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 			}
 
 			for _, customer := range customers {
+				if !force && s.unchangedSinceLastSync(ctx, conn, "customer", customer.ID, customer.UpdatedAt) {
+					skipped++
+					continue
+				}
 				_, _ = s.syncCustomerToConnection(ctx, conn, adapter, customer)
+				synced++
 			}
 
 			if len(customers) < customerLimit {
@@ -433,8 +451,17 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 		}
 
 		for _, invoice := range invoices {
+			if !force && s.unchangedSinceLastSync(ctx, conn, "invoice", invoice.ID, invoice.UpdatedAt) {
+				skipped++
+				continue
+			}
 			_ = s.syncInvoiceToConnection(ctx, conn, adapter, invoice)
+			synced++
 		}
+
+		slog.Info("accounting sync completed for connection",
+			"connection_id", conn.ID, "provider", conn.Provider, "tenant_id", tenantID,
+			"force", force, "synced", synced, "skipped_unchanged", skipped)
 
 		// Update connection status
 		now := time.Now()
@@ -445,6 +472,29 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 	}
 
 	return nil
+}
+
+// unchangedSinceLastSync reports whether the entity can be skipped on a bulk
+// sync: it already has a mapping on this connection and its source updated_at
+// is not after the mapping's updated_at (which every successful sync
+// refreshes, making it the last-synced timestamp). Anything uncertain — no
+// mapping repo, a zero source updated_at (row predating the updated_at
+// column or a repo path that does not scan it), or a mapping lookup failure —
+// reports false so the entity is synced rather than silently dropped.
+func (s *AccountingService) unchangedSinceLastSync(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, sourceUpdatedAt time.Time) bool {
+	if s.mappingRepo == nil || sourceUpdatedAt.IsZero() {
+		return false
+	}
+	m, err := s.mappingRepo.Get(ctx, conn.ID, entityType, entityID)
+	if err != nil {
+		slog.Error("failed to look up accounting mapping for dirty check; syncing entity",
+			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
+		return false
+	}
+	if m == nil || m.ExternalID == "" {
+		return false // never synced to this connection
+	}
+	return !sourceUpdatedAt.After(m.UpdatedAt)
 }
 
 func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConnection) port.AccountingGateway {

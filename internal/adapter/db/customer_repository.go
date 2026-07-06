@@ -65,7 +65,8 @@ func (r *CustomerRepository) Update(ctx context.Context, customer *domain.Custom
 			country = :billing_address.country,
 			billing_address = :billing_address_json,
 			ledger_account_id = :ledger_account_id,
-			referral_code = :referral_code
+			referral_code = :referral_code,
+			updated_at = NOW()
 		WHERE id = :id AND tenant_id = :tenant_id
 	`
 	// NamedExec requires map or struct with matching tags.
@@ -125,7 +126,7 @@ func (r *CustomerRepository) GetByReferralCode(ctx context.Context, tenantID uui
 	var customer domain.Customer
 	var addressJSON []byte
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at, updated_at
 		FROM customers
 		WHERE tenant_id = $1 AND referral_code = $2 LIMIT 1
 	`
@@ -135,7 +136,7 @@ func (r *CustomerRepository) GetByReferralCode(ctx context.Context, tenantID uui
 		&customer.BillingAddress.Line1, &customer.BillingAddress.City, &customer.BillingAddress.State, &customer.BillingAddress.Zip, &customer.BillingAddress.Country,
 		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode,
 		&customer.CardBrand, &customer.CardLast4, &customer.CardExpMonth, &customer.CardExpYear,
-		&customer.CreatedAt,
+		&customer.CreatedAt, &customer.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -156,7 +157,7 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 	var addressJSON []byte // We scan this but prefer individual columns if populated
 
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at, updated_at
 		FROM customers WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -171,7 +172,7 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 		&customer.BillingAddress.Line1, &customer.BillingAddress.City, &customer.BillingAddress.State, &customer.BillingAddress.Zip, &customer.BillingAddress.Country,
 		&addressJSON, &customer.LedgerAccountID, &customer.ReferralCode,
 		&customer.CardBrand, &customer.CardLast4, &customer.CardExpMonth, &customer.CardExpYear,
-		&customer.CreatedAt,
+		&customer.CreatedAt, &customer.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
@@ -196,7 +197,7 @@ func (r *CustomerRepository) getByIDInternal(ctx context.Context, id uuid.UUID, 
 // Never call it from tenant-scoped request paths.
 func (r *CustomerRepository) FindByEmailAcrossTenants(ctx context.Context, email string) ([]*domain.Customer, error) {
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at, updated_at
 		FROM customers WHERE lower(email) = lower($1)
 		ORDER BY created_at DESC
 	`
@@ -216,7 +217,7 @@ func (r *CustomerRepository) FindByEmailAcrossTenants(ctx context.Context, email
 			&c.BillingAddress.Line1, &c.BillingAddress.City, &c.BillingAddress.State, &c.BillingAddress.Zip, &c.BillingAddress.Country,
 			&addressJSON, &c.LedgerAccountID, &c.ReferralCode,
 			&c.CardBrand, &c.CardLast4, &c.CardExpMonth, &c.CardExpYear,
-			&c.CreatedAt,
+			&c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -230,7 +231,7 @@ func (r *CustomerRepository) FindByEmailAcrossTenants(ctx context.Context, email
 
 func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error) {
 	query := `
-		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at
+		SELECT id, tenant_id, email, name, phone, tax_id, line1, city, state, zip, country, billing_address, ledger_account_id, referral_code, card_brand, card_last4, card_exp_month, card_exp_year, created_at, updated_at
 		FROM customers WHERE tenant_id = $1
 	`
 	args := []interface{}{tenantID}
@@ -289,7 +290,7 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 			&c.BillingAddress.Line1, &c.BillingAddress.City, &c.BillingAddress.State, &c.BillingAddress.Zip, &c.BillingAddress.Country,
 			&addressJSON, &c.LedgerAccountID, &c.ReferralCode,
 			&c.CardBrand, &c.CardLast4, &c.CardExpMonth, &c.CardExpYear,
-			&c.CreatedAt,
+			&c.CreatedAt, &c.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

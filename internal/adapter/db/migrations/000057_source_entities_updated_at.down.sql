@@ -1,0 +1,3 @@
+ALTER TABLE customers DROP COLUMN IF EXISTS updated_at;
+ALTER TABLE invoices DROP COLUMN IF EXISTS updated_at;
+ALTER TABLE plans DROP COLUMN IF EXISTS updated_at;

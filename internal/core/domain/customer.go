@@ -28,6 +28,11 @@ type Customer struct {
 	CardTokenID     *string                `json:"card_token_id,omitempty" db:"card_token_id"`
 	CardFingerprint *string                `json:"card_fingerprint,omitempty" db:"card_fingerprint"`
 	CreatedAt       time.Time              `json:"created_at"`
+	// UpdatedAt is bumped by CustomerRepository.Update (the canonical edit
+	// path for the fields pushed to accounting providers). The accounting
+	// sync compares it against the entity's mapping to skip unchanged
+	// customers; a zero value means "unknown" and always syncs.
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type BillingAddress struct {

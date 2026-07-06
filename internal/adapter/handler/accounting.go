@@ -237,7 +237,9 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 		return
 	}
 
-	if err := h.accountingService.SyncAllForTenant(c.Request.Context(), tenantID); err != nil {
+	// Manual syncs force a full re-push: the merchant is explicitly asking
+	// for everything to be reconciled, so the dirty-tracking skip is bypassed.
+	if err := h.accountingService.SyncAllForTenant(c.Request.Context(), tenantID, true); err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

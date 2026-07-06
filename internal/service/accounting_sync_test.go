@@ -240,6 +240,12 @@ func (m *acctSyncMappingRepo) Delete(ctx context.Context, connectionID uuid.UUID
 }
 
 func (m *acctSyncMappingRepo) seed(conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID string) {
+	m.seedSyncedAt(conn, entityType, entityID, externalID, time.Time{})
+}
+
+// seedSyncedAt seeds a mapping whose UpdatedAt (the last-synced timestamp
+// the bulk sync's dirty check compares against) is set to syncedAt.
+func (m *acctSyncMappingRepo) seedSyncedAt(conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID string, syncedAt time.Time) {
 	m.mappings[acctMappingKey(conn.ID, entityType, entityID)] = &domain.AccountingEntityMapping{
 		ID:           uuid.New(),
 		TenantID:     conn.TenantID,
@@ -247,6 +253,7 @@ func (m *acctSyncMappingRepo) seed(conn *domain.AccountingConnection, entityType
 		EntityType:   entityType,
 		EntityID:     entityID,
 		ExternalID:   externalID,
+		UpdatedAt:    syncedAt,
 	}
 }
 
@@ -375,7 +382,7 @@ func TestAccountingSyncAllRefreshesExpiringTokenBeforeSync(t *testing.T) {
 		return &acctSyncRecordingGateway{}
 	}
 
-	if err := svc.SyncAllForTenant(context.Background(), tenantID); err != nil {
+	if err := svc.SyncAllForTenant(context.Background(), tenantID, false); err != nil {
 		t.Fatalf("SyncAllForTenant returned error: %v", err)
 	}
 
@@ -423,7 +430,7 @@ func TestAccountingSyncAllSkipsRefreshWhenTokenFresh(t *testing.T) {
 		return &acctSyncRecordingGateway{}
 	}
 
-	if err := svc.SyncAllForTenant(context.Background(), tenantID); err != nil {
+	if err := svc.SyncAllForTenant(context.Background(), tenantID, false); err != nil {
 		t.Fatalf("SyncAllForTenant returned error: %v", err)
 	}
 
@@ -458,7 +465,7 @@ func TestAccountingSyncAllInvalidGrantDeactivatesConnection(t *testing.T) {
 		return &acctSyncRecordingGateway{}
 	}
 
-	if err := svc.SyncAllForTenant(context.Background(), tenantID); err != nil {
+	if err := svc.SyncAllForTenant(context.Background(), tenantID, false); err != nil {
 		t.Fatalf("SyncAllForTenant returned error: %v", err)
 	}
 
@@ -504,7 +511,7 @@ func TestAccountingSyncAllTransientRefreshFailureKeepsConnectionActive(t *testin
 		return &acctSyncRecordingGateway{}
 	}
 
-	if err := svc.SyncAllForTenant(context.Background(), tenantID); err != nil {
+	if err := svc.SyncAllForTenant(context.Background(), tenantID, false); err != nil {
 		t.Fatalf("SyncAllForTenant returned error: %v", err)
 	}
 
@@ -533,7 +540,7 @@ func TestAccountingSyncAllExpiredTokenWithoutRefreshTokenIsSkipped(t *testing.T)
 		return &acctSyncRecordingGateway{}
 	}
 
-	if err := svc.SyncAllForTenant(context.Background(), tenantID); err != nil {
+	if err := svc.SyncAllForTenant(context.Background(), tenantID, false); err != nil {
 		t.Fatalf("SyncAllForTenant returned error: %v", err)
 	}
 
@@ -958,7 +965,7 @@ func acctSyncPlanLinkedInvoiceFixture(t *testing.T) (*AccountingService, *acctSy
 	tenantID := uuid.New()
 	name := "Acme"
 	customer := &domain.Customer{ID: uuid.New(), TenantID: tenantID, Email: "acme@example.com", Name: &name}
-	plan := &domain.Plan{ID: uuid.New(), TenantID: tenantID, Name: "Pro Monthly"}
+	plan := &domain.Plan{ID: uuid.New(), TenantID: tenantID, Name: "Pro Monthly", Code: "pro-monthly"}
 	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, CustomerID: customer.ID, PlanID: plan.ID}
 	invoice := &domain.Invoice{ID: uuid.New(), TenantID: tenantID, CustomerID: customer.ID, SubscriptionID: &sub.ID, InvoiceNumber: "INV-002"}
 
@@ -993,6 +1000,9 @@ func TestSyncInvoiceEnsuresProductAndPassesItemRef(t *testing.T) {
 	if gw.invoiceRefs[0].ProductExternalID != acctExtProductID(plan) {
 		t.Errorf("invoice sync received product external id %q, want %q", gw.invoiceRefs[0].ProductExternalID, acctExtProductID(plan))
 	}
+	if gw.invoiceRefs[0].ProductCode != plan.Code {
+		t.Errorf("invoice sync received product code %q, want %q (Xero links lines by item Code)", gw.invoiceRefs[0].ProductCode, plan.Code)
+	}
 
 	// Product mapping persisted for reuse.
 	m, _ := mappingRepo.Get(context.Background(), conn.ID, "product", plan.ID)
@@ -1015,6 +1025,9 @@ func TestSyncInvoiceUsesExistingProductMapping(t *testing.T) {
 	if gw.invoiceRefs[0].ProductExternalID != "qb-item-9" {
 		t.Errorf("invoice sync received product external id %q, want qb-item-9", gw.invoiceRefs[0].ProductExternalID)
 	}
+	if gw.invoiceRefs[0].ProductCode != plan.Code {
+		t.Errorf("invoice sync received product code %q, want %q even on the mapped path", gw.invoiceRefs[0].ProductCode, plan.Code)
+	}
 }
 
 func TestSyncInvoiceProductResolutionFailureFallsBackToBareLines(t *testing.T) {
@@ -1029,5 +1042,143 @@ func TestSyncInvoiceProductResolutionFailureFallsBackToBareLines(t *testing.T) {
 	}
 	if gw.invoiceRefs[0].ProductExternalID != "" {
 		t.Errorf("invoice sync received product external id %q, want empty on resolution failure", gw.invoiceRefs[0].ProductExternalID)
+	}
+}
+
+// --- Tests: bulk-sync dirty tracking (changed-since semantics) ---
+
+// acctSyncBulkFixture wires a service with one active connection, a mapping
+// repo, one customer and one invoice for SyncAllForTenant dirty-tracking
+// tests.
+func acctSyncBulkFixture(t *testing.T) (*AccountingService, *acctSyncConnRepo, *acctSyncMappingRepo, *acctSyncRecordingGateway, *domain.AccountingConnection, *domain.Customer, *domain.Invoice) {
+	t.Helper()
+	tenantID := uuid.New()
+	name := "Acme"
+	customer := &domain.Customer{ID: uuid.New(), TenantID: tenantID, Email: "acme@example.com", Name: &name}
+	invoice := &domain.Invoice{ID: uuid.New(), TenantID: tenantID, CustomerID: customer.ID, InvoiceNumber: "INV-003"}
+
+	conn := acctSyncConn(tenantID, "quickbooks", time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	mappingRepo := newAcctSyncMappingRepo()
+
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{customer: customer}, &acctSyncInvoiceRepo{invoice: invoice}, &acctSyncPlanRepo{})
+	svc.SetMappingRepo(mappingRepo)
+
+	gw := &acctSyncRecordingGateway{}
+	svc.adapterFactory = func(c *domain.AccountingConnection) port.AccountingGateway { return gw }
+	return svc, connRepo, mappingRepo, gw, conn, customer, invoice
+}
+
+func TestSyncAllSkipsEntitiesUnchangedSinceLastSync(t *testing.T) {
+	svc, connRepo, mappingRepo, gw, conn, customer, invoice := acctSyncBulkFixture(t)
+
+	lastSync := time.Now().Add(-time.Hour)
+	customer.UpdatedAt = lastSync.Add(-time.Minute) // modified before last sync
+	invoice.UpdatedAt = lastSync.Add(-time.Minute)
+	mappingRepo.seedSyncedAt(conn, "customer", customer.ID, "qb-cust-42", lastSync)
+	mappingRepo.seedSyncedAt(conn, "invoice", invoice.ID, "qb-inv-7", lastSync)
+
+	if err := svc.SyncAllForTenant(context.Background(), conn.TenantID, false); err != nil {
+		t.Fatalf("SyncAllForTenant returned error: %v", err)
+	}
+
+	if len(gw.customers) != 0 {
+		t.Errorf("unchanged mapped customer was re-pushed (%d syncs)", len(gw.customers))
+	}
+	if len(gw.invoices) != 0 {
+		t.Errorf("unchanged mapped invoice was re-pushed (%d syncs)", len(gw.invoices))
+	}
+	if len(connRepo.syncLogs) != 0 {
+		t.Errorf("skipped entities produced sync logs: %+v", connRepo.syncLogs)
+	}
+	// The connection is still marked synced even when everything was skipped.
+	if conn.SyncStatus != "synced" || conn.LastSyncAt == nil {
+		t.Errorf("connection status = %q lastSyncAt = %v, want synced with a timestamp", conn.SyncStatus, conn.LastSyncAt)
+	}
+}
+
+func TestSyncAllSyncsEntitiesChangedSinceLastSync(t *testing.T) {
+	svc, _, mappingRepo, gw, conn, customer, invoice := acctSyncBulkFixture(t)
+
+	lastSync := time.Now().Add(-time.Hour)
+	customer.UpdatedAt = lastSync.Add(time.Minute) // modified after last sync
+	invoice.UpdatedAt = lastSync.Add(-time.Minute) // unchanged
+	mappingRepo.seedSyncedAt(conn, "customer", customer.ID, "qb-cust-42", lastSync)
+	mappingRepo.seedSyncedAt(conn, "invoice", invoice.ID, "qb-inv-7", lastSync)
+
+	if err := svc.SyncAllForTenant(context.Background(), conn.TenantID, false); err != nil {
+		t.Fatalf("SyncAllForTenant returned error: %v", err)
+	}
+
+	if len(gw.customers) != 1 || gw.customerExternalIDs[0] != "qb-cust-42" {
+		t.Errorf("changed customer syncs = %v (externalIDs %v), want 1 update with qb-cust-42", len(gw.customers), gw.customerExternalIDs)
+	}
+	if len(gw.invoices) != 0 {
+		t.Errorf("unchanged invoice was re-pushed (%d syncs)", len(gw.invoices))
+	}
+}
+
+func TestSyncAllForceRePushesUnchangedEntities(t *testing.T) {
+	svc, _, mappingRepo, gw, conn, customer, invoice := acctSyncBulkFixture(t)
+
+	lastSync := time.Now().Add(-time.Hour)
+	customer.UpdatedAt = lastSync.Add(-time.Minute)
+	invoice.UpdatedAt = lastSync.Add(-time.Minute)
+	mappingRepo.seedSyncedAt(conn, "customer", customer.ID, "qb-cust-42", lastSync)
+	mappingRepo.seedSyncedAt(conn, "invoice", invoice.ID, "qb-inv-7", lastSync)
+
+	if err := svc.SyncAllForTenant(context.Background(), conn.TenantID, true); err != nil {
+		t.Fatalf("SyncAllForTenant returned error: %v", err)
+	}
+
+	// force bypasses the dirty check: both are pushed as updates of the
+	// mapped provider objects.
+	if len(gw.customers) != 1 || gw.customerExternalIDs[0] != "qb-cust-42" {
+		t.Errorf("forced customer syncs = %d (externalIDs %v), want 1 update with qb-cust-42", len(gw.customers), gw.customerExternalIDs)
+	}
+	if len(gw.invoices) != 1 || gw.invoiceExternalIDs[0] != "qb-inv-7" {
+		t.Errorf("forced invoice syncs = %d (externalIDs %v), want 1 update with qb-inv-7", len(gw.invoices), gw.invoiceExternalIDs)
+	}
+}
+
+func TestSyncAllZeroSourceUpdatedAtAlwaysSyncs(t *testing.T) {
+	// Entities whose UpdatedAt is zero (rows predating the updated_at column
+	// or repo paths that do not scan it) carry no change information, so the
+	// dirty check must fail open and sync them.
+	svc, _, mappingRepo, gw, conn, customer, invoice := acctSyncBulkFixture(t)
+
+	customer.UpdatedAt = time.Time{}
+	invoice.UpdatedAt = time.Time{}
+	mappingRepo.seedSyncedAt(conn, "customer", customer.ID, "qb-cust-42", time.Now())
+	mappingRepo.seedSyncedAt(conn, "invoice", invoice.ID, "qb-inv-7", time.Now())
+
+	if err := svc.SyncAllForTenant(context.Background(), conn.TenantID, false); err != nil {
+		t.Fatalf("SyncAllForTenant returned error: %v", err)
+	}
+
+	if len(gw.customers) != 1 {
+		t.Errorf("customer without updated_at info was skipped (%d syncs, want 1)", len(gw.customers))
+	}
+	if len(gw.invoices) != 1 {
+		t.Errorf("invoice without updated_at info was skipped (%d syncs, want 1)", len(gw.invoices))
+	}
+}
+
+func TestSyncAllUnmappedEntitiesSyncRegardlessOfTimestamps(t *testing.T) {
+	svc, _, _, gw, conn, customer, invoice := acctSyncBulkFixture(t)
+
+	// Old timestamps but no mappings: both must be created on the provider.
+	customer.UpdatedAt = time.Now().Add(-24 * time.Hour)
+	invoice.UpdatedAt = time.Now().Add(-24 * time.Hour)
+
+	if err := svc.SyncAllForTenant(context.Background(), conn.TenantID, false); err != nil {
+		t.Fatalf("SyncAllForTenant returned error: %v", err)
+	}
+
+	if len(gw.customers) != 1 || gw.customerExternalIDs[0] != "" {
+		t.Errorf("unmapped customer syncs = %d (externalIDs %v), want 1 create", len(gw.customers), gw.customerExternalIDs)
+	}
+	if len(gw.invoices) != 1 || gw.invoiceExternalIDs[0] != "" {
+		t.Errorf("unmapped invoice syncs = %d (externalIDs %v), want 1 create", len(gw.invoices), gw.invoiceExternalIDs)
 	}
 }
