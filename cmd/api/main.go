@@ -30,6 +30,7 @@ import (
 	"github.com/swapnull-in/recur-so/internal/adapter/notification"
 	redisAdapter "github.com/swapnull-in/recur-so/internal/adapter/redis"
 	"github.com/swapnull-in/recur-so/internal/adapter/sms"
+	"github.com/swapnull-in/recur-so/internal/adapter/taxprovider"
 	"github.com/swapnull-in/recur-so/internal/adapter/tigerbeetle"
 	"github.com/swapnull-in/recur-so/internal/adapter/vault"
 	"github.com/swapnull-in/recur-so/internal/adapter/worker"
@@ -234,12 +235,22 @@ func main() {
 	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
 	companyState := getEnvDefault("COMPANY_STATE", "TN")
 	taxResolver := service.NewTaxResolver(gstConfigRepo, companyCountry, companyState)
+	// US sales tax — TaxJar when a key is set (the resolver caches rates
+	// in-memory for 24h per state+zip); otherwise the US engine stays an
+	// honest 0% stub (invoices marked sales_tax_stub).
+	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" {
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewTaxJarProvider(taxjarKey, os.Getenv("TAXJAR_API_URL")))
+		log.Println("US sales tax: TaxJar provider enabled")
+	} else {
+		log.Println("US sales tax: 0% stub (TAXJAR_API_KEY not set)")
+	}
 
 	// 4. Initialize Core Services (Invoice)
 	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter, taxResolver) // P15, P25
 
 	catalogService := service.NewCatalogService(planRepo)
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
+	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
 	customerService := service.NewCustomerService(customerRepo)
 	tenantService := service.NewTenantService(tenantRepo)                                                        // P8 Service
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
@@ -545,7 +556,7 @@ func main() {
 	customerHandler := handler.NewCustomerHandler(customerService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway)
-	usageHandler := handler.NewUsageHandler(usageRepo)
+	usageHandler := handler.NewUsageHandler(usageService)
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
@@ -754,7 +765,11 @@ func main() {
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 
+		// Usage Platform v1
 		v1.POST("/usage/events", usageHandler.RecordEvent)
+		v1.GET("/usage", usageHandler.QueryUsage)                             // time-windowed buckets
+		v1.GET("/usage/dimensions", usageHandler.ListDimensions)              // dimension catalog
+		v1.GET("/subscriptions/:id/usage", usageHandler.GetSubscriptionUsage) // current period + lifetime
 
 		// Analytics (Cached)
 		analytics := v1.Group("/analytics")

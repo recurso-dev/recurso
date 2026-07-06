@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"math"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/service/tax"
 )
 
 // --- Mocks for tax resolver tests ---
@@ -171,7 +174,7 @@ func TestResolveInvoiceTax_USSeller_USBuyer_SalesTaxEngine(t *testing.T) {
 
 	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900)
 
-	// The US engine is a 0%-rate stub pending TaxJar/Avalara integration.
+	// Without a wired provider the US engine is still the 0%-rate stub.
 	if res.Total != 0 {
 		t.Errorf("Total = %d, want 0 (stub engine)", res.Total)
 	}
@@ -180,6 +183,93 @@ func TestResolveInvoiceTax_USSeller_USBuyer_SalesTaxEngine(t *testing.T) {
 	}
 	if res.IGST != 0 || res.CGST != 0 || res.SGST != 0 {
 		t.Errorf("GST components = %d/%d/%d, want all zero for US sales tax", res.IGST, res.CGST, res.SGST)
+	}
+}
+
+// mockSalesTaxProvider implements tax.SalesTaxProvider for resolver tests.
+type mockSalesTaxProvider struct {
+	calls int
+	rate  float64
+	err   error
+}
+
+func (m *mockSalesTaxProvider) Name() string { return "mocktax" }
+
+func (m *mockSalesTaxProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQuery) (*tax.SalesTaxResult, error) {
+	m.calls++
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &tax.SalesTaxResult{
+		Rate:         m.rate,
+		TaxAmount:    int64(math.Round(float64(q.Amount) * m.rate)),
+		Jurisdiction: "US/" + q.ToState,
+		HasNexus:     true,
+	}, nil
+}
+
+func usCustomer() *domain.Customer {
+	return &domain.Customer{
+		ID:             uuid.New(),
+		BillingAddress: domain.BillingAddress{Country: "United States", State: "CA", Zip: "90002"},
+	}
+}
+
+func TestResolveInvoiceTax_USSeller_LiveProvider_RealSalesTax(t *testing.T) {
+	provider := &mockSalesTaxProvider{rate: 0.0865}
+	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
+
+	if res.Total != 865 {
+		t.Errorf("Total = %d, want 865 (8.65%% of 10000)", res.Total)
+	}
+	if res.TaxType != "sales_tax" {
+		t.Errorf("TaxType = %q, want 'sales_tax' (live provider replaces the stub marker)", res.TaxType)
+	}
+	if !strings.Contains(res.Note, "mocktax") {
+		t.Errorf("Note = %q, want the provider name in the note", res.Note)
+	}
+	if res.IGST != 0 || res.CGST != 0 || res.SGST != 0 {
+		t.Errorf("GST components = %d/%d/%d, want all zero for US sales tax", res.IGST, res.CGST, res.SGST)
+	}
+	if provider.calls != 1 {
+		t.Errorf("provider calls = %d, want 1", provider.calls)
+	}
+}
+
+func TestResolveInvoiceTax_USSeller_ProviderError_DegradesNotFails(t *testing.T) {
+	provider := &mockSalesTaxProvider{err: errors.New("taxjar 503")}
+	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
+
+	if res.Total != 0 {
+		t.Errorf("Total = %d, want 0 (degrade to 0%% on provider error)", res.Total)
+	}
+	if res.TaxType != "sales_tax_error" {
+		t.Errorf("TaxType = %q, want 'sales_tax_error'", res.TaxType)
+	}
+	if !strings.Contains(res.Note, "mocktax") {
+		t.Errorf("Note = %q, want the provider name for auditability", res.Note)
+	}
+}
+
+func TestResolveInvoiceTax_USSeller_RatesCachedAcrossInvoices(t *testing.T) {
+	// Engines are rebuilt per invoice; the rate cache lives in the
+	// resolver-held provider, so a second invoice to the same (state, zip)
+	// must not hit the provider again — even for a different amount.
+	provider := &mockSalesTaxProvider{rate: 0.10}
+	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
+
+	first := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
+	second := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 5000)
+
+	if provider.calls != 1 {
+		t.Errorf("provider calls = %d, want 1 (second invoice served from cache)", provider.calls)
+	}
+	if first.Total != 1000 || second.Total != 500 {
+		t.Errorf("Totals = %d/%d, want 1000/500 (cached rate reapplied to new amount)", first.Total, second.Total)
 	}
 }
 

@@ -4063,6 +4063,85 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/usage:
+    get:
+      operationId: queryUsage
+      tags: [Usage]
+      summary: Time-windowed usage buckets
+      description: >
+        Aggregates usage events into `date_trunc`'d time buckets. At least one
+        of `subscription_id` or `customer_id` is required. The window defaults
+        to the last 30 days.
+      parameters:
+        - { name: subscription_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: customer_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: dimension, in: query, required: false, schema: { type: string }, description: Filter to a single dimension. }
+        - { name: from, in: query, required: false, schema: { type: string, format: date-time }, description: "Window start (RFC3339, inclusive). Default: to - 30 days." }
+        - { name: to, in: query, required: false, schema: { type: string, format: date-time }, description: "Window end (RFC3339, exclusive). Default: now." }
+        - { name: granularity, in: query, required: false, schema: { type: string, enum: [day, month], default: day } }
+      responses:
+        '200':
+          description: Usage buckets plus the resolved window.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UsageBucket'
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  granularity: { type: string, enum: [day, month] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/usage/dimensions:
+    get:
+      operationId: listUsageDimensions
+      tags: [Usage]
+      summary: Usage dimension catalog
+      description: Distinct usage dimensions the tenant has reported, with first/last seen timestamps and event counts.
+      responses:
+        '200':
+          description: Dimension catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UsageDimension'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/subscriptions/{id}/usage:
+    get:
+      operationId: getSubscriptionUsage
+      tags: [Usage]
+      summary: Current-period usage for a subscription
+      description: >
+        Per-dimension usage inside the subscription's current billing period
+        plus lifetime totals — the "you've used 4,231 of 10,000 api_calls"
+        view. When the customer holds an entitlement limit for a feature_key
+        equal to the dimension name, `limit_value` and `remaining` are
+        populated (null otherwise; `remaining` may be negative when over the
+        limit).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Subscription usage report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionUsage'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -5976,3 +6055,80 @@ components:
         created_at:
           type: string
           format: date-time
+
+    UsageBucket:
+      type: object
+      description: One date_trunc'd time bucket of aggregated usage.
+      properties:
+        period:
+          type: string
+          format: date-time
+          description: Bucket start (date_trunc of the event timestamps).
+        dimension:
+          type: string
+          examples: [api_calls]
+        quantity:
+          type: integer
+          format: int64
+
+    UsageDimension:
+      type: object
+      description: A dimension-catalog row for the tenant.
+      properties:
+        dimension:
+          type: string
+        event_count:
+          type: integer
+          format: int64
+        first_seen:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+
+    SubscriptionDimensionUsage:
+      type: object
+      description: >
+        One dimension's usage for a subscription. limit_value/remaining are
+        populated only when the customer holds an entitlement limit for a
+        feature_key equal to the dimension name.
+      properties:
+        dimension:
+          type: string
+        period_quantity:
+          type: integer
+          format: int64
+          description: Total inside the current billing period.
+        lifetime_quantity:
+          type: integer
+          format: int64
+        limit_value:
+          type: [integer, 'null']
+          format: int64
+          description: Effective entitlement limit, or null when none exists.
+        remaining:
+          type: [integer, 'null']
+          format: int64
+          description: limit_value - period_quantity (negative when over the limit); null when limit_value is null.
+
+    SubscriptionUsage:
+      type: object
+      description: Per-subscription usage report (GET /v1/subscriptions/{id}/usage).
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        current_period_start:
+          type: string
+          format: date-time
+        current_period_end:
+          type: string
+          format: date-time
+        dimensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionDimensionUsage'

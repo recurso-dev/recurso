@@ -18,6 +18,13 @@ var euCountries = map[string]bool{
 
 // NewTaxEngine creates the appropriate tax engine based on the seller's country and state.
 func NewTaxEngine(country, state string) port.TaxEngine {
+	return NewTaxEngineWithSalesTaxProvider(country, state, nil)
+}
+
+// NewTaxEngineWithSalesTaxProvider is NewTaxEngine with an optional US
+// sales-tax rate provider threaded through. Only the US engine uses it; a
+// nil provider keeps the US engine as the historical 0%-rate stub.
+func NewTaxEngineWithSalesTaxProvider(country, state string, salesTax SalesTaxProvider) port.TaxEngine {
 	country = strings.ToUpper(strings.TrimSpace(country))
 	state = strings.ToUpper(strings.TrimSpace(state))
 
@@ -25,7 +32,7 @@ func NewTaxEngine(country, state string) port.TaxEngine {
 	case country == "IN":
 		return NewGSTEngine(state)
 	case country == "US":
-		return NewUSSalesTaxEngine(state)
+		return NewUSSalesTaxEngineWithProvider(state, salesTax)
 	case euCountries[country]:
 		return NewEUVATEngine(country)
 	case country == "GB":

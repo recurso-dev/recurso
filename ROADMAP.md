@@ -41,9 +41,18 @@ can sign off on the output.
       VAT / US sales tax by seller+buyer jurisdiction; GST uses the
       tenant's configured state (not hardcoded "TN"); Indian non-INR
       invoices are zero-rated exports with LUT-aware notes.
-- [ ] **US sales tax provider** — the US engine is a 0%-rate stub; real US
-      tax needs a TaxJar/Avalara integration (invoices are marked
-      sales_tax_stub until then). EU VAT rates are a static table needing
+- [x] **US sales tax provider** — TaxJar integration shipped behind
+      TAXJAR_API_KEY (sandbox via TAXJAR_API_URL): real jurisdiction rates
+      via POST /v2/taxes, cached in-memory 24h per buyer (state, zip);
+      invoices are marked sales_tax with the provider named in the note.
+      Provider errors at invoice time degrade to 0% with TaxType
+      sales_tax_error (warn-logged) instead of blocking the invoice.
+      Without a key the engine remains the honest 0% stub
+      (sales_tax_stub). Follow-up: nexus configuration (which states the
+      seller has nexus in) is NOT modeled — TaxJar's from-address/account
+      nexus settings imply it, so rates silently assume the TaxJar account
+      is configured correctly.
+- [ ] **EU VAT rate maintenance** — EU VAT rates are a static table needing
       a maintenance story.
 - [x] **Proration invoice tax** — plan-change charges route through the
       TaxResolver like any other invoice.

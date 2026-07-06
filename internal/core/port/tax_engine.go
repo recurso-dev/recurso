@@ -9,6 +9,7 @@ type TaxRequest struct {
 	HSNCode       string // Harmonized System of Nomenclature code (India)
 	SellerState   string // Seller's state/province
 	BuyerState    string // Buyer's state/province
+	BuyerZip      string // Buyer's ZIP/postal code (US sales tax; ignored by the GST and VAT engines)
 	BuyerCountry  string // Buyer's country (ISO 2-letter)
 	SellerCountry string // Seller's country (ISO 2-letter)
 	IsBusiness    bool   // B2B vs B2C
@@ -30,8 +31,8 @@ type TaxCalculation struct {
 	SGST int64 `json:"sgst,omitempty"`
 
 	// VAT-specific
-	VATRate    float64 `json:"vat_rate,omitempty"`
-	VATAmount  int64   `json:"vat_amount,omitempty"`
+	VATRate   float64 `json:"vat_rate,omitempty"`
+	VATAmount int64   `json:"vat_amount,omitempty"`
 
 	Note string `json:"note,omitempty"` // Additional info (e.g., "Integrate TaxJar for real rates")
 }

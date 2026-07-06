@@ -44,6 +44,7 @@ type TaxResolver struct {
 	gstConfigs     GSTConfigProvider
 	defaultCountry string
 	defaultState   string
+	salesTax       tax.SalesTaxProvider // optional; nil keeps the US engine a 0% stub
 	logger         *slog.Logger
 }
 
@@ -65,13 +66,25 @@ func NewTaxResolver(gstConfigs GSTConfigProvider, defaultCountry, defaultState s
 	}
 }
 
+// WithSalesTaxProvider wires a live US sales-tax rate provider (TaxJar)
+// into the resolver and returns the resolver for chaining. The provider is
+// wrapped in a 24h per-(state,zip) rate cache here — engines are built per
+// invoice by the factory, so the resolver-held provider is where cached
+// rates survive. nil is a no-op (US engine stays the 0% stub).
+func (r *TaxResolver) WithSalesTaxProvider(p tax.SalesTaxProvider) *TaxResolver {
+	if p != nil {
+		r.salesTax = tax.NewCachedSalesTaxProvider(p, tax.DefaultSalesTaxRateTTL)
+	}
+	return r
+}
+
 // ResolveInvoiceTax computes the tax for one invoice amount (lowest currency
 // unit). It never returns an error: tax resolution problems degrade to zero
 // tax with a log line rather than blocking invoice generation.
 func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64) InvoiceTax {
 	sellerCountry, sellerState, cfg := r.sellerJurisdiction(ctx, tenantID)
 
-	engine := tax.NewTaxEngine(sellerCountry, normalizeINState(sellerState))
+	engine := tax.NewTaxEngineWithSalesTaxProvider(sellerCountry, normalizeINState(sellerState), r.salesTax)
 
 	switch engine.(type) {
 	case *tax.USSalesTaxEngine:
@@ -171,8 +184,12 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 }
 
 // resolveUSSalesTax applies US sales tax for US buyers. Sales to buyers
-// outside the US carry no US sales tax. The engine itself is currently a
-// 0%-rate stub pending a TaxJar/Avalara integration.
+// outside the US carry no US sales tax. With a live provider wired
+// (WithSalesTaxProvider) the engine returns real jurisdiction rates and
+// marks invoices "sales_tax"; without one it stays the historical 0% stub
+// ("sales_tax_stub"). A provider error at invoice time must never fail the
+// invoice: it degrades to 0% with TaxType "sales_tax_error" and a warn log,
+// so the invoice ships and the gap is auditable.
 func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngine, customer *domain.Customer, currency string, amount int64) InvoiceTax {
 	buyerCountry := normalizeCountry(customer.BillingAddress.Country)
 	if buyerCountry != "" && buyerCountry != "US" {
@@ -183,13 +200,23 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 		Amount:        amount,
 		Currency:      currency,
 		BuyerState:    strings.ToUpper(strings.TrimSpace(customer.BillingAddress.State)),
+		BuyerZip:      strings.TrimSpace(customer.BillingAddress.Zip),
 		BuyerCountry:  buyerCountry,
 		SellerCountry: "US",
 		IsBusiness:    isBusinessBuyer(customer),
 	})
 	if err != nil || calc == nil {
-		r.logger.Warn("US sales tax calculation failed; invoicing without tax", "error", err)
-		return InvoiceTax{}
+		// Only the provider-backed engine can error (the stub never does).
+		provider := "unknown"
+		if us, ok := engine.(*tax.USSalesTaxEngine); ok && us.ProviderName() != "" {
+			provider = us.ProviderName()
+		}
+		r.logger.Warn("US sales tax provider lookup failed; invoicing at 0%",
+			"provider", provider, "error", err)
+		return InvoiceTax{
+			TaxType: "sales_tax_error",
+			Note:    "US sales tax lookup via " + provider + " failed; invoiced at 0% (needs review)",
+		}
 	}
 	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: calc.Note}
 }
