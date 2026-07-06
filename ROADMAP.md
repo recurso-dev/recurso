@@ -141,6 +141,47 @@ can sign off on the output.
 - [ ] Pricing finalization and the bootstrap-vs-preseed decision once live
       billing volume exists.
 
+
+## Track 6 — Toward the Revenue Operating System
+
+Synthesis of external strategic analysis (July 2026). The long-term vision:
+billing engine → revenue operating system. Triaged by tense — build-now
+items feed Tracks 1–3; the rest are recorded so the vision doesn't get
+re-derived every quarter.
+
+**Build now (prerequisites for the monetization wedge):**
+- [ ] **Recovery attribution** — measure what dunning actually recovers:
+      when a failed invoice later collects, record the recovered amount,
+      attempts, and strategy; expose totals via analytics. This turns the
+      smart-retry engine into a provable-ROI number and is the prerequisite
+      for any cloud-exclusive "network-trained" dunning moat (the open-core
+      extraction answer: the code is MIT, the cross-tenant model isn't).
+- [ ] **Entitlement engine v1** — plan-level feature grants (booleans and
+      limits), effective-entitlement resolution per customer from active
+      subscriptions, a fast check endpoint, SDK support. Makes Recurso
+      load-bearing in the customer's application, not just their books.
+- [ ] **TigerBeetle reconciliation** — paginate GetAccountTransfers (or
+      timestamp-windowed queries) so the reconciler can actually compare
+      TB against PG; until then TB stays clearly labeled optional-mirror.
+- [ ] **Incident runbook + alerting** — SEV1 money-movement runbook and a
+      health-alert hook (webhook/email on /health degradation) before the
+      first cloud customer exists (solo-operator risk).
+
+**Next (Phase 2, after design partners):**
+- Usage platform depth (seats, storage, active-user dimensions; credits)
+- CRM integrations (HubSpot first), workflow automation on billing events
+- Multi-product catalog: add-ons, bundles, one-time services
+- CPQ: ramp pricing and custom contract schedules for enterprise quotes
+- Localized payment methods via Stripe rails (SEPA, iDEAL) and UPI depth
+- Developer platform: CLI, MCP server, Terraform provider, generated
+  Python/Go SDKs (now unblocked by the complete OpenAPI spec)
+
+**Later (Phase 3–4, needs scale/data):**
+- Revenue intelligence (leak detection, forecasting, anomalies)
+- AI pricing assistant, price A/B testing
+- Identity platform (SAML/SCIM/RBAC) as the enterprise tier
+- Marketplace/plugins, embedded finance
+
 ---
 
 ## Sequencing
