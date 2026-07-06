@@ -212,16 +212,21 @@ func main() {
 		log.Println("Using Mock GSP Adapter (NIC_PRIVATE_KEY_PATH not set)")
 	}
 
-	// FX Provider — OXR if key set, else static rates
+	// FX Provider — OXR if key set (with static rates as fallback when the
+	// live fetch fails), else static rates. OXR caches rates in-memory for 1h.
 	var fxProvider port.ExchangeRateProvider
+	var fxFallback port.ExchangeRateProvider
 	if oxrKey := os.Getenv("OPENEXCHANGERATES_APP_ID"); oxrKey != "" {
 		fxProvider = fx.NewOpenExchangeRatesProvider(oxrKey)
-		log.Println("Using OpenExchangeRates FX provider")
+		fxFallback = fx.NewStaticRatesProvider()
+		log.Println("Using OpenExchangeRates FX provider (static rates fallback)")
 	} else {
 		fxProvider = fx.NewStaticRatesProvider()
 		log.Println("Using Static FX rates provider")
 	}
-	_ = fxProvider // Available for invoice service
+	// Default reporting currency for FX-normalized analytics (MRR). Tenants
+	// with a base_currency set report in that currency instead.
+	reportingCurrency := getEnvDefault("REPORTING_CURRENCY", "USD")
 
 	// Tax Resolver — per-tenant GST config decides the seller jurisdiction
 	// (India + state) when present; env company defaults otherwise. Dispatches
@@ -317,6 +322,8 @@ func main() {
 
 	// Analytics
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
+	analyticsService.SetFX(fxProvider, fxFallback, reportingCurrency)
+	analyticsService.SetTenantLookup(tenantRepo)
 
 	// GenAI (P48)
 	openAIKey := os.Getenv("OPENAI_API_KEY")
@@ -377,6 +384,7 @@ func main() {
 
 	// Phase 2: Organization Service
 	orgService := service.NewOrganizationService(orgRepo, subscriptionRepo, planRepo)
+	orgService.SetFX(fxProvider, fxFallback, reportingCurrency)
 
 	// Referral (P42)
 	referralRepo := db.NewReferralRepository(dbx)
@@ -598,6 +606,7 @@ func main() {
 	webhookHandler.SetMandateService(mandateService)
 	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
 	webhookHandler.SetDunningCampaignService(dunningCampaignService)
+	webhookHandler.SetCreditNoteService(creditNoteService) // consume gateway refund events (refund.processed/failed, charge.refunded)
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)
@@ -787,6 +796,7 @@ func main() {
 		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)
 		v1.GET("/webhooks", webhookMgmtHandler.ListEndpoints)
 		v1.DELETE("/webhooks/:id", webhookMgmtHandler.DeleteEndpoint)
+		v1.GET("/webhooks/:id/deliveries", webhookMgmtHandler.ListEndpointDeliveries)
 
 		// Account (Tenant) Management
 		v1.GET("/account", tenantHandler.GetAccount)
@@ -804,6 +814,8 @@ func main() {
 		v1.POST("/quotes/:id/convert", quoteHandler.ConvertToInvoice)
 		v1.GET("/events", webhookMgmtHandler.ListEvents)
 		v1.GET("/events/types", webhookMgmtHandler.GetEventTypes)
+		v1.GET("/events/:id/deliveries", webhookMgmtHandler.ListEventDeliveries)
+		v1.POST("/events/:id/redeliver", webhookMgmtHandler.RedeliverEvent)
 
 		// GST Settings (P30)
 		v1.GET("/settings/gst", gstHandler.GetConfig)

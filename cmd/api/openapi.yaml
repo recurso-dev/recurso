@@ -1186,6 +1186,46 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/webhooks/{id}/deliveries:
+    get:
+      operationId: listWebhookEndpointDeliveries
+      tags: [Webhooks]
+      summary: List deliveries for a webhook endpoint
+      description: Recent delivery attempts to this endpoint, newest first.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+        - $ref: '#/components/parameters/Limit'
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          description: Filter by derived delivery status.
+          schema:
+            type: string
+            enum: [pending, succeeded, failed]
+      responses:
+        '200':
+          description: Deliveries for the endpoint.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/events:
     get:
       operationId: listEvents
@@ -1235,6 +1275,70 @@ paths:
                       examples: [invoice.paid]
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /v1/events/{id}/deliveries:
+    get:
+      operationId: listEventDeliveries
+      tags: [Webhooks]
+      summary: List deliveries for an event
+      description: Delivery attempts of this event across all webhook endpoints, newest first.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Deliveries for the event.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/EventDelivery'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/events/{id}/redeliver:
+    post:
+      operationId: redeliverEvent
+      tags: [Webhooks]
+      summary: Redeliver an event
+      description: >
+        Re-enqueues delivery of the event to every active endpoint currently
+        subscribed to its type. Existing delivery records are reset for a fresh
+        attempt (repeated calls do not create duplicates); endpoints without a
+        record get a new one. The delivery worker picks the work up on its next
+        poll.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '202':
+          description: Redelivery queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      event_id:
+                        type: string
+                        format: uuid
+                      deliveries_queued:
+                        type: integer
+                        description: Number of endpoint deliveries queued (0 when no active endpoint subscribes to the event type).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/analytics/mrr:
     get:
@@ -4800,15 +4904,99 @@ components:
           type: string
           format: date-time
 
+    EventDelivery:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        webhook_endpoint_id:
+          type: string
+          format: uuid
+        endpoint_url:
+          type: string
+          format: uri
+        status:
+          type: string
+          enum: [pending, succeeded, failed]
+          description: >
+            Derived delivery state. `pending` deliveries are still being
+            retried by the worker; `failed` means retries were exhausted.
+        attempts:
+          type: integer
+          description: Number of delivery attempts made so far.
+        last_status_code:
+          type: integer
+          description: HTTP status of the most recent attempt. Omitted when no response was received (transport error or no attempt yet).
+        last_error:
+          type: string
+          description: >
+            Failure reason of the most recent attempt (transport error or
+            "HTTP <code>: <body>"). Omitted for succeeded deliveries.
+        next_retry_at:
+          type: string
+          format: date-time
+          description: When the worker will retry next. Omitted once terminal or before the first attempt.
+        delivered_at:
+          type: string
+          format: date-time
+          description: When the delivery reached a terminal state.
+        created_at:
+          type: string
+          format: date-time
+
     MRRMetrics:
       type: object
       properties:
         currency:
           type: string
+          description: The reporting currency.
         amount:
           type: integer
           format: int64
-          description: MRR in the lowest currency unit.
+          description: FX-normalized MRR total in the reporting currency, minor units.
+        mrr:
+          type: integer
+          format: int64
+          description: Alias of the normalized total.
+        normalized_mrr:
+          type: integer
+          format: int64
+        reporting_currency:
+          type: string
+        breakdown:
+          type: array
+          items: { $ref: '#/components/schemas/MRRCurrencyBreakdown' }
+        fx:
+          $ref: '#/components/schemas/FXSnapshot'
+
+    MRRCurrencyBreakdown:
+      type: object
+      properties:
+        currency: { type: string }
+        amount: { type: integer, format: int64 }
+        converted_amount: { type: integer, format: int64 }
+        rate: { type: number }
+        subscriptions: { type: integer }
+        error:
+          type: string
+          description: Present only when this currency could not be converted.
+
+    FXSnapshot:
+      type: object
+      properties:
+        rates:
+          type: object
+          additionalProperties: { type: number }
+        source:
+          type: string
+          enum: [live, static-fallback]
+        as_of:
+          type: string
+          format: date-time
 
     PageMeta:
       type: object
@@ -5432,6 +5620,14 @@ components:
           format: int64
         currency:
           type: string
+        converted_mrr:
+          type: integer
+          format: int64
+        rate:
+          type: number
+        fx_error:
+          type: string
+          description: Present only when this currency could not be converted.
         by_tenant:
           type: array
           items:
@@ -5444,6 +5640,13 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CurrencyMRR'
+        normalized_mrr:
+          type: integer
+          format: int64
+        reporting_currency:
+          type: string
+        fx:
+          $ref: '#/components/schemas/FXSnapshot'
 
     AccountingConnection:
       type: object

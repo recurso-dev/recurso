@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -33,6 +34,7 @@ type WebhookHandler struct {
 	mandateService         *service.MandateService
 	offlinePaymentSvc      *service.OfflinePaymentService
 	dunningCampaignService *service.DunningCampaignService
+	creditNoteService      *service.CreditNoteService
 	stripeWebhookSecret    string
 	logger                 *slog.Logger
 }
@@ -72,6 +74,13 @@ func (h *WebhookHandler) SetDunningCampaignService(svc *service.DunningCampaignS
 	h.dunningCampaignService = svc
 }
 
+// SetCreditNoteService wires refund webhook consumption (Stripe
+// charge.refunded / refund.failed, Razorpay refund.processed / refund.failed)
+// so pending refund credit notes are advanced to processed / refund_failed.
+func (h *WebhookHandler) SetCreditNoteService(svc *service.CreditNoteService) {
+	h.creditNoteService = svc
+}
+
 // RazorpayWebhookPayload is a simplified structure
 type RazorpayWebhookPayload struct {
 	Event   string `json:"event"`
@@ -85,6 +94,18 @@ type RazorpayWebhookPayload struct {
 				} `json:"notes"`
 			} `json:"entity"`
 		} `json:"payment"`
+		// Order is present on order.paid events. Mandate debits create the
+		// Razorpay order with notes.invoice_id, but the auto-debited payment
+		// entity does not inherit those notes — the order entity is the only
+		// place the invoice id appears for mandate-collected payments.
+		Order struct {
+			Entity struct {
+				ID    string `json:"id"`
+				Notes struct {
+					InvoiceID string `json:"invoice_id"`
+				} `json:"notes"`
+			} `json:"entity"`
+		} `json:"order"`
 	} `json:"payload"`
 }
 
@@ -150,8 +171,20 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 		return
 	}
 
+	// Refund lifecycle events: advance the credit note tracking the refund.
+	if event.Event == "refund.processed" || event.Event == "refund.failed" {
+		h.handleRazorpayRefundEvent(c, body, event.Event == "refund.processed")
+		return
+	}
+
 	if event.Event == "payment.captured" || event.Event == "order.paid" {
 		invoiceIDStr := event.Payload.Payment.Entity.Notes.InvoiceID
+		if invoiceIDStr == "" {
+			// Mandate-debit payments carry no notes of their own; on order.paid
+			// the order entity holds the notes.invoice_id set when the debit
+			// order was created (see MandateService.ExecuteDebit).
+			invoiceIDStr = event.Payload.Order.Entity.Notes.InvoiceID
+		}
 		if invoiceIDStr == "" {
 			h.logger.Info("webhook ignored — no invoice_id in notes",
 				"event", event.Event,
@@ -168,8 +201,27 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 			return
 		}
 
-		// 2. Mark Invoice as Paid
-		if err := h.subService.MarkInvoicePaid(c.Request.Context(), invoiceID); err != nil {
+		ctx := c.Request.Context()
+
+		// 2. Mark Invoice as Paid. MarkInvoicePaid reads the invoice through
+		// the tenant-scoped repository, and webhook requests carry no tenant —
+		// load the invoice first and inject its own tenant id. Already-paid
+		// invoices (e.g. mandate debits, which are created paid) no-op inside
+		// MarkInvoicePaid, so redelivery is safe.
+		inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+		if err != nil {
+			h.logger.Error("failed to load invoice for payment webhook", "invoice_id", invoiceID, "error", err)
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load invoice")
+			return
+		}
+		if inv == nil {
+			h.logger.Warn("webhook ignored — invoice not found", "invoice_id", invoiceID)
+			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
+			return
+		}
+
+		ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+		if err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID); err != nil {
 			h.logger.Error("failed to mark invoice paid",
 				"invoice_id", invoiceID,
 				"error", err,
@@ -180,9 +232,11 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 
 		h.logger.Info("invoice marked paid via webhook", "invoice_id", invoiceID)
 
-		// Persist the gateway payment id — refunds are issued against it.
+		// Persist the gateway payment id (pay_*) — refunds are issued against
+		// it. For mandate-collected invoices this is the only place the actual
+		// payment id becomes known: the debit response returns an order id.
 		if paymentID := event.Payload.Payment.Entity.ID; paymentID != "" && h.invoiceRepo != nil {
-			if err := h.invoiceRepo.SetGatewayPaymentID(c.Request.Context(), invoiceID, paymentID); err != nil {
+			if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, paymentID); err != nil {
 				h.logger.Error("failed to record gateway payment id",
 					"invoice_id", invoiceID,
 					"payment_id", paymentID,
@@ -192,7 +246,64 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 		}
 
 		// 3. Record success outcome for RL if this invoice was managed by smart dunning
-		h.recordDunningSuccess(c.Request.Context(), invoiceID)
+		h.recordDunningSuccess(ctx, invoiceID)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// handleRazorpayRefundEvent consumes refund.processed / refund.failed and
+// advances the credit note owning the refund (pending → processed /
+// refund_failed). Refund ids that match no credit note are logged and
+// acknowledged with 200 — Razorpay retries (and eventually disables) webhooks
+// on non-2xx responses, and a refund we did not issue can never be resolved.
+func (h *WebhookHandler) handleRazorpayRefundEvent(c *gin.Context, body []byte, succeeded bool) {
+	if h.creditNoteService == nil {
+		h.logger.Info("credit note service not configured, ignoring refund event")
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+		return
+	}
+
+	var payload struct {
+		Payload struct {
+			Refund struct {
+				Entity struct {
+					ID        string `json:"id"`
+					PaymentID string `json:"payment_id"`
+					Status    string `json:"status"`
+				} `json:"entity"`
+			} `json:"refund"`
+		} `json:"payload"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		h.logger.Error("failed to parse razorpay refund payload", "error", err)
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid payload")
+		return
+	}
+
+	refundID := payload.Payload.Refund.Entity.ID
+	if refundID == "" {
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no refund_id"})
+		return
+	}
+
+	reason := ""
+	if !succeeded {
+		// Razorpay's refund entity carries no failure description; record what
+		// the event does tell us.
+		reason = fmt.Sprintf("razorpay reported the refund as failed (payment %s, refund status %q)",
+			payload.Payload.Refund.Entity.PaymentID, payload.Payload.Refund.Entity.Status)
+	}
+
+	if err := h.creditNoteService.ProcessGatewayRefundEvent(c.Request.Context(), refundID, succeeded, reason); err != nil {
+		if errors.Is(err, service.ErrRefundNotFound) {
+			h.logger.Info("razorpay refund event ignored — no matching credit note", "refund_id", refundID)
+			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown refund_id"})
+			return
+		}
+		h.logger.Error("failed to process razorpay refund event", "refund_id", refundID, "error", err)
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -239,6 +350,10 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 		handlerErr = h.handleInvoicePaymentFailed(ctx, event)
 	case "customer.subscription.deleted":
 		handlerErr = h.handleSubscriptionDeleted(ctx, event)
+	case "charge.refunded":
+		handlerErr = h.handleChargeRefunded(ctx, event)
+	case "charge.refund.updated", "refund.updated", "refund.failed":
+		handlerErr = h.handleStripeRefundUpdated(ctx, event)
 	default:
 		h.logger.Info("stripe webhook event ignored", "event_type", event.Type)
 	}
@@ -272,7 +387,21 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 		return nil
 	}
 
-	if err := h.subService.MarkInvoicePaid(ctx, invoiceID); err != nil {
+	// MarkInvoicePaid reads the invoice through the tenant-scoped repository,
+	// and webhook requests carry no tenant — load the invoice and inject its
+	// own tenant id (same as the Razorpay handler).
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil {
+		h.logger.Error("failed to load invoice for stripe payment webhook", "invoice_id", invoiceID, "error", err)
+		return fmt.Errorf("failed to load invoice %s: %w", invoiceID, err)
+	}
+	if inv == nil {
+		h.logger.Warn("stripe payment_intent.succeeded ignored — invoice not found", "invoice_id", invoiceID)
+		return nil
+	}
+
+	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+	if err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID); err != nil {
 		h.logger.Error("failed to mark invoice paid via stripe webhook",
 			"invoice_id", invoiceID,
 			"error", err,
@@ -415,6 +544,92 @@ func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, event st
 		"stripe_subscription_id", stripeSub.ID,
 	)
 	return nil
+}
+
+// handleChargeRefunded consumes Stripe charge.refunded. The event carries the
+// charge with its refunds; each refund is applied to the credit note that
+// owns it (pending → processed / refund_failed).
+func (h *WebhookHandler) handleChargeRefunded(ctx context.Context, event stripe.Event) error {
+	if h.creditNoteService == nil {
+		h.logger.Info("credit note service not configured, ignoring charge.refunded")
+		return nil
+	}
+
+	var ch stripe.Charge
+	if err := json.Unmarshal(event.Data.Raw, &ch); err != nil {
+		h.logger.Error("failed to unmarshal stripe charge", "error", err)
+		return fmt.Errorf("failed to unmarshal stripe charge: %w", err)
+	}
+
+	if ch.Refunds == nil || len(ch.Refunds.Data) == 0 {
+		h.logger.Info("stripe charge.refunded carried no refund objects", "charge_id", ch.ID)
+		return nil
+	}
+
+	for _, ref := range ch.Refunds.Data {
+		if ref == nil || ref.ID == "" {
+			continue
+		}
+		if err := h.applyStripeRefund(ctx, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// handleStripeRefundUpdated consumes refund-object events
+// (charge.refund.updated, refund.updated, refund.failed) — these are how
+// Stripe reports asynchronous refund failures after the initial submission.
+func (h *WebhookHandler) handleStripeRefundUpdated(ctx context.Context, event stripe.Event) error {
+	if h.creditNoteService == nil {
+		h.logger.Info("credit note service not configured, ignoring stripe refund event", "event_type", event.Type)
+		return nil
+	}
+
+	var ref stripe.Refund
+	if err := json.Unmarshal(event.Data.Raw, &ref); err != nil {
+		h.logger.Error("failed to unmarshal stripe refund", "error", err)
+		return fmt.Errorf("failed to unmarshal stripe refund: %w", err)
+	}
+	if ref.ID == "" {
+		h.logger.Info("stripe refund event carried no refund id", "event_type", event.Type)
+		return nil
+	}
+	return h.applyStripeRefund(ctx, &ref)
+}
+
+// applyStripeRefund advances the credit note owning a Stripe refund based on
+// the refund's reported status. Refunds still pending at the gateway are left
+// alone; refund ids that match no credit note are logged and swallowed so the
+// webhook is acknowledged (Stripe retries non-2xx responses indefinitely).
+func (h *WebhookHandler) applyStripeRefund(ctx context.Context, ref *stripe.Refund) error {
+	var succeeded bool
+	reason := ""
+	switch ref.Status {
+	case stripe.RefundStatusSucceeded:
+		succeeded = true
+	case stripe.RefundStatusFailed, stripe.RefundStatusCanceled:
+		reason = string(ref.FailureReason)
+		if reason == "" {
+			reason = fmt.Sprintf("stripe reported refund status %q", ref.Status)
+		}
+	default:
+		// pending / requires_action — nothing to advance yet; a later event
+		// will settle it.
+		h.logger.Info("stripe refund not settled yet, leaving credit note pending",
+			"refund_id", ref.ID, "refund_status", ref.Status)
+		return nil
+	}
+
+	err := h.creditNoteService.ProcessGatewayRefundEvent(ctx, ref.ID, succeeded, reason)
+	if errors.Is(err, service.ErrRefundNotFound) {
+		h.logger.Info("stripe refund event ignored — no matching credit note", "refund_id", ref.ID)
+		return nil
+	}
+	if err != nil {
+		h.logger.Error("failed to process stripe refund event", "refund_id", ref.ID, "error", err)
+	}
+	return err
 }
 
 // recordDunningFailure records a reward=0.0 outcome if the invoice has an active dunning action

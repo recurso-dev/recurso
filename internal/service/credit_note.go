@@ -17,6 +17,12 @@ import (
 // Handlers should map errors wrapping this sentinel to HTTP 400.
 var ErrCreditNoteValidation = errors.New("credit note validation failed")
 
+// ErrRefundNotFound marks gateway refund webhook events whose refund id does
+// not match any credit note (refunds issued outside recurso, or from before
+// refund tracking existed). Webhook handlers should log and acknowledge (2xx)
+// these — a non-2xx would make the gateway retry an event we can never consume.
+var ErrRefundNotFound = errors.New("no credit note found for refund id")
+
 // CreditNoteRepository is the persistence surface the service needs.
 // *db.CreditNoteRepository satisfies it.
 type CreditNoteRepository interface {
@@ -24,6 +30,9 @@ type CreditNoteRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.CreditNoteFilter) ([]*domain.CreditNote, error)
 	UpdateRefund(ctx context.Context, id uuid.UUID, status domain.CreditNoteRefundStatus, refundID *string, message string) error
 	SumActiveRefundsForInvoice(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	// GetByRefundID resolves the credit note that owns a gateway refund id
+	// (Stripe re_*, Razorpay rfnd_*). Returns (nil, nil) when none matches.
+	GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error)
 }
 
 // creditNoteCustomerReader is the slice of the customer repository we use.
@@ -236,6 +245,67 @@ func (s *CreditNoteService) markRefundFailed(ctx context.Context, cn *domain.Cre
 			"credit_note_id", cn.ID, "error", err, "refund_message", message)
 	}
 	s.logger.Error("credit note refund failed", "credit_note_id", cn.ID, "reason", message)
+}
+
+// ProcessGatewayRefundEvent consumes a gateway refund webhook (Stripe
+// charge.refunded / refund.failed, Razorpay refund.processed / refund.failed)
+// and advances the owning credit note's refund_status.
+//
+// Only "pending" moves; every other state is a logged no-op so re-delivered
+// events are harmless:
+//
+//	pending → processed      (success event)
+//	pending → refund_failed  (failure event, gateway's reason recorded)
+//
+// Events whose refund id matches no credit note return ErrRefundNotFound so
+// the webhook handler can acknowledge them (gateways retry non-2xx responses).
+func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refundID string, succeeded bool, gatewayReason string) error {
+	if refundID == "" {
+		return fmt.Errorf("%w: empty refund id", ErrRefundNotFound)
+	}
+
+	cn, err := s.repo.GetByRefundID(ctx, refundID)
+	if err != nil {
+		return fmt.Errorf("failed to look up credit note for refund %s: %w", refundID, err)
+	}
+	if cn == nil {
+		return fmt.Errorf("%w: %s", ErrRefundNotFound, refundID)
+	}
+
+	if cn.RefundStatus != domain.RefundStatusPending {
+		// Terminal state: keep it. Re-delivered success events land here
+		// (already processed), as would a late failure event after success was
+		// recorded — the stored status stays authoritative.
+		s.logger.Info("refund webhook ignored — credit note is not pending",
+			"credit_note_id", cn.ID,
+			"refund_id", refundID,
+			"refund_status", cn.RefundStatus,
+			"event_success", succeeded,
+		)
+		return nil
+	}
+
+	status := domain.RefundStatusProcessed
+	message := fmt.Sprintf("gateway confirmed refund %s via webhook", refundID)
+	if !succeeded {
+		status = domain.RefundStatusFailed
+		reason := gatewayReason
+		if reason == "" {
+			reason = "no reason provided by gateway"
+		}
+		message = fmt.Sprintf("gateway reported refund %s failed: %s", refundID, reason)
+	}
+
+	if err := s.repo.UpdateRefund(ctx, cn.ID, status, &refundID, message); err != nil {
+		return fmt.Errorf("failed to persist refund %s outcome on credit note %s: %w", refundID, cn.ID, err)
+	}
+
+	s.logger.Info("credit note refund status advanced via webhook",
+		"credit_note_id", cn.ID,
+		"refund_id", refundID,
+		"refund_status", status,
+	)
+	return nil
 }
 
 func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter domain.CreditNoteFilter) ([]*domain.CreditNote, error) {

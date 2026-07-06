@@ -21,12 +21,14 @@ type cnRefundUpdate struct {
 }
 
 type mockCreditNoteRepo struct {
-	created     []*domain.CreditNote
-	createErr   error
-	updates     []cnRefundUpdate
-	updateErr   error
-	refundedSum int64
-	sumErr      error
+	created        []*domain.CreditNote
+	createErr      error
+	updates        []cnRefundUpdate
+	updateErr      error
+	refundedSum    int64
+	sumErr         error
+	existing       *domain.CreditNote // resolved by GetByRefundID
+	getByRefundErr error
 }
 
 func (m *mockCreditNoteRepo) Create(ctx context.Context, cn *domain.CreditNote) error {
@@ -54,6 +56,16 @@ func (m *mockCreditNoteRepo) UpdateRefund(ctx context.Context, id uuid.UUID, sta
 
 func (m *mockCreditNoteRepo) SumActiveRefundsForInvoice(ctx context.Context, invoiceID uuid.UUID) (int64, error) {
 	return m.refundedSum, m.sumErr
+}
+
+func (m *mockCreditNoteRepo) GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error) {
+	if m.getByRefundErr != nil {
+		return nil, m.getByRefundErr
+	}
+	if m.existing != nil && m.existing.RefundID != nil && *m.existing.RefundID == refundID {
+		return m.existing, nil
+	}
+	return nil, nil // like the real repo: unknown refund id is (nil, nil)
 }
 
 type mockCNCustomerRepo struct {
@@ -344,6 +356,138 @@ func TestCreditNote_Refund_PersistFailureAfterGatewaySuccessSurfaces(t *testing.
 	}
 	if !strings.Contains(err.Error(), "rfnd_test_1") {
 		t.Errorf("error %q should mention the gateway refund id for reconciliation", err.Error())
+	}
+}
+
+// --- Refund webhook consumption (ProcessGatewayRefundEvent) ---
+
+// pendingRefundNote returns a fixture whose repo already holds a refund-type
+// credit note with the given refund_status and gateway refund id.
+func pendingRefundNote(status domain.CreditNoteRefundStatus, refundID string) (*cnFixture, *domain.CreditNote) {
+	f := newCNFixture(nil)
+	cn := &domain.CreditNote{
+		ID:           uuid.New(),
+		TenantID:     f.tenantID,
+		CustomerID:   f.customerID,
+		Type:         domain.CreditNoteTypeRefund,
+		RefundStatus: status,
+		RefundID:     &refundID,
+	}
+	f.repo.existing = cn
+	return f, cn
+}
+
+func TestCreditNote_RefundWebhook_SuccessAdvancesPendingToProcessed(t *testing.T) {
+	f, cn := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_1")
+
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_1", true, ""); err != nil {
+		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
+	}
+
+	if len(f.repo.updates) != 1 {
+		t.Fatalf("expected 1 UpdateRefund call, got %d", len(f.repo.updates))
+	}
+	up := f.repo.updates[0]
+	if up.id != cn.ID {
+		t.Errorf("updated credit note %s, want %s", up.id, cn.ID)
+	}
+	if up.status != domain.RefundStatusProcessed {
+		t.Errorf("status = %s, want %s", up.status, domain.RefundStatusProcessed)
+	}
+	if up.refundID == nil || *up.refundID != "rfnd_hook_1" {
+		t.Errorf("refund id = %v, want rfnd_hook_1", up.refundID)
+	}
+}
+
+func TestCreditNote_RefundWebhook_FailureRecordsGatewayReason(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusPending, "re_hook_2")
+
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "re_hook_2", false, "expired_or_canceled_card")
+	if err != nil {
+		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
+	}
+
+	if len(f.repo.updates) != 1 {
+		t.Fatalf("expected 1 UpdateRefund call, got %d", len(f.repo.updates))
+	}
+	up := f.repo.updates[0]
+	if up.status != domain.RefundStatusFailed {
+		t.Errorf("status = %s, want %s", up.status, domain.RefundStatusFailed)
+	}
+	if !strings.Contains(up.message, "expired_or_canceled_card") {
+		t.Errorf("message %q should carry the gateway's failure reason", up.message)
+	}
+}
+
+func TestCreditNote_RefundWebhook_FailureWithoutReasonStillExplains(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_3")
+
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_3", false, ""); err != nil {
+		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
+	}
+	if len(f.repo.updates) != 1 || f.repo.updates[0].status != domain.RefundStatusFailed {
+		t.Fatalf("refund_failed was not persisted: %+v", f.repo.updates)
+	}
+	if f.repo.updates[0].message == "" {
+		t.Error("failure message must not be empty even when the gateway gives no reason")
+	}
+}
+
+func TestCreditNote_RefundWebhook_AlreadyProcessedIsIdempotent(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusProcessed, "rfnd_hook_4")
+
+	// Redelivered success event: no error, no state change.
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", true, ""); err != nil {
+		t.Fatalf("redelivered success event should be a no-op, got %v", err)
+	}
+	// Late failure event after success was recorded: stored status stays.
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", false, "bank rejected"); err != nil {
+		t.Fatalf("late failure event should be a no-op, got %v", err)
+	}
+
+	if len(f.repo.updates) != 0 {
+		t.Errorf("expected 0 UpdateRefund calls on non-pending credit note, got %d", len(f.repo.updates))
+	}
+}
+
+func TestCreditNote_RefundWebhook_AlreadyFailedStaysFailed(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusFailed, "rfnd_hook_5")
+
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_5", true, ""); err != nil {
+		t.Fatalf("event on refund_failed note should be a no-op, got %v", err)
+	}
+	if len(f.repo.updates) != 0 {
+		t.Errorf("expected 0 UpdateRefund calls, got %d", len(f.repo.updates))
+	}
+}
+
+func TestCreditNote_RefundWebhook_UnknownRefundIDTolerated(t *testing.T) {
+	f := newCNFixture(nil) // repo holds no credit notes
+
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_stranger", true, "")
+	if !errors.Is(err, ErrRefundNotFound) {
+		t.Fatalf("expected ErrRefundNotFound for unknown refund id, got %v", err)
+	}
+	if len(f.repo.updates) != 0 {
+		t.Errorf("expected 0 UpdateRefund calls for unknown refund id, got %d", len(f.repo.updates))
+	}
+}
+
+func TestCreditNote_RefundWebhook_EmptyRefundIDRejected(t *testing.T) {
+	f := newCNFixture(nil)
+
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "", true, ""); !errors.Is(err, ErrRefundNotFound) {
+		t.Fatalf("expected ErrRefundNotFound for empty refund id, got %v", err)
+	}
+}
+
+func TestCreditNote_RefundWebhook_RepoErrorSurfaces(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_6")
+	f.repo.getByRefundErr = errors.New("db down")
+
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_6", true, "")
+	if err == nil || errors.Is(err, ErrRefundNotFound) {
+		t.Fatalf("repo errors must surface (so the gateway retries), got %v", err)
 	}
 }
 

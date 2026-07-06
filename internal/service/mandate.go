@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -140,6 +142,24 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 		return fmt.Errorf("failed to create invoice for mandate debit: %w", err)
 	}
 
+	// Capture the gateway payment id when the debit response carries one —
+	// refunds are issued against it. Razorpay's mandate debit returns an
+	// order id (order_*), not a payment id: the captured pay_* id only
+	// arrives later on the order.paid webhook, which resolves this invoice
+	// through the order's notes.invoice_id and records the payment id via
+	// SetGatewayPaymentID (see WebhookHandler.HandleRazorpay). Storing the
+	// order id here would poison gateway_payment_id and break refunds.
+	if isGatewayPaymentID(result.PaymentID) {
+		invoice.GatewayPaymentID = result.PaymentID
+		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, result.PaymentID); err != nil {
+			// The debit succeeded and the invoice exists; failing the whole
+			// debit here would re-run it next cycle and double-charge. Refunds
+			// for this invoice fall back to manual_required instead.
+			slog.Default().Error("failed to record gateway payment id for mandate debit",
+				"invoice_id", invoice.ID, "payment_id", result.PaymentID, "error", err)
+		}
+	}
+
 	// Advance mandate schedule
 	mandate.LastDebitAt = &now
 	mandate.PreDebitNotified = false
@@ -147,6 +167,13 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 	mandate.NextDebitAt = &nextDebit
 
 	return s.mandateRepo.Update(ctx, mandate)
+}
+
+// isGatewayPaymentID reports whether id is a refundable gateway payment
+// identifier (Razorpay pay_*, Stripe pi_*/ch_*) rather than an order id —
+// the Refund APIs of both gateways accept only payment identifiers.
+func isGatewayPaymentID(id string) bool {
+	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") || strings.HasPrefix(id, "ch_")
 }
 
 func (s *MandateService) Revoke(ctx context.Context, mandateID uuid.UUID) error {

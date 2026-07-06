@@ -2,6 +2,8 @@ package db
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -82,6 +84,22 @@ func (r *CreditNoteRepository) SumActiveRefundsForInvoice(ctx context.Context, i
 		return 0, fmt.Errorf("failed to sum refunds for invoice: %w", err)
 	}
 	return total, nil
+}
+
+// GetByRefundID resolves the credit note that owns a gateway refund id
+// (Stripe re_*, Razorpay rfnd_*). Used by the refund webhook consumers.
+// Returns (nil, nil) when no credit note tracks that refund id — callers
+// treat those events as ignorable rather than an error.
+func (r *CreditNoteRepository) GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error) {
+	var cn domain.CreditNote
+	err := r.db.GetContext(ctx, &cn, `SELECT * FROM credit_notes WHERE refund_id = $1`, refundID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credit note by refund id: %w", err)
+	}
+	return &cn, nil
 }
 
 func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.CreditNoteFilter) ([]*domain.CreditNote, error) {

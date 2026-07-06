@@ -52,11 +52,41 @@ type mandateMockGateway struct {
 	port.PaymentGateway
 	revokeCalls []mandateRevokeCall
 	revokeErr   error
+	debitResult *port.PaymentResult
+	debitErr    error
 }
 
 func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
 	m.revokeCalls = append(m.revokeCalls, mandateRevokeCall{customerID: customerID, tokenID: tokenID})
 	return m.revokeErr
+}
+
+func (m *mandateMockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+	if m.debitErr != nil {
+		return nil, m.debitErr
+	}
+	return m.debitResult, nil
+}
+
+type mandatePaymentIDCall struct {
+	invoiceID uuid.UUID
+	paymentID string
+}
+
+type mandateMockInvoiceRepo struct {
+	port.InvoiceRepository
+	created        *domain.Invoice
+	paymentIDCalls []mandatePaymentIDCall
+}
+
+func (m *mandateMockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) error {
+	m.created = inv
+	return nil
+}
+
+func (m *mandateMockInvoiceRepo) SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error {
+	m.paymentIDCalls = append(m.paymentIDCalls, mandatePaymentIDCall{invoiceID: invoiceID, paymentID: gatewayPaymentID})
+	return nil
 }
 
 func newTestMandate() *domain.Mandate {
@@ -153,6 +183,63 @@ func TestMandateRevoke_NotFound(t *testing.T) {
 	}
 	if len(gw.revokeCalls) != 0 {
 		t.Errorf("gateway called %d times for unknown mandate, want 0", len(gw.revokeCalls))
+	}
+}
+
+// --- ExecuteDebit payment id capture tests ---
+
+func TestMandateExecuteDebit_CapturesPaymentIDFromDebitResponse(t *testing.T) {
+	mandate := newTestMandate()
+	repo := &mandateMockRepo{mandate: mandate}
+	invRepo := &mandateMockInvoiceRepo{}
+	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_debit_123"}}
+	svc := NewMandateService(repo, gw, nil, invRepo)
+
+	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
+		t.Fatalf("ExecuteDebit returned error: %v", err)
+	}
+
+	if invRepo.created == nil {
+		t.Fatal("invoice was not created for the debit")
+	}
+	if invRepo.created.GatewayPaymentID != "pay_debit_123" {
+		t.Errorf("invoice GatewayPaymentID = %q, want pay_debit_123", invRepo.created.GatewayPaymentID)
+	}
+	if len(invRepo.paymentIDCalls) != 1 {
+		t.Fatalf("expected 1 SetGatewayPaymentID call (Create does not persist the column), got %d", len(invRepo.paymentIDCalls))
+	}
+	call := invRepo.paymentIDCalls[0]
+	if call.invoiceID != invRepo.created.ID || call.paymentID != "pay_debit_123" {
+		t.Errorf("SetGatewayPaymentID(%s, %q), want (%s, pay_debit_123)", call.invoiceID, call.paymentID, invRepo.created.ID)
+	}
+}
+
+func TestMandateExecuteDebit_OrderIDIsNotStoredAsPaymentID(t *testing.T) {
+	// Razorpay's mandate debit returns an order id (order_*). Refund APIs need
+	// a payment id (pay_*), which only arrives on the order.paid webhook — so
+	// the order id must never land in gateway_payment_id.
+	mandate := newTestMandate()
+	repo := &mandateMockRepo{mandate: mandate}
+	invRepo := &mandateMockInvoiceRepo{}
+	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "order_Nxy123"}}
+	svc := NewMandateService(repo, gw, nil, invRepo)
+
+	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
+		t.Fatalf("ExecuteDebit returned error: %v", err)
+	}
+
+	if invRepo.created == nil {
+		t.Fatal("invoice was not created for the debit")
+	}
+	if invRepo.created.GatewayPaymentID != "" {
+		t.Errorf("invoice GatewayPaymentID = %q, want empty (order ids are not refundable)", invRepo.created.GatewayPaymentID)
+	}
+	if len(invRepo.paymentIDCalls) != 0 {
+		t.Errorf("SetGatewayPaymentID must not be called with an order id, got %+v", invRepo.paymentIDCalls)
+	}
+	// The webhook fills the pay_* id later; the mandate schedule must still advance.
+	if repo.updated == nil || repo.updated.NextDebitAt == nil {
+		t.Error("mandate schedule was not advanced after debit")
 	}
 }
 
