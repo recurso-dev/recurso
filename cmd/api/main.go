@@ -84,16 +84,17 @@ func main() {
 	invoiceRepo := db.NewInvoiceRepository(database)
 	entitlementRepo := db.NewEntitlementRepository(database) // Entitlement Engine v1
 	usageRepo := db.NewUsageRepository(database)
-	couponRepo := db.NewCouponRepository(database)                   // P7
-	tenantRepo := db.NewTenantRepository(database)                   // P8
-	unbilledChargeRepo := db.NewUnbilledChargeRepository(database)   // P15
-	webhookEndpointRepo := db.NewWebhookEndpointRepository(database) // P24
-	eventRepo := db.NewEventRepository(database)                     // P24
-	eventDeliveryRepo := db.NewEventDeliveryRepository(database)     // P24
-	magicLinkRepo := db.NewMagicLinkRepository(database)             // P25
-	portalSessionRepo := db.NewPortalSessionRepository(database)     // P25
-	quoteRepo := db.NewQuoteRepository(database)                     // P27
-	disputeRepo := db.NewDisputeRepository(database)                 // Track 2: invoice disputes
+	couponRepo := db.NewCouponRepository(database)                       // P7
+	tenantRepo := db.NewTenantRepository(database)                       // P8
+	unbilledChargeRepo := db.NewUnbilledChargeRepository(database)       // P15
+	subscriptionAddonRepo := db.NewSubscriptionAddonRepository(database) // Multi-product catalog v1
+	webhookEndpointRepo := db.NewWebhookEndpointRepository(database)     // P24
+	eventRepo := db.NewEventRepository(database)                         // P24
+	eventDeliveryRepo := db.NewEventDeliveryRepository(database)         // P24
+	magicLinkRepo := db.NewMagicLinkRepository(database)                 // P25
+	portalSessionRepo := db.NewPortalSessionRepository(database)         // P25
+	quoteRepo := db.NewQuoteRepository(database)                         // P27
+	disputeRepo := db.NewDisputeRepository(database)                     // Track 2: invoice disputes
 
 	// Create sqlx wrapper for CreditNoteRepository
 	creditNoteRepo := db.NewCreditNoteRepository(dbx) // P23
@@ -283,6 +284,11 @@ func main() {
 	invoiceService.EInvoiceService = einvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
+
+	// Multi-product catalog v1: enable subscription add-ons on the service
+	// (add/remove/list) and on the recurring invoice path (extra taxed lines).
+	subscriptionService.SetAddonRepository(subscriptionAddonRepo)
+	invoiceService.AddonRepo = subscriptionAddonRepo
 
 	// Anonymous instance telemetry — strictly opt-in (TELEMETRY_OPTIN=true).
 	// Disabled (the default) means telemetryClient is nil: zero network calls,
@@ -801,6 +807,10 @@ func main() {
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
 		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)
 		v1.GET("/subscriptions/:id/preview-change", subscriptionHandler.PreviewPlanChange)
+		// Multi-product catalog v1: subscription add-ons
+		v1.POST("/subscriptions/:id/addons", subscriptionHandler.AddAddon)
+		v1.GET("/subscriptions/:id/addons", subscriptionHandler.ListAddons)
+		v1.DELETE("/subscriptions/:id/addons/:addonId", subscriptionHandler.RemoveAddon)
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 

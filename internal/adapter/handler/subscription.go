@@ -208,6 +208,112 @@ func (h *SubscriptionHandler) PreviewPlanChange(c *gin.Context) {
 	c.JSON(http.StatusOK, preview)
 }
 
+type addAddonRequest struct {
+	PlanID   string `json:"plan_id" binding:"required,uuid"`
+	Quantity int    `json:"quantity" binding:"required,min=1"`
+}
+
+// AddAddon handles POST /subscriptions/:id/addons. It attaches an add-on plan
+// to the subscription; the add-on is billed from the next recurring invoice.
+func (h *SubscriptionHandler) AddAddon(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
+		return
+	}
+
+	var req addAddonRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	planID, _ := uuid.Parse(req.PlanID)
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	addon, err := h.service.AddAddon(ctx, tenantID, subID, planID, req.Quantity)
+	if err != nil {
+		h.respondAddonError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, addon)
+}
+
+// ListAddons handles GET /subscriptions/:id/addons.
+func (h *SubscriptionHandler) ListAddons(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	addons, err := h.service.ListAddons(ctx, tenantID, subID)
+	if err != nil {
+		h.respondAddonError(c, err)
+		return
+	}
+	if addons == nil {
+		addons = []*domain.SubscriptionAddon{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": addons})
+}
+
+// RemoveAddon handles DELETE /subscriptions/:id/addons/:addonId.
+func (h *SubscriptionHandler) RemoveAddon(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
+		return
+	}
+	addonID, err := uuid.Parse(c.Param("addonId"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid add-on ID")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	if err := h.service.RemoveAddon(ctx, tenantID, subID, addonID); err != nil {
+		h.respondAddonError(c, err)
+		return
+	}
+
+	c.Status(http.StatusNoContent)
+}
+
+// respondAddonError maps add-on service errors to the canonical HTTP envelope.
+func (h *SubscriptionHandler) respondAddonError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrSubscriptionNotFound),
+		errors.Is(err, service.ErrPlanNotFound),
+		errors.Is(err, service.ErrAddonNotFound):
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+	case errors.Is(err, service.ErrAddonCurrencyMismatch),
+		errors.Is(err, service.ErrInvalidQuantity):
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+	default:
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	}
+}
+
 // PauseSubscription handles POST /subscriptions/:id/pause
 func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)

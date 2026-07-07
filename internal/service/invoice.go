@@ -22,7 +22,11 @@ type InvoiceService struct {
 	GSPAdapter         port.GSPAdapter               // P25
 	EInvoiceService    *EInvoiceService              // P25: E-invoice service
 	TaxResolver        *TaxResolver                  // Jurisdiction-aware tax
-	Telemetry          *telemetry.Client             // nil-safe; only set when TELEMETRY_OPTIN=true
+	// AddonRepo enables multi-product add-on lines on recurring invoices
+	// (Multi-product catalog v1). nil-safe: when unset, GenerateInvoice
+	// produces byte-identical single-plan invoices.
+	AddonRepo port.SubscriptionAddonRepository
+	Telemetry *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
 }
 
 func NewInvoiceService(
@@ -92,7 +96,49 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// defaults decide the engine; buyer location decides the treatment.
 	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
 
-	total := subtotal + taxRes.Total
+	// Running invoice totals seeded from the base line (plan price + unbilled
+	// charges). With no add-ons these stay exactly equal to the base tax, so
+	// the single-plan invoice is byte-identical to before.
+	taxTotal, igst, cgst, sgst := taxRes.Total, taxRes.IGST, taxRes.CGST, taxRes.SGST
+
+	// Multi-product catalog v1: each add-on attached to the subscription is
+	// billed as its own line — the add-on plan's price × quantity — taxed
+	// independently through the same resolver, then summed onto the base
+	// invoice. Currency-mismatched or unresolvable add-ons are skipped (never
+	// summed into a different-currency invoice), mirroring unbilled charges.
+	if s.AddonRepo != nil {
+		addons, addonErr := s.AddonRepo.ListBySubscriptionID(ctx, sub.TenantID, sub.ID)
+		if addonErr != nil {
+			slog.Warn("skipping subscription add-ons: list failed",
+				"error", addonErr, "subscription_id", sub.ID)
+		}
+		for _, a := range addons {
+			addonPlan, planErr := s.PlanRepo.GetByID(ctx, a.PlanID)
+			if planErr != nil || addonPlan == nil || len(addonPlan.Prices) == 0 {
+				slog.Warn("skipping add-on: plan unavailable",
+					"error", planErr, "add_on_id", a.ID, "add_on_plan_id", a.PlanID)
+				continue
+			}
+			addonPrice := addonPlan.Prices[0]
+			if addonPrice.Currency != "" && !strings.EqualFold(addonPrice.Currency, price.Currency) {
+				slog.Warn("skipping add-on with mismatched currency",
+					"add_on_id", a.ID, "add_on_currency", addonPrice.Currency, "invoice_currency", price.Currency)
+				continue
+			}
+			lineAmount := addonPrice.Amount * int64(a.Quantity)
+			subtotal += lineAmount
+
+			// Tax each add-on line independently to avoid rounding drift from
+			// taxing the aggregate, and to keep the base line untouched.
+			lineTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, lineAmount)
+			taxTotal += lineTax.Total
+			igst += lineTax.IGST
+			cgst += lineTax.CGST
+			sgst += lineTax.SGST
+		}
+	}
+
+	total := subtotal + taxTotal
 
 	// 4. Determine Payment Terms & Due Date (P15)
 	terms := sub.PaymentTerms
@@ -114,12 +160,12 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
-		TaxAmount:      taxRes.Total,
+		TaxAmount:      taxTotal,
 		Total:          total,
 
-		IGSTAmount: taxRes.IGST,
-		CGSTAmount: taxRes.CGST,
-		SGSTAmount: taxRes.SGST,
+		IGSTAmount: igst,
+		CGSTAmount: cgst,
+		SGSTAmount: sgst,
 		// HSNCode?
 
 		CreatedAt:    now,

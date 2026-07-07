@@ -634,6 +634,97 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/subscriptions/{id}/addons:
+    post:
+      operationId: addSubscriptionAddon
+      tags: [Subscriptions]
+      summary: Attach an add-on plan to a subscription
+      description: >
+        Attaches an existing plan to the subscription as a priced add-on with a
+        quantity. The subscription's base plan is unchanged; the add-on is billed
+        as an extra line (add-on plan price × quantity, taxed independently)
+        starting from the NEXT recurring invoice. The add-on plan's currency must
+        match the subscription's base-plan currency. Mid-cycle proration is not
+        applied in v1.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_id, quantity]
+              properties:
+                plan_id:
+                  type: string
+                  format: uuid
+                  description: The plan to attach as an add-on.
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Add-on attached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionAddon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    get:
+      operationId: listSubscriptionAddons
+      tags: [Subscriptions]
+      summary: List a subscription's add-ons
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Add-ons attached to the subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionAddon'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/subscriptions/{id}/addons/{addonId}:
+    delete:
+      operationId: removeSubscriptionAddon
+      tags: [Subscriptions]
+      summary: Detach an add-on from a subscription
+      description: >
+        Removes the add-on from the subscription. The change takes effect from
+        the next recurring invoice.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+        - name: addonId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Add-on removed.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/invoices:
     get:
       operationId: listInvoices
@@ -6433,4 +6524,32 @@ components:
           format: date-time
         resolved_at:
           type: [string, 'null']
+          format: date-time
+
+    SubscriptionAddon:
+      type: object
+      description: >
+        An existing plan attached to a subscription with a quantity
+        (Multi-product catalog v1). Billed as an extra line — add-on plan price ×
+        quantity, taxed independently — from the subscription's next recurring
+        invoice.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        subscription_id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+          description: The plan billed as an add-on.
+        quantity:
+          type: integer
+          description: Number of add-on units billed each period.
+        created_at:
+          type: string
           format: date-time

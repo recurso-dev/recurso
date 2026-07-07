@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,15 @@ import (
 var (
 	ErrSubscriptionNotFound = errors.New("subscription not found")
 	ErrPlanNotFound         = errors.New("plan not found")
+	// ErrAddonNotFound is returned when an add-on does not exist for the
+	// tenant/subscription, keeping tenant isolation opaque to callers.
+	ErrAddonNotFound = errors.New("add-on not found")
+	// ErrAddonCurrencyMismatch is returned when an add-on plan's price
+	// currency differs from the subscription's base-plan currency; add-ons
+	// must invoice in the same currency as the base line.
+	ErrAddonCurrencyMismatch = errors.New("add-on plan currency does not match subscription currency")
+	// ErrInvalidQuantity is returned when an add-on quantity is not positive.
+	ErrInvalidQuantity = errors.New("quantity must be greater than 0")
 )
 
 type SubscriptionService struct {
@@ -40,7 +50,8 @@ type SubscriptionService struct {
 	revrecService       *RevRecService
 	taxResolver         *TaxResolver
 	recoveryRecorder    PaymentRecoveryRecorder
-	telemetry           *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
+	addonRepo           port.SubscriptionAddonRepository // Multi-product catalog v1; nil-safe (add-ons disabled)
+	telemetry           *telemetry.Client                // nil-safe; only set when TELEMETRY_OPTIN=true
 	logger              *slog.Logger
 }
 
@@ -110,6 +121,13 @@ func (s *SubscriptionService) SetRecoveryRecorder(rr PaymentRecoveryRecorder) {
 
 // SetTelemetry injects the opt-in anonymous telemetry client after construction.
 func (s *SubscriptionService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
+
+// SetAddonRepository injects the subscription add-on repository after
+// construction (Multi-product catalog v1). Left nil, the add-on service
+// methods return ErrAddonNotFound / errors and the money path is unchanged.
+func (s *SubscriptionService) SetAddonRepository(r port.SubscriptionAddonRepository) {
+	s.addonRepo = r
+}
 
 type CreateSubscriptionInput struct {
 	TenantID          uuid.UUID
@@ -1079,6 +1097,125 @@ func (s *SubscriptionService) ExtendCurrentPeriod(ctx context.Context, tenantID,
 	}
 
 	return sub, nil
+}
+
+// --- Multi-product catalog v1: subscription add-ons ---------------------
+//
+// An add-on is an existing plan attached to a subscription with a quantity.
+// The subscription's base plan_id is unchanged; add-ons become extra invoice
+// lines (price × quantity, taxed independently) starting from the NEXT
+// recurring invoice. Mid-cycle proration is a deliberate follow-up.
+
+// requireOwnedSubscription loads a subscription and enforces tenant ownership,
+// returning ErrSubscriptionNotFound for both a missing row and a cross-tenant
+// row so isolation stays opaque.
+func (s *SubscriptionService) requireOwnedSubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
+	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil || sub.TenantID != tenantID {
+		return nil, ErrSubscriptionNotFound
+	}
+	return sub, nil
+}
+
+// subscriptionCurrency derives the subscription's billing currency from its
+// base plan's first price. Add-ons must match it.
+func (s *SubscriptionService) subscriptionCurrency(ctx context.Context, sub *domain.Subscription) (string, error) {
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get base plan: %w", err)
+	}
+	if plan == nil || len(plan.Prices) == 0 {
+		return "", fmt.Errorf("base plan has no prices")
+	}
+	return plan.Prices[0].Currency, nil
+}
+
+// AddAddon attaches an add-on plan to a subscription with a quantity. It guards
+// tenant ownership of the subscription, validates the quantity, confirms the
+// add-on plan exists, and requires the add-on plan's currency to match the
+// subscription's base-plan currency. The add-on takes effect from the next
+// recurring invoice.
+func (s *SubscriptionService) AddAddon(ctx context.Context, tenantID, subscriptionID, planID uuid.UUID, quantity int) (*domain.SubscriptionAddon, error) {
+	if s.addonRepo == nil {
+		return nil, fmt.Errorf("add-ons are not enabled")
+	}
+	if quantity <= 0 {
+		return nil, ErrInvalidQuantity
+	}
+
+	sub, err := s.requireOwnedSubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+
+	subCurrency, err := s.subscriptionCurrency(ctx, sub)
+	if err != nil {
+		return nil, err
+	}
+
+	addonPlan, err := s.planRepo.GetByID(ctx, planID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get add-on plan: %w", err)
+	}
+	if addonPlan == nil || len(addonPlan.Prices) == 0 {
+		return nil, ErrPlanNotFound
+	}
+	if !strings.EqualFold(addonPlan.Prices[0].Currency, subCurrency) {
+		return nil, ErrAddonCurrencyMismatch
+	}
+
+	addon := &domain.SubscriptionAddon{
+		ID:             uuid.New(),
+		TenantID:       tenantID,
+		SubscriptionID: subscriptionID,
+		PlanID:         planID,
+		Quantity:       quantity,
+		CreatedAt:      time.Now().UTC(),
+	}
+	if err := s.addonRepo.Create(ctx, addon); err != nil {
+		return nil, err
+	}
+
+	s.logger.Info("subscription add-on attached",
+		"subscription_id", subscriptionID, "add_on_plan_id", planID, "quantity", quantity)
+
+	return addon, nil
+}
+
+// ListAddons returns the add-ons attached to a subscription (tenant-scoped).
+func (s *SubscriptionService) ListAddons(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.SubscriptionAddon, error) {
+	if s.addonRepo == nil {
+		return nil, fmt.Errorf("add-ons are not enabled")
+	}
+	if _, err := s.requireOwnedSubscription(ctx, tenantID, subscriptionID); err != nil {
+		return nil, err
+	}
+	return s.addonRepo.ListBySubscriptionID(ctx, tenantID, subscriptionID)
+}
+
+// RemoveAddon detaches an add-on from a subscription. It guards subscription
+// ownership and confirms the add-on belongs to that subscription before
+// deleting, so a valid add-on ID from another subscription cannot be removed.
+func (s *SubscriptionService) RemoveAddon(ctx context.Context, tenantID, subscriptionID, addonID uuid.UUID) error {
+	if s.addonRepo == nil {
+		return fmt.Errorf("add-ons are not enabled")
+	}
+	if _, err := s.requireOwnedSubscription(ctx, tenantID, subscriptionID); err != nil {
+		return err
+	}
+
+	addon, err := s.addonRepo.GetByID(ctx, tenantID, addonID)
+	if err != nil {
+		return err
+	}
+	if addon == nil || addon.SubscriptionID != subscriptionID {
+		return ErrAddonNotFound
+	}
+
+	return s.addonRepo.Delete(ctx, tenantID, addonID)
 }
 
 func formatAmount(amountPaise int64, currency string) string {

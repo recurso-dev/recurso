@@ -47,4 +47,4 @@ stitch_dashboard_home_screen*/
 seed
 
 # iCloud conflict copies (this workspace lives under ~/Documents)
-* 2.*
+* [0-9].*
