@@ -1,6 +1,10 @@
 package domain
 
 import (
+	"database/sql/driver"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +20,61 @@ const (
 	AccountTypeRevenue   AccountType = 4
 	AccountTypeExpense   AccountType = 5
 )
+
+var accountTypeNames = map[AccountType]string{
+	AccountTypeAsset:     "asset",
+	AccountTypeLiability: "liability",
+	AccountTypeEquity:    "equity",
+	AccountTypeRevenue:   "revenue",
+	AccountTypeExpense:   "expense",
+}
+
+// String returns the human-readable account type.
+func (a AccountType) String() string {
+	if s, ok := accountTypeNames[a]; ok {
+		return s
+	}
+	return strconv.Itoa(int(a))
+}
+
+// Scan reads an AccountType from the database, tolerating both the numeric
+// codes ("1".."5") and the legacy human-readable words ("asset"..) that
+// older code versions wrote into the varchar `type` column.
+func (a *AccountType) Scan(src any) error {
+	var s string
+	switch v := src.(type) {
+	case nil:
+		*a = 0
+		return nil
+	case int64:
+		*a = AccountType(v)
+		return nil
+	case []byte:
+		s = string(v)
+	case string:
+		s = v
+	default:
+		return fmt.Errorf("cannot scan %T into AccountType", src)
+	}
+	s = strings.TrimSpace(strings.ToLower(s))
+	for t, name := range accountTypeNames {
+		if s == name {
+			*a = t
+			return nil
+		}
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return fmt.Errorf("invalid AccountType %q", s)
+	}
+	*a = AccountType(n)
+	return nil
+}
+
+// Value writes the numeric code to the database (canonical form).
+func (a AccountType) Value() (driver.Value, error) {
+	return int64(a), nil
+}
 
 // Chart of Accounts — standard account codes
 const (

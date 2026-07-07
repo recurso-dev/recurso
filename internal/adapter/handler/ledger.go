@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -58,6 +59,7 @@ func (h *LedgerHandler) ListAccounts(c *gin.Context) {
 
 	accounts, err := h.service.ListAccounts(c.Request.Context(), tenantID.(uuid.UUID))
 	if err != nil {
+		log.Printf("ledger ListAccounts error: %v", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch accounts")
 		return
 	}

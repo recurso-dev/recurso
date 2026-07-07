@@ -1,0 +1,1 @@
+-- No-op: numeric codes are the canonical form; not reverting to legacy words.
