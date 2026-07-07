@@ -1,0 +1,48 @@
+# Render Blueprint for Recurso (https://render.com/docs/blueprint-spec)
+#
+# One-click deploy: a web service (the API) + a managed PostgreSQL database.
+# Deploy via the "Deploy to Render" button in the README, or:
+#   render blueprint launch   (Render CLI)
+#
+# NOTE: This blueprint is provided as-is and has NOT been verified against a
+# live Render account. The field names below follow the current Blueprint
+# spec, but plan names/sizes and image visibility should be confirmed in your
+# own Render dashboard before relying on it in production.
+#
+# The API pulls the pre-built image from GHCR. The image must be PUBLIC for an
+# unauthenticated pull; if you keep it private, add a `registryCredential`
+# under `image` (see Render docs) or switch to a Dockerfile build by replacing
+# the `runtime: image` + `image:` block with:
+#     runtime: docker
+#     dockerfilePath: ./Dockerfile
+services:
+  - type: web
+    name: recurso-api
+    runtime: image
+    image:
+      url: ghcr.io/swapnull-in/recur-so:latest
+    plan: starter
+    region: oregon
+    healthCheckPath: /health
+    # Render injects PORT automatically; the API reads it (defaults to 8080).
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: recurso-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: GIN_MODE
+        value: release
+      # API_SECRET is not required by the current API (keys are DB-backed),
+      # but is generated here so it is available if you enable secret-based
+      # features later. Remove if unused.
+      - key: API_SECRET
+        generateValue: true
+
+databases:
+  - name: recurso-db
+    databaseName: recurso
+    user: recurso
+    plan: basic-256mb
+    postgresMajorVersion: "15"

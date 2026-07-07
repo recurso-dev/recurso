@@ -1,0 +1,45 @@
+# DigitalOcean App Platform spec for Recurso
+# https://docs.digitalocean.com/products/app-platform/reference/app-spec/
+#
+# Deploy via the "Deploy to DigitalOcean" button in the README, or:
+#   doctl apps create --spec .do/app.yaml
+#
+# NOTE: This spec has NOT been verified against a live DigitalOcean account.
+# Field names follow the current App Spec reference. Confirm instance sizes,
+# the Postgres version, and (for GHCR) image visibility before production use.
+#
+# The API runs the pre-built GHCR image. For an unauthenticated pull the image
+# must be PUBLIC; if it is private, add `registry_credentials` under `image`
+# (format: "$username:$token") — see the App Spec reference.
+name: recurso
+region: nyc
+services:
+  - name: api
+    image:
+      registry_type: GHCR
+      registry: swapnull-in
+      repository: recur-so
+      tag: latest
+    http_port: 8080
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    health_check:
+      http_path: /health
+    envs:
+      # ${db.DATABASE_URL} is a bindable var exposed by the attached database.
+      - key: DATABASE_URL
+        scope: RUN_TIME
+        value: ${db.DATABASE_URL}
+      - key: APP_ENV
+        scope: RUN_TIME
+        value: production
+      - key: GIN_MODE
+        scope: RUN_TIME
+        value: release
+databases:
+  - name: db
+    engine: PG
+    version: "15"
+    # production: false provisions a low-cost dev database. Set true (and pick
+    # a size/num_nodes) for a managed production cluster.
+    production: false

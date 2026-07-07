@@ -1,0 +1,40 @@
+# Dev Container compose stack.
+#
+# Brings up a Go 1.25 + Node 20 workspace container (see devcontainer.json)
+# wired to a Postgres instance, so GitHub Codespaces / VS Code Dev Containers
+# get a working development database out of the box.
+#
+# The full application stack (API + dashboard + Mailhog + TigerBeetle) is run
+# from inside the workspace with `make demo`, using the Docker-in-Docker
+# feature enabled in devcontainer.json.
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/base:bookworm
+    command: sleep infinity
+    volumes:
+      - ..:/workspaces/recur-so:cached
+    environment:
+      DATABASE_URL: postgres://user:password@postgres:5432/recurso?sslmode=disable
+      APP_ENV: development
+      ALLOW_DEV_BYPASS: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: recurso
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d recurso"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  postgres_data:

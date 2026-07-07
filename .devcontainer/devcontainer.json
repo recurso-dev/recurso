@@ -1,0 +1,27 @@
+{
+  "name": "Recurso",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "workspace",
+  "workspaceFolder": "/workspaces/recur-so",
+  "features": {
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.25" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "forwardPorts": [8080, 5173, 8025],
+  "portsAttributes": {
+    "8080": { "label": "API" },
+    "5173": { "label": "Dashboard" },
+    "8025": { "label": "Mailhog" }
+  },
+  "postCreateCommand": "go mod download && cd frontend && (npm ci || npm install)",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  }
+}

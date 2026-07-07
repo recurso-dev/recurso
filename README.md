@@ -107,6 +107,22 @@ make seed   # WARNING: wipes existing data in the dev database
 
 See the [Quickstart Guide](https://docs.recurso.dev/quickstart) for a full walkthrough.
 
+## Deploy
+
+Spin up a hosted instance (API + managed PostgreSQL) with one click:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/swapnull-in/recur-so)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new)
+[![Deploy to DigitalOcean](https://www.deploy.do/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/swapnull-in/recur-so/tree/main)
+
+- **Render** reads [`render.yaml`](render.yaml).
+- **DigitalOcean** reads [`.do/app.yaml`](.do/app.yaml).
+- **Railway** reads [`railway.json`](railway.json) to build the API; add a PostgreSQL plugin and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` in the service variables.
+
+These blueprints are provided as-is and have not been verified against live accounts — review sizes, regions, and image visibility before production use. For a self-hosted Docker Compose setup, see the [Self-Hosting Runbook](docs/deployment.md).
+
+Building on Recurso? See [`examples/nextjs-starter`](examples/nextjs-starter) for a minimal Next.js SaaS starter.
+
 ## SDKs
 
 - **Node.js** — a typed client for the Recurso API lives in [`sdk/node`](sdk/node).
