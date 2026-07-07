@@ -99,13 +99,14 @@ can sign off on the output.
 
 - [x] Webhook delivery visibility in the dashboard (attempts, retries,
       dead-letter, manual redelivery).
-- [ ] Plan-change proration UX in the dashboard (preview endpoint
-      GET /subscriptions/:id/preview-change shipped; dashboard UI pending).
+- [x] Plan-change proration UX in the dashboard (preview endpoint +
+      change-plan flow with proration breakdown).
 - [x] Trial flows end-to-end review (trialing status exists; verify
       conversion, expiry emails, dunning interplay).
 - [x] FX-normalized reporting (MRR across currencies uses real rates).
 - [x] Bulk operations in the importer (update mode, cancel-sync mode).
-- [ ] Customer portal: payment-method update and invoice dispute flows.
+- [x] Customer portal: payment-method update and invoice dispute flows
+      (admin dashboard dispute UI is a follow-up).
 
 ## Track 3 — Developer experience & adoption
 
