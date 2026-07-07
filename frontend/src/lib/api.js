@@ -72,6 +72,12 @@ export const endpoints = {
   deleteWebhook: (id) => api.delete(`/webhooks/${id}`),
   getEvents: (params) => api.get('/events', { params }),
   getEventTypes: () => api.get('/events/types'),
+  // Per-endpoint delivery rows for a single event (derived status, attempts, retry).
+  getEventDeliveries: (eventId) => api.get(`/events/${eventId}/deliveries`),
+  // Recent deliveries for one webhook endpoint (supports limit/offset/status).
+  getWebhookDeliveries: (id, params) => api.get(`/webhooks/${id}/deliveries`, { params }),
+  // Queue a re-delivery of an event to its subscribed endpoints; returns 202.
+  redeliverEvent: (eventId) => api.post(`/events/${eventId}/redeliver`),
 
   // Quotes (P27)
   getQuotes: (params) => api.get('/quotes', { params }),

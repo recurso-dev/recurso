@@ -9,9 +9,13 @@ import {
   Copy,
   AlertTriangle,
   CheckCircle2,
+  Send,
+  Clock,
+  Inbox,
 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -44,6 +48,94 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+
+// Map a derived delivery status to a Badge variant + label.
+const DELIVERY_STATUS = {
+  succeeded: { variant: "success", label: "Succeeded" },
+  failed: { variant: "destructive", label: "Failed" },
+  pending: { variant: "warning", label: "Pending" },
+};
+
+// Render a value or an em-dash when absent. Never invents data.
+const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+const fmtTime = (v) => (v ? new Date(v).toLocaleString() : "—");
+
+function DeliveryStatusBadge({ status }) {
+  const s = DELIVERY_STATUS[status] || { variant: "neutral", label: dash(status) };
+  return <Badge variant={s.variant}>{s.label}</Badge>;
+}
+
+// Renders the per-event delivery attempts (loading / error / empty / rows).
+function EventDeliveries({ state }) {
+  if (!state || state.loading) {
+    return (
+      <p className="rounded-lg border border-border bg-background px-3 py-4 text-xs text-muted-foreground">
+        Loading deliveries…
+      </p>
+    );
+  }
+  if (state.error) {
+    return (
+      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-xs text-red-700">
+        {state.error}
+      </p>
+    );
+  }
+  if (!state.data || state.data.length === 0) {
+    return (
+      <p className="rounded-lg border border-border bg-background px-3 py-4 text-xs text-muted-foreground">
+        No delivery attempts recorded for this event.
+      </p>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      {state.data.map((d, i) => (
+        <div
+          key={d.id || d.endpoint_url || i}
+          className="rounded-lg border border-border bg-background p-3"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <code className="break-all font-mono text-xs font-medium text-foreground">
+              {dash(d.endpoint_url)}
+            </code>
+            <DeliveryStatusBadge status={d.status} />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
+            <span>
+              Attempts:{" "}
+              <span className="text-foreground">{dash(d.attempts)}</span>
+            </span>
+            <span>
+              Status code:{" "}
+              <span className="text-foreground">{dash(d.last_status_code)}</span>
+            </span>
+            <span>
+              Delivered:{" "}
+              <span className="text-foreground">{fmtTime(d.delivered_at)}</span>
+            </span>
+            <span>
+              Next retry:{" "}
+              <span className="text-foreground">{fmtTime(d.next_retry_at)}</span>
+            </span>
+          </div>
+          {d.last_error ? (
+            <p className="mt-2 break-words rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-700">
+              {d.last_error}
+            </p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Developers() {
   const [keys, setKeys] = useState([]);
@@ -60,6 +152,17 @@ export default function Developers() {
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [newWebhook, setNewWebhook] = useState({ url: "", events: [] });
   const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null);
+
+  // Per-event delivery state, keyed by event id: { loading, error, data }.
+  const [deliveries, setDeliveries] = useState({});
+  const [redeliveringId, setRedeliveringId] = useState(null);
+
+  // Endpoint "View deliveries" sheet.
+  const [deliveriesSheet, setDeliveriesSheet] = useState(null); // the webhook endpoint, or null
+  const [endpointDeliveries, setEndpointDeliveries] = useState([]);
+  const [endpointDeliveriesLoading, setEndpointDeliveriesLoading] = useState(false);
+  const [endpointDeliveriesError, setEndpointDeliveriesError] = useState(null);
+  const [endpointStatusFilter, setEndpointStatusFilter] = useState("all");
 
   const fetchKeys = async () => {
     try {
@@ -150,6 +253,95 @@ export default function Developers() {
       console.error("Failed to delete webhook:", error);
     }
   };
+
+  const fetchEventDeliveries = async (eventId) => {
+    setDeliveries((prev) => ({
+      ...prev,
+      [eventId]: { ...prev[eventId], loading: true, error: null },
+    }));
+    try {
+      const response = await endpoints.getEventDeliveries(eventId);
+      setDeliveries((prev) => ({
+        ...prev,
+        [eventId]: { loading: false, error: null, data: response.data.data || [] },
+      }));
+    } catch (error) {
+      setDeliveries((prev) => ({
+        ...prev,
+        [eventId]: {
+          loading: false,
+          data: [],
+          error:
+            error.response?.data?.error?.message ||
+            error.message ||
+            "Failed to load deliveries",
+        },
+      }));
+    }
+  };
+
+  // Expand/collapse an event row; lazily load its deliveries on first expand.
+  const handleToggleEvent = (eventId) => {
+    if (expandedEventId === eventId) {
+      setExpandedEventId(null);
+      return;
+    }
+    setExpandedEventId(eventId);
+    if (!deliveries[eventId]) {
+      fetchEventDeliveries(eventId);
+    }
+  };
+
+  const handleRedeliver = async (eventId) => {
+    setRedeliveringId(eventId);
+    try {
+      const response = await endpoints.redeliverEvent(eventId);
+      const queued = response.data?.deliveries_queued ?? 0;
+      toast.success(
+        `Re-delivery queued for ${queued} ${queued === 1 ? "endpoint" : "endpoints"}.`
+      );
+      await fetchEventDeliveries(eventId);
+    } catch (error) {
+      toast.error(
+        error.response?.data?.error?.message ||
+          error.message ||
+          "Failed to queue re-delivery"
+      );
+    } finally {
+      setRedeliveringId(null);
+    }
+  };
+
+  const openEndpointDeliveries = (hook) => {
+    setEndpointStatusFilter("all");
+    setDeliveriesSheet(hook);
+  };
+
+  const fetchEndpointDeliveries = async (id, status) => {
+    setEndpointDeliveriesLoading(true);
+    setEndpointDeliveriesError(null);
+    try {
+      const params = { limit: 50 };
+      if (status && status !== "all") params.status = status;
+      const response = await endpoints.getWebhookDeliveries(id, params);
+      setEndpointDeliveries(response.data.data || []);
+    } catch (error) {
+      setEndpointDeliveriesError(
+        error.response?.data?.error?.message ||
+          error.message ||
+          "Failed to load deliveries"
+      );
+      setEndpointDeliveries([]);
+    } finally {
+      setEndpointDeliveriesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (deliveriesSheet) {
+      fetchEndpointDeliveries(deliveriesSheet.id, endpointStatusFilter);
+    }
+  }, [deliveriesSheet, endpointStatusFilter]);
 
   const toggleEventType = (eventType) => {
     setNewWebhook((prev) => {
@@ -313,6 +505,14 @@ export default function Developers() {
                           : "—"}
                       </Badge>
                       <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEndpointDeliveries(hook)}
+                      >
+                        <Inbox className="h-4 w-4" />
+                        View deliveries
+                      </Button>
+                      <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteWebhook(hook.id)}
@@ -393,9 +593,7 @@ export default function Developers() {
                   {filteredEvents.map((evt) => (
                     <React.Fragment key={evt.id}>
                       <TableRow
-                        onClick={() =>
-                          setExpandedEventId(expandedEventId === evt.id ? null : evt.id)
-                        }
+                        onClick={() => handleToggleEvent(evt.id)}
                         className="cursor-pointer"
                       >
                         <TableCell>
@@ -423,8 +621,40 @@ export default function Developers() {
                       {expandedEventId === evt.id && (
                         <TableRow className="bg-muted/30 hover:bg-muted/30">
                           <TableCell colSpan={4}>
-                            <p className="mb-2 font-mono text-xs text-muted-foreground">
-                              {evt.id}
+                            <div className="mb-4 flex items-center justify-between gap-3">
+                              <p className="font-mono text-xs text-muted-foreground">
+                                {evt.id}
+                              </p>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                disabled={redeliveringId === evt.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRedeliver(evt.id);
+                                }}
+                              >
+                                <Send
+                                  className={cn(
+                                    "h-3.5 w-3.5",
+                                    redeliveringId === evt.id && "animate-pulse"
+                                  )}
+                                />
+                                {redeliveringId === evt.id ? "Queuing…" : "Redeliver"}
+                              </Button>
+                            </div>
+
+                            {/* Delivery attempts */}
+                            <div className="mb-4">
+                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                Deliveries
+                              </p>
+                              <EventDeliveries state={deliveries[evt.id]} />
+                            </div>
+
+                            {/* Raw payload */}
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              Payload
                             </p>
                             <pre
                               data-testid={`event-payload-${evt.id}`}
@@ -560,6 +790,111 @@ export default function Developers() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Endpoint deliveries slide-over */}
+      <Sheet
+        open={!!deliveriesSheet}
+        onOpenChange={(open) => !open && setDeliveriesSheet(null)}
+      >
+        <SheetContent side="right" className="w-full sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Recent deliveries</SheetTitle>
+            <SheetDescription className="break-all font-mono">
+              {deliveriesSheet?.url}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="flex items-center gap-2 border-b border-border px-6 py-3">
+            <Select
+              value={endpointStatusFilter}
+              onValueChange={setEndpointStatusFilter}
+            >
+              <SelectTrigger className="w-[180px]" aria-label="Filter by delivery status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="succeeded">Succeeded</SelectItem>
+                <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                deliveriesSheet &&
+                fetchEndpointDeliveries(deliveriesSheet.id, endpointStatusFilter)
+              }
+              title="Refresh deliveries"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            {endpointDeliveriesLoading ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                Loading deliveries…
+              </p>
+            ) : endpointDeliveriesError ? (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">
+                {endpointDeliveriesError}
+              </p>
+            ) : endpointDeliveries.length === 0 ? (
+              <EmptyState
+                icon={Inbox}
+                title="No deliveries"
+                description={
+                  endpointStatusFilter === "all"
+                    ? "This endpoint has not received any deliveries yet."
+                    : `No ${endpointStatusFilter} deliveries in the recent window.`
+                }
+              />
+            ) : (
+              <div className="flex flex-col gap-3">
+                {endpointDeliveries.map((d, i) => (
+                  <Card key={d.id || i} className="p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-foreground">
+                        {dash(d.event_type || d.type)}
+                      </code>
+                      <DeliveryStatusBadge status={d.status} />
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        Attempts:{" "}
+                        <span className="text-foreground">{dash(d.attempts)}</span>
+                      </span>
+                      <span>
+                        Status code:{" "}
+                        <span className="text-foreground">
+                          {dash(d.last_status_code)}
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {fmtTime(d.created_at)}
+                      </span>
+                      <span>
+                        Next retry:{" "}
+                        <span className="text-foreground">
+                          {fmtTime(d.next_retry_at)}
+                        </span>
+                      </span>
+                    </div>
+                    {d.last_error ? (
+                      <p className="mt-2 break-words rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-700">
+                        {d.last_error}
+                      </p>
+                    ) : null}
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
