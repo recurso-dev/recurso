@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-07
+
+### Added
+
+- **Opt-in anonymous telemetry** — measures self-hosted activation (how
+  many instances reach their first real invoice) so the project can see
+  adoption without a hosted service. Strictly opt-in (TELEMETRY_OPTIN=
+  true); default OFF means zero network calls and zero data written.
+  When enabled: a random instance ID, once-ever milestone events, and a
+  24h heartbeat with range-bucketed counts — never amounts, names,
+  emails, keys, IDs, or exact numbers. docs/telemetry.md documents every
+  payload and the one-line opt-out.
+- **One-click deploy** — Render, Railway, and DigitalOcean templates
+  with README deploy buttons; a devcontainer for Codespaces; and a real
+  Next.js starter in examples/ (pricing, signup, usage with entitlement
+  headroom, feature gating) that builds and runs against `make demo`.
+- **Competitor comparison pages** — honest /vs/ pages for Lago,
+  Flexprice, Kill Bill, Chargebee, and Stripe Billing.
+- **Cloud operations groundwork** — a keystroke-level provisioning
+  runbook for the first manually-provisioned cloud customers, and a
+  status-page plan.
+
 ## [0.2.3] - 2026-07-07
 
 ### Added
