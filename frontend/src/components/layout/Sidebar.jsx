@@ -1,176 +1,127 @@
-import { Link, useLocation } from "react-router-dom";
-import Icon from "../ui/Icon";
+import { NavLink } from "react-router-dom";
+import {
+  Home,
+  Users,
+  Package,
+  Layers,
+  Repeat,
+  Receipt,
+  ScrollText,
+  FileMinus,
+  Ticket,
+  Megaphone,
+  Gift,
+  Brain,
+  Landmark,
+  Scale,
+  BarChart3,
+  Code2,
+  Settings,
+} from "lucide-react";
 
-const SidebarItem = ({ to, icon, label, isActive }) => {
-    return (
-        <Link
-            to={to}
-            className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all duration-200 ${isActive
-                ? "bg-gray-100 text-gray-900 font-semibold dark:bg-zinc-800 dark:text-white" // Active state
-                : "text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-zinc-500 dark:hover:bg-zinc-800/50 dark:hover:text-zinc-300" // Inactive state
-                }`}
-        >
-            <Icon name={icon} className="text-[20px]" filled={isActive} />
-            <p>
-                {label}
+import { cn } from "@/lib/utils";
+
+// Grouped navigation. Each item: { to, label, icon, end? }.
+// `end` forces exact matching (used for Home so it isn't active everywhere).
+const NAV_GROUPS = [
+  {
+    label: "Core",
+    items: [
+      { to: "/", label: "Home", icon: Home, end: true },
+      { to: "/customers", label: "Customers", icon: Users },
+      { to: "/products", label: "Products", icon: Package },
+      { to: "/plans", label: "Plans", icon: Layers },
+      { to: "/subscriptions", label: "Subscriptions", icon: Repeat },
+      { to: "/invoices", label: "Invoices", icon: Receipt },
+      { to: "/quotes", label: "Quotes", icon: ScrollText },
+      { to: "/credit-notes", label: "Credit Notes", icon: FileMinus },
+    ],
+  },
+  {
+    label: "Growth",
+    items: [
+      { to: "/coupons", label: "Coupons", icon: Ticket },
+      { to: "/referrals", label: "Referrals", icon: Megaphone },
+      { to: "/gifts", label: "Gifts", icon: Gift },
+      { to: "/dunning", label: "Dunning", icon: Brain },
+    ],
+  },
+  {
+    label: "Finance",
+    items: [
+      { to: "/ledger", label: "Ledger", icon: Landmark },
+      { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
+      { to: "/usage", label: "Usage", icon: BarChart3 },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { to: "/developers", label: "Developers", icon: Code2 },
+      { to: "/settings", label: "Settings", icon: Settings },
+    ],
+  },
+];
+
+function SidebarItem({ to, label, icon: Icon, end }) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        cn(
+          "group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+          isActive
+            ? "bg-emerald-50 text-emerald-700"
+            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+        )
+      }
+    >
+      {({ isActive }) => (
+        <>
+          <Icon
+            className={cn(
+              "h-4 w-4 shrink-0",
+              isActive ? "text-emerald-600" : "text-zinc-400 group-hover:text-zinc-600"
+            )}
+          />
+          <span className="truncate">{label}</span>
+        </>
+      )}
+    </NavLink>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <aside className="flex h-full w-60 flex-col border-r border-border bg-white">
+      {/* Brand */}
+      <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 text-white">
+          <Layers className="h-4 w-4" />
+        </div>
+        <span className="text-[15px] font-semibold tracking-tight text-foreground">
+          Recurso
+        </span>
+      </div>
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto px-3 py-4">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.label} className="mb-5 last:mb-0">
+            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+              {group.label}
             </p>
-        </Link>
-    );
-};
-
-const Sidebar = () => {
-    const location = useLocation();
-    const path = location.pathname;
-
-    return (
-        <aside className="fixed inset-y-0 left-0 z-20 flex w-64 flex-col justify-between border-r border-gray-100 bg-white p-6 transition-transform lg:static lg:translate-x-0 dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-col gap-6">
-                {/* Brand */}
-                <div className="flex items-center gap-3 px-2">
-                    <div className="flex size-8 items-center justify-center rounded-lg bg-black text-white dark:bg-white dark:text-black">
-                        <Icon name="layers" className="text-lg" />
-                    </div>
-                    <div className="flex flex-col">
-                        <h1 className="text-base font-bold text-gray-900 dark:text-white tracking-tight">
-                            Recurso
-                        </h1>
-                    </div>
-                </div>
-
-                {/* Navigation */}
-                <nav className="flex flex-col gap-1.5">
-                    <SidebarItem
-                        to="/"
-                        icon="home"
-                        label="Home"
-                        isActive={path === "/"}
-                    />
-                    <div className="pt-4 pb-2">
-                        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-                            Core
-                        </p>
-                    </div>
-                    <SidebarItem
-                        to="/customers"
-                        icon="group"
-                        label="Customers"
-                        isActive={path.startsWith("/customers")}
-                    />
-                    <SidebarItem
-                        to="/products"
-                        icon="inventory_2"
-                        label="Products"
-                        isActive={path.startsWith("/products")}
-                    />
-                    <SidebarItem
-                        to="/plans"
-                        icon="layers"
-                        label="Plans"
-                        isActive={path.startsWith("/plans")}
-                    />
-                    <SidebarItem
-                        to="/coupons"
-                        icon="local_offer"
-                        label="Coupons"
-                        isActive={path.startsWith("/coupons")}
-                    />
-                    <SidebarItem
-                        to="/subscriptions"
-                        icon="autorenew"
-                        label="Subscriptions"
-                        isActive={path.startsWith("/subscriptions")}
-                    />
-                    <SidebarItem
-                        to="/invoices"
-                        icon="receipt_long"
-                        label="Invoices"
-                        isActive={path.startsWith("/invoices")}
-                    />
-                    <SidebarItem
-                        to="/credit-notes"
-                        icon="description"
-                        label="Credit Notes"
-                        isActive={path.startsWith("/credit-notes")}
-                    />
-                    <SidebarItem
-                        to="/quotes"
-                        icon="request_quote"
-                        label="Quotes"
-                        isActive={path.startsWith("/quotes")}
-                    />
-
-                    <div className="pt-4 pb-2">
-                        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-                            Growth
-                        </p>
-                    </div>
-                    <SidebarItem
-                        to="/referrals"
-                        icon="campaign"
-                        label="Referrals"
-                        isActive={path.startsWith("/referrals")}
-                    />
-                    <SidebarItem
-                        to="/gifts"
-                        icon="redeem"
-                        label="Gifts"
-                        isActive={path.startsWith("/gifts")}
-                    />
-
-                    <div className="pt-4 pb-2">
-                        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-                            Finance
-                        </p>
-                    </div>
-                    <SidebarItem
-                        to="/ledger"
-                        icon="account_balance"
-                        label="Financials"
-                        isActive={path.startsWith("/ledger")}
-                    />
-                    <SidebarItem
-                        to="/finance/reconciliation"
-                        icon="fact_check"
-                        label="Reconciliation"
-                        isActive={path.startsWith("/finance/reconciliation")}
-                    />
-                    <SidebarItem
-                        to="/usage"
-                        icon="bar_chart"
-                        label="Usage"
-                        isActive={path.startsWith("/usage")}
-                    />
-                    <SidebarItem
-                        to="/dunning"
-                        icon="psychology"
-                        label="Smart Dunning"
-                        isActive={path.startsWith("/dunning")}
-                    />
-
-                    <div className="pt-4 pb-2">
-                        <p className="px-3 text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-                            System
-                        </p>
-                    </div>
-                    <SidebarItem
-                        to="/developers"
-                        icon="code"
-                        label="Developers"
-                        isActive={path.startsWith("/developers")}
-                    />
-                </nav>
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <SidebarItem key={item.to} {...item} />
+              ))}
             </div>
-
-            <div className="flex flex-col gap-2 border-t border-gray-100 pt-6 dark:border-zinc-800">
-                <SidebarItem
-                    to="/settings"
-                    icon="settings"
-                    label="Settings"
-                    isActive={path.startsWith("/settings")}
-                />
-            </div>
-        </aside>
-    );
-};
+          </div>
+        ))}
+      </nav>
+    </aside>
+  );
+}
 
 export default Sidebar;

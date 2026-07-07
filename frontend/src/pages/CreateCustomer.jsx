@@ -1,233 +1,243 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { endpoints } from '../lib/api'
-import { useToast } from '../components/Toast'
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-const CreateCustomer = () => {
-    const navigate = useNavigate()
-    const toast = useToast()
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        phone: '',
-        address: '',
-        country: 'United States',
-        state: 'California',
-        tax_id: ''
-    })
-    const [loading, setLoading] = useState(false)
+import { endpoints } from "../lib/api";
+import { useToast } from "../components/Toast";
+import { cn } from "@/lib/utils";
+import { FormField } from "@/components/patterns/FormField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        setLoading(true)
-        try {
-            const countryMap = {
-                'United States': 'US',
-                'India': 'IN',
-                'Canada': 'CA',
-                'United Kingdom': 'GB'
-            }
-            const isoCountry = countryMap[formData.country] || 'US'
+// ISO country map — identical mapping to the previous implementation.
+const COUNTRY_ISO = {
+  "United States": "US",
+  India: "IN",
+  Canada: "CA",
+  "United Kingdom": "GB",
+};
 
-            const payload = {
-                name: formData.name,
-                email: formData.email,
-                phone: formData.phone,
-                tax_id: formData.tax_id,
-                gstin: formData.country === 'India' ? formData.tax_id : '', // Send GSTIN separately if India
-                place_of_supply: formData.country === 'India' ? formData.state : '', // Send Code if India
-                line1: formData.address, // Mapping textarea to line1 for now
-                country: isoCountry,
-                state: formData.state
-                // City/Zip could be parsed from address or added as new fields if needed
-            }
-            await endpoints.createCustomer(payload)
-            navigate('/customers')
-        } catch (error) {
-            console.error("Failed to create customer:", error)
-            toast.error(error?.response?.data?.error?.message || "Failed to create customer")
-        } finally {
-            setLoading(false)
-        }
+const INDIA_STATES = [
+  { code: "TN", name: "Tamil Nadu" },
+  { code: "KA", name: "Karnataka" },
+  { code: "MH", name: "Maharashtra" },
+  { code: "DL", name: "Delhi" },
+  { code: "UP", name: "Uttar Pradesh" },
+  { code: "GJ", name: "Gujarat" },
+  { code: "KL", name: "Kerala" },
+];
+
+export default function CreateCustomer() {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [loading, setLoading] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    address: "",
+    country: "United States",
+    state: "California",
+    tax_id: "",
+  });
+
+  const isIndia = form.country === "India";
+  const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
+  const close = () => navigate("/customers");
+
+  const validate = () => {
+    const next = {};
+    if (!form.name.trim()) next.name = "Customer name is required.";
+    if (!form.email.trim()) next.email = "Email is required.";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
+      next.email = "Enter a valid email address.";
+    setErrors(next);
+    return Object.keys(next).length === 0;
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    setLoading(true);
+    try {
+      const isoCountry = COUNTRY_ISO[form.country] || "US";
+      // Payload is byte-for-byte identical to the original create-customer form.
+      const payload = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        tax_id: form.tax_id,
+        gstin: isIndia ? form.tax_id : "",
+        place_of_supply: isIndia ? form.state : "",
+        line1: form.address,
+        country: isoCountry,
+        state: form.state,
+      };
+      await endpoints.createCustomer(payload);
+      toast.success("Customer created");
+      navigate("/customers");
+    } catch (error) {
+      toast.error(
+        error?.response?.data?.error?.message || "Failed to create customer"
+      );
+    } finally {
+      setLoading(false);
     }
+  };
 
-    return (
-        <div className="relative z-50" aria-labelledby="slide-over-title" role="dialog" aria-modal="true">
-            {/* Background backdrop */}
-            <div className="fixed inset-0 bg-slate-900/30 dark:bg-black/50 transition-opacity" aria-hidden="true"></div>
+  return (
+    <Sheet open onOpenChange={(open) => !open && close()}>
+      <SheetContent side="right" className="w-full sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>Add new customer</SheetTitle>
+          <SheetDescription>
+            Enter the details for your new customer.
+          </SheetDescription>
+        </SheetHeader>
 
-            <div className="fixed inset-0 overflow-hidden">
-                <div className="absolute inset-0 overflow-hidden">
-                    <div className="pointer-events-none fixed inset-y-0 right-0 flex max-w-full pl-10">
-                        {/* Slide-over panel */}
-                        <div className="pointer-events-auto relative w-screen max-w-2xl">
-                            <div className="flex h-full flex-col bg-white dark:bg-slate-900 shadow-xl">
-                                <div className="flex flex-col h-full">
-                                    {/* Header */}
-                                    <div className="bg-slate-50 dark:bg-slate-800/50 px-6 py-6 border-b border-slate-200 dark:border-slate-800 flex-shrink-0">
-                                        <div className="flex items-start justify-between space-x-3">
-                                            <div className="space-y-1">
-                                                <h1 className="text-slate-900 dark:text-white text-2xl font-bold leading-tight tracking-tight">Add New Customer</h1>
-                                                <p className="text-slate-500 dark:text-slate-400 text-sm font-normal leading-normal">Enter the details for your new customer.</p>
-                                            </div>
-                                            <div className="flex h-7 items-center">
-                                                <button
-                                                    type="button"
-                                                    className="relative text-slate-400 hover:text-slate-500 dark:hover:text-slate-300 focus:outline-none"
-                                                    onClick={() => navigate('/customers')}
-                                                >
-                                                    <span className="absolute -inset-2.5"></span>
-                                                    <span className="sr-only">Close panel</span>
-                                                    <span className="material-symbols-outlined text-2xl">close</span>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+        <form
+          id="create-customer-form"
+          onSubmit={handleSubmit}
+          className="flex-1 space-y-8 overflow-y-auto px-6 py-6"
+        >
+          {/* Contact information */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Contact information
+            </h3>
+            <FormField label="Customer name" htmlFor="name" required error={errors.name}>
+              <Input
+                id="name"
+                placeholder="e.g., Acme Corporation"
+                value={form.name}
+                onChange={(e) => setField("name", e.target.value)}
+                className={cn(errors.name && "border-red-400 focus-visible:ring-red-400")}
+              />
+            </FormField>
+            <FormField label="Email address" htmlFor="email" required error={errors.email}>
+              <Input
+                id="email"
+                type="email"
+                placeholder="e.g., billing@acme.com"
+                value={form.email}
+                onChange={(e) => setField("email", e.target.value)}
+                className={cn(errors.email && "border-red-400 focus-visible:ring-red-400")}
+              />
+            </FormField>
+            <FormField label="Phone number" htmlFor="phone">
+              <Input
+                id="phone"
+                placeholder="e.g., +1 (555) 123-4567"
+                value={form.phone}
+                onChange={(e) => setField("phone", e.target.value)}
+              />
+            </FormField>
+          </section>
 
-                                    {/* Scrollable Content */}
-                                    <div className="flex-1 overflow-y-auto">
-                                        <form id="create-customer-form" onSubmit={handleSubmit} className="space-y-8 px-6 py-8">
-                                            {/* Contact Information Section */}
-                                            <div className="space-y-6">
-                                                <h2 className="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">Contact Information</h2>
-                                                <div className="grid grid-cols-1 gap-6">
-                                                    <label className="flex flex-col flex-1">
-                                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Customer Name <span className="text-red-500">*</span></p>
-                                                        <input
-                                                            required
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                            placeholder="e.g., Acme Corporation"
-                                                            value={formData.name}
-                                                            onChange={e => setFormData({ ...formData, name: e.target.value })}
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col flex-1">
-                                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Email Address <span className="text-red-500">*</span></p>
-                                                        <input
-                                                            required
-                                                            type="email"
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                            placeholder="e.g., billing@acme.com"
-                                                            value={formData.email}
-                                                            onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                                        />
-                                                    </label>
-                                                    <label className="flex flex-col flex-1">
-                                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Phone Number</p>
-                                                        <input
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                            placeholder="e.g., +1 (555) 123-4567"
-                                                            value={formData.phone}
-                                                            onChange={e => setFormData({ ...formData, phone: e.target.value })}
-                                                        />
-                                                    </label>
-                                                </div>
-                                            </div>
+          <Separator />
 
-                                            {/* Divider */}
-                                            <div className="border-t border-slate-200 dark:border-slate-800"></div>
+          {/* Billing details */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">Billing details</h3>
+            <FormField label="Billing address" htmlFor="address">
+              <textarea
+                id="address"
+                rows={3}
+                placeholder="123 Main Street, Anytown, USA 12345"
+                value={form.address}
+                onChange={(e) => setField("address", e.target.value)}
+                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+              />
+            </FormField>
 
-                                            {/* Billing Details Section */}
-                                            <div className="space-y-6">
-                                                <h2 className="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-[-0.015em]">Billing Details</h2>
-                                                <div className="grid grid-cols-1 gap-6">
-                                                    <label className="flex flex-col flex-1">
-                                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Billing Address</p>
-                                                        <textarea
-                                                            className="form-textarea flex w-full min-w-0 flex-1 resize-vertical rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all min-h-[88px]"
-                                                            placeholder="123 Main Street, Anytown, USA 12345"
-                                                            value={formData.address}
-                                                            onChange={e => setFormData({ ...formData, address: e.target.value })}
-                                                        ></textarea>
-                                                    </label>
-                                                    <div className="grid grid-cols-2 gap-6">
-                                                        <label className="flex flex-col flex-1">
-                                                            <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Country</p>
-                                                            <select
-                                                                className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                                value={formData.country}
-                                                                onChange={e => setFormData({ ...formData, country: e.target.value, state: '' })}
-                                                            >
-                                                                <option>United States</option>
-                                                                <option>India</option>
-                                                                <option>Canada</option>
-                                                                <option>United Kingdom</option>
-                                                            </select>
-                                                        </label>
-                                                        <label className="flex flex-col flex-1">
-                                                            <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">
-                                                                {formData.country === 'India' ? 'Place of Supply (State)' : 'State / Province'}
-                                                            </p>
-                                                            {formData.country === 'India' ? (
-                                                                <select
-                                                                    className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                                    value={formData.state}
-                                                                    onChange={e => setFormData({ ...formData, state: e.target.value })}
-                                                                >
-                                                                    <option value="">Select State</option>
-                                                                    <option value="TN">Tamil Nadu</option>
-                                                                    <option value="KA">Karnataka</option>
-                                                                    <option value="MH">Maharashtra</option>
-                                                                    <option value="DL">Delhi</option>
-                                                                    <option value="UP">Uttar Pradesh</option>
-                                                                    <option value="GJ">Gujarat</option>
-                                                                    <option value="KL">Kerala</option>
-                                                                    {/* Add more states as needed */}
-                                                                </select>
-                                                            ) : (
-                                                                <input // Use input for other countries for now to allow free text or select for US
-                                                                    className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                                    placeholder="e.g. California"
-                                                                    value={formData.state}
-                                                                    onChange={e => setFormData({ ...formData, state: e.target.value })}
-                                                                />
-                                                            )}
-                                                        </label>
-                                                    </div>
-                                                    <label className="flex flex-col flex-1">
-                                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">
-                                                            {formData.country === 'India' ? 'GSTIN (Goods and Services Tax ID)' : 'Tax ID / VAT Number'}
-                                                        </p>
-                                                        <input
-                                                            className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 dark:border-slate-800 dark:bg-slate-950 dark:text-white dark:placeholder:text-slate-400 transition-all"
-                                                            placeholder={formData.country === 'India' ? "e.g., 29ABCDE1234F1Z5" : "e.g., EU123456789"}
-                                                            value={formData.tax_id}
-                                                            onChange={e => setFormData({ ...formData, tax_id: e.target.value })}
-                                                        />
-                                                    </label>
-                                                </div>
-                                            </div>
-                                        </form>
-                                    </div>
+            <div className="grid grid-cols-2 gap-4">
+              <FormField label="Country" htmlFor="country">
+                <Select
+                  value={form.country}
+                  onValueChange={(value) =>
+                    setForm((f) => ({ ...f, country: value, state: "" }))
+                  }
+                >
+                  <SelectTrigger id="country">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(COUNTRY_ISO).map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
 
-                                    {/* Action buttons */}
-                                    <div className="flex-shrink-0 border-t border-slate-200 dark:border-slate-700 px-6 py-5 bg-white dark:bg-slate-900">
-                                        <div className="flex justify-end space-x-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => navigate('/customers')}
-                                                className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white text-sm font-bold leading-normal transition-all"
-                                            >
-                                                <span className="truncate">Cancel</span>
-                                            </button>
-                                            <button
-                                                form="create-customer-form"
-                                                type="submit"
-                                                disabled={loading}
-                                                className="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary hover:bg-primary/90 text-white text-sm font-bold leading-normal shadow-sm transition-all disabled:opacity-50"
-                                            >
-                                                <span className="truncate">{loading ? "Creating..." : "Create Customer"}</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+              <FormField
+                label={isIndia ? "Place of supply (State)" : "State / Province"}
+                htmlFor="state"
+              >
+                {isIndia ? (
+                  <Select value={form.state} onValueChange={(v) => setField("state", v)}>
+                    <SelectTrigger id="state">
+                      <SelectValue placeholder="Select state" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {INDIA_STATES.map((s) => (
+                        <SelectItem key={s.code} value={s.code}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    id="state"
+                    placeholder="e.g. California"
+                    value={form.state}
+                    onChange={(e) => setField("state", e.target.value)}
+                  />
+                )}
+              </FormField>
             </div>
-        </div>
-    )
-}
 
-export default CreateCustomer
+            <FormField
+              label={isIndia ? "GSTIN (Goods and Services Tax ID)" : "Tax ID / VAT Number"}
+              htmlFor="tax_id"
+            >
+              <Input
+                id="tax_id"
+                placeholder={isIndia ? "e.g., 29ABCDE1234F1Z5" : "e.g., EU123456789"}
+                value={form.tax_id}
+                onChange={(e) => setField("tax_id", e.target.value)}
+              />
+            </FormField>
+          </section>
+        </form>
+
+        <SheetFooter>
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="create-customer-form" disabled={loading}>
+            {loading ? "Creating..." : "Create customer"}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}

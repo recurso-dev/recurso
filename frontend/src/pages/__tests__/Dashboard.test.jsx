@@ -4,104 +4,94 @@ import Dashboard from '../Dashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
 
-// Mock the API module
+// Mock the API module (redesign wires MRR + dunning recovered + lists).
 vi.mock('../../lib/api', () => ({
     endpoints: {
         getSubscriptions: vi.fn(),
         getInvoices: vi.fn(),
         getCustomers: vi.fn(),
-        getPlans: vi.fn(),
-        getMRR: vi.fn()
+        getMRR: vi.fn(),
+        getDunningRecovered: vi.fn(),
     }
 }));
 
-// Mock Recharts since it requires ResizeObserver which isn't fully supported in jsdom
-vi.mock('recharts', () => {
-    const OriginalModule = vi.importActual('recharts');
-    return {
-        ...OriginalModule,
-        ResponsiveContainer: ({ children }) => <div className="recharts-responsive-container">{children}</div>,
-        AreaChart: () => <div data-testid="area-chart">AreaChart</div>,
-        XAxis: () => null,
-        YAxis: () => null,
-        Tooltip: () => null,
-        CartesianGrid: () => null,
-        Area: () => null,
-    };
-});
+// Tremor's AreaChart needs ResizeObserver; stub it in jsdom.
+vi.mock('@tremor/react', () => ({
+    AreaChart: () => <div data-testid="area-chart" />,
+}));
 
-// Mock Data
-const mockStats = {
-    netBilling: 12500.50,
-    netPayments: 10200.00,
-    unpaidInvoices: 2300.50,
-    activeSubs: 45
-};
+const renderDashboard = () =>
+    render(<MemoryRouter><Dashboard /></MemoryRouter>);
 
-describe('Dashboard Component', () => {
+describe('Dashboard (redesign)', () => {
     beforeEach(() => {
-        // Reset mocks
         vi.clearAllMocks();
-
-        // Default successful response
-        endpoints.getSubscriptions.mockResolvedValue({ data: { data: [{ status: 'active' }, { status: 'active' }] } }); // Mock active count logic if needed
+        endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
         endpoints.getInvoices.mockResolvedValue({ data: { data: [] } });
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
-        endpoints.getPlans.mockResolvedValue({ data: { data: [] } });
         endpoints.getMRR.mockResolvedValue({ data: { mrr: 0 } });
+        endpoints.getDunningRecovered.mockResolvedValue({ data: { recovered: 0 } });
     });
 
-    it('displays loading state initially', async () => {
-        // Create a controllable promise
-        let resolvePromise;
-        const pendingPromise = new Promise((resolve) => { resolvePromise = resolve; });
+    it('renders the KPI cards after loading', async () => {
+        renderDashboard();
+        await waitFor(() => {
+            expect(screen.getByText('MRR')).toBeInTheDocument();
+        });
+        expect(screen.getByText('Active Subscriptions')).toBeInTheDocument();
+        expect(screen.getByText('Churn')).toBeInTheDocument();
+        expect(screen.getByText('Recovered Revenue')).toBeInTheDocument();
+    });
 
-        endpoints.getSubscriptions.mockReturnValue(pendingPromise);
+    it('shows formatted MRR, active subs and churn from the API', async () => {
+        endpoints.getMRR.mockResolvedValue({ data: { mrr: 100000 } }); // $1,000.00
+        endpoints.getSubscriptions.mockResolvedValue({
+            data: { data: [{ status: 'active' }, { status: 'active' }, { status: 'canceled' }] },
+        });
 
-        render(<MemoryRouter><Dashboard /></MemoryRouter>);
-        expect(screen.getAllByText('...')[0]).toBeInTheDocument();
-
-        // Resolve it
-        resolvePromise({ data: { data: [] } });
+        renderDashboard();
 
         await waitFor(() => {
-            expect(screen.queryByText('...')).not.toBeInTheDocument();
+            expect(screen.getByText('$1,000.00')).toBeInTheDocument();
+        });
+        // 2 active subscriptions.
+        expect(screen.getByText('2')).toBeInTheDocument();
+        // Churn = 1 canceled / 3 total = 33.3%.
+        expect(screen.getByText('33.3%')).toBeInTheDocument();
+    });
+
+    it('shows a graceful empty state when there are no invoices', async () => {
+        renderDashboard();
+        await waitFor(() => {
+            expect(screen.getByText('No revenue yet')).toBeInTheDocument();
         });
     });
 
-    it('displays stats correctly after loading', async () => {
-        // Set specific mocks for this test
-        const today = new Date().toISOString()
-
+    it('renders a recent invoice with a status badge', async () => {
         endpoints.getInvoices.mockResolvedValue({
             data: {
                 data: [
-                    { id: 1, total: 100000, status: 'paid', created_at: today, currency: 'USD', customer_id: 'cus_1' }
-                ]
-            }
+                    {
+                        id: 'inv_1',
+                        total: 25000,
+                        status: 'paid',
+                        currency: 'USD',
+                        customer_id: 'cus_1',
+                        created_at: new Date().toISOString(),
+                    },
+                ],
+            },
         });
-        endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
-        endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
-        endpoints.getPlans.mockResolvedValue({ data: { data: [] } });
+        endpoints.getCustomers.mockResolvedValue({
+            data: { data: [{ id: 'cus_1', name: 'Acme Corp' }] },
+        });
 
-        render(<MemoryRouter><Dashboard /></MemoryRouter>);
-
-        // Use findBy to wait for the element to appear
-        // Wait for loading to finish
-        await waitFor(() => expect(screen.queryByText('...')).not.toBeInTheDocument());
-
-        // Check for the value (broad match)
-        expect(screen.getAllByText(/1,000/).length).toBeGreaterThan(0);
-    });
-
-    it('displays empty states when no data is present', async () => {
-        endpoints.getInvoices.mockResolvedValue({ data: { data: [] } });
-        endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
-
-        render(<MemoryRouter><Dashboard /></MemoryRouter>);
+        renderDashboard();
 
         await waitFor(() => {
-            expect(screen.getByText('No recent activity')).toBeInTheDocument();
+            expect(screen.getByText('Acme Corp')).toBeInTheDocument();
         });
+        expect(screen.getByText('$250.00')).toBeInTheDocument();
+        expect(screen.getByText('paid')).toBeInTheDocument();
     });
 });

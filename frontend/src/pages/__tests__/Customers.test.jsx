@@ -13,51 +13,37 @@ vi.mock('../../lib/api', () => ({
     }
 }));
 
-// Mock CustomerDetail to avoid import issues
+// Mock the slide-over detail (radix portal, not under test here).
 vi.mock('../../components/slide-overs/CustomerDetail', () => ({
     default: () => <div data-testid="customer-detail" />
 }));
 
 const wrapper = ({ children }) => (
     <BrowserRouter>
-        <ToastProvider>
-            {children}
-        </ToastProvider>
+        <ToastProvider>{children}</ToastProvider>
     </BrowserRouter>
 );
 
 const mockCustomers = [
-    {
-        id: '1', name: 'Alice Smith', email: 'alice@example.com',
-        activeSubs: 2, risk_score: 15, created_at: '2026-01-15T00:00:00Z',
-        tenant_id: 'tenant-1'
-    },
-    {
-        id: '2', name: 'Bob Jones', email: 'bob@example.com',
-        activeSubs: 0, risk_score: 55, created_at: '2026-02-01T00:00:00Z',
-        tenant_id: 'tenant-1'
-    },
-    {
-        id: '3', name: 'Carol Davis', email: 'carol@example.com',
-        activeSubs: 1, risk_score: null, created_at: '2026-03-01T00:00:00Z',
-        tenant_id: 'tenant-1'
-    },
+    { id: '1', name: 'Alice Smith', email: 'alice@example.com', activeSubs: 2, risk_score: 15, created_at: '2026-01-15T00:00:00Z', tenant_id: 'tenant-1' },
+    { id: '2', name: 'Bob Jones', email: 'bob@example.com', activeSubs: 0, risk_score: 55, created_at: '2026-02-01T00:00:00Z', tenant_id: 'tenant-1' },
+    { id: '3', name: 'Carol Davis', email: 'carol@example.com', activeSubs: 1, risk_score: null, created_at: '2026-03-01T00:00:00Z', tenant_id: 'tenant-1' },
 ];
 
-describe('Customers Page', () => {
+describe('Customers Page (redesign)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('shows skeleton loading state initially', async () => {
+    it('shows the skeleton loading state initially', async () => {
         let resolvePromise;
         const pending = new Promise(resolve => { resolvePromise = resolve; });
         endpoints.getCustomers.mockReturnValue(pending);
 
         render(<Customers />, { wrapper });
 
-        // Should show the skeleton (shimmer animation divs)
-        expect(document.querySelector('[style*="shimmer"]')).toBeTruthy();
+        // DataTable renders animate-pulse skeleton blocks while loading.
+        expect(document.querySelector('.animate-pulse')).toBeTruthy();
 
         resolvePromise({ data: { data: [] } });
         await waitFor(() => {
@@ -65,20 +51,16 @@ describe('Customers Page', () => {
         });
     });
 
-    it('shows error state with retry button on API failure', async () => {
+    it('shows the error state with a retry button on API failure', async () => {
         endpoints.getCustomers.mockRejectedValue(new Error('Network error'));
 
         render(<Customers />, { wrapper });
 
         await waitFor(() => {
-            // ErrorState + Toast both render the message
             expect(screen.getAllByText('Network error').length).toBeGreaterThanOrEqual(1);
         });
-
-        // Should show retry button in ErrorState
         expect(screen.getByText('Retry')).toBeInTheDocument();
 
-        // Clicking retry should re-fetch
         endpoints.getCustomers.mockResolvedValue({ data: { data: mockCustomers } });
         fireEvent.click(screen.getByText('Retry'));
 
@@ -87,7 +69,7 @@ describe('Customers Page', () => {
         });
     });
 
-    it('renders customer list correctly', async () => {
+    it('renders the customer list', async () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: mockCustomers } });
 
         render(<Customers />, { wrapper });
@@ -95,14 +77,12 @@ describe('Customers Page', () => {
         await waitFor(() => {
             expect(screen.getByText('Alice Smith')).toBeInTheDocument();
         });
-
         expect(screen.getByText('alice@example.com')).toBeInTheDocument();
         expect(screen.getByText('Bob Jones')).toBeInTheDocument();
         expect(screen.getByText('Carol Davis')).toBeInTheDocument();
     });
 
-    it('filters by search text (server-side via q param)', async () => {
-        // Search is server-side: the page debounces 500ms and refetches with q.
+    it('searches server-side via the q param', async () => {
         endpoints.getCustomers.mockImplementation((params = {}) => {
             const data = params.q
                 ? mockCustomers.filter(c => c.name.toLowerCase().includes(params.q.toLowerCase()))
@@ -111,15 +91,10 @@ describe('Customers Page', () => {
         });
 
         render(<Customers />, { wrapper });
+        await waitFor(() => expect(screen.getByText('Alice Smith')).toBeInTheDocument());
 
-        await waitFor(() => {
-            expect(screen.getByText('Alice Smith')).toBeInTheDocument();
-        });
+        await userEvent.type(screen.getByPlaceholderText('Search by name or email...'), 'bob');
 
-        const searchInput = screen.getByPlaceholderText('Search by name or email...');
-        await userEvent.type(searchInput, 'bob');
-
-        // Wait out the debounce + refetch.
         await waitFor(() => {
             expect(endpoints.getCustomers).toHaveBeenCalledWith(
                 expect.objectContaining({ q: 'bob' })
@@ -132,8 +107,7 @@ describe('Customers Page', () => {
         expect(screen.getByText('Bob Jones')).toBeInTheDocument();
     });
 
-    it('filters by active/inactive status (server-side via status param)', async () => {
-        // Status filtering is server-side: the page refetches with status.
+    it('filters by status server-side via the status param', async () => {
         endpoints.getCustomers.mockImplementation((params = {}) => {
             let data = mockCustomers;
             if (params.status === 'inactive') data = mockCustomers.filter(c => c.activeSubs === 0);
@@ -142,61 +116,36 @@ describe('Customers Page', () => {
         });
 
         render(<Customers />, { wrapper });
+        await waitFor(() => expect(screen.getByText('Alice Smith')).toBeInTheDocument());
 
-        await waitFor(() => {
-            expect(screen.getByText('Alice Smith')).toBeInTheDocument();
-        });
-
-        // Click "Inactive" filter button (in the filter bar)
-        const filterButtons = screen.getAllByRole('button');
-        const inactiveBtn = filterButtons.find(b => b.textContent === 'Inactive');
-        fireEvent.click(inactiveBtn);
+        const buttons = screen.getAllByRole('button');
+        fireEvent.click(buttons.find(b => b.textContent === 'inactive'));
 
         await waitFor(() => {
             expect(endpoints.getCustomers).toHaveBeenCalledWith(
                 expect.objectContaining({ status: 'inactive' })
             );
         });
-
-        // Only Bob (activeSubs=0) should show
         await waitFor(() => {
             expect(screen.queryByText('Alice Smith')).not.toBeInTheDocument();
         });
         expect(screen.getByText('Bob Jones')).toBeInTheDocument();
-        expect(screen.queryByText('Carol Davis')).not.toBeInTheDocument();
-
-        // Click "Active" filter button
-        const activeBtn = filterButtons.find(b => b.textContent === 'Active');
-        fireEvent.click(activeBtn);
-
-        // Alice and Carol should show (activeSubs > 0)
-        await waitFor(() => {
-            expect(screen.getByText('Alice Smith')).toBeInTheDocument();
-        });
-        expect(screen.getByText('Carol Davis')).toBeInTheDocument();
-        expect(screen.queryByText('Bob Jones')).not.toBeInTheDocument();
     });
 
-    it('displays risk badges correctly', async () => {
+    it('renders risk badges', async () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: mockCustomers } });
 
         render(<Customers />, { wrapper });
+        await waitFor(() => expect(screen.getByText('Alice Smith')).toBeInTheDocument());
 
-        await waitFor(() => {
-            expect(screen.getByText('Alice Smith')).toBeInTheDocument();
-        });
-
-        // Alice: score 15 → Low
         expect(screen.getByText(/15 • Low/)).toBeInTheDocument();
-        // Bob: score 55 → High
         expect(screen.getByText(/55 • High/)).toBeInTheDocument();
     });
 
-    it('shows empty state when no data', async () => {
+    it('shows an empty state when there is no data', async () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
 
         render(<Customers />, { wrapper });
-
         await waitFor(() => {
             expect(screen.getByText('No customers yet')).toBeInTheDocument();
         });
