@@ -93,6 +93,7 @@ func main() {
 	magicLinkRepo := db.NewMagicLinkRepository(database)             // P25
 	portalSessionRepo := db.NewPortalSessionRepository(database)     // P25
 	quoteRepo := db.NewQuoteRepository(database)                     // P27
+	disputeRepo := db.NewDisputeRepository(database)                 // Track 2: invoice disputes
 
 	// Create sqlx wrapper for CreditNoteRepository
 	creditNoteRepo := db.NewCreditNoteRepository(dbx) // P23
@@ -601,8 +602,13 @@ func main() {
 	// PORTAL_URL is where the customer-facing portal SPA is served; magic
 	// link emails point there. Defaults to the API base URL for dev.
 	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
-	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, giftService, emailSender, portalBaseURL)
+	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
+
+	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
+	// lives on the portal handler above.
+	disputeService := service.NewDisputeService(disputeRepo)
+	disputeHandler := handler.NewDisputeHandler(disputeService)
 
 	// Quotes (P27)
 	quoteService := service.NewQuoteService(quoteRepo, invoiceRepo)
@@ -767,6 +773,9 @@ func main() {
 	{
 		portal.GET("/profile", portalAPIHandler.GetProfile)
 		portal.GET("/invoices", portalAPIHandler.GetInvoices)
+		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
+		portal.GET("/disputes", portalAPIHandler.GetDisputes)
+		portal.POST("/invoices/:id/dispute", portalAPIHandler.RaiseDispute)
 		portal.POST("/redeem", portalAPIHandler.RedeemGift)
 		portal.POST("/logout", portalAPIHandler.Logout)
 	}
@@ -857,6 +866,11 @@ func main() {
 		v1.POST("/quotes/:id/accept", quoteHandler.AcceptQuote)
 		v1.POST("/quotes/:id/decline", quoteHandler.DeclineQuote)
 		v1.POST("/quotes/:id/convert", quoteHandler.ConvertToInvoice)
+
+		// Invoice disputes (Track 2) — admin API only; no dashboard UI yet.
+		v1.GET("/disputes", disputeHandler.ListDisputes)
+		v1.POST("/disputes/:id/resolve", disputeHandler.ResolveDispute)
+
 		v1.GET("/events", webhookMgmtHandler.ListEvents)
 		v1.GET("/events/types", webhookMgmtHandler.GetEventTypes)
 		v1.GET("/events/:id/deliveries", webhookMgmtHandler.ListEventDeliveries)

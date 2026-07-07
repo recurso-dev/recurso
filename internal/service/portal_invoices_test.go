@@ -31,7 +31,7 @@ func TestPortalGetCustomerInvoices_DelegatesToRepo(t *testing.T) {
 		{ID: uuid.New(), CustomerID: customerID, Total: 5900},
 	}
 	repo := &mockInvoiceRepoForPortal{invoices: want}
-	svc := NewPortalService(nil, repo, nil, nil, nil, nil, "")
+	svc := NewPortalService(nil, repo, nil, nil, nil, nil, nil, "")
 
 	got, err := svc.GetCustomerInvoices(context.Background(), customerID)
 	if err != nil {
@@ -54,7 +54,7 @@ func TestPortalGetCustomerInvoices_DelegatesToRepo(t *testing.T) {
 func TestPortalGetCustomerInvoices_PropagatesError(t *testing.T) {
 	repoErr := errors.New("db unavailable")
 	repo := &mockInvoiceRepoForPortal{err: repoErr}
-	svc := NewPortalService(nil, repo, nil, nil, nil, nil, "")
+	svc := NewPortalService(nil, repo, nil, nil, nil, nil, nil, "")
 
 	got, err := svc.GetCustomerInvoices(context.Background(), uuid.New())
 	if !errors.Is(err, repoErr) {

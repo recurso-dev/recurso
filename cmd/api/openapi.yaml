@@ -1867,6 +1867,200 @@ paths:
                   message:
                     type: string
 
+  /portal/api/payment-method:
+    put:
+      operationId: portalUpdatePaymentMethod
+      tags: [Customer Portal]
+      summary: Update the logged-in customer's payment method
+      description: >
+        Updates the vaulted payment method for the authenticated portal
+        customer. The card metadata (brand/last4/expiry) is produced by the
+        client-side gateway tokenization step — no raw PAN is ever accepted.
+        The customer is resolved from the portal session; it can never be
+        supplied in the body.
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [card_brand, card_last4, card_exp_month, card_exp_year]
+              properties:
+                card_brand:
+                  type: string
+                  example: visa
+                card_last4:
+                  type: string
+                  minLength: 4
+                  maxLength: 4
+                  example: '4242'
+                card_exp_month:
+                  type: integer
+                  minimum: 1
+                  maximum: 12
+                card_exp_year:
+                  type: integer
+                  minimum: 2020
+      responses:
+        '200':
+          description: Payment method updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/disputes:
+    get:
+      operationId: getPortalDisputes
+      tags: [Customer Portal]
+      summary: List the logged-in customer's invoice disputes
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: The customer's disputes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InvoiceDispute'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/invoices/{id}/dispute:
+    post:
+      operationId: portalRaiseDispute
+      tags: [Customer Portal]
+      summary: Raise a dispute/query on one of the customer's own invoices
+      description: >
+        Opens a dispute on the given invoice. The invoice must belong to the
+        authenticated portal customer, otherwise a 404 is returned (existence is
+        not leaked). At most one open dispute exists per invoice: re-raising
+        updates the reason of the existing open dispute.
+      security:
+        - portalSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Invoice ID.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason:
+                  type: string
+                  example: I was charged twice for this invoice.
+      responses:
+        '200':
+          description: The open dispute.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/InvoiceDispute'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/disputes:
+    get:
+      operationId: listDisputes
+      tags: [Disputes]
+      summary: List invoice disputes (tenant-scoped)
+      description: >
+        Lists disputes for the authenticated tenant. There is no admin dashboard
+        UI for disputes yet; this API is the current surface.
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, resolved]
+          description: Filter by dispute status.
+      responses:
+        '200':
+          description: The tenant's disputes.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/InvoiceDispute'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/disputes/{id}/resolve:
+    post:
+      operationId: resolveDispute
+      tags: [Disputes]
+      summary: Resolve an open dispute (tenant-scoped)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Dispute ID.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                note:
+                  type: string
+                  description: Optional admin resolution note.
+      responses:
+        '200':
+          description: Dispute resolved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: resolved
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/analytics/usage:
     get:
       operationId: getUsageStats
@@ -6209,3 +6403,34 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SubscriptionDimensionUsage'
+
+    InvoiceDispute:
+      type: object
+      description: A customer-raised dispute/query against one of their invoices.
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: string
+          format: uuid
+        customer_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [open, resolved]
+        note:
+          type: [string, 'null']
+          description: Admin resolution note; null while open.
+        created_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, 'null']
+          format: date-time

@@ -108,6 +108,99 @@ func (h *PortalAPIHandler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, customer)
 }
 
+// portalUpdatePaymentMethodRequest carries the gateway-tokenized card metadata.
+// No raw PAN is ever accepted — these fields come from the client-side gateway
+// tokenization, exactly like the admin flow. The customer is resolved from the
+// session, never from the body.
+type portalUpdatePaymentMethodRequest struct {
+	CardBrand string `json:"card_brand" binding:"required"`
+	CardLast4 string `json:"card_last4" binding:"required,len=4"`
+	ExpMonth  int    `json:"card_exp_month" binding:"required,min=1,max=12"`
+	ExpYear   int    `json:"card_exp_year" binding:"required,min=2020"`
+}
+
+// UpdatePaymentMethod updates the authenticated portal customer's payment method.
+func (h *PortalAPIHandler) UpdatePaymentMethod(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	var req portalUpdatePaymentMethodRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	if err := h.portalService.UpdatePaymentMethod(
+		c.Request.Context(), customerID.(uuid.UUID),
+		req.CardBrand, req.CardLast4, req.ExpMonth, req.ExpYear,
+	); err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// portalDisputeRequest is the body for raising an invoice dispute/query.
+type portalDisputeRequest struct {
+	Reason string `json:"reason" binding:"required"`
+}
+
+// RaiseDispute lets the authenticated customer raise a dispute/query on one of
+// their own invoices. The invoice id comes from the path; ownership is enforced
+// server-side.
+func (h *PortalAPIHandler) RaiseDispute(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	invoiceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+
+	var req portalDisputeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "reason required")
+		return
+	}
+
+	dispute, err := h.portalService.RaiseDispute(c.Request.Context(), customerID.(uuid.UUID), invoiceID, req.Reason)
+	if err != nil {
+		if err == service.ErrInvoiceNotFound {
+			respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": dispute})
+}
+
+// GetDisputes returns the authenticated customer's disputes.
+func (h *PortalAPIHandler) GetDisputes(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	disputes, err := h.portalService.GetCustomerDisputes(c.Request.Context(), customerID.(uuid.UUID))
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": disputes})
+}
+
 type PortalRedeemGiftRequest struct {
 	Code string `json:"code" binding:"required"`
 }
