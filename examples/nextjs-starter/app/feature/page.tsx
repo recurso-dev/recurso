@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const FEATURE_KEY = "advanced_reports";
 
 export default async function FeaturePage() {
-  const customerId = cookies().get("recurso_customer_id")?.value;
+  const customerId = (await cookies()).get("recurso_customer_id")?.value;
 
   if (!customerId) {
     return (

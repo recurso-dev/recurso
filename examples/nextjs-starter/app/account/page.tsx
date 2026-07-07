@@ -17,7 +17,7 @@ function EmptyState() {
 }
 
 export default async function AccountPage() {
-  const subscriptionId = cookies().get("recurso_subscription_id")?.value;
+  const subscriptionId = (await cookies()).get("recurso_subscription_id")?.value;
   if (!subscriptionId) return <EmptyState />;
 
   let usage: SubscriptionUsage | null = null;
