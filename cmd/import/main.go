@@ -7,7 +7,20 @@
 // current_period_end, so migrated customers are not double-billed.
 //
 // Idempotent: plans match by code, customers by email, subscriptions by
-// external_id. Re-running an import skips existing records.
+// external_id. Re-running an import skips existing records by default.
+//
+// Two bulk modes change what happens to records that already exist, and both
+// honor -dry-run (report the actions without writing anything):
+//
+//   - -update rewrites the provider-safe fields of matched records in place
+//     (customer name/country/GST, plan name/amount, subscription status/period)
+//     instead of skipping them. Matching is unchanged, so it never duplicates.
+//
+//   - -cancel-missing (cancel-sync) makes the import authoritative: any
+//     subscription that exists for the tenant but is absent from the file is
+//     scheduled for period-end cancellation. It only ever touches import-origin
+//     subscriptions (those with an external_id) — dashboard-created ones are
+//     left alone — and refuses to run when the file lists no subscriptions.
 //
 // Usage:
 //
@@ -15,6 +28,14 @@
 //	go run ./cmd/import -tenant <tenant-uuid> \
 //	    -plans-csv plans.csv -customers-csv customers.csv \
 //	    -subscriptions-csv subs.csv [-dry-run]
+//
+//	# update existing records in place instead of skipping them:
+//	go run ./cmd/import -tenant <tenant-uuid> -input data.json -update [-dry-run]
+//
+//	# make the file authoritative — cancel import-origin subs it omits
+//	# (always dry-run first to see exactly what would be canceled):
+//	go run ./cmd/import -tenant <tenant-uuid> -input data.json -cancel-missing -dry-run
+//	go run ./cmd/import -tenant <tenant-uuid> -input data.json -update -cancel-missing
 package main
 
 import (
@@ -42,6 +63,8 @@ func main() {
 		custCSV    = flag.String("customers-csv", "", "customers CSV (email,name,country,...)")
 		subsCSV    = flag.String("subscriptions-csv", "", "subscriptions CSV (external_id,customer_email,plan_code,status,current_period_start,current_period_end)")
 		dryRun     = flag.Bool("dry-run", false, "validate and report actions without writing anything")
+		update     = flag.Bool("update", false, "update matched records in place (provider-safe fields) instead of skipping them")
+		cancelMiss = flag.Bool("cancel-missing", false, "cancel-sync: schedule period-end cancellation for import-origin subscriptions absent from the file (authoritative import)")
 	)
 	flag.Parse()
 
@@ -75,13 +98,16 @@ func main() {
 	defer func() { _ = conn.Close() }()
 
 	imp := &importer{
-		conn:     conn,
-		tenantID: tenantID,
-		dryRun:   *dryRun,
-		planRepo: db.NewPlanRepository(conn.DB),
-		custRepo: db.NewCustomerRepository(conn),
-		subRepo:  db.NewSubscriptionRepository(conn.DB),
-		ledger:   db.NewLedgerRepository(conn.DB),
+		conn:          conn,
+		tenantID:      tenantID,
+		dryRun:        *dryRun,
+		update:        *update,
+		cancelMissing: *cancelMiss,
+		store:         &dbStore{db: conn},
+		planRepo:      db.NewPlanRepository(conn.DB),
+		custRepo:      db.NewCustomerRepository(conn),
+		subRepo:       db.NewSubscriptionRepository(conn.DB),
+		ledger:        db.NewLedgerRepository(conn.DB),
 	}
 
 	ctx := context.Background()
@@ -92,12 +118,18 @@ func main() {
 	if *dryRun {
 		log.Println("DRY RUN — no changes will be written")
 	}
+	if *update {
+		log.Println("UPDATE mode — matched records will be updated in place, not skipped")
+	}
 	imp.importPlans(ctx, file.Plans)
 	imp.importCustomers(ctx, file.Customers)
 	imp.importSubscriptions(ctx, file.Subscriptions)
+	if *cancelMiss {
+		imp.cancelMissingSubscriptions(ctx, file.Subscriptions)
+	}
 
-	log.Printf("Done: %d created, %d skipped (already exist), %d failed",
-		imp.created, imp.skipped, imp.failed)
+	log.Printf("Done: %d created, %d updated, %d skipped, %d canceled, %d failed",
+		imp.created, imp.updated, imp.skipped, imp.canceled, imp.failed)
 	if !*dryRun && imp.created > 0 {
 		log.Println("No invoices were generated. The renewal worker will issue each")
 		log.Println("subscription's next invoice at its current_period_end.")
@@ -154,18 +186,23 @@ func loadInput(input, plansCSV, custCSV, subsCSV string) (*ImportFile, error) {
 }
 
 type importer struct {
-	conn     *sqlx.DB
-	tenantID uuid.UUID
-	dryRun   bool
+	conn          *sqlx.DB
+	tenantID      uuid.UUID
+	dryRun        bool
+	update        bool // -update: update matched records instead of skipping
+	cancelMissing bool // -cancel-missing: cancel-sync import-origin subs absent from the file
 
+	store    store
 	planRepo port.PlanRepository
 	custRepo *db.CustomerRepository
 	subRepo  port.SubscriptionRepository
 	ledger   *db.LedgerRepository
 
-	created int
-	skipped int
-	failed  int
+	created  int
+	updated  int
+	skipped  int
+	canceled int
+	failed   int
 
 	// resolved during the run, used to link subscriptions
 	planIDs     map[string]uuid.UUID // plan code -> id
@@ -185,11 +222,31 @@ func (im *importer) verifyTenant(ctx context.Context) error {
 func (im *importer) importPlans(ctx context.Context, plans []PlanInput) {
 	im.planIDs = map[string]uuid.UUID{}
 	for _, p := range plans {
-		existing, err := im.planRepo.GetByCode(ctx, im.tenantID, p.Code)
-		if err == nil && existing != nil {
+		existing, err := im.store.PlanByCode(ctx, im.tenantID, p.Code)
+		if err != nil {
+			im.failed++
+			log.Printf("plan %s: FAILED: %v", p.Code, err)
+			continue
+		}
+		if existing != nil {
 			im.planIDs[p.Code] = existing.ID
-			im.skipped++
-			log.Printf("plan %s: exists, skipping", p.Code)
+			if !im.update {
+				im.skipped++
+				log.Printf("plan %s: exists, skipping", p.Code)
+				continue
+			}
+			if im.dryRun {
+				im.updated++
+				log.Printf("plan %s: would update (name %q, %d %s)", p.Code, p.Name, p.Amount, p.Currency)
+				continue
+			}
+			if err := im.store.UpdatePlan(ctx, im.tenantID, *existing, p); err != nil {
+				im.failed++
+				log.Printf("plan %s: FAILED: %v", p.Code, err)
+				continue
+			}
+			im.updated++
+			log.Printf("plan %s: updated", p.Code)
 			continue
 		}
 		if im.dryRun {
@@ -228,14 +285,31 @@ func (im *importer) importCustomers(ctx context.Context, customers []CustomerInp
 	im.customerIDs = map[string]uuid.UUID{}
 	for _, c := range customers {
 		key := strings.ToLower(c.Email)
-		var existingID uuid.UUID
-		err := im.conn.QueryRowContext(ctx,
-			`SELECT id FROM customers WHERE tenant_id = $1 AND lower(email) = $2`,
-			im.tenantID, key).Scan(&existingID)
-		if err == nil {
+		existingID, found, err := im.store.CustomerIDByEmail(ctx, im.tenantID, c.Email)
+		if err != nil {
+			im.failed++
+			log.Printf("customer %s: FAILED: %v", c.Email, err)
+			continue
+		}
+		if found {
 			im.customerIDs[key] = existingID
-			im.skipped++
-			log.Printf("customer %s: exists, skipping", c.Email)
+			if !im.update {
+				im.skipped++
+				log.Printf("customer %s: exists, skipping", c.Email)
+				continue
+			}
+			if im.dryRun {
+				im.updated++
+				log.Printf("customer %s: would update (name %q, country %q)", c.Email, c.Name, c.Country)
+				continue
+			}
+			if err := im.store.UpdateCustomer(ctx, im.tenantID, existingID, c); err != nil {
+				im.failed++
+				log.Printf("customer %s: FAILED: %v", c.Email, err)
+				continue
+			}
+			im.updated++
+			log.Printf("customer %s: updated", c.Email)
 			continue
 		}
 		if im.dryRun {
@@ -290,13 +364,30 @@ func (im *importer) importCustomers(ctx context.Context, customers []CustomerInp
 
 func (im *importer) importSubscriptions(ctx context.Context, subs []SubscriptionInput) {
 	for _, s := range subs {
-		var existingID uuid.UUID
-		err := im.conn.QueryRowContext(ctx,
-			`SELECT id FROM subscriptions WHERE tenant_id = $1 AND reference_id = $2`,
-			im.tenantID, s.ExternalID).Scan(&existingID)
-		if err == nil {
-			im.skipped++
-			log.Printf("subscription %s: exists, skipping", s.ExternalID)
+		existingID, found, err := im.store.SubscriptionIDByExternalID(ctx, im.tenantID, s.ExternalID)
+		if err != nil {
+			im.failed++
+			log.Printf("subscription %s: FAILED: %v", s.ExternalID, err)
+			continue
+		}
+		if found {
+			if !im.update {
+				im.skipped++
+				log.Printf("subscription %s: exists, skipping", s.ExternalID)
+				continue
+			}
+			if im.dryRun {
+				im.updated++
+				log.Printf("subscription %s: would update (status %s, period %s..%s)", s.ExternalID, s.Status, s.CurrentPeriodStart, s.CurrentPeriodEnd)
+				continue
+			}
+			if err := im.store.UpdateSubscription(ctx, im.tenantID, existingID, s); err != nil {
+				im.failed++
+				log.Printf("subscription %s: FAILED: %v", s.ExternalID, err)
+				continue
+			}
+			im.updated++
+			log.Printf("subscription %s: updated", s.ExternalID)
 			continue
 		}
 
@@ -309,7 +400,7 @@ func (im *importer) importSubscriptions(ctx context.Context, subs []Subscription
 		planID, ok := im.planIDs[s.PlanCode]
 		if !ok {
 			// Plan not in this import file; it must already exist.
-			existing, perr := im.planRepo.GetByCode(ctx, im.tenantID, s.PlanCode)
+			existing, perr := im.store.PlanByCode(ctx, im.tenantID, s.PlanCode)
 			if perr != nil || existing == nil {
 				im.failed++
 				log.Printf("subscription %s: FAILED: plan code %q not found in tenant", s.ExternalID, s.PlanCode)
@@ -348,5 +439,56 @@ func (im *importer) importSubscriptions(ctx context.Context, subs []Subscription
 		}
 		im.created++
 		log.Printf("subscription %s: created (renews %s)", s.ExternalID, end.Format("2006-01-02"))
+	}
+}
+
+// cancelMissingSubscriptions implements cancel-sync (-cancel-missing): it makes
+// the import file authoritative by scheduling a period-end cancellation for any
+// subscription that exists for the tenant but is absent from the file.
+//
+// Safety guards:
+//   - Only import-origin subscriptions (a non-empty reference_id / external_id)
+//     are considered; dashboard-created subscriptions are never touched.
+//   - When the file lists no subscriptions it refuses to run, so a truncated
+//     export can't wipe the whole tenant.
+//   - In dry-run every candidate is logged but nothing is written.
+func (im *importer) cancelMissingSubscriptions(ctx context.Context, subs []SubscriptionInput) {
+	if len(subs) == 0 {
+		log.Println("cancel-sync: SKIPPED — the import file lists no subscriptions; refusing to cancel the entire tenant. Provide the full authoritative subscription set.")
+		return
+	}
+
+	present := make(map[string]bool, len(subs))
+	for _, s := range subs {
+		present[s.ExternalID] = true
+	}
+
+	existing, err := im.store.ListSubscriptions(ctx, im.tenantID)
+	if err != nil {
+		im.failed++
+		log.Printf("cancel-sync: FAILED to list subscriptions: %v", err)
+		return
+	}
+
+	for _, e := range existing {
+		if e.ReferenceID == "" {
+			// Dashboard-created subscription (no external_id) — never touch it.
+			continue
+		}
+		if present[e.ReferenceID] {
+			continue // still in the authoritative file; keep it.
+		}
+		if im.dryRun {
+			im.canceled++
+			log.Printf("subscription %s: WOULD CANCEL (absent from import, period-end)", e.ReferenceID)
+			continue
+		}
+		if err := im.store.CancelSubscription(ctx, im.tenantID, e.ID, cancelSyncReason); err != nil {
+			im.failed++
+			log.Printf("subscription %s: FAILED to cancel: %v", e.ReferenceID, err)
+			continue
+		}
+		im.canceled++
+		log.Printf("subscription %s: canceled at period-end (absent from import)", e.ReferenceID)
 	}
 }

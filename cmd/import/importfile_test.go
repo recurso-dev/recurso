@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func validFile() *ImportFile {
@@ -142,5 +145,186 @@ func TestParsePlansCSV_BadAmount(t *testing.T) {
 func TestParseJSON_UnknownFieldRejected(t *testing.T) {
 	if _, err := ParseJSON(strings.NewReader(`{"customerz": []}`)); err == nil {
 		t.Fatal("expected error for unknown top-level field")
+	}
+}
+
+// fakeStore is an in-memory store for exercising -update and -cancel-missing
+// without a database. It records every write so tests can assert exactly what
+// was (and was not) touched.
+type fakeStore struct {
+	customers     map[string]uuid.UUID    // lower(email) -> id
+	plans         map[string]existingPlan // code -> plan
+	subscriptions map[string]uuid.UUID    // external_id -> id
+	list          []existingSubscription  // returned by ListSubscriptions
+
+	updatedCustomers []uuid.UUID
+	updatedPlans     []uuid.UUID
+	updatedSubs      []uuid.UUID
+	canceledSubs     []uuid.UUID
+}
+
+func newFakeStore() *fakeStore {
+	return &fakeStore{
+		customers:     map[string]uuid.UUID{},
+		plans:         map[string]existingPlan{},
+		subscriptions: map[string]uuid.UUID{},
+	}
+}
+
+func (f *fakeStore) CustomerIDByEmail(_ context.Context, _ uuid.UUID, email string) (uuid.UUID, bool, error) {
+	id, ok := f.customers[strings.ToLower(email)]
+	return id, ok, nil
+}
+
+func (f *fakeStore) UpdateCustomer(_ context.Context, _, id uuid.UUID, _ CustomerInput) error {
+	f.updatedCustomers = append(f.updatedCustomers, id)
+	return nil
+}
+
+func (f *fakeStore) PlanByCode(_ context.Context, _ uuid.UUID, code string) (*existingPlan, error) {
+	p, ok := f.plans[code]
+	if !ok {
+		return nil, nil
+	}
+	return &p, nil
+}
+
+func (f *fakeStore) UpdatePlan(_ context.Context, _ uuid.UUID, plan existingPlan, _ PlanInput) error {
+	f.updatedPlans = append(f.updatedPlans, plan.ID)
+	return nil
+}
+
+func (f *fakeStore) SubscriptionIDByExternalID(_ context.Context, _ uuid.UUID, externalID string) (uuid.UUID, bool, error) {
+	id, ok := f.subscriptions[externalID]
+	return id, ok, nil
+}
+
+func (f *fakeStore) UpdateSubscription(_ context.Context, _, id uuid.UUID, _ SubscriptionInput) error {
+	f.updatedSubs = append(f.updatedSubs, id)
+	return nil
+}
+
+func (f *fakeStore) ListSubscriptions(_ context.Context, _ uuid.UUID) ([]existingSubscription, error) {
+	return f.list, nil
+}
+
+func (f *fakeStore) CancelSubscription(_ context.Context, _, id uuid.UUID, _ string) error {
+	f.canceledSubs = append(f.canceledSubs, id)
+	return nil
+}
+
+func TestUpdateMode_UpdatesExistingEntities(t *testing.T) {
+	fs := newFakeStore()
+	custID, planID, subID := uuid.New(), uuid.New(), uuid.New()
+	fs.customers["jane@example.com"] = custID
+	fs.plans["PRO-USD"] = existingPlan{ID: planID, Name: "Old Pro"}
+	fs.subscriptions["sub_ext_1"] = subID
+
+	file := validFile()
+	im := &importer{store: fs, update: true}
+
+	ctx := context.Background()
+	im.importPlans(ctx, file.Plans)
+	im.importCustomers(ctx, file.Customers)
+	im.importSubscriptions(ctx, file.Subscriptions)
+
+	if im.updated != 3 {
+		t.Fatalf("updated = %d, want 3", im.updated)
+	}
+	if im.created != 0 || im.skipped != 0 || im.failed != 0 {
+		t.Fatalf("created/skipped/failed = %d/%d/%d, want 0/0/0", im.created, im.skipped, im.failed)
+	}
+	if len(fs.updatedCustomers) != 1 || len(fs.updatedPlans) != 1 || len(fs.updatedSubs) != 1 {
+		t.Fatalf("writes = cust:%d plan:%d sub:%d, want 1/1/1",
+			len(fs.updatedCustomers), len(fs.updatedPlans), len(fs.updatedSubs))
+	}
+}
+
+func TestUpdateMode_DryRunDoesNotWrite(t *testing.T) {
+	fs := newFakeStore()
+	fs.customers["jane@example.com"] = uuid.New()
+	fs.plans["PRO-USD"] = existingPlan{ID: uuid.New(), Name: "Old Pro"}
+	fs.subscriptions["sub_ext_1"] = uuid.New()
+
+	file := validFile()
+	im := &importer{store: fs, update: true, dryRun: true}
+
+	ctx := context.Background()
+	im.importPlans(ctx, file.Plans)
+	im.importCustomers(ctx, file.Customers)
+	im.importSubscriptions(ctx, file.Subscriptions)
+
+	if im.updated != 3 {
+		t.Fatalf("updated (would-update) = %d, want 3", im.updated)
+	}
+	if len(fs.updatedCustomers)+len(fs.updatedPlans)+len(fs.updatedSubs) != 0 {
+		t.Fatalf("dry-run wrote %d records, want 0",
+			len(fs.updatedCustomers)+len(fs.updatedPlans)+len(fs.updatedSubs))
+	}
+}
+
+func TestUpdateMode_OffSkipsExisting(t *testing.T) {
+	fs := newFakeStore()
+	fs.plans["PRO-USD"] = existingPlan{ID: uuid.New(), Name: "Old Pro"}
+
+	im := &importer{store: fs} // update flag off
+	im.importPlans(context.Background(), validFile().Plans)
+
+	if im.skipped != 1 || im.updated != 0 {
+		t.Fatalf("skipped/updated = %d/%d, want 1/0", im.skipped, im.updated)
+	}
+	if len(fs.updatedPlans) != 0 {
+		t.Fatalf("expected no writes with -update off, got %d", len(fs.updatedPlans))
+	}
+}
+
+func TestCancelMissing_CancelsImportOriginOnly(t *testing.T) {
+	fs := newFakeStore()
+	importOrigin := existingSubscription{ID: uuid.New(), ReferenceID: "sub_gone", Status: "active"}
+	dashboardOrigin := existingSubscription{ID: uuid.New(), ReferenceID: "", Status: "active"}
+	keep := existingSubscription{ID: uuid.New(), ReferenceID: "sub_ext_1", Status: "active"}
+	fs.list = []existingSubscription{importOrigin, dashboardOrigin, keep}
+
+	// The file lists sub_ext_1 (kept); sub_gone is absent; dashboard sub has no external_id.
+	im := &importer{store: fs, cancelMissing: true}
+	im.cancelMissingSubscriptions(context.Background(), validFile().Subscriptions)
+
+	if im.canceled != 1 {
+		t.Fatalf("canceled = %d, want 1", im.canceled)
+	}
+	if len(fs.canceledSubs) != 1 || fs.canceledSubs[0] != importOrigin.ID {
+		t.Fatalf("expected only the import-origin sub canceled, got %v", fs.canceledSubs)
+	}
+}
+
+func TestCancelMissing_DryRunReportsWithoutWriting(t *testing.T) {
+	fs := newFakeStore()
+	fs.list = []existingSubscription{
+		{ID: uuid.New(), ReferenceID: "sub_gone", Status: "active"},
+		{ID: uuid.New(), ReferenceID: "", Status: "active"}, // dashboard-origin
+	}
+
+	im := &importer{store: fs, cancelMissing: true, dryRun: true}
+	im.cancelMissingSubscriptions(context.Background(), validFile().Subscriptions)
+
+	if im.canceled != 1 {
+		t.Fatalf("would-cancel = %d, want 1", im.canceled)
+	}
+	if len(fs.canceledSubs) != 0 {
+		t.Fatalf("dry-run canceled %d subs, want 0", len(fs.canceledSubs))
+	}
+}
+
+func TestCancelMissing_RefusesWhenFileHasNoSubscriptions(t *testing.T) {
+	fs := newFakeStore()
+	fs.list = []existingSubscription{
+		{ID: uuid.New(), ReferenceID: "sub_gone", Status: "active"},
+	}
+
+	im := &importer{store: fs, cancelMissing: true}
+	im.cancelMissingSubscriptions(context.Background(), nil)
+
+	if im.canceled != 0 || len(fs.canceledSubs) != 0 {
+		t.Fatalf("expected refusal to cancel with empty file, canceled=%d writes=%d", im.canceled, len(fs.canceledSubs))
 	}
 }
