@@ -2,40 +2,107 @@ package tax
 
 import (
 	"context"
+	"errors"
 
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
-// EU VAT standard rates by country (as of 2024)
+// euVATRates holds the STANDARD VAT rate for every EU member state (plus GB
+// for post-Brexit reference). One entry per country, kept in a single
+// maintainable table so rate changes are a one-line edit.
+//
+// As of: 2026-01 (verified against European Commission / Tax Foundation
+// 2026 VAT tables). All 27 EU member states are present; the rate is the
+// headline STANDARD rate only.
+//
+// SCOPE: reduced, super-reduced, and parking rates are intentionally OUT OF
+// SCOPE — this table is standard-rate-only. Categorising a supply into a
+// reduced band requires product-level classification the billing engine does
+// not carry, so digital-service SaaS invoices always fall under the standard
+// rate here.
+//
+// Recent standard-rate changes already reflected: EE 22->24% (Jul 2025),
+// FI 24->25.5% (Sep 2024), SK 20->23% (Jan 2025), RO 19->21% (Aug 2025).
 var euVATRates = map[string]float64{
-	"AT": 0.20, // Austria
-	"BE": 0.21, // Belgium
-	"BG": 0.20, // Bulgaria
-	"HR": 0.25, // Croatia
-	"CY": 0.19, // Cyprus
-	"CZ": 0.21, // Czech Republic
-	"DK": 0.25, // Denmark
-	"EE": 0.22, // Estonia
-	"FI": 0.24, // Finland
-	"FR": 0.20, // France
-	"DE": 0.19, // Germany
-	"GR": 0.24, // Greece
-	"HU": 0.27, // Hungary
-	"IE": 0.23, // Ireland
-	"IT": 0.22, // Italy
-	"LV": 0.21, // Latvia
-	"LT": 0.21, // Lithuania
-	"LU": 0.17, // Luxembourg
-	"MT": 0.18, // Malta
-	"NL": 0.21, // Netherlands
-	"PL": 0.23, // Poland
-	"PT": 0.23, // Portugal
-	"RO": 0.19, // Romania
-	"SK": 0.20, // Slovakia
-	"SI": 0.22, // Slovenia
-	"ES": 0.21, // Spain
-	"SE": 0.25, // Sweden
-	"GB": 0.20, // UK (post-Brexit, for reference)
+	"AT": 0.20,  // Austria
+	"BE": 0.21,  // Belgium
+	"BG": 0.20,  // Bulgaria
+	"HR": 0.25,  // Croatia
+	"CY": 0.19,  // Cyprus
+	"CZ": 0.21,  // Czech Republic
+	"DK": 0.25,  // Denmark
+	"EE": 0.24,  // Estonia (24% since 1 Jul 2025)
+	"FI": 0.255, // Finland (25.5% since 1 Sep 2024)
+	"FR": 0.20,  // France
+	"DE": 0.19,  // Germany
+	"GR": 0.24,  // Greece
+	"HU": 0.27,  // Hungary (highest standard rate in the EU)
+	"IE": 0.23,  // Ireland
+	"IT": 0.22,  // Italy
+	"LV": 0.21,  // Latvia
+	"LT": 0.21,  // Lithuania
+	"LU": 0.17,  // Luxembourg (lowest standard rate in the EU)
+	"MT": 0.18,  // Malta
+	"NL": 0.21,  // Netherlands
+	"PL": 0.23,  // Poland
+	"PT": 0.23,  // Portugal
+	"RO": 0.21,  // Romania (21% since 1 Aug 2025)
+	"SK": 0.23,  // Slovakia (23% since 1 Jan 2025)
+	"SI": 0.22,  // Slovenia
+	"ES": 0.21,  // Spain
+	"SE": 0.25,  // Sweden
+	"GB": 0.20,  // United Kingdom — NOT EU (post-Brexit reference only)
+}
+
+// VAT-number validation contract. Mirrors the SalesTaxProvider port: a narrow
+// interface the EU-VAT path depends on, with a concrete implementation (VIES)
+// living under internal/adapter/vatprovider. Sentinel errors live here (not in
+// the adapter) so the resolver can classify failures — definitive-invalid vs.
+// service-outage — without importing the adapter.
+var (
+	// ErrVATInvalidFormat: the number failed local per-country format
+	// validation and was never sent to the network. Treat as definitively
+	// not eligible for reverse charge.
+	ErrVATInvalidFormat = errors.New("vat: number failed local format validation")
+	// ErrVATInvalidInput: the validation service rejected the input
+	// (unsupported country code / malformed number). Also definitive.
+	ErrVATInvalidInput = errors.New("vat: validation service rejected input")
+	// ErrVATUnavailable: network failure or the member-state registry was
+	// unreachable (5xx / MS_UNAVAILABLE) after the single retry. The
+	// validity is UNKNOWN — callers should degrade, not deny.
+	ErrVATUnavailable = errors.New("vat: validation service unavailable")
+)
+
+// VATValidator is the narrow port a VAT-number validation service (VIES, ...)
+// must satisfy. Implementations live under internal/adapter/vatprovider.
+type VATValidator interface {
+	// Name identifies the validator ("vies") for invoice notes and logs.
+	Name() string
+	// ValidateVAT format-checks locally first, then confirms the number is
+	// registered. countryCode is the ISO 3166-1 alpha-2 member-state code;
+	// vatNumber is the national number WITHOUT the country prefix. Errors are
+	// one of the sentinels above (via errors.Is).
+	ValidateVAT(ctx context.Context, countryCode, vatNumber string) (*VATValidation, error)
+}
+
+// VATValidation is a validator's answer for one VAT number.
+type VATValidation struct {
+	Valid   bool   // Whether the number is registered and active
+	Name    string // Registered trader name if disclosed ("" or "---" otherwise)
+	Address string // Registered address if disclosed
+}
+
+// IsEUVATCountry reports whether cc is an EU member state for VAT purposes
+// (GB excluded — it left the EU VAT area post-Brexit). Exported so the tax
+// resolver can identify intra-EU cross-border reverse-charge candidates
+// without duplicating the country table.
+func IsEUVATCountry(cc string) bool { return isEU(cc) }
+
+// StandardVATRate returns the standard VAT rate for cc and whether cc is in
+// the table. Exported for tests and callers that need the raw rate.
+func StandardVATRate(cc string) (float64, bool) {
+	r, ok := euVATRates[cc]
+	return r, ok
 }
 
 // EUVATEngine handles EU VAT calculations

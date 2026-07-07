@@ -335,6 +335,165 @@ func TestResolveInvoiceTax_EUSeller_CrossBorderB2B_ReverseCharge(t *testing.T) {
 	}
 }
 
+// mockVATValidator implements tax.VATValidator for resolver tests.
+type mockVATValidator struct {
+	calls  int
+	gotCC  string
+	gotNum string
+	valid  bool
+	name   string
+	err    error
+}
+
+func (m *mockVATValidator) Name() string { return "mockvies" }
+
+func (m *mockVATValidator) ValidateVAT(ctx context.Context, cc, num string) (*tax.VATValidation, error) {
+	m.calls++
+	m.gotCC, m.gotNum = cc, num
+	if m.err != nil {
+		return nil, m.err
+	}
+	return &tax.VATValidation{Valid: m.valid, Name: m.name}, nil
+}
+
+func euB2BCustomer(country, vatNumber string) *domain.Customer {
+	c := &domain.Customer{
+		ID:             uuid.New(),
+		BillingAddress: domain.BillingAddress{Country: country},
+		TaxType:        "business",
+	}
+	if vatNumber != "" {
+		c.TaxID = domain.StringPtr(vatNumber)
+	}
+	return c
+}
+
+func TestResolveInvoiceTax_EU_VIESValid_ReverseCharge(t *testing.T) {
+	val := &mockVATValidator{valid: true, name: "ACME SARL"}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+
+	if res.Total != 0 || res.TaxType != "vat_reverse_charge" {
+		t.Errorf("got Total=%d Type=%q, want 0 / vat_reverse_charge", res.Total, res.TaxType)
+	}
+	if val.calls != 1 || val.gotCC != "FR" || val.gotNum != "XX123456789" {
+		t.Errorf("validator saw calls=%d cc=%q num=%q, want 1 / FR / XX123456789", val.calls, val.gotCC, val.gotNum)
+	}
+	if !strings.Contains(res.Note, "validated") || !strings.Contains(res.Note, "ACME SARL") {
+		t.Errorf("Note = %q, want validation confirmation with trader name", res.Note)
+	}
+}
+
+func TestResolveInvoiceTax_EU_VIESInvalid_ChargesVAT(t *testing.T) {
+	val := &mockVATValidator{valid: false}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+
+	// Not eligible for reverse charge -> treated as B2C cross-border, so the
+	// buyer-country (FR, 20%) VAT applies and the invoice is still produced.
+	if res.Total != 2000 || res.TaxType != "vat" {
+		t.Errorf("got Total=%d Type=%q, want 2000 / vat (FR 20%%)", res.Total, res.TaxType)
+	}
+	if !strings.Contains(res.Note, "not valid") {
+		t.Errorf("Note = %q, want an invalid-VAT explanation", res.Note)
+	}
+}
+
+func TestResolveInvoiceTax_EU_VIESUnavailable_DegradesToReverseCharge(t *testing.T) {
+	val := &mockVATValidator{err: tax.ErrVATUnavailable}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+
+	// A VIES outage must never fail the invoice: degrade to presence-based
+	// reverse charge with an auditable note.
+	if res.Total != 0 || res.TaxType != "vat_reverse_charge" {
+		t.Errorf("got Total=%d Type=%q, want 0 / vat_reverse_charge (degraded)", res.Total, res.TaxType)
+	}
+	if !strings.Contains(res.Note, "unavailable") {
+		t.Errorf("Note = %q, want an outage note", res.Note)
+	}
+}
+
+func TestResolveInvoiceTax_EU_VIESFormatError_ChargesVAT(t *testing.T) {
+	val := &mockVATValidator{err: tax.ErrVATInvalidFormat}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+
+	if res.Total != 2000 || res.TaxType != "vat" {
+		t.Errorf("got Total=%d Type=%q, want 2000 / vat", res.Total, res.TaxType)
+	}
+	if !strings.Contains(res.Note, "failed validation") {
+		t.Errorf("Note = %q, want a validation-failure note", res.Note)
+	}
+}
+
+func TestResolveInvoiceTax_EU_B2BNoVATNumber_ChargesVAT(t *testing.T) {
+	val := &mockVATValidator{valid: true}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	// Business buyer (by tax_type) but no VAT number to validate.
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", ""), "EUR", 10000)
+
+	if res.Total != 2000 || res.TaxType != "vat" {
+		t.Errorf("got Total=%d Type=%q, want 2000 / vat (no number -> VAT charged)", res.Total, res.TaxType)
+	}
+	if val.calls != 0 {
+		t.Errorf("validator calls = %d, want 0 (nothing to validate)", val.calls)
+	}
+}
+
+func TestResolveInvoiceTax_EU_VIESEnabled_DomesticB2B_NotValidated(t *testing.T) {
+	// Domestic (DE seller, DE buyer) is not a cross-border reverse-charge
+	// candidate, so VIES is never consulted and domestic VAT applies.
+	val := &mockVATValidator{valid: true}
+	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("DE", "DE123456789"), "EUR", 10000)
+
+	if res.Total != 1900 || res.TaxType != "vat" {
+		t.Errorf("got Total=%d Type=%q, want 1900 / vat (DE 19%%)", res.Total, res.TaxType)
+	}
+	if val.calls != 0 {
+		t.Errorf("validator calls = %d, want 0 for a domestic sale", val.calls)
+	}
+}
+
+func TestResolveInvoiceTax_EU_VIESDisabled_PresenceBasedUnchanged(t *testing.T) {
+	// No validator wired: cross-border B2B with a VAT number present still gets
+	// reverse charge (historical presence-based behaviour is preserved).
+	r := NewTaxResolver(nil, "DE", "")
+
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+
+	if res.Total != 0 || res.TaxType != "vat_reverse_charge" {
+		t.Errorf("got Total=%d Type=%q, want 0 / vat_reverse_charge", res.Total, res.TaxType)
+	}
+}
+
+func TestSplitEUVATNumber(t *testing.T) {
+	cases := []struct {
+		raw, fallback string
+		wantCC, wantN string
+	}{
+		{"DE123456789", "FR", "DE", "123456789"},
+		{"de 123.456-789", "FR", "DE", "123456789"},
+		{"EL123456789", "IT", "GR", "123456789"}, // EL -> ISO GR
+		{"123456789", "FR", "FR", "123456789"},   // no prefix -> fallback
+		{"", "FR", "FR", ""},
+		{"US123456789", "FR", "FR", "US123456789"}, // non-EU prefix not stripped
+	}
+	for _, c := range cases {
+		gotCC, gotN := splitEUVATNumber(c.raw, c.fallback)
+		if gotCC != c.wantCC || gotN != c.wantN {
+			t.Errorf("splitEUVATNumber(%q,%q) = (%q,%q), want (%q,%q)", c.raw, c.fallback, gotCC, gotN, c.wantCC, c.wantN)
+		}
+	}
+}
+
 // --- Fallbacks ---
 
 func TestResolveInvoiceTax_ConfigLookupError_EnvFallback(t *testing.T) {

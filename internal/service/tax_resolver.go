@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 
@@ -45,6 +46,7 @@ type TaxResolver struct {
 	defaultCountry string
 	defaultState   string
 	salesTax       tax.SalesTaxProvider // optional; nil keeps the US engine a 0% stub
+	vatValidator   tax.VATValidator     // optional; nil keeps EU reverse charge presence-based
 	logger         *slog.Logger
 }
 
@@ -75,6 +77,17 @@ func (r *TaxResolver) WithSalesTaxProvider(p tax.SalesTaxProvider) *TaxResolver 
 	if p != nil {
 		r.salesTax = tax.NewCachedSalesTaxProvider(p, tax.DefaultSalesTaxRateTTL)
 	}
+	return r
+}
+
+// WithVATValidator wires a live EU VAT-number validator (VIES) into the
+// resolver and returns the resolver for chaining. When set, an intra-EU
+// cross-border B2B invoice only gets reverse-charge treatment if the buyer's
+// VAT number VALIDATES; an invalid number falls back to charging VAT. A VIES
+// outage never fails the invoice — it degrades to the presence-based behaviour
+// with an auditable note. nil is a no-op (reverse charge stays presence-based).
+func (r *TaxResolver) WithVATValidator(v tax.VATValidator) *TaxResolver {
+	r.vatValidator = v
 	return r
 }
 
@@ -222,20 +235,129 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 }
 
 // resolveEUVAT applies EU/UK VAT. Reverse charge for B2B cross-border and
-// zero-rating of exports are decided by the engine.
+// zero-rating of exports are decided by the engine. When a VIES validator is
+// wired, the buyer's VAT number is checked before an intra-EU cross-border
+// B2B invoice gets reverse-charge treatment (see reverseChargeDecision).
 func (r *TaxResolver) resolveEUVAT(ctx context.Context, engine port.TaxEngine, sellerCountry string, customer *domain.Customer, currency string, amount int64) InvoiceTax {
+	buyerCountry := normalizeCountry(customer.BillingAddress.Country)
+	isBusiness := isBusinessBuyer(customer)
+
+	// Gate reverse charge on VIES validation for intra-EU cross-border B2B.
+	// The decision only ever narrows a would-be reverse charge to charging
+	// VAT (isBusiness->false) or annotates it; it never fails the invoice.
+	var extraNote string
+	if isBusiness {
+		isBusiness, extraNote = r.reverseChargeDecision(ctx, sellerCountry, buyerCountry, customer)
+	}
+
 	calc, err := engine.CalculateTax(ctx, &port.TaxRequest{
 		Amount:        amount,
 		Currency:      currency,
-		BuyerCountry:  normalizeCountry(customer.BillingAddress.Country),
+		BuyerCountry:  buyerCountry,
 		SellerCountry: sellerCountry,
-		IsBusiness:    isBusinessBuyer(customer),
+		IsBusiness:    isBusiness,
 	})
 	if err != nil || calc == nil {
 		r.logger.Warn("VAT calculation failed; invoicing without tax", "error", err)
 		return InvoiceTax{}
 	}
-	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: calc.Note}
+	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: joinNotes(calc.Note, extraNote)}
+}
+
+// reverseChargeDecision returns the IsBusiness flag the VAT engine should see
+// and an optional note explaining any VIES-driven override. It only acts on
+// intra-EU cross-border B2B invoices (the reverse-charge candidates); every
+// other case is returned unchanged as a business buyer.
+//
+// Behaviour when a validator is wired:
+//   - VAT number validates      -> reverse charge (business=true), note records VIES confirmation
+//   - VAT number invalid/format -> charge VAT     (business=false), note records the failure
+//   - VIES unavailable/outage    -> degrade to presence-based reverse charge (business=true) with a note
+//
+// With no validator wired the buyer is left as a business (historical
+// presence-based behaviour), so the B2B/B2C matrix is unchanged when VIES is
+// disabled.
+func (r *TaxResolver) reverseChargeDecision(ctx context.Context, sellerCountry, buyerCountry string, customer *domain.Customer) (isBusiness bool, note string) {
+	// Not an intra-EU cross-border reverse-charge candidate: leave as-is.
+	if r.vatValidator == nil ||
+		buyerCountry == "" || buyerCountry == sellerCountry ||
+		!tax.IsEUVATCountry(buyerCountry) {
+		return true, ""
+	}
+
+	cc, num := splitEUVATNumber(domain.PtrToString(customer.TaxID), buyerCountry)
+	if num == "" {
+		// B2B buyer with no VAT number to check: cannot grant reverse charge
+		// under validation. Charge VAT.
+		return false, "no VAT number supplied; reverse charge not applied (VAT charged)"
+	}
+
+	res, err := r.vatValidator.ValidateVAT(ctx, cc, num)
+	switch {
+	case errors.Is(err, tax.ErrVATUnavailable):
+		// Never fail the invoice on a VIES outage: degrade to presence-based.
+		r.logger.Warn("VIES unavailable; applying presence-based reverse charge",
+			"validator", r.vatValidator.Name(), "country", cc, "error", err)
+		return true, "reverse charge applied on VAT-number presence — " + r.vatValidator.Name() + " unavailable, number unverified (needs review)"
+	case err != nil:
+		// Format/input rejection: definitively not eligible. Charge VAT.
+		r.logger.Info("VAT number failed validation; charging VAT",
+			"validator", r.vatValidator.Name(), "country", cc, "error", err)
+		return false, "buyer VAT number failed validation via " + r.vatValidator.Name() + "; VAT charged"
+	case res != nil && res.Valid:
+		note = "reverse charge applied; buyer VAT number validated via " + r.vatValidator.Name()
+		if res.Name != "" {
+			note += " (" + res.Name + ")"
+		}
+		return true, note
+	default:
+		// Reached the registry and it says the number is not registered.
+		return false, "buyer VAT number not valid per " + r.vatValidator.Name() + "; VAT charged"
+	}
+}
+
+// splitEUVATNumber normalises a customer VAT identifier and splits off any
+// leading ISO country prefix. "DE123456789" -> ("DE", "123456789"); a bare
+// "123456789" -> (fallbackCountry, "123456789"). Spaces, dots, and dashes are
+// stripped. The VIES "EL" code for Greece is mapped back to ISO "GR". An empty
+// or too-short input returns an empty number.
+func splitEUVATNumber(raw, fallbackCountry string) (cc, number string) {
+	var b strings.Builder
+	for _, r := range strings.ToUpper(raw) {
+		if r == ' ' || r == '.' || r == '-' || r == '\t' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	s := b.String()
+	if s == "" {
+		return fallbackCountry, ""
+	}
+	if len(s) >= 3 && isAlpha(s[0]) && isAlpha(s[1]) {
+		iso := s[:2]
+		if iso == "EL" {
+			iso = "GR"
+		}
+		if tax.IsEUVATCountry(iso) {
+			return iso, s[2:]
+		}
+	}
+	return fallbackCountry, s
+}
+
+func isAlpha(b byte) bool { return b >= 'A' && b <= 'Z' }
+
+// joinNotes concatenates two tax notes, skipping empties, so an engine note
+// and a resolver override note read as one line on the invoice.
+func joinNotes(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	default:
+		return a + "; " + b
+	}
 }
 
 // isBusinessBuyer reports whether the customer is a business (B2B) buyer.

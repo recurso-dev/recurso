@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 	"github.com/swapnull-in/recur-so/internal/adapter/taxprovider"
 	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/adapter/tigerbeetle"
+	"github.com/swapnull-in/recur-so/internal/adapter/vatprovider"
 	"github.com/swapnull-in/recur-so/internal/adapter/vault"
 	"github.com/swapnull-in/recur-so/internal/adapter/worker"
 	"github.com/swapnull-in/recur-so/internal/core/port"
@@ -50,6 +52,19 @@ func getEnvDefault(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// getEnvBool reads a boolean feature flag, accepting the usual truthy spellings
+// ("true", "1", "yes", "on"). Anything else (including unset) yields fallback.
+func getEnvBool(key string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return fallback
+	}
 }
 
 func main() {
@@ -246,6 +261,18 @@ func main() {
 		log.Println("US sales tax: TaxJar provider enabled")
 	} else {
 		log.Println("US sales tax: 0% stub (TAXJAR_API_KEY not set)")
+	}
+	// EU VAT-number validation — VIES when enabled. With it wired, intra-EU
+	// cross-border B2B reverse charge is only granted when the buyer's VAT
+	// number validates; a VIES outage degrades to the presence-based behaviour
+	// (never fails an invoice). Enabled by VIES_ENABLED=true, or implicitly
+	// when VIES_API_URL is set (handy for pointing tests at a stub server).
+	viesURL := os.Getenv("VIES_API_URL")
+	if getEnvBool("VIES_ENABLED", false) || viesURL != "" {
+		taxResolver = taxResolver.WithVATValidator(vatprovider.NewVIESValidator(viesURL))
+		log.Println("EU VAT validation: VIES enabled")
+	} else {
+		log.Println("EU VAT validation: disabled (reverse charge is presence-based)")
 	}
 
 	// 4. Initialize Core Services (Invoice)
