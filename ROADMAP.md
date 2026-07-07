@@ -62,7 +62,7 @@ can sign off on the output.
       the real Stripe/Razorpay refund APIs with over-refund guards, honest
       manual_required/refund_failed states, gateway payment ids captured
       from payment webhooks, and a Refunds-vs-Cash ledger reversal.
-- [ ] **Refund webhook consumption** — pending refunds don't auto-advance
+- [x] **Refund webhook consumption** — pending refunds don't auto-advance
       to processed (charge.refunded / refund.processed not consumed); and
       mandate-debit payments store an order id, not the pay_* id refunds
       need.
@@ -102,7 +102,7 @@ can sign off on the output.
 - [ ] Plan-change proration UX in the dashboard (backend supports it).
 - [ ] Trial flows end-to-end review (trialing status exists; verify
       conversion, expiry emails, dunning interplay).
-- [ ] FX-normalized reporting (MRR across currencies uses real rates).
+- [x] FX-normalized reporting (MRR across currencies uses real rates).
 - [ ] Bulk operations in the importer (update mode, cancel-sync mode).
 - [ ] Customer portal: payment-method update and invoice dispute flows.
 
@@ -115,23 +115,23 @@ can sign off on the output.
 - [ ] **Make GHCR image public** 🔒 (one toggle in GitHub package settings).
 - [x] OpenAPI spec covers the full surface: 109 paths / 137 operations,
       zero missing registered routes, redocly-clean, minimum-path test.
-- [ ] Wire Mintlify API playground to the served OpenAPI spec.
-- [ ] Generated Python SDK from OpenAPI (then Go).
+- [x] Wire Mintlify API playground to the served OpenAPI spec.
+- [x] Generated Python SDK from OpenAPI. (Go SDK still pending.)
 - [ ] Postman collection (export from OpenAPI, link in docs).
-- [ ] One-click deploy buttons: Railway, Render, DigitalOcean.
-- [ ] Devcontainer + Codespaces config.
-- [ ] `examples/` — minimal Next.js SaaS starter wired to Recurso
+- [x] One-click deploy buttons: Railway, Render, DigitalOcean.
+- [x] Devcontainer + Codespaces config.
+- [x] `examples/` — minimal Next.js SaaS starter wired to Recurso
       (checkout, webhook handler, portal link).
 - [ ] `make dev` hot reload (air), pre-commit hook (gofmt + golangci-lint),
       GitHub issue/PR templates.
-- [ ] Quickstart telemetry: none. Add opt-in, privacy-respecting usage ping
+- [x] Quickstart telemetry: none. Add opt-in, privacy-respecting usage ping
       (self-host) so activation is measurable.
 
 ## Track 4 — Recurso Cloud
 
 - [ ] Real waitlist form on the website (replaces mailto) 🔒 (needs a
       form backend / inbox decision).
-- [ ] Manual provisioning runbook: single-tenant instance per customer;
+- [x] Manual provisioning runbook: single-tenant instance per customer;
       onboard the first ~10 by hand. Runbook written
       (docs/cloud-provisioning-runbook.md — Docker Compose per VM); the
       by-hand onboarding is the remaining work.
@@ -154,7 +154,7 @@ can sign off on the output.
       `cmd/import`; free in exchange for feedback, logo, case study).
 - [ ] Launch sequence: first design partner live → Show HN → Product Hunt
       → r/selfhosted → Indian SaaS communities (SaaSBoomi).
-- [ ] Comparison/SEO pages: /vs/chargebee, /vs/stripe-billing, /vs/lago.
+- [x] Comparison/SEO pages: /vs/chargebee, /vs/stripe-billing, /vs/lago.
 - [ ] Community: Discord, public roadmap (this file), monthly changelog post.
 - [ ] Pricing finalization and the bootstrap-vs-preseed decision once live
       billing volume exists.
@@ -173,7 +173,7 @@ can sign off on the output.
 - [ ] **EU VAT provider** — the static rate table needs either a
       maintenance process or a provider integration (Anrok/Avalara have
       EU coverage; the TaxJar adapter pattern generalizes).
-- [ ] **Comparison pages vs open-source peers** — /vs/lago, /vs/flexprice,
+- [x] **Comparison pages vs open-source peers** — /vs/lago, /vs/flexprice,
       /vs/killbill (MIT-vs-AGPLv3 and the TigerBeetle ledger are the
       differentiators the evaluation highlights).
 - Validated by the evaluation and already true in code: RBI e-mandate
