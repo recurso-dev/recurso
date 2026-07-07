@@ -54,7 +54,7 @@ function Gifts() {
       setLoading(true);
       setError(null);
       const response = await endpoints.getGifts();
-      setGifts(response.data?.data || response.data || []);
+      setGifts(Array.isArray(response.data?.data) ? response.data.data : []);
     } catch (err) {
       console.error("Error fetching gifts:", err);
       setError(err?.response?.data?.error?.message || err?.message || "Failed to load gifts");

@@ -53,7 +53,7 @@ function Referrals() {
       setLoading(true);
       setError(null);
       const response = await endpoints.getReferrals();
-      setReferrals(response.data?.data || response.data || []);
+      setReferrals(Array.isArray(response.data?.data) ? response.data.data : []);
     } catch (err) {
       console.error("Error fetching referrals:", err);
       setError(
