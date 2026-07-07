@@ -58,10 +58,15 @@ export default function CreatePlan() {
     if (!validate()) return;
     setLoading(true);
     try {
-      // Payload is identical to the original: price converted to minor units (cents).
+      // Map form fields to the API contract: amount (minor units),
+      // interval_unit + interval_count.
       const payload = {
-        ...formData,
-        price: Math.round(parseFloat(formData.price) * 100),
+        name: formData.name,
+        code: formData.code,
+        currency: formData.currency,
+        amount: Math.round(parseFloat(formData.price) * 100),
+        interval_unit: formData.interval,
+        interval_count: 1,
       };
       await endpoints.createPlan(payload);
       toast.success("Plan created");
