@@ -56,6 +56,10 @@ export const endpoints = {
   updateSubscription: (id, data) => api.put(`/subscriptions/${id}`, data),
   previewPlanChange: (id, planId) =>
     api.get(`/subscriptions/${id}/preview-change`, { params: { plan_id: planId } }),
+  getSubscriptionAddons: (id) => api.get(`/subscriptions/${id}/addons`),
+  addSubscriptionAddon: (id, data) => api.post(`/subscriptions/${id}/addons`, data),
+  removeSubscriptionAddon: (id, addonId) =>
+    api.delete(`/subscriptions/${id}/addons/${addonId}`),
   cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),
   pauseSubscription: (id) => api.post(`/subscriptions/${id}/pause`),
   resumeSubscription: (id) => api.post(`/subscriptions/${id}/resume`),

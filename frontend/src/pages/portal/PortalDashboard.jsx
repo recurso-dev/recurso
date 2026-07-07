@@ -9,7 +9,7 @@ import {
   Gift,
   Loader2,
   LogOut,
-  MessageSquareWarning,
+  MessageSquare,
   Receipt,
   Wallet,
 } from "lucide-react";
@@ -434,7 +434,7 @@ const PortalDashboard = () => {
                               disabled={dispute?.status === "open"}
                               className="inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <MessageSquareWarning className="h-3.5 w-3.5" />
+                              <MessageSquare className="h-3.5 w-3.5" />
                               {dispute?.status === "open"
                                 ? "Query raised"
                                 : "Query invoice"}

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Pause, Play, Check, RotateCw, ArrowLeftRight } from "lucide-react";
+import { Pause, Play, Check, RotateCw, ArrowLeftRight, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { endpoints } from "../../lib/api";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -35,14 +36,66 @@ export default function SubscriptionDetail({
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [addons, setAddons] = useState([]);
+  const [addonPlanId, setAddonPlanId] = useState("");
+  const [addonQty, setAddonQty] = useState("1");
+  const [addonBusy, setAddonBusy] = useState(false);
 
+  // Load plans + add-ons whenever the detail opens.
   useEffect(() => {
-    if (!changing || plans.length) return;
+    if (!isOpen || !subscription) return;
+    if (!plans.length) {
+      endpoints
+        .getPlans({ limit: 100 })
+        .then((res) => setPlans(res.data?.data || []))
+        .catch(() => toast.error("Failed to load plans"));
+    }
     endpoints
-      .getPlans({ limit: 100 })
-      .then((res) => setPlans(res.data?.data || []))
-      .catch(() => toast.error("Failed to load plans"));
-  }, [changing, plans.length]);
+      .getSubscriptionAddons(subscription.id)
+      .then((res) => setAddons(res.data?.data || []))
+      .catch(() => {});
+  }, [isOpen, subscription, plans.length]);
+
+  const refreshAddons = () =>
+    endpoints
+      .getSubscriptionAddons(subscription.id)
+      .then((res) => setAddons(res.data?.data || []))
+      .catch(() => {});
+
+  const addAddon = async () => {
+    if (!addonPlanId) return;
+    setAddonBusy(true);
+    try {
+      await endpoints.addSubscriptionAddon(subscription.id, {
+        plan_id: addonPlanId,
+        quantity: parseInt(addonQty, 10) || 1,
+      });
+      toast.success("Add-on attached — bills from the next invoice");
+      setAddonPlanId("");
+      setAddonQty("1");
+      await refreshAddons();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.error?.message || "Failed to add add-on"
+      );
+    } finally {
+      setAddonBusy(false);
+    }
+  };
+
+  const removeAddon = async (addonId) => {
+    setAddonBusy(true);
+    try {
+      await endpoints.removeSubscriptionAddon(subscription.id, addonId);
+      await refreshAddons();
+    } catch (err) {
+      toast.error("Failed to remove add-on");
+    } finally {
+      setAddonBusy(false);
+    }
+  };
+
+  const planName2 = (id) => plans.find((p) => p.id === id)?.name || id.slice(0, 8);
 
   useEffect(() => {
     if (!newPlanId || !subscription) return;
@@ -324,6 +377,91 @@ export default function SubscriptionDetail({
                 currency
               )}`
             )}
+          </div>
+
+          {/* Add-ons */}
+          <div className="border-t border-border pt-6">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Add-ons</h3>
+              <span className="text-xs text-muted-foreground">
+                Billed from the next invoice
+              </span>
+            </div>
+
+            {addons.length > 0 ? (
+              <ul className="mb-4 divide-y divide-border rounded-lg border border-border">
+                {addons.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
+                    <span className="text-foreground">
+                      {planName2(a.plan_id)}
+                      {a.quantity > 1 && (
+                        <span className="text-muted-foreground"> × {a.quantity}</span>
+                      )}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeAddon(a.id)}
+                      disabled={addonBusy}
+                      className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                      aria-label="Remove add-on"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mb-4 text-sm text-muted-foreground">No add-ons attached.</p>
+            )}
+
+            <div className="flex items-end gap-2">
+              <div className="flex-1">
+                <Select value={addonPlanId} onValueChange={setAddonPlanId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Add an add-on plan" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {plans
+                      .filter(
+                        (p) =>
+                          p.id !== subscription.plan_id &&
+                          !addons.some((a) => a.plan_id === p.id)
+                      )
+                      .map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {p.prices?.[0]
+                            ? ` — ${formatCurrency(
+                                p.prices[0].amount,
+                                p.prices[0].currency
+                              )}`
+                            : ""}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Input
+                type="number"
+                min="1"
+                value={addonQty}
+                onChange={(e) => setAddonQty(e.target.value)}
+                className="w-16"
+                aria-label="Quantity"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={addAddon}
+                disabled={addonBusy || !addonPlanId}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Add
+              </Button>
+            </div>
           </div>
 
           {/* Timeline — derived from the subscription's real dates
