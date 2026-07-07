@@ -13,6 +13,7 @@ import CreateSubscription from './pages/CreateSubscription'
 import Invoices from './pages/Invoices'
 import Products from './pages/Products'
 import Coupons from './pages/Coupons'
+import CreateCoupon from './pages/CreateCoupon'
 import Usage from './pages/Usage'
 import Developers from './pages/Developers'
 import Ledger from './pages/Ledger'
@@ -94,6 +95,7 @@ function App() {
                             <Route path="/invoices" element={<Invoices />} />
                             <Route path="/products" element={<Products />} />
                             <Route path="/coupons" element={<Coupons />} />
+                            <Route path="/coupons/new" element={<CreateCoupon />} />
                             <Route path="/usage" element={<Usage />} />
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/ledger" element={<Ledger />} />
