@@ -97,13 +97,14 @@ can sign off on the output.
 
 ## Track 2 — Product depth
 
-- [ ] Webhook delivery visibility in the dashboard (attempts, retries,
+- [x] Webhook delivery visibility in the dashboard (attempts, retries,
       dead-letter, manual redelivery).
-- [ ] Plan-change proration UX in the dashboard (backend supports it).
-- [ ] Trial flows end-to-end review (trialing status exists; verify
+- [ ] Plan-change proration UX in the dashboard (preview endpoint
+      GET /subscriptions/:id/preview-change shipped; dashboard UI pending).
+- [x] Trial flows end-to-end review (trialing status exists; verify
       conversion, expiry emails, dunning interplay).
 - [x] FX-normalized reporting (MRR across currencies uses real rates).
-- [ ] Bulk operations in the importer (update mode, cancel-sync mode).
+- [x] Bulk operations in the importer (update mode, cancel-sync mode).
 - [ ] Customer portal: payment-method update and invoice dispute flows.
 
 ## Track 3 — Developer experience & adoption
