@@ -36,6 +36,14 @@ export const AuthProvider = ({ children }) => {
         return res.data
     }
 
+    // Second step of two-step login: exchange the mfa_token + code for a
+    // session cookie. Bad codes throw (401) for the caller to surface.
+    const loginMfa = async (mfaToken, code) => {
+        const res = await endpoints.loginMfa(mfaToken, code)
+        setUser(res.data?.user || null)
+        return res.data
+    }
+
     // Register a new tenant + owner user; the server opens a session.
     const registerAccount = async (data) => {
         const res = await endpoints.authRegister(data)
@@ -64,7 +72,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider
-            value={{ user, apiKey, isAuthenticated, loading, login, registerAccount, loginWithApiKey, logout }}
+            value={{ user, apiKey, isAuthenticated, loading, login, loginMfa, registerAccount, loginWithApiKey, logout }}
         >
             {children}
         </AuthContext.Provider>

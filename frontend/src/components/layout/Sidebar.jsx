@@ -18,6 +18,7 @@ import {
   Code2,
   Settings,
   UserCog,
+  ShieldCheck,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -60,6 +61,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/developers", label: "Developers", icon: Code2 },
       { to: "/settings", label: "Settings", icon: Settings },
+      { to: "/security", label: "Security", icon: ShieldCheck },
       { to: "/team", label: "Team", icon: UserCog },
     ],
   },

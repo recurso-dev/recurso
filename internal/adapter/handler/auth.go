@@ -39,20 +39,22 @@ func (h *AuthHandler) clearSessionCookie(c *gin.Context) {
 
 // userView is the safe, serialized shape of a user (no password hash).
 type userView struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	Name      string `json:"name"`
-	Role      string `json:"role"`
-	CreatedAt string `json:"created_at"`
+	ID         string `json:"id"`
+	Email      string `json:"email"`
+	Name       string `json:"name"`
+	Role       string `json:"role"`
+	MFAEnabled bool   `json:"mfa_enabled"`
+	CreatedAt  string `json:"created_at"`
 }
 
 func toUserView(u *domain.User) userView {
 	return userView{
-		ID:        u.ID.String(),
-		Email:     u.Email,
-		Name:      u.Name,
-		Role:      string(u.Role),
-		CreatedAt: u.CreatedAt.Format(time.RFC3339),
+		ID:         u.ID.String(),
+		Email:      u.Email,
+		Name:       u.Name,
+		Role:       string(u.Role),
+		MFAEnabled: u.MFAEnabled,
+		CreatedAt:  u.CreatedAt.Format(time.RFC3339),
 	}
 }
 

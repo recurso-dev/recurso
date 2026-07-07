@@ -37,8 +37,25 @@ export const endpoints = {
   authRegister: (data) => axios.post(`${API_ROOT}/auth/register`, data),
   authLogin: (email, password) =>
     axios.post(`${API_ROOT}/auth/login`, { email, password }),
+  // Second step of two-step login: exchange the short-lived mfa_token + a TOTP
+  // (or backup) code for a session cookie.
+  loginMfa: (mfa_token, code) =>
+    axios.post(`${API_ROOT}/auth/login/mfa`, { mfa_token, code }),
   authLogout: () => axios.post(`${API_ROOT}/auth/logout`),
   authMe: () => axios.get(`${API_ROOT}/auth/me`),
+  // Password reset (public, cookie-less).
+  forgotPassword: (email) =>
+    axios.post(`${API_ROOT}/auth/forgot-password`, { email }),
+  resetPassword: (token, password) =>
+    axios.post(`${API_ROOT}/auth/reset-password`, { token, password }),
+  // --- MFA management (authed, session-scoped) ---
+  mfaSetup: () => api.post('/auth/mfa/setup'),
+  mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
+  mfaDisable: (code) => api.post('/auth/mfa/disable', { code }),
+  // --- Active sessions (authed) ---
+  getSessions: () => api.get('/auth/sessions'),
+  revokeSession: (id) => api.delete(`/auth/sessions/${id}`),
+  revokeOtherSessions: () => api.delete('/auth/sessions'),
   // --- Team members (tenant-scoped) ---
   getUsers: () => api.get('/users'),
   createUser: (data) => api.post('/users', data),

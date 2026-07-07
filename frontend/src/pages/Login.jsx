@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import axios from "axios";
-import { Layers, LogIn, KeyRound } from "lucide-react";
+import { Layers, LogIn, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 
 import { API_BASE } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
@@ -19,7 +19,12 @@ export default function Login() {
   const [apiKeyMode, setApiKeyMode] = useState(false);
   const [key, setKey] = useState("");
 
-  const { login, loginWithApiKey } = useAuth();
+  // Two-step (MFA) login state. When the server responds with mfa_required we
+  // stash the short-lived token and swap the form to a code-entry step.
+  const [mfaToken, setMfaToken] = useState(null);
+  const [code, setCode] = useState("");
+
+  const { login, loginMfa, loginWithApiKey } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (e) => {
@@ -28,14 +33,38 @@ export default function Login() {
     setChecking(true);
     setError(null);
     try {
-      await login(email, password);
-      navigate("/");
+      const res = await login(email, password);
+      if (res?.mfa_required) {
+        setMfaToken(res.mfa_token);
+        setCode("");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError(
         err?.response?.data?.error?.message === "invalid credentials" ||
           err?.response?.status === 401
           ? "Incorrect email or password."
           : "Could not reach the API. Is the server running?"
+      );
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleMfa = async (e) => {
+    e.preventDefault();
+    if (checking) return;
+    setChecking(true);
+    setError(null);
+    try {
+      await loginMfa(mfaToken, code);
+      navigate("/");
+    } catch (err) {
+      setError(
+        err?.response?.status === 401
+          ? "That code is incorrect or expired."
+          : "Could not verify the code. Please try again."
       );
     } finally {
       setChecking(false);
@@ -72,10 +101,12 @@ export default function Login() {
             <Layers className="h-6 w-6" />
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            Log in to Recurso
+            {mfaToken ? "Two-factor authentication" : "Log in to Recurso"}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {apiKeyMode
+            {mfaToken
+              ? "Enter the 6-digit code from your authenticator app."
+              : apiKeyMode
               ? "Enter your tenant API secret key."
               : "Welcome back. Sign in to your workspace."}
           </p>
@@ -83,7 +114,54 @@ export default function Login() {
 
         <Card>
           <CardContent className="p-6">
-            {!apiKeyMode ? (
+            {mfaToken ? (
+              <form onSubmit={handleMfa} className="space-y-5">
+                <FormField label="Authentication code" htmlFor="mfa-code" required>
+                  <Input
+                    id="mfa-code"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={8}
+                    autoFocus
+                    required
+                    value={code}
+                    onChange={(e) =>
+                      setCode(e.target.value.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder="123456"
+                    className="text-center font-mono text-lg tracking-[0.4em]"
+                  />
+                </FormField>
+
+                {error && (
+                  <p className="text-sm font-medium text-red-600" role="alert">
+                    {error}
+                  </p>
+                )}
+
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={checking || code.length < 6}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  {checking ? "Verifying…" : "Verify & continue"}
+                </Button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMfaToken(null);
+                    setCode("");
+                    setError(null);
+                  }}
+                  className="flex w-full items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  <ArrowLeft className="h-3 w-3" />
+                  Back to login
+                </button>
+              </form>
+            ) : !apiKeyMode ? (
               <form onSubmit={handleLogin} className="space-y-5">
                 <FormField label="Email" htmlFor="email" required>
                   <Input
@@ -107,6 +185,15 @@ export default function Login() {
                     placeholder="••••••••"
                   />
                 </FormField>
+
+                <div className="-mt-2 text-right">
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-medium text-primary hover:text-primary/80"
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
 
                 {error && (
                   <p className="text-sm font-medium text-red-600" role="alert">
@@ -146,6 +233,7 @@ export default function Login() {
               </form>
             )}
 
+            {!mfaToken && (
             <button
               type="button"
               onClick={() => {
@@ -156,6 +244,7 @@ export default function Login() {
             >
               {apiKeyMode ? "← Back to email login" : "Log in with an API key instead"}
             </button>
+            )}
           </CardContent>
         </Card>
 

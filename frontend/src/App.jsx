@@ -8,6 +8,9 @@ import Plans from './pages/Plans'
 import CreatePlan from './pages/CreatePlan'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import ResetPassword from './pages/ResetPassword'
+import Security from './pages/Security'
 import Subscriptions from './pages/Subscriptions'
 import CreateSubscription from './pages/CreateSubscription'
 import Invoices from './pages/Invoices'
@@ -73,6 +76,8 @@ function App() {
                 <Routes>
                     <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
                     <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/" />} /> {/* Added Register Route */}
+                    <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPassword /> : <Navigate to="/" />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
 
                     {/* Hosted Checkout (public) */}
                     <Route path="/checkout/:id" element={<Checkout />} />
@@ -106,6 +111,7 @@ function App() {
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/settings" element={<Settings />} />
+                            <Route path="/security" element={<Security />} />
                             <Route path="/team" element={<Team />} />
                             <Route path="/notifications" element={<Notifications />} />
                             <Route path="/profile" element={<Profile />} />
