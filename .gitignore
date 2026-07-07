@@ -44,7 +44,7 @@ api_response.json
 # Design-tool exports (kept out of the repo)
 stitch_dashboard_home_screen*/
 /import
-seed
+/seed
 
 # iCloud conflict copies (this workspace lives under ~/Documents)
 * [0-9].*
