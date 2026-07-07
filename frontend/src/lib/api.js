@@ -7,8 +7,13 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/v1';
 // Server root for non-/v1 routes (/auth, /portal, /checkout).
 export const API_ROOT = API_BASE.replace(/\/v1\/?$/, '');
 
+// Send the httpOnly session cookie on every request (same-origin behind the
+// nginx proxy). Applies to the `api` instance and direct axios calls (/auth).
+axios.defaults.withCredentials = true;
+
 const api = axios.create({
   baseURL: API_BASE,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,6 +33,17 @@ api.interceptors.request.use(
 );
 
 export const endpoints = {
+  // --- Auth (session, cookie-based) ---
+  authRegister: (data) => axios.post(`${API_ROOT}/auth/register`, data),
+  authLogin: (email, password) =>
+    axios.post(`${API_ROOT}/auth/login`, { email, password }),
+  authLogout: () => axios.post(`${API_ROOT}/auth/logout`),
+  authMe: () => axios.get(`${API_ROOT}/auth/me`),
+  // --- Team members (tenant-scoped) ---
+  getUsers: () => api.get('/users'),
+  createUser: (data) => api.post('/users', data),
+  updateUserRole: (id, role) => api.patch(`/users/${id}`, { role }),
+  deleteUser: (id) => api.delete(`/users/${id}`),
   getPlans: (params) => api.get('/plans', { params }),
   getAccount: () => api.get('/account'),
   updateAccount: (data) => api.put('/account', data),

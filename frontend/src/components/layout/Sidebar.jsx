@@ -17,6 +17,7 @@ import {
   BarChart3,
   Code2,
   Settings,
+  UserCog,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -59,6 +60,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/developers", label: "Developers", icon: Code2 },
       { to: "/settings", label: "Settings", icon: Settings },
+      { to: "/team", label: "Team", icon: UserCog },
     ],
   },
 ];

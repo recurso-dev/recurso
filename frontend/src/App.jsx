@@ -20,6 +20,7 @@ import Ledger from './pages/Ledger'
 import CreditNotes from './pages/CreditNotes'
 import CreateCreditNote from './pages/CreateCreditNote'
 import Settings from './pages/Settings'
+import Team from './pages/Team'
 import Notifications from './pages/Notifications'
 import Profile from './pages/Profile'
 import Referrals from './pages/Referrals'
@@ -105,6 +106,7 @@ function App() {
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/settings" element={<Settings />} />
+                            <Route path="/team" element={<Team />} />
                             <Route path="/notifications" element={<Notifications />} />
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/referrals" element={<Referrals />} />

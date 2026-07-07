@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Layers } from "lucide-react";
 
-import { endpoints } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -11,39 +10,31 @@ import { Card, CardContent } from "@/components/ui/card";
 
 export default function Register() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { registerAccount } = useAuth();
   const [formData, setFormData] = useState({
-    orgName: "",
+    company_name: "",
+    name: "",
     email: "",
+    password: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const handleChange = (e) => {
+  const handleChange = (e) =>
     setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (formData.password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     setLoading(true);
     setError(null);
-
     try {
-      // Call API to register — payload unchanged.
-      const response = await endpoints.register({
-        name: formData.orgName,
-        email: formData.email,
-      });
-
-      const { api_key } = response.data;
-
-      // Auto login with the new key.
-      if (api_key) {
-        login(api_key);
-        navigate("/");
-      }
+      await registerAccount(formData);
+      navigate("/");
     } catch (err) {
-      console.error("Registration failed:", err);
       setError(
         err.response?.data?.error?.message || "Registration failed. Please try again."
       );
@@ -63,7 +54,7 @@ export default function Register() {
             Create your workspace
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Get started with your isolated tenant environment.
+            You'll be the owner of a new, isolated tenant.
           </p>
         </div>
 
@@ -71,20 +62,30 @@ export default function Register() {
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
                   {error}
                 </div>
               )}
 
-              <FormField label="Organization name" htmlFor="orgName" required>
+              <FormField label="Company name" htmlFor="company_name" required>
                 <Input
-                  id="orgName"
-                  name="orgName"
-                  type="text"
+                  id="company_name"
+                  name="company_name"
                   required
-                  value={formData.orgName}
+                  value={formData.company_name}
                   onChange={handleChange}
                   placeholder="Acme Corp"
+                />
+              </FormField>
+
+              <FormField label="Your name" htmlFor="name" required>
+                <Input
+                  id="name"
+                  name="name"
+                  required
+                  value={formData.name}
+                  onChange={handleChange}
+                  placeholder="Jane Doe"
                 />
               </FormField>
 
@@ -100,8 +101,18 @@ export default function Register() {
                 />
               </FormField>
 
-              {/* No password field: registration is API-key based —
-                  the backend only needs a workspace name and email. */}
+              <FormField label="Password" htmlFor="password" required>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="At least 8 characters"
+                />
+              </FormField>
 
               <div className="flex items-start gap-3">
                 <input
@@ -113,19 +124,14 @@ export default function Register() {
                 />
                 <label htmlFor="terms" className="text-sm text-muted-foreground">
                   I agree to the{" "}
-                  <a href="#" className="font-medium text-primary hover:text-primary/80">
-                    Terms
-                  </a>{" "}
+                  <a href="#" className="font-medium text-primary hover:text-primary/80">Terms</a>{" "}
                   and{" "}
-                  <a href="#" className="font-medium text-primary hover:text-primary/80">
-                    Privacy Policy
-                  </a>
-                  .
+                  <a href="#" className="font-medium text-primary hover:text-primary/80">Privacy Policy</a>.
                 </label>
               </div>
 
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Creating..." : "Create workspace"}
+                {loading ? "Creating…" : "Create workspace"}
               </Button>
             </form>
           </CardContent>
