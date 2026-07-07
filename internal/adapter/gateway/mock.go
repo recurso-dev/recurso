@@ -35,7 +35,7 @@ func NewMockGateway() *MockGateway {
 	return &MockGateway{}
 }
 
-func (g *MockGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+func (g *MockGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	return &port.PaymentOrder{
 		ID:       "order_" + uuid.New().String(),
 		Amount:   amount,

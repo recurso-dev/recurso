@@ -23,15 +23,52 @@ func NewStripeGateway(apiKey string, webhookSecret string) *StripeGateway {
 	}
 }
 
-func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+// stripePaymentMethodTypes returns the Stripe payment_method_types to enable on
+// a PaymentIntent for the given ISO-4217 currency. Card is always offered;
+// euro-denominated checkouts additionally surface European local methods
+// (SEPA Direct Debit, iDEAL, Bancontact). This is the single source of truth
+// for the currency -> payment-method mapping.
+//
+// IMPORTANT: every method returned here must ALSO be activated for the Stripe
+// account in the Dashboard (Settings -> Payment methods). Passing a method that
+// is not enabled there causes PaymentIntent creation to fail with an
+// "The provided PaymentMethod type ... is invalid" error.
+//
+// Settlement timing (see docs):
+//   - card, ideal, bancontact: authorize within seconds/minutes.
+//   - sepa_debit: authorized immediately but funds settle over several business
+//     days. The invoice is only marked paid on the payment_intent.succeeded
+//     webhook, which fires once settlement completes.
+func stripePaymentMethodTypes(currency string) []string {
+	switch strings.ToUpper(currency) {
+	case "EUR":
+		// iDEAL (NL), Bancontact (BE) and SEPA Direct Debit are all
+		// euro-only local methods, so they are gated on EUR.
+		return []string{
+			string(stripe.PaymentMethodTypeCard),
+			string(stripe.PaymentMethodTypeSEPADebit),
+			string(stripe.PaymentMethodTypeIDEAL),
+			string(stripe.PaymentMethodTypeBancontact),
+		}
+	default:
+		// Card covers all remaining currencies (USD, GBP, etc.) and also
+		// carries Apple Pay / Google Pay wallets, so behaviour for
+		// non-European currencies is unchanged.
+		return []string{string(stripe.PaymentMethodTypeCard)}
+	}
+}
+
+func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	params := &stripe.PaymentIntentParams{
-		Amount:   stripe.Int64(amount),
-		Currency: stripe.String(currency),
-		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
+		Amount:             stripe.Int64(amount),
+		Currency:           stripe.String(currency),
+		PaymentMethodTypes: stripe.StringSlice(stripePaymentMethodTypes(currency)),
+		// invoice_id lets the payment_intent.succeeded webhook reconcile
+		// asynchronously-settling methods (SEPA) where there is no
+		// synchronous checkout callback.
 		Metadata: map[string]string{
-			"receipt": receipt,
+			"receipt":    receipt,
+			"invoice_id": invoiceID,
 		},
 	}
 

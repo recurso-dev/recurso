@@ -34,7 +34,7 @@ type MandateResult struct {
 }
 
 type PaymentGateway interface {
-	CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*PaymentOrder, error)
+	CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*PaymentOrder, error)
 	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
 	CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error)
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)

@@ -27,7 +27,7 @@ type routeSpy struct {
 	lastOrderID string
 }
 
-func (s *routeSpy) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+func (s *routeSpy) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	s.createOrderCalls++
 	s.lastOrderAmount = amount
 	s.lastOrderCcy = currency
@@ -71,7 +71,7 @@ func TestSmartRouter_CreateOrder_CurrencyRouting(t *testing.T) {
 			stripe := &routeSpy{name: "stripe"}
 			router := NewSmartRouter(razorpay, stripe)
 
-			order, err := router.CreateOrder(context.Background(), 118000, tc.currency, "rcpt_1")
+			order, err := router.CreateOrder(context.Background(), 118000, tc.currency, "rcpt_1", "inv_1")
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

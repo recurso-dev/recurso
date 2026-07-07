@@ -35,12 +35,12 @@ func (r *SmartRouter) gatewayFor(currency string) (port.PaymentGateway, error) {
 	return r.Stripe, nil
 }
 
-func (r *SmartRouter) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+func (r *SmartRouter) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	gw, err := r.gatewayFor(currency)
 	if err != nil {
 		return nil, err
 	}
-	return gw.CreateOrder(ctx, amount, currency, receipt)
+	return gw.CreateOrder(ctx, amount, currency, receipt, invoiceID)
 }
 
 func (r *SmartRouter) VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error {

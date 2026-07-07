@@ -85,6 +85,7 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		invoice.Total,
 		invoice.Currency,
 		invoice.InvoiceNumber,
+		invoice.ID.String(),
 	)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to create payment order")

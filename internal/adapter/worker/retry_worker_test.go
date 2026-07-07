@@ -73,7 +73,7 @@ func (m *mockGateway) RetryPayment(ctx context.Context, invoiceID string, amount
 	return m.result, m.err
 }
 
-func (m *mockGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+func (m *mockGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	return nil, nil
 }
 func (m *mockGateway) VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error {

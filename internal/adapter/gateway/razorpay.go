@@ -27,11 +27,12 @@ func NewRazorpayGateway(keyID, secret string) *RazorpayGateway {
 	}
 }
 
-func (g *RazorpayGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string) (*port.PaymentOrder, error) {
+func (g *RazorpayGateway) CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*port.PaymentOrder, error) {
 	data := map[string]interface{}{
 		"amount":   amount,
 		"currency": currency,
 		"receipt":  receipt,
+		"notes":    map[string]interface{}{"invoice_id": invoiceID},
 	}
 
 	body, err := g.client.Order.Create(data, nil)
