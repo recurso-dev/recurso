@@ -51,8 +51,8 @@ can sign off on the output.
       seller has nexus in) is NOT modeled — TaxJar's from-address/account
       nexus settings imply it, so rates silently assume the TaxJar account
       is configured correctly.
-- [ ] **EU VAT rate maintenance** — EU VAT rates are a static table needing
-      a maintenance story.
+- [x] **EU VAT** — complete 27-state standard-rate table (dated as-of
+      2026-01) + VIES VAT-number validation gating B2B reverse charge.
 - [x] **Proration invoice tax** — plan-change charges route through the
       TaxResolver like any other invoice.
 - [ ] **CA review of the GST/e-invoicing engine** 🔒 — external chartered
@@ -172,9 +172,7 @@ can sign off on the output.
       operations; open-core with proprietary enterprise features
       (SAML/SSO, multi-region HA, premium tax); or SSPL-style relicense
       (community cost). Founder decision before significant cloud revenue.
-- [ ] **EU VAT provider** — the static rate table needs either a
-      maintenance process or a provider integration (Anrok/Avalara have
-      EU coverage; the TaxJar adapter pattern generalizes).
+- [x] **EU VAT provider** — 27-state rate table + VIES validation shipped.
 - [x] **Comparison pages vs open-source peers** — /vs/lago, /vs/flexprice,
       /vs/killbill (MIT-vs-AGPLv3 and the TigerBeetle ledger are the
       differentiators the evaluation highlights).
