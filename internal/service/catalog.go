@@ -6,13 +6,18 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 type CatalogService struct {
-	repo port.PlanRepository
+	repo      port.PlanRepository
+	telemetry *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
 }
+
+// SetTelemetry injects the opt-in anonymous telemetry client after construction.
+func (s *CatalogService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
 
 func NewCatalogService(repo port.PlanRepository) *CatalogService {
 	return &CatalogService{repo: repo}
@@ -78,6 +83,8 @@ func (s *CatalogService) CreatePlan(ctx context.Context, input CreatePlanInput) 
 	if err := s.repo.Create(ctx, plan); err != nil {
 		return nil, err
 	}
+
+	s.telemetry.MilestoneFirstPlan() // opt-in anonymous milestone; no-op when disabled
 
 	return plan, nil
 }

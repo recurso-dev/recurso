@@ -31,6 +31,7 @@ import (
 	redisAdapter "github.com/swapnull-in/recur-so/internal/adapter/redis"
 	"github.com/swapnull-in/recur-so/internal/adapter/sms"
 	"github.com/swapnull-in/recur-so/internal/adapter/taxprovider"
+	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/adapter/tigerbeetle"
 	"github.com/swapnull-in/recur-so/internal/adapter/vault"
 	"github.com/swapnull-in/recur-so/internal/adapter/worker"
@@ -281,6 +282,21 @@ func main() {
 	invoiceService.EInvoiceService = einvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
+
+	// Anonymous instance telemetry — strictly opt-in (TELEMETRY_OPTIN=true).
+	// Disabled (the default) means telemetryClient is nil: zero network calls,
+	// zero rows written; all hooks below are nil-safe no-ops. docs/telemetry.md
+	// documents every payload.
+	telemetryClient := telemetry.NewFromEnv(database, version)
+	if telemetryClient != nil {
+		telemetryClient.Start(context.Background())
+		defer telemetryClient.Stop()
+		log.Println("Anonymous telemetry enabled (TELEMETRY_OPTIN=true) — see docs/telemetry.md for exactly what is sent")
+	}
+	catalogService.SetTelemetry(telemetryClient)
+	customerService.SetTelemetry(telemetryClient)
+	subscriptionService.SetTelemetry(telemetryClient)
+	invoiceService.Telemetry = telemetryClient
 
 	// Phase 2: Mandate Repository
 	mandateRepo := db.NewMandateRepository(database)

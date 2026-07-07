@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
@@ -21,6 +22,7 @@ type InvoiceService struct {
 	GSPAdapter         port.GSPAdapter               // P25
 	EInvoiceService    *EInvoiceService              // P25: E-invoice service
 	TaxResolver        *TaxResolver                  // Jurisdiction-aware tax
+	Telemetry          *telemetry.Client             // nil-safe; only set when TELEMETRY_OPTIN=true
 }
 
 func NewInvoiceService(
@@ -154,6 +156,8 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
 	}
 
+	s.Telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
+
 	// P15: Mark Charges as Invoiced (only the ones actually billed)
 	if len(billableCharges) > 0 {
 		var ids []uuid.UUID
@@ -228,6 +232,8 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
 		return nil, err
 	}
+
+	s.Telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
 
 	// Update Subscription Period using plan's interval unit and count
 	newEndDate := sub.CurrentPeriodEnd

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
@@ -31,6 +32,7 @@ type SubscriptionService struct {
 	revrecService       *RevRecService
 	taxResolver         *TaxResolver
 	recoveryRecorder    PaymentRecoveryRecorder
+	telemetry           *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
 	logger              *slog.Logger
 }
 
@@ -97,6 +99,9 @@ func (s *SubscriptionService) SetNotificationService(ns *NotificationService) {
 func (s *SubscriptionService) SetRecoveryRecorder(rr PaymentRecoveryRecorder) {
 	s.recoveryRecorder = rr
 }
+
+// SetTelemetry injects the opt-in anonymous telemetry client after construction.
+func (s *SubscriptionService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
 
 type CreateSubscriptionInput struct {
 	TenantID          uuid.UUID
@@ -317,6 +322,8 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		}
 	}
 
+	s.telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
+
 	// Dual-write to ledger (outside TX — TigerBeetle is a separate system)
 	if s.ledger != nil {
 		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
@@ -376,6 +383,8 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	if err := s.invoiceRepo.Update(ctx, inv); err != nil {
 		return err
 	}
+
+	s.telemetry.MilestoneFirstPayment() // opt-in anonymous milestone; no-op when disabled
 
 	// Dunning recovery attribution: if this invoice needed retries or dunning
 	// to get paid, record it as recovered revenue (idempotent, non-fatal).

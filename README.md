@@ -125,6 +125,18 @@ See the [Quickstart Guide](https://docs.recurso.dev/quickstart) for a full walkt
 - [Going to Production](https://docs.recurso.dev/going-to-production)
 - [Self-Hosting Runbook](docs/deployment.md)
 
+## Telemetry
+
+Recurso can report anonymous, opt-in usage signals so we can measure how many
+self-hosted instances reach their first real invoice. It is **off by default** —
+with the default config there are zero network calls and nothing is written.
+
+To opt in, set `TELEMETRY_OPTIN=true`. Only a random instance ID, version,
+OS/arch, milestone events, and coarse bucketed counts (e.g. `1-9`, `10-99`,
+`100+`) are ever sent — never amounts, names, emails, keys, or exact numbers.
+See [docs/telemetry.md](docs/telemetry.md) for the full payloads, the never-sent
+list, and how to point it at your own server to verify.
+
 ## Contributing
 
 We welcome contributions of all kinds. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
