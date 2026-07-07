@@ -25,7 +25,7 @@ TENANT_RES=$(curl -s -X POST "$API_URL/auth/register" \
     "name": "E2E Tech Inc",
     "email": "'"$EMAIL"'",
     "password": "password123",
-    "org_name": "E2E Corp"
+    "company_name": "E2E Corp"
   }')
 
 if echo "$TENANT_RES" | grep -q "api_key"; then

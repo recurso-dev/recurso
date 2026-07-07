@@ -20,7 +20,9 @@ import (
 const (
 	codeValidationFailed   = httperr.CodeValidationFailed
 	codeUnauthorized       = httperr.CodeUnauthorized
+	codeForbidden          = httperr.CodeForbidden
 	codeNotFound           = httperr.CodeNotFound
+	codeConflict           = httperr.CodeConflict
 	codeInternalError      = httperr.CodeInternalError
 	codeInvoiceAlreadyPaid = httperr.CodeInvoiceAlreadyPaid
 )

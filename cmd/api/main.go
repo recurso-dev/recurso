@@ -282,7 +282,17 @@ func main() {
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
 	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
 	customerService := service.NewCustomerService(customerRepo)
-	tenantService := service.NewTenantService(tenantRepo)                                                        // P8 Service
+	tenantService := service.NewTenantService(tenantRepo) // P8 Service
+
+	// Admin-dashboard auth: real user accounts + opaque sessions layered on top
+	// of the existing tenant API-key auth (both resolve to the same tenant_id).
+	userRepo := db.NewUserRepository(database)
+	sessionRepo := db.NewSessionRepository(database)
+	sessionTTLHours, _ := strconv.Atoi(getEnvDefault("SESSION_TTL_HOURS", "168")) // default 7 days
+	if sessionTTLHours <= 0 {
+		sessionTTLHours = 168
+	}
+	authService := service.NewAuthService(userRepo, sessionRepo, tenantService, time.Duration(sessionTTLHours)*time.Hour)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
 	txManager := db.NewTxManager(database)
@@ -623,8 +633,13 @@ func main() {
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
-	couponHandler := handler.NewCouponHandler(couponRepo)                                               // P7
-	tenantHandler := handler.NewTenantHandler(tenantService)                                            // P8 Handler
+	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
+	tenantHandler := handler.NewTenantHandler(tenantService) // P8 Handler
+	// Dashboard auth handlers. Cookies are marked Secure everywhere except
+	// development so they still work over plain http://localhost.
+	secureCookie := os.Getenv("APP_ENV") != "development"
+	authHandler := handler.NewAuthHandler(authService, secureCookie)
+	teamHandler := handler.NewTeamHandler(authService)
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
@@ -790,7 +805,12 @@ func main() {
 	r.POST("/payments/order", publicLimit, paymentHandler.CreateOrder)
 	r.POST("/webhooks/razorpay", webhookHandler.HandleRazorpay) // Webhooks need higher limits
 	r.POST("/webhooks/stripe", webhookHandler.HandleStripe)
-	r.POST("/auth/register", publicLimit, tenantHandler.Register) // P8 Register Endpoint
+	// Dashboard auth (public): register creates tenant + owner user + session;
+	// login/logout/me operate purely on the recurso_session cookie.
+	r.POST("/auth/register", publicLimit, authHandler.Register)
+	r.POST("/auth/login", publicLimit, authHandler.Login)
+	r.POST("/auth/logout", publicLimit, authHandler.Logout)
+	r.GET("/auth/me", publicLimit, authHandler.Me)
 
 	// Invoice PDF Public (P30 for Demo)
 	r.GET("/v1/invoices/:id/pdf", publicLimit, pdfHandler.DownloadPDF)
@@ -813,9 +833,10 @@ func main() {
 		portal.POST("/logout", portalAPIHandler.Logout)
 	}
 
-	// Protected Routes (API Key)
+	// Protected Routes (dashboard session cookie OR tenant API key — both
+	// resolve to the same tenant_id, so every handler below is unchanged).
 	v1 := r.Group("/v1")
-	v1.Use(middleware.AuthMiddleware(tenantRepo))
+	v1.Use(middleware.SessionOrAPIKeyMiddleware(tenantRepo, authService))
 	v1.Use(middleware.IdempotencyMiddleware(idempotencyStore)) // P30: Idempotency
 	{
 		v1.POST("/plans", catalogHandler.CreatePlan)
@@ -866,6 +887,13 @@ func main() {
 		// Developer / Settings
 		v1.GET("/developer/keys", tenantHandler.ListKeys)
 		v1.POST("/developer/keys", tenantHandler.CreateKey)
+
+		// Team management (dashboard users). Reads are open to any authed
+		// member; writes are gated to owner/admin inside the handler.
+		v1.GET("/users", teamHandler.ListUsers)
+		v1.POST("/users", teamHandler.CreateUser)
+		v1.PATCH("/users/:id", teamHandler.UpdateUser)
+		v1.DELETE("/users/:id", teamHandler.DeleteUser)
 
 		// Advanced Billing (P15)
 		v1.POST("/subscriptions/:id/charges", advancedBillingHandler.AddUnbilledCharge)

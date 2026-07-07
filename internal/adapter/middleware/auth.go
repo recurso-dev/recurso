@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/sha256"
 	"log/slog"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/adapter/db"
 	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // verifiedKeyCache remembers API keys that already passed bcrypt
@@ -57,6 +59,59 @@ func (vc *verifiedKeyCache) put(token string, tenantID uuid.UUID) {
 	vc.entries[k] = verifiedKeyEntry{tenantID: tenantID, expiresAt: time.Now().Add(verifiedKeyTTL)}
 }
 
+// extractBearerToken pulls the credential out of the Authorization header,
+// accepting both "Bearer <token>" and a bare token. The bool is false when no
+// Authorization header is present.
+func extractBearerToken(c *gin.Context) (string, bool) {
+	authHeader := c.GetHeader("Authorization")
+	if authHeader == "" {
+		return "", false
+	}
+	parts := strings.Split(authHeader, " ")
+	if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
+		return parts[1], true
+	}
+	return authHeader, true
+}
+
+// resolveAPIKey applies the dev bypass, the verified-key cache, and finally the
+// DB bcrypt compare. It returns the tenant ID on success without writing to the
+// context or aborting. This is the single source of truth shared by both the
+// API-key-only middleware and the dual (session-or-key) middleware, so the
+// cache/perf characteristics never diverge.
+func resolveAPIKey(c *gin.Context, token string, cache *verifiedKeyCache, repo *db.TenantRepository, logger *slog.Logger) (uuid.UUID, bool) {
+	// Dev bypass — ONLY in development mode AND when explicitly enabled.
+	if token == "recurso_secret" {
+		if os.Getenv("APP_ENV") == "development" && os.Getenv("ALLOW_DEV_BYPASS") == "true" {
+			devTenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+			logger.Debug("dev bypass auth used", "tenant_id", devTenantID)
+			return devTenantID, true
+		}
+		logger.Warn("dev bypass attempted but not enabled",
+			"app_env", os.Getenv("APP_ENV"),
+			"dev_bypass", os.Getenv("ALLOW_DEV_BYPASS"),
+			"ip", c.ClientIP(),
+		)
+	}
+
+	// Cache of already-verified keys (avoids per-request bcrypt).
+	if tenantID, ok := cache.get(token); ok {
+		return tenantID, true
+	}
+
+	// Validate against DB (bcrypt compare).
+	tenant, err := repo.GetTenantByKey(c.Request.Context(), token)
+	if err != nil {
+		logger.Warn("invalid API key attempt",
+			"ip", c.ClientIP(),
+			"user_agent", c.GetHeader("User-Agent"),
+		)
+		return uuid.Nil, false
+	}
+	cache.put(token, tenant.ID)
+	return tenant.ID, true
+}
+
 // AuthMiddleware checks for a valid API Key using the DB.
 // API keys are validated against the tenants/api_keys table.
 func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
@@ -64,63 +119,69 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
 
 	return func(c *gin.Context) {
-		// 1. Extract Token
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
+		token, ok := extractBearerToken(c)
+		if !ok {
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "Authorization header required")
 			return
 		}
-
-		parts := strings.Split(authHeader, " ")
-		var token string
-		if len(parts) == 2 && strings.ToLower(parts[0]) == "bearer" {
-			token = parts[1]
-		} else {
-			token = authHeader
-		}
-
-		// 2. Dev bypass — ONLY in development mode AND when explicitly enabled
-		if token == "recurso_secret" {
-			appEnv := os.Getenv("APP_ENV")
-			devBypass := os.Getenv("ALLOW_DEV_BYPASS")
-
-			if appEnv == "development" && devBypass == "true" {
-				devTenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
-				c.Set("tenant_id", devTenantID)
-				logger.Debug("dev bypass auth used", "tenant_id", devTenantID)
-				c.Next()
-				return
-			}
-
-			// If not explicitly enabled, treat as invalid key
-			logger.Warn("dev bypass attempted but not enabled",
-				"app_env", appEnv,
-				"dev_bypass", devBypass,
-				"ip", c.ClientIP(),
-			)
-		}
-
-		// 3. Cache of already-verified keys (avoids per-request bcrypt)
-		if tenantID, ok := cache.get(token); ok {
-			c.Set("tenant_id", tenantID)
-			c.Next()
-			return
-		}
-
-		// 4. Validate against DB (bcrypt compare)
-		tenant, err := repo.GetTenantByKey(c.Request.Context(), token)
-		if err != nil {
-			logger.Warn("invalid API key attempt",
-				"ip", c.ClientIP(),
-				"user_agent", c.GetHeader("User-Agent"),
-			)
+		tenantID, ok := resolveAPIKey(c, token, cache, repo, logger)
+		if !ok {
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeInvalidAPIKey, "Invalid API Key")
 			return
 		}
+		c.Set("tenant_id", tenantID)
+		c.Next()
+	}
+}
 
-		// 5. Cache and set tenant context
-		cache.put(token, tenant.ID)
-		c.Set("tenant_id", tenant.ID)
+// SessionResolver validates an opaque session token and returns the owning
+// user. Implemented by *service.AuthService; kept as a local interface so the
+// middleware package need not import the service package.
+type SessionResolver interface {
+	ResolveSession(ctx context.Context, rawToken string) (*domain.User, error)
+}
+
+// SessionOrAPIKeyMiddleware authenticates a request via EITHER a valid
+// recurso_session cookie (a human logged into the dashboard) OR the existing
+// Bearer API-key path (a machine / the demo key). Both branches set the SAME
+// tenant context (c.Set("tenant_id", uuid)) that the API-key-only middleware
+// set, so every existing tenant-scoped handler keeps working unchanged. When
+// authenticated by session, the user id and role are also placed on the
+// context for role-gated endpoints.
+func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolver) gin.HandlerFunc {
+	logger := slog.Default().With("middleware", "auth")
+	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
+
+	return func(c *gin.Context) {
+		// 1. Session cookie (dashboard users).
+		if cookie, err := c.Cookie(domain.SessionCookieName); err == nil && cookie != "" {
+			user, err := resolver.ResolveSession(c.Request.Context(), cookie)
+			if err == nil {
+				c.Set("tenant_id", user.TenantID)
+				c.Set("user_id", user.ID)
+				c.Set("user_role", string(user.Role))
+				c.Set("user", user)
+				c.Next()
+				return
+			}
+			// Invalid/expired cookie: fall through to the API-key path so a
+			// request that carries BOTH a stale cookie and a valid key still
+			// works; if there is no key either, it is rejected below.
+			logger.Debug("invalid session cookie, falling back to API key", "ip", c.ClientIP())
+		}
+
+		// 2. API key (machines, CLI, the demo key).
+		token, ok := extractBearerToken(c)
+		if !ok {
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "Authentication required (session cookie or API key)")
+			return
+		}
+		tenantID, ok := resolveAPIKey(c, token, cache, repo, logger)
+		if !ok {
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeInvalidAPIKey, "Invalid API Key")
+			return
+		}
+		c.Set("tenant_id", tenantID)
 		c.Next()
 	}
 }
@@ -132,4 +193,28 @@ func GetTenantID(c *gin.Context) uuid.UUID {
 		return uuid.Nil
 	}
 	return id.(uuid.UUID)
+}
+
+// GetUserID returns the authenticated dashboard user's id, or uuid.Nil when the
+// request was authenticated by API key (a machine, which has no user).
+func GetUserID(c *gin.Context) uuid.UUID {
+	id, ok := c.Get("user_id")
+	if !ok {
+		return uuid.Nil
+	}
+	if u, ok := id.(uuid.UUID); ok {
+		return u
+	}
+	return uuid.Nil
+}
+
+// GetUserRole returns the authenticated user's role and whether a user (session)
+// was present. API-key requests return ("", false).
+func GetUserRole(c *gin.Context) (string, bool) {
+	r, ok := c.Get("user_role")
+	if !ok {
+		return "", false
+	}
+	s, ok := r.(string)
+	return s, ok
 }

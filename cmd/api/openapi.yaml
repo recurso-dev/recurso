@@ -156,8 +156,12 @@ paths:
     post:
       operationId: registerTenant
       tags: [Auth]
-      summary: Register a tenant (signup)
-      description: Creates a tenant and returns its first API key. The key is shown only once.
+      summary: Register a tenant + owner user (signup)
+      description: >
+        Creates a tenant, its first user (role owner), and opens a login
+        session (sets the httpOnly `recurso_session` cookie). The tenant's first
+        API key is still returned in the body so CLI/dev flows keep a key; it is
+        shown only once.
       security: []
       requestBody:
         required: true
@@ -165,16 +169,24 @@ paths:
           application/json:
             schema:
               type: object
-              required: [name, email]
+              required: [company_name, name, email, password]
               properties:
+                company_name:
+                  type: string
+                  description: The tenant / company name.
                 name:
                   type: string
+                  description: The owner user's display name.
                 email:
                   type: string
                   format: email
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
       responses:
         '201':
-          description: Tenant registered.
+          description: Tenant, owner user, and session created. Sets recurso_session cookie.
           content:
             application/json:
               schema:
@@ -185,8 +197,247 @@ paths:
                   api_key:
                     type: string
                     description: The raw API key. Store it securely — it is not retrievable later.
+                  user:
+                    $ref: '#/components/schemas/User'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [Auth]
+      summary: Log in (dashboard user)
+      description: >
+        Verifies email + password and opens a session (sets the httpOnly
+        `recurso_session` cookie). Errors are deliberately generic ("invalid
+        credentials") for both unknown email and wrong password — no user
+        enumeration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Authenticated. Sets recurso_session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tenant:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [Auth]
+      summary: Log out
+      description: Deletes the current session and clears the recurso_session cookie.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Logged out (idempotent). Clears recurso_session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [Auth]
+      summary: Current user + tenant
+      description: Returns the authenticated dashboard user and tenant, resolved from the recurso_session cookie.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The current user and tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tenant:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/users:
+    get:
+      operationId: listUsers
+      tags: [Team]
+      summary: List team members
+      description: Lists all dashboard users in the caller's tenant. Any authenticated member may read.
+      responses:
+        '200':
+          description: Users in the tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createUser
+      tags: [Team]
+      summary: Add a team member
+      description: Creates a teammate. Requires the caller to be owner or admin (or a tenant API key).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, role, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [owner, admin, member]
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+      responses:
+        '201':
+          description: Teammate created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /v1/users/{id}:
+    patch:
+      operationId: updateUserRole
+      tags: [Team]
+      summary: Change a team member's role
+      description: Updates a teammate's role. Owner/admin only. The last owner cannot be demoted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role:
+                  type: string
+                  enum: [owner, admin, member]
+      responses:
+        '200':
+          description: Updated user.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: deleteUser
+      tags: [Team]
+      summary: Remove a team member
+      description: Removes a teammate. Owner/admin only. Cannot remove the last owner or your own account.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: User removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
 
   /v1/plans:
     post:
@@ -4477,6 +4728,14 @@ components:
       in: cookie
       name: portal_session
       description: Customer-portal session cookie issued by `GET /portal/auth/verify`.
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: recurso_session
+      description: >
+        Dashboard user session cookie (httpOnly) issued by `POST /auth/register`
+        and `POST /auth/login`. v1 endpoints accept EITHER this cookie or the
+        tenant API key (`bearerAuth`).
 
   parameters:
     PathID:
@@ -4533,7 +4792,19 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
     Unauthorized:
-      description: Missing or invalid API key.
+      description: Missing or invalid credentials (API key or session cookie).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Authenticated but not permitted (insufficient role).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: The request conflicts with current state (e.g. duplicate email, last owner).
       content:
         application/json:
           schema:
@@ -6553,3 +6824,19 @@ components:
         created_at:
           type: string
           format: date-time
+    User:
+      type: object
+      description: A dashboard user account within a tenant.
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, admin, member]
+      required: [id, email, name, role]

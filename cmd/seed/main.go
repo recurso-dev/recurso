@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"math/rand"
 	"os"
@@ -87,7 +88,28 @@ func main() {
 		log.Printf("API Key creation failed: %v", err)
 	}
 
-	// User creation skipped as Login uses API Key directly for demo.
+	// Demo owner user so the dashboard's email/password login works out of
+	// the box (the API-key login still works too).
+	demoPassword := "recurso123"
+	pwHash, err := bcrypt.GenerateFromPassword([]byte(demoPassword), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("Demo user password hash failed: %v", err)
+	} else {
+		userRepo := db.NewUserRepository(conn.DB)
+		demoUser := &domain.User{
+			ID:           uuid.New(),
+			TenantID:     tenantID,
+			Email:        "admin@acmesaas.com",
+			PasswordHash: string(pwHash),
+			Name:         "Demo Admin",
+			Role:         domain.RoleOwner,
+			CreatedAt:    time.Now(),
+			UpdatedAt:    time.Now(),
+		}
+		if err := userRepo.Create(ctx, demoUser); err != nil {
+			log.Printf("Demo user creation failed (maybe exists): %v", err)
+		}
+	}
 
 	// 2. Create Plans
 	plans := []struct {
@@ -366,5 +388,6 @@ func main() {
 	log.Println("")
 	log.Println("Demo tenant: Acme SaaS Corp")
 	log.Println("Dashboard login API key: sk_test_12345")
+	log.Println("Dashboard email login: admin@acmesaas.com / recurso123")
 	log.Println("Start the dashboard with: cd frontend && npm run dev")
 }
