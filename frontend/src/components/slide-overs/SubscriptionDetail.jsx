@@ -1,9 +1,17 @@
-import { useState } from "react";
-import { Pause, Play, Check, RotateCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Pause, Play, Check, RotateCw, ArrowLeftRight } from "lucide-react";
+import { toast } from "sonner";
 
 import { endpoints } from "../../lib/api";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Sheet,
   SheetContent,
@@ -21,8 +29,76 @@ export default function SubscriptionDetail({
   onRefresh,
 }) {
   const [loading, setLoading] = useState(false);
+  const [changing, setChanging] = useState(false);
+  const [plans, setPlans] = useState([]);
+  const [newPlanId, setNewPlanId] = useState("");
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    if (!changing || plans.length) return;
+    endpoints
+      .getPlans({ limit: 100 })
+      .then((res) => setPlans(res.data?.data || []))
+      .catch(() => toast.error("Failed to load plans"));
+  }, [changing, plans.length]);
+
+  useEffect(() => {
+    if (!newPlanId || !subscription) return;
+    setPreviewLoading(true);
+    setPreview(null);
+    endpoints
+      .previewPlanChange(subscription.id, newPlanId)
+      .then((res) => setPreview(res.data))
+      .catch((err) =>
+        toast.error(
+          err?.response?.data?.error?.message || "Failed to preview plan change"
+        )
+      )
+      .finally(() => setPreviewLoading(false));
+  }, [newPlanId, subscription]);
 
   if (!subscription) return null;
+
+  const startChange = () => {
+    setChanging(true);
+    setNewPlanId("");
+    setPreview(null);
+  };
+
+  const applyChange = async () => {
+    if (!newPlanId) return;
+    setApplying(true);
+    try {
+      await endpoints.updateSubscription(subscription.id, { plan_id: newPlanId });
+      toast.success("Plan changed");
+      setChanging(false);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.error?.message || "Failed to change plan"
+      );
+    } finally {
+      setApplying(false);
+    }
+  };
+
+  const prorationRow = (label, valueMinor, cur, muted) => (
+    <div className="flex items-center justify-between text-sm">
+      <span className={muted ? "text-muted-foreground" : "text-foreground"}>
+        {label}
+      </span>
+      <span
+        className={cn(
+          "tabular-nums",
+          muted ? "text-muted-foreground" : "font-medium text-foreground"
+        )}
+      >
+        {formatCurrency(valueMinor, cur)}
+      </span>
+    </div>
+  );
 
   const price = plan?.prices?.[0];
   const amountMinor = price ? price.amount : 0;
@@ -98,8 +174,9 @@ export default function SubscriptionDetail({
         <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
           {/* Actions */}
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm">
-              Edit
+            <Button variant="outline" size="sm" onClick={startChange}>
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Change plan
             </Button>
             {isActive && (
               <Button
@@ -134,6 +211,99 @@ export default function SubscriptionDetail({
             </Button>
             <Button size="sm">Renew</Button>
           </div>
+
+          {/* Change-plan flow with proration preview */}
+          {changing && (
+            <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Change plan
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => setChanging(false)}
+                  className="text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Close
+                </button>
+              </div>
+              <Select value={newPlanId} onValueChange={setNewPlanId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a new plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans
+                    .filter((p) => p.id !== subscription.plan_id)
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                        {p.prices?.[0]
+                          ? ` — ${formatCurrency(
+                              p.prices[0].amount,
+                              p.prices[0].currency
+                            )}/${p.interval_unit || "mo"}`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+
+              {previewLoading && (
+                <p className="text-sm text-muted-foreground">
+                  Calculating proration…
+                </p>
+              )}
+
+              {preview && !previewLoading && (
+                <div className="space-y-2 border-t border-border pt-3">
+                  {prorationRow(
+                    "Credit for unused time",
+                    -preview.credit_amount,
+                    preview.currency,
+                    true
+                  )}
+                  {prorationRow(
+                    "Prorated charge for new plan",
+                    preview.charge_amount,
+                    preview.currency,
+                    true
+                  )}
+                  {preview.tax_amount > 0 &&
+                    prorationRow(
+                      "Tax",
+                      preview.tax_amount,
+                      preview.currency,
+                      true
+                    )}
+                  <div className="border-t border-border pt-2">
+                    {prorationRow(
+                      preview.total_amount >= 0
+                        ? "Due now"
+                        : "Credited to account",
+                      Math.abs(preview.total_amount),
+                      preview.currency
+                    )}
+                  </div>
+                  <p className="pt-1 text-xs text-muted-foreground">
+                    Next invoice:{" "}
+                    {formatCurrency(
+                      preview.next_invoice_amount,
+                      preview.currency
+                    )}{" "}
+                    on {formatDate(subscription.current_period_end)}
+                  </p>
+                  <Button
+                    size="sm"
+                    className="mt-2 w-full"
+                    onClick={applyChange}
+                    disabled={applying}
+                  >
+                    {applying ? "Applying…" : "Confirm plan change"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Details */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">

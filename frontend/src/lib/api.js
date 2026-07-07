@@ -54,6 +54,8 @@ export const endpoints = {
   setPlanEntitlements: (id, entitlements) => api.put(`/plans/${id}/entitlements`, entitlements),
   createSubscription: (data) => api.post('/subscriptions', data),
   updateSubscription: (id, data) => api.put(`/subscriptions/${id}`, data),
+  previewPlanChange: (id, planId) =>
+    api.get(`/subscriptions/${id}/preview-change`, { params: { plan_id: planId } }),
   cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),
   pauseSubscription: (id) => api.post(`/subscriptions/${id}/pause`),
   resumeSubscription: (id) => api.post(`/subscriptions/${id}/resume`),
