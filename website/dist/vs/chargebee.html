@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Recurso vs Chargebee: open-source, self-hosted, MIT-licensed billing with no platform fee vs a mature proprietary SaaS that charges a percentage of MRR. Honest comparison with a total-cost-of-ownership sketch." />
+    <meta property="og:title" content="Recurso vs Chargebee — open source vs proprietary SaaS billing" />
+    <meta property="og:description" content="No platform fee and full self-hosting vs a mature proprietary suite charging a percentage of MRR. Honest comparison with a TCO sketch." />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0c0e14" />
+    <title>Recurso vs Chargebee — open source vs proprietary billing | Recurso</title>
+    <link rel="stylesheet" href="/vs/compare.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <nav class="container nav-inner">
+        <a href="/" class="nav-logo">
+          <img src="/logo.svg" alt="Recurso" />
+          <span>recurso</span>
+        </a>
+        <div class="nav-links">
+          <a href="/#products">Product</a>
+          <a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Docs</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/#compare" class="active">Compare</a>
+        </div>
+        <div class="nav-actions">
+          <a class="nav-gh" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <span>Star on GitHub</span>
+            <svg class="icon-sm icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </a>
+          <a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer" class="btn-primary btn-sm">Get started</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="bg-grid"></div>
+        <div class="hero-glow"></div>
+        <div class="container">
+          <div class="hero-content">
+            <p class="section-label rise-in">Compare</p>
+            <h1 class="rise-in rise-in-1">Recurso <span class="gradient-brand">vs</span> Chargebee</h1>
+            <p class="lede rise-in rise-in-2">
+              Chargebee is a mature proprietary billing suite with deep integrations, CPQ, and
+              polished dunning — and a platform fee that scales with your MRR. Recurso is
+              open-source, self-hosted, and MIT-licensed: $0 in software fees, and the code is
+              yours. You give up Chargebee's breadth; you keep your revenue and your data.
+            </p>
+            <div class="hero-ctas rise-in rise-in-3">
+              <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                Start self-hosting
+              </a>
+              <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+            </div>
+            <p class="hero-note rise-in rise-in-3">MIT licensed · Go + PostgreSQL + TigerBeetle · Stripe &amp; Razorpay</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="glance">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">At a glance</p>
+            <h2>Own the code vs buy the suite</h2>
+            <p>Chargebee buys you breadth and a managed product. Recurso gives you ownership, self-hosting, and no revenue cut.</p>
+          </div>
+          <div class="cmp-table-wrap">
+            <div class="cmp-scroll">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th scope="col">Dimension</th>
+                    <th scope="col" class="col-recurso">Recurso</th>
+                    <th scope="col" class="col-other">Chargebee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">Model</th>
+                    <td class="cell-recurso">Open source (MIT), self-hosted</td>
+                    <td>Proprietary SaaS</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Platform fee</th>
+                    <td class="cell-recurso"><span class="pill pill-brand">None</span><span class="cell-note">$0 software fee; gateway fees still apply</span></td>
+                    <td><span class="pill pill-amber">~0.30–1.25% of MRR</span><span class="cell-note">On top of gateway processing fees</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Self-hosting / data residency</th>
+                    <td class="cell-recurso">Full — run it in your own VPC, your data never leaves</td>
+                    <td>Vendor-hosted; data lives with Chargebee</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Source access &amp; lock-in</th>
+                    <td class="cell-recurso">Full source, no lock-in — fork and own it</td>
+                    <td>Closed source; migration cost to leave</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Integration breadth</th>
+                    <td class="cell-recurso">Focused set; extend via API and MIT source</td>
+                    <td>Very broad catalog of native integrations — a real strength</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">CPQ &amp; sales-led billing</th>
+                    <td class="cell-recurso">Not a focus</td>
+                    <td>Mature CPQ and quote-to-cash tooling</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Dunning</th>
+                    <td class="cell-recurso">Algorithmic retries (epsilon-greedy, Thompson, UCB1) with recovered-revenue attribution</td>
+                    <td>Mature, well-proven dunning and recovery tooling</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">India compliance</th>
+                    <td class="cell-recurso">GST e-invoicing (IRP), RBI e-mandates with 24-hour pre-debit notices, DPDP consent — built in</td>
+                    <td>Strong India + global tax support (Chargebee has deep India roots)</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Accounting ledger</th>
+                    <td class="cell-recurso">Built-in double-entry ledger; optional TigerBeetle mirror</td>
+                    <td>Revenue &amp; RevRec reporting; not a self-hosted ledger</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Maturity</th>
+                    <td class="cell-recurso">New project, small community</td>
+                    <td>Mature, widely adopted, well-supported</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="table-footnote">
+            Fee ranges reflect Chargebee's publicly described pricing model as of mid-2026 and
+            vary by plan, volume, and contract. Confirm current terms directly with Chargebee.
+          </p>
+        </div>
+      </section>
+
+      <!-- TCO -->
+      <section class="section" id="tco">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">Total cost of ownership</p>
+            <h2>What a percentage of MRR adds up to</h2>
+            <p>An illustrative sketch — not a quote. The point is that a platform fee is a tax that grows exactly as you do.</p>
+          </div>
+          <div class="cmp-table-wrap">
+            <div class="cmp-scroll">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th scope="col">Annual recurring revenue</th>
+                    <th scope="col" class="col-other">Chargebee platform fee<br>at ~0.5% of MRR</th>
+                    <th scope="col" class="col-other">…at ~0.9% of MRR</th>
+                    <th scope="col" class="col-recurso">Recurso software fee</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">$1M ARR</th>
+                    <td>~$5,000/yr</td>
+                    <td>~$9,000/yr</td>
+                    <td class="cell-recurso"><span class="pill pill-brand">$0</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">$5M ARR</th>
+                    <td>~$25,000/yr</td>
+                    <td>~$45,000/yr</td>
+                    <td class="cell-recurso"><span class="pill pill-brand">$0</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">$20M ARR</th>
+                    <td>~$100,000/yr</td>
+                    <td>~$180,000/yr</td>
+                    <td class="cell-recurso"><span class="pill pill-brand">$0</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="tco-note">
+            Illustrative only. The platform fee is <em>on top of</em> payment-gateway processing
+            fees, which you pay either way. Recurso's software fee is $0, but self-hosting has
+            real costs of its own — infrastructure, and the engineering time to run and
+            maintain it. The honest comparison is Chargebee's platform fee versus your hosting
+            and ops cost; for most teams the crossover favors self-hosting as ARR grows, but
+            not at every stage.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="choose">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">The honest verdict</p>
+            <h2>Which one should you run?</h2>
+          </div>
+          <div class="choose-grid">
+            <div class="choose-card other">
+              <h3>Choose Chargebee if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a mature, managed product and would rather not run infrastructure</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You need its broad native-integration catalog and CPQ / quote-to-cash tooling</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>A percentage-of-MRR platform fee is an acceptable trade for that breadth and support</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You don't need to self-host or keep billing data inside your own infrastructure</li>
+              </ul>
+            </div>
+            <div class="choose-card recurso">
+              <h3>Choose Recurso if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You don't want to pay a percentage of your revenue to a billing vendor</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You need to self-host and keep billing data inside your own VPC</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want the source code, no lock-in, and the freedom to fork under MIT</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a double-entry ledger and India-native GST / RBI / DPDP compliance built in</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You have the engineering capacity to run your own billing stack</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="others">
+            <a href="/vs/lago.html">vs Lago</a>
+            <a href="/vs/flexprice.html">vs Flexprice</a>
+            <a href="/vs/killbill.html">vs Kill Bill</a>
+            <a href="/vs/stripe-billing.html">vs Stripe Billing</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <div class="bg-dots"></div>
+        <div class="cta-glow"></div>
+        <div class="container cta-content">
+          <h2>Stop paying a tax on <span class="gradient-brand">your own revenue</span></h2>
+          <p>Free forever on your own infrastructure. Clone the repo and you're minutes away from a seeded dashboard.</p>
+          <div class="cta-ctas">
+            <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+              Start self-hosting
+            </a>
+            <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+          </div>
+          <p class="cta-cmd">git clone https://github.com/swapnull-in/recur-so.git &amp;&amp; make demo</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <a href="/" class="nav-logo">
+              <img src="/logo.svg" alt="Recurso" />
+              <span>recurso</span>
+            </a>
+            <p>The open-source billing engine for SaaS. Built with Go, PostgreSQL, and TigerBeetle. MIT licensed.</p>
+            <a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer" aria-label="Recurso on GitHub" class="footer-gh">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            </a>
+          </div>
+          <div class="footer-cols">
+            <div>
+              <h4>Product</h4>
+              <ul>
+                <li><a href="/#products">Product modules</a></li>
+                <li><a href="/#pricing">Pricing</a></li>
+                <li><a href="/#compare">Compare</a></li>
+                <li><a href="mailto:cloud@recurso.dev">Recurso Cloud waitlist</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Developers</h4>
+              <ul>
+                <li><a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Documentation</a></li>
+                <li><a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Quickstart</a></li>
+                <li><a href="https://docs.recurso.dev/api-reference/introduction" target="_blank" rel="noreferrer">API reference</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/tree/main/sdk/node" target="_blank" rel="noreferrer">Node SDK</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md" target="_blank" rel="noreferrer">Roadmap</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Compare</h4>
+              <ul>
+                <li><a href="/vs/lago.html">Recurso vs Lago</a></li>
+                <li><a href="/vs/flexprice.html">Recurso vs Flexprice</a></li>
+                <li><a href="/vs/killbill.html">Recurso vs Kill Bill</a></li>
+                <li><a href="/vs/chargebee.html">Recurso vs Chargebee</a></li>
+                <li><a href="/vs/stripe-billing.html">Recurso vs Stripe Billing</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Company</h4>
+              <ul>
+                <li><a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/discussions" target="_blank" rel="noreferrer">Community discussions</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/docs/security.md" target="_blank" rel="noreferrer">Security</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/LICENSE" target="_blank" rel="noreferrer">License (MIT)</a></li>
+                <li><a href="mailto:sales@recurso.dev">Contact</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>© 2026 Recurso. Open source under the MIT license.</p>
+          <p class="mono">Go · PostgreSQL · TigerBeetle</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Recurso vs Lago: two open-source billing engines compared — MIT vs AGPLv3 licensing, Go vs Ruby stacks, double-entry ledger vs usage metering focus, and an honest look at when to pick each." />
+    <meta property="og:title" content="Recurso vs Lago — open-source billing compared" />
+    <meta property="og:description" content="MIT vs AGPLv3, Go vs Ruby, ledger-first vs metering-first. An honest comparison of two open-source billing engines." />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0c0e14" />
+    <title>Recurso vs Lago — MIT vs AGPLv3 open-source billing | Recurso</title>
+    <link rel="stylesheet" href="/vs/compare.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <nav class="container nav-inner">
+        <a href="/" class="nav-logo">
+          <img src="/logo.svg" alt="Recurso" />
+          <span>recurso</span>
+        </a>
+        <div class="nav-links">
+          <a href="/#products">Product</a>
+          <a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Docs</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/#compare" class="active">Compare</a>
+        </div>
+        <div class="nav-actions">
+          <a class="nav-gh" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <span>Star on GitHub</span>
+            <svg class="icon-sm icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </a>
+          <a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer" class="btn-primary btn-sm">Get started</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <!-- Hero -->
+      <section class="hero">
+        <div class="bg-grid"></div>
+        <div class="hero-glow"></div>
+        <div class="container">
+          <div class="hero-content">
+            <p class="section-label rise-in">Compare</p>
+            <h1 class="rise-in rise-in-1">Recurso <span class="gradient-brand">vs</span> Lago</h1>
+            <p class="lede rise-in rise-in-2">
+              Both are open-source billing engines you can self-host for $0 in software fees.
+              The differences that matter: the license on the tin (MIT vs AGPLv3), the stack
+              you'll operate (Go vs Ruby), and what each engine puts first — an accounting-grade
+              ledger with India-first compliance, or high-volume usage metering.
+            </p>
+            <div class="hero-ctas rise-in rise-in-3">
+              <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                Start self-hosting
+              </a>
+              <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+            </div>
+            <p class="hero-note rise-in rise-in-3">MIT licensed · Go + PostgreSQL + TigerBeetle · Stripe &amp; Razorpay</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- At a glance -->
+      <section class="section" id="glance">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">At a glance</p>
+            <h2>Two open-source engines, different bets</h2>
+            <p>Recurso bets on a permissive license and accounting-grade billing. Lago bets on usage metering at scale with a hosted cloud behind it.</p>
+          </div>
+          <div class="cmp-table-wrap">
+            <div class="cmp-scroll">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th scope="col">Dimension</th>
+                    <th scope="col" class="col-recurso">Recurso</th>
+                    <th scope="col" class="col-other">Lago</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">License</th>
+                    <td class="cell-recurso"><span class="pill pill-brand">MIT</span><span class="cell-note">Permissive — fork, embed, resell</span></td>
+                    <td><span class="pill pill-amber">AGPLv3</span><span class="cell-note">Network copyleft</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Core focus</th>
+                    <td class="cell-recurso">Subscription billing on a double-entry ledger, India-first compliance</td>
+                    <td>Usage-based billing and metering — a genuine strength</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Stack you operate</th>
+                    <td class="cell-recurso">Go + PostgreSQL<span class="cell-note">Optional TigerBeetle ledger mirror; PostgreSQL stays authoritative</span></td>
+                    <td>Ruby</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Hosted cloud</th>
+                    <td class="cell-recurso">Not yet — self-host today, cloud waitlist open</td>
+                    <td>Yes, Lago Cloud is available today</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Maturity &amp; community</th>
+                    <td class="cell-recurso">New project, small community</td>
+                    <td>Established and well-funded, larger community</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">India compliance</th>
+                    <td class="cell-recurso">GST e-invoicing (IRP), RBI e-mandates with 24-hour pre-debit notifications, DPDP consent — built in</td>
+                    <td>Not a stated focus</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Dunning</th>
+                    <td class="cell-recurso">Algorithmic retries (epsilon-greedy, Thompson sampling, UCB1) with recovered-revenue attribution</td>
+                    <td>Configurable dunning campaigns</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">API &amp; SDKs</th>
+                    <td class="cell-recurso">OpenAPI 3.1 spec (113 paths), Node + Python SDKs</td>
+                    <td>API and SDKs available</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Software cost, self-hosted</th>
+                    <td class="cell-recurso">$0<span class="cell-note">Payment-gateway fees still apply</span></td>
+                    <td>$0<span class="cell-note">Payment-gateway fees still apply</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="table-footnote">
+            Competitor column reflects Lago's publicly stated positioning as of mid-2026.
+            Details change — verify against their current documentation before deciding.
+          </p>
+        </div>
+      </section>
+
+      <!-- License deep-dive -->
+      <section class="section" id="license">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">The license question</p>
+            <h2>MIT vs AGPLv3 — why it matters</h2>
+            <p>For many teams this is the deciding factor before a single feature gets compared.</p>
+          </div>
+          <div class="prose">
+            <p>
+              <strong>Lago is AGPLv3</strong> — a network copyleft license. If you modify Lago
+              and users interact with your modified version over a network, you are obligated
+              to offer them the modified source code. To be fair: running an unmodified Lago
+              as a separate service alongside your product is generally workable. The friction
+              starts when you want to fork it, patch it, or embed billing deep inside a
+              proprietary system.
+            </p>
+            <p>
+              In practice, the bigger issue is often approval, not obligation. Many corporate
+              legal teams restrict or outright prohibit AGPL software regardless of how it
+              would be used — Google's open-source policy famously bans AGPL code internally.
+              If you sell to or build inside such an organization, an AGPL billing core can be
+              a non-starter before the engineering evaluation even begins.
+            </p>
+            <p>
+              <strong>Recurso is MIT.</strong> Fork it, patch it, embed it in a closed-source
+              product, white-label it, ship it to customers — the only obligation is keeping
+              the copyright notice. There is nothing for a legal review to escalate.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Architecture -->
+      <section class="section" id="architecture">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">Architecture</p>
+            <h2>What you'll actually run</h2>
+          </div>
+          <div class="two-col">
+            <div class="card">
+              <h3>Recurso: Go + PostgreSQL, ledger-first</h3>
+              <p>
+                A single Go binary against PostgreSQL. Every invoice and payment posts to a
+                built-in double-entry ledger, with an optional TigerBeetle mirror for
+                high-throughput accounting — PostgreSQL always remains the source of truth,
+                so TigerBeetle is never a hard dependency.
+              </p>
+              <p>
+                On our benchmark hardware, Recurso sustains roughly 7.8k authenticated reads/s
+                and about 34.6k invoices/min with full ledger posting (methodology and scripts
+                are in the repo — run them on your own hardware).
+              </p>
+            </div>
+            <div class="card">
+              <h3>Lago: Ruby, metering-first</h3>
+              <p>
+                Lago is built in Ruby and is strongest where billing is driven by high-volume
+                usage events. If metering millions of events into rated charges is the core of
+                your problem, that focus shows — and it's the honest reason to shortlist Lago.
+              </p>
+              <p>
+                If your team is Ruby-native, Lago's codebase will also feel more familiar to
+                extend than a Go service, license permitting.
+              </p>
+            </div>
+          </div>
+          <div class="callout">
+            <p class="callout-label">Where Recurso is honestly behind</p>
+            <p>
+              Recurso is new: the community is small and there is no hosted cloud yet (the
+              waitlist is open). EU VAT uses a static rate table rather than live rates, US
+              sales tax runs through TaxJar behind an API key, and tax nexus is not modeled.
+              Lago is well-funded, has a larger community, and you can pay for a managed
+              product today.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Choose -->
+      <section class="section" id="choose">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">The honest verdict</p>
+            <h2>Which one should you run?</h2>
+          </div>
+          <div class="choose-grid">
+            <div class="choose-card other">
+              <h3>Choose Lago if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>High-volume usage metering is the heart of your billing problem</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a hosted cloud you can buy today, from a well-funded vendor</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>A larger community and more production mileage matter to you</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Your legal team has cleared AGPLv3, or you'll run it strictly unmodified</li>
+              </ul>
+            </div>
+            <div class="choose-card recurso">
+              <h3>Choose Recurso if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You need a permissive MIT license — to fork, embed, or ship inside proprietary software</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You bill Indian customers: GST e-invoicing, RBI e-mandates, and DPDP consent are built in</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a double-entry ledger under every invoice, not billing records alone</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Failed-payment recovery matters: bandit-based dunning with recovered-revenue attribution</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a small ops footprint: one Go binary plus PostgreSQL</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="others">
+            <a href="/vs/flexprice.html">vs Flexprice</a>
+            <a href="/vs/killbill.html">vs Kill Bill</a>
+            <a href="/vs/chargebee.html">vs Chargebee</a>
+            <a href="/vs/stripe-billing.html">vs Stripe Billing</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA -->
+      <section class="cta">
+        <div class="bg-dots"></div>
+        <div class="cta-glow"></div>
+        <div class="container cta-content">
+          <h2>Try Recurso in <span class="gradient-brand">one command</span></h2>
+          <p>Free forever on your own infrastructure. Clone the repo and you're minutes away from a seeded dashboard.</p>
+          <div class="cta-ctas">
+            <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+              Start self-hosting
+            </a>
+            <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+          </div>
+          <p class="cta-cmd">git clone https://github.com/swapnull-in/recur-so.git &amp;&amp; make demo</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <a href="/" class="nav-logo">
+              <img src="/logo.svg" alt="Recurso" />
+              <span>recurso</span>
+            </a>
+            <p>The open-source billing engine for SaaS. Built with Go, PostgreSQL, and TigerBeetle. MIT licensed.</p>
+            <a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer" aria-label="Recurso on GitHub" class="footer-gh">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            </a>
+          </div>
+          <div class="footer-cols">
+            <div>
+              <h4>Product</h4>
+              <ul>
+                <li><a href="/#products">Product modules</a></li>
+                <li><a href="/#pricing">Pricing</a></li>
+                <li><a href="/#compare">Compare</a></li>
+                <li><a href="mailto:cloud@recurso.dev">Recurso Cloud waitlist</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Developers</h4>
+              <ul>
+                <li><a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Documentation</a></li>
+                <li><a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Quickstart</a></li>
+                <li><a href="https://docs.recurso.dev/api-reference/introduction" target="_blank" rel="noreferrer">API reference</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/tree/main/sdk/node" target="_blank" rel="noreferrer">Node SDK</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md" target="_blank" rel="noreferrer">Roadmap</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Compare</h4>
+              <ul>
+                <li><a href="/vs/lago.html">Recurso vs Lago</a></li>
+                <li><a href="/vs/flexprice.html">Recurso vs Flexprice</a></li>
+                <li><a href="/vs/killbill.html">Recurso vs Kill Bill</a></li>
+                <li><a href="/vs/chargebee.html">Recurso vs Chargebee</a></li>
+                <li><a href="/vs/stripe-billing.html">Recurso vs Stripe Billing</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Company</h4>
+              <ul>
+                <li><a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/discussions" target="_blank" rel="noreferrer">Community discussions</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/docs/security.md" target="_blank" rel="noreferrer">Security</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/LICENSE" target="_blank" rel="noreferrer">License (MIT)</a></li>
+                <li><a href="mailto:sales@recurso.dev">Contact</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>© 2026 Recurso. Open source under the MIT license.</p>
+          <p class="mono">Go · PostgreSQL · TigerBeetle</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

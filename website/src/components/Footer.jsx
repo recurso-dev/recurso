@@ -24,6 +24,16 @@ const columns = [
         ],
     },
     {
+        title: 'Compare',
+        links: [
+            { label: 'Recurso vs Lago', href: '/vs/lago.html' },
+            { label: 'Recurso vs Flexprice', href: '/vs/flexprice.html' },
+            { label: 'Recurso vs Kill Bill', href: '/vs/killbill.html' },
+            { label: 'Recurso vs Chargebee', href: '/vs/chargebee.html' },
+            { label: 'Recurso vs Stripe Billing', href: '/vs/stripe-billing.html' },
+        ],
+    },
+    {
         title: 'Company',
         links: [
             { label: 'GitHub', href: 'https://github.com/swapnull-in/recur-so', external: true },
@@ -61,7 +71,7 @@ const Footer = () => (
                 </div>
 
                 {/* Link columns */}
-                <div className="grid grid-cols-2 gap-8 sm:grid-cols-3">
+                <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
                     {columns.map((col) => (
                         <div key={col.title}>
                             <h4 className="text-sm font-semibold text-fg">{col.title}</h4>

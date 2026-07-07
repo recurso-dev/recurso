@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Recurso vs Kill Bill: two open-source billing platforms compared — both permissively licensed, but Go + PostgreSQL vs a mature Java plugin architecture. An honest look at maturity vs operational weight." />
+    <meta property="og:title" content="Recurso vs Kill Bill — open-source billing compared" />
+    <meta property="og:description" content="Both are permissively licensed open source. Go + PostgreSQL vs mature Java plugin architecture. An honest comparison." />
+    <meta property="og:type" content="website" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <meta name="theme-color" content="#0c0e14" />
+    <title>Recurso vs Kill Bill — open-source billing compared | Recurso</title>
+    <link rel="stylesheet" href="/vs/compare.css" />
+  </head>
+  <body>
+    <header class="nav">
+      <nav class="container nav-inner">
+        <a href="/" class="nav-logo">
+          <img src="/logo.svg" alt="Recurso" />
+          <span>recurso</span>
+        </a>
+        <div class="nav-links">
+          <a href="/#products">Product</a>
+          <a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Docs</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/#compare" class="active">Compare</a>
+        </div>
+        <div class="nav-actions">
+          <a class="nav-gh" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            <span>Star on GitHub</span>
+            <svg class="icon-sm icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          </a>
+          <a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer" class="btn-primary btn-sm">Get started</a>
+        </div>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="bg-grid"></div>
+        <div class="hero-glow"></div>
+        <div class="container">
+          <div class="hero-content">
+            <p class="section-label rise-in">Compare</p>
+            <h1 class="rise-in rise-in-1">Recurso <span class="gradient-brand">vs</span> Kill Bill</h1>
+            <p class="lede rise-in rise-in-2">
+              Both are permissively licensed open-source billing platforms — no AGPL debate
+              here. The real trade-off is maturity versus operational weight: Kill Bill has a
+              decade-plus of production hardening and a deep plugin ecosystem; Recurso is a
+              young, lightweight Go + PostgreSQL engine that's far quicker to stand up.
+            </p>
+            <div class="hero-ctas rise-in rise-in-3">
+              <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+                Start self-hosting
+              </a>
+              <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+            </div>
+            <p class="hero-note rise-in rise-in-3">MIT licensed · Go + PostgreSQL + TigerBeetle · Stripe &amp; Razorpay</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="glance">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">At a glance</p>
+            <h2>Young and lightweight vs mature and heavyweight</h2>
+            <p>Kill Bill is Apache 2.0, Java, and battle-tested. Recurso is MIT, Go, and easy to operate — but far younger.</p>
+          </div>
+          <div class="cmp-table-wrap">
+            <div class="cmp-scroll">
+              <table class="cmp">
+                <thead>
+                  <tr>
+                    <th scope="col">Dimension</th>
+                    <th scope="col" class="col-recurso">Recurso</th>
+                    <th scope="col" class="col-other">Kill Bill</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <th scope="row">License</th>
+                    <td class="cell-recurso"><span class="pill pill-brand">MIT</span></td>
+                    <td><span class="pill pill-brand">Apache 2.0</span><span class="cell-note">Also permissive — no copyleft concern</span></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Maturity</th>
+                    <td class="cell-recurso">New project, small community</td>
+                    <td>10+ years in production, proven at scale — a real advantage</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Stack</th>
+                    <td class="cell-recurso">Go + PostgreSQL, single binary</td>
+                    <td>Java (JVM), typically with a servlet container + database</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Operational weight</th>
+                    <td class="cell-recurso">Light — one binary plus PostgreSQL</td>
+                    <td>Heavyweight to deploy, tune, and operate</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Extensibility</th>
+                    <td class="cell-recurso">Configuration + API; MIT source you can fork freely</td>
+                    <td>Mature plugin architecture with a broad plugin catalog — a genuine strength</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Accounting ledger</th>
+                    <td class="cell-recurso">Built-in double-entry ledger; optional TigerBeetle mirror</td>
+                    <td>Invoice + payment accounting; account balance model</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">India compliance</th>
+                    <td class="cell-recurso">GST e-invoicing (IRP), RBI e-mandates with 24-hour pre-debit notices, DPDP consent — built in</td>
+                    <td>Not built in; would need custom work or plugins</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Dunning</th>
+                    <td class="cell-recurso">Algorithmic retries (epsilon-greedy, Thompson, UCB1) with recovered-revenue attribution</td>
+                    <td>Configurable payment retry (overdue) logic</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">API &amp; SDKs</th>
+                    <td class="cell-recurso">OpenAPI 3.1 (113 paths), Node + Python SDKs</td>
+                    <td>Mature REST API with client libraries in several languages</td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Software cost, self-hosted</th>
+                    <td class="cell-recurso">$0<span class="cell-note">Gateway fees still apply</span></td>
+                    <td>$0<span class="cell-note">Gateway fees still apply</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <p class="table-footnote">
+            Competitor column reflects Kill Bill's publicly stated positioning as of mid-2026.
+            Verify specifics against their current documentation.
+          </p>
+        </div>
+      </section>
+
+      <section class="section" id="architecture">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">Architecture</p>
+            <h2>Maturity vs operational simplicity</h2>
+            <p>This is the crux. Kill Bill's decade of hardening is real; so is the weight that comes with it.</p>
+          </div>
+          <div class="two-col">
+            <div class="card">
+              <h3>Kill Bill: mature Java + plugins</h3>
+              <p>
+                Kill Bill has been in production for over ten years and has earned trust at
+                serious scale. Its plugin architecture is a legitimate strength: payment
+                gateways, tax, analytics, and custom logic all slot in through well-defined
+                extension points, and there's a real catalog to draw from.
+              </p>
+              <p>
+                The cost is operational weight. It's a JVM application that is heavier to
+                deploy, tune, and keep running than a single static binary — you're taking on
+                more moving parts and more expertise to run it well. For many teams that's a
+                perfectly reasonable trade for the maturity.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Recurso: light Go + PostgreSQL</h3>
+              <p>
+                Recurso is one Go binary against PostgreSQL, with an optional TigerBeetle
+                ledger mirror (PostgreSQL stays authoritative). There's no JVM to tune and no
+                servlet container to manage — you can be running in minutes with a small ops
+                footprint.
+              </p>
+              <p>
+                On our benchmark hardware: ~7.8k authenticated reads/s and ~34.6k invoices/min
+                with full ledger posting. The scripts ship in the repo — reproduce the numbers
+                on your own hardware.
+              </p>
+            </div>
+          </div>
+          <div class="callout">
+            <p class="callout-label">Where Recurso is honestly behind</p>
+            <p>
+              Kill Bill's ten-plus years of production hardening, its plugin ecosystem, and its
+              proven scale are things a young project simply hasn't earned yet. Recurso has a
+              small community and no hosted cloud, EU VAT is a static rate table, US sales tax
+              runs through TaxJar behind a key, and nexus isn't modeled. If maturity and a deep
+              plugin catalog are your priorities, Kill Bill has the stronger claim.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="choose">
+        <div class="container narrow">
+          <div class="section-head">
+            <p class="section-label">The honest verdict</p>
+            <h2>Which one should you run?</h2>
+          </div>
+          <div class="choose-grid">
+            <div class="choose-card other">
+              <h3>Choose Kill Bill if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>A decade-plus of production maturity and proven scale is your top priority</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a broad, established plugin ecosystem to extend billing</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Your team is JVM-native and comfortable operating Java services at scale</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You don't need India-native compliance out of the box</li>
+              </ul>
+            </div>
+            <div class="choose-card recurso">
+              <h3>Choose Recurso if…</h3>
+              <ul>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a light ops footprint: one Go binary plus PostgreSQL, running in minutes</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You bill Indian customers and want GST, RBI e-mandates, and DPDP consent built in</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want algorithmic dunning with recovered-revenue attribution built in, not bolted on</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You prefer a Go codebase and a modern OpenAPI 3.1 spec with Node + Python SDKs</li>
+                <li><svg class="icon tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>You want a permissive license — both qualify, but MIT is as unencumbered as it gets</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="others">
+            <a href="/vs/lago.html">vs Lago</a>
+            <a href="/vs/flexprice.html">vs Flexprice</a>
+            <a href="/vs/chargebee.html">vs Chargebee</a>
+            <a href="/vs/stripe-billing.html">vs Stripe Billing</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta">
+        <div class="bg-dots"></div>
+        <div class="cta-glow"></div>
+        <div class="container cta-content">
+          <h2>Try Recurso in <span class="gradient-brand">one command</span></h2>
+          <p>Free forever on your own infrastructure. Clone the repo and you're minutes away from a seeded dashboard.</p>
+          <div class="cta-ctas">
+            <a class="btn-primary" href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+              Start self-hosting
+            </a>
+            <a class="btn-secondary" href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Read the quickstart</a>
+          </div>
+          <p class="cta-cmd">git clone https://github.com/swapnull-in/recur-so.git &amp;&amp; make demo</p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="container footer-inner">
+        <div class="footer-grid">
+          <div class="footer-brand">
+            <a href="/" class="nav-logo">
+              <img src="/logo.svg" alt="Recurso" />
+              <span>recurso</span>
+            </a>
+            <p>The open-source billing engine for SaaS. Built with Go, PostgreSQL, and TigerBeetle. MIT licensed.</p>
+            <a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer" aria-label="Recurso on GitHub" class="footer-gh">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+            </a>
+          </div>
+          <div class="footer-cols">
+            <div>
+              <h4>Product</h4>
+              <ul>
+                <li><a href="/#products">Product modules</a></li>
+                <li><a href="/#pricing">Pricing</a></li>
+                <li><a href="/#compare">Compare</a></li>
+                <li><a href="mailto:cloud@recurso.dev">Recurso Cloud waitlist</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Developers</h4>
+              <ul>
+                <li><a href="https://docs.recurso.dev" target="_blank" rel="noreferrer">Documentation</a></li>
+                <li><a href="https://docs.recurso.dev/quickstart" target="_blank" rel="noreferrer">Quickstart</a></li>
+                <li><a href="https://docs.recurso.dev/api-reference/introduction" target="_blank" rel="noreferrer">API reference</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/tree/main/sdk/node" target="_blank" rel="noreferrer">Node SDK</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md" target="_blank" rel="noreferrer">Roadmap</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md" target="_blank" rel="noreferrer">Changelog</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Compare</h4>
+              <ul>
+                <li><a href="/vs/lago.html">Recurso vs Lago</a></li>
+                <li><a href="/vs/flexprice.html">Recurso vs Flexprice</a></li>
+                <li><a href="/vs/killbill.html">Recurso vs Kill Bill</a></li>
+                <li><a href="/vs/chargebee.html">Recurso vs Chargebee</a></li>
+                <li><a href="/vs/stripe-billing.html">Recurso vs Stripe Billing</a></li>
+              </ul>
+            </div>
+            <div>
+              <h4>Company</h4>
+              <ul>
+                <li><a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer">GitHub</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/discussions" target="_blank" rel="noreferrer">Community discussions</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/docs/security.md" target="_blank" rel="noreferrer">Security</a></li>
+                <li><a href="https://github.com/swapnull-in/recur-so/blob/main/LICENSE" target="_blank" rel="noreferrer">License (MIT)</a></li>
+                <li><a href="mailto:sales@recurso.dev">Contact</a></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>© 2026 Recurso. Open source under the MIT license.</p>
+          <p class="mono">Go · PostgreSQL · TigerBeetle</p>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
