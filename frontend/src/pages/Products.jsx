@@ -1,193 +1,174 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { endpoints as api } from '../lib/api'
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Package } from "lucide-react";
 
-const Products = () => {
-    const [products, setProducts] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [search, setSearch] = useState('')
-    const [debouncedSearch, setDebouncedSearch] = useState('')
-    const [page, setPage] = useState(1)
-    const [limit, setLimit] = useState(10)
+import { endpoints as api } from "../lib/api";
+import { useDebounce } from "../hooks/useDebounce";
+import { cn, formatDate } from "@/lib/utils";
+import { PageHeader } from "@/components/patterns/PageHeader";
+import { DataTable } from "@/components/patterns/DataTable";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
-    // Debounce search
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            setDebouncedSearch(search)
-            setPage(1)
-        }, 500)
-        return () => clearTimeout(timer)
-    }, [search])
+const STATUS_FILTERS = ["all", "active", "archived"];
+const PAGE_SIZE = 10;
 
-    useEffect(() => {
-        const fetchProducts = async () => {
-            setLoading(true)
-            try {
-                const params = {
-                    q: debouncedSearch,
-                    limit: limit,
-                    page: page
-                }
-                const response = await api.getPlans(params)
-                // Backend returns plans. We map them to "product" structure for the UI.
-                const plans = response.data.data || []
+export default function Products() {
+  const navigate = useNavigate();
 
-                // The backend's catalog unit is the Plan; this page presents
-                // plans as "products" with their price points as variants.
-                const transformed = plans.map(p => ({
-                    id: p.id,
-                    name: p.name,
-                    description: p.description || 'No description',
-                    status: p.active ? 'active' : 'archived',
-                    prices: p.prices ? p.prices.length : 0,
-                    created_at: p.created_at
-                }))
-                setProducts(transformed)
-            } catch (error) {
-                console.error("Failed to fetch products:", error)
-            } finally {
-                setLoading(false)
-            }
-        }
-        fetchProducts()
-    }, [debouncedSearch, page, limit])
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search, 500);
 
-    const [statusFilter, setStatusFilter] = useState('all') // 'all', 'active', 'archived'
-    const [isStatusOpen, setIsStatusOpen] = useState(false)
-
-    // Filtered list
-    const filteredProducts = products.filter(p => {
-        if (statusFilter === 'all') return true
-        return p.status === statusFilter
-    })
-
-    // Click outside handler
-    useEffect(() => {
-        const close = () => setIsStatusOpen(false)
-        if (isStatusOpen) window.addEventListener('click', close)
-        return () => window.removeEventListener('click', close)
-    }, [isStatusOpen])
-
-    const handleFilterClick = (e, filter) => {
-        e.stopPropagation()
-        setStatusFilter(filter)
-        setIsStatusOpen(false)
+  const fetchProducts = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = { q: debouncedSearch, limit: PAGE_SIZE, page };
+      const response = await api.getPlans(params);
+      // The backend's catalog unit is the Plan; this page presents plans as
+      // "products" with their price points as variants. Mapping preserved.
+      const plans = response.data.data || [];
+      const transformed = plans.map((p) => ({
+        id: p.id,
+        name: p.name,
+        description: p.description || "No description",
+        status: p.active ? "active" : "archived",
+        prices: p.prices ? p.prices.length : 0,
+        created_at: p.created_at,
+      }));
+      setProducts(transformed);
+    } catch (err) {
+      setError(
+        err?.response?.data?.error?.message || err?.message || "Failed to load products"
+      );
+    } finally {
+      setLoading(false);
     }
+  }, [debouncedSearch, page]);
 
-    return (
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="flex flex-wrap items-center justify-between gap-4 pb-6">
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Product Catalog</h1>
-                <Link
-                    to="/plans/new"
-                    className="flex h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-lg bg-primary px-4 text-sm font-medium text-white shadow-sm transition-all hover:bg-primary/90"
-                >
-                    <span className="material-symbols-outlined text-lg">add_circle</span>
-                    <span className="truncate">Create New Product</span>
-                </Link>
-            </div>
+  useEffect(() => {
+    fetchProducts();
+  }, [fetchProducts]);
 
-            {/* Filters */}
-            <div className="flex flex-wrap items-center gap-4 mb-4">
-                <div className="flex-grow min-w-[250px]">
-                    <div className="relative flex w-full flex-1 items-stretch rounded-lg">
-                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                            <span className="material-symbols-outlined text-slate-400 dark:text-slate-500 text-xl">search</span>
-                        </div>
-                        <input
-                            className="block w-full rounded-lg border-slate-300 bg-white dark:bg-slate-800 dark:border-slate-700 dark:text-white dark:placeholder-slate-400 pl-10 h-10 text-sm focus:border-primary focus:ring-primary/20"
-                            placeholder="Search products..."
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                        />
-                    </div>
-                </div>
+  // Reset to page 1 whenever the search query changes.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
-                {/* Status Dropdown */}
-                <div className="relative">
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsStatusOpen(!isStatusOpen) }}
-                        className="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-lg bg-white dark:bg-slate-900/50 border border-slate-300 dark:border-slate-700 px-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                    >
-                        <p className="text-slate-700 dark:text-slate-300 text-sm font-medium leading-normal capitalize">Status: {statusFilter}</p>
-                        <span className="material-symbols-outlined text-lg text-slate-400 dark:text-slate-500">expand_more</span>
-                    </button>
+  // Client-side status filter over the fetched page (preserved).
+  const filteredProducts = useMemo(
+    () =>
+      products.filter((p) => statusFilter === "all" || p.status === statusFilter),
+    [products, statusFilter]
+  );
 
-                    {isStatusOpen && (
-                        <div className="absolute right-0 top-12 w-40 z-10 rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800 py-1">
-                            <button onClick={(e) => handleFilterClick(e, 'all')} className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700">All</button>
-                            <button onClick={(e) => handleFilterClick(e, 'active')} className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700">Active</button>
-                            <button onClick={(e) => handleFilterClick(e, 'archived')} className="block w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-700">Archived</button>
-                        </div>
-                    )}
-                </div>
-            </div>
+  const hasFilters = search || statusFilter !== "all";
 
-            <div className="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 shadow-sm">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
-                            <tr>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Product Name</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Description</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Prices</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Created</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                            {loading ? (
-                                <tr><td colSpan="5" className="p-8 text-center text-slate-500">Loading products...</td></tr>
-                            ) : filteredProducts.length === 0 ? (
-                                <tr><td colSpan="5" className="p-8 text-center text-slate-500">No products found.</td></tr>
-                            ) : (
-                                filteredProducts.map((product) => (
-                                    <tr key={product.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">{product.name}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400 truncate max-w-xs">{product.description}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium 
-                                                ${product.status === 'active' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' : 'bg-slate-200 text-slate-800 dark:bg-slate-700/50 dark:text-slate-300'}`}>
-                                                {product.status.charAt(0).toUpperCase() + product.status.slice(1)}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">{product.prices}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
-                                            {new Date(product.created_at).toLocaleDateString()}
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+  const columns = [
+    {
+      key: "name",
+      header: "Product name",
+      cell: (p) => <span className="font-medium text-foreground">{p.name}</span>,
+    },
+    {
+      key: "description",
+      header: "Description",
+      cell: (p) => (
+        <span className="block max-w-xs truncate text-muted-foreground">
+          {p.description}
+        </span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (p) => (
+        <Badge variant={p.status === "active" ? "success" : "neutral"}>
+          {p.status.charAt(0).toUpperCase() + p.status.slice(1)}
+        </Badge>
+      ),
+    },
+    {
+      key: "prices",
+      header: "Prices",
+      cell: (p) => <span className="tabular-nums text-muted-foreground">{p.prices}</span>,
+    },
+    {
+      key: "created",
+      header: "Created",
+      cell: (p) => (
+        <span className="text-muted-foreground">{formatDate(p.created_at)}</span>
+      ),
+    },
+  ];
 
-            {/* Pagination */}
-            <div className="flex items-center justify-between mt-6">
-                <p className="text-sm text-slate-500 dark:text-slate-400">
-                    Page <span className="font-medium">{page}</span>
-                </p>
-                <div className="flex gap-2">
-                    <button
-                        onClick={() => setPage(p => Math.max(1, p - 1))}
-                        disabled={page === 1}
-                        className="flex items-center justify-center h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-300 disabled:opacity-50 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-lg">chevron_left</span>
-                    </button>
-                    <button
-                        onClick={() => setPage(p => p + 1)}
-                        disabled={products.length < limit}
-                        className="flex items-center justify-center h-9 w-9 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-slate-600 dark:text-slate-300 disabled:opacity-50 transition-colors"
-                    >
-                        <span className="material-symbols-outlined text-lg">chevron_right</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-    )
+  return (
+    <div>
+      <PageHeader
+        title="Product Catalog"
+        description="Browse the catalog of plans and their price points."
+        actions={
+          <Button onClick={() => navigate("/plans/new")}>
+            <Plus className="h-4 w-4" />
+            Create product
+          </Button>
+        }
+      />
+
+      <DataTable
+        columns={columns}
+        data={filteredProducts}
+        loading={loading}
+        error={error}
+        onRetry={fetchProducts}
+        search={{
+          value: search,
+          onChange: setSearch,
+          placeholder: "Search products...",
+        }}
+        toolbar={
+          <div className="flex items-center gap-1 rounded-lg border border-border bg-white p-0.5">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f}
+                onClick={() => setStatusFilter(f)}
+                className={cn(
+                  "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors",
+                  statusFilter === f
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "text-zinc-500 hover:text-zinc-900"
+                )}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        }
+        empty={{
+          icon: Package,
+          title: hasFilters ? "No matching products" : "No products yet",
+          description: hasFilters
+            ? "Try adjusting your search or filters."
+            : "Create a plan to populate your product catalog.",
+          action: !hasFilters ? (
+            <Button onClick={() => navigate("/plans/new")}>
+              <Plus className="h-4 w-4" />
+              Create product
+            </Button>
+          ) : null,
+        }}
+        pagination={{
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext: products.length >= PAGE_SIZE,
+        }}
+      />
+    </div>
+  );
 }
-
-export default Products

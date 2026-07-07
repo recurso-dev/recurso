@@ -50,7 +50,7 @@ describe('Invoices Page', () => {
         endpoints.getInvoices.mockReturnValue(pending);
 
         render(<Invoices />, { wrapper });
-        expect(document.querySelector('[style*="shimmer"]')).toBeTruthy();
+        expect(document.querySelector('.animate-pulse')).toBeTruthy();
 
         resolvePromise({ data: { data: [] } });
         await waitFor(() => {

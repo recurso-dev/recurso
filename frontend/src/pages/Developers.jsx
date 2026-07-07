@@ -1,490 +1,565 @@
-import React, { useState, useEffect } from 'react'
-import { endpoints } from '../lib/api'
-import Modal from '../components/Modal'
+import React, { useEffect, useState } from "react";
+import {
+  Plus,
+  Trash2,
+  Webhook,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  AlertTriangle,
+  CheckCircle2,
+} from "lucide-react";
 
-const Developers = () => {
-    const [keys, setKeys] = useState([])
-    const [webhooks, setWebhooks] = useState([])
-    const [events, setEvents] = useState([])
-    const [eventTypes, setEventTypes] = useState([])
-    const [activeTab, setActiveTab] = useState('keys') // 'keys', 'webhooks', 'events'
-    const [loading, setLoading] = useState(true)
-    const [eventsLoading, setEventsLoading] = useState(true)
-    const [eventTypeFilter, setEventTypeFilter] = useState('all')
-    const [expandedEventId, setExpandedEventId] = useState(null)
-    const [generatedKey, setGeneratedKey] = useState(null)
-    const [isModalOpen, setIsModalOpen] = useState(false)
-    const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false)
-    const [newWebhook, setNewWebhook] = useState({ url: '', events: [] })
-    const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null)
+import { endpoints } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/patterns/PageHeader";
+import { DataTable } from "@/components/patterns/DataTable";
+import { EmptyState } from "@/components/patterns/EmptyState";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-    const fetchKeys = async () => {
-        try {
-            const response = await endpoints.getAPIKeys()
-            setKeys(response.data.data || [])
-        } catch (error) {
-            console.error(error)
-        } finally {
-            setLoading(false)
-        }
+export default function Developers() {
+  const [keys, setKeys] = useState([]);
+  const [webhooks, setWebhooks] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [eventTypes, setEventTypes] = useState([]);
+  const [activeTab, setActiveTab] = useState("keys"); // 'keys' | 'webhooks' | 'events'
+  const [loading, setLoading] = useState(true);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventTypeFilter, setEventTypeFilter] = useState("all");
+  const [expandedEventId, setExpandedEventId] = useState(null);
+  const [generatedKey, setGeneratedKey] = useState(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
+  const [newWebhook, setNewWebhook] = useState({ url: "", events: [] });
+  const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null);
+
+  const fetchKeys = async () => {
+    try {
+      const response = await endpoints.getAPIKeys();
+      setKeys(response.data.data || []);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const fetchWebhooks = async () => {
-        try {
-            const response = await endpoints.getWebhooks()
-            setWebhooks(response.data.data || [])
-        } catch (error) {
-            console.error('Failed to fetch webhooks:', error)
-        }
+  const fetchWebhooks = async () => {
+    try {
+      const response = await endpoints.getWebhooks();
+      setWebhooks(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch webhooks:", error);
     }
+  };
 
-    const fetchEvents = async () => {
-        setEventsLoading(true)
-        try {
-            const response = await endpoints.getEvents({ limit: 50 })
-            setEvents(response.data.data || [])
-        } catch (error) {
-            console.error('Failed to fetch events:', error)
-        } finally {
-            setEventsLoading(false)
-        }
+  const fetchEvents = async () => {
+    setEventsLoading(true);
+    try {
+      const response = await endpoints.getEvents({ limit: 50 });
+      setEvents(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch events:", error);
+    } finally {
+      setEventsLoading(false);
     }
+  };
 
-    const fetchEventTypes = async () => {
-        try {
-            const response = await endpoints.getEventTypes()
-            setEventTypes(response.data.data || [])
-        } catch (error) {
-            console.error('Failed to fetch event types:', error)
-        }
+  const fetchEventTypes = async () => {
+    try {
+      const response = await endpoints.getEventTypes();
+      setEventTypes(response.data.data || []);
+    } catch (error) {
+      console.error("Failed to fetch event types:", error);
     }
+  };
 
-    useEffect(() => {
-        fetchKeys()
-        fetchWebhooks()
-        fetchEvents()
-        fetchEventTypes()
-    }, [])
+  useEffect(() => {
+    fetchKeys();
+    fetchWebhooks();
+    fetchEvents();
+    fetchEventTypes();
+  }, []);
 
-    const handleCreateKey = async () => {
-        try {
-            const response = await endpoints.createKey({})
-            // POST /developer/keys returns the APIKey object directly;
-            // key_value is only present on creation.
-            setGeneratedKey(response.data.key_value || response.data.key)
-            setIsModalOpen(true)
-            fetchKeys()
-        } catch (error) {
-            console.error("Failed to create key:", error)
-        }
+  const handleCreateKey = async () => {
+    try {
+      const response = await endpoints.createKey({});
+      // POST /developer/keys returns the APIKey object directly;
+      // key_value is only present on creation.
+      setGeneratedKey(response.data.key_value || response.data.key);
+      setIsModalOpen(true);
+      fetchKeys();
+    } catch (error) {
+      console.error("Failed to create key:", error);
     }
+  };
 
-    const handleCreateWebhook = async () => {
-        if (!newWebhook.url || newWebhook.events.length === 0) {
-            alert('Please enter a URL and select at least one event type.')
-            return
-        }
-        try {
-            const response = await endpoints.createWebhook(newWebhook)
-            setCreatedWebhookSecret(response.data.data?.secret)
-            setNewWebhook({ url: '', events: [] })
-            fetchWebhooks()
-        } catch (error) {
-            console.error("Failed to create webhook:", error)
-            alert('Failed to create webhook: ' + (error.response?.data?.error?.message || error.message))
-        }
+  const handleCreateWebhook = async () => {
+    if (!newWebhook.url || newWebhook.events.length === 0) {
+      alert("Please enter a URL and select at least one event type.");
+      return;
     }
-
-    const handleDeleteWebhook = async (id) => {
-        if (!confirm('Are you sure you want to delete this webhook endpoint?')) return
-        try {
-            await endpoints.deleteWebhook(id)
-            fetchWebhooks()
-        } catch (error) {
-            console.error("Failed to delete webhook:", error)
-        }
+    try {
+      const response = await endpoints.createWebhook(newWebhook);
+      setCreatedWebhookSecret(response.data.data?.secret);
+      setNewWebhook({ url: "", events: [] });
+      fetchWebhooks();
+    } catch (error) {
+      console.error("Failed to create webhook:", error);
+      alert(
+        "Failed to create webhook: " +
+          (error.response?.data?.error?.message || error.message)
+      );
     }
+  };
 
-    const toggleEventType = (eventType) => {
-        setNewWebhook(prev => {
-            const events = prev.events.includes(eventType)
-                ? prev.events.filter(e => e !== eventType)
-                : [...prev.events, eventType]
-            return { ...prev, events }
-        })
+  const handleDeleteWebhook = async (id) => {
+    if (!confirm("Are you sure you want to delete this webhook endpoint?")) return;
+    try {
+      await endpoints.deleteWebhook(id);
+      fetchWebhooks();
+    } catch (error) {
+      console.error("Failed to delete webhook:", error);
     }
+  };
 
-    // GET /v1/events only supports limit/offset, so the type filter is applied
-    // client-side over the fetched window. The API exposes no per-endpoint
-    // delivery status for events, so none is rendered here.
-    const filteredEvents = eventTypeFilter === 'all'
-        ? events
-        : events.filter(e => e.type === eventTypeFilter)
+  const toggleEventType = (eventType) => {
+    setNewWebhook((prev) => {
+      const events = prev.events.includes(eventType)
+        ? prev.events.filter((e) => e !== eventType)
+        : [...prev.events, eventType];
+      return { ...prev, events };
+    });
+  };
 
-    return (
-        <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-            <header className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                    <h1 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">Developer Settings</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">Manage your API keys, webhooks, and view event logs.</p>
-                </div>
-                {activeTab === 'keys' && (
-                    <button
-                        onClick={handleCreateKey}
-                        className="flex items-center justify-center gap-2 overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-semibold leading-normal shadow-sm hover:bg-primary/90 transition-all"
-                    >
-                        <span className="material-symbols-outlined text-lg">add</span>
-                        <span className="truncate">Create API Key</span>
-                    </button>
-                )}
-                {activeTab === 'webhooks' && (
-                    <button
-                        onClick={() => setIsWebhookModalOpen(true)}
-                        className="flex items-center justify-center gap-2 overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-semibold leading-normal shadow-sm hover:bg-primary/90 transition-all"
-                    >
-                        <span className="material-symbols-outlined text-lg">add</span>
-                        <span className="truncate">Add Endpoint</span>
-                    </button>
-                )}
-            </header>
+  // GET /v1/events only supports limit/offset, so the type filter is applied
+  // client-side over the fetched window. The API exposes no per-endpoint
+  // delivery status for events, so none is rendered here.
+  const filteredEvents =
+    eventTypeFilter === "all"
+      ? events
+      : events.filter((e) => e.type === eventTypeFilter);
 
-            {/* Tabs */}
-            <div className="mt-8">
-                <div className="flex border-b border-slate-200 dark:border-slate-800 gap-8">
-                    <button
-                        onClick={() => setActiveTab('keys')}
-                        className={`flex flex-col items-center justify-center border-b-[3px] pb-[13px] pt-2 transition-colors ${activeTab === 'keys' ? 'border-primary text-primary dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'}`}
-                    >
-                        <p className="text-sm font-semibold leading-normal">API Keys</p>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('webhooks')}
-                        className={`flex flex-col items-center justify-center border-b-[3px] pb-[13px] pt-2 transition-colors ${activeTab === 'webhooks' ? 'border-primary text-primary dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'}`}
-                    >
-                        <p className="text-sm font-semibold leading-normal">Webhooks</p>
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('events')}
-                        className={`flex flex-col items-center justify-center border-b-[3px] pb-[13px] pt-2 transition-colors ${activeTab === 'events' ? 'border-primary text-primary dark:text-white' : 'border-transparent text-slate-500 dark:text-slate-400 hover:border-slate-300 dark:hover:border-slate-700'}`}
-                    >
-                        <p className="text-sm font-semibold leading-normal">Event Logs</p>
-                    </button>
-                </div>
+  const eventTypeOptions = [
+    ...new Set([...eventTypes, ...events.map((e) => e.type)]),
+  ].sort();
+
+  const closeWebhookModal = () => {
+    setIsWebhookModalOpen(false);
+    setCreatedWebhookSecret(null);
+  };
+
+  const keyColumns = [
+    {
+      key: "key_prefix",
+      header: "Key prefix",
+      cell: (k) => (
+        <code className="rounded bg-muted px-2 py-1 font-mono text-sm text-foreground">
+          {k.key_prefix ? `${k.key_prefix}…` : "••••••••"}
+        </code>
+      ),
+    },
+    {
+      key: "type",
+      header: "Type",
+      cell: (k) => (
+        <span className="capitalize text-muted-foreground">{k.type || "secret"}</span>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (k) =>
+        k.is_active ? (
+          <Badge variant="success">Active</Badge>
+        ) : (
+          <Badge variant="neutral">Inactive</Badge>
+        ),
+    },
+    {
+      key: "created_at",
+      header: "Created",
+      cell: (k) => (
+        <span className="text-muted-foreground">
+          {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
+        </span>
+      ),
+    },
+  ];
+
+  const headerAction =
+    activeTab === "keys" ? (
+      <Button onClick={handleCreateKey}>
+        <Plus className="h-4 w-4" />
+        Create API key
+      </Button>
+    ) : activeTab === "webhooks" ? (
+      <Button onClick={() => setIsWebhookModalOpen(true)}>
+        <Plus className="h-4 w-4" />
+        Add endpoint
+      </Button>
+    ) : null;
+
+  return (
+    <div>
+      <PageHeader
+        title="Developer settings"
+        description="Manage your API keys, webhooks, and view event logs."
+        actions={headerAction}
+      />
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="keys">API keys</TabsTrigger>
+          <TabsTrigger value="webhooks">Webhooks</TabsTrigger>
+          <TabsTrigger value="events">Event logs</TabsTrigger>
+        </TabsList>
+
+        {/* API Keys */}
+        <TabsContent value="keys" className="mt-6">
+          <DataTable
+            columns={keyColumns}
+            data={keys}
+            loading={loading}
+            empty={{
+              title: "No API keys found",
+              description: "Generate one to start authenticating your API requests.",
+              action: (
+                <Button onClick={handleCreateKey}>
+                  <Plus className="h-4 w-4" />
+                  Create API key
+                </Button>
+              ),
+            }}
+          />
+        </TabsContent>
+
+        {/* Webhooks */}
+        <TabsContent value="webhooks" className="mt-6">
+          {webhooks.length === 0 ? (
+            <Card>
+              <EmptyState
+                icon={Webhook}
+                title="No webhook endpoints configured"
+                description="Add one to receive real-time events from Recurso."
+                action={
+                  <Button onClick={() => setIsWebhookModalOpen(true)}>
+                    <Plus className="h-4 w-4" />
+                    Add endpoint
+                  </Button>
+                }
+              />
+            </Card>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {webhooks.map((hook) => (
+                <Card key={hook.id} className="p-4">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <Webhook className="h-4 w-4 shrink-0 text-zinc-400" />
+                        <code className="break-all font-mono text-sm font-semibold text-foreground">
+                          {hook.url}
+                        </code>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {hook.events?.map((e) => (
+                          <Badge key={e} variant="neutral">
+                            {e}
+                          </Badge>
+                        ))}
+                      </div>
+                      <div className="mt-3">
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Signing secret
+                        </p>
+                        <code className="font-mono text-xs text-zinc-400">
+                          whsec_•••••••
+                        </code>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Badge variant={hook.status === "active" ? "success" : "neutral"}>
+                        {hook.status
+                          ? hook.status.charAt(0).toUpperCase() + hook.status.slice(1)
+                          : "—"}
+                      </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDeleteWebhook(hook.id)}
+                        className="text-zinc-400 hover:text-red-600"
+                        title="Delete endpoint"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              ))}
             </div>
+          )}
+        </TabsContent>
 
-            {/* Content Switcher */}
-            <div className="mt-8">
-                {/* API Keys Section */}
-                {activeTab === 'keys' && (
-                    <section>
-                        <h2 className="text-slate-800 dark:text-white text-xl font-semibold leading-tight">API Keys</h2>
-                        <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal mt-1">Manage and rotate the API keys used to authenticate your API requests.</p>
-
-                        <div className="mt-6 flex flex-col gap-4">
-                            {/* Header */}
-                            <div className="hidden md:grid grid-cols-12 gap-4 px-4">
-                                <div className="col-span-4 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Key Prefix</div>
-                                <div className="col-span-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Type</div>
-                                <div className="col-span-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Status</div>
-                                <div className="col-span-3 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Created</div>
-                            </div>
-
-                            {loading ? (
-                                <div className="text-center py-8 text-slate-500">Loading keys...</div>
-                            ) : keys.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500 bg-slate-50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">No API keys found. Generate one to get started.</div>
-                            ) : (
-                                keys.map((k) => (
-                                    <div key={k.id} className="grid grid-cols-1 md:grid-cols-12 items-center gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-sm transition-all hover:border-primary/50">
-                                        <div className="col-span-12 md:col-span-4 flex flex-col">
-                                            <span className="md:hidden text-xs text-slate-500 uppercase font-bold mb-1">Key</span>
-                                            <code className="font-mono text-sm text-slate-800 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded w-fit">
-                                                {k.key_prefix ? `${k.key_prefix}…` : '••••••••'}
-                                            </code>
-                                        </div>
-                                        <div className="col-span-6 md:col-span-3 text-sm text-slate-500 dark:text-slate-400 capitalize">
-                                            <span className="md:hidden text-xs text-slate-500 uppercase font-bold mr-2">Type:</span>
-                                            {k.type || 'secret'}
-                                        </div>
-                                        <div className="col-span-6 md:col-span-2">
-                                            <span className="md:hidden text-xs text-slate-500 uppercase font-bold mr-2">Status:</span>
-                                            {k.is_active ? (
-                                                <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">Active</span>
-                                            ) : (
-                                                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-400">Inactive</span>
-                                            )}
-                                        </div>
-                                        <div className="col-span-12 md:col-span-3 text-sm text-slate-500 dark:text-slate-400">
-                                            <span className="md:hidden text-xs text-slate-500 uppercase font-bold mr-2">Created:</span>
-                                            {k.created_at ? new Date(k.created_at).toLocaleDateString() : '—'}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </section>
-                )}
-
-                {/* Webhooks Section */}
-                {activeTab === 'webhooks' && (
-                    <section>
-                        <h2 className="text-slate-800 dark:text-white text-xl font-semibold leading-tight">Webhooks</h2>
-                        <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal mt-1">Configure endpoints to receive real-time events from Recurso.</p>
-
-                        <div className="mt-6 flex flex-col gap-4">
-                            {webhooks.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500 bg-slate-50 dark:bg-slate-800/20 rounded-lg border border-dashed border-slate-300 dark:border-slate-700">
-                                    No webhook endpoints configured. Add one to receive real-time events.
-                                </div>
-                            ) : (
-                                webhooks.map((hook) => (
-                                    <div key={hook.id} className="grid grid-cols-1 md:grid-cols-12 items-start gap-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 shadow-sm transition-all hover:border-primary/50">
-                                        <div className="col-span-12 md:col-span-5 flex flex-col gap-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="material-symbols-outlined text-slate-400 text-lg">webhook</span>
-                                                <code className="font-mono text-sm font-semibold text-slate-900 dark:text-white break-all">{hook.url}</code>
-                                            </div>
-                                            <div className="flex flex-wrap gap-2 mt-1">
-                                                {hook.events?.map(e => (
-                                                    <span key={e} className="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-400">{e}</span>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <div className="col-span-6 md:col-span-4 flex flex-col gap-1">
-                                            <p className="text-xs text-slate-500 uppercase tracking-wide">Signing Secret</p>
-                                            <code className="font-mono text-xs text-slate-400">whsec_•••••••</code>
-                                        </div>
-                                        <div className="col-span-6 md:col-span-2">
-                                            <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${hook.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
-                                                {hook.status?.charAt(0).toUpperCase() + hook.status?.slice(1)}
-                                            </span>
-                                        </div>
-                                        <div className="col-span-12 md:col-span-1 flex justify-end">
-                                            <button
-                                                onClick={() => handleDeleteWebhook(hook.id)}
-                                                className="text-slate-400 hover:text-red-500 transition-colors"
-                                            >
-                                                <span className="material-symbols-outlined">delete</span>
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                    </section>
-                )}
-
-                {/* Event Logs Section */}
-                {activeTab === 'events' && (
-                    <section>
-                        <div className="flex flex-wrap items-end justify-between gap-4">
-                            <div>
-                                <h2 className="text-slate-800 dark:text-white text-xl font-semibold leading-tight">Event Logs</h2>
-                                <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal mt-1">View the history of events generated by your account. Click a row to inspect its payload.</p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <select
-                                    value={eventTypeFilter}
-                                    onChange={(e) => setEventTypeFilter(e.target.value)}
-                                    aria-label="Filter by event type"
-                                    className="form-select h-10 rounded-lg border-slate-300 bg-white text-sm text-slate-700 focus:border-primary focus:ring-primary/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-                                >
-                                    <option value="all">All event types</option>
-                                    {[...new Set([...eventTypes, ...events.map(e => e.type)])].sort().map(t => (
-                                        <option key={t} value={t}>{t}</option>
-                                    ))}
-                                </select>
-                                <button
-                                    onClick={fetchEvents}
-                                    title="Refresh events"
-                                    className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors"
-                                >
-                                    <span className="material-symbols-outlined text-lg">refresh</span>
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="mt-6 flex flex-col rounded-lg border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-                            {eventsLoading ? (
-                                <div className="text-center py-8 text-slate-500">Loading events...</div>
-                            ) : filteredEvents.length === 0 ? (
-                                <div className="text-center py-8 text-slate-500">
-                                    {eventTypeFilter === 'all'
-                                        ? 'No events yet. Events will appear here when billing actions occur.'
-                                        : `No ${eventTypeFilter} events in the last 50.`}
-                                </div>
-                            ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900/50">
-                                            <tr>
-                                                <th className="px-6 py-3 font-semibold text-slate-900 dark:text-white">Event Type</th>
-                                                <th className="px-6 py-3 font-semibold text-slate-900 dark:text-white">Object</th>
-                                                <th className="px-6 py-3 font-semibold text-slate-900 dark:text-white">Created At</th>
-                                                <th className="px-6 py-3 font-semibold text-slate-900 dark:text-white text-right">Payload</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                                            {filteredEvents.map((evt) => (
-                                                <React.Fragment key={evt.id}>
-                                                    <tr
-                                                        onClick={() => setExpandedEventId(expandedEventId === evt.id ? null : evt.id)}
-                                                        className="hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer"
-                                                    >
-                                                        <td className="px-6 py-4">
-                                                            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-900 dark:bg-slate-800 dark:text-white">
-                                                                {evt.type}
-                                                            </code>
-                                                        </td>
-                                                        <td className="px-6 py-4 font-mono text-xs text-slate-500" title={evt.object_id}>
-                                                            {evt.object_type}:{evt.object_id?.substring(0, 8)}...
-                                                        </td>
-                                                        <td className="px-6 py-4 text-slate-500">
-                                                            {new Date(evt.created_at).toLocaleString()}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right">
-                                                            <span className="material-symbols-outlined text-lg text-slate-400 align-middle">
-                                                                {expandedEventId === evt.id ? 'expand_less' : 'expand_more'}
-                                                            </span>
-                                                        </td>
-                                                    </tr>
-                                                    {expandedEventId === evt.id && (
-                                                        <tr className="bg-slate-50 dark:bg-slate-950/50">
-                                                            <td colSpan="4" className="px-6 py-4">
-                                                                <p className="mb-2 font-mono text-xs text-slate-400">{evt.id}</p>
-                                                                <pre data-testid={`event-payload-${evt.id}`} className="max-h-80 overflow-auto rounded-lg bg-slate-100 p-4 font-mono text-xs text-slate-800 dark:bg-slate-800 dark:text-slate-300">
-                                                                    {JSON.stringify(evt.data ?? {}, null, 2)}
-                                                                </pre>
-                                                            </td>
-                                                        </tr>
-                                                    )}
-                                                </React.Fragment>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            )}
-                        </div>
-                    </section>
-                )}
+        {/* Event Logs */}
+        <TabsContent value="events" className="mt-6">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              History of events generated by your account. Click a row to inspect its
+              payload.
+            </p>
+            <div className="flex items-center gap-2">
+              <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                <SelectTrigger className="w-[200px]" aria-label="Filter by event type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All event types</SelectItem>
+                  {eventTypeOptions.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={fetchEvents}
+                title="Refresh events"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
             </div>
+          </div>
 
-            {/* Success Modal for Key Generation */}
-            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="New API Key Generated">
-                <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-x-2 rounded-lg bg-amber-50 dark:bg-amber-900/30 p-4 text-amber-800 dark:text-amber-300 ring-1 ring-inset ring-amber-200 dark:ring-amber-900/50">
-                        <span className="material-symbols-outlined flex-shrink-0">warning</span>
-                        <p className="text-sm font-medium">Copy your secret API key and store it securely. You will not be able to see it again.</p>
-                    </div>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            readOnly
-                            value={generatedKey || ''}
-                            className="form-input block w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 pr-12 text-slate-900 dark:text-white font-mono text-sm h-11"
-                        />
-                        <button
-                            onClick={() => navigator.clipboard.writeText(generatedKey)}
-                            className="absolute inset-y-0 right-0 flex items-center justify-center rounded-r-lg px-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            title="Copy to clipboard"
+          <Card className="overflow-hidden">
+            {eventsLoading ? (
+              <div className="py-12 text-center text-sm text-muted-foreground">
+                Loading events...
+              </div>
+            ) : filteredEvents.length === 0 ? (
+              <EmptyState
+                title={
+                  eventTypeFilter === "all"
+                    ? "No events yet"
+                    : `No ${eventTypeFilter} events`
+                }
+                description={
+                  eventTypeFilter === "all"
+                    ? "Events will appear here when billing actions occur."
+                    : "No matching events in the last 50."
+                }
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableHead>Event type</TableHead>
+                    <TableHead>Object</TableHead>
+                    <TableHead>Created at</TableHead>
+                    <TableHead className="text-right">Payload</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredEvents.map((evt) => (
+                    <React.Fragment key={evt.id}>
+                      <TableRow
+                        onClick={() =>
+                          setExpandedEventId(expandedEventId === evt.id ? null : evt.id)
+                        }
+                        className="cursor-pointer"
+                      >
+                        <TableCell>
+                          <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-foreground">
+                            {evt.type}
+                          </code>
+                        </TableCell>
+                        <TableCell
+                          className="font-mono text-xs text-muted-foreground"
+                          title={evt.object_id}
                         >
-                            <span className="material-symbols-outlined text-lg">content_copy</span>
-                        </button>
-                    </div>
-                    <div className="flex justify-end pt-4">
-                        <button
-                            onClick={() => setIsModalOpen(false)}
-                            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
-                        >
-                            Done
-                        </button>
-                    </div>
+                          {evt.object_type}:{evt.object_id?.substring(0, 8)}...
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(evt.created_at).toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {expandedEventId === evt.id ? (
+                            <ChevronUp className="ml-auto h-4 w-4 text-zinc-400" />
+                          ) : (
+                            <ChevronDown className="ml-auto h-4 w-4 text-zinc-400" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                      {expandedEventId === evt.id && (
+                        <TableRow className="bg-muted/30 hover:bg-muted/30">
+                          <TableCell colSpan={4}>
+                            <p className="mb-2 font-mono text-xs text-muted-foreground">
+                              {evt.id}
+                            </p>
+                            <pre
+                              data-testid={`event-payload-${evt.id}`}
+                              className="max-h-80 overflow-auto rounded-lg bg-muted p-4 font-mono text-xs text-foreground"
+                            >
+                              {JSON.stringify(evt.data ?? {}, null, 2)}
+                            </pre>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* New API Key Dialog */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New API key generated</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-4 text-amber-800 ring-1 ring-inset ring-amber-200">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <p className="text-sm font-medium">
+                Copy your secret API key and store it securely. You will not be able to
+                see it again.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Input readOnly value={generatedKey || ""} className="font-mono" />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => navigator.clipboard.writeText(generatedKey)}
+                title="Copy to clipboard"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setIsModalOpen(false)}>Done</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Webhook Dialog */}
+      <Dialog
+        open={isWebhookModalOpen}
+        onOpenChange={(open) => (!open ? closeWebhookModal() : setIsWebhookModalOpen(true))}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {createdWebhookSecret ? "Webhook created" : "Add webhook endpoint"}
+            </DialogTitle>
+          </DialogHeader>
+
+          {createdWebhookSecret ? (
+            <div className="space-y-4">
+              <div className="flex items-start gap-2 rounded-lg bg-emerald-50 p-4 text-emerald-800 ring-1 ring-inset ring-emerald-200">
+                <CheckCircle2 className="h-5 w-5 shrink-0" />
+                <p className="text-sm font-medium">
+                  Webhook endpoint created successfully.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Signing secret</Label>
+                <p className="text-xs text-muted-foreground">
+                  Store this securely. You won't be able to see it again.
+                </p>
+                <div className="flex gap-2">
+                  <Input readOnly value={createdWebhookSecret} className="font-mono" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => navigator.clipboard.writeText(createdWebhookSecret)}
+                    title="Copy to clipboard"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
                 </div>
-            </Modal>
-
-            {/* Add Webhook Modal */}
-            <Modal isOpen={isWebhookModalOpen} onClose={() => { setIsWebhookModalOpen(false); setCreatedWebhookSecret(null); }} title={createdWebhookSecret ? "Webhook Created" : "Add Webhook Endpoint"}>
-                {createdWebhookSecret ? (
-                    <div className="flex flex-col gap-4">
-                        <div className="flex items-center gap-x-2 rounded-lg bg-green-50 dark:bg-green-900/30 p-4 text-green-800 dark:text-green-300 ring-1 ring-inset ring-green-200 dark:ring-green-900/50">
-                            <span className="material-symbols-outlined flex-shrink-0">check_circle</span>
-                            <p className="text-sm font-medium">Webhook endpoint created successfully!</p>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Signing Secret</label>
-                            <p className="text-xs text-slate-500 mb-2">Store this securely. You won't be able to see it again.</p>
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    readOnly
-                                    value={createdWebhookSecret}
-                                    className="form-input block w-full rounded-lg border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 pr-12 text-slate-900 dark:text-white font-mono text-sm h-11"
-                                />
-                                <button
-                                    onClick={() => navigator.clipboard.writeText(createdWebhookSecret)}
-                                    className="absolute inset-y-0 right-0 flex items-center justify-center rounded-r-lg px-3 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                                    title="Copy to clipboard"
-                                >
-                                    <span className="material-symbols-outlined text-lg">content_copy</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div className="flex justify-end pt-4">
-                            <button
-                                onClick={() => { setIsWebhookModalOpen(false); setCreatedWebhookSecret(null); }}
-                                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
-                            >
-                                Done
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-col gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Endpoint URL</label>
-                            <input
-                                type="url"
-                                value={newWebhook.url}
-                                onChange={(e) => setNewWebhook(prev => ({ ...prev, url: e.target.value }))}
-                                placeholder="https://example.com/webhooks/recurso"
-                                className="form-input block w-full rounded-lg border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm h-11"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Events to receive</label>
-                            <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-2 border border-slate-200 dark:border-slate-700 rounded-lg">
-                                {eventTypes.map(eventType => (
-                                    <label key={eventType} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-2 rounded">
-                                        <input
-                                            type="checkbox"
-                                            checked={newWebhook.events.includes(eventType)}
-                                            onChange={() => toggleEventType(eventType)}
-                                            className="rounded border-slate-300 text-primary focus:ring-primary"
-                                        />
-                                        <code className="text-xs text-slate-600 dark:text-slate-400">{eventType}</code>
-                                    </label>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="flex justify-end gap-3 pt-4">
-                            <button
-                                onClick={() => setIsWebhookModalOpen(false)}
-                                className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleCreateWebhook}
-                                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90"
-                            >
-                                Create Endpoint
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </Modal>
-        </div>
-    )
+              </div>
+              <DialogFooter>
+                <Button onClick={closeWebhookModal}>Done</Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="webhook-url">Endpoint URL</Label>
+                <Input
+                  id="webhook-url"
+                  type="url"
+                  value={newWebhook.url}
+                  onChange={(e) =>
+                    setNewWebhook((prev) => ({ ...prev, url: e.target.value }))
+                  }
+                  placeholder="https://example.com/webhooks/recurso"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Events to receive</Label>
+                <div className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-border p-2 sm:grid-cols-2">
+                  {eventTypes.map((eventType) => (
+                    <label
+                      key={eventType}
+                      className="flex cursor-pointer items-center gap-2 rounded p-2 text-sm hover:bg-muted"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newWebhook.events.includes(eventType)}
+                        onChange={() => toggleEventType(eventType)}
+                        className="h-4 w-4 rounded border-input accent-emerald-600 focus:ring-ring"
+                      />
+                      <code className="text-xs text-muted-foreground">{eventType}</code>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setIsWebhookModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleCreateWebhook}>Create endpoint</Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
 }
-
-export default Developers

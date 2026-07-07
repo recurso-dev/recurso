@@ -4,6 +4,13 @@ import DunningDashboard from '../DunningDashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
 
+// Tremor/recharts uses ResizeObserver, which jsdom does not implement.
+global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+};
+
 // Mock the API module
 vi.mock('../../lib/api', () => ({
     endpoints: {
@@ -53,14 +60,16 @@ describe('DunningDashboard Component', () => {
         expect(screen.getByText('2 invoices · avg 2.5 attempts')).toBeInTheDocument();
     });
 
-    it('renders the monthly recovered revenue bars', async () => {
+    it('renders the monthly recovered revenue chart', async () => {
         render(<MemoryRouter><DunningDashboard /></MemoryRouter>);
 
         await waitFor(() => {
             expect(screen.getByText('Recovered Revenue by Month')).toBeInTheDocument();
         });
 
-        expect(screen.getByTestId(`recovered-bar-${currentMonth()}`)).toBeInTheDocument();
+        // The chart is rendered (not the empty state) when there are recoveries.
+        expect(screen.getByTestId('recovered-chart')).toBeInTheDocument();
+        expect(screen.queryByText(/No recovered payments yet/)).not.toBeInTheDocument();
     });
 
     it('shows an empty state when nothing has been recovered', async () => {

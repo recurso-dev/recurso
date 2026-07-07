@@ -1,208 +1,232 @@
-import React, { useState, useEffect, useCallback } from 'react'
-import { endpoints } from '../../lib/api'
-import { useToast } from '../../components/Toast'
+import { useCallback, useEffect, useState } from "react";
+import { Save } from "lucide-react";
 
-const IRPSettings = () => {
-    const [config, setConfig] = useState({
-        environment: 'sandbox',
-        client_id: '',
-        client_secret: '',
-        username: '',
-        password: '',
-        gstin: '',
-        is_enabled: false,
-    })
-    const [loading, setLoading] = useState(true)
-    const [saving, setSaving] = useState(false)
-    const [testing, setTesting] = useState(false)
-    const [testResult, setTestResult] = useState(null)
-    const toast = useToast()
+import { endpoints } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/sonner";
+import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormField } from "@/components/patterns/FormField";
+import { Skeleton } from "@/components/patterns/LoadingSkeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-    const fetchConfig = useCallback(async () => {
-        setLoading(true)
-        try {
-            const response = await endpoints.getIRPConfig()
-            if (response.data?.data) {
-                setConfig(prev => ({ ...prev, ...response.data.data }))
-            }
-        } catch (err) {
-            // Config may not exist yet, that's OK
-        } finally {
-            setLoading(false)
-        }
-    }, [])
+export default function IRPSettings() {
+  const [config, setConfig] = useState({
+    environment: "sandbox",
+    client_id: "",
+    client_secret: "",
+    username: "",
+    password: "",
+    gstin: "",
+    is_enabled: false,
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState(null);
 
-    useEffect(() => {
-        fetchConfig()
-    }, [fetchConfig])
-
-    const handleSave = async (e) => {
-        e.preventDefault()
-        setSaving(true)
-        try {
-            await endpoints.updateIRPConfig(config)
-            toast.success('IRP configuration saved successfully')
-        } catch (err) {
-            toast.error(err?.response?.data?.error?.message || 'Failed to save configuration')
-        } finally {
-            setSaving(false)
-        }
+  const fetchConfig = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await endpoints.getIRPConfig();
+      if (response.data?.data) {
+        setConfig((prev) => ({ ...prev, ...response.data.data }));
+      }
+    } catch (err) {
+      // Config may not exist yet, that's OK.
+    } finally {
+      setLoading(false);
     }
+  }, []);
 
-    const handleTest = async () => {
-        setTesting(true)
-        setTestResult(null)
-        try {
-            const response = await endpoints.testIRPConfig()
-            setTestResult(response.data)
-        } catch (err) {
-            setTestResult({ success: false, message: err?.response?.data?.error?.message || 'Connection test failed' })
-        } finally {
-            setTesting(false)
-        }
+  useEffect(() => {
+    fetchConfig();
+  }, [fetchConfig]);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await endpoints.updateIRPConfig(config);
+      toast.success("IRP configuration saved successfully");
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to save configuration");
+    } finally {
+      setSaving(false);
     }
+  };
 
-    if (loading) {
-        return (
-            <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="animate-pulse space-y-4">
-                    <div className="h-8 bg-slate-200 dark:bg-slate-700 rounded w-48"></div>
-                    <div className="h-64 bg-slate-200 dark:bg-slate-700 rounded"></div>
-                </div>
-            </div>
-        )
+  const handleTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const response = await endpoints.testIRPConfig();
+      setTestResult(response.data);
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: err?.response?.data?.error?.message || "Connection test failed",
+      });
+    } finally {
+      setTesting(false);
     }
+  };
 
-    return (
-        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-            <div className="pb-6 border-b border-slate-200 dark:border-slate-800">
-                <h1 className="text-slate-900 dark:text-white text-3xl font-bold leading-tight tracking-tight">IRP Settings</h1>
-                <p className="mt-1 text-base font-normal text-slate-500 dark:text-slate-400">
-                    Configure NIC Invoice Registration Portal credentials for e-invoicing.
-                </p>
-            </div>
+  return (
+    <div className="mx-auto max-w-3xl">
+      <PageHeader
+        title="IRP settings"
+        description="Configure NIC Invoice Registration Portal credentials for e-invoicing."
+      />
 
-            <form onSubmit={handleSave} className="mt-8 space-y-6">
-                {/* Enable Toggle */}
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 p-4">
-                    <div>
-                        <h3 className="text-sm font-medium text-slate-900 dark:text-white">Enable E-Invoicing</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Generate IRN for B2B invoices via NIC IRP</p>
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => setConfig(prev => ({ ...prev, is_enabled: !prev.is_enabled }))}
-                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${config.is_enabled ? 'bg-primary' : 'bg-slate-200 dark:bg-slate-600'}`}
-                    >
-                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${config.is_enabled ? 'translate-x-5' : 'translate-x-0'}`} />
-                    </button>
-                </div>
-
-                {/* Environment */}
+      {loading ? (
+        <Skeleton className="h-96 w-full rounded-xl" />
+      ) : (
+        <form onSubmit={handleSave}>
+          <Card>
+            <CardContent className="space-y-6 pt-6">
+              {/* Enable Toggle */}
+              <div className="flex items-center justify-between rounded-lg border border-border p-4">
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Environment</label>
-                    <select
-                        value={config.environment}
-                        onChange={(e) => setConfig(prev => ({ ...prev, environment: e.target.value }))}
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:border-primary focus:ring-primary/20"
-                    >
-                        <option value="sandbox">Sandbox (Testing)</option>
-                        <option value="production">Production</option>
-                    </select>
+                  <h3 className="text-sm font-medium text-foreground">Enable e-invoicing</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Generate IRN for B2B invoices via NIC IRP.
+                  </p>
                 </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={config.is_enabled}
+                  onClick={() => setConfig((prev) => ({ ...prev, is_enabled: !prev.is_enabled }))}
+                  className={cn(
+                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    config.is_enabled ? "bg-primary" : "bg-zinc-200"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      config.is_enabled ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
 
-                {/* GSTIN */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">GSTIN</label>
-                    <input
-                        type="text"
-                        value={config.gstin}
-                        onChange={(e) => setConfig(prev => ({ ...prev, gstin: e.target.value.toUpperCase() }))}
-                        placeholder="e.g., 33ABCDE1234F1Z5"
-                        maxLength={15}
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm font-mono focus:border-primary focus:ring-primary/20"
-                    />
+              <FormField label="Environment" htmlFor="environment">
+                <Select
+                  value={config.environment}
+                  onValueChange={(value) =>
+                    setConfig((prev) => ({ ...prev, environment: value }))
+                  }
+                >
+                  <SelectTrigger id="environment">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="sandbox">Sandbox (Testing)</SelectItem>
+                    <SelectItem value="production">Production</SelectItem>
+                  </SelectContent>
+                </Select>
+              </FormField>
+
+              <FormField label="GSTIN" htmlFor="gstin">
+                <Input
+                  id="gstin"
+                  value={config.gstin}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, gstin: e.target.value.toUpperCase() }))
+                  }
+                  placeholder="e.g., 33ABCDE1234F1Z5"
+                  maxLength={15}
+                  className="font-mono"
+                />
+              </FormField>
+
+              <FormField label="Client ID" htmlFor="client_id">
+                <Input
+                  id="client_id"
+                  value={config.client_id}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, client_id: e.target.value }))
+                  }
+                  placeholder="NIC API Client ID"
+                />
+              </FormField>
+
+              <FormField label="Client secret" htmlFor="client_secret">
+                <Input
+                  id="client_secret"
+                  type="password"
+                  value={config.client_secret}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, client_secret: e.target.value }))
+                  }
+                  placeholder="NIC API Client Secret"
+                />
+              </FormField>
+
+              <FormField label="Username" htmlFor="username">
+                <Input
+                  id="username"
+                  value={config.username}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, username: e.target.value }))
+                  }
+                  placeholder="NIC API Username"
+                />
+              </FormField>
+
+              <FormField label="Password" htmlFor="password">
+                <Input
+                  id="password"
+                  type="password"
+                  value={config.password}
+                  onChange={(e) =>
+                    setConfig((prev) => ({ ...prev, password: e.target.value }))
+                  }
+                  placeholder="NIC API Password"
+                />
+              </FormField>
+
+              {testResult && (
+                <div
+                  className={cn(
+                    "rounded-lg border px-4 py-3 text-sm",
+                    testResult.success
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-red-200 bg-red-50 text-red-800"
+                  )}
+                >
+                  {testResult.message}
                 </div>
+              )}
 
-                {/* Client ID */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Client ID</label>
-                    <input
-                        type="text"
-                        value={config.client_id}
-                        onChange={(e) => setConfig(prev => ({ ...prev, client_id: e.target.value }))}
-                        placeholder="NIC API Client ID"
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:border-primary focus:ring-primary/20"
-                    />
-                </div>
-
-                {/* Client Secret */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Client Secret</label>
-                    <input
-                        type="password"
-                        value={config.client_secret}
-                        onChange={(e) => setConfig(prev => ({ ...prev, client_secret: e.target.value }))}
-                        placeholder="NIC API Client Secret"
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:border-primary focus:ring-primary/20"
-                    />
-                </div>
-
-                {/* Username */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Username</label>
-                    <input
-                        type="text"
-                        value={config.username}
-                        onChange={(e) => setConfig(prev => ({ ...prev, username: e.target.value }))}
-                        placeholder="NIC API Username"
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:border-primary focus:ring-primary/20"
-                    />
-                </div>
-
-                {/* Password */}
-                <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Password</label>
-                    <input
-                        type="password"
-                        value={config.password}
-                        onChange={(e) => setConfig(prev => ({ ...prev, password: e.target.value }))}
-                        placeholder="NIC API Password"
-                        className="w-full rounded-lg border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white text-sm focus:border-primary focus:ring-primary/20"
-                    />
-                </div>
-
-                {/* Test Result */}
-                {testResult && (
-                    <div className={`rounded-lg px-4 py-3 text-sm ${testResult.success
-                            ? 'bg-green-50 text-green-800 border border-green-200 dark:bg-green-900/20 dark:text-green-300 dark:border-green-800'
-                            : 'bg-red-50 text-red-800 border border-red-200 dark:bg-red-900/20 dark:text-red-300 dark:border-red-800'
-                        }`}>
-                        {testResult.message}
-                    </div>
-                )}
-
-                {/* Actions */}
-                <div className="flex gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
-                    <button
-                        type="submit"
-                        disabled={saving}
-                        className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-primary/90 disabled:opacity-50"
-                    >
-                        {saving ? 'Saving...' : 'Save Configuration'}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={handleTest}
-                        disabled={testing}
-                        className="rounded-lg bg-slate-100 dark:bg-slate-700 px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-200 dark:hover:bg-slate-600 disabled:opacity-50"
-                    >
-                        {testing ? 'Testing...' : 'Test Connection'}
-                    </button>
-                </div>
-            </form>
-        </div>
-    )
+              <div className="flex gap-3 border-t border-border pt-5">
+                <Button type="submit" disabled={saving}>
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save configuration"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleTest}
+                  disabled={testing}
+                >
+                  {testing ? "Testing..." : "Test connection"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </form>
+      )}
+    </div>
+  );
 }
-
-export default IRPSettings

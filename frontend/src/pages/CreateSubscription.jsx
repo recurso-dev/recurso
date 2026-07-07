@@ -1,328 +1,349 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import { endpoints } from '../lib/api'
-import { useToast } from '../components/Toast'
-import ConsentCheckbox from '../components/ui/ConsentCheckbox'
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-const CreateSubscription = () => {
-    const navigate = useNavigate()
-    const [customers, setCustomers] = useState([])
-    const [plans, setPlans] = useState([])
-    const [loadingData, setLoadingData] = useState(true)
-    const [submitting, setSubmitting] = useState(false)
+import { endpoints } from "../lib/api";
+import { useToast } from "../components/Toast";
+import ConsentCheckbox from "../components/ui/ConsentCheckbox";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import { FormField } from "@/components/patterns/FormField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-    const toast = useToast()
-    const [formData, setFormData] = useState({
-        customer_id: '',
-        plan_id: '',
-        start_date: new Date().toISOString().split('T')[0],
-        billing_anchor_type: 'acquisition',
-        payment_terms: 'due_on_receipt',
-        consent_granted: false
-    })
+export default function CreateSubscription() {
+  const navigate = useNavigate();
+  const toast = useToast();
 
-    useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const [custRes, plansRes] = await Promise.all([
-                    endpoints.getCustomers(),
-                    endpoints.getPlans()
-                ])
-                setCustomers(custRes.data.data || [])
-                setPlans(plansRes.data.data || [])
-            } catch (error) {
-                console.error("Failed to fetch data:", error)
-            } finally {
-                setLoadingData(false)
-            }
-        }
-        fetchData()
-    }, [])
+  const [customers, setCustomers] = useState([]);
+  const [plans, setPlans] = useState([]);
+  const [loadingData, setLoadingData] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-    const selectedCustomer = customers.find(c => c.id === formData.customer_id)
-    const selectedPlan = plans.find(p => p.id === formData.plan_id)
+  const [formData, setFormData] = useState({
+    customer_id: "",
+    plan_id: "",
+    start_date: new Date().toISOString().split("T")[0],
+    billing_anchor_type: "acquisition",
+    payment_terms: "due_on_receipt",
+    consent_granted: false,
+  });
 
-    const handleSubmit = async (e) => {
-        e.preventDefault()
+  const setField = (key, value) => setFormData((f) => ({ ...f, [key]: value }));
+  const close = () => navigate("/subscriptions");
 
-        if (!formData.consent_granted) {
-            toast.warning('Please authorize recurring billing to continue.')
-            return
-        }
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [custRes, plansRes] = await Promise.all([
+          endpoints.getCustomers(),
+          endpoints.getPlans(),
+        ]);
+        setCustomers(custRes.data.data || []);
+        setPlans(plansRes.data.data || []);
+      } catch (error) {
+        console.error("Failed to fetch data:", error);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+    fetchData();
+  }, []);
 
-        setSubmitting(true)
-        try {
-            const payload = {
-                customer_id: formData.customer_id,
-                plan_id: formData.plan_id,
-                start_date: new Date(formData.start_date).toISOString(),
-                billing_anchor_type: formData.billing_anchor_type,
-                payment_terms: formData.payment_terms,
-            }
-            const res = await endpoints.createSubscription(payload)
-            const sub = res.data
+  const selectedCustomer = customers.find((c) => c.id === formData.customer_id);
+  const selectedPlan = plans.find((p) => p.id === formData.plan_id);
 
-            if (sub && sub.razorpay_subscription_id) {
-                // Initialize Razorpay Options
-                const options = {
-                    key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-                    subscription_id: sub.razorpay_subscription_id,
-                    name: "Billify Recurso",
-                    description: `Subscription for ${selectedPlan?.name || 'Plan'}`,
-                    handler: function (response) {
-                        // Success Handler
-                        console.log("Razorpay Signature:", response.razorpay_signature);
-                        // Optionally call backend to verify/record payment immediately
-                        navigate('/subscriptions')
-                    },
-                    prefill: {
-                        name: selectedCustomer?.name,
-                        email: selectedCustomer?.email,
-                        contact: selectedCustomer?.phone
-                    },
-                    theme: {
-                        color: "#3b82f6"
-                    },
-                    modal: {
-                        ondismiss: function () {
-                            console.log("Checkout form closed");
-                            navigate('/subscriptions');
-                        }
-                    }
-                };
+  const priceObj = selectedPlan?.prices?.[0];
+  const amountMinor = priceObj?.amount ?? 0;
+  const currency = priceObj?.currency || "USD";
 
-                const rzp = new window.Razorpay(options);
-                rzp.open();
-            } else {
-                navigate('/subscriptions')
-            }
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
-        } catch (error) {
-            console.error("Failed to create subscription:", error)
-            toast.error(error?.response?.data?.error?.message || "Failed to create subscription")
-            setSubmitting(false) // Only stop loading if error or no-redirect
-        }
-        // Note: If Razorpay opens, we keep submitting=true until handler/dismiss to prevent double clicks? 
-        // Actually rzp.open() is non-blocking so executing falls through. 
-        // But we want to keep 'Creating...' state if we are redirecting?
-        // Let's setSubmitting(false) if we open razorpay so UI is responsive, 
-        // or keep it true effectively blocking until navigation.
-        // Better:
-        if (!loadingData) setSubmitting(false)
+    if (!formData.customer_id || !formData.plan_id) {
+      toast.warning("Please select a customer and a plan.");
+      return;
     }
 
-    // Calculate Summary
-    const planPrice = selectedPlan && selectedPlan.prices && selectedPlan.prices.length > 0
-        ? selectedPlan.prices[0].amount / 100
-        : 0
-    const currency = selectedPlan && selectedPlan.prices && selectedPlan.prices.length > 0
-        ? selectedPlan.prices[0].currency
-        : 'USD'
+    if (!formData.consent_granted) {
+      toast.warning("Please authorize recurring billing to continue.");
+      return;
+    }
 
-    return (
-        <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-            {/* Page Heading */}
-            <div className="flex flex-wrap justify-between items-center gap-4 pb-8 border-b border-slate-200 dark:border-slate-800">
-                <div className="flex flex-col gap-2">
-                    <h1 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">Create New Subscription</h1>
-                    <p className="text-slate-500 dark:text-slate-400 text-base font-normal leading-normal">Create a new subscription for an existing customer.</p>
+    setSubmitting(true);
+    try {
+      // Payload byte-for-byte identical to the original create-subscription form.
+      const payload = {
+        customer_id: formData.customer_id,
+        plan_id: formData.plan_id,
+        start_date: new Date(formData.start_date).toISOString(),
+        billing_anchor_type: formData.billing_anchor_type,
+        payment_terms: formData.payment_terms,
+      };
+      const res = await endpoints.createSubscription(payload);
+      const sub = res.data;
+
+      if (sub && sub.razorpay_subscription_id) {
+        const options = {
+          key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+          subscription_id: sub.razorpay_subscription_id,
+          name: "Billify Recurso",
+          description: `Subscription for ${selectedPlan?.name || "Plan"}`,
+          handler: function (response) {
+            console.log("Razorpay Signature:", response.razorpay_signature);
+            navigate("/subscriptions");
+          },
+          prefill: {
+            name: selectedCustomer?.name,
+            email: selectedCustomer?.email,
+            contact: selectedCustomer?.phone,
+          },
+          theme: {
+            color: "#10B981",
+          },
+          modal: {
+            ondismiss: function () {
+              console.log("Checkout form closed");
+              navigate("/subscriptions");
+            },
+          },
+        };
+
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        navigate("/subscriptions");
+      }
+    } catch (error) {
+      console.error("Failed to create subscription:", error);
+      toast.error(
+        error?.response?.data?.error?.message || "Failed to create subscription"
+      );
+      setSubmitting(false);
+      return;
+    }
+    if (!loadingData) setSubmitting(false);
+  };
+
+  return (
+    <Sheet open onOpenChange={(open) => !open && close()}>
+      <SheetContent side="right" className="w-full sm:max-w-lg">
+        <SheetHeader>
+          <SheetTitle>Create new subscription</SheetTitle>
+          <SheetDescription>
+            Create a new subscription for an existing customer.
+          </SheetDescription>
+        </SheetHeader>
+
+        <form
+          id="create-subscription-form"
+          onSubmit={handleSubmit}
+          className="flex-1 space-y-8 overflow-y-auto px-6 py-6"
+        >
+          {/* Customer & Plan */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">Customer &amp; plan</h3>
+            <FormField label="Customer" htmlFor="customer">
+              <Select
+                value={formData.customer_id}
+                onValueChange={(v) => setField("customer_id", v)}
+              >
+                <SelectTrigger id="customer">
+                  <SelectValue placeholder="Select a customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((customer) => (
+                    <SelectItem key={customer.id} value={customer.id}>
+                      {customer.name} ({customer.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField label="Plan" htmlFor="plan">
+              <Select
+                value={formData.plan_id}
+                onValueChange={(v) => setField("plan_id", v)}
+              >
+                <SelectTrigger id="plan">
+                  <SelectValue placeholder="Select a plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  {plans.map((plan) => (
+                    <SelectItem key={plan.id} value={plan.id}>
+                      {plan.name} - ${(plan.prices?.[0]?.amount / 100).toFixed(2)}/
+                      {plan.interval_unit}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </section>
+
+          <Separator />
+
+          {/* Scheduling & Billing */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Scheduling &amp; billing
+            </h3>
+            <FormField label="Start date" htmlFor="start_date">
+              <Input
+                id="start_date"
+                type="date"
+                value={formData.start_date}
+                onChange={(e) => setField("start_date", e.target.value)}
+              />
+            </FormField>
+            <FormField
+              label="Billing anchor"
+              htmlFor="billing_anchor_type"
+              description={
+                formData.billing_anchor_type === "first_of_month"
+                  ? "First period will be prorated. All renewals align to the 1st."
+                  : "Billing repeats from the subscription start date."
+              }
+            >
+              <Select
+                value={formData.billing_anchor_type}
+                onValueChange={(v) => setField("billing_anchor_type", v)}
+              >
+                <SelectTrigger id="billing_anchor_type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="acquisition">Acquisition date (default)</SelectItem>
+                  <SelectItem value="first_of_month">
+                    Calendar billing (1st of month)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+            <FormField
+              label="Payment terms"
+              htmlFor="payment_terms"
+              description="Number of days after invoice date before payment is due."
+            >
+              <Select
+                value={formData.payment_terms}
+                onValueChange={(v) => setField("payment_terms", v)}
+              >
+                <SelectTrigger id="payment_terms">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="due_on_receipt">Due on receipt (default)</SelectItem>
+                  <SelectItem value="net15">Net 15</SelectItem>
+                  <SelectItem value="net30">Net 30</SelectItem>
+                  <SelectItem value="net45">Net 45</SelectItem>
+                  <SelectItem value="net60">Net 60</SelectItem>
+                </SelectContent>
+              </Select>
+            </FormField>
+          </section>
+
+          <Separator />
+
+          {/* Billing authorization */}
+          <section className="space-y-3">
+            <h3 className="text-sm font-semibold text-foreground">
+              Billing authorization
+            </h3>
+            <ConsentCheckbox
+              type="recurring_billing"
+              onConsentChange={(c) => setField("consent_granted", c.granted)}
+              planName={selectedPlan?.name || "the selected plan"}
+              amount={
+                selectedPlan?.prices?.[0]?.amount
+                  ? `${currency} ${(selectedPlan.prices[0].amount / 100).toFixed(2)}`
+                  : ""
+              }
+              billingInterval={selectedPlan?.interval_unit || "month"}
+            />
+          </section>
+
+          <Separator />
+
+          {/* Summary */}
+          <section className="space-y-4">
+            <h3 className="text-sm font-semibold text-foreground">Summary</h3>
+            {selectedCustomer && selectedPlan ? (
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <dl className="space-y-2.5 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Customer</dt>
+                    <dd className="truncate font-medium text-foreground">
+                      {selectedCustomer.name}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Plan</dt>
+                    <dd className="truncate font-medium text-foreground">
+                      {selectedPlan.name}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Starts on</dt>
+                    <dd className="font-medium text-foreground">
+                      {formatDate(formData.start_date)}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Billing</dt>
+                    <dd className="font-medium text-foreground">
+                      {formData.billing_anchor_type === "first_of_month"
+                        ? "Calendar (1st)"
+                        : "Acquisition"}
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <dt className="text-muted-foreground">Terms</dt>
+                    <dd className="font-medium text-foreground">
+                      {formData.payment_terms === "due_on_receipt"
+                        ? "Due on Receipt"
+                        : formData.payment_terms.replace("net", "Net ")}
+                    </dd>
+                  </div>
+                </dl>
+                <Separator className="my-3" />
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-semibold text-foreground">Total</span>
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {formatCurrency(amountMinor, currency)}
+                  </span>
                 </div>
-            </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Select a customer and plan to see the summary.
+              </p>
+            )}
+          </section>
+        </form>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8">
-                {/* Main Form Section */}
-                <div className="md:col-span-2 flex flex-col gap-8">
-                    <form id="create-subscription-form" onSubmit={handleSubmit} className="flex flex-col gap-8">
-                        {/* Customer & Plan Section */}
-                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                            <div className="p-6">
-                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">Customer & Plan</h2>
-                                <div className="flex flex-col gap-6">
-                                    <label className="flex flex-col flex-1">
-                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Customer</p>
-                                        <select
-                                            required
-                                            className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-12 px-3 text-base font-normal leading-normal transition-all"
-                                            value={formData.customer_id}
-                                            onChange={e => setFormData({ ...formData, customer_id: e.target.value })}
-                                        >
-                                            <option value="">Select a customer</option>
-                                            {customers.map(customer => (
-                                                <option key={customer.id} value={customer.id}>
-                                                    {customer.name} ({customer.email})
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </label>
-                                    <label className="flex flex-col flex-1">
-                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Plan</p>
-                                        <select
-                                            required
-                                            className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-12 px-3 text-base font-normal leading-normal transition-all"
-                                            value={formData.plan_id}
-                                            onChange={e => setFormData({ ...formData, plan_id: e.target.value })}
-                                        >
-                                            <option value="">Select a plan</option>
-                                            {plans.map(plan => (
-                                                <option key={plan.id} value={plan.id}>
-                                                    {plan.name} - ${(plan.prices?.[0]?.amount / 100).toFixed(2)}/{plan.interval_unit}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Scheduling Section */}
-                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                            <div className="p-6">
-                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">Scheduling & Billing</h2>
-                                <div className="flex flex-col gap-6">
-                                    <label className="flex flex-col flex-1">
-                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Start Date</p>
-                                        <div className="relative">
-                                            <input
-                                                type="date"
-                                                className="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-12 px-3 text-base font-normal leading-normal transition-all"
-                                                value={formData.start_date}
-                                                onChange={e => setFormData({ ...formData, start_date: e.target.value })}
-                                            />
-                                        </div>
-                                    </label>
-                                    <label className="flex flex-col flex-1">
-                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Billing Anchor</p>
-                                        <select
-                                            className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-12 px-3 text-base font-normal leading-normal transition-all"
-                                            value={formData.billing_anchor_type}
-                                            onChange={e => setFormData({ ...formData, billing_anchor_type: e.target.value })}
-                                        >
-                                            <option value="acquisition">Acquisition Date (default)</option>
-                                            <option value="first_of_month">Calendar Billing (1st of Month)</option>
-                                        </select>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                                            {formData.billing_anchor_type === 'first_of_month'
-                                                ? 'First period will be prorated. All renewals align to the 1st.'
-                                                : 'Billing repeats from the subscription start date.'}
-                                        </p>
-                                    </label>
-                                    <label className="flex flex-col flex-1">
-                                        <p className="text-slate-900 dark:text-slate-300 text-sm font-medium leading-normal pb-2">Payment Terms</p>
-                                        <select
-                                            className="form-select flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-lg text-slate-900 dark:text-white focus:outline-0 focus:ring-2 focus:ring-primary/50 border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 h-12 px-3 text-base font-normal leading-normal transition-all"
-                                            value={formData.payment_terms}
-                                            onChange={e => setFormData({ ...formData, payment_terms: e.target.value })}
-                                        >
-                                            <option value="due_on_receipt">Due on Receipt (default)</option>
-                                            <option value="net15">Net 15</option>
-                                            <option value="net30">Net 30</option>
-                                            <option value="net45">Net 45</option>
-                                            <option value="net60">Net 60</option>
-                                        </select>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                                            Number of days after invoice date before payment is due.
-                                        </p>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Consent Section */}
-                        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                            <div className="p-6">
-                                <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Billing Authorization</h2>
-                                <ConsentCheckbox
-                                    type="recurring"
-                                    checked={formData.consent_granted}
-                                    onChange={(checked) => setFormData({ ...formData, consent_granted: checked })}
-                                    planName={selectedPlan?.name || 'the selected plan'}
-                                    amount={selectedPlan?.prices?.[0]?.amount ? `${currency} ${(selectedPlan.prices[0].amount / 100).toFixed(2)}` : ''}
-                                    interval={selectedPlan?.interval_unit || 'month'}
-                                />
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                {/* Summary Section */}
-                <div className="md:col-span-1">
-                    <div className="sticky top-24 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-                        <div className="p-6">
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">Summary</h3>
-
-                            {selectedCustomer && selectedPlan ? (
-                                <>
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">Customer</span>
-                                            <span className="font-medium text-slate-900 dark:text-white text-right max-w-[150px] truncate">{selectedCustomer.name}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">Plan</span>
-                                            <span className="font-medium text-slate-900 dark:text-white text-right max-w-[150px] truncate">{selectedPlan.name}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">Starts on</span>
-                                            <span className="font-medium text-slate-900 dark:text-white">{new Date(formData.start_date).toLocaleDateString()}</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">Billing</span>
-                                            <span className="font-medium text-slate-900 dark:text-white">
-                                                {formData.billing_anchor_type === 'first_of_month' ? 'Calendar (1st)' : 'Acquisition'}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">Terms</span>
-                                            <span className="font-medium text-slate-900 dark:text-white">
-                                                {formData.payment_terms === 'due_on_receipt' ? 'Due on Receipt' : formData.payment_terms.replace('net', 'Net ')}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="my-4 h-px bg-slate-200 dark:bg-slate-800"></div>
-                                    <div className="space-y-3 text-sm">
-                                        <div className="flex justify-between">
-                                            <span className="text-slate-500 dark:text-slate-400">{selectedPlan.name}</span>
-                                            <span className="font-medium text-slate-900 dark:text-white">
-                                                {new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(planPrice)}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    <div className="my-4 h-px bg-slate-200 dark:bg-slate-800"></div>
-                                    <div className="flex justify-between mb-6">
-                                        <span className="text-base font-semibold text-slate-900 dark:text-white">Total</span>
-                                        <span className="text-base font-semibold text-slate-900 dark:text-white">
-                                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: currency }).format(planPrice)}
-                                        </span>
-                                    </div>
-                                </>
-                            ) : (
-                                <p className="text-sm text-slate-500 text-center py-4">Select a customer and plan to see summary.</p>
-                            )}
-
-                            <div className="flex flex-col gap-3 mt-4">
-                                <button
-                                    form="create-subscription-form"
-                                    type="submit"
-                                    disabled={submitting}
-                                    className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-primary text-white text-sm font-semibold leading-normal tracking-wide hover:bg-primary/90 disabled:opacity-50 transition-all"
-                                >
-                                    {submitting ? 'Creating...' : 'Create Subscription'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/subscriptions')}
-                                    className="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-transparent text-slate-900 dark:text-white text-sm font-semibold leading-normal tracking-wide border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
+        <SheetFooter>
+          <Button type="button" variant="outline" onClick={close}>
+            Cancel
+          </Button>
+          <Button type="submit" form="create-subscription-form" disabled={submitting}>
+            {submitting ? "Creating..." : "Create subscription"}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
 }
-
-
-export default CreateSubscription

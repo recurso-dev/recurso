@@ -1,165 +1,230 @@
-import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
-import axios from 'axios';
-import { DocumentTextIcon, CreditCardIcon, InformationCircleIcon } from '@heroicons/react/24/outline';
+import React, { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
+import axios from "axios";
+import {
+  CreditCard,
+  Download,
+  FileText,
+  ShieldAlert,
+  Loader2,
+} from "lucide-react";
 
-import { API_BASE as API_BASE_URL } from '../../lib/api';
+import { API_BASE as API_BASE_URL } from "../../lib/api";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+// Map an invoice status to a Badge variant (emerald-accented light palette).
+const invoiceStatusVariant = (status) =>
+  ({
+    paid: "success",
+    open: "info",
+    past_due: "destructive",
+    void: "neutral",
+    draft: "neutral",
+  })[status] || "neutral";
 
 export default function CustomerPortal() {
-    const { tenantId, customerId } = useParams();
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
+  const { tenantId, customerId } = useParams();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-    useEffect(() => {
-        const fetchPortalData = async () => {
-            try {
-                // Unauthenticated call for MVP
-                const response = await axios.get(`${API_BASE_URL}/portal/${tenantId}/${customerId}`);
-                setData(response.data);
-            } catch (err) {
-                setError('Failed to load portal data. The link might be invalid or expired.');
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchPortalData();
-    }, [tenantId, customerId]);
-
-    if (loading) {
-        return (
-            <div className="min-h-screen bg-neutral-900 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500"></div>
-            </div>
+  useEffect(() => {
+    const fetchPortalData = async () => {
+      try {
+        // Unauthenticated call for MVP
+        const response = await axios.get(
+          `${API_BASE_URL}/portal/${tenantId}/${customerId}`
         );
-    }
-
-    if (error || !data) {
-        return (
-            <div className="min-h-screen bg-neutral-900 flex items-center justify-center p-4">
-                <div className="bg-neutral-800 rounded-xl p-8 max-w-md w-full text-center border border-neutral-700">
-                    <InformationCircleIcon className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                    <h2 className="text-xl font-medium text-white mb-2">Access Denied</h2>
-                    <p className="text-neutral-400">{error}</p>
-                </div>
-            </div>
+        setData(response.data);
+      } catch (err) {
+        setError(
+          "Failed to load portal data. The link might be invalid or expired."
         );
-    }
+      } finally {
+        setLoading(false);
+      }
+    };
 
-    const { customer, subscriptions, invoices } = data;
+    fetchPortalData();
+  }, [tenantId, customerId]);
 
+  if (loading) {
     return (
-        <div className="min-h-screen bg-neutral-900 text-white py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-3xl mx-auto space-y-8">
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
 
-                {/* Header */}
-                <div className="bg-neutral-800 rounded-xl p-6 border border-neutral-700 shadow-sm flex items-center justify-between">
+  if (error || !data) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
+        <Card className="w-full max-w-md text-center">
+          <CardContent className="p-8">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 ring-1 ring-inset ring-red-600/20">
+              <ShieldAlert className="h-6 w-6 text-red-600" />
+            </div>
+            <h2 className="text-lg font-semibold text-foreground">
+              Access denied
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{error}</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  const { customer, subscriptions, invoices } = data;
+
+  return (
+    <div className="min-h-screen bg-zinc-50">
+      <div className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
+        {/* Header */}
+        <Card>
+          <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+                R
+              </div>
+              <div>
+                <h1 className="text-lg font-semibold tracking-tight text-foreground">
+                  Billing Portal
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Manage your subscriptions and invoices.
+                </p>
+              </div>
+            </div>
+            <div className="sm:text-right">
+              <p className="text-sm font-medium text-foreground">
+                {customer?.name || "—"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {customer?.email || "—"}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Subscriptions */}
+        <Card>
+          <CardHeader className="flex-row items-center gap-2 space-y-0 border-b border-border">
+            <CreditCard className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base">Active subscriptions</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!subscriptions || subscriptions.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-muted-foreground">
+                No active subscriptions found.
+              </p>
+            ) : (
+              <div className="divide-y divide-border">
+                {subscriptions.map((sub) => (
+                  <div
+                    key={sub.id}
+                    className="flex items-center justify-between px-6 py-5"
+                  >
                     <div>
-                        <h1 className="text-2xl font-bold text-white tracking-tight">Billing Portal</h1>
-                        <p className="text-sm text-neutral-400 mt-1">Manage your subscriptions and invoices.</p>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {sub.plan_name || "Plan"}
+                      </h3>
+                      <div className="mt-1 flex items-center gap-2">
+                        <Badge
+                          variant={
+                            sub.status === "active" ? "success" : "neutral"
+                          }
+                          className="capitalize"
+                        >
+                          {sub.status || "unknown"}
+                        </Badge>
+                      </div>
                     </div>
                     <div className="text-right">
-                        <p className="text-sm font-medium text-white">{customer?.name}</p>
-                        <p className="text-sm text-neutral-400">{customer?.email}</p>
+                      <p className="text-lg font-semibold tabular-nums text-foreground">
+                        {formatCurrency(sub.price, sub.currency)}
+                      </p>
+                      <p className="mt-0.5 text-xs capitalize text-muted-foreground">
+                        per {sub.billing_interval || "month"}
+                      </p>
                     </div>
-                </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-                {/* Subscriptions */}
-                <div className="bg-neutral-800 rounded-xl border border-neutral-700 overflow-hidden">
-                    <div className="px-6 py-5 border-b border-neutral-700 bg-neutral-800/50 flex items-center gap-2">
-                        <CreditCardIcon className="w-5 h-5 text-primary-400" />
-                        <h2 className="text-lg font-medium text-white">Active Subscriptions</h2>
-                    </div>
-                    <div className="divide-y divide-neutral-700">
-                        {!subscriptions || subscriptions.length === 0 ? (
-                            <div className="p-6 text-center text-sm text-neutral-400">
-                                No active subscriptions found.
-                            </div>
-                        ) : (
-                            subscriptions.map((sub) => (
-                                <div key={sub.id} className="p-6 flex items-center justify-between">
-                                    <div>
-                                        <h3 className="text-lg font-medium text-white">{sub.plan_name || 'Premium Plan'}</h3>
-                                        <p className="text-sm text-neutral-400 mt-1">
-                                            Status: <span className="text-green-400 capitalize">{sub.status}</span>
-                                        </p>
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-xl font-semibold text-white">
-                                            {sub.currency === 'INR' ? '₹' : '$'}{(sub.price / 100).toFixed(2)}
-                                        </p>
-                                        <p className="text-sm text-neutral-400 mt-1 capitalize">
-                                            per {sub.billing_interval || 'month'}
-                                        </p>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                {/* Invoices */}
-                <div className="bg-neutral-800 rounded-xl border border-neutral-700 overflow-hidden">
-                    <div className="px-6 py-5 border-b border-neutral-700 bg-neutral-800/50 flex items-center gap-2">
-                        <DocumentTextIcon className="w-5 h-5 text-primary-400" />
-                        <h2 className="text-lg font-medium text-white">Invoice History</h2>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left text-sm whitespace-nowrap">
-                            <thead className="bg-neutral-800 text-neutral-400">
-                                <tr>
-                                    <th className="px-6 py-4 font-medium">Invoice Number</th>
-                                    <th className="px-6 py-4 font-medium">Issue Date</th>
-                                    <th className="px-6 py-4 font-medium text-right">Amount</th>
-                                    <th className="px-6 py-4 font-medium text-right">Status</th>
-                                    <th className="px-6 py-4 font-medium text-right">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-neutral-700">
-                                {!invoices || invoices.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="5" className="px-6 py-8 text-center text-neutral-400">
-                                            No invoices found.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    invoices.map((inv) => (
-                                        <tr key={inv.id} className="hover:bg-neutral-800/50 transition-colors">
-                                            <td className="px-6 py-4 font-medium text-white">{inv.invoice_number}</td>
-                                            <td className="px-6 py-4 text-neutral-300">
-                                                {new Date(inv.issue_date).toLocaleDateString()}
-                                            </td>
-                                            <td className="px-6 py-4 text-right text-white font-medium">
-                                                {inv.currency === 'INR' ? '₹' : '$'}{(inv.total / 100).toFixed(2)}
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${inv.status === 'paid' ? 'bg-green-500/10 text-green-400' :
-                                                        inv.status === 'open' ? 'bg-primary-500/10 text-primary-400' :
-                                                            'bg-neutral-500/10 text-neutral-400'
-                                                    }`}>
-                                                    {inv.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-right">
-                                                <a
-                                                    href={`${API_BASE_URL}/invoices/${inv.id}/pdf`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-primary-400 hover:text-primary-300 text-sm font-medium transition-colors"
-                                                >
-                                                    Download PDF
-                                                </a>
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            </div>
-        </div>
-    );
+        {/* Invoices */}
+        <Card>
+          <CardHeader className="flex-row items-center gap-2 space-y-0 border-b border-border">
+            <FileText className="h-4 w-4 text-primary" />
+            <CardTitle className="text-base">Invoice history</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {!invoices || invoices.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-muted-foreground">
+                No invoices found.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-6">Invoice</TableHead>
+                    <TableHead>Issue date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="pr-6 text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((inv) => (
+                    <TableRow key={inv.id} className="hover:bg-muted/40">
+                      <TableCell className="pl-6 font-medium text-foreground">
+                        {inv.invoice_number || "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(inv.issue_date)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-foreground">
+                        {formatCurrency(inv.total, inv.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={invoiceStatusVariant(inv.status)}
+                          className={cn("capitalize")}
+                        >
+                          {(inv.status || "unknown").replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <a
+                          href={`${API_BASE_URL}/invoices/${inv.id}/pdf`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </a>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
 }

@@ -1,234 +1,297 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  Check,
+  Copy,
+  Download,
+  FileText,
+  Gift,
+  Loader2,
+  LogOut,
+  Receipt,
+  Wallet,
+} from "lucide-react";
 
-import { API_ROOT as API_BASE } from '../../lib/api'
+import { API_ROOT as API_BASE } from "../../lib/api";
+import { formatCurrency, formatDate } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/patterns/StatCard";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+const invoiceStatusVariant = (status) =>
+  ({
+    paid: "success",
+    open: "warning",
+    past_due: "destructive",
+    void: "neutral",
+    draft: "neutral",
+  })[status] || "neutral";
 
 const PortalDashboard = () => {
-    const [profile, setProfile] = useState(null)
-    const [invoices, setInvoices] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState(null)
-    const navigate = useNavigate()
+  const [profile, setProfile] = useState(null);
+  const [invoices, setInvoices] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const navigate = useNavigate();
 
-    const sessionToken = localStorage.getItem('portal_session')
+  const sessionToken = localStorage.getItem("portal_session");
 
-    useEffect(() => {
-        if (!sessionToken) {
-            navigate('/portal/login')
-            return
+  useEffect(() => {
+    if (!sessionToken) {
+      navigate("/portal/login");
+      return;
+    }
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionToken, navigate]);
+
+  const fetchData = async () => {
+    try {
+      const headers = {
+        "X-Portal-Session": sessionToken,
+        "Content-Type": "application/json",
+      };
+
+      // Fetch profile
+      const profileRes = await fetch(`${API_BASE}/portal/api/profile`, {
+        headers,
+      });
+      if (!profileRes.ok) {
+        if (profileRes.status === 401) {
+          localStorage.removeItem("portal_session");
+          navigate("/portal/login");
+          return;
         }
-        fetchData()
-    }, [sessionToken, navigate])
+        throw new Error("Failed to fetch profile");
+      }
+      const profileData = await profileRes.json();
+      setProfile(profileData);
 
-    const fetchData = async () => {
-        try {
-            const headers = {
-                'X-Portal-Session': sessionToken,
-                'Content-Type': 'application/json'
-            }
-
-            // Fetch profile
-            const profileRes = await fetch(`${API_BASE}/portal/api/profile`, { headers })
-            if (!profileRes.ok) {
-                if (profileRes.status === 401) {
-                    localStorage.removeItem('portal_session')
-                    navigate('/portal/login')
-                    return
-                }
-                throw new Error('Failed to fetch profile')
-            }
-            const profileData = await profileRes.json()
-            setProfile(profileData)
-
-            // Fetch invoices
-            const invoicesRes = await fetch(`${API_BASE}/portal/api/invoices`, { headers })
-            if (invoicesRes.ok) {
-                const invoicesData = await invoicesRes.json()
-                setInvoices(invoicesData.data || [])
-            }
-        } catch (err) {
-            setError(err.message)
-        } finally {
-            setLoading(false)
-        }
+      // Fetch invoices
+      const invoicesRes = await fetch(`${API_BASE}/portal/api/invoices`, {
+        headers,
+      });
+      if (invoicesRes.ok) {
+        const invoicesData = await invoicesRes.json();
+        setInvoices(invoicesData.data || []);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    const handleLogout = async () => {
-        try {
-            await fetch(`${API_BASE}/portal/api/logout`, {
-                method: 'POST',
-                headers: { 'X-Portal-Session': sessionToken }
-            })
-        } catch (err) {
-            // Ignore errors
-        }
-        localStorage.removeItem('portal_session')
-        navigate('/portal/login')
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/portal/api/logout`, {
+        method: "POST",
+        headers: { "X-Portal-Session": sessionToken },
+      });
+    } catch (err) {
+      // Ignore errors
     }
+    localStorage.removeItem("portal_session");
+    navigate("/portal/login");
+  };
 
-    const formatCurrency = (amount) => {
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }).format(amount / 100)
-    }
+  const copyReferral = () => {
+    if (!profile?.referral_code) return;
+    navigator.clipboard.writeText(profile.referral_code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
-    const formatDate = (date) => {
-        return new Date(date).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'short',
-            day: 'numeric'
-        })
-    }
+  const paidTotal = invoices
+    .filter((inv) => inv.status === "paid")
+    .reduce((acc, inv) => acc + (inv.amount_due || 0), 0);
+  const outstandingTotal = invoices
+    .filter((inv) => inv.status !== "paid")
+    .reduce((acc, inv) => acc + (inv.amount_due || 0), 0);
 
-    if (loading) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-                <div className="text-center">
-                    <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-                    <p className="text-slate-600 dark:text-slate-400">Loading...</p>
-                </div>
-            </div>
-        )
-    }
-
+  if (loading) {
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
-            {/* Header */}
-            <header className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-                <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-                            <span className="text-white font-bold">R</span>
-                        </div>
-                        <span className="text-lg font-bold text-slate-900 dark:text-white">Recurso</span>
-                    </div>
-                    <button
-                        onClick={handleLogout}
-                        className="text-sm text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
-                    >
-                        Sign out
-                    </button>
-                </div>
-            </header>
-
-            {/* Main Content */}
-            <main className="max-w-4xl mx-auto px-4 py-8">
-                <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-                    Billing Portal
-                </h1>
-                <p className="text-slate-600 dark:text-slate-400 mb-8">
-                    View your invoices and manage your subscription.
-                </p>
-
-                {error && (
-                    <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-lg">
-                        {error}
-                    </div>
-                )}
-
-                {/* Quick Stats */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Total Invoices</p>
-                        <p className="text-2xl font-bold text-slate-900 dark:text-white">{invoices.length}</p>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Total Paid</p>
-                        <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                            {formatCurrency(invoices.filter(inv => inv.status === 'paid').reduce((acc, inv) => acc + inv.amount_due, 0))}
-                        </p>
-                    </div>
-                    <div className="bg-white dark:bg-slate-900 rounded-xl p-6 border border-slate-200 dark:border-slate-800">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Outstanding</p>
-                        <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                            {formatCurrency(invoices.filter(inv => inv.status !== 'paid').reduce((acc, inv) => acc + inv.amount_due, 0))}
-                        </p>
-                    </div>
-                    {/* Referral Card */}
-                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white">
-                        <p className="text-sm text-indigo-100 mb-1">Refer & Earn</p>
-                        {profile?.referral_code ? (
-                            <div>
-                                <div className="flex items-center gap-2 bg-white/20 rounded-lg p-2 mb-2 backdrop-blur-sm">
-                                    <code className="flex-1 font-mono text-sm font-bold">{profile.referral_code}</code>
-                                    <button 
-                                        onClick={() => navigator.clipboard.writeText(profile.referral_code)}
-                                        className="p-1 hover:bg-white/20 rounded-md transition-colors"
-                                        title="Copy Code"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">content_copy</span>
-                                    </button>
-                                </div>
-                                <p className="text-xs text-indigo-100">Share this code to earn credits!</p>
-                            </div>
-                        ) : (
-                            <p className="text-sm font-medium">Generating code...</p>
-                        )}
-                    </div>
-                </div>
-
-                {/* Invoices Table */}
-                <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
-                    <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800">
-                        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Invoices</h2>
-                    </div>
-
-                    {invoices.length === 0 ? (
-                        <div className="p-8 text-center text-slate-500 dark:text-slate-400">
-                            No invoices found.
-                        </div>
-                    ) : (
-                        <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-slate-50 dark:bg-slate-800/50">
-                                    <tr>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Invoice</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Date</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Amount</th>
-                                        <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">Status</th>
-                                        <th className="px-6 py-3 text-right text-xs font-medium text-slate-500 uppercase tracking-wider">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                                    {invoices.map((invoice) => (
-                                        <tr key={invoice.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/30">
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="text-sm font-medium text-slate-900 dark:text-white">
-                                                    {invoice.id?.substring(0, 8)}...
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 dark:text-slate-400">
-                                                {formatDate(invoice.created_at)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-slate-900 dark:text-white">
-                                                {formatCurrency(invoice.amount_due)}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${invoice.status === 'paid'
-                                                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                                                        : invoice.status === 'open'
-                                                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                                                            : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
-                                                    }`}>
-                                                    {invoice.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right">
-                                                <button className="text-sm text-primary hover:underline">
-                                                    Download PDF
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    )}
-                </div>
-            </main>
+      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+        <div className="text-center">
+          <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
         </div>
-    )
-}
+      </div>
+    );
+  }
 
-export default PortalDashboard
+  return (
+    <div className="min-h-screen bg-zinc-50">
+      {/* Header */}
+      <header className="border-b border-border bg-background">
+        <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+              R
+            </div>
+            <span className="text-lg font-semibold tracking-tight text-foreground">
+              Recurso
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/portal/redeem")}
+            >
+              <Gift className="h-4 w-4" />
+              Redeem gift
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleLogout}>
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="mx-auto max-w-4xl px-4 py-8">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+          Billing Portal
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          View your invoices and manage your subscription.
+        </p>
+
+        {error && (
+          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        {/* Quick Stats */}
+        <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Total Invoices"
+            value={invoices.length.toLocaleString()}
+            icon={Receipt}
+          />
+          <StatCard
+            label="Total Paid"
+            value={formatCurrency(paidTotal)}
+            icon={FileText}
+          />
+          <StatCard
+            label="Outstanding"
+            value={formatCurrency(outstandingTotal)}
+            icon={Wallet}
+          />
+
+          {/* Referral card */}
+          <Card className="flex flex-col justify-between bg-primary/5 p-5 ring-1 ring-inset ring-primary/10">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium uppercase tracking-wide text-primary">
+                Refer &amp; earn
+              </p>
+              <Gift className="h-4 w-4 text-primary" />
+            </div>
+            {profile?.referral_code ? (
+              <div className="mt-3">
+                <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-background px-2.5 py-1.5">
+                  <code className="flex-1 truncate font-mono text-sm font-semibold text-foreground">
+                    {profile.referral_code}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={copyReferral}
+                    className="rounded p-1 text-muted-foreground transition-colors hover:text-primary"
+                    title="Copy code"
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-primary" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Share this code to earn credits.
+                </p>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-muted-foreground">
+                Generating code...
+              </p>
+            )}
+          </Card>
+        </div>
+
+        {/* Invoices Table */}
+        <Card className="mt-8">
+          <CardHeader className="border-b border-border">
+            <CardTitle className="text-base">Invoices</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {invoices.length === 0 ? (
+              <p className="px-6 py-8 text-center text-sm text-muted-foreground">
+                No invoices found.
+              </p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent">
+                    <TableHead className="pl-6">Invoice</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="pr-6 text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {invoices.map((invoice) => (
+                    <TableRow key={invoice.id} className="hover:bg-muted/40">
+                      <TableCell className="pl-6 font-medium text-foreground">
+                        {invoice.id ? `${invoice.id.substring(0, 8)}…` : "—"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDate(invoice.created_at)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-foreground">
+                        {formatCurrency(invoice.amount_due, invoice.currency)}
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={invoiceStatusVariant(invoice.status)}
+                          className="capitalize"
+                        >
+                          {(invoice.status || "unknown").replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          PDF
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </main>
+    </div>
+  );
+};
+
+export default PortalDashboard;

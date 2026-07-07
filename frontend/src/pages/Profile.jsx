@@ -1,100 +1,127 @@
-import React, { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { endpoints } from '../lib/api'
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { KeyRound, Pencil } from "lucide-react";
 
-const Profile = () => {
-    const [account, setAccount] = useState({ name: '', email: '', id: '' })
-    const [loading, setLoading] = useState(true)
+import { endpoints } from "@/lib/api";
+import { PageHeader } from "@/components/patterns/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-    useEffect(() => {
-        const fetchAccount = async () => {
-            try {
-                const response = await endpoints.getAccount()
-                if (response.data.data) {
-                    setAccount({
-                        name: response.data.data.name,
-                        email: response.data.data.email,
-                        id: response.data.data.id
-                    })
-                }
-            } catch (error) {
-                console.error("Failed to fetch account:", error)
-            } finally {
-                setLoading(false)
-            }
+// Read-only display field styled to match the light theme.
+function ReadOnlyField({ label, value, mono, children }) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-foreground">{label}</Label>
+      <div
+        className={
+          "flex items-center justify-between rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-foreground" +
+          (mono ? " font-mono text-muted-foreground" : "")
         }
-        fetchAccount()
-    }, [])
-
-    return (
-        <div className="flex flex-col max-w-3xl mx-auto">
-            <header className="mb-8 flex items-center justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Account Profile</h1>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">View your account identity and security information.</p>
-                </div>
-                <Link to="/settings" className="rounded-lg bg-white border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:bg-slate-800 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-700">
-                    Edit Profile
-                </Link>
-            </header>
-
-            <div className="space-y-6">
-                {/* Profile Card */}
-                <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">Account Information</h2>
-
-                    <div className="flex flex-col md:flex-row gap-8 items-start">
-                        {/* Avatar */}
-                        <div className="flex flex-col items-center gap-3">
-                            <div
-                                className="size-24 rounded-full bg-cover bg-center border border-slate-200 dark:border-slate-700 bg-slate-100 flex items-center justify-center text-3xl font-bold text-slate-400"
-                            >
-                                {account.name ? account.name.charAt(0).toUpperCase() : 'A'}
-                            </div>
-                        </div>
-
-                        {/* Form */}
-                        <div className="flex-1 w-full grid grid-cols-1 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Account Name</label>
-                                <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300">
-                                    {loading ? 'Loading...' : account.name}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Email Address</label>
-                                <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-900 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300 flex items-center justify-between">
-                                    <span>{loading ? 'Loading...' : account.email}</span>
-                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full dark:bg-green-900/30 dark:text-green-400">Verified</span>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Tenant ID</label>
-                                <div className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-mono text-slate-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-500">
-                                    {loading ? 'Loading...' : account.id}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                {/* Security Card */}
-                <section className="rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900">
-                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Security</h2>
-                    <p className="text-sm text-slate-500 mb-6">Your account uses API Keys for authentication. You can manage your keys in the Developers section.</p>
-
-                    <div className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800">
-                        <span className="material-symbols-outlined text-slate-400">key</span>
-                        <div className="flex-1">
-                            <h3 className="text-sm font-medium text-slate-900 dark:text-white">API Key Authentication</h3>
-                            <p className="text-xs text-slate-500 mt-1">You are currently authenticated via a Tenant API Key.</p>
-                        </div>
-                        <a href="/developers" className="text-sm font-medium text-primary hover:underline">Manage Keys</a>
-                    </div>
-                </section>
-            </div>
-        </div>
-    )
+      >
+        <span className="truncate">{value}</span>
+        {children}
+      </div>
+    </div>
+  );
 }
 
-export default Profile
+export default function Profile() {
+  const navigate = useNavigate();
+  const [account, setAccount] = useState({ name: "", email: "", id: "" });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchAccount = async () => {
+      try {
+        const response = await endpoints.getAccount();
+        if (response.data.data) {
+          setAccount({
+            name: response.data.data.name,
+            email: response.data.data.email,
+            id: response.data.data.id,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch account:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchAccount();
+  }, []);
+
+  return (
+    <div>
+      <PageHeader
+        title="Account profile"
+        description="View your account identity and security information."
+        actions={
+          <Button variant="outline" onClick={() => navigate("/settings")}>
+            <Pencil className="h-4 w-4" />
+            Edit profile
+          </Button>
+        }
+      />
+
+      <div className="max-w-2xl space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Account information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col items-start gap-8 md:flex-row">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-border bg-emerald-50 text-2xl font-semibold text-emerald-700">
+                {account.name ? account.name.charAt(0).toUpperCase() : "A"}
+              </div>
+
+              <div className="grid w-full flex-1 gap-4">
+                <ReadOnlyField
+                  label="Account name"
+                  value={loading ? "Loading..." : account.name}
+                />
+                <ReadOnlyField label="Email address" value={loading ? "Loading..." : account.email}>
+                  {!loading && <Badge variant="success">Verified</Badge>}
+                </ReadOnlyField>
+                <ReadOnlyField
+                  label="Tenant ID"
+                  value={loading ? "Loading..." : account.id}
+                  mono
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Security</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-5 text-sm text-muted-foreground">
+              Your account uses API keys for authentication. You can manage your keys in
+              the Developers section.
+            </p>
+            <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/40 p-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-zinc-500">
+                <KeyRound className="h-4 w-4" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm font-medium text-foreground">
+                  API key authentication
+                </h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  You are currently authenticated via a tenant API key.
+                </p>
+              </div>
+              <Button variant="link" className="h-auto p-0" onClick={() => navigate("/developers")}>
+                Manage keys
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
