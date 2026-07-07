@@ -4716,6 +4716,279 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # --- Phase 2 auth: password reset, TOTP MFA, session management ---
+
+  /auth/login/mfa:
+    post:
+      operationId: loginMFA
+      tags: [Auth]
+      summary: Complete a two-step (MFA) login
+      description: >
+        Second step of login for MFA-enabled users. Exchanges the short-lived
+        single-use `mfa_token` returned by `/auth/login` (plus a TOTP code or an
+        unused backup code) for a session (sets the httpOnly `recurso_session`
+        cookie). The mfa_token and any backup code used are consumed. Errors are
+        deliberately generic.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mfa_token, code]
+              properties:
+                mfa_token:
+                  type: string
+                  description: The single-use challenge token from /auth/login.
+                code:
+                  type: string
+                  description: A current TOTP code or an unused backup code.
+      responses:
+        '200':
+          description: Authenticated. Sets recurso_session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+                  tenant:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+                      name: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/forgot-password:
+    post:
+      operationId: forgotPassword
+      tags: [Auth]
+      summary: Request a password reset link
+      description: >
+        Always returns 200 with a generic message, whether or not the account
+        exists (no enumeration). If the account exists, a single-use reset token
+        is created and a reset link emailed to the user.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Generic acknowledgement (sent regardless of account existence).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /auth/reset-password:
+    post:
+      operationId: resetPassword
+      tags: [Auth]
+      summary: Reset a password with a token
+      description: >
+        Consumes a valid (unused, unexpired) reset token, sets the new bcrypt
+        password, and revokes ALL of that user's sessions (forces re-login
+        everywhere). Invalid/expired/used tokens return a generic 400.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        '200':
+          description: Password reset; all sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /v1/auth/mfa/setup:
+    post:
+      operationId: mfaSetup
+      tags: [Auth]
+      summary: Begin TOTP MFA setup
+      description: >
+        Generates a TOTP secret for the logged-in user and returns the
+        otpauth:// URI (for QR display) plus the raw secret (for manual entry).
+        MFA is NOT enabled until a code is confirmed via /v1/auth/mfa/verify.
+        Requires a logged-in user session (API-key callers are rejected).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Provisioning data for the authenticator app.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  secret: { type: string }
+                  otpauth_url: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/auth/mfa/verify:
+    post:
+      operationId: mfaVerify
+      tags: [Auth]
+      summary: Confirm and enable TOTP MFA
+      description: >
+        Validates a TOTP code against the pending secret, enables MFA, and
+        returns a fresh set of one-time backup codes. The backup codes are shown
+        exactly once — only their hashes are stored.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: MFA enabled; one-time backup codes returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mfa_enabled: { type: boolean }
+                  backup_codes:
+                    type: array
+                    items: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/auth/mfa/disable:
+    post:
+      operationId: mfaDisable
+      tags: [Auth]
+      summary: Disable TOTP MFA
+      description: >
+        Verifies a TOTP or unused backup code, then disables MFA and wipes the
+        stored secret and all backup codes.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: MFA disabled.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mfa_enabled: { type: boolean }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+  /v1/auth/sessions:
+    get:
+      operationId: listSessions
+      tags: [Auth]
+      summary: List active sessions
+      description: >
+        Lists the logged-in user's unexpired sessions, flagging the request's own
+        session with `current: true`. Requires a logged-in user session.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: The user's active sessions.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        user_agent: { type: string }
+                        created_at: { type: string, format: date-time }
+                        expires_at: { type: string, format: date-time }
+                        current: { type: boolean }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    delete:
+      operationId: revokeOtherSessions
+      tags: [Auth]
+      summary: Revoke all other sessions
+      description: >
+        Revokes every session belonging to the user except the current one
+        ("log out everywhere else"). Requires a live session cookie.
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: Other sessions revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      tags: [Auth]
+      summary: Revoke a single session
+      description: >
+        Revokes one of the user's OWN sessions. A session that does not exist or
+        belongs to another user returns 404 (no ownership leak).
+      security:
+        - sessionCookie: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Session revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:

@@ -19,11 +19,24 @@ type UserRepository interface {
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	// GetByID resolves a user by id, scoped to the tenant.
 	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.User, error)
+	// GetByIDGlobal resolves a user by id with no tenant scope. Used only by
+	// flows that already hold a proof-of-identity token (MFA challenge), where
+	// the tenant is not otherwise available.
+	GetByIDGlobal(ctx context.Context, id uuid.UUID) (*domain.User, error)
 	ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.User, error)
 	UpdateRole(ctx context.Context, tenantID, id uuid.UUID, role domain.Role) error
 	Delete(ctx context.Context, tenantID, id uuid.UUID) error
 	// CountOwners returns how many owner-role users the tenant has.
 	CountOwners(ctx context.Context, tenantID uuid.UUID) (int, error)
+	// UpdatePassword sets a new bcrypt hash for the user, keyed by id alone
+	// (password reset carries no tenant context).
+	UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error
+	// SetMFASecret stores a pending TOTP secret without enabling MFA.
+	SetMFASecret(ctx context.Context, tenantID, id uuid.UUID, secret string) error
+	// SetMFAEnabled toggles the mfa_enabled flag.
+	SetMFAEnabled(ctx context.Context, tenantID, id uuid.UUID, enabled bool) error
+	// ClearMFA disables MFA and wipes the stored secret.
+	ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error
 }
 
 // SessionRepository persists opaque login sessions keyed by the SHA-256 hash
@@ -33,6 +46,47 @@ type SessionRepository interface {
 	// GetByTokenHash returns the session for the given token hash, or
 	// ErrSessionNotFound if it does not exist.
 	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.Session, error)
+	// GetByID returns a session by its primary key, or ErrSessionNotFound.
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Session, error)
+	// ListByUser returns every session (including expired ones) belonging to a
+	// user; callers filter on expiry.
+	ListByUser(ctx context.Context, userID uuid.UUID) ([]*domain.Session, error)
 	DeleteByTokenHash(ctx context.Context, tokenHash string) error
+	// DeleteByID removes a single session by primary key.
+	DeleteByID(ctx context.Context, id uuid.UUID) error
 	DeleteByUser(ctx context.Context, userID uuid.UUID) error
+	// DeleteByUserExcept removes all of a user's sessions except the one whose
+	// token hashes to exceptTokenHash ("log out everywhere else").
+	DeleteByUserExcept(ctx context.Context, userID uuid.UUID, exceptTokenHash string) error
+}
+
+// PasswordResetRepository persists single-use password reset tokens keyed by
+// the SHA-256 hash of the raw token.
+type PasswordResetRepository interface {
+	Create(ctx context.Context, token *domain.PasswordResetToken) error
+	// GetByTokenHash returns the token for the given hash, or
+	// ErrInvalidResetToken if none exists.
+	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.PasswordResetToken, error)
+	// MarkUsed stamps used_at on the token so it cannot be replayed.
+	MarkUsed(ctx context.Context, id uuid.UUID) error
+}
+
+// MFABackupCodeRepository persists hashed one-time MFA recovery codes.
+type MFABackupCodeRepository interface {
+	CreateMany(ctx context.Context, codes []*domain.MFABackupCode) error
+	// ListByUser returns all backup codes for a user (used and unused).
+	ListByUser(ctx context.Context, userID uuid.UUID) ([]*domain.MFABackupCode, error)
+	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// DeleteByUser removes every backup code for a user (on disable / re-issue).
+	DeleteByUser(ctx context.Context, userID uuid.UUID) error
+}
+
+// MFALoginTokenRepository persists short-lived MFA challenge tokens keyed by the
+// SHA-256 hash of the raw token.
+type MFALoginTokenRepository interface {
+	Create(ctx context.Context, token *domain.MFALoginToken) error
+	// GetByTokenHash returns the token for the given hash, or
+	// ErrInvalidMFAToken if none exists.
+	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.MFALoginToken, error)
+	MarkUsed(ctx context.Context, id uuid.UUID) error
 }

@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -44,19 +45,56 @@ type tenantRegistrar interface {
 	GetAccount(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error)
 }
 
+// passwordResetEmailer sends the password-reset email. *NotificationService
+// satisfies it; kept as a narrow interface so AuthService need not depend on the
+// whole notification surface (and tests can supply a fake/no-op).
+type passwordResetEmailer interface {
+	SendPasswordReset(ctx context.Context, toEmail, resetURL string) error
+}
+
 // AuthService owns dashboard user accounts, sessions, and team management.
 type AuthService struct {
 	users      port.UserRepository
 	sessions   port.SessionRepository
 	tenants    tenantRegistrar
 	sessionTTL time.Duration
+
+	// Phase 2 dependencies (password reset, TOTP MFA). Configured via the
+	// setters below so the base constructor — and every existing caller/test —
+	// stays unchanged. Methods that need them guard against nil.
+	resetTokens port.PasswordResetRepository
+	backupCodes port.MFABackupCodeRepository
+	mfaTokens   port.MFALoginTokenRepository
+	mailer      passwordResetEmailer
+	appBaseURL  string
+	logger      *slog.Logger
 }
 
 func NewAuthService(users port.UserRepository, sessions port.SessionRepository, tenants tenantRegistrar, sessionTTL time.Duration) *AuthService {
 	if sessionTTL <= 0 {
 		sessionTTL = 7 * 24 * time.Hour
 	}
-	return &AuthService{users: users, sessions: sessions, tenants: tenants, sessionTTL: sessionTTL}
+	return &AuthService{
+		users:      users,
+		sessions:   sessions,
+		tenants:    tenants,
+		sessionTTL: sessionTTL,
+		logger:     slog.Default().With("service", "auth"),
+	}
+}
+
+// ConfigurePasswordReset wires the password-reset dependencies. appBaseURL is
+// the base of the admin dashboard that hosts the /reset-password page.
+func (s *AuthService) ConfigurePasswordReset(resetTokens port.PasswordResetRepository, mailer passwordResetEmailer, appBaseURL string) {
+	s.resetTokens = resetTokens
+	s.mailer = mailer
+	s.appBaseURL = strings.TrimRight(appBaseURL, "/")
+}
+
+// ConfigureMFA wires the TOTP MFA dependencies.
+func (s *AuthService) ConfigureMFA(backupCodes port.MFABackupCodeRepository, mfaTokens port.MFALoginTokenRepository) {
+	s.backupCodes = backupCodes
+	s.mfaTokens = mfaTokens
 }
 
 // SessionTTL exposes the configured session lifetime (for cookie max-age).
@@ -172,15 +210,25 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	return &RegisterResult{Tenant: tenant, APIKey: apiKey, User: user, SessionToken: token}, nil
 }
 
-// LoginResult is returned from a successful login.
+// LoginResult is returned from a login attempt. When MFARequired is true no
+// session was opened: SessionToken/Tenant are empty and the caller must exchange
+// MFAToken (plus a TOTP/backup code) at LoginMFA to finish authenticating.
 type LoginResult struct {
 	User         *domain.User
 	Tenant       *domain.Tenant
 	SessionToken string
+	MFARequired  bool
+	MFAToken     string
 }
 
-// Login verifies credentials in constant time and, on success, opens a session.
-// It never reveals whether the email or the password was wrong.
+// mfaLoginTokenTTL is the lifetime of the short-lived challenge token issued
+// between the password step and the MFA-code step of a two-step login.
+const mfaLoginTokenTTL = 5 * time.Minute
+
+// Login verifies credentials in constant time. On success it either opens a
+// session (no MFA) or, when the user has MFA enabled, returns a short-lived
+// single-use challenge token WITHOUT opening a session. It never reveals whether
+// the email or the password was wrong.
 func (s *AuthService) Login(ctx context.Context, email, password, userAgent string) (*LoginResult, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
@@ -194,6 +242,26 @@ func (s *AuthService) Login(ctx context.Context, email, password, userAgent stri
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
 		return nil, domain.ErrInvalidCredentials
+	}
+
+	// MFA gate: password was correct, but a second factor is required. Issue a
+	// challenge token and stop here — no session cookie is opened.
+	if user.MFAEnabled && s.mfaTokens != nil {
+		raw, tokenHash, err := newSessionToken()
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now().UTC()
+		if err := s.mfaTokens.Create(ctx, &domain.MFALoginToken{
+			ID:        uuid.New(),
+			TokenHash: tokenHash,
+			UserID:    user.ID,
+			ExpiresAt: now.Add(mfaLoginTokenTTL),
+			CreatedAt: now,
+		}); err != nil {
+			return nil, err
+		}
+		return &LoginResult{User: user, MFARequired: true, MFAToken: raw}, nil
 	}
 
 	tenant, err := s.tenants.GetAccount(ctx, user.TenantID)

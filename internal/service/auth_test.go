@@ -58,6 +58,52 @@ func (r *fakeUserRepo) GetByID(_ context.Context, tenantID, id uuid.UUID) (*doma
 	return &cp, nil
 }
 
+func (r *fakeUserRepo) GetByIDGlobal(_ context.Context, id uuid.UUID) (*domain.User, error) {
+	u, ok := r.users[id]
+	if !ok {
+		return nil, domain.ErrUserNotFound
+	}
+	cp := *u
+	return &cp, nil
+}
+
+func (r *fakeUserRepo) UpdatePassword(_ context.Context, id uuid.UUID, hash string) error {
+	u, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.PasswordHash = hash
+	return nil
+}
+
+func (r *fakeUserRepo) SetMFASecret(_ context.Context, tenantID, id uuid.UUID, secret string) error {
+	u, ok := r.users[id]
+	if !ok || u.TenantID != tenantID {
+		return domain.ErrUserNotFound
+	}
+	u.MFASecret = secret
+	return nil
+}
+
+func (r *fakeUserRepo) SetMFAEnabled(_ context.Context, tenantID, id uuid.UUID, enabled bool) error {
+	u, ok := r.users[id]
+	if !ok || u.TenantID != tenantID {
+		return domain.ErrUserNotFound
+	}
+	u.MFAEnabled = enabled
+	return nil
+}
+
+func (r *fakeUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error {
+	u, ok := r.users[id]
+	if !ok || u.TenantID != tenantID {
+		return domain.ErrUserNotFound
+	}
+	u.MFAEnabled = false
+	u.MFASecret = ""
+	return nil
+}
+
 func (r *fakeUserRepo) ListByTenant(_ context.Context, tenantID uuid.UUID) ([]*domain.User, error) {
 	var out []*domain.User
 	for _, u := range r.users {
@@ -125,6 +171,41 @@ func (r *fakeSessionRepo) DeleteByTokenHash(_ context.Context, h string) error {
 func (r *fakeSessionRepo) DeleteByUser(_ context.Context, userID uuid.UUID) error {
 	for h, s := range r.sessions {
 		if s.UserID == userID {
+			delete(r.sessions, h)
+		}
+	}
+	return nil
+}
+func (r *fakeSessionRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Session, error) {
+	for _, s := range r.sessions {
+		if s.ID == id {
+			cp := *s
+			return &cp, nil
+		}
+	}
+	return nil, domain.ErrSessionNotFound
+}
+func (r *fakeSessionRepo) ListByUser(_ context.Context, userID uuid.UUID) ([]*domain.Session, error) {
+	var out []*domain.Session
+	for _, s := range r.sessions {
+		if s.UserID == userID {
+			cp := *s
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+func (r *fakeSessionRepo) DeleteByID(_ context.Context, id uuid.UUID) error {
+	for h, s := range r.sessions {
+		if s.ID == id {
+			delete(r.sessions, h)
+		}
+	}
+	return nil
+}
+func (r *fakeSessionRepo) DeleteByUserExcept(_ context.Context, userID uuid.UUID, exceptHash string) error {
+	for h, s := range r.sessions {
+		if s.UserID == userID && h != exceptHash {
 			delete(r.sessions, h)
 		}
 	}

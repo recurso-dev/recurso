@@ -41,8 +41,14 @@ type User struct {
 	PasswordHash string    `json:"-" db:"password_hash"` // never serialized
 	Name         string    `json:"name" db:"name"`
 	Role         Role      `json:"role" db:"role"`
-	CreatedAt    time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	// MFAEnabled reports whether TOTP two-factor auth is active for this user.
+	MFAEnabled bool `json:"mfa_enabled" db:"mfa_enabled"`
+	// MFASecret is the base32 TOTP secret. Populated at setup time (before the
+	// user proves possession) and only trusted once MFAEnabled is true. Never
+	// serialized to clients.
+	MFASecret string    `json:"-" db:"mfa_secret"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Session is an opaque, server-side login session. Only the SHA-256 hash of the
@@ -62,6 +68,38 @@ type Session struct {
 // dual-auth middleware (which reads it).
 const SessionCookieName = "recurso_session"
 
+// PasswordResetToken is a single-use, short-lived credential emailed to a user
+// to authorize a password change. Only the SHA-256 hash is stored server-side.
+type PasswordResetToken struct {
+	ID        uuid.UUID  `db:"id"`
+	TokenHash string     `db:"token_hash"`
+	UserID    uuid.UUID  `db:"user_id"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	UsedAt    *time.Time `db:"used_at"`
+	CreatedAt time.Time  `db:"created_at"`
+}
+
+// MFABackupCode is one hashed single-use recovery code for a user's TOTP MFA.
+type MFABackupCode struct {
+	ID        uuid.UUID  `db:"id"`
+	UserID    uuid.UUID  `db:"user_id"`
+	CodeHash  string     `db:"code_hash"`
+	UsedAt    *time.Time `db:"used_at"`
+	CreatedAt time.Time  `db:"created_at"`
+}
+
+// MFALoginToken is the short-lived, single-use challenge issued after a correct
+// password when MFA is enabled. It is exchanged (with a TOTP or backup code) for
+// a real session. Only the SHA-256 hash is stored server-side.
+type MFALoginToken struct {
+	ID        uuid.UUID  `db:"id"`
+	TokenHash string     `db:"token_hash"`
+	UserID    uuid.UUID  `db:"user_id"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	UsedAt    *time.Time `db:"used_at"`
+	CreatedAt time.Time  `db:"created_at"`
+}
+
 // Auth domain errors. Login-facing errors are deliberately coarse so callers
 // cannot use them to enumerate accounts.
 var (
@@ -73,4 +111,16 @@ var (
 	ErrSelfLockout        = errors.New("you cannot remove your own account")
 	ErrWeakPassword       = errors.New("password must be at least 8 characters")
 	ErrInvalidRole        = errors.New("role must be one of owner, admin, member")
+
+	// Password reset. Deliberately coarse so a caller cannot tell a bad token
+	// from an expired or already-used one.
+	ErrInvalidResetToken = errors.New("invalid or expired reset token")
+
+	// MFA. Login/challenge errors are coarse to avoid oracles.
+	ErrMFANotConfigured  = errors.New("mfa setup has not been started")
+	ErrMFAAlreadyEnabled = errors.New("mfa is already enabled")
+	ErrMFANotEnabled     = errors.New("mfa is not enabled")
+	ErrInvalidMFACode    = errors.New("invalid code")
+	ErrInvalidMFAToken   = errors.New("invalid or expired authentication token")
+	ErrUserRequired      = errors.New("this endpoint requires a logged-in user")
 )

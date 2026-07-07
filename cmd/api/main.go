@@ -288,11 +288,19 @@ func main() {
 	// of the existing tenant API-key auth (both resolve to the same tenant_id).
 	userRepo := db.NewUserRepository(database)
 	sessionRepo := db.NewSessionRepository(database)
+	passwordResetRepo := db.NewPasswordResetRepository(database)
+	mfaBackupRepo := db.NewMFABackupCodeRepository(database)
+	mfaLoginTokenRepo := db.NewMFALoginTokenRepository(database)
 	sessionTTLHours, _ := strconv.Atoi(getEnvDefault("SESSION_TTL_HOURS", "168")) // default 7 days
 	if sessionTTLHours <= 0 {
 		sessionTTLHours = 168
 	}
 	authService := service.NewAuthService(userRepo, sessionRepo, tenantService, time.Duration(sessionTTLHours)*time.Hour)
+	// Phase 2 auth: password reset + TOTP MFA. The reset link points at the
+	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
+	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)
+	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, dashboardURL)
+	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
 	txManager := db.NewTxManager(database)
@@ -809,8 +817,13 @@ func main() {
 	// login/logout/me operate purely on the recurso_session cookie.
 	r.POST("/auth/register", publicLimit, authHandler.Register)
 	r.POST("/auth/login", publicLimit, authHandler.Login)
+	r.POST("/auth/login/mfa", publicLimit, authHandler.LoginMFA)
 	r.POST("/auth/logout", publicLimit, authHandler.Logout)
 	r.GET("/auth/me", publicLimit, authHandler.Me)
+	// Password reset (public): forgot-password always answers generically; the
+	// reset itself consumes a single-use emailed token.
+	r.POST("/auth/forgot-password", publicLimit, authHandler.ForgotPassword)
+	r.POST("/auth/reset-password", publicLimit, authHandler.ResetPassword)
 
 	// Invoice PDF Public (P30 for Demo)
 	r.GET("/v1/invoices/:id/pdf", publicLimit, pdfHandler.DownloadPDF)
@@ -894,6 +907,15 @@ func main() {
 		v1.POST("/users", teamHandler.CreateUser)
 		v1.PATCH("/users/:id", teamHandler.UpdateUser)
 		v1.DELETE("/users/:id", teamHandler.DeleteUser)
+
+		// Account security for the logged-in dashboard user (TOTP MFA + active
+		// session management). API-key callers have no user and are rejected.
+		v1.POST("/auth/mfa/setup", authHandler.MFASetup)
+		v1.POST("/auth/mfa/verify", authHandler.MFAVerify)
+		v1.POST("/auth/mfa/disable", authHandler.MFADisable)
+		v1.GET("/auth/sessions", authHandler.ListSessions)
+		v1.DELETE("/auth/sessions/:id", authHandler.RevokeSession)
+		v1.DELETE("/auth/sessions", authHandler.RevokeOtherSessions)
 
 		// Advanced Billing (P15)
 		v1.POST("/subscriptions/:id/charges", advancedBillingHandler.AddUnbilledCharge)

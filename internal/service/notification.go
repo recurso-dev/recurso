@@ -146,6 +146,31 @@ func (s *NotificationService) SendMagicLink(ctx context.Context, toEmail string,
 	})
 }
 
+// PasswordResetData for admin-dashboard password reset emails.
+type PasswordResetData struct {
+	ResetURL string
+}
+
+// SendPasswordReset emails a password-reset link to a dashboard user. The link
+// already embeds the single-use token.
+func (s *NotificationService) SendPasswordReset(ctx context.Context, toEmail, resetURL string) error {
+	content, err := s.renderTemplate(email.PasswordResetTemplate, PasswordResetData{ResetURL: resetURL})
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Reset your password", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       toEmail,
+		Subject:  "Reset your Recurso password",
+		HTMLBody: html,
+	})
+}
+
 // PaymentFailedData for failed payment emails
 type PaymentFailedData struct {
 	CustomerName     string

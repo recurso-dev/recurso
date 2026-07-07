@@ -40,14 +40,18 @@ func (r *UserRepository) Create(ctx context.Context, u *domain.User) error {
 func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var u domain.User
 	var role string
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var mfaSecret sql.NullString
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	u.Role = domain.Role(role)
+	if mfaSecret.Valid {
+		u.MFASecret = mfaSecret.String
+	}
 	return &u, nil
 }
 
-const userSelectCols = `id, tenant_id, email, password_hash, name, role, created_at, updated_at`
+const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, created_at, updated_at`
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT ` + userSelectCols + ` FROM users WHERE lower(email) = lower($1)`
@@ -125,4 +129,73 @@ func (r *UserRepository) CountOwners(ctx context.Context, tenantID uuid.UUID) (i
 		`SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND role = 'owner'`, tenantID,
 	).Scan(&n)
 	return n, err
+}
+
+func (r *UserRepository) GetByIDGlobal(ctx context.Context, id uuid.UUID) (*domain.User, error) {
+	query := `SELECT ` + userSelectCols + ` FROM users WHERE id = $1`
+	u, err := scanUser(r.db.QueryRowContext(ctx, query, id))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrUserNotFound
+	}
+	return u, err
+}
+
+func (r *UserRepository) UpdatePassword(ctx context.Context, id uuid.UUID, passwordHash string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+		passwordHash, id,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) SetMFASecret(ctx context.Context, tenantID, id uuid.UUID, secret string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET mfa_secret = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		secret, id, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) SetMFAEnabled(ctx context.Context, tenantID, id uuid.UUID, enabled bool) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET mfa_enabled = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		enabled, id, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+func (r *UserRepository) ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET mfa_enabled = FALSE, mfa_secret = NULL, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
 }

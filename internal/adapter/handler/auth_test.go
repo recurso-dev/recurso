@@ -52,6 +52,42 @@ func (r *memUserRepo) GetByID(_ context.Context, tenantID, id uuid.UUID) (*domai
 	}
 	return nil, domain.ErrUserNotFound
 }
+func (r *memUserRepo) GetByIDGlobal(_ context.Context, id uuid.UUID) (*domain.User, error) {
+	if u, ok := r.users[id]; ok {
+		cp := *u
+		return &cp, nil
+	}
+	return nil, domain.ErrUserNotFound
+}
+func (r *memUserRepo) UpdatePassword(_ context.Context, id uuid.UUID, hash string) error {
+	if u, ok := r.users[id]; ok {
+		u.PasswordHash = hash
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
+func (r *memUserRepo) SetMFASecret(_ context.Context, tenantID, id uuid.UUID, secret string) error {
+	if u, ok := r.users[id]; ok && u.TenantID == tenantID {
+		u.MFASecret = secret
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
+func (r *memUserRepo) SetMFAEnabled(_ context.Context, tenantID, id uuid.UUID, enabled bool) error {
+	if u, ok := r.users[id]; ok && u.TenantID == tenantID {
+		u.MFAEnabled = enabled
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
+func (r *memUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error {
+	if u, ok := r.users[id]; ok && u.TenantID == tenantID {
+		u.MFAEnabled = false
+		u.MFASecret = ""
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
 func (r *memUserRepo) ListByTenant(_ context.Context, tenantID uuid.UUID) ([]*domain.User, error) {
 	var out []*domain.User
 	for _, u := range r.users {
@@ -107,7 +143,49 @@ func (r *memSessionRepo) DeleteByTokenHash(_ context.Context, h string) error {
 	delete(r.sessions, h)
 	return nil
 }
-func (r *memSessionRepo) DeleteByUser(_ context.Context, userID uuid.UUID) error { return nil }
+func (r *memSessionRepo) DeleteByUser(_ context.Context, userID uuid.UUID) error {
+	for h, s := range r.sessions {
+		if s.UserID == userID {
+			delete(r.sessions, h)
+		}
+	}
+	return nil
+}
+func (r *memSessionRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Session, error) {
+	for _, s := range r.sessions {
+		if s.ID == id {
+			cp := *s
+			return &cp, nil
+		}
+	}
+	return nil, domain.ErrSessionNotFound
+}
+func (r *memSessionRepo) ListByUser(_ context.Context, userID uuid.UUID) ([]*domain.Session, error) {
+	var out []*domain.Session
+	for _, s := range r.sessions {
+		if s.UserID == userID {
+			cp := *s
+			out = append(out, &cp)
+		}
+	}
+	return out, nil
+}
+func (r *memSessionRepo) DeleteByID(_ context.Context, id uuid.UUID) error {
+	for h, s := range r.sessions {
+		if s.ID == id {
+			delete(r.sessions, h)
+		}
+	}
+	return nil
+}
+func (r *memSessionRepo) DeleteByUserExcept(_ context.Context, userID uuid.UUID, exceptHash string) error {
+	for h, s := range r.sessions {
+		if s.UserID == userID && h != exceptHash {
+			delete(r.sessions, h)
+		}
+	}
+	return nil
+}
 
 type memTenants struct{ tenants map[uuid.UUID]*domain.Tenant }
 

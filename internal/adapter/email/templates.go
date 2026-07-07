@@ -237,6 +237,19 @@ const MagicLinkTemplate = `
 <p style="font-size: 14px; color: #64748b;">This link will expire in 15 minutes. If you didn't request this, you can safely ignore this email.</p>
 `
 
+// PasswordResetTemplate for admin-dashboard password reset requests.
+const PasswordResetTemplate = `
+<h1>Reset your password</h1>
+<p>Hello,</p>
+<p>We received a request to reset the password for your Recurso account. Click the button below to choose a new password.</p>
+
+<p style="text-align: center;">
+    <a href="{{.ResetURL}}" class="btn">Reset Password</a>
+</p>
+
+<p style="font-size: 14px; color: #64748b;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email — your password will not change.</p>
+`
+
 // PaymentFailedTemplate for failed payments
 const PaymentFailedTemplate = `
 <h1>Payment Failed</h1>

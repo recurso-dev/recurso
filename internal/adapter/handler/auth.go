@@ -2,7 +2,9 @@ package handler
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
@@ -37,14 +39,21 @@ func (h *AuthHandler) clearSessionCookie(c *gin.Context) {
 
 // userView is the safe, serialized shape of a user (no password hash).
 type userView struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Name      string `json:"name"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
 }
 
 func toUserView(u *domain.User) userView {
-	return userView{ID: u.ID.String(), Email: u.Email, Name: u.Name, Role: string(u.Role)}
+	return userView{
+		ID:        u.ID.String(),
+		Email:     u.Email,
+		Name:      u.Name,
+		Role:      string(u.Role),
+		CreatedAt: u.CreatedAt.Format(time.RFC3339),
+	}
 }
 
 type tenantView struct {
@@ -111,11 +120,108 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// MFA gate: password was correct but a second factor is required. No session
+	// cookie is set; the client must call /auth/login/mfa with mfa_token + code.
+	if res.MFARequired {
+		c.JSON(http.StatusOK, gin.H{
+			"mfa_required": true,
+			"mfa_token":    res.MFAToken,
+		})
+		return
+	}
+
 	h.setSessionCookie(c, res.SessionToken)
 	c.JSON(http.StatusOK, gin.H{
 		"user":   toUserView(res.User),
 		"tenant": tenantView{ID: res.Tenant.ID.String(), Name: res.Tenant.Name},
 	})
+}
+
+// --- POST /auth/login/mfa ---
+
+type authLoginMFARequest struct {
+	MFAToken string `json:"mfa_token" binding:"required"`
+	Code     string `json:"code" binding:"required"`
+}
+
+// LoginMFA completes a two-step login by exchanging the challenge token plus a
+// TOTP or backup code for a full session cookie.
+func (h *AuthHandler) LoginMFA(c *gin.Context) {
+	var req authLoginMFARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	res, err := h.auth.LoginMFA(c.Request.Context(), req.MFAToken, req.Code, c.GetHeader("User-Agent"))
+	if err != nil {
+		// Generic: never distinguish a bad code from an expired/used challenge.
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid credentials")
+		return
+	}
+
+	h.setSessionCookie(c, res.SessionToken)
+	c.JSON(http.StatusOK, gin.H{
+		"user":   toUserView(res.User),
+		"tenant": tenantView{ID: res.Tenant.ID.String(), Name: res.Tenant.Name},
+	})
+}
+
+// --- POST /auth/forgot-password ---
+
+type forgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+// genericResetMessage is returned for every forgot-password call regardless of
+// whether the account exists, to prevent account enumeration.
+const genericResetMessage = "If an account with that email exists, a password reset link has been sent."
+
+// ForgotPassword always responds 200 with a generic message. If the account
+// exists a single-use token is created and a reset link emailed.
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req forgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// Even a malformed/absent email gets the generic 200-style answer via a
+		// 400 only for structural validation; do not reveal account state.
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	if err := h.auth.RequestPasswordReset(c.Request.Context(), req.Email); err != nil {
+		// Log-worthy infra failure, but the client still gets the generic answer.
+		slog.Default().Error("password reset request failed", "error", err)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": genericResetMessage})
+}
+
+// --- POST /auth/reset-password ---
+
+type resetPasswordRequest struct {
+	Token    string `json:"token" binding:"required"`
+	Password string `json:"password" binding:"required,min=8"`
+}
+
+// ResetPassword consumes a valid reset token, sets the new password, and kills
+// all of the user's sessions. Invalid/expired/used tokens get a generic 400.
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req resetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	err := h.auth.ResetPassword(c.Request.Context(), req.Token, req.Password)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"message": "password has been reset"})
+	case errors.Is(err, domain.ErrWeakPassword):
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+	case errors.Is(err, domain.ErrInvalidResetToken):
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or expired reset token")
+	default:
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	}
 }
 
 // --- POST /auth/logout ---
