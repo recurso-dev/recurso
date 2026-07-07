@@ -121,6 +121,286 @@ func newTestSubscriptionService(
 	)
 }
 
+// multiPlanRepo resolves different plans by ID (for plan-change previews).
+type multiPlanRepo struct {
+	port.PlanRepository
+	plans map[uuid.UUID]*domain.Plan
+}
+
+func (m *multiPlanRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Plan, error) {
+	return m.plans[id], nil
+}
+
+// --- Trial Tests ---
+
+func TestCreateSubscription_WithTrial_DefersInvoice(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID:            planID,
+		IntervalUnit:  domain.IntervalMonth,
+		IntervalCount: 1,
+		Prices:        []domain.Price{{Amount: 100000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{}, &subMockGateway{})
+
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	sub, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID:   uuid.New(),
+		CustomerID: customerID,
+		PlanID:     planID,
+		StartDate:  start,
+		TrialDays:  14,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if sub.Status != domain.SubscriptionStatusTrialing {
+		t.Errorf("status = %q, want trialing", sub.Status)
+	}
+	if sub.TrialEnd == nil || !sub.TrialEnd.Equal(start.AddDate(0, 0, 14)) {
+		t.Errorf("trial_end = %v, want %v", sub.TrialEnd, start.AddDate(0, 0, 14))
+	}
+	// No invoice should be generated during the trial.
+	if invRepo.created != nil {
+		t.Errorf("expected no invoice for a trialing subscription, got %+v", invRepo.created)
+	}
+}
+
+func TestConvertTrialToActive_GeneratesFirstInvoice(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	subID := uuid.New()
+	tenantID := uuid.New()
+	trialEnd := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID:            planID,
+		IntervalUnit:  domain.IntervalMonth,
+		IntervalCount: 1,
+		Prices:        []domain.Price{{Amount: 100000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{}, &subMockGateway{})
+
+	trialingSub := &domain.Subscription{
+		ID:                 subID,
+		TenantID:           tenantID,
+		CustomerID:         customerID,
+		PlanID:             planID,
+		Status:             domain.SubscriptionStatusTrialing,
+		TrialEnd:           &trialEnd,
+		CurrentPeriodStart: time.Date(2026, 1, 18, 0, 0, 0, 0, time.UTC),
+		CurrentPeriodEnd:   trialEnd,
+	}
+
+	inv, err := svc.ConvertTrialToActive(context.Background(), trialingSub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// First invoice: open, full plan price + 18% intra-state tax.
+	if invRepo.created == nil {
+		t.Fatal("expected first invoice to be created")
+	}
+	if inv.Status != domain.InvoiceStatusOpen {
+		t.Errorf("invoice status = %q, want open (routes into dunning)", inv.Status)
+	}
+	if inv.Subtotal != 100000 {
+		t.Errorf("subtotal = %d, want 100000", inv.Subtotal)
+	}
+	if inv.TaxAmount != 18000 {
+		t.Errorf("tax = %d, want 18000", inv.TaxAmount)
+	}
+	if inv.Total != 118000 {
+		t.Errorf("total = %d, want 118000", inv.Total)
+	}
+
+	// Subscription flipped to active with the first paid period starting at trial end.
+	if subRepo.updated == nil {
+		t.Fatal("expected subscription to be updated")
+	}
+	if subRepo.updated.Status != domain.SubscriptionStatusActive {
+		t.Errorf("status = %q, want active", subRepo.updated.Status)
+	}
+	if !subRepo.updated.CurrentPeriodStart.Equal(trialEnd) {
+		t.Errorf("new period start = %v, want %v (trial end)", subRepo.updated.CurrentPeriodStart, trialEnd)
+	}
+	if !subRepo.updated.CurrentPeriodEnd.Equal(trialEnd.AddDate(0, 1, 0)) {
+		t.Errorf("new period end = %v, want %v", subRepo.updated.CurrentPeriodEnd, trialEnd.AddDate(0, 1, 0))
+	}
+}
+
+func TestConvertTrialToActive_NotTrialing_Errors(t *testing.T) {
+	svc := newTestSubscriptionService(&subMockSubRepo{}, &subMockInvoiceRepo{}, &subMockPlanRepo{plan: &domain.Plan{}}, &subMockCustomerRepo{customer: &domain.Customer{}}, &subMockCouponRepo{}, &subMockGateway{})
+
+	_, err := svc.ConvertTrialToActive(context.Background(), &domain.Subscription{
+		ID:     uuid.New(),
+		Status: domain.SubscriptionStatusActive,
+	})
+	if err == nil {
+		t.Fatal("expected error converting a non-trialing subscription")
+	}
+}
+
+// --- Plan-change preview tests ---
+
+func newPreviewService(subRepo *subMockSubRepo, plans map[uuid.UUID]*domain.Plan, cust *domain.Customer, invRepo *subMockInvoiceRepo) *SubscriptionService {
+	return NewSubscriptionService(
+		subRepo, invRepo, &multiPlanRepo{plans: plans},
+		&subMockCustomerRepo{customer: cust},
+		&subMockCouponRepo{}, &subMockNotifier{},
+		NewLedgerService(nil, nil), &subMockGateway{}, gsp.NewMockGSPAdapter(),
+		nil, nil, nil,
+	)
+}
+
+func TestPreviewPlanChange_MatchesApply_Upgrade(t *testing.T) {
+	tenantID := uuid.New()
+	customerID := uuid.New()
+	currentPlanID := uuid.New()
+	newPlanID := uuid.New()
+	now := time.Now().UTC()
+
+	plans := map[uuid.UUID]*domain.Plan{
+		currentPlanID: {ID: currentPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}},
+		newPlanID:     {ID: newPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 200000, Currency: "INR"}}},
+	}
+	cust := &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID, PlanID: currentPlanID,
+		Status:             domain.SubscriptionStatusActive,
+		CurrentPeriodStart: now.AddDate(0, 0, -15),
+		CurrentPeriodEnd:   now.AddDate(0, 0, 15),
+	}}
+	invRepo := &subMockInvoiceRepo{}
+	svc := newPreviewService(subRepo, plans, cust, invRepo)
+
+	preview, err := svc.PreviewPlanChange(context.Background(), tenantID, subRepo.sub.ID, newPlanID)
+	if err != nil {
+		t.Fatalf("preview error: %v", err)
+	}
+	if !preview.IsUpgrade {
+		t.Error("expected IsUpgrade=true")
+	}
+	if preview.NetAmount <= 0 {
+		t.Errorf("expected positive net for an upgrade, got %d", preview.NetAmount)
+	}
+	if preview.TotalAmount != preview.NetAmount+preview.TaxAmount {
+		t.Errorf("total %d != net %d + tax %d", preview.TotalAmount, preview.NetAmount, preview.TaxAmount)
+	}
+	// Nothing should have been persisted by the preview.
+	if invRepo.created != nil {
+		t.Error("preview must not create an invoice")
+	}
+	if subRepo.updated != nil {
+		t.Error("preview must not update the subscription")
+	}
+
+	// Apply the same change and confirm the numbers match what preview reported.
+	if _, err := svc.UpdateSubscription(context.Background(), tenantID, subRepo.sub.ID, newPlanID); err != nil {
+		t.Fatalf("apply error: %v", err)
+	}
+	if invRepo.created == nil {
+		t.Fatal("apply should create a proration invoice")
+	}
+	if invRepo.created.Subtotal != preview.NetAmount {
+		t.Errorf("applied net %d != previewed net %d", invRepo.created.Subtotal, preview.NetAmount)
+	}
+	if invRepo.created.TaxAmount != preview.TaxAmount {
+		t.Errorf("applied tax %d != previewed tax %d", invRepo.created.TaxAmount, preview.TaxAmount)
+	}
+	if invRepo.created.Total != preview.TotalAmount {
+		t.Errorf("applied total %d != previewed total %d", invRepo.created.Total, preview.TotalAmount)
+	}
+}
+
+func TestPreviewPlanChange_Downgrade_CreditNoTax(t *testing.T) {
+	tenantID := uuid.New()
+	customerID := uuid.New()
+	currentPlanID := uuid.New()
+	newPlanID := uuid.New()
+	now := time.Now().UTC()
+
+	plans := map[uuid.UUID]*domain.Plan{
+		currentPlanID: {ID: currentPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 200000, Currency: "INR"}}},
+		newPlanID:     {ID: newPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}},
+	}
+	cust := &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID, PlanID: currentPlanID,
+		Status:             domain.SubscriptionStatusActive,
+		CurrentPeriodStart: now.AddDate(0, 0, -15),
+		CurrentPeriodEnd:   now.AddDate(0, 0, 15),
+	}}
+	svc := newPreviewService(subRepo, plans, cust, &subMockInvoiceRepo{})
+
+	preview, err := svc.PreviewPlanChange(context.Background(), tenantID, subRepo.sub.ID, newPlanID)
+	if err != nil {
+		t.Fatalf("preview error: %v", err)
+	}
+	if preview.IsUpgrade {
+		t.Error("expected IsUpgrade=false for a downgrade")
+	}
+	if preview.NetAmount >= 0 {
+		t.Errorf("expected negative net for a downgrade, got %d", preview.NetAmount)
+	}
+	if preview.TaxAmount != 0 {
+		t.Errorf("credits carry no tax, got tax %d", preview.TaxAmount)
+	}
+}
+
+func TestPreviewPlanChange_WrongTenant_NotFound(t *testing.T) {
+	owner := uuid.New()
+	attacker := uuid.New()
+	currentPlanID := uuid.New()
+	newPlanID := uuid.New()
+
+	plans := map[uuid.UUID]*domain.Plan{
+		currentPlanID: {ID: currentPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}},
+		newPlanID:     {ID: newPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 200000, Currency: "INR"}}},
+	}
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID: uuid.New(), TenantID: owner, PlanID: currentPlanID,
+		Status:           domain.SubscriptionStatusActive,
+		CurrentPeriodEnd: time.Now().Add(24 * time.Hour),
+	}}
+	svc := newPreviewService(subRepo, plans, &domain.Customer{}, &subMockInvoiceRepo{})
+
+	_, err := svc.PreviewPlanChange(context.Background(), attacker, subRepo.sub.ID, newPlanID)
+	if !errors.Is(err, ErrSubscriptionNotFound) {
+		t.Fatalf("expected ErrSubscriptionNotFound, got %v", err)
+	}
+}
+
+func TestPreviewPlanChange_InvalidPlan_NotFound(t *testing.T) {
+	tenantID := uuid.New()
+	currentPlanID := uuid.New()
+
+	plans := map[uuid.UUID]*domain.Plan{
+		currentPlanID: {ID: currentPlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}},
+	}
+	subRepo := &subMockSubRepo{sub: &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, PlanID: currentPlanID,
+		Status:           domain.SubscriptionStatusActive,
+		CurrentPeriodEnd: time.Now().Add(24 * time.Hour),
+	}}
+	svc := newPreviewService(subRepo, plans, &domain.Customer{}, &subMockInvoiceRepo{})
+
+	_, err := svc.PreviewPlanChange(context.Background(), tenantID, subRepo.sub.ID, uuid.New())
+	if !errors.Is(err, ErrPlanNotFound) {
+		t.Fatalf("expected ErrPlanNotFound, got %v", err)
+	}
+}
+
 // --- CreateSubscription Tax Tests ---
 
 func TestCreateSubscription_IntraStateTax(t *testing.T) {

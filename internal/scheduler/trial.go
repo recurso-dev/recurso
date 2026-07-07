@@ -1,0 +1,176 @@
+package scheduler
+
+import (
+	"context"
+	"log"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/swapnull-in/recur-so/internal/adapter/email"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
+)
+
+// defaultTrialReminderWindow is how far before trial_end the "trial ending"
+// reminder is sent.
+const defaultTrialReminderWindow = 3 * 24 * time.Hour
+
+// TrialSubscriptionRepo is the narrow repository surface the trial scheduler
+// needs (implemented by *db.SubscriptionRepository).
+type TrialSubscriptionRepo interface {
+	GetExpiredTrials(ctx context.Context) ([]*domain.Subscription, error)
+	GetTrialsEndingWithin(ctx context.Context, within time.Duration) ([]db.TrialEndingNotice, error)
+	MarkTrialReminderSent(ctx context.Context, subscriptionID uuid.UUID) error
+}
+
+// TrialConverter converts an expired trial to an active subscription and
+// generates its first invoice (implemented by *service.SubscriptionService).
+type TrialConverter interface {
+	ConvertTrialToActive(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error)
+}
+
+// TrialNotifier sends trial-ending reminders (implemented by
+// *service.NotificationService).
+type TrialNotifier interface {
+	SendTrialEndingReminder(ctx context.Context, data email.TrialEndingEmailData) error
+}
+
+// TrialScheduler drives the trial lifecycle: it sends a trial-ending reminder
+// before expiry and, at trial_end, converts trialing subscriptions to active
+// (generating the first real invoice, which then flows into the normal
+// payment/dunning path).
+type TrialScheduler struct {
+	repo           TrialSubscriptionRepo
+	converter      TrialConverter
+	notifier       TrialNotifier
+	locker         port.Locker
+	portalBaseURL  string
+	reminderWindow time.Duration
+	ticker         *time.Ticker
+	done           chan bool
+}
+
+// NewTrialScheduler creates a trial scheduler with the default 3-day reminder window.
+func NewTrialScheduler(
+	repo TrialSubscriptionRepo,
+	converter TrialConverter,
+	notifier TrialNotifier,
+	locker port.Locker,
+	portalBaseURL string,
+) *TrialScheduler {
+	return &TrialScheduler{
+		repo:           repo,
+		converter:      converter,
+		notifier:       notifier,
+		locker:         locker,
+		portalBaseURL:  portalBaseURL,
+		reminderWindow: defaultTrialReminderWindow,
+		done:           make(chan bool),
+	}
+}
+
+// Start begins the trial scheduler (runs every 6 hours).
+func (s *TrialScheduler) Start() {
+	s.ticker = time.NewTicker(6 * time.Hour)
+
+	// Run immediately on start.
+	go s.processTrials()
+
+	go func() {
+		for {
+			select {
+			case <-s.done:
+				return
+			case <-s.ticker.C:
+				s.processTrials()
+			}
+		}
+	}()
+
+	log.Println("✅ Trial scheduler started (runs every 6 hours)")
+}
+
+// Stop stops the scheduler.
+func (s *TrialScheduler) Stop() {
+	if s.ticker != nil {
+		s.ticker.Stop()
+	}
+	s.done <- true
+	log.Println("🛑 Trial scheduler stopped")
+}
+
+// processTrials sends reminders then converts expired trials, under a
+// distributed lock so only one instance runs the job.
+func (s *TrialScheduler) processTrials() {
+	ctx := context.Background()
+
+	lockKey := "scheduler:trials"
+	release, acquired, err := s.locker.Obtain(ctx, lockKey, 15*time.Minute)
+	if err != nil {
+		log.Printf("Failed to obtain lock for trial scheduler: %v", err)
+		return
+	}
+	if !acquired {
+		return // Lock held by another instance
+	}
+	defer func() {
+		if err := release(ctx); err != nil {
+			log.Printf("Failed to release lock for trial scheduler: %v", err)
+		}
+	}()
+
+	s.sendReminders(ctx)
+	s.convertExpiredTrials(ctx)
+}
+
+// sendReminders emails customers whose trial ends within the reminder window,
+// marking each so it is sent at most once.
+func (s *TrialScheduler) sendReminders(ctx context.Context) {
+	notices, err := s.repo.GetTrialsEndingWithin(ctx, s.reminderWindow)
+	if err != nil {
+		log.Printf("Error fetching trials ending soon: %v", err)
+		return
+	}
+
+	for _, n := range notices {
+		data := email.TrialEndingEmailData{
+			CustomerName:  n.CustomerName,
+			CustomerEmail: n.CustomerEmail,
+			PlanName:      n.PlanName,
+			Amount:        formatAmount(n.Amount, n.Currency),
+			TrialEndDate:  n.TrialEnd.Format("January 2, 2006"),
+			PortalURL:     s.portalBaseURL + "/portal",
+		}
+
+		if err := s.notifier.SendTrialEndingReminder(ctx, data); err != nil {
+			log.Printf("Failed to send trial-ending reminder for subscription %s: %v", n.SubscriptionID, err)
+			continue
+		}
+
+		if err := s.repo.MarkTrialReminderSent(ctx, n.SubscriptionID); err != nil {
+			log.Printf("Failed to mark trial reminder sent for subscription %s: %v", n.SubscriptionID, err)
+		} else {
+			log.Printf("📧 Sent trial-ending reminder for subscription %s to %s", n.SubscriptionID, n.CustomerEmail)
+		}
+	}
+}
+
+// convertExpiredTrials converts every trialing subscription whose trial_end has
+// passed to active, generating the first invoice.
+func (s *TrialScheduler) convertExpiredTrials(ctx context.Context) {
+	subs, err := s.repo.GetExpiredTrials(ctx)
+	if err != nil {
+		log.Printf("Error fetching expired trials: %v", err)
+		return
+	}
+
+	for _, sub := range subs {
+		inv, err := s.converter.ConvertTrialToActive(ctx, sub)
+		if err != nil {
+			log.Printf("Failed to convert trial for subscription %s: %v", sub.ID, err)
+			continue
+		}
+		log.Printf("✅ Converted trial for subscription %s to active (first invoice %s)", sub.ID, inv.ID)
+	}
+}

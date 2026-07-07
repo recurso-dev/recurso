@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -27,6 +28,7 @@ type createSubscriptionRequest struct {
 	StartDate         time.Time `json:"start_date"`          // Optional
 	BillingAnchorType string    `json:"billing_anchor_type"` // P26: "acquisition" or "first_of_month"
 	PaymentTerms      string    `json:"payment_terms"`       // P26: "net0", "net15", "net30", "net60"
+	TrialDays         int       `json:"trial_days"`          // >0 starts the subscription in "trialing"
 }
 
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
@@ -53,6 +55,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 		StartDate:         req.StartDate,
 		BillingAnchorType: req.BillingAnchorType,
 		PaymentTerms:      req.PaymentTerms,
+		TrialDays:         req.TrialDays,
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
@@ -162,6 +165,47 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, sub)
+}
+
+// PreviewPlanChange handles GET /subscriptions/:id/preview-change?plan_id=<uuid>.
+// It returns the proration breakdown for switching plans WITHOUT applying it,
+// using the same math UpdateSubscription applies.
+func (h *SubscriptionHandler) PreviewPlanChange(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	subscriptionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
+		return
+	}
+
+	planIDStr := c.Query("plan_id")
+	if planIDStr == "" {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "plan_id query parameter is required")
+		return
+	}
+	newPlanID, err := uuid.Parse(planIDStr)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid plan_id")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	preview, err := h.service.PreviewPlanChange(ctx, tenantID, subscriptionID, newPlanID)
+	if err != nil {
+		if errors.Is(err, service.ErrSubscriptionNotFound) || errors.Is(err, service.ErrPlanNotFound) {
+			respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, preview)
 }
 
 // PauseSubscription handles POST /subscriptions/:id/pause

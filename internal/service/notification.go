@@ -262,6 +262,26 @@ func (s *NotificationService) SendPreChargeReminder(ctx context.Context, data em
 	})
 }
 
+// SendTrialEndingReminder notifies a customer that their trial is about to end.
+func (s *NotificationService) SendTrialEndingReminder(ctx context.Context, data email.TrialEndingEmailData) error {
+	content, err := s.renderTemplate(email.TrialEndingTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Your trial is ending soon", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  fmt.Sprintf("Your %s trial ends on %s", data.PlanName, data.TrialEndDate),
+		HTMLBody: html,
+	})
+}
+
 // SendDunningEmail sends dunning notifications based on escalation level
 func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, data email.DunningEmailData) error {
 	var tmplStr string

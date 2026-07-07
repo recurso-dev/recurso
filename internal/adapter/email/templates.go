@@ -303,6 +303,35 @@ const PreChargeReminderTemplate = `
 </p>
 `
 
+// TrialEndingTemplate reminds a customer that their free trial is about to end
+// and the first charge is coming.
+const TrialEndingTemplate = `
+<h1>Your free trial is ending soon</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>Your free trial of <strong>{{.PlanName}}</strong> ends on <strong>{{.TrialEndDate}}</strong>. To keep your subscription active, we'll charge your payment method after the trial ends.</p>
+
+<div class="info-box">
+    <div class="info-row">
+        <span class="info-label">Plan</span>
+        <span class="info-value">{{.PlanName}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">First charge</span>
+        <span class="info-value">{{.Amount}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Trial ends</span>
+        <span class="info-value">{{.TrialEndDate}}</span>
+    </div>
+</div>
+
+<p>No action is needed if you wish to continue. To change or cancel before the trial ends:</p>
+
+<p style="text-align: center;">
+    <a href="{{.PortalURL}}" class="btn">Manage Subscription</a>
+</p>
+`
+
 // DunningFirstReminderTemplate for first payment retry reminder (Day 1)
 const DunningFirstReminderTemplate = `
 <h1>Action Required: Payment Failed</h1>

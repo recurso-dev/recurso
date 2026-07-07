@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -12,6 +13,13 @@ import (
 	"github.com/swapnull-in/recur-so/internal/adapter/telemetry"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
+)
+
+// Sentinel errors let handlers map service failures to the right HTTP status
+// (e.g. 404) without brittle string matching.
+var (
+	ErrSubscriptionNotFound = errors.New("subscription not found")
+	ErrPlanNotFound         = errors.New("plan not found")
 )
 
 type SubscriptionService struct {
@@ -111,6 +119,7 @@ type CreateSubscriptionInput struct {
 	CouponCode        string
 	BillingAnchorType string // "acquisition" (default) or "first_of_month"
 	PaymentTerms      string // "net0", "net15", "net30", "net60", "due_on_receipt"
+	TrialDays         int    // >0 starts the subscription in "trialing"; first invoice is generated at trial conversion
 }
 
 func (s *SubscriptionService) CreateSubscription(ctx context.Context, input CreateSubscriptionInput) (*domain.Subscription, error) {
@@ -161,6 +170,19 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		case domain.IntervalDay:
 			end = start.AddDate(0, 0, plan.IntervalCount)
 		}
+	}
+
+	// Trial handling: a trialing subscription defers its first invoice until the
+	// trial-expiry scheduler converts it to active. During the trial the current
+	// period is the trial window itself.
+	isTrial := input.TrialDays > 0
+	var trialEndPtr *time.Time
+	subStatus := domain.SubscriptionStatusActive
+	if isTrial {
+		trialEnd := start.AddDate(0, 0, input.TrialDays)
+		trialEndPtr = &trialEnd
+		subStatus = domain.SubscriptionStatusTrialing
+		end = trialEnd
 	}
 
 	// 4. Calculate Price & Apply Coupon
@@ -233,13 +255,14 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		PaidAt:         nil,
 	}
 
-	// P25: E-Invoicing via EInvoiceService
-	if s.einvoiceService != nil {
+	// P25: E-Invoicing via EInvoiceService. Skipped for trials — the first
+	// invoice (and its IRN) is generated when the trial converts to active.
+	if !isTrial && s.einvoiceService != nil {
 		_, einvErr := s.einvoiceService.GenerateEInvoice(ctx, invoice)
 		if einvErr != nil {
 			s.logger.Error("e-invoice generation failed (will retry)", "error", einvErr, "invoice_id", invID)
 		}
-	} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
+	} else if !isTrial && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
 		// Fallback: direct GSP call (backward compat)
 		resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
 		if err == nil {
@@ -265,7 +288,8 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		TenantID:           input.TenantID,
 		CustomerID:         input.CustomerID,
 		PlanID:             input.PlanID,
-		Status:             domain.SubscriptionStatusActive,
+		Status:             subStatus,
+		TrialEnd:           trialEndPtr,
 		CurrentPeriodStart: start,
 		CurrentPeriodEnd:   end,
 		BillingAnchor:      start,
@@ -298,8 +322,14 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		}
 	}
 
-	// Atomic: Create subscription + invoice in a single transaction
-	if s.txManager != nil && s.subRepoImpl != nil && s.invRepoImpl != nil {
+	if isTrial {
+		// Trial: persist the subscription only. The first invoice is generated
+		// when the trial-expiry scheduler converts it to active.
+		if err := s.subRepo.Create(ctx, sub); err != nil {
+			return nil, fmt.Errorf("failed to create trial subscription: %w", err)
+		}
+	} else if s.txManager != nil && s.subRepoImpl != nil && s.invRepoImpl != nil {
+		// Atomic: Create subscription + invoice in a single transaction
 		err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
 			if err := s.subRepoImpl.CreateWithTx(ctx, tx, sub); err != nil {
 				return fmt.Errorf("failed to create subscription: %w", err)
@@ -322,16 +352,18 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		}
 	}
 
-	s.telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
+	if !isTrial {
+		s.telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
 
-	// Dual-write to ledger (outside TX — TigerBeetle is a separate system)
-	if s.ledger != nil {
-		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
-			s.logger.Error("ledger write failed — will need reconciliation",
-				"error", err,
-				"invoice_id", invID,
-				"amount", total,
-			)
+		// Dual-write to ledger (outside TX — TigerBeetle is a separate system)
+		if s.ledger != nil {
+			if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
+				s.logger.Error("ledger write failed — will need reconciliation",
+					"error", err,
+					"invoice_id", invID,
+					"amount", total,
+				)
+			}
 		}
 	}
 
@@ -661,6 +693,132 @@ func (s *SubscriptionService) CalculateProration(
 	}
 }
 
+// PlanChangeProration bundles a proration result with the tax computed on its
+// net amount. Both UpdateSubscription (apply) and PreviewPlanChange (preview)
+// obtain it from computePlanChangeProration, guaranteeing the previewed numbers
+// equal what apply will actually charge.
+type PlanChangeProration struct {
+	Proration     *ProrationResult
+	Tax           InvoiceTax
+	Currency      string
+	EffectiveDate time.Time
+}
+
+// computePlanChangeProration is the single source of truth for plan-change
+// math. Tax is only applied to a positive net (a charge); credits carry none,
+// mirroring the invoice built in UpdateSubscription.
+func (s *SubscriptionService) computePlanChangeProration(
+	ctx context.Context,
+	tenantID uuid.UUID,
+	sub *domain.Subscription,
+	currentPlan, newPlan *domain.Plan,
+	customer *domain.Customer,
+	now time.Time,
+) PlanChangeProration {
+	if currentPlan == nil || newPlan == nil || len(currentPlan.Prices) == 0 || len(newPlan.Prices) == 0 {
+		return PlanChangeProration{Proration: &ProrationResult{ProrationDate: now}, EffectiveDate: now}
+	}
+
+	currency := newPlan.Prices[0].Currency
+	proration := s.CalculateProration(
+		currentPlan.Prices[0].Amount,
+		newPlan.Prices[0].Amount,
+		sub.CurrentPeriodStart,
+		sub.CurrentPeriodEnd,
+		now,
+	)
+
+	var taxRes InvoiceTax
+	if proration.NetAmount > 0 && customer != nil {
+		taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount)
+	}
+
+	return PlanChangeProration{Proration: proration, Tax: taxRes, Currency: currency, EffectiveDate: now}
+}
+
+// PlanChangePreview is the read-only breakdown returned by PreviewPlanChange.
+// All monetary fields are in the currency's smallest unit (e.g. paise/cents).
+type PlanChangePreview struct {
+	SubscriptionID    uuid.UUID `json:"subscription_id"`
+	CurrentPlanID     uuid.UUID `json:"current_plan_id"`
+	NewPlanID         uuid.UUID `json:"new_plan_id"`
+	Currency          string    `json:"currency"`
+	CreditAmount      int64     `json:"credit_amount"`       // credit for unused time on the current plan
+	ChargeAmount      int64     `json:"charge_amount"`       // prorated charge for the remaining period on the new plan
+	NetAmount         int64     `json:"net_amount"`          // charge - credit, before tax
+	TaxAmount         int64     `json:"tax_amount"`          // tax on a positive net (0 for credits)
+	TotalAmount       int64     `json:"total_amount"`        // net + tax: the immediate proration invoice total
+	EffectiveDate     time.Time `json:"effective_date"`      // when the change would take effect (now)
+	NextInvoiceAmount int64     `json:"next_invoice_amount"` // full new-plan charge incl. tax at the next renewal
+	IsUpgrade         bool      `json:"is_upgrade"`          // true when the new plan costs more than the current one
+}
+
+// PreviewPlanChange computes the proration for switching a subscription to
+// newPlanID WITHOUT applying it. It reuses computePlanChangeProration — the
+// exact function UpdateSubscription uses — so the preview matches the charge.
+func (s *SubscriptionService) PreviewPlanChange(ctx context.Context, tenantID, subscriptionID, newPlanID uuid.UUID) (*PlanChangePreview, error) {
+	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil {
+		return nil, ErrSubscriptionNotFound
+	}
+	if sub.TenantID != tenantID {
+		return nil, ErrSubscriptionNotFound
+	}
+
+	currentPlan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return nil, err
+	}
+	if currentPlan == nil || len(currentPlan.Prices) == 0 {
+		return nil, fmt.Errorf("current plan unavailable for preview")
+	}
+
+	newPlan, err := s.planRepo.GetByID(ctx, newPlanID)
+	if err != nil {
+		return nil, err
+	}
+	if newPlan == nil {
+		return nil, ErrPlanNotFound
+	}
+	if len(newPlan.Prices) == 0 {
+		return nil, fmt.Errorf("new plan has no prices")
+	}
+
+	customer, err := s.customerRepo.GetByID(ctx, sub.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+
+	now := time.Now().UTC()
+	pcp := s.computePlanChangeProration(ctx, tenantID, sub, currentPlan, newPlan, customer, now)
+
+	// Resulting next-invoice amount: the full new-plan price plus tax, i.e. what
+	// the customer pays at the next renewal once fully on the new plan.
+	newPrice := newPlan.Prices[0].Amount
+	var nextTax InvoiceTax
+	if newPrice > 0 && customer != nil {
+		nextTax = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, pcp.Currency, newPrice)
+	}
+
+	return &PlanChangePreview{
+		SubscriptionID:    sub.ID,
+		CurrentPlanID:     sub.PlanID,
+		NewPlanID:         newPlanID,
+		Currency:          pcp.Currency,
+		CreditAmount:      pcp.Proration.CreditAmount,
+		ChargeAmount:      pcp.Proration.ChargeAmount,
+		NetAmount:         pcp.Proration.NetAmount,
+		TaxAmount:         pcp.Tax.Total,
+		TotalAmount:       pcp.Proration.NetAmount + pcp.Tax.Total,
+		EffectiveDate:     pcp.EffectiveDate,
+		NextInvoiceAmount: newPrice + nextTax.Total,
+		IsUpgrade:         newPrice > currentPlan.Prices[0].Amount,
+	}, nil
+}
+
 // UpdateSubscription updates a subscription's plan and handles proration
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, subscriptionID, newPlanID uuid.UUID) (*domain.Subscription, error) {
 	// 1. Fetch Subscription & Current Plan
@@ -702,37 +860,17 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		return nil, fmt.Errorf("new plan not found")
 	}
 
-	// 3. Calculate Proration
+	// 3. Calculate Proration via the shared helper so apply and preview
+	// (PreviewPlanChange) always agree on credit/charge/tax.
 	now := time.Now().UTC()
-
-	// Assuming single price for MVP simplification
-	currentPrice := currentPlan.Prices[0].Amount
-	newPrice := newPlan.Prices[0].Amount
-
-	proration := s.CalculateProration(
-		currentPrice,
-		newPrice,
-		sub.CurrentPeriodStart,
-		sub.CurrentPeriodEnd,
-		now,
-	)
+	pcp := s.computePlanChangeProration(ctx, tenantID, sub, currentPlan, newPlan, customer, now)
+	proration := pcp.Proration
+	taxRes := pcp.Tax
 
 	// 4. Create Invoice for Proration (if diff > 0)
 	// If NetAmount is positive, charge user immediately or add to next bill
 	// If NetAmount is negative, add credit
 	if proration.NetAmount != 0 {
-		// Proration charges are taxable like any other invoice; credits
-		// (negative amounts) carry no tax here.
-		var taxRes InvoiceTax
-		if proration.NetAmount > 0 {
-			customer, custErr := s.customerRepo.GetByID(ctx, sub.CustomerID)
-			if custErr == nil && customer != nil {
-				taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, newPlan.Prices[0].Currency, proration.NetAmount)
-			} else {
-				s.logger.Warn("proration tax skipped: customer lookup failed", "error", custErr, "customer_id", sub.CustomerID)
-			}
-		}
-
 		invoice := &domain.Invoice{
 			ID:             uuid.New(),
 			TenantID:       tenantID,
@@ -740,7 +878,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			CustomerID:     sub.CustomerID,
 			InvoiceNumber:  fmt.Sprintf("INV-PR-%d-%s", time.Now().UnixNano(), uuid.New().String()[:8]),
 			Status:         domain.InvoiceStatusOpen, // Or Draft if adding to next bill
-			Currency:       newPlan.Prices[0].Currency,
+			Currency:       pcp.Currency,
 			Subtotal:       proration.NetAmount,
 			TaxAmount:      taxRes.Total,
 			IGSTAmount:     taxRes.IGST,
@@ -799,6 +937,125 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// s.gateway.UpdateSubscription(ctx, sub.RazorpaySubscriptionID, newPlan.Code)
 
 	return sub, nil
+}
+
+// ConvertTrialToActive converts a trialing subscription to active and generates
+// its first real invoice. The invoice is created "open" with a due date, so it
+// enters the normal payment/dunning path (GetOverdueInvoices picks up open
+// invoices once past due). Returns an error if the subscription is not trialing.
+func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
+	if sub == nil {
+		return nil, fmt.Errorf("subscription is nil")
+	}
+	if sub.Status != domain.SubscriptionStatusTrialing {
+		return nil, fmt.Errorf("subscription %s is not trialing (status=%s)", sub.ID, sub.Status)
+	}
+
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plan: %w", err)
+	}
+	if plan == nil || len(plan.Prices) == 0 {
+		return nil, fmt.Errorf("plan has no prices")
+	}
+
+	customer, err := s.customerRepo.GetByID(ctx, sub.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+	if customer == nil {
+		return nil, fmt.Errorf("customer not found")
+	}
+
+	price := plan.Prices[0]
+	now := time.Now().UTC()
+
+	// The first paid period starts where the trial ended.
+	start := now
+	if sub.TrialEnd != nil {
+		start = *sub.TrialEnd
+	}
+	end := domain.AddInterval(start, string(plan.IntervalUnit), plan.IntervalCount)
+
+	subtotal := price.Amount
+	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
+	total := subtotal + taxRes.Total
+
+	paymentTerms := sub.PaymentTerms
+	if paymentTerms == "" {
+		paymentTerms = "due_on_receipt"
+	}
+	dueDate := domain.CalculateDueDate(now, paymentTerms)
+
+	invID := uuid.New()
+	invoice := &domain.Invoice{
+		ID:             invID,
+		TenantID:       sub.TenantID,
+		SubscriptionID: &sub.ID,
+		CustomerID:     sub.CustomerID,
+		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
+		Status:         domain.InvoiceStatusOpen,
+		Currency:       price.Currency,
+		Subtotal:       subtotal,
+		TaxAmount:      taxRes.Total,
+		Total:          total,
+		IGSTAmount:     taxRes.IGST,
+		CGSTAmount:     taxRes.CGST,
+		SGSTAmount:     taxRes.SGST,
+		PaymentTerms:   paymentTerms,
+		CreatedAt:      now,
+		DueDate:        dueDate,
+	}
+
+	// E-invoicing follows the same rules as the first invoice in CreateSubscription.
+	if s.einvoiceService != nil {
+		if _, einvErr := s.einvoiceService.GenerateEInvoice(ctx, invoice); einvErr != nil {
+			s.logger.Error("e-invoice generation failed on trial conversion (will retry)", "error", einvErr, "invoice_id", invID)
+		}
+	} else {
+		invoice.EInvoiceStatus = "PENDING"
+	}
+
+	// Persist the first invoice, then activate the subscription. Mirrors the
+	// non-atomic invoice-then-subscription ordering used by UpdateSubscription.
+	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
+		return nil, fmt.Errorf("failed to create trial conversion invoice: %w", err)
+	}
+
+	sub.Status = domain.SubscriptionStatusActive
+	sub.CurrentPeriodStart = start
+	sub.CurrentPeriodEnd = end
+	sub.UpdatedAt = now
+	if err := s.subRepo.Update(ctx, sub); err != nil {
+		return nil, fmt.Errorf("failed to activate subscription after trial: %w", err)
+	}
+
+	// Dual-write to ledger (best-effort; reconciliation covers gaps).
+	if s.ledger != nil {
+		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
+			s.logger.Error("ledger write failed on trial conversion — will need reconciliation",
+				"error", err, "invoice_id", invID, "amount", total)
+		}
+	}
+
+	s.logger.Info("trial converted to active",
+		"subscription_id", sub.ID, "invoice_id", invID, "amount", total)
+
+	// Notify the customer that their first invoice is due (best-effort).
+	if s.notificationService != nil {
+		if err := s.notificationService.SendInvoiceCreated(ctx, InvoiceData{
+			CustomerName:  domain.PtrToString(customer.Name),
+			CustomerEmail: customer.Email,
+			InvoiceNumber: invoice.InvoiceNumber,
+			Amount:        formatAmount(total, price.Currency),
+			DueDate:       dueDate.Format("Jan 02, 2006"),
+			PaymentURL:    "",
+		}); err != nil {
+			s.logger.Error("failed to send trial conversion invoice notification", "error", err, "invoice_id", invID)
+		}
+	}
+
+	return invoice, nil
 }
 
 // ExtendCurrentPeriod extends a subscription's current period end by the given number of days

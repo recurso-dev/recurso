@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
@@ -24,15 +25,15 @@ func (r *SubscriptionRepository) Create(ctx context.Context, sub *domain.Subscri
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			created_at, updated_at
+			trial_end, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
-		sub.CreatedAt, sub.UpdatedAt,
+		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription: %w", err)
@@ -47,15 +48,15 @@ func (r *SubscriptionRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, s
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			created_at, updated_at
+			trial_end, created_at, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`
 	_, err := tx.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
-		sub.CreatedAt, sub.UpdatedAt,
+		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription in tx: %w", err)
@@ -71,23 +72,26 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 
 	sub := &domain.Subscription{}
 	query := `
-		SELECT 
+		SELECT
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			created_at, updated_at
+			trial_end, created_at, updated_at
 		FROM subscriptions WHERE id = $1 AND tenant_id = $2
 	`
 	var razorpayID, stripeID, refID sql.NullString
-	var billingAnchor sql.NullTime
+	var billingAnchor, trialEnd sql.NullTime
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
 		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
 		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-		&sub.CreatedAt, &sub.UpdatedAt,
+		&trialEnd, &sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if billingAnchor.Valid {
 		sub.BillingAnchor = billingAnchor.Time
+	}
+	if trialEnd.Valid {
+		sub.TrialEnd = &trialEnd.Time
 	}
 	sub.ReferenceID = refID.String
 	sub.RazorpaySubscriptionID = razorpayID.String
@@ -260,8 +264,9 @@ func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscri
 			cancellation_feedback = $7,
 			razorpay_subscription_id = $8,
 			stripe_subscription_id = $9,
-			updated_at = $10
-		WHERE id = $11 AND tenant_id = $12
+			trial_end = $10,
+			updated_at = $11
+		WHERE id = $12 AND tenant_id = $13
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		sub.Status,
@@ -273,6 +278,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscri
 		sub.CancellationFeedback,
 		sub.RazorpaySubscriptionID,
 		sub.StripeSubscriptionID,
+		sub.TrialEnd,
 		sub.UpdatedAt,
 		sub.ID,
 		sub.TenantID,
@@ -357,6 +363,123 @@ func (r *SubscriptionRepository) MarkPreChargeNotificationSent(ctx context.Conte
 	)
 	if err != nil {
 		return fmt.Errorf("failed to mark pre-charge notification sent: %w", err)
+	}
+	return nil
+}
+
+// GetExpiredTrials returns trialing subscriptions whose trial_end has passed.
+// Cross-tenant by design: the trial scheduler runs globally (like the dunning
+// and pre-charge jobs) and resolves the owning tenant from each row.
+func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domain.Subscription, error) {
+	query := `
+		SELECT
+			id, tenant_id, customer_id, plan_id, status,
+			current_period_start, current_period_end, billing_anchor,
+			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
+			trial_end, created_at, updated_at
+		FROM subscriptions
+		WHERE status = 'trialing'
+			AND trial_end IS NOT NULL
+			AND trial_end <= CURRENT_TIMESTAMP
+		ORDER BY trial_end ASC
+		LIMIT 100
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query expired trials: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var subs []*domain.Subscription
+	for rows.Next() {
+		sub := &domain.Subscription{}
+		var razorpayID, stripeID, refID sql.NullString
+		var billingAnchor, trialEnd sql.NullTime
+		if err := rows.Scan(
+			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
+			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
+			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
+			&trialEnd, &sub.CreatedAt, &sub.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if billingAnchor.Valid {
+			sub.BillingAnchor = billingAnchor.Time
+		}
+		if trialEnd.Valid {
+			sub.TrialEnd = &trialEnd.Time
+		}
+		sub.ReferenceID = refID.String
+		sub.RazorpaySubscriptionID = razorpayID.String
+		sub.StripeSubscriptionID = stripeID.String
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+// TrialEndingNotice carries the data needed to email a trial-ending reminder.
+type TrialEndingNotice struct {
+	SubscriptionID uuid.UUID
+	TenantID       uuid.UUID
+	CustomerID     uuid.UUID
+	CustomerName   string
+	CustomerEmail  string
+	PlanName       string
+	Amount         int64
+	Currency       string
+	TrialEnd       time.Time
+}
+
+// GetTrialsEndingWithin returns trialing subscriptions whose trial_end falls
+// inside (now, now+within] and that have not yet had a reminder sent.
+func (r *SubscriptionRepository) GetTrialsEndingWithin(ctx context.Context, within time.Duration) ([]TrialEndingNotice, error) {
+	query := `
+		SELECT
+			s.id, s.tenant_id, s.customer_id, s.trial_end,
+			c.name, c.email,
+			p.name, pr.amount, pr.currency
+		FROM subscriptions s
+		JOIN customers c ON s.customer_id = c.id
+		JOIN plans p ON s.plan_id = p.id
+		JOIN prices pr ON pr.plan_id = p.id
+		WHERE s.status = 'trialing'
+			AND s.trial_reminder_sent = FALSE
+			AND s.trial_end IS NOT NULL
+			AND s.trial_end > CURRENT_TIMESTAMP
+			AND s.trial_end <= CURRENT_TIMESTAMP + make_interval(secs => $1)
+		ORDER BY s.trial_end ASC
+		LIMIT 100
+	`
+	rows, err := r.db.QueryContext(ctx, query, within.Seconds())
+	if err != nil {
+		return nil, fmt.Errorf("failed to query trials ending soon: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var notices []TrialEndingNotice
+	for rows.Next() {
+		var n TrialEndingNotice
+		var name sql.NullString
+		if err := rows.Scan(
+			&n.SubscriptionID, &n.TenantID, &n.CustomerID, &n.TrialEnd,
+			&name, &n.CustomerEmail,
+			&n.PlanName, &n.Amount, &n.Currency,
+		); err != nil {
+			return nil, err
+		}
+		n.CustomerName = name.String
+		notices = append(notices, n)
+	}
+	return notices, rows.Err()
+}
+
+// MarkTrialReminderSent flags a subscription so its trial-ending reminder is not
+// sent twice.
+func (r *SubscriptionRepository) MarkTrialReminderSent(ctx context.Context, subscriptionID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE subscriptions SET trial_reminder_sent = TRUE WHERE id = $1`, subscriptionID)
+	if err != nil {
+		return fmt.Errorf("failed to mark trial reminder sent: %w", err)
 	}
 	return nil
 }

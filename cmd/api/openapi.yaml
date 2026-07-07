@@ -415,6 +415,39 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/subscriptions/{id}/preview-change:
+    get:
+      operationId: previewPlanChange
+      tags: [Subscriptions]
+      summary: Preview proration for a plan change (nothing is applied)
+      description: >-
+        Computes the credit for unused time on the current plan, the prorated
+        charge for the new plan, the net amount, tax, effective date, and the
+        resulting next-invoice amount — using the same proration math as
+        PUT /v1/subscriptions/{id}. Nothing is charged or persisted.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+        - name: plan_id
+          in: query
+          required: true
+          description: The plan to preview switching to.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Proration breakdown.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanChangePreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/subscriptions/{id}/cancel:
     post:
       operationId: cancelSubscription
@@ -4245,6 +4278,45 @@ components:
         kind: { type: string, enum: [boolean, limit] }
         bool_value: { type: boolean }
         limit_value: { type: integer, format: int64 }
+    PlanChangePreview:
+      type: object
+      description: >-
+        Read-only proration breakdown for a subscription plan change. Monetary
+        fields are in the currency's smallest unit (e.g. paise/cents).
+      properties:
+        subscription_id: { type: string, format: uuid }
+        current_plan_id: { type: string, format: uuid }
+        new_plan_id: { type: string, format: uuid }
+        currency: { type: string }
+        credit_amount:
+          type: integer
+          format: int64
+          description: Credit for unused time on the current plan.
+        charge_amount:
+          type: integer
+          format: int64
+          description: Prorated charge for the remaining period on the new plan.
+        net_amount:
+          type: integer
+          format: int64
+          description: charge_amount - credit_amount, before tax.
+        tax_amount:
+          type: integer
+          format: int64
+          description: Tax on a positive net (0 for credits).
+        total_amount:
+          type: integer
+          format: int64
+          description: net_amount + tax_amount; the immediate proration invoice total.
+        effective_date:
+          type: string
+          format: date-time
+        next_invoice_amount:
+          type: integer
+          format: int64
+          description: Full new-plan charge incl. tax at the next renewal.
+        is_upgrade:
+          type: boolean
     Error:
       type: object
       required: [error]

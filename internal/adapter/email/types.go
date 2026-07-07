@@ -25,6 +25,16 @@ type DunningEmailData struct {
 	UpdatePaymentURL string
 }
 
+// TrialEndingEmailData contains data for trial-ending reminder emails
+type TrialEndingEmailData struct {
+	CustomerName  string
+	CustomerEmail string
+	PlanName      string
+	Amount        string // first charge after the trial
+	TrialEndDate  string // e.g. "July 14, 2026"
+	PortalURL     string
+}
+
 // CardExpiringEmailData contains data for card expiry warning emails
 type CardExpiringEmailData struct {
 	CustomerName     string

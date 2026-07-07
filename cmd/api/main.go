@@ -493,6 +493,18 @@ func main() {
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 
+	// Trial Scheduler - sends trial-ending reminders and converts expired
+	// trials to active (generating the first invoice, which flows into dunning).
+	trialScheduler := scheduler.NewTrialScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository),
+		subscriptionService,
+		notificationService,
+		locker,
+		baseURL,
+	)
+	trialScheduler.Start()
+	defer trialScheduler.Stop()
+
 	// Card Expiry Scheduler - notifies customers ~30 days before card expires
 	cardExpiryScheduler := scheduler.NewCardExpiringScheduler(
 		customerRepo,
@@ -560,6 +572,7 @@ func main() {
 	shutdownSchedulers := func() {
 		preChargeScheduler.Stop()
 		dunningScheduler.Stop()
+		trialScheduler.Stop()
 		cardExpiryScheduler.Stop()
 		mandateDebitScheduler.Stop()
 		reconciliationScheduler.Stop()
@@ -778,6 +791,7 @@ func main() {
 
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
 		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)
+		v1.GET("/subscriptions/:id/preview-change", subscriptionHandler.PreviewPlanChange)
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 
