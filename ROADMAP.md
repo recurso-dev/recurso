@@ -131,10 +131,14 @@ can sign off on the output.
 
 - [ ] Real waitlist form on the website (replaces mailto) 🔒 (needs a
       form backend / inbox decision).
-- [ ] Manual provisioning runbook: single-tenant instance per customer on
-      the existing K8s manifests; onboard the first ~10 customers by hand.
+- [ ] Manual provisioning runbook: single-tenant instance per customer;
+      onboard the first ~10 by hand. Runbook written
+      (docs/cloud-provisioning-runbook.md — Docker Compose per VM); the
+      by-hand onboarding is the remaining work.
 - [ ] Recurso bills Recurso Cloud customers (dogfood the product).
-- [ ] Status page + uptime monitoring.
+- [ ] Status page + uptime monitoring. Approach chosen and documented
+      (docs/status-page.md — hosted Better Stack now, self-host Uptime Kuma
+      later); setup still to execute.
 - [ ] Control plane (instance lifecycle automation) — only after manual
       onboarding proves demand.
 

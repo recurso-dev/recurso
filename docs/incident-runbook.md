@@ -212,7 +212,10 @@ and asked.
 >   nothing fires. There is no paging, no escalation, no deduplication
 >   across replicas.
 > - **No status page yet** (ROADMAP Track 4). Tenants find out via email
->   from the operator, not a status URL.
+>   from the operator, not a status URL. Related: [status-page.md](status-page.md)
+>   (planned status page + external uptime monitoring) and
+>   [cloud-provisioning-runbook.md](cloud-provisioning-runbook.md)
+>   (how a per-customer instance is stood up and monitored).
 > - **No partial kill-switch**: schedulers/workers (dunning retries, mandate
 >   debits, renewals) cannot be individually disabled via env — stopping
 >   money movement means stopping the API.
