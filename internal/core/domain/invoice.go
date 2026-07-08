@@ -83,6 +83,32 @@ type Invoice struct {
 
 	// Dunning Campaign (payment wall)
 	PaymentWallActive bool `json:"payment_wall_active" db:"payment_wall_active"`
+
+	// Itemization (per-product HSN codes & itemized invoice tax, Phase 1).
+	// Populated on generation (before persistence) and hydrated on read.
+	// Each line carries its own HSN/SAC code and GST breakdown; the line
+	// amounts and per-line taxes reconcile exactly to Subtotal/TaxAmount.
+	LineItems []InvoiceItem `json:"line_items,omitempty" db:"-"`
+}
+
+// InvoiceItem is a single itemized line on an invoice. Amounts are in the
+// invoice's lowest currency unit (paise/cents). TaxRate is the effective GST
+// rate as a percent (e.g. 18.0). In Phase 1 every line uses the tenant SAC as
+// its HSNCode; per-product HSN arrives in Phase 2.
+type InvoiceItem struct {
+	ID            uuid.UUID `json:"id" db:"id"`
+	InvoiceID     uuid.UUID `json:"invoice_id" db:"invoice_id"`
+	Description   string    `json:"description" db:"description"`
+	HSNCode       string    `json:"hsn_code" db:"hsn_code"`
+	Quantity      int       `json:"quantity" db:"quantity"`
+	UnitAmount    int64     `json:"unit_amount" db:"unit_amount"`
+	Amount        int64     `json:"amount" db:"amount"`
+	TaxRate       float64   `json:"tax_rate" db:"tax_rate"`
+	CGSTAmount    int64     `json:"cgst_amount" db:"cgst_amount"`
+	SGSTAmount    int64     `json:"sgst_amount" db:"sgst_amount"`
+	IGSTAmount    int64     `json:"igst_amount" db:"igst_amount"`
+	TaxableAmount int64     `json:"taxable_amount" db:"taxable_amount"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
 // OverdueInvoice contains invoice info with customer details for dunning

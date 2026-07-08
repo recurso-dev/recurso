@@ -133,9 +133,13 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 		Subtotal:       amount,
 		Total:          amount,
 		Status:         domain.InvoiceStatusPaid,
-		CreatedAt:      now,
-		DueDate:        now,
-		PaidAt:         &now,
+		// Itemization (Phase 1): single line for the mandate debit (no tax split).
+		LineItems: []domain.InvoiceItem{
+			newInvoiceLine(invoiceID, "Mandate debit", "", 1, amount, amount, InvoiceTax{}, time.Time{}),
+		},
+		CreatedAt: now,
+		DueDate:   now,
+		PaidAt:    &now,
 	}
 
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {

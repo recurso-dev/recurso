@@ -81,6 +81,7 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 
 		now := time.Now()
 		invID := uuid.New()
+		giftDesc := fmt.Sprintf("Gift: %s (%d month(s))", plan.Name, durationMonths)
 		inv := &domain.Invoice{
 			ID:            invID,
 			TenantID:      tenantID,
@@ -91,9 +92,13 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 			Currency:      price.Currency,
 			Subtotal:      giftAmount,
 			Total:         giftAmount,
-			CreatedAt:     now,
-			DueDate:       now,
-			PaymentTerms:  "net0",
+			// Itemization (Phase 1): single line, no tax on gift purchases.
+			LineItems: []domain.InvoiceItem{
+				newInvoiceLine(invID, giftDesc, "", durationMonths, price.Amount, giftAmount, InvoiceTax{}, time.Time{}),
+			},
+			CreatedAt:    now,
+			DueDate:      now,
+			PaymentTerms: "net0",
 		}
 
 		if err := s.invoiceService.InvoiceRepo.Create(ctx, inv); err != nil {

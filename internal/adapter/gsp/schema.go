@@ -10,9 +10,9 @@ import (
 // GST INV-01 JSON schema structs for NIC e-invoice API
 
 type GSTInvoiceSchema struct {
-	Version  string      `json:"Version"`
-	TranDtls TranDtls    `json:"TranDtls"`
-	DocDtls  DocDtls     `json:"DocDtls"`
+	Version    string     `json:"Version"`
+	TranDtls   TranDtls   `json:"TranDtls"`
+	DocDtls    DocDtls    `json:"DocDtls"`
 	SellerDtls SellerDtls `json:"SellerDtls"`
 	BuyerDtls  BuyerDtls  `json:"BuyerDtls"`
 	ItemList   []ItemDtls `json:"ItemList"`
@@ -20,9 +20,9 @@ type GSTInvoiceSchema struct {
 }
 
 type TranDtls struct {
-	TaxSch  string `json:"TaxSch"`  // "GST"
-	SupTyp  string `json:"SupTyp"`  // "B2B", "SEZWP", "SEZWOP", "EXPWP", "EXPWOP", "DEXP"
-	RegRev  string `json:"RegRev"`  // "Y" or "N" - reverse charge
+	TaxSch      string `json:"TaxSch"`      // "GST"
+	SupTyp      string `json:"SupTyp"`      // "B2B", "SEZWP", "SEZWOP", "EXPWP", "EXPWOP", "DEXP"
+	RegRev      string `json:"RegRev"`      // "Y" or "N" - reverse charge
 	IgstOnIntra string `json:"IgstOnIntra"` // "Y" or "N"
 }
 
@@ -33,50 +33,50 @@ type DocDtls struct {
 }
 
 type SellerDtls struct {
-	Gstin  string `json:"Gstin"`
-	LglNm  string `json:"LglNm"`
-	TrdNm  string `json:"TrdNm,omitempty"`
-	Addr1  string `json:"Addr1"`
-	Addr2  string `json:"Addr2,omitempty"`
-	Loc    string `json:"Loc"`
-	Pin    int    `json:"Pin"`
-	Stcd   string `json:"Stcd"`
+	Gstin string `json:"Gstin"`
+	LglNm string `json:"LglNm"`
+	TrdNm string `json:"TrdNm,omitempty"`
+	Addr1 string `json:"Addr1"`
+	Addr2 string `json:"Addr2,omitempty"`
+	Loc   string `json:"Loc"`
+	Pin   int    `json:"Pin"`
+	Stcd  string `json:"Stcd"`
 }
 
 type BuyerDtls struct {
-	Gstin  string `json:"Gstin"`
-	LglNm  string `json:"LglNm"`
-	TrdNm  string `json:"TrdNm,omitempty"`
-	Addr1  string `json:"Addr1"`
-	Addr2  string `json:"Addr2,omitempty"`
-	Loc    string `json:"Loc"`
-	Pin    int    `json:"Pin"`
-	Pos    string `json:"Pos"` // Place of supply state code
-	Stcd   string `json:"Stcd"`
+	Gstin string `json:"Gstin"`
+	LglNm string `json:"LglNm"`
+	TrdNm string `json:"TrdNm,omitempty"`
+	Addr1 string `json:"Addr1"`
+	Addr2 string `json:"Addr2,omitempty"`
+	Loc   string `json:"Loc"`
+	Pin   int    `json:"Pin"`
+	Pos   string `json:"Pos"` // Place of supply state code
+	Stcd  string `json:"Stcd"`
 }
 
 type ItemDtls struct {
-	SlNo    string  `json:"SlNo"`
-	PrdDesc string  `json:"PrdDesc"`
-	IsServc string  `json:"IsServc"` // "Y" for service, "N" for goods
-	HsnCd   string  `json:"HsnCd"`
-	Qty     float64 `json:"Qty,omitempty"`
-	Unit    string  `json:"Unit,omitempty"`
-	UnitPrice float64 `json:"UnitPrice"`
-	TotAmt  float64 `json:"TotAmt"`
-	AssAmt  float64 `json:"AssAmt"` // Assessable amount (taxable value)
-	GstRt   float64 `json:"GstRt"`
-	IgstAmt float64 `json:"IgstAmt"`
-	CgstAmt float64 `json:"CgstAmt"`
-	SgstAmt float64 `json:"SgstAmt"`
+	SlNo       string  `json:"SlNo"`
+	PrdDesc    string  `json:"PrdDesc"`
+	IsServc    string  `json:"IsServc"` // "Y" for service, "N" for goods
+	HsnCd      string  `json:"HsnCd"`
+	Qty        float64 `json:"Qty,omitempty"`
+	Unit       string  `json:"Unit,omitempty"`
+	UnitPrice  float64 `json:"UnitPrice"`
+	TotAmt     float64 `json:"TotAmt"`
+	AssAmt     float64 `json:"AssAmt"` // Assessable amount (taxable value)
+	GstRt      float64 `json:"GstRt"`
+	IgstAmt    float64 `json:"IgstAmt"`
+	CgstAmt    float64 `json:"CgstAmt"`
+	SgstAmt    float64 `json:"SgstAmt"`
 	TotItemVal float64 `json:"TotItemVal"`
 }
 
 type ValDtls struct {
-	AssVal  float64 `json:"AssVal"`  // Total assessable value
-	IgstVal float64 `json:"IgstVal"` // Total IGST
-	CgstVal float64 `json:"CgstVal"` // Total CGST
-	SgstVal float64 `json:"SgstVal"` // Total SGST
+	AssVal    float64 `json:"AssVal"`    // Total assessable value
+	IgstVal   float64 `json:"IgstVal"`   // Total IGST
+	CgstVal   float64 `json:"CgstVal"`   // Total CGST
+	SgstVal   float64 `json:"SgstVal"`   // Total SGST
 	TotInvVal float64 `json:"TotInvVal"` // Total invoice value
 }
 
@@ -137,8 +137,15 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 		},
 	}
 
-	// Build item list
-	if len(req.Items) > 0 {
+	// Build item list. Preference order:
+	//  1. Explicit request items (the EInvoiceService path, already mapped from
+	//     the invoice's real line items).
+	//  2. The invoice's own persisted line items (the direct GenerateIRN path,
+	//     which passes only the invoice). Each real line reports its own HSN/rate.
+	//  3. Legacy fallback: a single synthetic line from the invoice totals, for
+	//     pre-itemization invoices that have no line items.
+	switch {
+	case len(req.Items) > 0:
 		for _, item := range req.Items {
 			schema.ItemList = append(schema.ItemList, ItemDtls{
 				SlNo:       fmt.Sprintf("%d", item.SlNo),
@@ -157,7 +164,34 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 				TotItemVal: toRupees(item.TotalAmount + item.IGSTAmount + item.CGSTAmount + item.SGSTAmount),
 			})
 		}
-	} else {
+	case len(inv.LineItems) > 0:
+		for i, li := range inv.LineItems {
+			hsn := li.HSNCode
+			if hsn == "" {
+				hsn = "998314"
+			}
+			qty := float64(li.Quantity)
+			if qty <= 0 {
+				qty = 1
+			}
+			schema.ItemList = append(schema.ItemList, ItemDtls{
+				SlNo:       fmt.Sprintf("%d", i+1),
+				PrdDesc:    li.Description,
+				IsServc:    "Y",
+				HsnCd:      hsn,
+				Qty:        qty,
+				Unit:       "NOS",
+				UnitPrice:  toRupees(li.UnitAmount),
+				TotAmt:     toRupees(li.Amount),
+				AssAmt:     toRupees(li.TaxableAmount),
+				GstRt:      li.TaxRate,
+				IgstAmt:    toRupees(li.IGSTAmount),
+				CgstAmt:    toRupees(li.CGSTAmount),
+				SgstAmt:    toRupees(li.SGSTAmount),
+				TotItemVal: toRupees(li.Amount + li.IGSTAmount + li.CGSTAmount + li.SGSTAmount),
+			})
+		}
+	default:
 		// Single line item from invoice totals
 		taxRate := 18.0 // Default GST rate
 		var igstAmt, cgstAmt, sgstAmt float64

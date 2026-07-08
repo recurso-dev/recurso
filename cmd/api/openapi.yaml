@@ -5822,6 +5822,58 @@ components:
           type: integer
         payment_wall_active:
           type: boolean
+        line_items:
+          type: array
+          description: >-
+            Itemized invoice lines. Each line carries its own HSN/SAC code and
+            per-line GST breakdown; line amounts and per-line taxes reconcile
+            exactly to subtotal/tax_amount. Omitted for legacy invoices created
+            before itemization.
+          items:
+            $ref: '#/components/schemas/InvoiceItem'
+
+    InvoiceItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        invoice_id:
+          type: string
+          format: uuid
+        description:
+          type: string
+        hsn_code:
+          type: string
+          description: HSN/SAC code for the line (tenant SAC in Phase 1).
+        quantity:
+          type: integer
+        unit_amount:
+          type: integer
+          format: int64
+          description: Per-unit amount in the invoice's lowest currency unit.
+        amount:
+          type: integer
+          format: int64
+          description: Line total (quantity * unit_amount) in lowest currency unit.
+        tax_rate:
+          type: number
+          description: Effective GST rate for the line as a percent (e.g. 18.0).
+        cgst_amount:
+          type: integer
+          format: int64
+        sgst_amount:
+          type: integer
+          format: int64
+        igst_amount:
+          type: integer
+          format: int64
+        taxable_amount:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
 
     EInvoiceStatus:
       type: object

@@ -252,6 +252,15 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	}
 	dueDate := domain.CalculateDueDate(time.Now().UTC(), paymentTerms)
 
+	// Itemization (Phase 1): the initial invoice is a single plan line. Its
+	// amount is the invoice Subtotal and its tax is the resolved tax, so the
+	// line reconciles exactly to the invoice totals. (Any coupon is an
+	// invoice-level discount in Phase 1; per-line distribution is Phase 2/3.)
+	planLineDesc := plan.Name
+	if planLineDesc == "" {
+		planLineDesc = "Subscription"
+	}
+
 	// Create Invoice with Discount applied
 	invoice := &domain.Invoice{
 		ID:             invID,
@@ -267,10 +276,13 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,
 		SGSTAmount:     taxRes.SGST,
-		PaymentTerms:   paymentTerms,
-		CreatedAt:      time.Now().UTC(),
-		DueDate:        dueDate,
-		PaidAt:         nil,
+		LineItems: []domain.InvoiceItem{
+			newInvoiceLine(invID, planLineDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
+		},
+		PaymentTerms: paymentTerms,
+		CreatedAt:    time.Now().UTC(),
+		DueDate:      dueDate,
+		PaidAt:       nil,
 	}
 
 	// P25: E-Invoicing via EInvoiceService. Skipped for trials — the first
@@ -898,12 +910,17 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// If NetAmount is positive, charge user immediately or add to next bill
 	// If NetAmount is negative, add credit
 	if proration.NetAmount != 0 {
+		prInvID := uuid.New()
+		prDesc := "Plan change proration"
+		if newPlan.Name != "" {
+			prDesc = fmt.Sprintf("Proration: %s", newPlan.Name)
+		}
 		invoice := &domain.Invoice{
-			ID:             uuid.New(),
+			ID:             prInvID,
 			TenantID:       tenantID,
 			SubscriptionID: &sub.ID,
 			CustomerID:     sub.CustomerID,
-			InvoiceNumber:  fmt.Sprintf("INV-PR-%d-%s", time.Now().UnixNano(), uuid.New().String()[:8]),
+			InvoiceNumber:  fmt.Sprintf("INV-PR-%d-%s", time.Now().UnixNano(), prInvID.String()[:8]),
 			Status:         domain.InvoiceStatusOpen, // Or Draft if adding to next bill
 			Currency:       pcp.Currency,
 			Subtotal:       proration.NetAmount,
@@ -912,8 +929,14 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			CGSTAmount:     taxRes.CGST,
 			SGSTAmount:     taxRes.SGST,
 			Total:          proration.NetAmount + taxRes.Total,
-			CreatedAt:      now,
-			DueDate:        now,
+			// Itemization (Phase 1): one proration line reconciling to the totals.
+			// The net amount is negative for a credit/downgrade — the line mirrors
+			// the invoice Subtotal exactly either way.
+			LineItems: []domain.InvoiceItem{
+				newInvoiceLine(prInvID, prDesc, taxRes.HSN, 1, proration.NetAmount, proration.NetAmount, taxRes, time.Time{}),
+			},
+			CreatedAt: now,
+			DueDate:   now,
 		}
 
 		if proration.NetAmount < 0 {
@@ -1015,6 +1038,10 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	dueDate := domain.CalculateDueDate(now, paymentTerms)
 
 	invID := uuid.New()
+	convDesc := plan.Name
+	if convDesc == "" {
+		convDesc = "Subscription"
+	}
 	invoice := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
@@ -1029,9 +1056,13 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,
 		SGSTAmount:     taxRes.SGST,
-		PaymentTerms:   paymentTerms,
-		CreatedAt:      now,
-		DueDate:        dueDate,
+		// Itemization (Phase 1): single plan line reconciling to the totals.
+		LineItems: []domain.InvoiceItem{
+			newInvoiceLine(invID, convDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
+		},
+		PaymentTerms: paymentTerms,
+		CreatedAt:    now,
+		DueDate:      dueDate,
 	}
 
 	// E-invoicing follows the same rules as the first invoice in CreateSubscription.

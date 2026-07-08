@@ -73,6 +73,10 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// Use first price for now.
 	price := plan.Prices[0]
 
+	// Invoice id is created up front so line items can reference it as they are
+	// accumulated below.
+	invID := uuid.New()
+
 	// 3. Calculate Amounts
 	subtotal := price.Amount
 
@@ -100,6 +104,18 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// charges). With no add-ons these stay exactly equal to the base tax, so
 	// the single-plan invoice is byte-identical to before.
 	taxTotal, igst, cgst, sgst := taxRes.Total, taxRes.IGST, taxRes.CGST, taxRes.SGST
+
+	// Itemization (Phase 1): record the base line — plan price plus any unbilled
+	// charges, which were taxed together as one amount above. Keeping them as a
+	// single line (rather than re-taxing each charge) is what preserves the
+	// invoice totals exactly. HSN is the tenant SAC resolved by the tax engine.
+	baseDesc := plan.Name
+	if baseDesc == "" {
+		baseDesc = "Subscription"
+	}
+	lines := []domain.InvoiceItem{
+		newInvoiceLine(invID, baseDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
+	}
 
 	// Multi-product catalog v1: each add-on attached to the subscription is
 	// billed as its own line — the add-on plan's price × quantity — taxed
@@ -135,6 +151,14 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 			igst += lineTax.IGST
 			cgst += lineTax.CGST
 			sgst += lineTax.SGST
+
+			// Itemization (Phase 1): record this add-on as its own line, with the
+			// same per-line tax that was just summed into the totals.
+			addonDesc := addonPlan.Name
+			if addonDesc == "" {
+				addonDesc = "Add-on"
+			}
+			lines = append(lines, newInvoiceLine(invID, addonDesc, lineTax.HSN, a.Quantity, addonPrice.Amount, lineAmount, lineTax, time.Time{}))
 		}
 	}
 
@@ -150,7 +174,6 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	dueDate := domain.CalculateDueDate(now, terms)
 
 	// 5. Create Invoice
-	invID := uuid.New()
 	inv := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
@@ -167,6 +190,8 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		CGSTAmount: cgst,
 		SGSTAmount: sgst,
 		// HSNCode?
+
+		LineItems: lines,
 
 		CreatedAt:    now,
 		DueDate:      dueDate,
@@ -256,6 +281,10 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	dueDate := domain.CalculateDueDate(now, terms)
 
 	advInvID := uuid.New()
+	advDesc := plan.Name
+	if advDesc == "" {
+		advDesc = "Subscription"
+	}
 	inv := &domain.Invoice{
 		ID:             advInvID,
 		TenantID:       sub.TenantID,
@@ -270,9 +299,12 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,
 		SGSTAmount:     taxRes.SGST,
-		CreatedAt:      now,
-		DueDate:        dueDate,
-		PaymentTerms:   terms,
+		LineItems: []domain.InvoiceItem{
+			newInvoiceLine(advInvID, advDesc, taxRes.HSN, periods, price.Amount, subtotal, taxRes, time.Time{}),
+		},
+		CreatedAt:    now,
+		DueDate:      dueDate,
+		PaymentTerms: terms,
 	}
 
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {

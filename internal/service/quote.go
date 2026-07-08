@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -181,13 +182,37 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id uuid.UUID) (*dom
 
 	// Create invoice from quote
 	dueDate := time.Now().AddDate(0, 0, 30) // Net 30
+	invID := uuid.New()
+
+	// Itemization (Phase 1): carry the quote's own line items onto the invoice so
+	// the converted invoice is itemized like every other path. Quotes have no
+	// per-line GST in Phase 1, so tax fields stay zero. (Note: the quote->invoice
+	// conversion currently only sets AmountDue, leaving Subtotal/TaxAmount at 0 —
+	// a pre-existing quirk unrelated to itemization; the lines reflect the quote.)
+	var lines []domain.InvoiceItem
+	for _, li := range quote.LineItems {
+		desc := li.Description
+		if desc == "" {
+			desc = fmt.Sprintf("Quote %s", quote.QuoteNumber)
+		}
+		lines = append(lines, newInvoiceLine(invID, desc, "", li.Quantity, int64(li.UnitPrice), int64(li.Amount), InvoiceTax{}, time.Time{}))
+	}
+	if len(lines) == 0 {
+		// No quote lines: emit a single line for the quote total so the invoice
+		// is still itemized.
+		lines = []domain.InvoiceItem{
+			newInvoiceLine(invID, fmt.Sprintf("Quote %s", quote.QuoteNumber), "", 1, int64(quote.Total), int64(quote.Total), InvoiceTax{}, time.Time{}),
+		}
+	}
+
 	invoice := &domain.Invoice{
-		ID:         uuid.New(),
+		ID:         invID,
 		TenantID:   quote.TenantID,
 		CustomerID: quote.CustomerID,
 		Status:     "open",
 		AmountDue:  int64(quote.Total),
 		Currency:   quote.Currency,
+		LineItems:  lines,
 		DueDate:    dueDate,
 		CreatedAt:  time.Now(),
 	}

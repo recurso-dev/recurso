@@ -251,13 +251,60 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 		Place:     buyerStateCode,
 	}
 
-	// Build single line item from invoice
+	// Build the item list from the invoice's real line items when present, so a
+	// mixed-line invoice is reported to the IRP as its actual lines (each with
+	// its own HSN and GST breakdown). Legacy invoices with no line items fall
+	// back to a single synthetic line derived from the invoice totals.
+	items := buildEInvoiceItems(invoice)
+
+	return &port.EInvoiceRequest{
+		Invoice: invoice,
+		Seller:  seller,
+		Buyer:   buyer,
+		Items:   items,
+	}, nil
+}
+
+// buildEInvoiceItems maps an invoice's persisted line items to e-invoice items.
+// Each line carries its own HSN and per-line GST, so the IRP ItemList reflects
+// the real invoice. When the invoice has no line items (legacy, pre-itemization)
+// it falls back to a single synthetic line from the invoice totals — preserving
+// the historical behaviour for those invoices.
+func buildEInvoiceItems(invoice *domain.Invoice) []port.EInvoiceItem {
+	if len(invoice.LineItems) > 0 {
+		items := make([]port.EInvoiceItem, 0, len(invoice.LineItems))
+		for i, li := range invoice.LineItems {
+			hsn := li.HSNCode
+			if hsn == "" {
+				hsn = domain.DefaultSACCode
+			}
+			qty := float64(li.Quantity)
+			if qty <= 0 {
+				qty = 1
+			}
+			items = append(items, port.EInvoiceItem{
+				SlNo:        i + 1,
+				Description: li.Description,
+				HSNCode:     hsn,
+				Quantity:    qty,
+				Unit:        "NOS",
+				UnitPrice:   li.UnitAmount,
+				TotalAmount: li.Amount,
+				TaxRate:     li.TaxRate,
+				IGSTAmount:  li.IGSTAmount,
+				CGSTAmount:  li.CGSTAmount,
+				SGSTAmount:  li.SGSTAmount,
+			})
+		}
+		return items
+	}
+
+	// Legacy fallback: single synthetic line from the invoice totals.
 	hsnCode := invoice.HSNCode
 	if hsnCode == "" {
 		hsnCode = domain.DefaultSACCode
 	}
-
-	items := []port.EInvoiceItem{
+	return []port.EInvoiceItem{
 		{
 			SlNo:        1,
 			Description: "SaaS Subscription",
@@ -272,11 +319,4 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 			SGSTAmount:  invoice.SGSTAmount,
 		},
 	}
-
-	return &port.EInvoiceRequest{
-		Invoice: invoice,
-		Seller:  seller,
-		Buyer:   buyer,
-		Items:   items,
-	}, nil
 }

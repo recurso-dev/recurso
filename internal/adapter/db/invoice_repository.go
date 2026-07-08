@@ -12,26 +12,29 @@ import (
 )
 
 type InvoiceRepository struct {
-	db *sql.DB
+	db    *sql.DB
+	items *InvoiceItemRepository
 }
 
 func NewInvoiceRepository(db *sql.DB) port.InvoiceRepository {
-	return &InvoiceRepository{db: db}
+	return &InvoiceRepository{db: db, items: NewInvoiceItemRepository(db)}
 }
 
-func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) error {
-	query := `
-		INSERT INTO invoices (
-			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
-			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
-			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, next_retry_at, retry_count,
-			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
-			dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
-	`
+const invoiceInsertQuery = `
+	INSERT INTO invoices (
+		id, tenant_id, subscription_id, customer_id, invoice_number, status,
+		currency, subtotal, tax_amount, total, amount_paid,
+		igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
+		signed_qr_code, e_invoice_status, tds_amount,
+		created_at, due_date, next_retry_at, retry_count,
+		ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
+		dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
+	)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+`
+
+// insertInvoiceRow writes the invoice row against any execer (*sql.DB or *sql.Tx).
+func insertInvoiceRow(ctx context.Context, ex execer, inv *domain.Invoice) error {
 	// amount_paid default 0 if not set
 	amountPaid := int64(0)
 	if inv.PaidAt != nil {
@@ -48,7 +51,7 @@ func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) err
 		managedBy = "scheduler"
 	}
 
-	_, err := r.db.ExecContext(ctx, query,
+	_, err := ex.ExecContext(ctx, invoiceInsertQuery,
 		inv.ID, inv.TenantID, inv.SubscriptionID, inv.CustomerID, inv.InvoiceNumber, inv.Status,
 		inv.Currency, inv.Subtotal, inv.TaxAmount, inv.Total, amountPaid,
 		inv.IGSTAmount, inv.CGSTAmount, inv.SGSTAmount, inv.HSNCode, inv.IRN, inv.AckNo,
@@ -59,6 +62,52 @@ func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) err
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert invoice: %w", err)
+	}
+	return nil
+}
+
+// lineItemPtrs returns the invoice's line items as pointers with InvoiceID set,
+// ready for the item repository's bulk insert.
+func lineItemPtrs(inv *domain.Invoice) []*domain.InvoiceItem {
+	if len(inv.LineItems) == 0 {
+		return nil
+	}
+	items := make([]*domain.InvoiceItem, 0, len(inv.LineItems))
+	for i := range inv.LineItems {
+		it := &inv.LineItems[i]
+		if it.InvoiceID == uuid.Nil {
+			it.InvoiceID = inv.ID
+		}
+		if it.CreatedAt.IsZero() {
+			it.CreatedAt = inv.CreatedAt
+		}
+		items = append(items, it)
+	}
+	return items
+}
+
+func (r *InvoiceRepository) Create(ctx context.Context, inv *domain.Invoice) error {
+	items := lineItemPtrs(inv)
+	// No line items: preserve the historical single-statement, non-tx insert.
+	if len(items) == 0 {
+		return insertInvoiceRow(ctx, r.db, inv)
+	}
+	// With line items: insert the invoice and its items atomically so a partial
+	// write can never leave an invoice without its lines (money-path invariant).
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin invoice tx: %w", err)
+	}
+	if err := insertInvoiceRow(ctx, tx, inv); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := insertInvoiceItems(ctx, tx, items); err != nil {
+		_ = tx.Rollback()
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit invoice tx: %w", err)
 	}
 	return nil
 }
@@ -78,46 +127,17 @@ func setInvoiceAmounts(inv *domain.Invoice, amountPaid int64) {
 	inv.AmountDue = inv.Total - amountPaid
 }
 
-// CreateWithTx creates an invoice within an existing transaction for atomic operations.
+// CreateWithTx creates an invoice within an existing transaction for atomic
+// operations. Line items (if any) are written on the same transaction so they
+// commit atomically with the invoice.
 func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *domain.Invoice) error {
-	query := `
-		INSERT INTO invoices (
-			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
-			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
-			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, next_retry_at, retry_count,
-			ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
-			dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
-	`
-	amountPaid := int64(0)
-	if inv.PaidAt != nil {
-		amountPaid = inv.Total
-	}
-
-	var eInvoiceStatus interface{} = inv.EInvoiceStatus
-	if inv.EInvoiceStatus == "" {
-		eInvoiceStatus = nil
-	}
-
-	managedBy := inv.DunningManagedBy
-	if managedBy == "" {
-		managedBy = "scheduler"
-	}
-
-	_, err := tx.ExecContext(ctx, query,
-		inv.ID, inv.TenantID, inv.SubscriptionID, inv.CustomerID, inv.InvoiceNumber, inv.Status,
-		inv.Currency, inv.Subtotal, inv.TaxAmount, inv.Total, amountPaid,
-		inv.IGSTAmount, inv.CGSTAmount, inv.SGSTAmount, inv.HSNCode, inv.IRN, inv.AckNo,
-		inv.SignedQRCode, eInvoiceStatus, inv.TDSAmount,
-		inv.CreatedAt, inv.DueDate, inv.NextRetryAt, inv.RetryCount,
-		inv.AckDate, inv.EInvoiceRetryCount, inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
-		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey), nilIfEmpty(inv.LastPaymentError), managedBy,
-	)
-	if err != nil {
+	if err := insertInvoiceRow(ctx, tx, inv); err != nil {
 		return fmt.Errorf("failed to insert invoice in tx: %w", err)
+	}
+	if items := lineItemPtrs(inv); len(items) > 0 {
+		if err := insertInvoiceItems(ctx, tx, items); err != nil {
+			return fmt.Errorf("failed to insert invoice items in tx: %w", err)
+		}
 	}
 	return nil
 }
@@ -191,7 +211,33 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 
 	setInvoiceAmounts(inv, amountPaid)
 
+	if items, itErr := r.items.ListByInvoiceID(ctx, inv.ID); itErr != nil {
+		return nil, itErr
+	} else {
+		inv.LineItems = items
+	}
+
 	return inv, nil
+}
+
+// hydrateLineItems batch-loads and attaches line items for a slice of invoices,
+// avoiding an N+1 query on list endpoints.
+func (r *InvoiceRepository) hydrateLineItems(ctx context.Context, invoices []*domain.Invoice) error {
+	if len(invoices) == 0 {
+		return nil
+	}
+	ids := make([]uuid.UUID, 0, len(invoices))
+	for _, inv := range invoices {
+		ids = append(ids, inv.ID)
+	}
+	byInvoice, err := r.items.ListByInvoiceIDs(ctx, ids)
+	if err != nil {
+		return err
+	}
+	for _, inv := range invoices {
+		inv.LineItems = byInvoice[inv.ID]
+	}
+	return nil
 }
 
 func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) error {
@@ -309,6 +355,9 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
 	return invoices, nil
 }
 
@@ -351,6 +400,9 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 		inv.EInvoiceStatus = eInvoiceStatus.String
 		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
+	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
 	}
 	return invoices, nil
 }

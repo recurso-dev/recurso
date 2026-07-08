@@ -28,6 +28,13 @@ type InvoiceTax struct {
 	SGST    int64
 	TaxType string
 	Note    string
+	// Rate is the effective tax rate as a fraction (e.g. 0.18 for 18%). Used to
+	// record per-line tax_rate on itemized invoices and the e-invoice GstRt.
+	Rate float64
+	// HSN is the HSN/SAC code the tax was resolved against (the tenant SAC for
+	// GST). Empty for non-GST jurisdictions; callers default it to the tenant
+	// SAC / 998314 when recording a line.
+	HSN string
 }
 
 // TaxResolver picks the jurisdiction-appropriate tax engine for each invoice.
@@ -161,7 +168,7 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 		if cfg != nil && cfg.HasLUT {
 			note = "Zero-rated export under LUT"
 		}
-		return InvoiceTax{TaxType: "export", Note: note}
+		return InvoiceTax{TaxType: "export", Note: note, HSN: hsn}
 	}
 
 	// Buyer state: PlaceOfSupply first, then the billing address state for
@@ -202,6 +209,8 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 		SGST:    calc.SGST,
 		TaxType: calc.TaxType,
 		Note:    calc.Note,
+		Rate:    calc.TaxRate,
+		HSN:     hsn,
 	}
 }
 
@@ -240,7 +249,7 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 			Note:    "US sales tax lookup via " + provider + " failed; invoiced at 0% (needs review)",
 		}
 	}
-	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: calc.Note}
+	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: calc.Note, Rate: calc.TaxRate}
 }
 
 // resolveEUVAT applies EU/UK VAT. Reverse charge for B2B cross-border and
@@ -270,7 +279,7 @@ func (r *TaxResolver) resolveEUVAT(ctx context.Context, engine port.TaxEngine, s
 		r.logger.Warn("VAT calculation failed; invoicing without tax", "error", err)
 		return InvoiceTax{}
 	}
-	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: joinNotes(calc.Note, extraNote)}
+	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: joinNotes(calc.Note, extraNote), Rate: calc.TaxRate}
 }
 
 // reverseChargeDecision returns the IsBusiness flag the VAT engine should see
