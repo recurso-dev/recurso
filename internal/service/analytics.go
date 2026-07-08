@@ -89,7 +89,7 @@ type MRRMetrics struct {
 // reporting currency (tenant.BaseCurrency, else the configured default).
 // Simplification P3: Sum of all Active Subscriptions * Plan Amount (normalized to Monthly).
 func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRRMetrics, error) {
-	subs, err := s.subRepo.GetActiveSubscriptions(ctx)
+	subs, err := s.subRepo.GetActiveSubscriptions(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +104,9 @@ func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRR
 		plan, ok := planCache[sub.PlanID]
 		if !ok {
 			p, err := s.planRepo.GetByID(ctx, sub.PlanID)
-			if err != nil {
-				// Skip or Log error? Skipping for robustness
+			// GetByID returns (nil, nil) for a not-found plan, so guard on nil
+			// too — otherwise the len(plan.Prices) below nil-derefs and 500s.
+			if err != nil || p == nil {
 				continue
 			}
 			plan = p

@@ -17,7 +17,7 @@ type mockSubRepoForMRR struct {
 	byList map[uuid.UUID][]*domain.Subscription // tenantID -> subs (org consolidated MRR)
 }
 
-func (m *mockSubRepoForMRR) GetActiveSubscriptions(ctx context.Context) ([]*domain.Subscription, error) {
+func (m *mockSubRepoForMRR) GetActiveSubscriptions(ctx context.Context, _ uuid.UUID) ([]*domain.Subscription, error) {
 	return m.active, nil
 }
 func (m *mockSubRepoForMRR) Create(ctx context.Context, s *domain.Subscription) error { return nil }

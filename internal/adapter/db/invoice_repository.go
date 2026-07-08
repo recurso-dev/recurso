@@ -70,6 +70,14 @@ func nilIfEmpty(s string) interface{} {
 	return s
 }
 
+// setInvoiceAmounts populates the amount fields on read: AmountPaid (scanned
+// into a local) and AmountDue, which is derived (Total − AmountPaid) and has
+// no stored column.
+func setInvoiceAmounts(inv *domain.Invoice, amountPaid int64) {
+	inv.AmountPaid = amountPaid
+	inv.AmountDue = inv.Total - amountPaid
+}
+
 // CreateWithTx creates an invoice within an existing transaction for atomic operations.
 func (r *InvoiceRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, inv *domain.Invoice) error {
 	query := `
@@ -181,6 +189,8 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		return nil, fmt.Errorf("failed to get invoice: %w", err)
 	}
 
+	setInvoiceAmounts(inv, amountPaid)
+
 	return inv, nil
 }
 
@@ -253,6 +263,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 		); err != nil {
 			return nil, err
 		}
+		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil
@@ -295,6 +306,7 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
+		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil
@@ -337,6 +349,7 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
+		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil
@@ -454,6 +467,7 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
+		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil

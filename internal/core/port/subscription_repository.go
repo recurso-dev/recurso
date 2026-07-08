@@ -14,7 +14,7 @@ type SubscriptionRepository interface {
 	// handler uses it to resolve the owning tenant from the subscription.
 	// Never call it from tenant-scoped request paths.
 	GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*domain.Subscription, error)
-	GetActiveSubscriptions(ctx context.Context) ([]*domain.Subscription, error)
+	GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error)
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error)
 	Update(ctx context.Context, sub *domain.Subscription) error
 }

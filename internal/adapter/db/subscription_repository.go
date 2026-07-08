@@ -137,17 +137,20 @@ func (r *SubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, 
 	return sub, nil
 }
 
-func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context) ([]*domain.Subscription, error) {
+// GetActiveSubscriptions returns the tenant's active subscriptions. It MUST be
+// tenant-scoped — an unscoped variant would leak (and mis-total) other tenants'
+// subscriptions into per-tenant analytics like MRR.
+func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error) {
 	query := `
-		SELECT 
+		SELECT
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, razorpay_subscription_id, stripe_subscription_id,
 			created_at, updated_at
-		FROM subscriptions 
-		WHERE status = 'active'
+		FROM subscriptions
+		WHERE status = 'active' AND tenant_id = $1
 	`
-	rows, err := r.db.QueryContext(ctx, query)
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active subscriptions: %w", err)
 	}
