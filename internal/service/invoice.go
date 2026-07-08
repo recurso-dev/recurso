@@ -77,11 +77,29 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// accumulated below.
 	invID := uuid.New()
 
-	// 3. Calculate Amounts
+	// 3. Calculate Amounts. The base plan is its own line; each billable
+	// unbilled charge is its own line too (Phase 3), taxed at its own HSN.
 	subtotal := price.Amount
 
-	// P15: Add Unbilled Charges. Charges in a different currency than the
-	// plan price cannot be summed into this invoice; they stay unbilled.
+	// Base line: plan price only, taxed on the plan price at the plan's HSN.
+	baseTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, price.Amount, plan.HSNCode)
+
+	// Running invoice totals seeded from the base line. Charges and add-ons are
+	// accumulated onto these as their own lines below.
+	taxTotal, igst, cgst, sgst := baseTax.Total, baseTax.IGST, baseTax.CGST, baseTax.SGST
+
+	baseDesc := plan.Name
+	if baseDesc == "" {
+		baseDesc = "Subscription"
+	}
+	lines := []domain.InvoiceItem{
+		newInvoiceLine(invID, baseDesc, baseTax.HSN, 1, price.Amount, price.Amount, baseTax, time.Time{}),
+	}
+
+	// P15: Add Unbilled Charges as their own line items (Phase 3). Charges in a
+	// different currency than the plan price cannot be billed on this invoice;
+	// they stay unbilled. Each billable charge is taxed independently at its own
+	// HSN (falling back to the tenant SAC when unset), mirroring add-ons.
 	charges, err := s.UnbilledChargeRepo.ListBySubscriptionID(sub.ID)
 	var billableCharges []*domain.UnbilledCharge
 	if err == nil {
@@ -93,28 +111,19 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 			}
 			billableCharges = append(billableCharges, c)
 			subtotal += c.Amount
+
+			chargeTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, c.Amount, c.HSNCode)
+			taxTotal += chargeTax.Total
+			igst += chargeTax.IGST
+			cgst += chargeTax.CGST
+			sgst += chargeTax.SGST
+
+			chargeDesc := c.Description
+			if chargeDesc == "" {
+				chargeDesc = "One-time charge"
+			}
+			lines = append(lines, newInvoiceLine(invID, chargeDesc, chargeTax.HSN, 1, c.Amount, c.Amount, chargeTax, time.Time{}))
 		}
-	}
-
-	// Jurisdiction-aware tax: tenant GST config (India) or env company
-	// defaults decide the engine; buyer location decides the treatment.
-	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal, plan.HSNCode)
-
-	// Running invoice totals seeded from the base line (plan price + unbilled
-	// charges). With no add-ons these stay exactly equal to the base tax, so
-	// the single-plan invoice is byte-identical to before.
-	taxTotal, igst, cgst, sgst := taxRes.Total, taxRes.IGST, taxRes.CGST, taxRes.SGST
-
-	// Itemization (Phase 1): record the base line — plan price plus any unbilled
-	// charges, which were taxed together as one amount above. Keeping them as a
-	// single line (rather than re-taxing each charge) is what preserves the
-	// invoice totals exactly. HSN is the tenant SAC resolved by the tax engine.
-	baseDesc := plan.Name
-	if baseDesc == "" {
-		baseDesc = "Subscription"
-	}
-	lines := []domain.InvoiceItem{
-		newInvoiceLine(invID, baseDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
 	}
 
 	// Multi-product catalog v1: each add-on attached to the subscription is

@@ -24,7 +24,11 @@ func NewAdvancedBillingService(
 	}
 }
 
-func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscriptionID uuid.UUID, amount int64, currency, description string) (*domain.UnbilledCharge, error) {
+// AddUnbilledCharge records an ad-hoc charge to be folded onto the
+// subscription's next invoice as its own line item. hsn is the optional HSN/SAC
+// code the charge is taxed at; empty falls back to the tenant SAC at invoice
+// time.
+func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscriptionID uuid.UUID, amount int64, currency, description, hsn string) (*domain.UnbilledCharge, error) {
 	// Verify subscription exists
 	_, err := s.SubscriptionRepo.GetByID(ctx, subscriptionID)
 	if err != nil {
@@ -37,6 +41,7 @@ func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscrip
 		Amount:         amount,
 		Currency:       currency,
 		Description:    description,
+		HSNCode:        hsn,
 		Status:         domain.UnbilledChargeStatusPending,
 		CreatedAt:      time.Now(),
 	}

@@ -282,18 +282,23 @@ func buildEInvoiceItems(invoice *domain.Invoice) []port.EInvoiceItem {
 			if qty <= 0 {
 				qty = 1
 			}
+			taxable := li.TaxableAmount
+			if taxable == 0 {
+				taxable = li.Amount // legacy lines wrote no taxable base
+			}
 			items = append(items, port.EInvoiceItem{
-				SlNo:        i + 1,
-				Description: li.Description,
-				HSNCode:     hsn,
-				Quantity:    qty,
-				Unit:        "NOS",
-				UnitPrice:   li.UnitAmount,
-				TotalAmount: li.Amount,
-				TaxRate:     li.TaxRate,
-				IGSTAmount:  li.IGSTAmount,
-				CGSTAmount:  li.CGSTAmount,
-				SGSTAmount:  li.SGSTAmount,
+				SlNo:          i + 1,
+				Description:   li.Description,
+				HSNCode:       hsn,
+				Quantity:      qty,
+				Unit:          "NOS",
+				UnitPrice:     li.UnitAmount,
+				TotalAmount:   li.Amount,
+				TaxableAmount: taxable,
+				TaxRate:       li.TaxRate,
+				IGSTAmount:    li.IGSTAmount,
+				CGSTAmount:    li.CGSTAmount,
+				SGSTAmount:    li.SGSTAmount,
 			})
 		}
 		return items
@@ -306,17 +311,18 @@ func buildEInvoiceItems(invoice *domain.Invoice) []port.EInvoiceItem {
 	}
 	return []port.EInvoiceItem{
 		{
-			SlNo:        1,
-			Description: "SaaS Subscription",
-			HSNCode:     hsnCode,
-			Quantity:    1,
-			Unit:        "NOS",
-			UnitPrice:   invoice.Subtotal,
-			TotalAmount: invoice.Subtotal,
-			TaxRate:     domain.DefaultGSTRate,
-			IGSTAmount:  invoice.IGSTAmount,
-			CGSTAmount:  invoice.CGSTAmount,
-			SGSTAmount:  invoice.SGSTAmount,
+			SlNo:          1,
+			Description:   "SaaS Subscription",
+			HSNCode:       hsnCode,
+			Quantity:      1,
+			Unit:          "NOS",
+			UnitPrice:     invoice.Subtotal,
+			TotalAmount:   invoice.Subtotal,
+			TaxableAmount: invoice.Subtotal,
+			TaxRate:       domain.DefaultGSTRate,
+			IGSTAmount:    invoice.IGSTAmount,
+			CGSTAmount:    invoice.CGSTAmount,
+			SGSTAmount:    invoice.SGSTAmount,
 		},
 	}
 }

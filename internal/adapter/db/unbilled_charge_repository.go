@@ -18,8 +18,8 @@ func NewUnbilledChargeRepository(db *sql.DB) *UnbilledChargeRepository {
 
 func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 	query := `
-		INSERT INTO unbilled_charges (id, subscription_id, amount, currency, description, status, period_start, period_end, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO unbilled_charges (id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := r.DB.Exec(query,
 		charge.ID,
@@ -27,6 +27,7 @@ func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 		charge.Amount,
 		charge.Currency,
 		charge.Description,
+		charge.HSNCode,
 		charge.Status,
 		charge.PeriodStart,
 		charge.PeriodEnd,
@@ -37,7 +38,7 @@ func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 
 func (r *UnbilledChargeRepository) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
 	query := `
-		SELECT id, subscription_id, amount, currency, description, status, period_start, period_end, created_at
+		SELECT id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at
 		FROM unbilled_charges
 		WHERE subscription_id = $1 AND status = 'pending'
 		ORDER BY created_at ASC
@@ -57,6 +58,7 @@ func (r *UnbilledChargeRepository) ListBySubscriptionID(subscriptionID uuid.UUID
 			&c.Amount,
 			&c.Currency,
 			&c.Description,
+			&c.HSNCode,
 			&c.Status,
 			&c.PeriodStart,
 			&c.PeriodEnd,

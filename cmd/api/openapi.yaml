@@ -820,6 +820,11 @@ paths:
                   type: string
                 description:
                   type: string
+                hsn_code:
+                  type: string
+                  description: >-
+                    Optional HSN/SAC code the charge is taxed at on the invoice.
+                    Empty falls back to the tenant SAC.
       responses:
         '201':
           description: Charge recorded.
@@ -5722,6 +5727,9 @@ components:
           type: string
         description:
           type: string
+        hsn_code:
+          type: string
+          description: HSN/SAC code the charge is taxed at on the invoice.
         status:
           type: string
           enum: [pending, invoiced, canceled]

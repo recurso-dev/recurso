@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -28,8 +29,35 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
-	// For demo, create sample data
-	// In production, fetch from invoice service
+	// For demo, create sample data.
+	// In production, fetch the invoice (with its persisted line items) from the
+	// invoice service. The line items below are built from the invoice's real
+	// LineItems via service.BuildPDFLineItems, so each row reflects its own
+	// HSN/SAC code, rate, and per-line CGST/SGST/IGST; legacy invoices with no
+	// line items fall back to a single synthetic line (see BuildPDFLineItems).
+	sampleInvoice := &domain.Invoice{
+		Currency:   "INR",
+		Subtotal:   1000000,
+		TaxAmount:  180000,
+		CGSTAmount: 90000,
+		SGSTAmount: 90000,
+		Total:      1180000,
+		HSNCode:    "998314",
+		LineItems: []domain.InvoiceItem{
+			{
+				Description:   "SaaS Subscription - Pro Plan",
+				HSNCode:       "998314",
+				Quantity:      1,
+				UnitAmount:    1000000,
+				Amount:        1000000,
+				TaxableAmount: 1000000,
+				TaxRate:       18,
+				CGSTAmount:    90000,
+				SGSTAmount:    90000,
+			},
+		},
+	}
+
 	data := service.PDFInvoiceData{
 		InvoiceNumber: "INV-2024-" + invoiceID.String()[:8],
 		InvoiceDate:   "January 15, 2024",
@@ -47,20 +75,10 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 		IsInterState:  false,
 		PlaceOfSupply: "Maharashtra (27)",
 		// GST Demo Data
-		IRN:     service.GenerateIRN(), // Use helper
-		AckNo:   "123456789012345",
-		AckDate: "2024-01-15 10:00:00",
-		LineItems: []service.PDFLineItem{
-			{
-				SNo:         1,
-				Description: "SaaS Subscription - Pro Plan",
-				SACCode:     "998314",
-				Quantity:    "1",
-				UnitPrice:   "₹10,000.00",
-				TaxRate:     "18%",
-				Amount:      "₹10,000.00",
-			},
-		},
+		IRN:       service.GenerateIRN(), // Use helper
+		AckNo:     "123456789012345",
+		AckDate:   "2024-01-15 10:00:00",
+		LineItems: service.BuildPDFLineItems(sampleInvoice),
 	}
 
 	// Generate QR Code

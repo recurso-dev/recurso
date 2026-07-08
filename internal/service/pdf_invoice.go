@@ -5,10 +5,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html/template"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/skip2/go-qrcode"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // PDFInvoiceData contains all data needed to generate a GST-compliant PDF invoice
@@ -69,16 +71,90 @@ type PDFInvoiceData struct {
 	SignedBy            string // Name of the signatory
 }
 
-// PDFLineItem represents a line item in the invoice
+// PDFLineItem represents a line item in the invoice. SACCode carries the line's
+// HSN/SAC code. The per-line GST amounts (CGST/SGST/IGST) and taxable base are
+// formatted currency strings, populated from the invoice's real line items.
 type PDFLineItem struct {
-	SNo         int
-	Description string
-	SACCode     string
-	Quantity    string
-	UnitPrice   string
-	Amount      string
-	TaxRate     string
-	TaxAmount   string
+	SNo           int
+	Description   string
+	SACCode       string
+	Quantity      string
+	UnitPrice     string
+	Amount        string
+	TaxableAmount string
+	TaxRate       string
+	TaxAmount     string
+	CGSTAmount    string
+	SGSTAmount    string
+	IGSTAmount    string
+}
+
+// BuildPDFLineItems maps an invoice's persisted line items to PDF line items,
+// each carrying its own HSN/SAC code, rate, and per-line CGST/SGST/IGST. When
+// the invoice has no line items (legacy, pre-itemization) it falls back to a
+// single synthetic line derived from the invoice totals — mirroring the
+// e-invoice ItemList fallback so old invoices still render.
+func BuildPDFLineItems(inv *domain.Invoice) []PDFLineItem {
+	if inv == nil {
+		return nil
+	}
+	cur := inv.Currency
+
+	if len(inv.LineItems) > 0 {
+		items := make([]PDFLineItem, 0, len(inv.LineItems))
+		for i, li := range inv.LineItems {
+			hsn := li.HSNCode
+			if hsn == "" {
+				hsn = domain.DefaultSACCode
+			}
+			qty := li.Quantity
+			if qty <= 0 {
+				qty = 1
+			}
+			items = append(items, PDFLineItem{
+				SNo:           i + 1,
+				Description:   li.Description,
+				SACCode:       hsn,
+				Quantity:      strconv.Itoa(qty),
+				UnitPrice:     FormatAmount(li.UnitAmount, cur),
+				Amount:        FormatAmount(li.Amount, cur),
+				TaxableAmount: FormatAmount(li.TaxableAmount, cur),
+				TaxRate:       formatTaxRate(li.TaxRate),
+				TaxAmount:     FormatAmount(li.CGSTAmount+li.SGSTAmount+li.IGSTAmount, cur),
+				CGSTAmount:    FormatAmount(li.CGSTAmount, cur),
+				SGSTAmount:    FormatAmount(li.SGSTAmount, cur),
+				IGSTAmount:    FormatAmount(li.IGSTAmount, cur),
+			})
+		}
+		return items
+	}
+
+	// Legacy fallback: a single synthetic line from the invoice totals.
+	hsn := inv.HSNCode
+	if hsn == "" {
+		hsn = domain.DefaultSACCode
+	}
+	return []PDFLineItem{
+		{
+			SNo:           1,
+			Description:   "SaaS Subscription",
+			SACCode:       hsn,
+			Quantity:      "1",
+			UnitPrice:     FormatAmount(inv.Subtotal, cur),
+			Amount:        FormatAmount(inv.Subtotal, cur),
+			TaxableAmount: FormatAmount(inv.Subtotal, cur),
+			TaxRate:       formatTaxRate(domain.DefaultGSTRate),
+			TaxAmount:     FormatAmount(inv.CGSTAmount+inv.SGSTAmount+inv.IGSTAmount, cur),
+			CGSTAmount:    FormatAmount(inv.CGSTAmount, cur),
+			SGSTAmount:    FormatAmount(inv.SGSTAmount, cur),
+			IGSTAmount:    FormatAmount(inv.IGSTAmount, cur),
+		},
+	}
+}
+
+// formatTaxRate renders a GST rate percent (e.g. 18.0 -> "18%", 12.5 -> "12.5%").
+func formatTaxRate(pct float64) string {
+	return strconv.FormatFloat(pct, 'f', -1, 64) + "%"
 }
 
 // InvoicePDFService handles PDF invoice generation
@@ -298,13 +374,15 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
             <table>
                 <thead>
                     <tr>
-                        <th style="width: 5%;">S.No</th>
-                        <th style="width: 35%;">Description</th>
-                        <th style="width: 10%;">SAC</th>
-                        <th style="width: 10%;" class="text-center">Qty</th>
-                        <th style="width: 15%;" class="text-right">Unit Price</th>
-                        <th style="width: 10%;" class="text-right">Tax %</th>
-                        <th style="width: 15%;" class="text-right">Amount</th>
+                        <th style="width: 4%;">S.No</th>
+                        <th style="width: 26%;">Description</th>
+                        <th style="width: 9%;">HSN/SAC</th>
+                        <th style="width: 6%;" class="text-center">Qty</th>
+                        <th style="width: 13%;" class="text-right">Unit Price</th>
+                        <th style="width: 13%;" class="text-right">Taxable</th>
+                        <th style="width: 8%;" class="text-right">Tax %</th>
+                        <th style="width: 11%;" class="text-right">Tax Amt</th>
+                        <th style="width: 10%;" class="text-right">Amount</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -315,7 +393,9 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                         <td>{{.SACCode}}</td>
                         <td class="text-center">{{.Quantity}}</td>
                         <td class="text-right">{{.UnitPrice}}</td>
+                        <td class="text-right">{{.TaxableAmount}}</td>
                         <td class="text-right">{{.TaxRate}}</td>
+                        <td class="text-right">{{.TaxAmount}}</td>
                         <td class="text-right">{{.Amount}}</td>
                     </tr>
                     {{end}}

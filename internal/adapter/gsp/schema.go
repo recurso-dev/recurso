@@ -147,6 +147,12 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 	switch {
 	case len(req.Items) > 0:
 		for _, item := range req.Items {
+			// Assessable value is the post-discount taxable base; fall back to the
+			// gross total for items that carry no explicit taxable amount.
+			assessable := item.TaxableAmount
+			if assessable == 0 {
+				assessable = item.TotalAmount
+			}
 			schema.ItemList = append(schema.ItemList, ItemDtls{
 				SlNo:       fmt.Sprintf("%d", item.SlNo),
 				PrdDesc:    item.Description,
@@ -156,7 +162,7 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 				Unit:       item.Unit,
 				UnitPrice:  toRupees(item.UnitPrice),
 				TotAmt:     toRupees(item.TotalAmount),
-				AssAmt:     toRupees(item.TotalAmount),
+				AssAmt:     toRupees(assessable),
 				GstRt:      item.TaxRate,
 				IgstAmt:    toRupees(item.IGSTAmount),
 				CgstAmt:    toRupees(item.CGSTAmount),

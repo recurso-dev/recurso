@@ -43,10 +43,13 @@ type EInvoiceItem struct {
 	Unit        string  `json:"unit"`
 	UnitPrice   int64   `json:"unit_price"`
 	TotalAmount int64   `json:"total_amount"`
-	TaxRate     float64 `json:"tax_rate"`
-	IGSTAmount  int64   `json:"igst_amount"`
-	CGSTAmount  int64   `json:"cgst_amount"`
-	SGSTAmount  int64   `json:"sgst_amount"`
+	// TaxableAmount is the post-discount assessable value the GST was computed
+	// on (AssAmt in the IRP schema). Equals TotalAmount when no discount applies.
+	TaxableAmount int64   `json:"taxable_amount"`
+	TaxRate       float64 `json:"tax_rate"`
+	IGSTAmount    int64   `json:"igst_amount"`
+	CGSTAmount    int64   `json:"cgst_amount"`
+	SGSTAmount    int64   `json:"sgst_amount"`
 }
 
 type EInvoiceResponse struct {

@@ -35,6 +35,9 @@ type AddUnbilledChargeRequest struct {
 	Amount      int64  `json:"amount" binding:"required"`
 	Currency    string `json:"currency" binding:"required"`
 	Description string `json:"description" binding:"required"`
+	// HSNCode is optional. When set, the charge is taxed at this HSN/SAC code's
+	// rate on the invoice; empty falls back to the tenant SAC.
+	HSNCode string `json:"hsn_code"`
 }
 
 func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
@@ -55,7 +58,7 @@ func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
 	if !ok {
 		return
 	}
-	charge, err := h.Service.AddUnbilledCharge(ctx, subID, req.Amount, req.Currency, req.Description)
+	charge, err := h.Service.AddUnbilledCharge(ctx, subID, req.Amount, req.Currency, req.Description, req.HSNCode)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

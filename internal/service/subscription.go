@@ -252,13 +252,34 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	}
 	dueDate := domain.CalculateDueDate(time.Now().UTC(), paymentTerms)
 
-	// Itemization (Phase 1): the initial invoice is a single plan line. Its
-	// amount is the invoice Subtotal and its tax is the resolved tax, so the
-	// line reconciles exactly to the invoice totals. (Any coupon is an
-	// invoice-level discount in Phase 1; per-line distribution is Phase 2/3.)
+	// Itemization: the initial invoice is a single plan line. Its Amount is the
+	// gross Subtotal and its taxable_amount is the post-discount base the tax was
+	// computed on, so the line stays consistent (amount − discount == taxable).
 	planLineDesc := plan.Name
 	if planLineDesc == "" {
 		planLineDesc = "Subscription"
+	}
+
+	// Header GST comes from the resolver (tax computed on the post-discount
+	// amount). Line-level taxable_amount is set below.
+	taxTotal, taxIGST, taxCGST, taxSGST := taxRes.Total, taxRes.IGST, taxRes.CGST, taxRes.SGST
+
+	lines := []domain.InvoiceItem{
+		newInvoiceLine(invID, planLineDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
+	}
+
+	// Per-line discount distribution (Phase 3). The initial invoice is always a
+	// single line today, so we record its post-discount taxable base directly and
+	// keep the engine-computed header tax verbatim (no total shifts). Should the
+	// invoice ever grow multiple lines, distributeDiscount spreads the discount
+	// pro-rata (largest-remainder) and re-aggregates the header from the lines.
+	if discount > 0 {
+		if len(lines) == 1 {
+			lines[0].TaxableAmount = subtotal - discount
+		} else {
+			taxIGST, taxCGST, taxSGST, taxTotal = distributeDiscount(lines, discount)
+			total = (subtotal - discount) + taxTotal
+		}
 	}
 
 	// Create Invoice with Discount applied
@@ -271,18 +292,16 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
-		TaxAmount:      taxRes.Total,
+		TaxAmount:      taxTotal,
 		Total:          total,
-		IGSTAmount:     taxRes.IGST,
-		CGSTAmount:     taxRes.CGST,
-		SGSTAmount:     taxRes.SGST,
-		LineItems: []domain.InvoiceItem{
-			newInvoiceLine(invID, planLineDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
-		},
-		PaymentTerms: paymentTerms,
-		CreatedAt:    time.Now().UTC(),
-		DueDate:      dueDate,
-		PaidAt:       nil,
+		IGSTAmount:     taxIGST,
+		CGSTAmount:     taxCGST,
+		SGSTAmount:     taxSGST,
+		LineItems:      lines,
+		PaymentTerms:   paymentTerms,
+		CreatedAt:      time.Now().UTC(),
+		DueDate:        dueDate,
+		PaidAt:         nil,
 	}
 
 	// P25: E-Invoicing via EInvoiceService. Skipped for trials — the first
