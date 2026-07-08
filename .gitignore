@@ -48,3 +48,6 @@ stitch_dashboard_home_screen*/
 
 # iCloud conflict copies (this workspace lives under ~/Documents)
 * [0-9].*
+
+# air hot-reload build output
+tmp/

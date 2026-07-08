@@ -1,4 +1,4 @@
-.PHONY: build run seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
+.PHONY: build run dev fmt hooks seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
 IMAGE_NAME=ghcr.io/swapnull-in/recur-so
@@ -11,6 +11,25 @@ build:
 
 run:
 	go run ./cmd/api
+
+# Hot-reload dev server. Installs air (github.com/air-verse/air) on first run
+# if it isn't already on your PATH / in GOPATH/bin.
+dev:
+	@command -v air >/dev/null 2>&1 || [ -x "$$(go env GOPATH)/bin/air" ] || { \
+		echo "Installing air (hot reload)..."; \
+		go install github.com/air-verse/air@latest; \
+	}
+	@AIR=$$(command -v air 2>/dev/null || echo "$$(go env GOPATH)/bin/air"); "$$AIR"
+
+# Format all Go code.
+fmt:
+	gofmt -w .
+
+# Install the git hooks (pre-commit: gofmt + golangci-lint on staged changes).
+hooks:
+	@git config core.hooksPath .githooks
+	@chmod +x .githooks/* 2>/dev/null || true
+	@echo "Git hooks installed. Pre-commit runs gofmt + golangci-lint on staged Go files."
 
 # DESTRUCTIVE: wipes all data in the target database, then loads demo data
 # (tenant "Acme SaaS Corp", API key sk_test_12345, plans/customers/invoices).

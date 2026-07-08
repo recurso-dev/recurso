@@ -108,6 +108,31 @@ can sign off on the output.
 - [x] Customer portal: payment-method update and invoice dispute flows
       (admin dashboard dispute UI is a follow-up).
 
+### Authentication & Access (dashboard)
+
+Real per-user dashboard accounts, shipped in three phases (July 2026) — all
+**native Go on Postgres, no external auth dependency** (Supabase/Clerk were
+evaluated and rejected to preserve the self-host / data-sovereignty story).
+Coexists with the existing API-key auth via a dual middleware, so machine
+access and the demo key never broke.
+
+- [x] **Phase 1** — user accounts, sessions, roles (owner/admin/member), team
+      management (`/v1/users`), email/password login. Dual-auth middleware
+      (session cookie OR Bearer API key) preserves the `tenant_id` contract for
+      all ~100 existing endpoints; regression-tested.
+- [x] **Phase 2** — password reset (SMTP, single-use token, kills sessions),
+      TOTP two-factor auth (two-step login, backup codes), active-session
+      management (list / revoke one / log out everywhere else).
+- [x] **Phase 3** — OAuth social login (Google + GitHub, CSRF state + PKCE,
+      `email_verified` enforced, feature-flagged by env); SAML SSO foundation
+      (per-tenant IdP config, SP metadata/login/ACS via `crewjam/saml`,
+      assertion email → existing user).
+- [ ] **Certify SAML against a live IdP** — the ACS signature round-trip
+      (Okta / Azure AD / Google Workspace) can't be proven without a real IdP.
+      Config, role-gating, tenant-scoping, SP metadata, SP-initiated redirect,
+      and email→user mapping are unit-tested; certify before an enterprise sale.
+- [x] Account-security docs (password reset, 2FA, sessions) published.
+
 ## Track 3 — Developer experience & adoption
 
 - [x] `make demo` one-command demo; seeded dataset with printed API key.
@@ -119,13 +144,16 @@ can sign off on the output.
       zero missing registered routes, redocly-clean, minimum-path test.
 - [x] Wire Mintlify API playground to the served OpenAPI spec.
 - [x] Generated Python SDK from OpenAPI. (Go SDK still pending.)
-- [ ] Postman collection (export from OpenAPI, link in docs).
+- [x] Postman collection (generated from OpenAPI into `postman/` — 33
+      tag-grouped folders + an environment file; regen command + import steps
+      in `postman/README.md`).
 - [x] One-click deploy buttons: Railway, Render, DigitalOcean.
 - [x] Devcontainer + Codespaces config.
 - [x] `examples/` — minimal Next.js SaaS starter wired to Recurso
       (checkout, webhook handler, portal link).
-- [ ] `make dev` hot reload (air), pre-commit hook (gofmt + golangci-lint),
-      GitHub issue/PR templates.
+- [x] `make dev` hot reload (air, auto-installed), pre-commit hook (gofmt +
+      golangci-lint on staged files, via `make hooks`), GitHub issue/PR
+      templates.
 - [x] Quickstart telemetry: none. Add opt-in, privacy-respecting usage ping
       (self-host) so activation is measurable.
 

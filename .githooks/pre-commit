@@ -1,0 +1,33 @@
+#!/bin/sh
+# Recurso pre-commit hook: gofmt + golangci-lint on staged Go changes.
+# Install with: make hooks
+
+# Staged Go files (added / copied / modified — not deletions).
+gofiles=$(git diff --cached --name-only --diff-filter=ACM | grep '\.go$' || true)
+[ -z "$gofiles" ] && exit 0
+
+# 1. gofmt — reject anything not formatted.
+unformatted=$(gofmt -l $gofiles)
+if [ -n "$unformatted" ]; then
+  echo "✗ gofmt: these staged files are not formatted:"
+  echo "$unformatted" | sed 's/^/    /'
+  echo "  Fix with: gofmt -w <files>   (or: make fmt)"
+  exit 1
+fi
+
+# 2. golangci-lint — lint only the packages touched by staged files (fast).
+GCL=$(command -v golangci-lint 2>/dev/null || echo "$(go env GOPATH)/bin/golangci-lint")
+if [ ! -x "$GCL" ]; then
+  echo "⚠ golangci-lint not found — skipping lint (install: https://golangci-lint.run)."
+  echo "✓ gofmt passed"
+  exit 0
+fi
+
+pkgs=$(echo "$gofiles" | xargs -n1 dirname | sort -u | sed 's#^#./#')
+echo "Running golangci-lint on: $pkgs"
+if ! "$GCL" run $pkgs; then
+  echo "✗ golangci-lint found issues. Commit aborted."
+  exit 1
+fi
+
+echo "✓ pre-commit checks passed"
