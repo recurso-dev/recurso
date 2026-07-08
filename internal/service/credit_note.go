@@ -318,8 +318,11 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 	// Optimization: Fetch all needed customers in one go if this becomes slow.
 	// For now, simple loop is fine for MVP.
 	for _, cn := range cns {
-		customer, _ := s.customerRepo.GetByID(ctx, cn.CustomerID)
-		if customer != nil {
+		customer, err := s.customerRepo.GetByID(ctx, cn.CustomerID)
+		if err != nil {
+			s.logger.Warn("credit note list: customer hydration failed",
+				"credit_note_id", cn.ID, "customer_id", cn.CustomerID, "error", err)
+		} else if customer != nil {
 			cn.Customer = customer
 		}
 	}

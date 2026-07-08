@@ -563,9 +563,18 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		return nil, fmt.Errorf("subscription not found for tenant")
 	}
 
-	// Get customer and plan info for notification
-	customer, _ := s.customerRepo.GetByID(ctx, sub.CustomerID)
-	plan, _ := s.planRepo.GetByID(ctx, sub.PlanID)
+	// Get customer and plan info for notification (best-effort — the cancel
+	// still succeeds if these fail; the notification fields just stay blank).
+	customer, err := s.customerRepo.GetByID(ctx, sub.CustomerID)
+	if err != nil {
+		s.logger.Warn("cancel: customer lookup failed; notification fields may be blank",
+			"subscription_id", sub.ID, "error", err)
+	}
+	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		s.logger.Warn("cancel: plan lookup failed; notification fields may be blank",
+			"subscription_id", sub.ID, "error", err)
+	}
 
 	now := time.Now().UTC()
 

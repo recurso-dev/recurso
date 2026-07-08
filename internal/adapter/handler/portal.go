@@ -57,7 +57,10 @@ func (h *PortalHandler) ShowDashboard(c *gin.Context) {
 	}
 
 	// Fetch Invoices using GetByCustomerID (This is what the original did)
-	invoices, _ := h.invoiceRepo.GetByCustomerID(c.Request.Context(), custID)
+	invoices, err := h.invoiceRepo.GetByCustomerID(c.Request.Context(), custID)
+	if err != nil {
+		log.Printf("Error fetching invoices for portal dashboard: %v", err)
+	}
 
 	// View Model
 	type InvoiceVM struct {
