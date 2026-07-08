@@ -1,6 +1,6 @@
 # Design: Per-product HSN codes & itemized invoice tax
 
-**Status:** Proposed · **Author:** engineering · **Scope:** India GST correctness
+**Status:** Phase 1 SHIPPED (migration 000070) · Phases 2–3 proposed · **Scope:** India GST correctness
 **Related:** [[cloud-dogfooding-runbook]], the correctness-sweep fixes (MRR, invoice amounts)
 
 ## Summary
@@ -77,36 +77,36 @@ This doc scopes that work and breaks **Phase 1** into concrete tasks.
 
 Each task lists acceptance criteria (AC). Money-path work → every task ships with tests.
 
-- [ ] **1.1 — `invoice_items` table + domain.** Migration `invoice_items`
+- [x] **1.1 — `invoice_items` table + domain.** Migration `invoice_items`
       (id, invoice_id FK CASCADE, description, hsn_code, quantity, unit_amount,
       amount, tax_rate, cgst_amount, sgst_amount, igst_amount, taxable_amount,
       created_at). `domain.InvoiceItem` + `[]InvoiceItem` on `domain.Invoice`
       (json `line_items`, omitempty).
       **AC:** up+down migration valid; domain compiles; no behavior change yet.
-- [ ] **1.2 — `InvoiceItemRepository`.** Port + SQL repo: bulk `Create([]*InvoiceItem)`
+- [x] **1.2 — `InvoiceItemRepository`.** Port + SQL repo: bulk `Create([]*InvoiceItem)`
       in the invoice's tx, `ListByInvoiceID`. Tenant-scoped via the parent invoice.
       **AC:** DB-backed test (create N items, read back, cascade-delete with invoice).
-- [ ] **1.3 — Line accumulator in generation.** Introduce a small in-memory
+- [x] **1.3 — Line accumulator in generation.** Introduce a small in-memory
       `lineBuilder` the gen paths append to (description, hsn, qty, unit, amount,
       and the per-line tax already computed). Refactor `invoice.go`'s existing
       base+add-on loop to record lines instead of only summing.
       **AC:** recurring invoice for base + 2 add-ons yields 3 line rows whose
       amounts+tax sum exactly to the invoice `subtotal`/`tax_amount`/`total`.
-- [ ] **1.4 — Persist lines on invoice create.** In each of the ~6 gen sites, write
+- [x] **1.4 — Persist lines on invoice create.** In each of the ~6 gen sites, write
       the accumulated items in the same tx as the invoice. Single-amount paths
       (gift/mandate/quote) emit one line. HSN = tenant SAC (Phase-1 default).
       **AC:** every newly-created invoice has ≥1 line item; totals reconcile;
       existing invoice tests stay green.
-- [ ] **1.5 — Return line items in the API.** Invoice GET/list hydrate `line_items`
+- [x] **1.5 — Return line items in the API.** Invoice GET/list hydrate `line_items`
       (like quotes). New reads via the repo; keep it lazy/optional if list perf matters.
       **AC:** `GET /v1/invoices` and the single-invoice response include `line_items`;
       the dashboard InvoiceDetail can render them (follow-up UI, not blocking).
-- [ ] **1.6 — Wire real lines into the e-invoice.** In `gsp/schema.go`, build
+- [x] **1.6 — Wire real lines into the e-invoice.** In `gsp/schema.go`, build
       `ItemList` from the invoice's line items when present; keep the synthetic
       single-line fallback ONLY for legacy invoices with no items.
       **AC:** an itemized invoice produces an `ItemList` with one `ItemDtls` per
       line (real `HsnCd`), and per-item tax sums to the header tax.
-- [ ] **1.7 — Regression + reconciliation tests.** A test asserting, across
+- [x] **1.7 — Regression + reconciliation tests.** A test asserting, across
       subscription/proration/gift/mandate paths, the invariant
       `Σ line.amount == subtotal` and `Σ line.tax == tax_amount` (no rounding drift),
       plus the e-invoice item-sum invariant.
