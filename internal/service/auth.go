@@ -68,6 +68,11 @@ type AuthService struct {
 	mailer      passwordResetEmailer
 	appBaseURL  string
 	logger      *slog.Logger
+
+	// Phase 3 dependency (OAuth social login). Configured via ConfigureOAuth so
+	// the base constructor and existing callers stay unchanged; LoginWithOAuth
+	// guards against nil.
+	oauthIdentities port.OAuthIdentityRepository
 }
 
 func NewAuthService(users port.UserRepository, sessions port.SessionRepository, tenants tenantRegistrar, sessionTTL time.Duration) *AuthService {
@@ -139,6 +144,14 @@ func (s *AuthService) openSession(ctx context.Context, user *domain.User, userAg
 		return "", fmt.Errorf("failed to open session: %w", err)
 	}
 	return raw, nil
+}
+
+// OpenSessionForUser creates and persists a session for user and returns the
+// raw session token, using the exact Phase 1 session path. Exposed so the OAuth
+// and SAML SSO login flows issue an identical recurso_session without
+// duplicating session creation.
+func (s *AuthService) OpenSessionForUser(ctx context.Context, user *domain.User, userAgent string) (string, error) {
+	return s.openSession(ctx, user, userAgent)
 }
 
 func truncate(s string, n int) string {

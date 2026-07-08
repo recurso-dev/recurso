@@ -4989,6 +4989,183 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
 
+  # --- Phase 3 auth: OAuth social login (Google + GitHub) ---
+  /auth/oauth/providers:
+    get:
+      tags: [Auth]
+      summary: List social-login providers and whether each is enabled
+      description: >
+        Returns every provider this build understands with an `enabled` flag. A
+        provider is enabled only when its client id AND secret env vars are set
+        (GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET, GITHUB_CLIENT_ID/GITHUB_CLIENT_SECRET).
+        The dashboard uses this to show/hide the social buttons.
+      responses:
+        '200':
+          description: Provider list.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/OAuthProviderStatus' }
+  /auth/oauth/{provider}/start:
+    get:
+      tags: [Auth]
+      summary: Begin an OAuth login (redirect to the provider)
+      description: >
+        Generates a CSRF `state` and a PKCE verifier, binds them into a
+        short-lived signed httpOnly cookie (`recurso_oauth_state`, scoped to
+        /auth/oauth), and 302-redirects to the provider's authorize URL. Unknown
+        or disabled providers return 404.
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [google, github] } }
+      responses:
+        '302':
+          description: Redirect to the provider's authorize URL. Sets the state cookie.
+        '404': { $ref: '#/components/responses/NotFound' }
+  /auth/oauth/{provider}/callback:
+    get:
+      tags: [Auth]
+      summary: OAuth callback (provider redirects here)
+      description: >
+        Validates `state` against the cookie (constant-time), exchanges the code
+        with PKCE, fetches userinfo and requires a verified email (Google:
+        email_verified==true; GitHub: a primary verified email). Then
+        find-or-create: (1) an existing identity logs in; (2) a matching verified
+        email links a new identity and logs in; (3) a brand-new email creates a
+        tenant + owner user. On success sets the `recurso_session` cookie and
+        302s to `{DASHBOARD_URL}/`. On failure 302s to
+        `{DASHBOARD_URL}/login?error=oauth` (never an open redirect). A state
+        mismatch returns 403.
+      parameters:
+        - { name: provider, in: path, required: true, schema: { type: string, enum: [google, github] } }
+        - { name: code, in: query, required: false, schema: { type: string } }
+        - { name: state, in: query, required: false, schema: { type: string } }
+      responses:
+        '302':
+          description: Redirect to the dashboard on success, or to the login error page on failure. Sets the session cookie on success.
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # --- Phase 3 auth: SAML SSO (per-tenant admin config + SP endpoints) ---
+  /v1/sso/connection:
+    get:
+      tags: [Auth]
+      summary: Get the caller tenant's SAML SSO connection
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The tenant's SSO connection.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SSOConnection' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Auth]
+      summary: Create or update the tenant's SAML IdP configuration (owner/admin only)
+      description: >
+        Upserts the tenant's IdP config. Provide either `idp_metadata_xml`, or
+        all of `idp_entity_id` + `idp_sso_url` + `idp_certificate`. Enabling a
+        connection that is not fully configured is rejected. Members get 403.
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SSOConnectionUpsertRequest' }
+      responses:
+        '200':
+          description: The upserted connection.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: '#/components/schemas/SSOConnection' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Auth]
+      summary: Delete the tenant's SAML SSO connection (owner/admin only)
+      security:
+        - sessionCookie: []
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Connection removed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /auth/saml/{tenantID}/metadata:
+    get:
+      tags: [Auth]
+      summary: SP metadata XML for a tenant
+      description: Returns the Service Provider metadata document (application/samlmetadata+xml). 404 when the tenant has no SSO connection.
+      parameters:
+        - { name: tenantID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: SP metadata XML.
+          content:
+            application/samlmetadata+xml:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /auth/saml/{tenantID}/login:
+    get:
+      tags: [Auth]
+      summary: SP-initiated SAML login (redirect to the IdP)
+      description: 302-redirects to the IdP with a SAML AuthnRequest when the tenant's connection is enabled; 404 otherwise.
+      parameters:
+        - { name: tenantID, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '302':
+          description: Redirect to the IdP.
+        '404': { $ref: '#/components/responses/NotFound' }
+  /auth/saml/{tenantID}/acs:
+    post:
+      tags: [Auth]
+      summary: Assertion Consumer Service (IdP posts the SAMLResponse here)
+      description: >
+        Validates the SAMLResponse against the tenant's IdP certificate, extracts
+        the email, and maps it to an EXISTING user in the tenant (no JIT
+        provisioning). On success sets the `recurso_session` cookie and 302s to
+        the dashboard. Unknown email → 403; disabled/unconfigured tenant → 404;
+        invalid assertion → 401.
+      parameters:
+        - { name: tenantID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                SAMLResponse: { type: string }
+                RelayState: { type: string }
+      responses:
+        '302':
+          description: Redirect to the dashboard on success. Sets the session cookie.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -7113,3 +7290,32 @@ components:
           type: string
           enum: [owner, admin, member]
       required: [id, email, name, role]
+
+    # --- Phase 3 auth schemas ---
+    OAuthProviderStatus:
+      type: object
+      properties:
+        name: { type: string, enum: [google, github] }
+        enabled: { type: boolean }
+      required: [name, enabled]
+    SSOConnection:
+      type: object
+      properties:
+        tenant_id: { type: string, format: uuid }
+        idp_entity_id: { type: string }
+        idp_sso_url: { type: string }
+        idp_certificate: { type: string, description: Base64/PEM X.509 signing certificate. }
+        idp_metadata_xml: { type: string, description: Optional full IdP metadata; takes precedence over the discrete fields. }
+        enabled: { type: boolean }
+        configured: { type: boolean, description: Whether the connection has enough IdP detail to attempt a login. }
+        sp_metadata_url: { type: string, description: Public SP metadata URL to hand to the IdP. }
+        sp_acs_url: { type: string, description: Public SP Assertion Consumer Service URL. }
+      required: [tenant_id, enabled, configured]
+    SSOConnectionUpsertRequest:
+      type: object
+      properties:
+        idp_entity_id: { type: string }
+        idp_sso_url: { type: string }
+        idp_certificate: { type: string }
+        idp_metadata_xml: { type: string }
+        enabled: { type: boolean }

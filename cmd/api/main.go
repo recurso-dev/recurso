@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"errors"
 	"fmt"
 	"log"
@@ -648,6 +649,56 @@ func main() {
 	secureCookie := os.Getenv("APP_ENV") != "development"
 	authHandler := handler.NewAuthHandler(authService, secureCookie)
 	teamHandler := handler.NewTeamHandler(authService)
+
+	// Phase 3 auth: native OAuth social login (Google + GitHub). A provider is
+	// only enabled when BOTH its client id and secret are set; the registry
+	// omits unconfigured providers (their endpoints 404 and /providers reports
+	// them disabled). OAUTH_REDIRECT_BASE_URL is the API's public base used to
+	// build each provider's redirect URL (defaults to BASE_URL).
+	oauthRedirectBase := getEnvDefault("OAUTH_REDIRECT_BASE_URL", baseURL)
+	oauthRegistry := service.NewOAuthRegistry(service.OAuthConfig{
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		RedirectBaseURL:    oauthRedirectBase,
+	})
+	oauthIdentityRepo := db.NewOAuthIdentityRepository(database)
+	authService.ConfigureOAuth(oauthIdentityRepo)
+	// The state cookie is signed with OAUTH_STATE_SECRET; if unset a random
+	// per-boot secret is used (in-flight logins started before a restart will
+	// then fail state validation and safely redirect to the login error page).
+	oauthStateSecret := []byte(os.Getenv("OAUTH_STATE_SECRET"))
+	if len(oauthStateSecret) == 0 {
+		oauthStateSecret = make([]byte, 32)
+		if _, err := cryptorand.Read(oauthStateSecret); err != nil {
+			log.Fatalf("failed to generate OAuth state secret: %v", err)
+		}
+		log.Println("OAUTH_STATE_SECRET not set — using an ephemeral per-boot secret")
+	}
+	oauthHandler := handler.NewOAuthHandler(authService, oauthRegistry, dashboardURL, oauthStateSecret, secureCookie)
+	for _, st := range oauthRegistry.Statuses() {
+		if st.Enabled {
+			log.Printf("OAuth provider enabled: %s", st.Name)
+		}
+	}
+
+	// Phase 3 auth: SAML SSO foundation (crewjam/saml). One IdP connection per
+	// tenant; SP endpoints are per-tenant and feature-flagged (404 unless the
+	// tenant's connection is enabled). The SP signing key/cert come from
+	// SAML_SP_KEY / SAML_SP_CERT (PEM); if unset an ephemeral self-signed pair is
+	// generated at boot (fine for bringing the SP up — a stable env pair is
+	// recommended before certifying against a real IdP).
+	ssoConnectionRepo := db.NewSSOConnectionRepository(database)
+	spKey, spCert, err := service.LoadOrGenerateSPKeyPair(os.Getenv("SAML_SP_KEY"), os.Getenv("SAML_SP_CERT"))
+	if err != nil {
+		log.Fatalf("failed to load SAML SP key/cert: %v", err)
+	}
+	if os.Getenv("SAML_SP_KEY") == "" || os.Getenv("SAML_SP_CERT") == "" {
+		log.Println("SAML_SP_KEY/SAML_SP_CERT not set — generated an ephemeral self-signed SP certificate at boot")
+	}
+	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, spKey, spCert, oauthRedirectBase)
+	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
@@ -825,6 +876,21 @@ func main() {
 	r.POST("/auth/forgot-password", publicLimit, authHandler.ForgotPassword)
 	r.POST("/auth/reset-password", publicLimit, authHandler.ResetPassword)
 
+	// OAuth social login (public). /providers reflects which providers are
+	// configured; /start issues the CSRF-state + PKCE cookie and redirects to
+	// the provider; /callback validates, find-or-creates a user, opens a session
+	// and redirects to the dashboard. Disabled/unknown providers 404.
+	r.GET("/auth/oauth/providers", publicLimit, oauthHandler.Providers)
+	r.GET("/auth/oauth/:provider/start", publicLimit, oauthHandler.Start)
+	r.GET("/auth/oauth/:provider/callback", publicLimit, oauthHandler.Callback)
+
+	// SAML SSO SP endpoints (public, per-tenant by UUID). metadata renders the
+	// SP descriptor; login 302s to the IdP when enabled; acs consumes the
+	// SAMLResponse, maps to an existing tenant user (no JIT), opens a session.
+	r.GET("/auth/saml/:tenantID/metadata", publicLimit, ssoHandler.Metadata)
+	r.GET("/auth/saml/:tenantID/login", publicLimit, ssoHandler.Login)
+	r.POST("/auth/saml/:tenantID/acs", publicLimit, ssoHandler.ACS)
+
 	// Invoice PDF Public (P30 for Demo)
 	r.GET("/v1/invoices/:id/pdf", publicLimit, pdfHandler.DownloadPDF)
 	r.GET("/v1/invoices/:id/preview", publicLimit, pdfHandler.PreviewHTML)
@@ -916,6 +982,12 @@ func main() {
 		v1.GET("/auth/sessions", authHandler.ListSessions)
 		v1.DELETE("/auth/sessions/:id", authHandler.RevokeSession)
 		v1.DELETE("/auth/sessions", authHandler.RevokeOtherSessions)
+
+		// SAML SSO connection config (tenant-scoped; writes gated to owner/admin
+		// inside the handler). The public SP endpoints live under /auth/saml.
+		v1.GET("/sso/connection", ssoHandler.GetConnection)
+		v1.PUT("/sso/connection", ssoHandler.UpsertConnection)
+		v1.DELETE("/sso/connection", ssoHandler.DeleteConnection)
 
 		// Advanced Billing (P15)
 		v1.POST("/subscriptions/:id/charges", advancedBillingHandler.AddUnbilledCharge)
