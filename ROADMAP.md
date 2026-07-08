@@ -165,7 +165,14 @@ access and the demo key never broke.
       onboard the first ~10 by hand. Runbook written
       (docs/cloud-provisioning-runbook.md — Docker Compose per VM); the
       by-hand onboarding is the remaining work.
-- [ ] Recurso bills Recurso Cloud customers (dogfood the product).
+- [x] Recurso bills Recurso Cloud customers (dogfood the product) — the Cloud
+      catalog maps to Recurso primitives ($299 base plan + add-on plans + usage
+      dimensions for overage); `scripts/cloud-billing-setup.sh` provisions it and
+      `docs/cloud-dogfooding-runbook.md` documents the onboarding + monthly
+      usage→overage→invoice flow. Verified end-to-end against a live instance
+      (fixed a latent bug: the add-charge/advance-invoice endpoints never
+      injected `tenant_id` into the request context). 🔒 remaining: live payment
+      keys, final add-on prices, and the production Cloud tenant.
 - [ ] Status page + uptime monitoring. Approach chosen and documented
       (docs/status-page.md — hosted Better Stack now, self-host Uptime Kuma
       later); setup still to execute.

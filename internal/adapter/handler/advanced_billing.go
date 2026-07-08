@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -15,6 +17,18 @@ type AdvancedBillingHandler struct {
 
 func NewAdvancedBillingHandler(svc *service.AdvancedBillingService, invSvc *service.InvoiceService) *AdvancedBillingHandler {
 	return &AdvancedBillingHandler{Service: svc, InvoiceService: invSvc}
+}
+
+// tenantCtx wraps the authenticated tenant into the request context so the
+// repositories (which read domain.TenantIDKey) can scope their queries.
+func (h *AdvancedBillingHandler) tenantCtx(c *gin.Context) (context.Context, bool) {
+	v, exists := c.Get("tenant_id")
+	tenantID, ok := v.(uuid.UUID)
+	if !exists || !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return nil, false
+	}
+	return context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID), true
 }
 
 type AddUnbilledChargeRequest struct {
@@ -37,7 +51,11 @@ func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
 		return
 	}
 
-	charge, err := h.Service.AddUnbilledCharge(c.Request.Context(), subID, req.Amount, req.Currency, req.Description)
+	ctx, ok := h.tenantCtx(c)
+	if !ok {
+		return
+	}
+	charge, err := h.Service.AddUnbilledCharge(ctx, subID, req.Amount, req.Currency, req.Description)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
@@ -81,7 +99,11 @@ func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {
 		return
 	}
 
-	inv, err := h.InvoiceService.GenerateAdvanceInvoice(c.Request.Context(), subID, req.Periods)
+	ctx, ok := h.tenantCtx(c)
+	if !ok {
+		return
+	}
+	inv, err := h.InvoiceService.GenerateAdvanceInvoice(ctx, subID, req.Periods)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
