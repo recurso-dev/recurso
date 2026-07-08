@@ -23,9 +23,27 @@ if [ ! -x "$GCL" ]; then
   exit 0
 fi
 
-pkgs=$(echo "$gofiles" | xargs -n1 dirname | sort -u | sed 's#^#./#')
-echo "Running golangci-lint on: $pkgs"
-if ! "$GCL" run $pkgs; then
+# Resolve each staged file to (module_root|package_dir_relative_to_module) so
+# nested modules (e.g. sdk/go) are linted from their own root — golangci-lint
+# can't typecheck a package that lives outside the module it's invoked in.
+resolve() {
+  d=$(dirname "$1")
+  m="$d"
+  while [ "$m" != "." ] && [ ! -f "$m/go.mod" ]; do m=$(dirname "$m"); done
+  if [ "$d" = "$m" ]; then rel="."
+  elif [ "$m" = "." ]; then rel="./$d"
+  else rel="./${d#"$m"/}"; fi
+  echo "$m|$rel"
+}
+
+pairs=$(for f in $gofiles; do resolve "$f"; done | sort -u)
+fail=0
+for m in $(echo "$pairs" | cut -d'|' -f1 | sort -u); do
+  pkgs=$(echo "$pairs" | grep "^$m|" | cut -d'|' -f2 | sort -u)
+  echo "golangci-lint in '${m}' on: $(echo $pkgs)"
+  if ! ( cd "$m" && "$GCL" run $pkgs ); then fail=1; fi
+done
+if [ "$fail" -eq 1 ]; then
   echo "✗ golangci-lint found issues. Commit aborted."
   exit 1
 fi
