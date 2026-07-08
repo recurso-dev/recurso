@@ -49,7 +49,7 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
           </SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="space-y-6 px-6 py-6">
           {/* Redemptions progress — only when the coupon has a redemption cap */}
           {hasCap && (
             <div className="space-y-3">

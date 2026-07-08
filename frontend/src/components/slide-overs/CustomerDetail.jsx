@@ -68,7 +68,7 @@ const CustomerDetail = ({ customer, isOpen, onClose }) => {
           <SheetTitle>Customer details</SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="space-y-6 px-6 py-6">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="truncate text-base font-semibold text-foreground">

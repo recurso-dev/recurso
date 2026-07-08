@@ -38,7 +38,7 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
           </SheetTitle>
         </SheetHeader>
 
-        <div className="mt-6 space-y-6">
+        <div className="space-y-6 px-6 py-6">
           <div className="flex items-end justify-between gap-4">
             <div>
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
