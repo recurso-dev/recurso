@@ -55,6 +55,26 @@ function Field({ label, children }) {
   );
 }
 
+// A single line in the amount breakdown box.
+function Row({ label, value, strong, danger, border }) {
+  return (
+    <div
+      className={
+        "flex justify-between" +
+        (border ? " border-t border-border pt-1.5" : "") +
+        (strong
+          ? " font-semibold text-foreground"
+          : danger
+            ? " font-medium text-red-600"
+            : " text-muted-foreground")
+      }
+    >
+      <span>{label}</span>
+      <span className="tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -129,6 +149,66 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
                 {formatCurrency(invoice.total, invoice.currency)}
               </dd>
             </div>
+
+            {/* Amount breakdown: subtotal, GST split, total, paid, due */}
+            <div className="space-y-1.5 rounded-md border border-border bg-zinc-50 p-4 text-sm">
+              <Row
+                label="Subtotal"
+                value={formatCurrency(invoice.subtotal, invoice.currency)}
+              />
+              {invoice.igst_amount > 0 && (
+                <Row
+                  label="IGST"
+                  value={formatCurrency(invoice.igst_amount, invoice.currency)}
+                />
+              )}
+              {invoice.cgst_amount > 0 && (
+                <Row
+                  label="CGST"
+                  value={formatCurrency(invoice.cgst_amount, invoice.currency)}
+                />
+              )}
+              {invoice.sgst_amount > 0 && (
+                <Row
+                  label="SGST"
+                  value={formatCurrency(invoice.sgst_amount, invoice.currency)}
+                />
+              )}
+              {!(
+                invoice.igst_amount > 0 ||
+                invoice.cgst_amount > 0 ||
+                invoice.sgst_amount > 0
+              ) &&
+                invoice.tax_amount > 0 && (
+                  <Row
+                    label="Tax"
+                    value={formatCurrency(invoice.tax_amount, invoice.currency)}
+                  />
+                )}
+              {invoice.tds_amount > 0 && (
+                <Row
+                  label="TDS withheld"
+                  value={`−${formatCurrency(invoice.tds_amount, invoice.currency)}`}
+                />
+              )}
+              <Row
+                label="Total"
+                value={formatCurrency(invoice.total, invoice.currency)}
+                strong
+                border
+              />
+              <Row
+                label="Amount paid"
+                value={formatCurrency(invoice.amount_paid, invoice.currency)}
+              />
+              <Row
+                label="Amount due"
+                value={formatCurrency(invoice.amount_due, invoice.currency)}
+                strong={!(invoice.amount_due > 0)}
+                danger={invoice.amount_due > 0}
+              />
+            </div>
+
             <Field label="Customer ID">
               <span className="font-mono">{invoice.customer_id}</span>
             </Field>
