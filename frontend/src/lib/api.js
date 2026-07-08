@@ -56,6 +56,14 @@ export const endpoints = {
   getSessions: () => api.get('/auth/sessions'),
   revokeSession: (id) => api.delete(`/auth/sessions/${id}`),
   revokeOtherSessions: () => api.delete('/auth/sessions'),
+  // --- OAuth social login (public) ---
+  // Which providers are configured on this server. Buttons link (full-page
+  // redirect, not axios) to `${API_ROOT}/auth/oauth/{name}/start`.
+  getOAuthProviders: () => axios.get(`${API_ROOT}/auth/oauth/providers`),
+  // --- SAML SSO connection (authed, owner/admin) ---
+  getSSOConnection: () => api.get('/sso/connection'),
+  updateSSOConnection: (data) => api.put('/sso/connection', data),
+  deleteSSOConnection: () => api.delete('/sso/connection'),
   // --- Team members (tenant-scoped) ---
   getUsers: () => api.get('/users'),
   createUser: (data) => api.post('/users', data),

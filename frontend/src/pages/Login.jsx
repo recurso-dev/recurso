@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { Layers, LogIn, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 
-import { API_BASE } from "@/lib/api";
+import { API_BASE, API_ROOT, endpoints } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,23 @@ export default function Login() {
   const [mfaToken, setMfaToken] = useState(null);
   const [code, setCode] = useState("");
 
+  // Enabled OAuth providers (Google/GitHub) — only shown if the server has
+  // them configured. The buttons full-page-redirect to the start endpoint.
+  const [providers, setProviders] = useState([]);
+  const [searchParams] = useSearchParams();
+
   const { login, loginMfa, loginWithApiKey } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    endpoints
+      .getOAuthProviders()
+      .then((res) => setProviders((res.data?.providers || []).filter((p) => p.enabled)))
+      .catch(() => setProviders([]));
+    if (searchParams.get("error") === "oauth") {
+      setError("Social sign-in failed. Please try again or use your email.");
+    }
+  }, [searchParams]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -162,6 +177,7 @@ export default function Login() {
                 </button>
               </form>
             ) : !apiKeyMode ? (
+              <>
               <form onSubmit={handleLogin} className="space-y-5">
                 <FormField label="Email" htmlFor="email" required>
                   <Input
@@ -206,6 +222,34 @@ export default function Login() {
                   {checking ? "Signing in…" : "Sign in"}
                 </Button>
               </form>
+
+              {providers.length > 0 && (
+                <div className="mt-5">
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-card px-2 text-muted-foreground">
+                        or continue with
+                      </span>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {providers.map((p) => (
+                      <a
+                        key={p.name}
+                        href={`${API_ROOT}/auth/oauth/${p.name}/start`}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-input bg-white px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
+                      >
+                        Continue with{" "}
+                        {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              </>
             ) : (
               <form onSubmit={handleApiKeyLogin} className="space-y-5">
                 <FormField label="API secret key" htmlFor="apiKey" required>

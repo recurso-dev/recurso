@@ -456,7 +456,196 @@ function SessionsSection() {
   );
 }
 
+function SSOSection() {
+  const [conn, setConn] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    idp_entity_id: "",
+    idp_sso_url: "",
+    idp_certificate: "",
+    enabled: false,
+  });
+
+  const apply = (c) => {
+    setConn(c);
+    setForm({
+      idp_entity_id: c?.idp_entity_id || "",
+      idp_sso_url: c?.idp_sso_url || "",
+      idp_certificate: c?.idp_certificate || "",
+      enabled: !!c?.enabled,
+    });
+  };
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const res = await endpoints.getSSOConnection();
+      apply(res.data?.data || res.data);
+    } catch {
+      // 404 = not configured yet; keep the empty form (sp_* URLs arrive on save)
+      setConn(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await endpoints.updateSSOConnection(form);
+      apply(res.data?.data || res.data);
+      toast.success("SSO connection saved.");
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.error?.message || "Couldn't save the SSO connection."
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!confirm("Remove the SSO connection?")) return;
+    setSaving(true);
+    try {
+      await endpoints.deleteSSOConnection();
+      apply(null);
+      toast.success("SSO connection removed.");
+    } catch {
+      toast.error("Couldn't remove the SSO connection.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 text-base">
+          <KeyRound className="h-4 w-4 text-muted-foreground" />
+          Single sign-on (SAML)
+          {conn?.enabled && (
+            <Badge variant="success" className="ml-1">
+              Enabled
+            </Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-sm text-muted-foreground">
+          Let your team sign in through your identity provider (Okta, Azure AD,
+          Google Workspace). Users must already exist in this workspace — SSO
+          matches them by email.
+        </p>
+
+        {loading ? (
+          <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+          </div>
+        ) : (
+          <>
+            {/* Service-provider details to hand to the IdP */}
+            {(conn?.sp_metadata_url || conn?.sp_acs_url) && (
+              <div className="space-y-3 rounded-md border border-border bg-zinc-50 p-4">
+                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Give these to your identity provider
+                </p>
+                {[
+                  ["ACS (Reply) URL", conn.sp_acs_url],
+                  ["SP metadata URL", conn.sp_metadata_url],
+                ].map(([label, val]) => (
+                  <div key={label} className="space-y-1">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 truncate rounded bg-white px-2 py-1 font-mono text-xs">
+                        {val}
+                      </code>
+                      <CopyButton value={val} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={save} className="space-y-4">
+              <FormField label="IdP Entity ID" htmlFor="idp-entity">
+                <Input
+                  id="idp-entity"
+                  value={form.idp_entity_id}
+                  onChange={(e) =>
+                    setForm({ ...form, idp_entity_id: e.target.value })
+                  }
+                  placeholder="https://idp.example.com/metadata"
+                />
+              </FormField>
+              <FormField label="IdP SSO URL" htmlFor="idp-sso">
+                <Input
+                  id="idp-sso"
+                  value={form.idp_sso_url}
+                  onChange={(e) =>
+                    setForm({ ...form, idp_sso_url: e.target.value })
+                  }
+                  placeholder="https://idp.example.com/sso"
+                />
+              </FormField>
+              <FormField label="IdP X.509 certificate (PEM)" htmlFor="idp-cert">
+                <textarea
+                  id="idp-cert"
+                  value={form.idp_certificate}
+                  onChange={(e) =>
+                    setForm({ ...form, idp_certificate: e.target.value })
+                  }
+                  rows={4}
+                  placeholder="-----BEGIN CERTIFICATE-----&#10;…&#10;-----END CERTIFICATE-----"
+                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </FormField>
+              <label className="flex items-center gap-2 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(e) =>
+                    setForm({ ...form, enabled: e.target.checked })
+                  }
+                  className="h-4 w-4 rounded border-input accent-emerald-600"
+                />
+                Enable SSO for this workspace
+              </label>
+              <div className="flex gap-2">
+                <Button type="submit" disabled={saving}>
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Save connection
+                </Button>
+                {conn?.configured && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={remove}
+                    disabled={saving}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Remove
+                  </Button>
+                )}
+              </div>
+            </form>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function Security() {
+  const { user } = useAuth();
+  const canManageSSO = user?.role === "owner" || user?.role === "admin";
+
   return (
     <div>
       <PageHeader
@@ -466,6 +655,7 @@ export default function Security() {
       <div className="max-w-3xl space-y-6">
         <MfaSection />
         <SessionsSection />
+        {canManageSSO && <SSOSection />}
       </div>
     </div>
   );
