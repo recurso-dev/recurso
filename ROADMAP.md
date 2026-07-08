@@ -116,6 +116,12 @@ can sign off on the output.
       PDF per-line. Reconciliation-invariant tested; dashboard renders line
       items. Remaining is external-only: IRP-sandbox certification of the
       itemized e-invoice payload (founder/ops). `docs/design-per-product-hsn.md`.
+- [ ] **US sales-tax nexus depth** — collect US tax only where the seller has
+      nexus (declared physical/voluntary states; Phase 2 adds economic-nexus
+      threshold tracking + alerts). Native, works with or without TaxJar. Phase 1
+      (config + gating) is safe (no state-rule data); Phase 2's threshold dataset
+      needs a US sales-tax pro to certify (compliance boundary). Design + Phase 1
+      tasks: `docs/design-us-nexus.md`.
 
 ### Authentication & Access (dashboard)
 
