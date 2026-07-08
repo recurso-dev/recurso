@@ -236,6 +236,109 @@ func TestReconcile_MandateDebit(t *testing.T) {
 	reconcileInvoice(t, invRepo.created)
 }
 
+// Phase 2 — per-line HSN rates: a base plan at HSN 998314 (18%) plus an add-on
+// plan at HSN 9972 (12%) must produce two lines taxed at DIFFERENT rates, each
+// line.tax == round(line.amount × its rate), and the header tax_amount == the
+// sum. This is the compliance behaviour Phase 2 delivers.
+func TestReconcile_MultiRate_PerLineHSN(t *testing.T) {
+	tenantID := uuid.New()
+	customerID := uuid.New()
+	subID := uuid.New()
+	basePlanID, addonID := uuid.New(), uuid.New()
+
+	// Base plan: SaaS at 998314 -> 18%. Add-on plan: 9972 -> 12%.
+	base := &domain.Plan{ID: basePlanID, Name: "SaaS", HSNCode: "998314", Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}}
+	addon := &domain.Plan{ID: addonID, Name: "Real-estate add-on", HSNCode: "9972", Prices: []domain.Price{{Amount: 50000, Currency: "INR"}}}
+	addons := []*domain.SubscriptionAddon{
+		{ID: uuid.New(), TenantID: tenantID, SubscriptionID: subID, PlanID: addonID, Quantity: 1},
+	}
+
+	svc, _ := invoiceServiceWithAddons(base, []*domain.Plan{addon}, addons)
+	svc.CustomerRepo = &mockCustomerRepoForInvAmt{customer: &domain.Customer{
+		ID: customerID, PlaceOfSupply: domain.StringPtr("KA"), // inter-state vs org TN -> IGST
+	}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), &domain.Subscription{
+		ID: subID, TenantID: tenantID, CustomerID: customerID, PlanID: basePlanID,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(inv.LineItems) != 2 {
+		t.Fatalf("expected 2 line items, got %d", len(inv.LineItems))
+	}
+
+	// Base line: 100000 @ 18% = 18000. Add-on line: 50000 @ 12% = 6000.
+	base0, addon1 := inv.LineItems[0], inv.LineItems[1]
+	if base0.HSNCode != "998314" || base0.TaxRate != 18 {
+		t.Errorf("base line HSN/rate = %q/%v, want 998314/18", base0.HSNCode, base0.TaxRate)
+	}
+	if addon1.HSNCode != "9972" || addon1.TaxRate != 12 {
+		t.Errorf("add-on line HSN/rate = %q/%v, want 9972/12", addon1.HSNCode, addon1.TaxRate)
+	}
+
+	// Each line's tax == round(amount × rate).
+	if got := base0.IGSTAmount; got != 18000 {
+		t.Errorf("base line IGST = %d, want 18000 (100000×18%%)", got)
+	}
+	if got := addon1.IGSTAmount; got != 6000 {
+		t.Errorf("add-on line IGST = %d, want 6000 (50000×12%%)", got)
+	}
+
+	// Header aggregates == the sum of the two differently-rated lines.
+	if inv.Subtotal != 150000 {
+		t.Errorf("Subtotal = %d, want 150000", inv.Subtotal)
+	}
+	if inv.TaxAmount != 24000 || inv.IGSTAmount != 24000 {
+		t.Errorf("TaxAmount/IGST = %d/%d, want 24000/24000 (18000+6000)", inv.TaxAmount, inv.IGSTAmount)
+	}
+	if inv.Total != 174000 {
+		t.Errorf("Total = %d, want 174000", inv.Total)
+	}
+
+	// Structural invariant still holds across mixed rates.
+	reconcileInvoice(t, inv)
+}
+
+// Phase 2 backward-compat: a plan with an EMPTY hsn_code must tax exactly as
+// today — at the tenant SAC default (998314 -> 18%). Setting the plan's HSN
+// explicitly to the default SAC must produce identical numbers, proving empty
+// HSN == tenant-SAC behaviour with no change.
+func TestReconcile_EmptyHSN_EqualsTenantSAC(t *testing.T) {
+	newSvc := func(planHSN string) *domain.Invoice {
+		tenantID, customerID, subID, planID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+		plan := &domain.Plan{ID: planID, Name: "Plan", HSNCode: planHSN, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}}
+		svc, _ := invoiceServiceWithAddons(plan, nil, nil)
+		svc.CustomerRepo = &mockCustomerRepoForInvAmt{customer: &domain.Customer{
+			ID: customerID, PlaceOfSupply: domain.StringPtr("KA"), // IGST
+		}}
+		inv, err := svc.GenerateInvoice(context.Background(), &domain.Subscription{
+			ID: subID, TenantID: tenantID, CustomerID: customerID, PlanID: planID,
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return inv
+	}
+
+	empty := newSvc("")                       // no HSN -> tenant SAC default
+	explicit := newSvc(domain.DefaultSACCode) // 998314 explicitly
+
+	if empty.TaxAmount != 18000 || empty.IGSTAmount != 18000 {
+		t.Errorf("empty-HSN tax = %d/%d, want 18000/18000 (tenant SAC 18%%)", empty.TaxAmount, empty.IGSTAmount)
+	}
+	if empty.TaxAmount != explicit.TaxAmount || empty.Total != explicit.Total {
+		t.Errorf("empty-HSN (tax=%d,total=%d) != explicit-998314 (tax=%d,total=%d)",
+			empty.TaxAmount, empty.Total, explicit.TaxAmount, explicit.Total)
+	}
+	// Empty HSN is still recorded on the line as the default SAC (never blank).
+	if empty.LineItems[0].HSNCode != domain.DefaultSACCode {
+		t.Errorf("empty-HSN line recorded HSN = %q, want %q", empty.LineItems[0].HSNCode, domain.DefaultSACCode)
+	}
+	reconcileInvoice(t, empty)
+}
+
 // 1.7 — e-invoice: per-item tax sums to the invoice header tax, and the
 // synthetic single-line fallback is preserved for legacy (item-less) invoices.
 func TestReconcile_EInvoiceItems(t *testing.T) {

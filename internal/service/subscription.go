@@ -239,7 +239,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	// Jurisdiction-aware tax on the post-discount amount: tenant GST config
 	// (India) or env company defaults decide the engine; buyer location
 	// decides the treatment.
-	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, input.TenantID, customer, price.Currency, total)
+	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, input.TenantID, customer, price.Currency, total, plan.HSNCode)
 	total = total + taxRes.Total
 
 	subID := uuid.New()
@@ -769,7 +769,7 @@ func (s *SubscriptionService) computePlanChangeProration(
 
 	var taxRes InvoiceTax
 	if proration.NetAmount > 0 && customer != nil {
-		taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount)
+		taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount, newPlan.HSNCode)
 	}
 
 	return PlanChangeProration{Proration: proration, Tax: taxRes, Currency: currency, EffectiveDate: now}
@@ -839,7 +839,7 @@ func (s *SubscriptionService) PreviewPlanChange(ctx context.Context, tenantID, s
 	newPrice := newPlan.Prices[0].Amount
 	var nextTax InvoiceTax
 	if newPrice > 0 && customer != nil {
-		nextTax = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, pcp.Currency, newPrice)
+		nextTax = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, pcp.Currency, newPrice, newPlan.HSNCode)
 	}
 
 	return &PlanChangePreview{
@@ -1028,7 +1028,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	end := domain.AddInterval(start, string(plan.IntervalUnit), plan.IntervalCount)
 
 	subtotal := price.Amount
-	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
+	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal, plan.HSNCode)
 	total := subtotal + taxRes.Total
 
 	paymentTerms := sub.PaymentTerms

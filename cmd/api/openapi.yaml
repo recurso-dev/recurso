@@ -5408,6 +5408,12 @@ components:
           minLength: 3
           maxLength: 3
           description: ISO 4217 code.
+        hsn_code:
+          type: string
+          description: >-
+            Optional HSN/SAC code for this plan. Each invoice line for the plan
+            is taxed at this code's GST rate. Empty falls back to the tenant SAC
+            (then the 998314 default).
 
     Plan:
       type: object
@@ -5429,6 +5435,9 @@ components:
           type: integer
         active:
           type: boolean
+        hsn_code:
+          type: string
+          description: HSN/SAC code the plan's invoice lines are taxed at (empty = tenant SAC default).
         created_at:
           type: string
           format: date-time

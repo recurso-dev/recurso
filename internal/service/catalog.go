@@ -31,6 +31,9 @@ type CreatePlanInput struct {
 	IntervalCount int
 	Amount        int64
 	Currency      string
+	// HSNCode is the plan's HSN/SAC code (optional). Empty preserves the
+	// tenant-SAC default at tax-resolution time.
+	HSNCode string
 }
 
 func (s *CatalogService) CreatePlan(ctx context.Context, input CreatePlanInput) (*domain.Plan, error) {
@@ -67,6 +70,7 @@ func (s *CatalogService) CreatePlan(ctx context.Context, input CreatePlanInput) 
 		IntervalUnit:  domain.IntervalUnit(input.IntervalUnit),
 		IntervalCount: input.IntervalCount,
 		Active:        true,
+		HSNCode:       input.HSNCode,
 		CreatedAt:     now,
 		Prices: []domain.Price{
 			{

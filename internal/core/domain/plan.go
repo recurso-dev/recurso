@@ -23,7 +23,11 @@ type Plan struct {
 	IntervalUnit  IntervalUnit `json:"interval_unit"`
 	IntervalCount int          `json:"interval_count"`
 	Active        bool         `json:"active"`
-	CreatedAt     time.Time    `json:"created_at"`
+	// HSNCode is the plan's HSN/SAC code. Each invoice line for this plan is
+	// taxed at this code's GST rate. Empty means "use the tenant SAC" (then the
+	// 998314 default) at tax-resolution time — i.e. Phase-1 behaviour unchanged.
+	HSNCode   string    `json:"hsn_code" db:"hsn_code"`
+	CreatedAt time.Time `json:"created_at"`
 
 	// Relationships
 	Prices []Price `json:"prices,omitempty"`

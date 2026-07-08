@@ -27,12 +27,12 @@ func (r *PlanRepository) Create(ctx context.Context, plan *domain.Plan) error {
 
 	// 1. Insert Plan
 	query := `
-		INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active, hsn_code, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 	`
 	_, err = tx.ExecContext(ctx, query,
 		plan.ID, plan.TenantID, plan.Name, plan.Code,
-		plan.IntervalUnit, plan.IntervalCount, plan.Active, plan.CreatedAt,
+		plan.IntervalUnit, plan.IntervalCount, plan.Active, plan.HSNCode, plan.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert plan: %w", err)
@@ -64,12 +64,12 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 
 	plan := &domain.Plan{}
 	query := `
-		SELECT id, tenant_id, name, code, interval_unit, interval_count, active, created_at
+		SELECT id, tenant_id, name, code, interval_unit, interval_count, active, hsn_code, created_at
 		FROM plans WHERE id = $1 AND tenant_id = $2
 	`
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&plan.ID, &plan.TenantID, &plan.Name, &plan.Code,
-		&plan.IntervalUnit, &plan.IntervalCount, &plan.Active, &plan.CreatedAt,
+		&plan.IntervalUnit, &plan.IntervalCount, &plan.Active, &plan.HSNCode, &plan.CreatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
@@ -105,7 +105,7 @@ func (r *PlanRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code
 
 func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
 	query := `
-		SELECT id, tenant_id, name, code, interval_unit, interval_count, active, created_at
+		SELECT id, tenant_id, name, code, interval_unit, interval_count, active, hsn_code, created_at
 		FROM plans WHERE tenant_id = $1
 	`
 	args := []interface{}{tenantID}
@@ -138,7 +138,7 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 	var plans []*domain.Plan
 	for rows.Next() {
 		var p domain.Plan
-		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Code, &p.IntervalUnit, &p.IntervalCount, &p.Active, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.TenantID, &p.Name, &p.Code, &p.IntervalUnit, &p.IntervalCount, &p.Active, &p.HSNCode, &p.CreatedAt); err != nil {
 			return nil, err
 		}
 

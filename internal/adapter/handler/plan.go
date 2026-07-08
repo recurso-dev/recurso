@@ -26,6 +26,7 @@ type createPlanRequest struct {
 	IntervalCount int    `json:"interval_count" binding:"required,min=1"`
 	Amount        int64  `json:"amount" binding:"required"`
 	Currency      string `json:"currency" binding:"required,len=3"`
+	HSNCode       string `json:"hsn_code"`
 }
 
 func (h *CatalogHandler) CreatePlan(c *gin.Context) {
@@ -49,6 +50,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 		IntervalCount: req.IntervalCount,
 		Amount:        req.Amount,
 		Currency:      req.Currency,
+		HSNCode:       req.HSNCode,
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)

@@ -98,7 +98,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 
 	// Jurisdiction-aware tax: tenant GST config (India) or env company
 	// defaults decide the engine; buyer location decides the treatment.
-	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
+	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal, plan.HSNCode)
 
 	// Running invoice totals seeded from the base line (plan price + unbilled
 	// charges). With no add-ons these stay exactly equal to the base tax, so
@@ -146,7 +146,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 
 			// Tax each add-on line independently to avoid rounding drift from
 			// taxing the aggregate, and to keep the base line untouched.
-			lineTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, lineAmount)
+			lineTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, lineAmount, addonPlan.HSNCode)
 			taxTotal += lineTax.Total
 			igst += lineTax.IGST
 			cgst += lineTax.CGST
@@ -270,7 +270,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
 
-	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal)
+	taxRes := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal, plan.HSNCode)
 	total := subtotal + taxRes.Total
 
 	now := time.Now()

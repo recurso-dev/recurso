@@ -52,7 +52,7 @@ func TestResolveInvoiceTax_INR_IntraState_TenantState(t *testing.T) {
 	}}
 	r := NewTaxResolver(provider, "IN", "TN")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000, "")
 
 	if res.Total != 18000 {
 		t.Errorf("Total = %d, want 18000", res.Total)
@@ -78,7 +78,7 @@ func TestResolveInvoiceTax_INR_IntraState_NumericVsAlphaStateCodes(t *testing.T)
 	}}
 	r := NewTaxResolver(provider, "IN", "KA")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 100000, "")
 
 	if res.CGST != 9000 || res.SGST != 9000 {
 		t.Errorf("CGST/SGST = %d/%d, want 9000/9000 (numeric '33' == alpha 'TN')", res.CGST, res.SGST)
@@ -95,7 +95,7 @@ func TestResolveInvoiceTax_INR_InterState_IGST(t *testing.T) {
 	}}
 	r := NewTaxResolver(provider, "IN", "TN")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000, "")
 
 	if res.IGST != 18000 {
 		t.Errorf("IGST = %d, want 18000 for inter-state", res.IGST)
@@ -118,7 +118,7 @@ func TestResolveInvoiceTax_INR_BillingStateFallback(t *testing.T) {
 		BillingAddress: domain.BillingAddress{Country: "India", State: "Tamil Nadu"},
 	}
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "INR", 100000, "")
 
 	if res.CGST != 9000 || res.SGST != 9000 {
 		t.Errorf("CGST/SGST = %d/%d, want 9000/9000 (billing state fallback)", res.CGST, res.SGST)
@@ -146,7 +146,7 @@ func TestResolveInvoiceTax_IndianSeller_USD_Export_ZeroTax(t *testing.T) {
 				BillingAddress: domain.BillingAddress{Country: "US"},
 			}
 
-			res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900)
+			res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900, "")
 
 			if res.Total != 0 || res.IGST != 0 || res.CGST != 0 || res.SGST != 0 {
 				t.Errorf("tax = %+v, want all zero for export", res)
@@ -172,7 +172,7 @@ func TestResolveInvoiceTax_USSeller_USBuyer_SalesTaxEngine(t *testing.T) {
 		BillingAddress: domain.BillingAddress{Country: "United States", State: "CA"},
 	}
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900, "")
 
 	// Without a wired provider the US engine is still the 0%-rate stub.
 	if res.Total != 0 {
@@ -219,7 +219,7 @@ func TestResolveInvoiceTax_USSeller_LiveProvider_RealSalesTax(t *testing.T) {
 	provider := &mockSalesTaxProvider{rate: 0.0865}
 	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000, "")
 
 	if res.Total != 865 {
 		t.Errorf("Total = %d, want 865 (8.65%% of 10000)", res.Total)
@@ -242,7 +242,7 @@ func TestResolveInvoiceTax_USSeller_ProviderError_DegradesNotFails(t *testing.T)
 	provider := &mockSalesTaxProvider{err: errors.New("taxjar 503")}
 	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000, "")
 
 	if res.Total != 0 {
 		t.Errorf("Total = %d, want 0 (degrade to 0%% on provider error)", res.Total)
@@ -262,8 +262,8 @@ func TestResolveInvoiceTax_USSeller_RatesCachedAcrossInvoices(t *testing.T) {
 	provider := &mockSalesTaxProvider{rate: 0.10}
 	r := NewTaxResolver(&mockGSTConfigProvider{}, "US", "CA").WithSalesTaxProvider(provider)
 
-	first := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000)
-	second := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 5000)
+	first := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 10000, "")
+	second := r.ResolveInvoiceTax(context.Background(), uuid.New(), usCustomer(), "USD", 5000, "")
 
 	if provider.calls != 1 {
 		t.Errorf("provider calls = %d, want 1 (second invoice served from cache)", provider.calls)
@@ -281,7 +281,7 @@ func TestResolveInvoiceTax_USSeller_ForeignBuyer_NoSalesTax(t *testing.T) {
 		BillingAddress: domain.BillingAddress{Country: "India"},
 	}
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "USD", 9900, "")
 
 	if res.Total != 0 {
 		t.Errorf("Total = %d, want 0", res.Total)
@@ -301,7 +301,7 @@ func TestResolveInvoiceTax_EUSeller_DomesticB2C_VAT(t *testing.T) {
 		BillingAddress: domain.BillingAddress{Country: "Germany"},
 	}
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "EUR", 10000, "")
 
 	// Germany standard VAT 19%.
 	if res.Total != 1900 {
@@ -325,7 +325,7 @@ func TestResolveInvoiceTax_EUSeller_CrossBorderB2B_ReverseCharge(t *testing.T) {
 		TaxType:        "business",
 	}
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), customer, "EUR", 10000, "")
 
 	if res.Total != 0 {
 		t.Errorf("Total = %d, want 0 under reverse charge", res.Total)
@@ -372,7 +372,7 @@ func TestResolveInvoiceTax_EU_VIESValid_ReverseCharge(t *testing.T) {
 	val := &mockVATValidator{valid: true, name: "ACME SARL"}
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000, "")
 
 	if res.Total != 0 || res.TaxType != "vat_reverse_charge" {
 		t.Errorf("got Total=%d Type=%q, want 0 / vat_reverse_charge", res.Total, res.TaxType)
@@ -389,7 +389,7 @@ func TestResolveInvoiceTax_EU_VIESInvalid_ChargesVAT(t *testing.T) {
 	val := &mockVATValidator{valid: false}
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000, "")
 
 	// Not eligible for reverse charge -> treated as B2C cross-border, so the
 	// buyer-country (FR, 20%) VAT applies and the invoice is still produced.
@@ -405,7 +405,7 @@ func TestResolveInvoiceTax_EU_VIESUnavailable_DegradesToReverseCharge(t *testing
 	val := &mockVATValidator{err: tax.ErrVATUnavailable}
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000, "")
 
 	// A VIES outage must never fail the invoice: degrade to presence-based
 	// reverse charge with an auditable note.
@@ -421,7 +421,7 @@ func TestResolveInvoiceTax_EU_VIESFormatError_ChargesVAT(t *testing.T) {
 	val := &mockVATValidator{err: tax.ErrVATInvalidFormat}
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000, "")
 
 	if res.Total != 2000 || res.TaxType != "vat" {
 		t.Errorf("got Total=%d Type=%q, want 2000 / vat", res.Total, res.TaxType)
@@ -436,7 +436,7 @@ func TestResolveInvoiceTax_EU_B2BNoVATNumber_ChargesVAT(t *testing.T) {
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
 	// Business buyer (by tax_type) but no VAT number to validate.
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", ""), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", ""), "EUR", 10000, "")
 
 	if res.Total != 2000 || res.TaxType != "vat" {
 		t.Errorf("got Total=%d Type=%q, want 2000 / vat (no number -> VAT charged)", res.Total, res.TaxType)
@@ -452,7 +452,7 @@ func TestResolveInvoiceTax_EU_VIESEnabled_DomesticB2B_NotValidated(t *testing.T)
 	val := &mockVATValidator{valid: true}
 	r := NewTaxResolver(nil, "DE", "").WithVATValidator(val)
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("DE", "DE123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("DE", "DE123456789"), "EUR", 10000, "")
 
 	if res.Total != 1900 || res.TaxType != "vat" {
 		t.Errorf("got Total=%d Type=%q, want 1900 / vat (DE 19%%)", res.Total, res.TaxType)
@@ -467,7 +467,7 @@ func TestResolveInvoiceTax_EU_VIESDisabled_PresenceBasedUnchanged(t *testing.T) 
 	// reverse charge (historical presence-based behaviour is preserved).
 	r := NewTaxResolver(nil, "DE", "")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), euB2BCustomer("FR", "FRXX123456789"), "EUR", 10000, "")
 
 	if res.Total != 0 || res.TaxType != "vat_reverse_charge" {
 		t.Errorf("got Total=%d Type=%q, want 0 / vat_reverse_charge", res.Total, res.TaxType)
@@ -500,7 +500,7 @@ func TestResolveInvoiceTax_ConfigLookupError_EnvFallback(t *testing.T) {
 	provider := &mockGSTConfigProvider{err: errors.New("db down")}
 	r := NewTaxResolver(provider, "IN", "TN")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 100000, "")
 
 	// Env default TN + POS TN -> intra-state despite the failed lookup.
 	if res.CGST != 9000 || res.SGST != 9000 {
@@ -515,7 +515,7 @@ func TestResolveInvoiceTax_NoConfig_EnvFallback(t *testing.T) {
 	provider := &mockGSTConfigProvider{cfg: nil} // repo returns (nil, nil)
 	r := NewTaxResolver(provider, "IN", "TN")
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("KA"), "INR", 100000, "")
 
 	if res.IGST != 18000 {
 		t.Errorf("IGST = %d, want 18000 (env TN vs POS KA is inter-state)", res.IGST)
@@ -525,7 +525,7 @@ func TestResolveInvoiceTax_NoConfig_EnvFallback(t *testing.T) {
 func TestResolveInvoiceTax_NilProvider_EnvDefaults(t *testing.T) {
 	r := NewTaxResolver(nil, "", "") // empty defaults -> IN/TN
 
-	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 50000)
+	res := r.ResolveInvoiceTax(context.Background(), uuid.New(), inCustomer("TN"), "INR", 50000, "")
 
 	if res.Total != 9000 {
 		t.Errorf("Total = %d, want 9000 (18%% of 50000)", res.Total)

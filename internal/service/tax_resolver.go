@@ -98,10 +98,15 @@ func (r *TaxResolver) WithVATValidator(v tax.VATValidator) *TaxResolver {
 	return r
 }
 
-// ResolveInvoiceTax computes the tax for one invoice amount (lowest currency
-// unit). It never returns an error: tax resolution problems degrade to zero
-// tax with a log line rather than blocking invoice generation.
-func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64) InvoiceTax {
+// ResolveInvoiceTax computes the tax for one invoice line/amount (lowest
+// currency unit). It never returns an error: tax resolution problems degrade to
+// zero tax with a log line rather than blocking invoice generation.
+//
+// hsn is the per-line HSN/SAC code (Phase 2). For the India GST path a non-empty
+// hsn is used as the code the rate is looked up against; an empty hsn falls back
+// to the tenant SAC (then the 998314 default) — i.e. exactly the Phase-1
+// behaviour. The US and EU engines ignore hsn.
+func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64, hsn string) InvoiceTax {
 	sellerCountry, sellerState, cfg := r.sellerJurisdiction(ctx, tenantID)
 
 	engine := tax.NewTaxEngineWithSalesTaxProvider(sellerCountry, normalizeINState(sellerState), r.salesTax)
@@ -114,7 +119,7 @@ func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID,
 	default:
 		// *tax.GSTEngine — both for IN sellers and the factory's default for
 		// unsupported seller countries (India-focused product).
-		return r.resolveIndiaGST(ctx, engine, cfg, customer, currency, amount)
+		return r.resolveIndiaGST(ctx, engine, cfg, customer, currency, amount, hsn)
 	}
 }
 
@@ -151,10 +156,16 @@ func (r *TaxResolver) sellerJurisdiction(ctx context.Context, tenantID uuid.UUID
 
 // resolveIndiaGST applies India GST to INR invoices and zero-rates
 // foreign-currency invoices as exports.
-func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine, cfg *domain.TenantGSTConfig, customer *domain.Customer, currency string, amount int64) InvoiceTax {
+func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine, cfg *domain.TenantGSTConfig, customer *domain.Customer, currency string, amount int64, lineHSN string) InvoiceTax {
+	// Resolve the HSN/SAC the rate is looked up against. The tenant SAC (then the
+	// 998314 default) is the fallback; a non-empty per-line HSN overrides it.
+	// An empty lineHSN therefore reproduces Phase-1 behaviour exactly.
 	hsn := domain.DefaultSACCode
 	if cfg != nil && cfg.SACCode != "" {
 		hsn = cfg.SACCode
+	}
+	if lineHSN != "" {
+		hsn = lineHSN
 	}
 
 	if !strings.EqualFold(strings.TrimSpace(currency), "INR") {
