@@ -1,6 +1,6 @@
 # Design: Per-product HSN codes & itemized invoice tax
 
-**Status:** Phase 1 SHIPPED (migration 000070) · Phases 2–3 proposed · **Scope:** India GST correctness
+**Status:** ALL PHASES SHIPPED (migrations 000070–000072); IRP-sandbox cert of the itemized e-invoice remains (external) · **Scope:** India GST correctness
 **Related:** [[cloud-dogfooding-runbook]], the correctness-sweep fixes (MRR, invoice amounts)
 
 ## Summary

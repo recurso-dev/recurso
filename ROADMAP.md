@@ -107,14 +107,15 @@ can sign off on the output.
 - [x] Bulk operations in the importer (update mode, cancel-sync mode).
 - [x] Customer portal: payment-method update and invoice dispute flows
       (admin dashboard dispute UI is a follow-up).
-- [~] **Per-product HSN codes & itemized invoice tax** — attach an HSN/SAC to
-      each catalog item, itemize invoices, and tax each line at its own rate, so
+- [x] **Per-product HSN codes & itemized invoice tax** — plans/charges carry an
+      HSN/SAC; invoices are itemized and each line is taxed at its own rate, so
       mixed-rate catalogs (SaaS 18% + e-books 5%) are correct and the e-invoice
-      reports real per-line HSN. **Phase 1 SHIPPED** (invoice line items +
-      atomic persistence + e-invoice ItemList from real lines, no rate change;
-      migration 000070, reconciliation-invariant tested). Phase 2 (catalog HSN +
-      per-line rates) and Phase 3 (PDF, backfill, IRP sandbox) remain.
-      Design + tasks: `docs/design-per-product-hsn.md`.
+      reports real per-line HSN + assessable value. **All 3 phases SHIPPED**:
+      P1 line items + atomic persistence (000070), P2 catalog HSN + per-line
+      rates (000071), P3 discount distribution / charges-as-lines (000072) /
+      PDF per-line. Reconciliation-invariant tested; dashboard renders line
+      items. Remaining is external-only: IRP-sandbox certification of the
+      itemized e-invoice payload (founder/ops). `docs/design-per-product-hsn.md`.
 
 ### Authentication & Access (dashboard)
 
