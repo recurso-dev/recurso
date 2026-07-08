@@ -142,11 +142,14 @@ const DefaultGSTRate = 18.0
 
 // TenantGSTConfig holds persisted GST configuration for a tenant
 type TenantGSTConfig struct {
-	TenantID  string  `json:"tenant_id" db:"tenant_id"`
-	GSTIN     string  `json:"gstin" db:"gstin"`
-	StateCode string  `json:"state_code" db:"state_code"`
-	StateName string  `json:"state_name" db:"state_name"`
-	SACCode   string  `json:"sac_code" db:"sac_code"`
+	TenantID  string `json:"tenant_id" db:"tenant_id"`
+	GSTIN     string `json:"gstin" db:"gstin"`
+	StateCode string `json:"state_code" db:"state_code"`
+	StateName string `json:"state_name" db:"state_name"`
+	SACCode   string `json:"sac_code" db:"sac_code"`
+	// GSTRate (percent, e.g. 18) is a FALLBACK: the rate is normally derived
+	// from SACCode via the engine's HSN/SAC map. GSTRate only applies when the
+	// SAC code isn't recognized; 0 leaves the built-in default in place.
 	GSTRate   float64 `json:"gst_rate" db:"gst_rate"`
 	PAN       string  `json:"pan" db:"pan"`
 	LegalName string  `json:"legal_name" db:"legal_name"`

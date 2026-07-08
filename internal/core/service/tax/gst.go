@@ -51,7 +51,7 @@ type TaxResult struct {
 
 // CalculateTax implements port.TaxEngine
 func (e *GSTEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*port.TaxCalculation, error) {
-	rate := e.rateForHSN(req.HSNCode)
+	rate := e.rateForHSN(req.HSNCode, req.FallbackRate)
 
 	// SEZ/Export: 0% tax (zero-rated supply)
 	if req.IsSEZ || req.IsExport {
@@ -105,22 +105,25 @@ func (e *GSTEngine) GetApplicableRate(ctx context.Context, req *port.TaxRequest)
 	if req.IsSEZ || req.IsExport {
 		return 0, nil
 	}
-	return e.rateForHSN(req.HSNCode), nil
+	return e.rateForHSN(req.HSNCode, req.FallbackRate), nil
 }
 
-// rateForHSN looks up the GST rate for an HSN code, checking progressively shorter prefixes
-func (e *GSTEngine) rateForHSN(hsn string) float64 {
-	if hsn == "" {
-		return 0.18 // Default SaaS rate
-	}
-	// Try exact match, then progressively shorter prefixes
+// rateForHSN looks up the GST rate for an HSN code, checking progressively
+// shorter prefixes. When the code isn't recognized, it uses the caller's
+// fallback rate (the tenant's configured gst_rate, as a fraction) if provided,
+// otherwise the built-in SaaS default.
+func (e *GSTEngine) rateForHSN(hsn string, fallback float64) float64 {
+	// Try exact match, then progressively shorter prefixes.
 	for len(hsn) > 0 {
 		if rate, ok := hsnRateMap[hsn]; ok {
 			return rate
 		}
 		hsn = hsn[:len(hsn)-1]
 	}
-	return 0.18 // Default
+	if fallback > 0 {
+		return fallback
+	}
+	return 0.18 // Built-in default (SaaS)
 }
 
 // CalculateTaxLegacy is the backward-compatible function with old signature

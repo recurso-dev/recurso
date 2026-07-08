@@ -174,6 +174,14 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 		}
 	}
 
+	// The tenant's configured gst_rate (a percent) is the fallback the engine
+	// applies only when the SAC/HSN code isn't in its rate map; 0 leaves the
+	// engine's built-in default in place.
+	var fallbackRate float64
+	if cfg != nil && cfg.GSTRate > 0 {
+		fallbackRate = cfg.GSTRate / 100.0
+	}
+
 	calc, err := engine.CalculateTax(ctx, &port.TaxRequest{
 		Amount:       amount,
 		Currency:     currency,
@@ -181,6 +189,7 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 		BuyerState:   buyerState,
 		BuyerCountry: normalizeCountry(customer.BillingAddress.Country),
 		IsBusiness:   isBusinessBuyer(customer),
+		FallbackRate: fallbackRate,
 	})
 	if err != nil || calc == nil {
 		r.logger.Warn("GST calculation failed; invoicing without tax", "error", err)

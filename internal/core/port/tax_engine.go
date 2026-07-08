@@ -16,6 +16,10 @@ type TaxRequest struct {
 	IsSEZ         bool   // Special Economic Zone (India)
 	IsExport      bool   // Export transaction
 	IsRCM         bool   // Reverse Charge Mechanism
+	// FallbackRate is the GST rate (as a fraction, e.g. 0.18) to use when the
+	// HSNCode isn't in the engine's rate map — the tenant's configured
+	// gst_rate. Zero means "use the engine's built-in default".
+	FallbackRate float64
 }
 
 // TaxCalculation contains the computed tax breakdown
