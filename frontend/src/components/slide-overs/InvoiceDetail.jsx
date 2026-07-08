@@ -150,6 +150,37 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
               </dd>
             </div>
 
+            {/* Line items — description, HSN, rate, amount (itemized tax) */}
+            {Array.isArray(invoice.line_items) && invoice.line_items.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                  Line items
+                </p>
+                <div className="space-y-2.5">
+                  {invoice.line_items.map((li, i) => (
+                    <div
+                      key={li.id || i}
+                      className="flex items-start justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm text-foreground">
+                          {li.description || "Item"}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {li.quantity > 1 ? `${li.quantity} × ` : ""}
+                          {li.hsn_code ? `HSN ${li.hsn_code}` : "—"}
+                          {li.tax_rate ? ` · ${li.tax_rate}% GST` : ""}
+                        </p>
+                      </div>
+                      <p className="shrink-0 tabular-nums text-sm text-foreground">
+                        {formatCurrency(li.amount, invoice.currency)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Amount breakdown: subtotal, GST split, total, paid, due */}
             <div className="space-y-1.5 rounded-md border border-border bg-zinc-50 p-4 text-sm">
               <Row
