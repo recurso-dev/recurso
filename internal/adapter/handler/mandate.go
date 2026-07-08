@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -61,7 +62,8 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 		input.SubscriptionID = &subID
 	}
 
-	result, err := h.service.CreateMandate(c.Request.Context(), input)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	result, err := h.service.CreateMandate(ctx, input)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

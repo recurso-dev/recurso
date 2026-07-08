@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -123,7 +125,8 @@ func (h *ReferralHandler) GenerateCode(c *gin.Context) {
 		return
 	}
 
-	code, err := h.referralService.GenerateCode(c.Request.Context(), tenantID.(uuid.UUID), req.CustomerID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
+	code, err := h.referralService.GenerateCode(ctx, tenantID.(uuid.UUID), req.CustomerID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

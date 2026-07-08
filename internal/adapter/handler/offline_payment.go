@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -141,7 +142,8 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 		input.InvoiceID = &invoiceID
 	}
 
-	payment, err := h.service.RecordOfflinePayment(c.Request.Context(), input)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	payment, err := h.service.RecordOfflinePayment(ctx, input)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

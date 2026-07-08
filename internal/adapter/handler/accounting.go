@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -239,7 +240,8 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 
 	// Manual syncs force a full re-push: the merchant is explicitly asking
 	// for everything to be reconciled, so the dirty-tracking skip is bypassed.
-	if err := h.accountingService.SyncAllForTenant(c.Request.Context(), tenantID, true); err != nil {
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	if err := h.accountingService.SyncAllForTenant(ctx, tenantID, true); err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

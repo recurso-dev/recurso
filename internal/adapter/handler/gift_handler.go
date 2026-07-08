@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -36,7 +38,8 @@ func (h *GiftHandler) PurchaseGift(c *gin.Context) {
 		return
 	}
 
-	gift, err := h.giftService.PurchaseGift(c.Request.Context(), tenantID.(uuid.UUID), req.BuyerCustomerID, req.PlanID, req.RecipientEmail, req.DurationMonths)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
+	gift, err := h.giftService.PurchaseGift(ctx, tenantID.(uuid.UUID), req.BuyerCustomerID, req.PlanID, req.RecipientEmail, req.DurationMonths)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
@@ -63,7 +66,8 @@ func (h *GiftHandler) RedeemGift(c *gin.Context) {
 		return
 	}
 
-	sub, err := h.giftService.RedeemGift(c.Request.Context(), tenantID.(uuid.UUID), req.RecipientCustomerID, req.Code)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
+	sub, err := h.giftService.RedeemGift(ctx, tenantID.(uuid.UUID), req.RecipientCustomerID, req.Code)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return

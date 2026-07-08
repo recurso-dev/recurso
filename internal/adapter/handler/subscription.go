@@ -328,7 +328,8 @@ func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 		return
 	}
 
-	sub, err := h.service.PauseSubscription(c.Request.Context(), tenantID, subID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	sub, err := h.service.PauseSubscription(ctx, tenantID, subID)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
@@ -351,7 +352,8 @@ func (h *SubscriptionHandler) ResumeSubscription(c *gin.Context) {
 		return
 	}
 
-	sub, err := h.service.ResumeSubscription(c.Request.Context(), tenantID, subID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	sub, err := h.service.ResumeSubscription(ctx, tenantID, subID)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return

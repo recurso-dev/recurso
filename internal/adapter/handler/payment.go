@@ -34,7 +34,9 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	invoice, err := h.invoiceRepo.GetByID(c.Request.Context(), id)
+	// /payments/order is a public (unauthenticated) endpoint, so there is no
+	// tenant in the request context. Use the tenant-agnostic public lookup.
+	invoice, err := h.invoiceRepo.GetByIDPublic(c.Request.Context(), id)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Database error")
 		return

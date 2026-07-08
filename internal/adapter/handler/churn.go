@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"strconv"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -24,13 +26,20 @@ func NewChurnHandler(churnService *service.ChurnService, db *sql.DB) *ChurnHandl
 }
 
 func (h *ChurnHandler) GetCustomerChurn(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
 		return
 	}
 
-	result, err := h.churnService.GetCustomerScore(c.Request.Context(), customerID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	result, err := h.churnService.GetCustomerScore(ctx, customerID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

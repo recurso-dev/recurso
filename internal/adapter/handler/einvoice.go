@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -44,13 +45,20 @@ func (h *EInvoiceHandler) GetEInvoiceStatus(c *gin.Context) {
 // RetryEInvoice manually retries e-invoice generation for a FAILED invoice.
 // POST /v1/invoices/:id/einvoice/retry
 func (h *EInvoiceHandler) RetryEInvoice(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
-	resp, err := h.einvoiceService.RetryFailedEInvoice(c.Request.Context(), invoiceID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	resp, err := h.einvoiceService.RetryFailedEInvoice(ctx, invoiceID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

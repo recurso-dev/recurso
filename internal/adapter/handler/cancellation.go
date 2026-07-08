@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
@@ -90,7 +92,8 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 	}
 
 	// Cancel the subscription
-	subscription, err := h.subscriptionService.Cancel(c.Request.Context(), tenantID, subscriptionID, cancelImmediately, string(req.Reason), req.Feedback)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	subscription, err := h.subscriptionService.Cancel(ctx, tenantID, subscriptionID, cancelImmediately, string(req.Reason), req.Feedback)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to cancel subscription")
 		return
@@ -98,7 +101,7 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 
 	// Revoke consent if requested (best-effort: errors are ignored so the request doesn't fail)
 	if req.RevokeConsent {
-		_ = h.consentService.RevokeSubscriptionConsent(c.Request.Context(), tenantID, subscriptionID)
+		_ = h.consentService.RevokeSubscriptionConsent(ctx, tenantID, subscriptionID)
 	}
 
 	// Send cancellation confirmation email
@@ -175,7 +178,8 @@ func (h *CancellationHandler) ReactivateSubscription(c *gin.Context) {
 		return
 	}
 
-	subscription, err := h.subscriptionService.Reactivate(c.Request.Context(), tenantID, subscriptionID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	subscription, err := h.subscriptionService.Reactivate(ctx, tenantID, subscriptionID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to reactivate subscription")
 		return

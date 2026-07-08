@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -27,7 +28,8 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 		return
 	}
 
-	cn, err := h.service.Create(c.Request.Context(), tenantID, req)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, err := h.service.Create(ctx, tenantID, req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
@@ -52,7 +54,8 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 
 	// Status filter logic can be added later
 
-	cns, err := h.service.List(c.Request.Context(), tenantID, filter)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cns, err := h.service.List(ctx, tenantID, filter)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
