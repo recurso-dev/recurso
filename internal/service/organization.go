@@ -156,7 +156,13 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 	currencyTenants := make(map[string][]TenantMRR)
 
 	for _, tenant := range tenants {
-		subs, err := s.subRepo.List(ctx, tenant.ID, domain.SubscriptionFilter{Status: "active", Limit: 1000})
+		// Consolidated MRR spans MANY tenants; the plan repo reads the tenant
+		// from the context, so scope the context to THIS tenant each iteration.
+		// (Using the request tenant here would fail every plan lookup and yield
+		// a silently-zero MRR.)
+		tctx := context.WithValue(ctx, domain.TenantIDKey, tenant.ID)
+
+		subs, err := s.subRepo.List(tctx, tenant.ID, domain.SubscriptionFilter{Status: "active", Limit: 1000})
 		if err != nil {
 			continue
 		}
@@ -167,7 +173,7 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 		for _, sub := range subs {
 			plan, ok := planCache[sub.PlanID]
 			if !ok {
-				p, err := s.planRepo.GetByID(ctx, sub.PlanID)
+				p, err := s.planRepo.GetByID(tctx, sub.PlanID)
 				if err != nil {
 					continue
 				}
