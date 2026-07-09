@@ -482,6 +482,13 @@ func main() {
 
 	// 6. Initialize Workers
 	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, paymentGateway, notifier)
+	// ENG-5 Phase 2: charge the customer's saved card off-session on retries.
+	// The mock gateway doesn't implement it, so this stays disabled (interactive
+	// fallback) until real Stripe keys are set.
+	retryStripeCharger, _ := stripeGateway.(interface {
+		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+	})
+	retryWorker.SetSavedMethodCharging(retryStripeCharger, customerRepo)
 	retryWorker.SetDunningCampaignService(dunningCampaignService)
 	retryWorker.SetRecoveryRecorder(dunningRecoveryService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)

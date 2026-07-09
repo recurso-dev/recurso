@@ -130,3 +130,59 @@ func TestStripeCreateOrder_USDCardAndACH(t *testing.T) {
 		t.Fatalf("USD payment_method_types = %v, want [card us_bank_account]", captured)
 	}
 }
+
+// TestStripeChargeSavedPaymentMethod asserts the off-session charge sends the
+// customer + saved payment method and confirms unattended — the shape that
+// actually collects from a saved card (ENG-5 Phase 2).
+func TestStripeChargeSavedPaymentMethod(t *testing.T) {
+	var got struct{ customer, pm, offSession, confirm, invoiceID string }
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		got.customer = r.Form.Get("customer")
+		got.pm = r.Form.Get("payment_method")
+		got.offSession = r.Form.Get("off_session")
+		got.confirm = r.Form.Get("confirm")
+		got.invoiceID = r.Form.Get("metadata[invoice_id]")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"pi_offsession","status":"succeeded"}`))
+	}))
+	defer srv.Close()
+
+	gw := newTestStripeGateway(t, srv)
+	res, err := gw.ChargeSavedPaymentMethod(context.Background(), "cus_123", "pm_456", 4900, "usd", "inv-uuid-9", "retry-inv-uuid-9-2")
+	if err != nil {
+		t.Fatalf("ChargeSavedPaymentMethod returned error: %v", err)
+	}
+	if !res.Success || res.PaymentID != "pi_offsession" {
+		t.Fatalf("result = %+v, want success pi_offsession", res)
+	}
+	if got.customer != "cus_123" || got.pm != "pm_456" {
+		t.Errorf("customer/payment_method = %q/%q, want cus_123/pm_456", got.customer, got.pm)
+	}
+	if got.offSession != "true" || got.confirm != "true" {
+		t.Errorf("off_session/confirm = %q/%q, want true/true", got.offSession, got.confirm)
+	}
+	if got.invoiceID != "inv-uuid-9" {
+		t.Errorf("metadata[invoice_id] = %q, want inv-uuid-9", got.invoiceID)
+	}
+}
+
+// A card decline must come back as a business failure (for dunning), never as a
+// transport error.
+func TestStripeChargeSavedPaymentMethod_Decline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusPaymentRequired)
+		_, _ = w.Write([]byte(`{"error":{"type":"card_error","code":"card_declined","message":"Your card was declined."}}`))
+	}))
+	defer srv.Close()
+
+	gw := newTestStripeGateway(t, srv)
+	res, err := gw.ChargeSavedPaymentMethod(context.Background(), "cus_1", "pm_1", 1000, "usd", "inv-1", "k1")
+	if err != nil {
+		t.Fatalf("a decline must be a business failure, not an error: %v", err)
+	}
+	if res.Success || res.ErrorCode != "card_declined" {
+		t.Fatalf("result = %+v, want failure card_declined", res)
+	}
+}

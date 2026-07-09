@@ -199,6 +199,55 @@ func (s *StripeGateway) FinalizeSetupIntent(ctx context.Context, setupIntentID s
 	return out, nil
 }
 
+// ChargeSavedPaymentMethod charges a customer's saved payment method
+// off-session (unattended, for recurring/retry collection) — the card was
+// authorized earlier via the portal SetupIntent flow. idempotencyKey guards
+// against double-charging the same retry attempt on a worker re-run. A card
+// decline (or a required 3DS step, which off-session can't perform) is returned
+// as a business failure so dunning handles it; only transport errors surface as
+// an error.
+func (s *StripeGateway) ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error) {
+	params := &stripe.PaymentIntentParams{
+		Amount:        stripe.Int64(amount),
+		Currency:      stripe.String(currency),
+		Customer:      stripe.String(stripeCustomerID),
+		PaymentMethod: stripe.String(paymentMethodID),
+		OffSession:    stripe.Bool(true),
+		Confirm:       stripe.Bool(true),
+		Metadata: map[string]string{
+			"invoice_id":    invoiceID,
+			"retry_payment": "true",
+		},
+	}
+	if idempotencyKey != "" {
+		params.SetIdempotencyKey(idempotencyKey)
+	}
+	params.Context = ctx
+
+	pi, err := s.sc.PaymentIntents.New(params)
+	if err != nil {
+		// Declines / authentication_required arrive as *stripe.Error — a dunning
+		// failure, not an infra error.
+		if stripeErr, ok := err.(*stripe.Error); ok {
+			return &port.PaymentResult{
+				Success:   false,
+				ErrorCode: string(stripeErr.Code),
+				ErrorMsg:  stripeErr.Msg,
+			}, nil
+		}
+		return nil, fmt.Errorf("stripe off-session charge infra error: %w", err)
+	}
+
+	if pi.Status == stripe.PaymentIntentStatusSucceeded {
+		return &port.PaymentResult{Success: true, PaymentID: pi.ID}, nil
+	}
+	return &port.PaymentResult{
+		Success:   false,
+		ErrorCode: string(pi.Status),
+		ErrorMsg:  fmt.Sprintf("payment intent status: %s", pi.Status),
+	}, nil
+}
+
 func (s *StripeGateway) VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error {
 	// If we have a webhook signature, we should verify it.
 	// However, VerifyPayment signature in `port` is generic.

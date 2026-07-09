@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"time"
 
@@ -17,6 +18,19 @@ type RecoveryRecorder interface {
 	RecordIfRecovered(ctx context.Context, inv *domain.Invoice) bool
 }
 
+// savedMethodCharger charges a customer's saved payment method off-session
+// (ENG-5 Phase 2). Implemented by *gateway.StripeGateway; wired only when
+// Stripe is configured.
+type savedMethodCharger interface {
+	ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+}
+
+// customerPaymentLookup resolves a customer's saved payment method. Implemented
+// by *db.CustomerRepository.
+type customerPaymentLookup interface {
+	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error)
+}
+
 type RetryWorker struct {
 	invoiceRepo            port.InvoiceRepository
 	retryService           *service.SmartRetryService
@@ -24,6 +38,8 @@ type RetryWorker struct {
 	notifier               port.Notifier
 	dunningCampaignService *service.DunningCampaignService
 	recoveryRecorder       RecoveryRecorder
+	savedCharger           savedMethodCharger
+	customerLookup         customerPaymentLookup
 }
 
 func NewRetryWorker(
@@ -46,6 +62,31 @@ func (w *RetryWorker) SetDunningCampaignService(svc *service.DunningCampaignServ
 
 func (w *RetryWorker) SetRecoveryRecorder(rr RecoveryRecorder) {
 	w.recoveryRecorder = rr
+}
+
+// SetSavedMethodCharging wires off-session collection with the customer's saved
+// card (ENG-5 Phase 2). When either dependency is nil, retries fall back to the
+// interactive gateway path — behavior is unchanged for customers without a
+// saved payment method.
+func (w *RetryWorker) SetSavedMethodCharging(charger savedMethodCharger, lookup customerPaymentLookup) {
+	w.savedCharger = charger
+	w.customerLookup = lookup
+}
+
+// chargeInvoice attempts collection, preferring the customer's saved payment
+// method (charged off-session) when one exists, and falling back to the
+// interactive gateway retry otherwise.
+func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*port.PaymentResult, error) {
+	if w.savedCharger != nil && w.customerLookup != nil {
+		stripeCustomerID, paymentMethodID, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
+		if err == nil && stripeCustomerID != "" && paymentMethodID != "" {
+			// Idempotent per attempt: a worker re-run for the same attempt won't
+			// double-charge.
+			key := fmt.Sprintf("retry-%s-%d", inv.ID, inv.RetryCount)
+			return w.savedCharger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, inv.Total, inv.Currency, inv.ID.String(), key)
+		}
+	}
+	return w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
 }
 
 // Start runs the worker loop.
@@ -85,8 +126,9 @@ func (w *RetryWorker) processRetries(ctx context.Context) {
 func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	log.Printf("Worker: Retrying Invoice %s (Attempt %d)", inv.InvoiceNumber, inv.RetryCount+1)
 
-	// 1. Attempt payment via gateway
-	result, err := w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
+	// 1. Attempt payment — via the customer's saved method (off-session) when
+	// available, else the interactive gateway path.
+	result, err := w.chargeInvoice(ctx, inv)
 	if err != nil {
 		// Infrastructure error (network, etc.) — schedule short retry, don't record outcome
 		log.Printf("Worker: Gateway infra error for %s: %v — scheduling 5min retry", inv.InvoiceNumber, err)

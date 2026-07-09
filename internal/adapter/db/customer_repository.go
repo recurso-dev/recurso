@@ -346,6 +346,16 @@ func (r *CustomerRepository) SetDefaultPaymentMethod(ctx context.Context, custom
 	return err
 }
 
+// GetSavedPaymentMethod returns the customer's Stripe customer id and default
+// PaymentMethod id for off-session charging. Either may be "" if not set, in
+// which case the caller must fall back to the interactive payment path.
+func (r *CustomerRepository) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error) {
+	err = r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(stripe_customer_id, ''), COALESCE(default_payment_method, '')
+		   FROM customers WHERE id = $1`, customerID).Scan(&stripeCustomerID, &paymentMethodID)
+	return
+}
+
 // CustomerWithExpiringCard holds customer info for card expiry notifications
 type CustomerWithExpiringCard struct {
 	CustomerID    uuid.UUID
