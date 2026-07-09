@@ -15,8 +15,10 @@ import (
 // customerPaymentStore is the customer persistence the portal card-update flow
 // needs. Satisfied by *db.CustomerRepository (kept as a narrow local interface
 // so we don't widen port.CustomerRepository and break its many test mocks).
+// Uses GetByIDPublic (not GetByID) because the portal is public — its request
+// context carries no tenant_id, which GetByID requires.
 type customerPaymentStore interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
 	GetStripeCustomerID(ctx context.Context, id uuid.UUID) (string, error)
 	SetStripeCustomerID(ctx context.Context, id uuid.UUID, stripeCustomerID string) error
 	SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int) error
@@ -195,7 +197,7 @@ func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
 	id := customerID.(uuid.UUID)
 	ctx := c.Request.Context()
 
-	cust, err := h.customerStore.GetByID(ctx, id)
+	cust, err := h.customerStore.GetByIDPublic(ctx, id)
 	if err != nil || cust == nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
 		return
