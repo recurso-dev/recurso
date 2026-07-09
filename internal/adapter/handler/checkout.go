@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -27,12 +28,31 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) error
 }
 
+// razorpayVerifier verifies a Razorpay checkout payment (HMAC signature) and
+// resolves the order's invoice_id for binding. Satisfied by
+// *gateway.RazorpayGateway; nil when Razorpay isn't configured, which disables
+// the INR checkout-verify endpoint.
+type razorpayVerifier interface {
+	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
+	GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
+}
+
 type CheckoutHandler struct {
 	invoiceRepo    port.InvoiceRepository
 	paymentGateway port.PaymentGateway
 	inspector      paymentInspector
 	settler        invoiceSettler
 	publishableKey string
+	razorpay       razorpayVerifier
+	razorpayKeyID  string
+}
+
+// SetRazorpay wires the INR/Razorpay checkout verification path (order created
+// via CreateOrder -> Razorpay Checkout.js -> this verify). keyID is the public
+// Razorpay key id handed to the browser.
+func (h *CheckoutHandler) SetRazorpay(v razorpayVerifier, keyID string) {
+	h.razorpay = v
+	h.razorpayKeyID = keyID
 }
 
 // NewCheckoutHandler wires the checkout. gw creates orders (currency-routed);
@@ -119,12 +139,15 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
-	// A client_secret means this order is a client-confirmed Stripe
-	// PaymentIntent — the browser mounts the Payment Element with it. Without
-	// one (e.g. Razorpay), the frontend uses that gateway's own flow.
+	// Detect the gateway so the frontend picks the right flow: a client_secret
+	// means a client-confirmed Stripe PaymentIntent; a Razorpay order id
+	// (order_*) means the Razorpay Checkout.js modal.
 	gatewayName := "other"
-	if order.ClientSecret != "" {
+	switch {
+	case order.ClientSecret != "":
 		gatewayName = "stripe"
+	case strings.HasPrefix(order.ID, "order_"):
+		gatewayName = "razorpay"
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -137,6 +160,7 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 			"gateway":         gatewayName,
 			"client_secret":   order.ClientSecret,
 			"publishable_key": h.publishableKey,
+			"razorpay_key_id": h.razorpayKeyID,
 		},
 	})
 }
@@ -242,4 +266,79 @@ func respondCheckoutStatus(c *gin.Context, invoice *domain.Invoice, status strin
 			"invoice_number": invoice.InvoiceNumber,
 		},
 	})
+}
+
+// RazorpayVerify settles an invoice after a Razorpay Checkout payment. Like the
+// Stripe path, it never settles on trust: it verifies the HMAC signature the
+// browser returns, then confirms — by fetching the order — that the order's
+// notes.invoice_id matches THIS invoice, before marking it paid via the
+// idempotent ledger settler. The webhook (payment.captured) remains the
+// authoritative backstop.
+func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
+		return
+	}
+
+	ctx := c.Request.Context()
+	invoice, err := h.invoiceRepo.GetByIDPublic(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
+		return
+	}
+	if invoice == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	if invoice.Status == domain.InvoiceStatusPaid {
+		respondCheckoutStatus(c, invoice, "paid")
+		return
+	}
+	if h.razorpay == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "razorpay checkout isn't available on this deployment")
+		return
+	}
+
+	var req struct {
+		OrderID   string `json:"razorpay_order_id" binding:"required"`
+		PaymentID string `json:"razorpay_payment_id" binding:"required"`
+		Signature string `json:"razorpay_signature" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "razorpay_order_id, razorpay_payment_id and razorpay_signature are required")
+		return
+	}
+
+	// 1. Signature — proves this is a genuine Razorpay payment for the order.
+	if err := h.razorpay.VerifyPayment(ctx, req.OrderID, req.PaymentID, req.Signature); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "payment verification failed")
+		return
+	}
+
+	// 2. Bind — the order must have been created for THIS invoice, so a genuine
+	// payment for a different invoice can't be replayed here.
+	orderInvoiceID, err := h.razorpay.GetOrderInvoiceID(ctx, req.OrderID)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "could not confirm the payment")
+		return
+	}
+	if orderInvoiceID != invoice.ID.String() {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "payment does not belong to this invoice")
+		return
+	}
+
+	// 3. Settle through the ledger path (idempotent with the webhook).
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
+	if h.settler != nil {
+		if err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to settle invoice")
+			return
+		}
+	}
+	if req.PaymentID != "" {
+		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, req.PaymentID)
+	}
+
+	respondCheckoutStatus(c, invoice, "paid")
 }

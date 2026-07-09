@@ -106,6 +106,7 @@ export default function Checkout() {
   const [clientSecret, setClientSecret] = useState(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [gateway, setGateway] = useState(null);
+  const [rzpOrder, setRzpOrder] = useState(null); // Razorpay order details
 
   // Load the invoice for display + paid check.
   useEffect(() => {
@@ -143,6 +144,60 @@ export default function Checkout() {
     [publishableKey]
   );
 
+  // Razorpay Checkout.js is loaded on demand (only for INR / Razorpay orders).
+  const loadRazorpayScript = () =>
+    new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const s = document.createElement("script");
+      s.src = "https://checkout.razorpay.com/v1/checkout.js";
+      s.onload = () => resolve(true);
+      s.onerror = () => resolve(false);
+      document.body.appendChild(s);
+    });
+
+  const openRazorpay = async (order) => {
+    if (!order) return;
+    const ok = await loadRazorpayScript();
+    if (!ok || !window.Razorpay) {
+      setError("Could not load the payment gateway. Please try again.");
+      return;
+    }
+    const rzp = new window.Razorpay({
+      key: order.razorpay_key_id,
+      order_id: order.order_id,
+      amount: order.amount,
+      currency: order.currency,
+      name: "Recurso",
+      description: `Invoice ${invoice?.invoice_number || ""}`,
+      theme: { color: "#10b981" },
+      handler: async (resp) => {
+        // Verify server-side (signature + order↔invoice bind) then settle.
+        const vres = await fetch(`${API_BASE}/checkout/${id}/razorpay/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            razorpay_order_id: resp.razorpay_order_id,
+            razorpay_payment_id: resp.razorpay_payment_id,
+            razorpay_signature: resp.razorpay_signature,
+          }),
+        });
+        const body = await vres.json().catch(() => ({}));
+        if (vres.ok && body.data?.status === "paid") {
+          setStatus("paid");
+        } else {
+          setError(
+            body?.error?.message ||
+              "We couldn't confirm your payment. If you were charged, it will be reconciled shortly."
+          );
+        }
+      },
+    });
+    rzp.on("payment.failed", (r) =>
+      setError(r?.error?.description || "Payment failed. Please try again.")
+    );
+    rzp.open();
+  };
+
   const handleInitiate = async () => {
     setInitiating(true);
     setError(null);
@@ -155,6 +210,10 @@ export default function Checkout() {
       setGateway(data.data.gateway);
       setClientSecret(data.data.client_secret || null);
       setPublishableKey(data.data.publishable_key || null);
+      if (data.data.gateway === "razorpay") {
+        setRzpOrder(data.data);
+        openRazorpay(data.data);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -276,10 +335,24 @@ export default function Checkout() {
             onProcessing={() => setStatus("processing")}
           />
         </Elements>
+      ) : gateway === "razorpay" ? (
+        <div className="space-y-3">
+          <Button
+            onClick={() => openRazorpay(rzpOrder)}
+            size="lg"
+            className="w-full"
+          >
+            {`Pay ${invoice.currency} ${invoice.display_amount}`}
+          </Button>
+          <p className="text-center text-xs text-zinc-400">
+            A secure Razorpay window opens to complete your payment (UPI, cards,
+            netbanking).
+          </p>
+        </div>
       ) : gateway && gateway !== "stripe" ? (
         <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
-          Self-serve card / bank checkout for {invoice.currency} isn't available
-          here yet. Please contact the sender to arrange payment.
+          Self-serve checkout for {invoice.currency} isn't available here yet.
+          Please contact the sender to arrange payment.
         </div>
       ) : (
         <Button

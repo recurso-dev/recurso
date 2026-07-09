@@ -65,6 +65,24 @@ func (g *RazorpayGateway) VerifyPayment(ctx context.Context, orderID, paymentID,
 	return nil
 }
 
+// GetOrderInvoiceID fetches a Razorpay order and returns the invoice_id recorded
+// in its notes at creation time. The checkout verify step uses this to bind a
+// signature-verified payment to the right invoice before settling — so a
+// genuine payment for one invoice can't be replayed to settle another (mirrors
+// the Stripe metadata check).
+func (g *RazorpayGateway) GetOrderInvoiceID(ctx context.Context, orderID string) (string, error) {
+	body, err := g.client.Order.Fetch(orderID, nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("razorpay fetch order %s failed: %v", orderID, err)
+	}
+	notes, ok := body["notes"].(map[string]interface{})
+	if !ok {
+		return "", nil
+	}
+	invoiceID, _ := notes["invoice_id"].(string)
+	return invoiceID, nil
+}
+
 func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error) {
 	// 1. Create Subscription
 	data := map[string]interface{}{
