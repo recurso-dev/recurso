@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -55,6 +56,16 @@ type PDFInvoiceData struct {
 	HSNCode       string
 	IsInterState  bool
 	ReverseCharge string
+
+	// Jurisdiction-aware rendering (populated by BuildInvoiceData)
+	DocTitle       string // "TAX INVOICE" (India GST) or "INVOICE"
+	ShowGST        bool   // render GST columns/rows (HSN, CGST/SGST/IGST, Place of Supply, Reverse Charge)
+	SellerTaxLabel string // "GSTIN" (India) / "EIN" (US) / "Tax ID"
+	SellerTaxID    string // the seller tax id value for the label above
+	TaxLineLabel   string // non-GST single tax row, e.g. "Sales Tax" / "VAT"
+	TaxLineRate    string
+	TaxLineAmount  string
+	BuyerCountry   string
 
 	// E-Invoice (if applicable)
 	IRN        string
@@ -165,10 +176,14 @@ type InvoicePDFService struct {
 	sellerPAN     string
 	sellerState   string
 	bankDetails   string
+	sellerCountry string // ISO-2, e.g. "IN" / "US" — selects the invoice regime
+	sellerTaxID   string // non-GST seller tax id (US EIN, etc.)
 }
 
-// NewInvoicePDFService creates a new PDF service
-func NewInvoicePDFService(sellerName, sellerAddress, sellerGSTIN, sellerPAN, sellerState, bankDetails string) *InvoicePDFService {
+// NewInvoicePDFService creates a new PDF service. sellerCountry selects the
+// invoice regime (India GST vs a plain sales-tax/VAT invoice); sellerTaxID is
+// the seller's non-GST tax id (e.g. a US EIN) shown on non-GST invoices.
+func NewInvoicePDFService(sellerName, sellerAddress, sellerGSTIN, sellerPAN, sellerState, bankDetails, sellerCountry, sellerTaxID string) *InvoicePDFService {
 	return &InvoicePDFService{
 		sellerName:    sellerName,
 		sellerAddress: sellerAddress,
@@ -176,6 +191,149 @@ func NewInvoicePDFService(sellerName, sellerAddress, sellerGSTIN, sellerPAN, sel
 		sellerPAN:     sellerPAN,
 		sellerState:   sellerState,
 		bankDetails:   bankDetails,
+		sellerCountry: sellerCountry,
+		sellerTaxID:   sellerTaxID,
+	}
+}
+
+// BuildInvoiceData maps a real invoice and its customer to renderable PDF data,
+// choosing the jurisdiction: an India-GST tax invoice (GSTIN, HSN, CGST/SGST or
+// IGST, Place of Supply) when the seller is in India, or a plain invoice
+// (single tax line, seller tax id / EIN, no HSN) otherwise — so a US invoice
+// never shows GST fields.
+func (s *InvoicePDFService) BuildInvoiceData(inv *domain.Invoice, cust *domain.Customer) PDFInvoiceData {
+	cur := inv.Currency
+	sellerIN := s.sellerCountry == "" || strings.EqualFold(s.sellerCountry, "IN")
+	hasGSTSplit := inv.CGSTAmount > 0 || inv.SGSTAmount > 0 || inv.IGSTAmount > 0
+	showGST := sellerIN && (hasGSTSplit || strings.EqualFold(cur, "INR"))
+
+	// Buyer, from the customer's billing address.
+	var buyerName, buyerAddr, buyerState, buyerGSTIN, buyerCountry string
+	if cust != nil {
+		if cust.Name != nil {
+			buyerName = *cust.Name
+		}
+		ba := cust.BillingAddress
+		var lines []string
+		if ba.Line1 != "" {
+			lines = append(lines, ba.Line1)
+		}
+		cityLine := strings.TrimSpace(strings.Trim(strings.Join([]string{ba.City, ba.State, ba.Zip}, " "), " "))
+		if cityLine != "" {
+			lines = append(lines, cityLine)
+		}
+		if ba.Country != "" {
+			lines = append(lines, ba.Country)
+		}
+		buyerAddr = strings.Join(lines, "\n")
+		buyerState = ba.State
+		buyerCountry = ba.Country
+		if cust.GSTIN != nil {
+			buyerGSTIN = *cust.GSTIN
+		}
+	}
+
+	data := PDFInvoiceData{
+		InvoiceNumber:  inv.InvoiceNumber,
+		InvoiceDate:    inv.CreatedAt.Format("January 2, 2006"),
+		DueDate:        inv.DueDate.Format("January 2, 2006"),
+		Status:         string(inv.Status),
+		SellerName:     s.sellerName,
+		SellerAddress:  s.sellerAddress,
+		BuyerName:      buyerName,
+		BuyerAddress:   buyerAddr,
+		BuyerGSTIN:     buyerGSTIN,
+		BuyerStateCode: buyerState,
+		BuyerCountry:   buyerCountry,
+		Subtotal:       FormatAmount(inv.Subtotal, cur),
+		GrandTotal:     FormatAmount(inv.Total, cur),
+		AmountInWords:  AmountToWords(inv.Total, cur),
+		LineItems:      BuildPDFLineItems(inv),
+		BankDetails:    s.bankDetails,
+		ShowGST:        showGST,
+	}
+
+	if showGST {
+		data.DocTitle = "TAX INVOICE"
+		data.SellerTaxLabel = "GSTIN"
+		data.SellerTaxID = s.sellerGSTIN
+		data.IsInterState = inv.IGSTAmount > 0
+		data.PlaceOfSupply = firstNonEmpty(derefPlaceOfSupply(cust), buyerState)
+		data.ReverseCharge = "No"
+		data.CGSTAmount = FormatAmount(inv.CGSTAmount, cur)
+		data.SGSTAmount = FormatAmount(inv.SGSTAmount, cur)
+		data.IGSTAmount = FormatAmount(inv.IGSTAmount, cur)
+		data.CGSTRate = ratePercent(inv.CGSTAmount, inv.Subtotal)
+		data.SGSTRate = ratePercent(inv.SGSTAmount, inv.Subtotal)
+		data.IGSTRate = ratePercent(inv.IGSTAmount, inv.Subtotal)
+		data.IRN = inv.IRN
+	} else {
+		data.DocTitle = "INVOICE"
+		if s.sellerTaxID != "" {
+			data.SellerTaxLabel = sellerTaxLabel(s.sellerCountry)
+			data.SellerTaxID = s.sellerTaxID
+		}
+		if inv.TaxAmount > 0 {
+			data.TaxLineLabel = taxLineLabel(s.sellerCountry)
+			data.TaxLineAmount = FormatAmount(inv.TaxAmount, cur)
+			data.TaxLineRate = ratePercent(inv.TaxAmount, inv.Subtotal)
+		}
+	}
+	return data
+}
+
+func derefPlaceOfSupply(cust *domain.Customer) string {
+	if cust != nil && cust.PlaceOfSupply != nil {
+		return *cust.PlaceOfSupply
+	}
+	return ""
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// ratePercent derives a display rate from a tax amount over its taxable base,
+// e.g. 900 over 10000 -> "9%". Returns "" when the base is zero.
+func ratePercent(taxMinor, baseMinor int64) string {
+	if baseMinor <= 0 || taxMinor <= 0 {
+		return ""
+	}
+	pct := float64(taxMinor) / float64(baseMinor) * 100
+	return strconv.FormatFloat(pct, 'f', -1, 64) + "%"
+}
+
+func sellerTaxLabel(country string) string {
+	if strings.EqualFold(country, "US") {
+		return "EIN"
+	}
+	return "Tax ID"
+}
+
+func taxLineLabel(country string) string {
+	switch {
+	case strings.EqualFold(country, "US"):
+		return "Sales Tax"
+	case isEUCountry(country):
+		return "VAT"
+	default:
+		return "Tax"
+	}
+}
+
+func isEUCountry(country string) bool {
+	switch strings.ToUpper(country) {
+	case "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
+		"HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
+		"SI", "ES", "SE", "GB":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -259,7 +417,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Tax Invoice - {{.InvoiceNumber}}</title>
+    <title>{{.DocTitle}} - {{.InvoiceNumber}}</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; font-size: 12px; color: #333; }
@@ -339,8 +497,10 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
             </div>
             <div class="header-row">
                 <div class="header-cell header-left">
-                    <div class="label">GSTIN</div>
-                    <div class="value">{{.SellerGSTIN}}</div>
+                    {{if .SellerTaxID}}
+                    <div class="label">{{.SellerTaxLabel}}</div>
+                    <div class="value">{{.SellerTaxID}}</div>
+                    {{end}}
                 </div>
                 <div class="header-cell header-right">
                     <div class="label">Due Date</div>
@@ -349,7 +509,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
             </div>
         </div>
         
-        <div class="title">TAX INVOICE</div>
+        <div class="title">{{.DocTitle}}</div>
         
         <!-- Parties -->
         <div class="parties">
@@ -362,10 +522,16 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                 {{end}}
             </div>
             <div class="party">
+                {{if .ShowGST}}
                 <div class="party-title">Place of Supply</div>
                 <div class="value">{{.PlaceOfSupply}}</div>
                 <div style="margin-top: 5px;"><span class="label">State Code:</span> {{.BuyerStateCode}}</div>
                 <div><span class="label">Reverse Charge:</span> {{.ReverseCharge}}</div>
+                {{else}}
+                <div class="party-title">Details</div>
+                {{if .BuyerStateCode}}<div><span class="label">State:</span> {{.BuyerStateCode}}</div>{{end}}
+                {{if .BuyerCountry}}<div><span class="label">Country:</span> {{.BuyerCountry}}</div>{{end}}
+                {{end}}
             </div>
         </div>
         
@@ -376,7 +542,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                     <tr>
                         <th style="width: 4%;">S.No</th>
                         <th style="width: 26%;">Description</th>
-                        <th style="width: 9%;">HSN/SAC</th>
+                        {{if .ShowGST}}<th style="width: 9%;">HSN/SAC</th>{{end}}
                         <th style="width: 6%;" class="text-center">Qty</th>
                         <th style="width: 13%;" class="text-right">Unit Price</th>
                         <th style="width: 13%;" class="text-right">Taxable</th>
@@ -390,7 +556,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                     <tr>
                         <td class="text-center">{{.SNo}}</td>
                         <td>{{.Description}}</td>
-                        <td>{{.SACCode}}</td>
+                        {{if $.ShowGST}}<td>{{.SACCode}}</td>{{end}}
                         <td class="text-center">{{.Quantity}}</td>
                         <td class="text-right">{{.UnitPrice}}</td>
                         <td class="text-right">{{.TaxableAmount}}</td>
@@ -410,6 +576,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                     <td class="total-label">Subtotal</td>
                     <td class="total-value">{{.Subtotal}}</td>
                 </tr>
+                {{if .ShowGST}}
                 {{if not .IsInterState}}
                 <tr>
                     <td class="total-label">CGST @ {{.CGSTRate}}</td>
@@ -423,6 +590,12 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
                 <tr>
                     <td class="total-label">IGST @ {{.IGSTRate}}</td>
                     <td class="total-value">{{.IGSTAmount}}</td>
+                </tr>
+                {{end}}
+                {{else if .TaxLineAmount}}
+                <tr>
+                    <td class="total-label">{{.TaxLineLabel}}{{if .TaxLineRate}} @ {{.TaxLineRate}}{{end}}</td>
+                    <td class="total-value">{{.TaxLineAmount}}</td>
                 </tr>
                 {{end}}
                 <tr class="grand-total">

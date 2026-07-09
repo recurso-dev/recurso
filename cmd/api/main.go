@@ -763,8 +763,10 @@ func main() {
 		getEnvDefault("PDF_COMPANY_PAN", ""),
 		getEnvDefault("PDF_COMPANY_STATE", ""),
 		getEnvDefault("PDF_BANK_DETAILS", "Bank: HDFC Bank\nAccount: 00000000000000\nIFSC: HDFC0000000"),
+		getEnvDefault("PDF_COMPANY_COUNTRY", companyCountry),
+		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
 	)
-	pdfHandler := handler.NewInvoicePDFHandler(pdfService)
+	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
 	gstHandler := handler.NewGSTHandler(gstConfigRepo)
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
