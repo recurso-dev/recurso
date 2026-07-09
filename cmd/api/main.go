@@ -205,6 +205,7 @@ func main() {
 	// P25: IRP & GST Config Repositories
 	irpConfigRepo := db.NewIRPConfigRepository(database)
 	gstConfigRepo := db.NewGSTConfigRepository(database)
+	taxNexusRepo := db.NewTaxNexusRepository(database)
 
 	// P25: GSP Adapter — use NIC if private key is available, else mock
 	var gspAdapter port.GSPAdapter
@@ -254,6 +255,9 @@ func main() {
 	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
 	companyState := getEnvDefault("COMPANY_STATE", "TN")
 	taxResolver := service.NewTaxResolver(gstConfigRepo, companyCountry, companyState)
+	// US sales-tax nexus gating (opt-in): once a tenant declares nexus states,
+	// US tax is collected only there; a tenant with none is unaffected.
+	taxResolver = taxResolver.WithNexusRepo(taxNexusRepo)
 	// US sales tax — TaxJar when a key is set (the resolver caches rates
 	// in-memory for 24h per state+zip); otherwise the US engine stays an
 	// honest 0% stub (invoices marked sales_tax_stub).
@@ -732,6 +736,7 @@ func main() {
 	)
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService)
 	gstHandler := handler.NewGSTHandler(gstConfigRepo)
+	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
 
 	// Consent Service & Handler (P30 - RBI compliance)
@@ -1038,6 +1043,9 @@ func main() {
 		// GST Settings (P30)
 		v1.GET("/settings/gst", gstHandler.GetConfig)
 		v1.PUT("/settings/gst", gstHandler.UpdateConfig)
+		// US sales-tax nexus config
+		v1.GET("/settings/tax/nexus", taxNexusHandler.GetNexus)
+		v1.PUT("/settings/tax/nexus", taxNexusHandler.SetNexus)
 		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
 
 		// E-Invoice (P25)

@@ -2814,6 +2814,60 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/settings/tax/nexus:
+    get:
+      operationId: getTaxNexus
+      tags: [Settings]
+      summary: List US sales-tax nexus states
+      description: Returns the US states the tenant has declared sales-tax nexus in. Once any state is declared, US sales tax is collected only in those states.
+      responses:
+        '200':
+          description: Declared nexus states.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaxNexus' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: setTaxNexus
+      tags: [Settings]
+      summary: Set US sales-tax nexus states
+      description: Replaces the tenant's entire nexus set. Owner/admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                states:
+                  type: array
+                  items:
+                    type: object
+                    required: [state_code]
+                    properties:
+                      state_code: { type: string, example: "CA" }
+                      nexus_type: { type: string, enum: [physical, voluntary, economic], default: physical }
+      responses:
+        '200':
+          description: Updated nexus states.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TaxNexus' }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/settings/irp:
     get:
       operationId: getIRPConfig
@@ -6507,6 +6561,13 @@ components:
         tb_skip_reason:
           type: string
 
+    TaxNexus:
+      type: object
+      properties:
+        state_code: { type: string, example: "CA" }
+        nexus_type: { type: string, enum: [physical, voluntary, economic] }
+        established_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
     GSTConfig:
       type: object
       properties:

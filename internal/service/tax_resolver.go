@@ -54,7 +54,14 @@ type TaxResolver struct {
 	defaultState   string
 	salesTax       tax.SalesTaxProvider // optional; nil keeps the US engine a 0% stub
 	vatValidator   tax.VATValidator     // optional; nil keeps EU reverse charge presence-based
+	nexusRepo      NexusProvider        // optional; nil disables US nexus gating (today's behaviour)
 	logger         *slog.Logger
+}
+
+// NexusProvider tells the resolver which US states a tenant has declared
+// sales-tax nexus in. *db.TaxNexusRepository satisfies it.
+type NexusProvider interface {
+	NexusFor(ctx context.Context, tenantID uuid.UUID, stateCode string) (declaredAny, inState bool, err error)
 }
 
 // NewTaxResolver creates a TaxResolver. gstConfigs may be nil (env defaults
@@ -98,6 +105,16 @@ func (r *TaxResolver) WithVATValidator(v tax.VATValidator) *TaxResolver {
 	return r
 }
 
+// WithNexusRepo enables opt-in US sales-tax nexus gating: once a tenant has
+// declared any nexus states, US tax is collected only in those states. A nil
+// repo (or a tenant with no declared nexus) preserves today's behaviour, so
+// existing provider-driven setups are unaffected. Returns the resolver for
+// chaining.
+func (r *TaxResolver) WithNexusRepo(n NexusProvider) *TaxResolver {
+	r.nexusRepo = n
+	return r
+}
+
 // ResolveInvoiceTax computes the tax for one invoice line/amount (lowest
 // currency unit). It never returns an error: tax resolution problems degrade to
 // zero tax with a log line rather than blocking invoice generation.
@@ -113,7 +130,7 @@ func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID,
 
 	switch engine.(type) {
 	case *tax.USSalesTaxEngine:
-		return r.resolveUSSalesTax(ctx, engine, customer, currency, amount)
+		return r.resolveUSSalesTax(ctx, engine, tenantID, customer, currency, amount)
 	case *tax.EUVATEngine:
 		return r.resolveEUVAT(ctx, engine, sellerCountry, customer, currency, amount)
 	default:
@@ -232,16 +249,35 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 // ("sales_tax_stub"). A provider error at invoice time must never fail the
 // invoice: it degrades to 0% with TaxType "sales_tax_error" and a warn log,
 // so the invoice ships and the gap is auditable.
-func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngine, customer *domain.Customer, currency string, amount int64) InvoiceTax {
+func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngine, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64) InvoiceTax {
 	buyerCountry := normalizeCountry(customer.BillingAddress.Country)
 	if buyerCountry != "" && buyerCountry != "US" {
 		return InvoiceTax{TaxType: "export", Note: "Sale outside the US: no US sales tax"}
 	}
 
+	buyerState := strings.ToUpper(strings.TrimSpace(customer.BillingAddress.State))
+
+	// Opt-in nexus gating: only once the tenant has declared nexus states do we
+	// gate. A tenant with zero declared nexus is never gated (today's behaviour).
+	// Where nexus IS declared but not in the buyer's state, collect nothing.
+	if r.nexusRepo != nil {
+		declaredAny, inState, err := r.nexusRepo.NexusFor(ctx, tenantID, buyerState)
+		if err != nil {
+			r.logger.Warn("nexus lookup failed; not gating US sales tax",
+				"tenant_id", tenantID, "state", buyerState, "error", err)
+		} else if declaredAny && !inState {
+			return InvoiceTax{
+				Total:   0,
+				TaxType: "no_nexus",
+				Note:    "No sales-tax nexus in " + buyerState + " — not collected",
+			}
+		}
+	}
+
 	calc, err := engine.CalculateTax(ctx, &port.TaxRequest{
 		Amount:        amount,
 		Currency:      currency,
-		BuyerState:    strings.ToUpper(strings.TrimSpace(customer.BillingAddress.State)),
+		BuyerState:    buyerState,
 		BuyerZip:      strings.TrimSpace(customer.BillingAddress.Zip),
 		BuyerCountry:  buyerCountry,
 		SellerCountry: "US",
