@@ -112,7 +112,7 @@ func TestStripeCreateOrder_EURRequestShape(t *testing.T) {
 	}
 }
 
-func TestStripeCreateOrder_USDCardOnly(t *testing.T) {
+func TestStripeCreateOrder_USDCardAndACH(t *testing.T) {
 	var captured []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		captured = capturePaymentMethodTypes(r)
@@ -126,7 +126,7 @@ func TestStripeCreateOrder_USDCardOnly(t *testing.T) {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 
-	if len(captured) != 1 || captured[0] != "card" {
-		t.Fatalf("USD payment_method_types = %v, want [card]", captured)
+	if len(captured) != 2 || captured[0] != "card" || captured[1] != "us_bank_account" {
+		t.Fatalf("USD payment_method_types = %v, want [card us_bank_account]", captured)
 	}
 }
