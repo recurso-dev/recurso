@@ -29,9 +29,9 @@ func TestStripePaymentMethodTypes(t *testing.T) {
 			want:     []string{"bancontact", "card", "ideal", "sepa_debit"},
 		},
 		{
-			name:     "USD is card only",
+			name:     "USD offers card plus ACH (us_bank_account)",
 			currency: "USD",
-			want:     []string{"card"},
+			want:     []string{"card", "us_bank_account"},
 		},
 		{
 			name:     "GBP is card only",

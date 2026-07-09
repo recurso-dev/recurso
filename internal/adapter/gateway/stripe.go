@@ -50,10 +50,19 @@ func stripePaymentMethodTypes(currency string) []string {
 			string(stripe.PaymentMethodTypeIDEAL),
 			string(stripe.PaymentMethodTypeBancontact),
 		}
+	case "USD":
+		// ACH Direct Debit (us_bank_account) is the standard US B2B rail —
+		// lower-fee than cards and common for recurring SaaS invoices. Like
+		// SEPA it settles over a few business days (processing -> succeeded),
+		// so it rides the same invoice_id-in-metadata async reconciliation as
+		// SEPA. Card also carries Apple Pay / Google Pay wallets.
+		return []string{
+			string(stripe.PaymentMethodTypeCard),
+			string(stripe.PaymentMethodTypeUSBankAccount),
+		}
 	default:
-		// Card covers all remaining currencies (USD, GBP, etc.) and also
-		// carries Apple Pay / Google Pay wallets, so behaviour for
-		// non-European currencies is unchanged.
+		// Card covers all remaining currencies (GBP, etc.) and also carries
+		// Apple Pay / Google Pay wallets.
 		return []string{string(stripe.PaymentMethodTypeCard)}
 	}
 }
