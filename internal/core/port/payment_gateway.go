@@ -9,6 +9,20 @@ type PaymentOrder struct {
 	Amount   int64
 	Currency string
 	Receipt  string
+	// ClientSecret is the gateway-side secret the frontend needs to confirm the
+	// payment client-side (Stripe PaymentIntent client_secret). Empty for
+	// gateways that don't use a client-confirmed flow (e.g. Razorpay orders).
+	ClientSecret string
+}
+
+// PaymentStatus is a read-back of a gateway payment/order, used to verify a
+// checkout server-side before an invoice is marked paid. InvoiceID is the
+// gateway metadata linking the payment back to a Recurso invoice.
+type PaymentStatus struct {
+	Status         string // gateway-reported, e.g. "succeeded", "processing", "requires_payment_method"
+	InvoiceID      string // metadata invoice_id set at CreateOrder time
+	PaymentID      string // gateway payment identifier (Stripe pi_*)
+	AmountReceived int64  // minor units actually received (0 until settled)
 }
 
 // PaymentResult represents the outcome of a payment retry attempt

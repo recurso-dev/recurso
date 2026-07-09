@@ -641,7 +641,14 @@ func main() {
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
-	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway)
+	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
+	// mock can't), so type-assert for the inspector; a nil inspector makes
+	// CheckoutSuccess report status only. subscriptionService is the ledger-path
+	// settler shared with the webhook.
+	checkoutInspector, _ := stripeGateway.(interface {
+		GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error)
+	})
+	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway, checkoutInspector, subscriptionService, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
 	usageHandler := handler.NewUsageHandler(usageService)
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)

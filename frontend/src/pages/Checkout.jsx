@@ -1,19 +1,113 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, Clock } from "lucide-react";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 
 import { API_ROOT as API_BASE } from "../lib/api";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+
+// PaymentForm renders the Stripe Payment Element and confirms the intent. It
+// must live inside <Elements>. On a card success it settles inline; methods
+// that need a bank redirect come back to this page's return_url, where the
+// parent verifies via ?payment_intent.
+function PaymentForm({ invoice, onPaid, onProcessing }) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const { id } = useParams();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Verify + settle server-side (the endpoint checks the intent succeeded and
+  // that its metadata invoice_id matches this invoice before marking paid).
+  const settle = async (paymentIntentId) => {
+    const res = await fetch(
+      `${API_BASE}/checkout/${id}/success?payment_intent=${encodeURIComponent(paymentIntentId)}`
+    );
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.data?.status === "paid") {
+      onPaid();
+    } else {
+      onProcessing();
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements) return;
+    setSubmitting(true);
+    setError(null);
+
+    // redirect: "if_required" keeps card payments on-page and only redirects
+    // for methods that require it (some banks). return_url brings those back
+    // here with ?payment_intent for verification.
+    const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}${window.location.pathname}`,
+      },
+      redirect: "if_required",
+    });
+
+    if (confirmError) {
+      setError(confirmError.message || "Payment could not be completed.");
+      setSubmitting(false);
+      return;
+    }
+
+    if (paymentIntent?.status === "succeeded") {
+      await settle(paymentIntent.id);
+    } else if (paymentIntent?.status === "processing") {
+      // ACH and other delayed-settlement methods: authorized, settles later
+      // (the webhook marks the invoice paid once funds clear).
+      onProcessing();
+    } else {
+      setError("Payment is not complete. Please try another method.");
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <PaymentElement />
+      {error && (
+        <div className="rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
+          {error}
+        </div>
+      )}
+      <Button
+        type="submit"
+        disabled={!stripe || submitting}
+        size="lg"
+        className="w-full"
+      >
+        {submitting
+          ? "Processing..."
+          : `Pay ${invoice.currency} ${invoice.display_amount}`}
+      </Button>
+    </form>
+  );
+}
 
 export default function Checkout() {
   const { id } = useParams();
   const [invoice, setInvoice] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [paying, setPaying] = useState(false);
   const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
+  const [status, setStatus] = useState("open"); // open | paid | processing
+  const [initiating, setInitiating] = useState(false);
 
+  // Payment session (from POST /pay)
+  const [clientSecret, setClientSecret] = useState(null);
+  const [publishableKey, setPublishableKey] = useState(null);
+  const [gateway, setGateway] = useState(null);
+
+  // Load the invoice for display + paid check.
   useEffect(() => {
     fetch(`${API_BASE}/checkout/${id}`)
       .then((res) => {
@@ -22,34 +116,49 @@ export default function Checkout() {
       })
       .then((data) => {
         setInvoice(data.data);
-        if (data.data.status === "paid") {
-          setSuccess(true);
-        }
+        if (data.data.status === "paid") setStatus("paid");
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, [id]);
 
-  const handlePay = async () => {
-    setPaying(true);
+  // Returning from a bank redirect: Stripe appends ?payment_intent — verify it.
+  useEffect(() => {
+    const pi = new URLSearchParams(window.location.search).get("payment_intent");
+    if (!pi) return;
+    fetch(
+      `${API_BASE}/checkout/${id}/success?payment_intent=${encodeURIComponent(pi)}`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.data?.status === "paid") setStatus("paid");
+        else setStatus("processing");
+      })
+      .catch(() => {});
+  }, [id]);
+
+  // Load Stripe.js only once we have the publishable key from /pay.
+  const stripePromise = useMemo(
+    () => (publishableKey ? loadStripe(publishableKey) : null),
+    [publishableKey]
+  );
+
+  const handleInitiate = async () => {
+    setInitiating(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/checkout/${id}/pay`, { method: "POST" });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error?.message || "Payment failed");
-      }
-      await res.json();
-
-      // Mark as success via the success endpoint
-      const successRes = await fetch(`${API_BASE}/checkout/${id}/success`);
-      if (successRes.ok) {
-        setSuccess(true);
-      }
+      const res = await fetch(`${API_BASE}/checkout/${id}/pay`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Could not start payment");
+      setGateway(data.data.gateway);
+      setClientSecret(data.data.client_secret || null);
+      setPublishableKey(data.data.publishable_key || null);
     } catch (err) {
       setError(err.message);
     } finally {
-      setPaying(false);
+      setInitiating(false);
     }
   };
 
@@ -63,8 +172,8 @@ export default function Checkout() {
 
   if (error && !invoice) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
-        <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
+      <CheckoutShell>
+        <div className="text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
             <AlertCircle className="h-6 w-6 text-red-500" />
           </div>
@@ -73,14 +182,14 @@ export default function Checkout() {
           </h1>
           <p className="mt-1 text-sm text-zinc-500">{error}</p>
         </div>
-      </div>
+      </CheckoutShell>
     );
   }
 
-  if (success) {
+  if (status === "paid") {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
-        <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
+      <CheckoutShell>
+        <div className="text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
             <CheckCircle2 className="h-7 w-7 text-emerald-600" />
           </div>
@@ -92,74 +201,127 @@ export default function Checkout() {
           </p>
           <p className="mt-4 text-xs text-zinc-400">You can close this page.</p>
         </div>
-      </div>
+      </CheckoutShell>
     );
   }
 
+  if (status === "processing") {
+    return (
+      <CheckoutShell>
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
+            <Clock className="h-7 w-7 text-amber-500" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+            Payment processing
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            We've received your payment for invoice {invoice?.invoice_number}.
+            Bank payments (like ACH) take a few business days to clear — you'll
+            get a receipt once it settles. No further action is needed.
+          </p>
+        </div>
+      </CheckoutShell>
+    );
+  }
+
+  const showStripeForm = gateway === "stripe" && clientSecret && stripePromise;
+
+  return (
+    <CheckoutShell>
+      <div className="mb-6 text-center">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500 text-2xl font-bold text-white">
+          R
+        </div>
+        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          Checkout
+        </h1>
+      </div>
+
+      <div className="mb-6 space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+        <SummaryRow label="Invoice" value={invoice.invoice_number} strong />
+        {invoice.subtotal !== invoice.total && (
+          <>
+            <SummaryRow
+              label="Subtotal"
+              value={`${invoice.currency} ${(invoice.subtotal / 100).toFixed(2)}`}
+            />
+            <SummaryRow
+              label="Tax"
+              value={`${invoice.currency} ${(invoice.tax_amount / 100).toFixed(2)}`}
+            />
+            <div className="border-t border-zinc-200 pt-2" />
+          </>
+        )}
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-zinc-500">Total</span>
+          <span className="text-lg font-bold tabular-nums text-zinc-900">
+            {invoice.currency} {invoice.display_amount}
+          </span>
+        </div>
+        <SummaryRow label="Due date" value={invoice.due_date} />
+      </div>
+
+      {error && (
+        <div className="mb-4 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
+          {error}
+        </div>
+      )}
+
+      {showStripeForm ? (
+        <Elements stripe={stripePromise} options={{ clientSecret }}>
+          <PaymentForm
+            invoice={invoice}
+            onPaid={() => setStatus("paid")}
+            onProcessing={() => setStatus("processing")}
+          />
+        </Elements>
+      ) : gateway && gateway !== "stripe" ? (
+        <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+          Self-serve card / bank checkout for {invoice.currency} isn't available
+          here yet. Please contact the sender to arrange payment.
+        </div>
+      ) : (
+        <Button
+          onClick={handleInitiate}
+          disabled={initiating}
+          size="lg"
+          className="w-full"
+        >
+          {initiating
+            ? "Starting..."
+            : `Pay ${invoice.currency} ${invoice.display_amount}`}
+        </Button>
+      )}
+
+      <p className="mt-4 text-center text-xs text-zinc-400">Powered by Recurso</p>
+    </CheckoutShell>
+  );
+}
+
+function CheckoutShell({ children }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
       <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
-        <div className="mb-6 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500 text-2xl font-bold text-white">
-            R
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">Checkout</h1>
-        </div>
-
-        <div className="mb-6 space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-          <div className="flex justify-between">
-            <span className="text-sm text-zinc-500">Invoice</span>
-            <span className="text-sm font-semibold text-zinc-900">
-              {invoice.invoice_number}
-            </span>
-          </div>
-          {invoice.subtotal !== invoice.total && (
-            <>
-              <div className="flex justify-between">
-                <span className="text-sm text-zinc-500">Subtotal</span>
-                <span className="text-sm tabular-nums text-zinc-900">
-                  {invoice.currency} {(invoice.subtotal / 100).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-sm text-zinc-500">Tax</span>
-                <span className="text-sm tabular-nums text-zinc-900">
-                  {invoice.currency} {(invoice.tax_amount / 100).toFixed(2)}
-                </span>
-              </div>
-              <div className="border-t border-zinc-200 pt-2" />
-            </>
-          )}
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-zinc-500">Total</span>
-            <span className="text-lg font-bold tabular-nums text-zinc-900">
-              {invoice.currency} {invoice.display_amount}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-sm text-zinc-500">Due date</span>
-            <span className="text-sm text-zinc-900">{invoice.due_date}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-zinc-500">Status</span>
-            <Badge variant="warning" className="uppercase">
-              {invoice.status}
-            </Badge>
-          </div>
-        </div>
-
-        {error && (
-          <div className="mb-4 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
-            {error}
-          </div>
-        )}
-
-        <Button onClick={handlePay} disabled={paying} size="lg" className="w-full">
-          {paying ? "Processing..." : `Pay ${invoice.currency} ${invoice.display_amount}`}
-        </Button>
-
-        <p className="mt-4 text-center text-xs text-zinc-400">Powered by Recurso</p>
+        {children}
       </div>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, strong }) {
+  return (
+    <div className="flex justify-between">
+      <span className="text-sm text-zinc-500">{label}</span>
+      <span
+        className={
+          strong
+            ? "text-sm font-semibold text-zinc-900"
+            : "text-sm tabular-nums text-zinc-900"
+        }
+      >
+        {value}
+      </span>
     </div>
   );
 }

@@ -91,6 +91,28 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		Amount:   pi.Amount,
 		Currency: string(pi.Currency),
 		Receipt:  receipt,
+		// The client_secret lets the frontend Payment Element confirm this exact
+		// PaymentIntent. It is safe to expose to the buyer's browser (it only
+		// authorizes confirming this one intent), unlike the secret API key.
+		ClientSecret: pi.ClientSecret,
+	}, nil
+}
+
+// GetPaymentStatus fetches a PaymentIntent so a checkout can be verified
+// server-side before an invoice is marked paid. It returns the intent's status
+// plus the invoice_id recorded in its metadata at CreateOrder time — the caller
+// must confirm that invoice_id matches the invoice being settled, so a
+// succeeded intent for one invoice can never be replayed to pay another.
+func (s *StripeGateway) GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error) {
+	pi, err := s.sc.PaymentIntents.Get(orderID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get payment intent %s failed: %w", orderID, err)
+	}
+	return &port.PaymentStatus{
+		Status:         string(pi.Status),
+		InvoiceID:      pi.Metadata["invoice_id"],
+		PaymentID:      pi.ID,
+		AmountReceived: pi.AmountReceived,
 	}, nil
 }
 
