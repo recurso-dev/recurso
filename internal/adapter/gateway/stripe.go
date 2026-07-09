@@ -116,6 +116,89 @@ func (s *StripeGateway) GetPaymentStatus(ctx context.Context, orderID string) (*
 	}, nil
 }
 
+// EnsureStripeCustomer returns existingID unchanged if set, otherwise creates a
+// Stripe Customer for the given email/name and returns its id. Saved payment
+// methods (from the portal SetupIntent flow) attach to this stable customer.
+func (s *StripeGateway) EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error) {
+	if existingID != "" {
+		return existingID, nil
+	}
+	params := &stripe.CustomerParams{}
+	if email != "" {
+		params.Email = stripe.String(email)
+	}
+	if name != "" {
+		params.Name = stripe.String(name)
+	}
+	params.Context = ctx
+	c, err := s.sc.Customers.New(params)
+	if err != nil {
+		return "", fmt.Errorf("stripe create customer failed: %w", err)
+	}
+	return c.ID, nil
+}
+
+// CreateSetupIntent creates a SetupIntent to collect and save a reusable card
+// against stripeCustomerID for future off-session charges, returning the
+// client_secret the browser's Payment Element confirms. metadata is attached so
+// the setup_intent.succeeded webhook can map the saved method to a Recurso
+// customer. (Card only for now; ACH-mandate save is a later enhancement.)
+func (s *StripeGateway) CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error) {
+	params := &stripe.SetupIntentParams{
+		Customer:           stripe.String(stripeCustomerID),
+		Usage:              stripe.String("off_session"),
+		PaymentMethodTypes: stripe.StringSlice([]string{string(stripe.PaymentMethodTypeCard)}),
+	}
+	for k, v := range metadata {
+		params.AddMetadata(k, v)
+	}
+	params.Context = ctx
+	si, err := s.sc.SetupIntents.New(params)
+	if err != nil {
+		return "", fmt.Errorf("stripe create setup intent failed: %w", err)
+	}
+	return si.ClientSecret, nil
+}
+
+// FinalizeSetupIntent reads back a confirmed SetupIntent, returning the saved
+// payment method's card details and the Recurso customer_id from its metadata.
+// On success it also sets the method as the Stripe Customer's default so future
+// invoices charge it (best-effort). The caller must confirm CustomerID matches
+// the authenticated portal customer before persisting anything.
+func (s *StripeGateway) FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error) {
+	si, err := s.sc.SetupIntents.Get(setupIntentID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get setup intent %s failed: %w", setupIntentID, err)
+	}
+
+	out := &port.SavedCard{
+		Status:     string(si.Status),
+		CustomerID: si.Metadata["customer_id"],
+	}
+	if si.Status != stripe.SetupIntentStatusSucceeded || si.PaymentMethod == nil {
+		return out, nil
+	}
+	out.PaymentMethodID = si.PaymentMethod.ID
+
+	if pm, pmErr := s.sc.PaymentMethods.Get(si.PaymentMethod.ID, nil); pmErr == nil && pm.Card != nil {
+		out.Brand = string(pm.Card.Brand)
+		out.Last4 = pm.Card.Last4
+		out.ExpMonth = int(pm.Card.ExpMonth)
+		out.ExpYear = int(pm.Card.ExpYear)
+	}
+
+	// Make it the default for future (off-session) invoices. Best-effort — the
+	// method is already saved even if this update fails.
+	if si.Customer != nil {
+		_, _ = s.sc.Customers.Update(si.Customer.ID, &stripe.CustomerParams{
+			InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
+				DefaultPaymentMethod: stripe.String(si.PaymentMethod.ID),
+			},
+		})
+	}
+	return out, nil
+}
+
 func (s *StripeGateway) VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error {
 	// If we have a webhook signature, we should verify it.
 	// However, VerifyPayment signature in `port` is generic.

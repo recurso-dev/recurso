@@ -722,6 +722,15 @@ func main() {
 	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
 	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
+	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
+	// doesn't implement these methods, so the endpoints stay disabled until real
+	// Stripe keys are set. customerRepo (concrete) provides the PM persistence.
+	portalStripeSetup, _ := stripeGateway.(interface {
+		EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error)
+		CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error)
+		FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
+	})
+	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
 
 	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
 	// lives on the portal handler above.
@@ -918,6 +927,8 @@ func main() {
 		portal.GET("/profile", portalAPIHandler.GetProfile)
 		portal.GET("/invoices", portalAPIHandler.GetInvoices)
 		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
+		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
+		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)
 		portal.GET("/disputes", portalAPIHandler.GetDisputes)
 		portal.POST("/invoices/:id/dispute", portalAPIHandler.RaiseDispute)
 		portal.POST("/redeem", portalAPIHandler.RedeemGift)

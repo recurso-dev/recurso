@@ -25,6 +25,19 @@ type PaymentStatus struct {
 	AmountReceived int64  // minor units actually received (0 until settled)
 }
 
+// SavedCard is the result of finalizing a portal SetupIntent: the reusable
+// payment method saved for a customer, plus the Recurso customer_id carried in
+// the intent's metadata so the caller can bind it to the right customer.
+type SavedCard struct {
+	Status          string // SetupIntent status, e.g. "succeeded"
+	CustomerID      string // Recurso customer id from the intent metadata
+	PaymentMethodID string // pm_* to charge for future invoices
+	Brand           string
+	Last4           string
+	ExpMonth        int
+	ExpYear         int
+}
+
 // PaymentResult represents the outcome of a payment retry attempt
 type PaymentResult struct {
 	Success   bool

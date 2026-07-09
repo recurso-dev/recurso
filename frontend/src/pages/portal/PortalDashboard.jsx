@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { API_ROOT as API_BASE } from "../../lib/api";
+import PortalPaymentMethod from "./PortalPaymentMethod";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -57,16 +58,8 @@ const PortalDashboard = () => {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
-  // Payment-method dialog state
+  // Payment-method dialog state (the SetupIntent flow lives in PortalPaymentMethod)
   const [pmOpen, setPmOpen] = useState(false);
-  const [pmForm, setPmForm] = useState({
-    card_brand: "",
-    card_last4: "",
-    card_exp_month: "",
-    card_exp_year: "",
-  });
-  const [pmSaving, setPmSaving] = useState(false);
-  const [pmError, setPmError] = useState(null);
 
   // Dispute dialog state
   const [disputeInvoice, setDisputeInvoice] = useState(null);
@@ -156,42 +149,6 @@ const PortalDashboard = () => {
     navigator.clipboard.writeText(profile.referral_code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const submitPaymentMethod = async (e) => {
-    e.preventDefault();
-    setPmSaving(true);
-    setPmError(null);
-    try {
-      // The card metadata below is what a gateway tokenization step returns to
-      // the client (no raw PAN). The server stores only these vaulted details
-      // for the session customer — the customer is never sent in the body.
-      const res = await fetch(`${API_BASE}/portal/api/payment-method`, {
-        method: "PUT",
-        headers: authHeaders,
-        body: JSON.stringify({
-          card_brand: pmForm.card_brand.trim(),
-          card_last4: pmForm.card_last4.trim(),
-          card_exp_month: Number(pmForm.card_exp_month),
-          card_exp_year: Number(pmForm.card_exp_year),
-        }),
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body?.error?.message || "Failed to update payment method");
-      }
-      setPmOpen(false);
-      setPmForm({
-        card_brand: "",
-        card_last4: "",
-        card_exp_month: "",
-        card_exp_year: "",
-      });
-    } catch (err) {
-      setPmError(err.message);
-    } finally {
-      setPmSaving(false);
-    }
   };
 
   const submitDispute = async (e) => {
@@ -458,102 +415,14 @@ const PortalDashboard = () => {
         </Card>
       </main>
 
-      {/* Update payment method dialog */}
-      <Dialog open={pmOpen} onOpenChange={setPmOpen}>
-        <DialogContent>
-          <form onSubmit={submitPaymentMethod}>
-            <DialogHeader>
-              <DialogTitle>Update payment method</DialogTitle>
-              <DialogDescription>
-                Enter your new card details. We store only the vaulted card
-                metadata returned by the payment gateway — never the full card
-                number.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="mt-4 space-y-4">
-              {pmError && (
-                <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                  {pmError}
-                </div>
-              )}
-              <div className="space-y-1.5">
-                <Label htmlFor="card_brand">Card brand</Label>
-                <Input
-                  id="card_brand"
-                  placeholder="visa"
-                  value={pmForm.card_brand}
-                  onChange={(e) =>
-                    setPmForm((f) => ({ ...f, card_brand: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="card_last4">Last 4 digits</Label>
-                <Input
-                  id="card_last4"
-                  placeholder="4242"
-                  inputMode="numeric"
-                  maxLength={4}
-                  value={pmForm.card_last4}
-                  onChange={(e) =>
-                    setPmForm((f) => ({ ...f, card_last4: e.target.value }))
-                  }
-                  required
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="card_exp_month">Expiry month</Label>
-                  <Input
-                    id="card_exp_month"
-                    type="number"
-                    min={1}
-                    max={12}
-                    placeholder="12"
-                    value={pmForm.card_exp_month}
-                    onChange={(e) =>
-                      setPmForm((f) => ({
-                        ...f,
-                        card_exp_month: e.target.value,
-                      }))
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="card_exp_year">Expiry year</Label>
-                  <Input
-                    id="card_exp_year"
-                    type="number"
-                    min={2020}
-                    placeholder="2030"
-                    value={pmForm.card_exp_year}
-                    onChange={(e) =>
-                      setPmForm((f) => ({ ...f, card_exp_year: e.target.value }))
-                    }
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-            <DialogFooter className="mt-6">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setPmOpen(false)}
-                disabled={pmSaving}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" disabled={pmSaving}>
-                {pmSaving && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save card
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+      {/* Update payment method — real Stripe SetupIntent flow (PANs never touch Recurso) */}
+      <PortalPaymentMethod
+        open={pmOpen}
+        onOpenChange={setPmOpen}
+        apiBase={API_BASE}
+        authHeaders={authHeaders}
+        onSaved={() => window.location.reload()}
+      />
 
       {/* Raise dispute dialog */}
       <Dialog
