@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"html/template"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -183,6 +184,13 @@ type PaymentFailedData struct {
 
 // SendPaymentFailed notifies customer of failed payment
 func (s *NotificationService) SendPaymentFailed(ctx context.Context, data PaymentFailedData) error {
+	// Deep-link the "Update Payment Method" button to the customer portal so a
+	// failed payment can be self-served (ENG-5 Phase 3). Without this the button
+	// rendered with an empty href.
+	if data.UpdatePaymentURL == "" {
+		data.UpdatePaymentURL = s.portalPaymentMethodURL()
+	}
+
 	content, err := s.renderTemplate(email.PaymentFailedTemplate, data)
 	if err != nil {
 		return err
@@ -199,6 +207,13 @@ func (s *NotificationService) SendPaymentFailed(ctx context.Context, data Paymen
 		Subject:  "Action Required: Payment Failed",
 		HTMLBody: html,
 	})
+}
+
+// portalPaymentMethodURL is the customer-portal entry a payment-recovery email
+// links to. The portal's magic-link login gates it, after which the customer
+// updates their card (Stripe) or re-authorizes their mandate.
+func (s *NotificationService) portalPaymentMethodURL() string {
+	return strings.TrimRight(s.baseURL, "/") + "/portal"
 }
 
 // Helper to render a template
@@ -326,6 +341,10 @@ func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, d
 		return fmt.Errorf("invalid dunning level: %d", level)
 	}
 
+	if data.UpdatePaymentURL == "" {
+		data.UpdatePaymentURL = s.portalPaymentMethodURL()
+	}
+
 	content, err := s.renderTemplate(tmplStr, data)
 	if err != nil {
 		return err
@@ -346,6 +365,10 @@ func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, d
 
 // SendCardExpiringNotification sends a card expiry warning email
 func (s *NotificationService) SendCardExpiringNotification(ctx context.Context, data email.CardExpiringEmailData) error {
+	if data.UpdatePaymentURL == "" {
+		data.UpdatePaymentURL = s.portalPaymentMethodURL()
+	}
+
 	content, err := s.renderTemplate(email.CardExpiringTemplate, data)
 	if err != nil {
 		return err
