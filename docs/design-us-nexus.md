@@ -1,6 +1,6 @@
 # Design: US sales-tax nexus depth
 
-**Status:** Phase 1 proposed · **Scope:** US sales tax (post-Wayfair economic nexus)
+**Status:** Phase 1 SHIPPED (migration 000073) · Phases 2–3 proposed · **Scope:** US sales tax (post-Wayfair economic nexus)
 **Related:** [[design-per-product-hsn]] (same "engine native, data needs certification" shape)
 
 ## Summary
@@ -48,19 +48,19 @@ Phase 1 below needs NONE of this data — it's pure config + gating.
 
 ## Phase 1 — concrete tasks
 
-- [ ] **1.1 — `tenant_tax_nexus` table + domain.** Migration: `tenant_tax_nexus`
+- [x] **1.1 — `tenant_tax_nexus` table + domain.** Migration: `tenant_tax_nexus`
       (id, tenant_id FK, state_code CHAR(2), nexus_type TEXT CHECK in
       'physical'|'voluntary'|'economic', established_at, created_at; UNIQUE
       (tenant_id, state_code)). `domain.TaxNexus`.
       **AC:** up+down valid; domain compiles.
-- [ ] **1.2 — Repository.** Port + SQL repo: `ListByTenant`, `Upsert`, `Delete`,
+- [x] **1.2 — Repository.** Port + SQL repo: `ListByTenant`, `Upsert`, `Delete`,
       and a fast `HasNexus(ctx, tenantID, state) bool`. Tenant-scoped.
       **AC:** DB-backed test (upsert/list/has/delete).
-- [ ] **1.3 — Config API.** `GET /v1/settings/tax/nexus` (list) and
+- [x] **1.3 — Config API.** `GET /v1/settings/tax/nexus` (list) and
       `PUT /v1/settings/tax/nexus` (set the full list of physical/voluntary nexus
       states), owner/admin. Append to openapi.
       **AC:** round-trips; tenant-isolated.
-- [ ] **1.4 — Gate the US tax path.** In `resolveUSSalesTax`, before charging:
+- [x] **1.4 — Gate the US tax path.** In `resolveUSSalesTax`, before charging:
       look up whether the seller has nexus in the buyer's state (the new repo).
       No nexus → `InvoiceTax{Total:0, TaxType:"no_nexus", Note:"No sales-tax nexus
       in <ST> — not collected"}`. Nexus → today's behavior (provider rate / stub).
@@ -68,7 +68,7 @@ Phase 1 below needs NONE of this data — it's pure config + gating.
       live TaxJar can't over-collect beyond declared nexus.
       **AC:** a buyer in a non-nexus state yields 0% + the note; a buyer in a nexus
       state is unchanged. Tests for both.
-- [ ] **1.5 — Tests + wire-up.** Resolver tests (nexus vs non-nexus state); repo
+- [x] **1.5 — Tests + wire-up.** Resolver tests (nexus vs non-nexus state); repo
       test; handler test. `go test`, gofmt, golangci-lint clean.
 
 **Phase 1 explicitly excludes** threshold data and cumulative tracking (Phase 2) —
