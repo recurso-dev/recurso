@@ -366,14 +366,28 @@ func (s *InvoicePDFService) GenerateInvoiceHTML(data PDFInvoiceData) (string, er
 	return buf.String(), nil
 }
 
-// FormatAmount formats an amount in paise to rupees string
-func FormatAmount(amountPaise int64, currency string) string {
-	amount := float64(amountPaise) / 100
-	symbol := "₹"
-	if currency == "USD" {
-		symbol = "$"
+// currencySymbols maps ISO-4217 codes to display symbols for invoice PDFs.
+// Unlisted currencies render as "CODE 12.34" — never a wrong symbol on a
+// legal document.
+var currencySymbols = map[string]string{
+	"INR": "₹",
+	"USD": "$",
+	"EUR": "€",
+	"GBP": "£",
+	"AUD": "A$",
+	"CAD": "C$",
+	"SGD": "S$",
+	"AED": "د.إ",
+	"JPY": "¥",
+}
+
+// FormatAmount formats a minor-unit amount with its currency's symbol.
+func FormatAmount(amountMinor int64, currency string) string {
+	amount := float64(amountMinor) / 100
+	if symbol, ok := currencySymbols[strings.ToUpper(currency)]; ok {
+		return fmt.Sprintf("%s%.2f", symbol, amount)
 	}
-	return fmt.Sprintf("%s%.2f", symbol, amount)
+	return fmt.Sprintf("%s %.2f", strings.ToUpper(currency), amount)
 }
 
 // AmountToWords converts amount to words (simplified)
