@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"os"
 
@@ -388,6 +389,10 @@ func (h *PortalAPIHandler) StartMandateReauth(c *gin.Context) {
 		Frequency:  "monthly",
 	})
 	if err != nil {
+		if errors.Is(err, service.ErrCustomerPhoneRequired) {
+			respondError(c, http.StatusUnprocessableEntity, codeValidationFailed, "a phone number is required for UPI Autopay — please ask the merchant to add one to your account")
+			return
+		}
 		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start mandate authorization")
 		return
 	}

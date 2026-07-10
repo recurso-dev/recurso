@@ -69,7 +69,7 @@ type PaymentGateway interface {
 	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
 	CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error)
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)
-	CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
+	CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
 	ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*PaymentResult, error)
 	// RevokeMandate deletes the recurring-payment token at the gateway.
 	// customerID is the gateway-side customer id (required by Razorpay's
