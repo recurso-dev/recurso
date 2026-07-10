@@ -22,6 +22,12 @@ type InvoiceRepository interface {
 	GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error)
 	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error)
 	Update(ctx context.Context, invoice *domain.Invoice) error
+	// MarkPaid atomically transitions an invoice to paid only if it is not
+	// already paid, in a single conditional UPDATE. It returns true when this
+	// call performed the transition (rowsAffected == 1) and false when the
+	// invoice was already paid — so concurrent settlers can gate their
+	// side-effects on the winner. amount_paid is set to the invoice total.
+	MarkPaid(ctx context.Context, invoiceID uuid.UUID, paidAt time.Time) (bool, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
 	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error

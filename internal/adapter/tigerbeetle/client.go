@@ -187,6 +187,12 @@ func (c *LedgerClient) CreateTransfers(ctx context.Context, transfers []*domain.
 	}
 
 	for _, res := range results {
+		// TransferExists means this transfer id was already applied — an
+		// idempotent replay, not a failure (mirrors the AccountExists handling
+		// in CreateAccounts above).
+		if res.Result == tbtypes.TransferExists {
+			continue
+		}
 		log.Printf("Error creating transfer index %d: %s", res.Index, res.Result)
 		return fmt.Errorf("failed to create transfer: %s", res.Result)
 	}

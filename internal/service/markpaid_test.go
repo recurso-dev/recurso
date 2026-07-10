@@ -36,6 +36,22 @@ func (m *mockInvoiceRepoForMarkPaid) Update(ctx context.Context, inv *domain.Inv
 	return nil
 }
 
+// MarkPaid mirrors the real conditional UPDATE: it transitions an open invoice
+// once and reports false if the invoice is missing or already paid.
+func (m *mockInvoiceRepoForMarkPaid) MarkPaid(ctx context.Context, id uuid.UUID, paidAt time.Time) (bool, error) {
+	if m.updateErr != nil {
+		return false, m.updateErr
+	}
+	if m.inv == nil || m.inv.Status == domain.InvoiceStatusPaid {
+		return false, nil
+	}
+	m.inv.Status = domain.InvoiceStatusPaid
+	m.inv.PaidAt = &paidAt
+	m.inv.AmountPaid = m.inv.Total
+	m.updated = m.inv
+	return true, nil
+}
+
 type mockLedgerRepoForMarkPaid struct {
 	port.LedgerRepository
 	cashAccountID uuid.UUID

@@ -460,13 +460,21 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	}
 
 	now := time.Now().UTC()
+	// Atomically claim the paid transition. Only the settler whose conditional
+	// UPDATE actually flips the row runs the side-effects below; concurrent
+	// settlers (inline checkout, gateway webhook, retry worker, offline payment)
+	// get transitioned=false and return without double-posting the ledger or
+	// double-counting recovered revenue.
+	transitioned, err := s.invoiceRepo.MarkPaid(ctx, invoiceID, now)
+	if err != nil {
+		return err
+	}
+	if !transitioned {
+		return nil // another settler already marked it paid
+	}
 	inv.Status = domain.InvoiceStatusPaid
 	inv.PaidAt = &now
 	inv.AmountPaid = inv.Total
-
-	if err := s.invoiceRepo.Update(ctx, inv); err != nil {
-		return err
-	}
 
 	s.telemetry.MilestoneFirstPayment() // opt-in anonymous milestone; no-op when disabled
 

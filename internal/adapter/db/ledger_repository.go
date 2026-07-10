@@ -78,32 +78,52 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 		tx.Timestamp = time.Now()
 	}
 
-	_, err := r.db.ExecContext(ctx,
+	// The insert and both balance moves run in one transaction so a partial
+	// failure can never leave a posted transaction without its balance effect
+	// (or vice-versa), permanently diverging the ledger.
+	dbtx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin ledger transaction: %w", err)
+	}
+	defer func() { _ = dbtx.Rollback() }() // no-op once committed
+
+	// Idempotent insert: a duplicate (reference_id, code) for a real reference
+	// (invoice/payment/refund) is a no-op via the partial unique index, so a
+	// replayed or concurrently-lost settle never double-posts. Recognition rows
+	// (zero reference) are excluded from that index and always insert.
+	res, err := dbtx.ExecContext(ctx,
 		`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		 ON CONFLICT DO NOTHING`,
 		tx.ID, tx.DebitAccountID, tx.CreditAccountID, tx.Amount,
 		tx.LedgerID, tx.Code, tx.ReferenceID, tx.Description, tx.Timestamp,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create ledger transaction: %w", err)
 	}
-
-	// Update balances: debit increases asset/expense, credit increases liability/revenue/equity
-	_, err = r.db.ExecContext(ctx,
-		`UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2`,
-		int64(tx.Amount), tx.DebitAccountID)
+	n, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to update debit account balance: %w", err)
+		return fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	if n == 0 {
+		// Already posted for this (reference_id, code) — do not re-apply balances.
+		return dbtx.Commit()
 	}
 
-	_, err = r.db.ExecContext(ctx,
+	// Balances move only when a new transaction row was actually inserted.
+	// Debit increases asset/expense, credit increases liability/revenue/equity.
+	if _, err := dbtx.ExecContext(ctx,
 		`UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2`,
-		int64(tx.Amount), tx.CreditAccountID)
-	if err != nil {
+		int64(tx.Amount), tx.DebitAccountID); err != nil {
+		return fmt.Errorf("failed to update debit account balance: %w", err)
+	}
+	if _, err := dbtx.ExecContext(ctx,
+		`UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2`,
+		int64(tx.Amount), tx.CreditAccountID); err != nil {
 		return fmt.Errorf("failed to update credit account balance: %w", err)
 	}
 
-	return nil
+	return dbtx.Commit()
 }
 
 // InvoiceLedgerMismatch describes an invoice whose ledger postings for a

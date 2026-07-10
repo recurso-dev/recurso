@@ -271,6 +271,28 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 	return nil
 }
 
+// MarkPaid atomically settles an invoice via a single conditional UPDATE. The
+// `AND status <> 'paid'` guard means only the first of several concurrent
+// settlers (inline checkout, gateway webhook, retry worker, offline payment)
+// transitions the row; the rest affect zero rows. amount_paid is set from the
+// invoice's own total column so no read-then-write is needed. Returns true iff
+// this call performed the transition.
+func (r *InvoiceRepository) MarkPaid(ctx context.Context, invoiceID uuid.UUID, paidAt time.Time) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices
+		SET status = 'paid', amount_paid = total, paid_at = $2, updated_at = NOW()
+		WHERE id = $1 AND status <> 'paid'
+	`, invoiceID, paidAt)
+	if err != nil {
+		return false, fmt.Errorf("failed to mark invoice paid: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
 func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
 	query := `
 		SELECT
