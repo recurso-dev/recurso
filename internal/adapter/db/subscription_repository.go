@@ -326,14 +326,20 @@ func (r *SubscriptionRepository) GetSubscriptionsDueTomorrow(ctx context.Context
 	var subs []SubscriptionWithCustomer
 	for rows.Next() {
 		var sub SubscriptionWithCustomer
+		// current_period_end is timestamptz (scan into time.Time, not string);
+		// customer name is nullable.
+		var nextBilling time.Time
+		var customerName sql.NullString
 		if err := rows.Scan(
 			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-			&sub.NextBillingDate,
-			&sub.CustomerName, &sub.CustomerEmail,
+			&nextBilling,
+			&customerName, &sub.CustomerEmail,
 			&sub.PlanName, &sub.Amount, &sub.Currency,
 		); err != nil {
 			return nil, err
 		}
+		sub.NextBillingDate = nextBilling.Format("January 2, 2006")
+		sub.CustomerName = customerName.String
 		subs = append(subs, sub)
 	}
 	return subs, nil
@@ -346,11 +352,15 @@ func (r *SubscriptionRepository) MarkPreChargeNotificationSent(ctx context.Conte
 	var amount int64
 	var currency string
 
+	// Pricing lives in the prices table, not plans (plans has no price/currency
+	// column — the old query errored on every call, so the notification was
+	// never marked sent and the customer was re-emailed every tick).
 	err := r.db.QueryRowContext(ctx, `
-		SELECT s.tenant_id, s.customer_id, p.price, p.currency
+		SELECT s.tenant_id, s.customer_id, pr.amount, pr.currency
 		FROM subscriptions s
-		JOIN plans p ON s.plan_id = p.id
+		JOIN prices pr ON pr.plan_id = s.plan_id
 		WHERE s.id = $1
+		LIMIT 1
 	`, subscriptionID).Scan(&tenantID, &customerID, &amount, &currency)
 	if err != nil {
 		return fmt.Errorf("failed to get subscription: %w", err)

@@ -298,17 +298,34 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 	for rows.Next() {
 		inv := &domain.Invoice{}
 		var amountPaid int64
+		// e-invoice columns are nullable and NULL on non-e-invoiced rows (the
+		// failed invoices this query targets); scanning NULL into a plain
+		// string would abort the whole retry sweep.
+		var hsn, irn, ackNo, qr, einvStatus, dunAction, dunCtx, lastErr, dunMgr sql.NullString
+		// due_date is a nullable column scanned into a non-pointer time.Time;
+		// guard it the same way so a NULL can't abort the sweep.
+		var dueDate sql.NullTime
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
 			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
-			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &inv.HSNCode, &inv.IRN, &inv.AckNo,
-			&inv.SignedQRCode, &inv.EInvoiceStatus, &inv.TDSAmount,
-			&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
-			&inv.DunningActionID, &inv.DunningContextKey,
-			&inv.LastPaymentError, &inv.DunningManagedBy,
+			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsn, &irn, &ackNo,
+			&qr, &einvStatus, &inv.TDSAmount,
+			&inv.CreatedAt, &dueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
+			&dunAction, &dunCtx,
+			&lastErr, &dunMgr,
 		); err != nil {
 			return nil, err
 		}
+		inv.DueDate = dueDate.Time
+		inv.HSNCode = hsn.String
+		inv.IRN = irn.String
+		inv.AckNo = ackNo.String
+		inv.SignedQRCode = qr.String
+		inv.EInvoiceStatus = einvStatus.String
+		inv.DunningActionID = dunAction.String
+		inv.DunningContextKey = dunCtx.String
+		inv.LastPaymentError = lastErr.String
+		inv.DunningManagedBy = dunMgr.String
 		setInvoiceAmounts(inv, amountPaid)
 		invoices = append(invoices, inv)
 	}

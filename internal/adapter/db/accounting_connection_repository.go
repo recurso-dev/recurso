@@ -28,24 +28,24 @@ func (r *AccountingConnectionRepository) Create(ctx context.Context, conn *domai
 }
 
 func (r *AccountingConnectionRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.AccountingConnection, error) {
-	query := `SELECT id, tenant_id, provider, access_token, refresh_token, token_expires_at,
-		realm_id, last_sync_at, sync_status, last_error, is_active, created_at
+	query := `SELECT id, tenant_id, provider, access_token, COALESCE(refresh_token,''), token_expires_at,
+		COALESCE(realm_id,''), last_sync_at, sync_status, COALESCE(last_error,''), is_active, created_at
 		FROM accounting_connections WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, id)
 	return r.scanConnection(row)
 }
 
 func (r *AccountingConnectionRepository) GetByTenantAndProvider(ctx context.Context, tenantID uuid.UUID, provider string) (*domain.AccountingConnection, error) {
-	query := `SELECT id, tenant_id, provider, access_token, refresh_token, token_expires_at,
-		realm_id, last_sync_at, sync_status, last_error, is_active, created_at
+	query := `SELECT id, tenant_id, provider, access_token, COALESCE(refresh_token,''), token_expires_at,
+		COALESCE(realm_id,''), last_sync_at, sync_status, COALESCE(last_error,''), is_active, created_at
 		FROM accounting_connections WHERE tenant_id = $1 AND provider = $2`
 	row := r.db.QueryRowContext(ctx, query, tenantID, provider)
 	return r.scanConnection(row)
 }
 
 func (r *AccountingConnectionRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.AccountingConnection, error) {
-	query := `SELECT id, tenant_id, provider, access_token, refresh_token, token_expires_at,
-		realm_id, last_sync_at, sync_status, last_error, is_active, created_at
+	query := `SELECT id, tenant_id, provider, access_token, COALESCE(refresh_token,''), token_expires_at,
+		COALESCE(realm_id,''), last_sync_at, sync_status, COALESCE(last_error,''), is_active, created_at
 		FROM accounting_connections WHERE tenant_id = $1 ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
@@ -88,8 +88,8 @@ func (r *AccountingConnectionRepository) Delete(ctx context.Context, id uuid.UUI
 }
 
 func (r *AccountingConnectionRepository) GetActiveConnections(ctx context.Context) ([]*domain.AccountingConnection, error) {
-	query := `SELECT id, tenant_id, provider, access_token, refresh_token, token_expires_at,
-		realm_id, last_sync_at, sync_status, last_error, is_active, created_at
+	query := `SELECT id, tenant_id, provider, access_token, COALESCE(refresh_token,''), token_expires_at,
+		COALESCE(realm_id,''), last_sync_at, sync_status, COALESCE(last_error,''), is_active, created_at
 		FROM accounting_connections WHERE is_active = TRUE`
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -127,7 +127,7 @@ func (r *AccountingConnectionRepository) CreateSyncLog(ctx context.Context, log 
 
 func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenantID uuid.UUID, limit int) ([]*domain.AccountingSyncLog, error) {
 	query := `SELECT id, tenant_id, connection_id, entity_type, entity_id,
-		external_id, action, status, error_message, synced_at
+		COALESCE(external_id,''), action, status, COALESCE(error_message,''), synced_at
 		FROM accounting_sync_log WHERE tenant_id = $1 ORDER BY synced_at DESC LIMIT $2`
 	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
 	if err != nil {

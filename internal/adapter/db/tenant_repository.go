@@ -119,9 +119,15 @@ func (r *TenantRepository) ListTenants(ctx context.Context) ([]*domain.Tenant, e
 	var tenants []*domain.Tenant
 	for rows.Next() {
 		var t domain.Tenant
-		if err := rows.Scan(&t.ID, &t.Name, &t.Email, &t.CreatedAt, &t.UpdatedAt); err != nil {
+		// name/email are nullable — scanning a NULL into a plain string aborts
+		// the whole sweep (breaks the nexus + churn schedulers, which iterate
+		// every tenant).
+		var name, email sql.NullString
+		if err := rows.Scan(&t.ID, &name, &email, &t.CreatedAt, &t.UpdatedAt); err != nil {
 			return nil, err
 		}
+		t.Name = name.String
+		t.Email = email.String
 		tenants = append(tenants, &t)
 	}
 	return tenants, nil
