@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **API keys are now mode-gated (test vs. live).** Newly created keys are issued
+  as `rsk_test_` (test) or `rsk_live_` (live), and a key's mode must match the
+  server's `gateway_mode` (reported at `GET /version`): a test key is accepted on
+  a `none`/`test` server, a live key on a `live` server. Mismatches return
+  `401 key_mode_mismatch`, so a test key can never move real money. New accounts
+  get a test key by default; mint a live key with
+  `POST /v1/developer/keys {"mode":"live"}`.
+
+  **Breaking:** existing generated `sk_live_` keys are grandfathered as live and
+  keep working against a live-gateway server — but a request from such a key to a
+  **non-live** server (the mock `none` gateway or gateway test mode) now returns
+  `401 key_mode_mismatch`. If you develop against a non-live instance with an old
+  `sk_live_` key, either mint an `rsk_test_` key (Settings → API Keys, or the
+  developer-keys endpoint) or configure live gateway keys. The demo key
+  `sk_test_12345` is unaffected — it is grandfathered as a test key.
+
 ## [0.3.0] - 2026-07-07
 
 ### Added
