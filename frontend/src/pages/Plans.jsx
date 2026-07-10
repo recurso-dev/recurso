@@ -134,7 +134,7 @@ export default function Plans() {
       header: "",
       align: "right",
       cell: () => (
-        <span className="inline-flex text-zinc-400">
+        <span className="inline-flex text-stone-400">
           <MoreHorizontal className="h-4 w-4" />
         </span>
       ),

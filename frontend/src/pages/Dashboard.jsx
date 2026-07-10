@@ -4,6 +4,7 @@ import { DollarSign, Users, TrendingDown, RotateCcw, BarChart3 } from "lucide-re
 
 import { endpoints } from "../lib/api";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleton";
@@ -127,7 +128,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={mrr != null ? formatCurrency(mrr) : "—"}
+            value={mrr != null ? <Money amountMinor={mrr} /> : "—"}
             icon={DollarSign}
             hint="Monthly recurring revenue"
           />
@@ -145,7 +146,7 @@ export default function Dashboard() {
           />
           <StatCard
             label="Recovered Revenue"
-            value={recovered != null ? formatCurrency(recovered) : "—"}
+            value={recovered != null ? <Money amountMinor={recovered} /> : "—"}
             icon={RotateCcw}
             hint="Via smart dunning"
           />
@@ -224,7 +225,7 @@ export default function Dashboard() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {formatCurrency(inv.total, inv.currency)}
+                        <Money amountMinor={inv.total} currency={inv.currency} />
                       </TableCell>
                       <TableCell className="pr-6 text-right">
                         <Badge

@@ -6,6 +6,7 @@ import { endpoints } from "../lib/api";
 import { useDebounce } from "../hooks/useDebounce";
 import SubscriptionDetail from "../components/slide-overs/SubscriptionDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -179,7 +180,7 @@ export default function Subscriptions() {
         const interval = plan?.interval_unit === "year" ? "yr" : "mo";
         return (
           <span className="tabular-nums text-foreground">
-            {formatCurrency(amount, currency)}{" "}
+            <Money amountMinor={amount} currency={currency} />{" "}
             <span className="text-muted-foreground">/ {interval}</span>
           </span>
         );
@@ -208,7 +209,7 @@ export default function Subscriptions() {
       header: "",
       align: "right",
       cell: () => (
-        <span className="inline-flex text-zinc-400">
+        <span className="inline-flex text-stone-400">
           <MoreHorizontal className="h-4 w-4" />
         </span>
       ),

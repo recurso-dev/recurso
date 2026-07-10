@@ -18,7 +18,7 @@ const badgeVariants = cva(
           "border-transparent bg-red-50 text-red-700 ring-1 ring-inset ring-red-600/20",
         info: "border-transparent bg-blue-50 text-blue-700 ring-1 ring-inset ring-blue-600/20",
         neutral:
-          "border-transparent bg-zinc-100 text-zinc-600 ring-1 ring-inset ring-zinc-500/20",
+          "border-transparent bg-stone-100 text-stone-600 ring-1 ring-inset ring-stone-500/20",
         outline: "text-foreground",
       },
     },

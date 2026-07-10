@@ -59,7 +59,7 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
                   {progress}%
                 </p>
               </div>
-              <div className="h-2 w-full rounded-full bg-zinc-200">
+              <div className="h-2 w-full rounded-full bg-stone-200">
                 <div
                   className="h-2 rounded-full bg-primary transition-all duration-500"
                   style={{ width: `${progress}%` }}

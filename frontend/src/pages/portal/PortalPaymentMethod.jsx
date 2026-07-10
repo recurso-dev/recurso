@@ -184,7 +184,7 @@ export default function PortalPaymentMethod({
         {done ? (
           <div className="flex flex-col items-center py-6 text-center">
             <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-600" />
-            <p className="text-sm text-zinc-600">Your card has been updated.</p>
+            <p className="text-sm text-stone-600">Your card has been updated.</p>
           </div>
         ) : unavailable ? (
           <div className="mt-4 space-y-3">
@@ -213,7 +213,7 @@ export default function PortalPaymentMethod({
           </div>
         ) : loading || !clientSecret || !stripePromise ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
           </div>
         ) : (
           <Elements stripe={stripePromise} options={{ clientSecret }}>

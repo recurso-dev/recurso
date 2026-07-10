@@ -152,7 +152,7 @@ const Coupons = () => {
                   "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors",
                   statusFilter === f
                     ? "bg-emerald-50 text-emerald-700"
-                    : "text-zinc-500 hover:text-zinc-900"
+                    : "text-stone-500 hover:text-stone-900"
                 )}
               >
                 {f}

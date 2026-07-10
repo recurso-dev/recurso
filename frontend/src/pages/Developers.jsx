@@ -480,7 +480,7 @@ export default function Developers() {
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <Webhook className="h-4 w-4 shrink-0 text-zinc-400" />
+                        <Webhook className="h-4 w-4 shrink-0 text-stone-400" />
                         <code className="break-all font-mono text-sm font-semibold text-foreground">
                           {hook.url}
                         </code>
@@ -496,7 +496,7 @@ export default function Developers() {
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           Signing secret
                         </p>
-                        <code className="font-mono text-xs text-zinc-400">
+                        <code className="font-mono text-xs text-stone-400">
                           whsec_•••••••
                         </code>
                       </div>
@@ -519,7 +519,7 @@ export default function Developers() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setDeleteWebhookTarget(hook.id)}
-                        className="text-zinc-400 hover:text-red-600"
+                        className="text-stone-400 hover:text-red-600"
                         title="Delete endpoint"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -615,9 +615,9 @@ export default function Developers() {
                         </TableCell>
                         <TableCell className="text-right">
                           {expandedEventId === evt.id ? (
-                            <ChevronUp className="ml-auto h-4 w-4 text-zinc-400" />
+                            <ChevronUp className="ml-auto h-4 w-4 text-stone-400" />
                           ) : (
-                            <ChevronDown className="ml-auto h-4 w-4 text-zinc-400" />
+                            <ChevronDown className="ml-auto h-4 w-4 text-stone-400" />
                           )}
                         </TableCell>
                       </TableRow>

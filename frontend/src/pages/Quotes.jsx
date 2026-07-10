@@ -166,7 +166,7 @@ const Quotes = () => {
               e.stopPropagation();
               handleRowClick(q);
             }}
-            className="rounded-md p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+            className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-900"
             title="View details"
           >
             <MoreHorizontal className="h-4 w-4" />

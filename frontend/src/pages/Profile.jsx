@@ -104,7 +104,7 @@ export default function Profile() {
               the Developers section.
             </p>
             <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/40 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-zinc-500">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-stone-500">
                 <KeyRound className="h-4 w-4" />
               </div>
               <div className="flex-1">

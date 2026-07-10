@@ -52,7 +52,9 @@ describe('Dashboard (redesign)', () => {
         renderDashboard();
 
         await waitFor(() => {
-            expect(screen.getByText('$1,000.00')).toBeInTheDocument();
+            expect(
+              screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$1,000.00")
+            ).toBeInTheDocument();
         });
         // 2 active subscriptions.
         expect(screen.getByText('2')).toBeInTheDocument();
@@ -91,7 +93,9 @@ describe('Dashboard (redesign)', () => {
         await waitFor(() => {
             expect(screen.getByText('Acme Corp')).toBeInTheDocument();
         });
-        expect(screen.getByText('$250.00')).toBeInTheDocument();
+        expect(
+          screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$250.00")
+        ).toBeInTheDocument();
         expect(screen.getByText('paid')).toBeInTheDocument();
     });
 });

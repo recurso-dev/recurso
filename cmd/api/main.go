@@ -915,8 +915,21 @@ func main() {
 		})
 	})
 
+	// gateway_mode drives the dashboard's "Test mode" chip: "test" when any
+	// configured gateway key is a test key, "live" when keys are live-only,
+	// "none" when no real gateway is configured (mock).
+	gatewayMode := "none"
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	razorpayKey := os.Getenv("RAZORPAY_KEY_ID")
+	if stripeKey != "" || razorpayKey != "" {
+		if strings.HasPrefix(stripeKey, "sk_test") || strings.HasPrefix(razorpayKey, "rzp_test") {
+			gatewayMode = "test"
+		} else {
+			gatewayMode = "live"
+		}
+	}
 	r.GET("/version", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": version})
+		c.JSON(http.StatusOK, gin.H{"version": version, "gateway_mode": gatewayMode})
 	})
 
 	// OpenAPI specification (public): GET /openapi.yaml, GET /openapi.json

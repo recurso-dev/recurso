@@ -122,6 +122,10 @@ paths:
                 properties:
                   version:
                     type: string
+                  gateway_mode:
+                    type: string
+                    enum: [test, live, none]
+                    description: Whether the configured payment gateways use test or live keys.
                     examples: [dev, v0.1.0]
 
   /openapi.yaml:

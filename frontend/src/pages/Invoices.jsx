@@ -5,6 +5,7 @@ import { endpoints } from "../lib/api";
 import { useToast } from "../components/Toast";
 import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -106,7 +107,7 @@ const Invoices = () => {
       header: "Amount",
       align: "right",
       cell: (inv) => (
-        <span className="tabular-nums">{formatCurrency(inv.total, inv.currency)}</span>
+        <Money amountMinor={inv.total} currency={inv.currency} />
       ),
     },
     {

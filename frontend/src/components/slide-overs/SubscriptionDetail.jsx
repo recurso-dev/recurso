@@ -221,13 +221,13 @@ export default function SubscriptionDetail({
               <span
                 className={cn(
                   "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-                  isActive ? "bg-emerald-400" : "bg-zinc-400"
+                  isActive ? "bg-emerald-400" : "bg-stone-400"
                 )}
               />
               <span
                 className={cn(
                   "relative inline-flex h-2 w-2 rounded-full",
-                  isActive ? "bg-emerald-500" : "bg-zinc-500"
+                  isActive ? "bg-emerald-500" : "bg-stone-500"
                 )}
               />
             </span>
@@ -524,7 +524,7 @@ export default function SubscriptionDetail({
               <li>
                 <div className="relative">
                   <div className="relative flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-400 ring-4 ring-white">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-stone-400 ring-4 ring-white">
                       <RotateCw className="h-3.5 w-3.5 text-white" />
                     </span>
                     <div className="flex min-w-0 flex-1 justify-between gap-4">

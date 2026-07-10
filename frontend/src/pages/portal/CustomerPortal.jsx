@@ -60,7 +60,7 @@ export default function CustomerPortal() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+      <div className="flex min-h-screen items-center justify-center bg-stone-50">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
       </div>
     );
@@ -68,7 +68,7 @@ export default function CustomerPortal() {
 
   if (error || !data) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
+      <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4">
         <Card className="w-full max-w-md text-center">
           <CardContent className="p-8">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50 ring-1 ring-inset ring-red-600/20">
@@ -87,7 +87,7 @@ export default function CustomerPortal() {
   const { customer, subscriptions, invoices } = data;
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-stone-50">
       <div className="mx-auto max-w-3xl space-y-6 px-4 py-10 sm:px-6 lg:px-8">
         {/* Header */}
         <Card>

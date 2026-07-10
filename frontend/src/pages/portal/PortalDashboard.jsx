@@ -240,7 +240,7 @@ const PortalDashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+      <div className="flex min-h-screen items-center justify-center bg-stone-50">
         <div className="text-center">
           <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground">Loading...</p>
@@ -250,7 +250,7 @@ const PortalDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-50">
+    <div className="min-h-screen bg-stone-50">
       {/* Header */}
       <header className="border-b border-border bg-background">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4">

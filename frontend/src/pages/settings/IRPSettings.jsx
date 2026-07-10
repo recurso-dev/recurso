@@ -108,7 +108,7 @@ export default function IRPSettings() {
                   onClick={() => setConfig((prev) => ({ ...prev, is_enabled: !prev.is_enabled }))}
                   className={cn(
                     "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    config.is_enabled ? "bg-primary" : "bg-zinc-200"
+                    config.is_enabled ? "bg-primary" : "bg-stone-200"
                   )}
                 >
                   <span

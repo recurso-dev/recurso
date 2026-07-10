@@ -43,7 +43,7 @@ const PortalVerify = () => {
   }, [token, navigate]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+    <div className="flex min-h-screen items-center justify-center bg-stone-50">
       <div className="text-center">
         <Loader2 className="mx-auto mb-4 h-8 w-8 animate-spin text-primary" />
         <p className="text-sm text-muted-foreground">Verifying your login...</p>

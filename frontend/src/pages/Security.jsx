@@ -141,7 +141,7 @@ function MfaSection() {
                 your authenticator. They won't be shown again.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-zinc-50 p-4 font-mono text-sm">
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-4 font-mono text-sm">
               {backupCodes.map((c) => (
                 <span key={c} className="text-foreground">
                   {c}
@@ -181,7 +181,7 @@ function MfaSection() {
                   Or enter this key manually
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="rounded bg-zinc-100 px-2 py-1 font-mono text-sm break-all">
+                  <code className="rounded bg-stone-100 px-2 py-1 font-mono text-sm break-all">
                     {setup.secret}
                   </code>
                   <CopyButton value={setup.secret} />
@@ -554,7 +554,7 @@ function SSOSection() {
           <>
             {/* Service-provider details to hand to the IdP */}
             {(conn?.sp_metadata_url || conn?.sp_acs_url) && (
-              <div className="space-y-3 rounded-md border border-border bg-zinc-50 p-4">
+              <div className="space-y-3 rounded-md border border-border bg-stone-50 p-4">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Give these to your identity provider
                 </p>

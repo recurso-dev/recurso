@@ -38,11 +38,11 @@ export function StatCard({
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {label}
         </p>
-        {Icon && <Icon className="h-4 w-4 text-zinc-400" />}
+        {Icon && <Icon className="h-4 w-4 text-stone-400" />}
       </div>
       <div className="mt-3 flex items-end justify-between gap-2">
         {loading ? (
-          <div className="h-8 w-24 animate-pulse rounded bg-zinc-100" />
+          <div className="h-8 w-24 animate-pulse rounded bg-stone-100" />
         ) : (
           <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
             {value}

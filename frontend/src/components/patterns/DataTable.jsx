@@ -61,7 +61,7 @@ export function DataTable({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {search && (
             <div className="relative w-full sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone-400" />
               <Input
                 type="search"
                 value={search.value}

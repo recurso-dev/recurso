@@ -21,7 +21,7 @@ export function PageHeader({ title, description, breadcrumbs, actions, className
             const isLast = i === breadcrumbs.length - 1;
             return (
               <span key={i} className="flex items-center gap-1.5">
-                {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-zinc-300" />}
+                {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-stone-300" />}
                 {crumb.to && !isLast ? (
                   <Link to={crumb.to} className="hover:text-foreground transition-colors">
                     {crumb.label}

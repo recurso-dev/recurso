@@ -239,7 +239,7 @@ export default function Checkout() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-zinc-50">
+      <div className="flex min-h-screen items-center justify-center bg-stone-50">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
       </div>
     );
@@ -252,10 +252,10 @@ export default function Checkout() {
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
             <AlertCircle className="h-6 w-6 text-red-500" />
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-xl font-semibold tracking-tight text-stone-900">
             Invoice not found
           </h1>
-          <p className="mt-1 text-sm text-zinc-500">{error}</p>
+          <p className="mt-1 text-sm text-stone-500">{error}</p>
         </div>
       </CheckoutShell>
     );
@@ -268,13 +268,13 @@ export default function Checkout() {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
             <CheckCircle2 className="h-7 w-7 text-emerald-600" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
             Payment successful
           </h1>
-          <p className="mt-2 text-sm text-zinc-500">
+          <p className="mt-2 text-sm text-stone-500">
             Invoice {invoice?.invoice_number} has been paid.
           </p>
-          <p className="mt-4 text-xs text-zinc-400">You can close this page.</p>
+          <p className="mt-4 text-xs text-stone-400">You can close this page.</p>
         </div>
       </CheckoutShell>
     );
@@ -287,10 +287,10 @@ export default function Checkout() {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
             <AlertCircle className="h-7 w-7 text-red-500" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
             Payment not completed
           </h1>
-          <p className="mt-2 text-sm text-zinc-500">
+          <p className="mt-2 text-sm text-stone-500">
             Your payment for invoice {invoice?.invoice_number} was declined or
             cancelled. You have not been charged.
           </p>
@@ -309,10 +309,10 @@ export default function Checkout() {
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
             <Clock className="h-7 w-7 text-amber-500" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
             Payment processing
           </h1>
-          <p className="mt-2 text-sm text-zinc-500">
+          <p className="mt-2 text-sm text-stone-500">
             We've received your payment for invoice {invoice?.invoice_number}.
             Bank payments (like ACH) take a few business days to clear — you'll
             get a receipt once it settles. No further action is needed.
@@ -330,12 +330,12 @@ export default function Checkout() {
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500 text-2xl font-bold text-white">
           R
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
           Checkout
         </h1>
       </div>
 
-      <div className="mb-6 space-y-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+      <div className="mb-6 space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
         <SummaryRow label="Invoice" value={invoice.invoice_number} strong />
         {invoice.subtotal !== invoice.total && (
           <>
@@ -347,12 +347,12 @@ export default function Checkout() {
               label="Tax"
               value={`${invoice.currency} ${(invoice.tax_amount / 100).toFixed(2)}`}
             />
-            <div className="border-t border-zinc-200 pt-2" />
+            <div className="border-t border-stone-200 pt-2" />
           </>
         )}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-zinc-500">Total</span>
-          <span className="text-lg font-bold tabular-nums text-zinc-900">
+          <span className="text-sm text-stone-500">Total</span>
+          <span className="text-lg font-bold tabular-nums text-stone-900">
             {invoice.currency} {invoice.display_amount}
           </span>
         </div>
@@ -390,7 +390,7 @@ export default function Checkout() {
           >
             {`Pay ${invoice.currency} ${invoice.display_amount}`}
           </Button>
-          <p className="text-center text-xs text-zinc-400">
+          <p className="text-center text-xs text-stone-400">
             A secure Razorpay window opens to complete your payment (UPI, cards,
             netbanking).
           </p>
@@ -413,15 +413,15 @@ export default function Checkout() {
         </Button>
       )}
 
-      <p className="mt-4 text-center text-xs text-zinc-400">Powered by Recurso</p>
+      <p className="mt-4 text-center text-xs text-stone-400">Powered by Recurso</p>
     </CheckoutShell>
   );
 }
 
 function CheckoutShell({ children }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">
         {children}
       </div>
     </div>
@@ -431,12 +431,12 @@ function CheckoutShell({ children }) {
 function SummaryRow({ label, value, strong }) {
   return (
     <div className="flex justify-between">
-      <span className="text-sm text-zinc-500">{label}</span>
+      <span className="text-sm text-stone-500">{label}</span>
       <span
         className={
           strong
-            ? "text-sm font-semibold text-zinc-900"
-            : "text-sm tabular-nums text-zinc-900"
+            ? "text-sm font-semibold text-stone-900"
+            : "text-sm tabular-nums text-stone-900"
         }
       >
         {value}

@@ -222,7 +222,7 @@ const CreateCoupon = () => {
                 onClick={() => setField("active", !formData.active)}
                 className={cn(
                   "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  formData.active ? "bg-primary" : "bg-zinc-200"
+                  formData.active ? "bg-primary" : "bg-stone-200"
                 )}
               >
                 <span

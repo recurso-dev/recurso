@@ -81,8 +81,12 @@ describe('Invoices Page', () => {
         });
 
         // Check amount formatting
-        expect(screen.getByText('$1,500.00')).toBeInTheDocument();
-        expect(screen.getByText('$500.00')).toBeInTheDocument();
+        expect(
+            screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$1,500.00")
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$500.00")
+        ).toBeInTheDocument();
 
         // Check status badges
         expect(screen.getByText('paid')).toBeInTheDocument();

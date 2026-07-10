@@ -40,6 +40,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // Backend metadata (gateway_mode drives the Test-mode chip).
+      '/version': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+        secure: false,
+      },
       // /checkout/:id is both an SPA page (browser navigation) and a JSON
       // API (fetch). Route page loads to the SPA, everything else to the API.
       '/checkout': {

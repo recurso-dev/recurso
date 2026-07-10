@@ -265,7 +265,7 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
                       type="button"
                       onClick={() => removeRow(index)}
                       aria-label={`Remove entitlement ${index + 1}`}
-                      className="flex-none text-zinc-400 transition-colors hover:text-red-500"
+                      className="flex-none text-stone-400 transition-colors hover:text-red-500"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -311,7 +311,7 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
                   return (
                     <div key={ent.feature_key} className="flex items-center gap-3">
                       {disabled ? (
-                        <X className="h-4 w-4 text-zinc-400" />
+                        <X className="h-4 w-4 text-stone-400" />
                       ) : (
                         <Check className="h-4 w-4 text-emerald-500" />
                       )}

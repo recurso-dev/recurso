@@ -197,7 +197,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
             )}
 
             {/* Amount breakdown: subtotal, GST split, total, paid, due */}
-            <div className="space-y-1.5 rounded-md border border-border bg-zinc-50 p-4 text-sm">
+            <div className="space-y-1.5 rounded-md border border-border bg-stone-50 p-4 text-sm">
               <Row
                 label="Subtotal"
                 value={formatCurrency(invoice.subtotal, invoice.currency)}

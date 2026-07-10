@@ -77,7 +77,7 @@ function SidebarItem({ to, label, icon: Icon, end }) {
           "group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
             ? "bg-emerald-50 text-emerald-700"
-            : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900"
+            : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
         )
       }
     >
@@ -86,7 +86,7 @@ function SidebarItem({ to, label, icon: Icon, end }) {
           <Icon
             className={cn(
               "h-4 w-4 shrink-0",
-              isActive ? "text-emerald-600" : "text-zinc-400 group-hover:text-zinc-600"
+              isActive ? "text-emerald-600" : "text-stone-400 group-hover:text-stone-600"
             )}
           />
           <span className="truncate">{label}</span>
@@ -113,7 +113,7 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         {NAV_GROUPS.map((group) => (
           <div key={group.label} className="mb-5 last:mb-0">
-            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400">
               {group.label}
             </p>
             <div className="space-y-0.5">

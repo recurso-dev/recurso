@@ -132,7 +132,7 @@ export default function Customers() {
       cell: (c) => (
         <button
           onClick={(e) => copyPortalLink(e, c)}
-          className="text-zinc-400 transition-colors hover:text-emerald-600"
+          className="text-stone-400 transition-colors hover:text-emerald-600"
           title="Copy portal link"
         >
           <Link2 className="h-4 w-4" />
@@ -176,7 +176,7 @@ export default function Customers() {
                   "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors",
                   status === f
                     ? "bg-emerald-50 text-emerald-700"
-                    : "text-zinc-500 hover:text-zinc-900"
+                    : "text-stone-500 hover:text-stone-900"
                 )}
               >
                 {f}

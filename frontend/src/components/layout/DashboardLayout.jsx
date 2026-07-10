@@ -1,9 +1,11 @@
+import { useEffect, useState } from "react";
 import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
-import { Search, Bell, LogOut, User, ChevronDown } from "lucide-react";
+import { Search, Bell, LogOut, User, ChevronDown, FlaskConical } from "lucide-react";
 
 import { useAuth } from "../../auth/AuthProvider";
+import { API_ROOT } from "../../lib/api";
 import Sidebar from "./Sidebar";
-import { Input } from "@/components/ui/input";
+import { CommandPalette } from "@/components/ui/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -47,6 +49,29 @@ export function DashboardLayout() {
   const { logout } = useAuth();
   const navigate = useNavigate();
   const title = usePageTitle();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [gatewayMode, setGatewayMode] = useState(null);
+
+  // ⌘K / Ctrl-K opens the command palette from anywhere in the dashboard.
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // The Test-mode chip mirrors Stripe's: shown whenever the backend runs on
+  // test gateway keys, so nobody mistakes sandbox money for real money.
+  useEffect(() => {
+    fetch(`${API_ROOT}/version`)
+      .then((r) => r.json())
+      .then((d) => setGatewayMode(d.gateway_mode || null))
+      .catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -54,7 +79,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-zinc-50 font-sans text-foreground">
+    <div className="flex h-screen w-full overflow-hidden bg-stone-50 font-sans text-foreground">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -63,18 +88,26 @@ export function DashboardLayout() {
           <h1 className="text-sm font-semibold text-foreground">{title}</h1>
 
           <div className="flex flex-1 items-center justify-end gap-3">
-            <div className="relative hidden w-full max-w-xs md:block">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-              <Input
-                type="search"
-                placeholder="Search..."
-                className="h-9 bg-zinc-50 pl-9"
-              />
-            </div>
+            {gatewayMode === "test" && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                <FlaskConical className="h-3 w-3" />
+                Test mode
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setPaletteOpen(true)}
+              className="hidden h-9 w-full max-w-xs items-center gap-2 rounded-md border border-border bg-stone-50 px-3 text-sm text-stone-400 transition-colors hover:border-stone-300 hover:text-stone-500 md:flex"
+            >
+              <Search className="h-4 w-4" />
+              <span className="flex-1 text-left">Search…</span>
+              <kbd>⌘K</kbd>
+            </button>
 
             <Link
               to="/notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white text-stone-500 transition-colors hover:bg-stone-50 hover:text-stone-900"
               aria-label="Notifications"
             >
               <Bell className="h-4 w-4" />
@@ -85,13 +118,13 @@ export function DashboardLayout() {
                 <Avatar className="h-8 w-8">
                   <AvatarFallback>AD</AvatarFallback>
                 </Avatar>
-                <ChevronDown className="h-4 w-4 text-zinc-400" />
+                <ChevronDown className="h-4 w-4 text-stone-400" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
-                  <User className="text-zinc-500" />
+                  <User className="text-stone-500" />
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
@@ -106,6 +139,8 @@ export function DashboardLayout() {
             </DropdownMenu>
           </div>
         </header>
+
+        <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
