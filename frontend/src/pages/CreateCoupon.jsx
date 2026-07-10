@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 
@@ -71,8 +72,7 @@ const CreateCoupon = () => {
       await endpoints.createCoupon(payload);
       navigate("/coupons");
     } catch (error) {
-      console.error("Failed to create coupon:", error);
-      alert("Failed to create coupon");
+      toast.error(error?.response?.data?.error?.message || "Failed to create coupon");
     } finally {
       setLoading(false);
     }

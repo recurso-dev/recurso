@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Plus,
   Trash2,
@@ -227,7 +228,7 @@ export default function Developers() {
 
   const handleCreateWebhook = async () => {
     if (!newWebhook.url || newWebhook.events.length === 0) {
-      alert("Please enter a URL and select at least one event type.");
+      toast.error("Enter a URL and select at least one event type.");
       return;
     }
     try {
@@ -236,21 +237,23 @@ export default function Developers() {
       setNewWebhook({ url: "", events: [] });
       fetchWebhooks();
     } catch (error) {
-      console.error("Failed to create webhook:", error);
-      alert(
+      toast.error(
         "Failed to create webhook: " +
           (error.response?.data?.error?.message || error.message)
       );
     }
   };
 
-  const handleDeleteWebhook = async (id) => {
-    if (!confirm("Are you sure you want to delete this webhook endpoint?")) return;
+  const [deleteWebhookTarget, setDeleteWebhookTarget] = useState(null);
+
+  const handleDeleteWebhook = async () => {
+    if (!deleteWebhookTarget) return;
     try {
-      await endpoints.deleteWebhook(id);
+      await endpoints.deleteWebhook(deleteWebhookTarget);
+      setDeleteWebhookTarget(null);
       fetchWebhooks();
     } catch (error) {
-      console.error("Failed to delete webhook:", error);
+      toast.error(error.response?.data?.error?.message || "Failed to delete webhook");
     }
   };
 
@@ -515,7 +518,7 @@ export default function Developers() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => handleDeleteWebhook(hook.id)}
+                        onClick={() => setDeleteWebhookTarget(hook.id)}
                         className="text-zinc-400 hover:text-red-600"
                         title="Delete endpoint"
                       >
@@ -895,6 +898,15 @@ export default function Developers() {
           </div>
         </SheetContent>
       </Sheet>
+      <ConfirmDialog
+        open={!!deleteWebhookTarget}
+        onOpenChange={(open) => !open && setDeleteWebhookTarget(null)}
+        title="Delete this webhook endpoint?"
+        description="Event deliveries to this URL stop immediately. Past delivery history is kept."
+        confirmLabel="Delete endpoint"
+        destructive
+        onConfirm={handleDeleteWebhook}
+      />
     </div>
   );
 }

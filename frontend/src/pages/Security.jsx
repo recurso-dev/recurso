@@ -510,8 +510,10 @@ function SSOSection() {
     }
   };
 
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
   const remove = async () => {
-    if (!confirm("Remove the SSO connection?")) return;
+    setConfirmRemove(false);
     setSaving(true);
     try {
       await endpoints.deleteSSOConnection();
@@ -626,7 +628,7 @@ function SSOSection() {
                   <Button
                     type="button"
                     variant="ghost"
-                    onClick={remove}
+                    onClick={() => setConfirmRemove(true)}
                     disabled={saving}
                   >
                     <Trash2 className="h-4 w-4" />
@@ -657,6 +659,16 @@ export default function Security() {
         <SessionsSection />
         {canManageSSO && <SSOSection />}
       </div>
+      <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title="Remove the SSO connection?"
+        description="Team members signing in through your identity provider will need email/password or social login instead."
+        confirmLabel="Remove connection"
+        destructive
+        busy={saving}
+        onConfirm={remove}
+      />
     </div>
   );
 }

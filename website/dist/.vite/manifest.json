@@ -1,11 +1,23 @@
 {
+  "_client-DeCB6l0z.js": {
+    "file": "assets/client-DeCB6l0z.js",
+    "name": "client",
+    "isDynamicEntry": true,
+    "imports": [
+      "index.html"
+    ]
+  },
   "index.html": {
-    "file": "assets/app-DT3ba2aZ.js",
+    "file": "assets/app-Dbw0CrAD.js",
     "name": "app",
     "src": "index.html",
     "isEntry": true,
+    "dynamicImports": [
+      "_client-DeCB6l0z.js",
+      "_client-DeCB6l0z.js"
+    ],
     "css": [
-      "assets/app-CR9zvCuV.css"
+      "assets/app-DfHQAret.css"
     ]
   }
 }

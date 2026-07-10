@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { endpoints } from "../../lib/api";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -40,6 +41,8 @@ export default function SubscriptionDetail({
   const [addonPlanId, setAddonPlanId] = useState("");
   const [addonQty, setAddonQty] = useState("1");
   const [addonBusy, setAddonBusy] = useState(false);
+  // Which lifecycle action awaits confirmation: "pause" | "resume" | "cancel" | null.
+  const [confirmAction, setConfirmAction] = useState(null);
 
   // Load plans + add-ons whenever the detail opens.
   useEffect(() => {
@@ -160,27 +163,42 @@ export default function SubscriptionDetail({
   const interval = plan?.interval_unit || "month";
   const isActive = subscription.status === "active";
 
-  const handlePause = async () => {
-    if (!confirm("Are you sure you want to pause this subscription?")) return;
-    setLoading(true);
-    try {
-      await endpoints.pauseSubscription(subscription.id);
-      if (onRefresh) onRefresh();
-    } catch (err) {
-      alert("Failed to pause subscription");
-    } finally {
-      setLoading(false);
-    }
+  const lifecycle = {
+    pause: {
+      title: "Pause this subscription?",
+      description: "Billing stops until it is resumed. The customer keeps access per your pause policy.",
+      confirmLabel: "Pause subscription",
+      run: () => endpoints.pauseSubscription(subscription.id),
+      failure: "Failed to pause subscription",
+    },
+    resume: {
+      title: "Resume this subscription?",
+      description: "Billing restarts from the current period.",
+      confirmLabel: "Resume subscription",
+      run: () => endpoints.resumeSubscription(subscription.id),
+      failure: "Failed to resume subscription",
+    },
+    cancel: {
+      title: "Cancel this subscription?",
+      description: "The subscription ends and no further invoices are generated. This can't be undone from here.",
+      confirmLabel: "Cancel subscription",
+      destructive: true,
+      run: () => endpoints.cancelSubscription(subscription.id),
+      failure: "Failed to cancel subscription",
+    },
   };
 
-  const handleResume = async () => {
-    if (!confirm("Are you sure you want to resume this subscription?")) return;
+  const runLifecycleAction = async () => {
+    const action = lifecycle[confirmAction];
+    if (!action) return;
     setLoading(true);
     try {
-      await endpoints.resumeSubscription(subscription.id);
+      await action.run();
+      setConfirmAction(null);
+      toast.success(`${action.confirmLabel.split(" ")[0]}d`);
       if (onRefresh) onRefresh();
     } catch (err) {
-      alert("Failed to resume subscription");
+      toast.error(err?.response?.data?.error?.message || action.failure);
     } finally {
       setLoading(false);
     }
@@ -235,7 +253,7 @@ export default function SubscriptionDetail({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handlePause}
+                onClick={() => setConfirmAction("pause")}
                 disabled={loading}
                 className="text-amber-700 hover:text-amber-800"
               >
@@ -247,7 +265,7 @@ export default function SubscriptionDetail({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={handleResume}
+                onClick={() => setConfirmAction("resume")}
                 disabled={loading}
                 className="text-emerald-700 hover:text-emerald-800"
               >
@@ -255,15 +273,26 @@ export default function SubscriptionDetail({
                 Resume
               </Button>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-red-600 hover:text-red-700"
-            >
-              Cancel
-            </Button>
-            <Button size="sm">Renew</Button>
+            {(isActive || subscription.status === "paused") && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmAction("cancel")}
+                disabled={loading}
+                className="text-red-600 hover:text-red-700"
+              >
+                Cancel
+              </Button>
+            )}
           </div>
+
+          <ConfirmDialog
+            open={!!confirmAction}
+            onOpenChange={(open) => !open && setConfirmAction(null)}
+            busy={loading}
+            onConfirm={runLifecycleAction}
+            {...(lifecycle[confirmAction] || {})}
+          />
 
           {/* Change-plan flow with proration preview */}
           {changing && (

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UserPlus, Trash2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
@@ -88,10 +90,13 @@ export default function Team() {
     }
   };
 
-  const remove = async (id) => {
-    if (!confirm("Remove this teammate?")) return;
+  const [removeTarget, setRemoveTarget] = useState(null);
+
+  const remove = async () => {
+    if (!removeTarget) return;
     try {
-      await endpoints.deleteUser(id);
+      await endpoints.deleteUser(removeTarget);
+      setRemoveTarget(null);
       await load();
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Failed to remove");
@@ -174,7 +179,7 @@ export default function Team() {
                     {canManage && u.id !== user?.id && (
                       <button
                         type="button"
-                        onClick={() => remove(u.id)}
+                        onClick={() => setRemoveTarget(u.id)}
                         className="text-muted-foreground hover:text-red-600"
                         aria-label="Remove member"
                       >
@@ -245,6 +250,16 @@ export default function Team() {
           </form>
         </SheetContent>
       </Sheet>
+
+      <ConfirmDialog
+        open={!!removeTarget}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        title="Remove this teammate?"
+        description="They lose dashboard access immediately. You can invite them again later."
+        confirmLabel="Remove teammate"
+        destructive
+        onConfirm={remove}
+      />
     </div>
   );
 }

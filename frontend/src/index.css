@@ -42,30 +42,13 @@
   }
 }
 
-/* Reference Styles from code.html */
-.material-symbols-outlined {
-  font-variation-settings:
-    'FILL' 0,
-    'wght' 400,
-    'GRAD' 0,
-    'opsz' 24;
-}
-
-.material-symbols-outlined.fill {
-  font-variation-settings:
-    'FILL' 1;
-}
-
 /* Base body styles */
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  @apply bg-gray-50 dark:bg-zinc-950;
+  @apply bg-zinc-50;
 }
 
-.dark body {
-  background-color: rgb(15 23 42);
-}
 
 /* Scrollbar Styling */
 ::-webkit-scrollbar {
