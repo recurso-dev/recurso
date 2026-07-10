@@ -41,8 +41,9 @@ func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
 	}
 
 	for _, e := range events {
-		// 1. Execute Ledger Transfer
-		txID, err := s.ledger.RecordRecognition(ctx, e.TenantID, e.Amount)
+		// 1. Execute Ledger Transfer (reference the event so the posting is
+		// attributable and idempotent per event).
+		txID, err := s.ledger.RecordRecognition(ctx, e.TenantID, e.Amount, e.ID)
 		if err != nil {
 			slog.Error("revenue recognition ledger transfer failed", "event_id", e.ID, "error", err)
 			if markErr := s.repo.MarkEventFailed(ctx, e.ID, err.Error()); markErr != nil {

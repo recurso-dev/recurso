@@ -155,7 +155,7 @@ func TestLedgerNegativeAmountsRejected(t *testing.T) {
 	if err := svc.RecordPayment(context.Background(), inv); err == nil {
 		t.Error("RecordPayment must reject a negative total, got nil")
 	}
-	if _, err := svc.RecordRecognition(context.Background(), inv.TenantID, -500); err == nil {
+	if _, err := svc.RecordRecognition(context.Background(), inv.TenantID, -500, uuid.New()); err == nil {
 		t.Error("RecordRecognition must reject a negative amount, got nil")
 	}
 	if len(repo.transactions) != 0 {
@@ -250,7 +250,8 @@ func TestLedgerRecordRecognition_MovesDeferredToRecognized(t *testing.T) {
 	}}
 	svc := NewLedgerService(nil, repo)
 
-	txID, err := svc.RecordRecognition(context.Background(), uuid.New(), 4200)
+	eventID := uuid.New()
+	txID, err := svc.RecordRecognition(context.Background(), uuid.New(), 4200, eventID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -273,5 +274,50 @@ func TestLedgerRecordRecognition_MovesDeferredToRecognized(t *testing.T) {
 	}
 	if tx.Code != 2 {
 		t.Errorf("Code = %d, want 2 (revenue recognition)", tx.Code)
+	}
+	if tx.ReferenceID != eventID {
+		t.Errorf("ReferenceID = %v, want recognition event id %v (attributable)", tx.ReferenceID, eventID)
+	}
+}
+
+// TestLedgerRecordInvoice_SubscriptionDefersRevenue proves the ENG-140 fix: a
+// subscription invoice credits Deferred Revenue (not Revenue), so recognition
+// can later drain Deferred → Recognized without double-booking.
+func TestLedgerRecordInvoice_SubscriptionDefersRevenue(t *testing.T) {
+	customerID := uuid.New()
+	deferredAcctID := uuid.New()
+	subID := uuid.New()
+
+	repo := &mockLedgerRepoForLedger{accountsByCode: map[int]*domain.LedgerAccount{
+		domain.AccountCodeDeferredRevenue: {ID: deferredAcctID, Code: domain.AccountCodeDeferredRevenue},
+	}}
+	svc := NewLedgerService(nil, repo)
+
+	inv := &domain.Invoice{
+		ID:             uuid.New(),
+		TenantID:       uuid.New(),
+		CustomerID:     customerID,
+		SubscriptionID: &subID, // subscription invoice → deferred
+		InvoiceNumber:  "INV-SUB-1",
+		Subtotal:       100000,
+		TaxAmount:      18000,
+		Total:          118000,
+	}
+
+	if err := svc.RecordInvoice(context.Background(), inv); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(repo.transactions) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
+	}
+	tx := repo.transactions[0]
+	if tx.DebitAccountID != customerID {
+		t.Errorf("DebitAccountID = %v, want customer AR %v", tx.DebitAccountID, customerID)
+	}
+	if tx.CreditAccountID != deferredAcctID {
+		t.Errorf("CreditAccountID = %v, want DEFERRED revenue %v (not Revenue)", tx.CreditAccountID, deferredAcctID)
+	}
+	if tx.Amount != 118000 {
+		t.Errorf("Amount = %d, want 118000 (invoice total)", tx.Amount)
 	}
 }

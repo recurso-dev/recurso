@@ -132,7 +132,17 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
 	txID := uuid.New()
 
-	revenueAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+	// A subscription invoice bills for a service delivered over the period, so
+	// its revenue is DEFERRED (a liability) and recognized month-by-month by the
+	// rev-rec scheduler (which drains Deferred → Recognized). A one-off invoice
+	// is earned immediately, so it credits Revenue directly. Crediting Revenue
+	// for subscriptions is what double-booked revenue against Recognized (ENG-140).
+	var creditAccountID uuid.UUID
+	if invoice.SubscriptionID != nil {
+		creditAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	} else {
+		creditAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+	}
 	if err != nil {
 		return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 	}
@@ -140,7 +150,7 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	transfer := &domain.LedgerTransaction{
 		ID:              txID,
 		DebitAccountID:  invoice.CustomerID, // AR
-		CreditAccountID: revenueAccountID,
+		CreditAccountID: creditAccountID,
 		Amount:          amount,
 		LedgerID:        1,
 		Code:            1, // Invoice
@@ -262,10 +272,12 @@ func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([
 	return nil, nil
 }
 
-// RecordRecognition moves funds from Deferred Revenue to Recognized Revenue.
-// Debit: Deferred Revenue (Liability)
-// Credit: Recognized Revenue (Income)
-func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, amount int64) (uuid.UUID, error) {
+// RecordRecognition moves funds from Deferred Revenue (Liability) to Recognized
+// Revenue (Income) for a single recognition event. referenceID is the event's
+// id, which makes the posting attributable in reconciliation and idempotent (the
+// ENG-142 unique index on (reference_id, code) means a replayed event never
+// double-posts).
+func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, amount int64, referenceID uuid.UUID) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, err
@@ -288,6 +300,7 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 		Amount:          amt,
 		LedgerID:        1,
 		Code:            2, // Revenue Recognition
+		ReferenceID:     referenceID,
 		Description:     "Revenue recognition",
 		Timestamp:       time.Now(),
 	}
