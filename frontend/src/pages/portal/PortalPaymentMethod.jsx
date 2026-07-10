@@ -98,6 +98,9 @@ export default function PortalPaymentMethod({
   const [publishableKey, setPublishableKey] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  // Deployment doesn't support self-serve card update (e.g. Razorpay-only —
+  // no Stripe SetupIntent). Distinct from a transient error: nothing to retry.
+  const [unavailable, setUnavailable] = useState(false);
   const [done, setDone] = useState(false);
 
   const stripePromise = useMemo(
@@ -113,6 +116,7 @@ export default function PortalPaymentMethod({
     setPublishableKey(null);
     setDone(false);
     setError(null);
+    setUnavailable(false);
     setLoading(true);
     fetch(`${apiBase}/portal/api/payment-method/setup-intent`, {
       method: "POST",
@@ -120,11 +124,15 @@ export default function PortalPaymentMethod({
     })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
+        if (res.status === 503) {
+          setUnavailable(true);
+          return null;
+        }
         if (!res.ok) throw new Error(body?.error?.message || "Could not start card update");
         return body;
       })
       .then((body) => {
-        if (cancelled) return;
+        if (cancelled || !body) return;
         setClientSecret(body.data.client_secret);
         setPublishableKey(body.data.publishable_key);
       })
@@ -150,6 +158,12 @@ export default function PortalPaymentMethod({
           <div className="flex flex-col items-center py-6 text-center">
             <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-600" />
             <p className="text-sm text-zinc-600">Your card has been updated.</p>
+          </div>
+        ) : unavailable ? (
+          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+            Self-serve card update isn't available for your account yet. Please
+            contact the merchant to update your payment details — they can take
+            it from there.
           </div>
         ) : error ? (
           <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

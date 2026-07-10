@@ -211,9 +211,11 @@ func (s *NotificationService) SendPaymentFailed(ctx context.Context, data Paymen
 
 // portalPaymentMethodURL is the customer-portal entry a payment-recovery email
 // links to. The portal's magic-link login gates it, after which the customer
-// updates their card (Stripe) or re-authorizes their mandate.
+// updates their card (Stripe) or re-authorizes their mandate. It must be the
+// SPA's login route: bare "/portal" matches nothing and the router's catch-all
+// bounces the customer to the merchant dashboard.
 func (s *NotificationService) portalPaymentMethodURL() string {
-	return strings.TrimRight(s.baseURL, "/") + "/portal"
+	return strings.TrimRight(s.baseURL, "/") + "/portal/login"
 }
 
 // Helper to render a template

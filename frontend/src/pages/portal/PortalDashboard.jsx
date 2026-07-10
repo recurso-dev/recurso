@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import {
   Check,
   Copy,
@@ -82,6 +83,42 @@ const PortalDashboard = () => {
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionToken, navigate]);
+
+  // Returning from a 3DS/bank redirect during card setup: Stripe appends
+  // ?setup_intent=... to the return_url. Finalize server-side so the saved
+  // card actually becomes the customer's default — without this the card
+  // exists on Stripe but is never persisted, and dunning keeps retrying the
+  // old one.
+  useEffect(() => {
+    const setupIntentId = new URLSearchParams(window.location.search).get(
+      "setup_intent",
+    );
+    if (!setupIntentId || !sessionToken) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    fetch(`${API_BASE}/portal/api/payment-method/confirm`, {
+      method: "POST",
+      headers: authHeaders,
+      body: JSON.stringify({ setup_intent_id: setupIntentId }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && body.data?.status === "saved") {
+          toast.success("Your payment method has been updated.");
+          fetchData();
+        } else {
+          toast.error(
+            body?.error?.message ||
+              "We couldn't confirm your new payment method. Please try again.",
+          );
+        }
+      })
+      .catch(() =>
+        toast.error(
+          "We couldn't confirm your new payment method. Please try again.",
+        ),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchDisputes = async () => {
     const res = await fetch(`${API_BASE}/portal/api/disputes`, {

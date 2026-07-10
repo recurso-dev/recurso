@@ -141,9 +141,11 @@ func (s *StripeGateway) EnsureStripeCustomer(ctx context.Context, existingID, em
 
 // CreateSetupIntent creates a SetupIntent to collect and save a reusable card
 // against stripeCustomerID for future off-session charges, returning the
-// client_secret the browser's Payment Element confirms. metadata is attached so
-// the setup_intent.succeeded webhook can map the saved method to a Recurso
-// customer. (Card only for now; ACH-mandate save is a later enhancement.)
+// client_secret the browser's Payment Element confirms. metadata carries the
+// Recurso customer_id so the confirm endpoint can bind the saved method to the
+// right customer — there is no setup_intent webhook handler; the portal
+// finalizes inline or on redirect-return via /portal/api/payment-method/confirm.
+// (Card only for now; ACH-mandate save is a later enhancement.)
 func (s *StripeGateway) CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error) {
 	params := &stripe.SetupIntentParams{
 		Customer:           stripe.String(stripeCustomerID),
