@@ -256,22 +256,27 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 
 // Update updates a subscription
 func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscription) error {
+	// plan_id MUST be in this SET: UpdateSubscription changes plans by
+	// mutating the struct and calling Update — omitting it made plan changes
+	// silently no-op while the proration invoice was still issued.
 	query := `
 		UPDATE subscriptions SET
-			status = $1,
-			current_period_start = $2,
-			current_period_end = $3,
-			cancel_at_period_end = $4,
-			canceled_at = $5,
-			cancellation_reason = $6,
-			cancellation_feedback = $7,
-			razorpay_subscription_id = $8,
-			stripe_subscription_id = $9,
-			trial_end = $10,
-			updated_at = $11
-		WHERE id = $12 AND tenant_id = $13
+			plan_id = $1,
+			status = $2,
+			current_period_start = $3,
+			current_period_end = $4,
+			cancel_at_period_end = $5,
+			canceled_at = $6,
+			cancellation_reason = $7,
+			cancellation_feedback = $8,
+			razorpay_subscription_id = $9,
+			stripe_subscription_id = $10,
+			trial_end = $11,
+			updated_at = $12
+		WHERE id = $13 AND tenant_id = $14
 	`
 	_, err := r.db.ExecContext(ctx, query,
+		sub.PlanID,
 		sub.Status,
 		sub.CurrentPeriodStart,
 		sub.CurrentPeriodEnd,

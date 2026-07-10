@@ -195,3 +195,73 @@ func TestTrialFlow_EndToEnd_Postgres(t *testing.T) {
 		t.Errorf("trial-conversion invoice %s not picked up by GetOverdueInvoices — failed first payments would sit in silent limbo", inv.ID)
 	}
 }
+
+// TestSubscriptionUpdate_PersistsPlanChange_Postgres guards the plan-change
+// money bug (ENG-6): Update's SET list omitted plan_id, so plan changes
+// silently kept the old plan while the proration invoice was still issued.
+func TestSubscriptionUpdate_PersistsPlanChange_Postgres(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed subscription test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx := context.Background()
+
+	tenantID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`,
+		tenantID, "PlanChg-"+tenantID.String()[:8], tenantID.String()[:8]+"@t.com"); err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+
+	planRepo := db.NewPlanRepository(conn)
+	mkPlan := func(code string, amount int64) uuid.UUID {
+		id := uuid.New()
+		p := &domain.Plan{ID: id, TenantID: tenantID, Name: code, Code: code + "-" + id.String()[:8],
+			IntervalUnit: domain.IntervalUnit("month"), IntervalCount: 1, Active: true, CreatedAt: time.Now(),
+			Prices: []domain.Price{{ID: uuid.New(), PlanID: id, Currency: "USD", Amount: amount, Type: "recurring", CreatedAt: time.Now()}}}
+		if err := planRepo.Create(tenantCtx, p); err != nil {
+			t.Fatalf("create plan %s: %v", code, err)
+		}
+		return id
+	}
+	oldPlan, newPlan := mkPlan("base", 2900), mkPlan("scale", 5900)
+
+	custRepo := db.NewCustomerRepository(sqlx.NewDb(conn, "postgres"))
+	cust := &domain.Customer{ID: uuid.New(), TenantID: tenantID,
+		Email: "plan-" + tenantID.String()[:8] + "@example.com", CreatedAt: time.Now(), UpdatedAt: time.Now()}
+	if err := custRepo.Create(tenantCtx, cust); err != nil {
+		t.Fatalf("create customer: %v", err)
+	}
+
+	subRepo := db.NewSubscriptionRepository(conn)
+	now := time.Now().UTC()
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, CustomerID: cust.ID, PlanID: oldPlan,
+		Status: domain.SubscriptionStatusActive, CurrentPeriodStart: now, CurrentPeriodEnd: now.AddDate(0, 1, 0),
+		CreatedAt: now, UpdatedAt: now}
+	if err := subRepo.Create(tenantCtx, sub); err != nil {
+		t.Fatalf("create subscription: %v", err)
+	}
+
+	sub.PlanID = newPlan
+	sub.UpdatedAt = time.Now().UTC()
+	if err := subRepo.Update(tenantCtx, sub); err != nil {
+		t.Fatalf("update subscription: %v", err)
+	}
+
+	got, err := subRepo.GetByID(tenantCtx, sub.ID)
+	if err != nil || got == nil {
+		t.Fatalf("reload subscription: %v", err)
+	}
+	if got.PlanID != newPlan {
+		t.Fatalf("plan_id after Update = %s, want %s — plan change did not persist", got.PlanID, newPlan)
+	}
+}
