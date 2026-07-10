@@ -41,6 +41,7 @@ func (g *MockGateway) CreateOrder(ctx context.Context, amount int64, currency st
 		Amount:   amount,
 		Currency: currency,
 		Receipt:  receipt,
+		Gateway:  "mock",
 	}, nil
 }
 

@@ -32,6 +32,8 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.data?.status === "paid") {
       onPaid();
+    } else if (data.data?.status === "failed") {
+      setError("Payment could not be completed. Please try another method.");
     } else {
       onProcessing();
     }
@@ -124,6 +126,8 @@ export default function Checkout() {
   }, [id]);
 
   // Returning from a bank redirect: Stripe appends ?payment_intent — verify it.
+  // A declined/abandoned intent comes back "failed" and must never show the
+  // "we've received your payment" screen.
   useEffect(() => {
     const pi = new URLSearchParams(window.location.search).get("payment_intent");
     if (!pi) return;
@@ -133,10 +137,22 @@ export default function Checkout() {
       .then((res) => res.json())
       .then((data) => {
         if (data.data?.status === "paid") setStatus("paid");
+        else if (data.data?.status === "failed") setStatus("failed");
         else setStatus("processing");
       })
       .catch(() => {});
   }, [id]);
+
+  // Clear the redirect params and payment session for a fresh attempt.
+  const handleRetryPayment = () => {
+    window.history.replaceState(null, "", window.location.pathname);
+    setGateway(null);
+    setClientSecret(null);
+    setPublishableKey(null);
+    setRzpOrder(null);
+    setError(null);
+    setStatus("open");
+  };
 
   // Load Stripe.js only once we have the publishable key from /pay.
   const stripePromise = useMemo(
@@ -264,6 +280,28 @@ export default function Checkout() {
     );
   }
 
+  if (status === "failed") {
+    return (
+      <CheckoutShell>
+        <div className="text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
+            <AlertCircle className="h-7 w-7 text-red-500" />
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900">
+            Payment not completed
+          </h1>
+          <p className="mt-2 text-sm text-zinc-500">
+            Your payment for invoice {invoice?.invoice_number} was declined or
+            cancelled. You have not been charged.
+          </p>
+          <Button onClick={handleRetryPayment} size="lg" className="mt-6 w-full">
+            Try again
+          </Button>
+        </div>
+      </CheckoutShell>
+    );
+  }
+
   if (status === "processing") {
     return (
       <CheckoutShell>
@@ -335,6 +373,14 @@ export default function Checkout() {
             onProcessing={() => setStatus("processing")}
           />
         </Elements>
+      ) : gateway === "stripe" ? (
+        // gateway said "stripe" but the key or client_secret is missing —
+        // showing the Pay button again would mint a new PaymentIntent per
+        // click with no form ever appearing.
+        <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+          This checkout isn't fully configured. Please contact the sender to
+          arrange payment.
+        </div>
       ) : gateway === "razorpay" ? (
         <div className="space-y-3">
           <Button

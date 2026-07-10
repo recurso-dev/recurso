@@ -50,6 +50,7 @@ func (g *RazorpayGateway) CreateOrder(ctx context.Context, amount int64, currenc
 		Amount:   amount,
 		Currency: currency,
 		Receipt:  receipt,
+		Gateway:  "razorpay",
 	}, nil
 }
 

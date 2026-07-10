@@ -139,15 +139,31 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
-	// Detect the gateway so the frontend picks the right flow: a client_secret
-	// means a client-confirmed Stripe PaymentIntent; a Razorpay order id
-	// (order_*) means the Razorpay Checkout.js modal.
-	gatewayName := "other"
-	switch {
-	case order.ClientSecret != "":
-		gatewayName = "stripe"
-	case strings.HasPrefix(order.ID, "order_"):
-		gatewayName = "razorpay"
+	// The gateway self-identifies on the order so the frontend picks the right
+	// flow. The ID-prefix inference remains only as a fallback for gateway
+	// implementations that predate the field — it must never be primary, since
+	// mock orders share Razorpay's "order_" prefix.
+	gatewayName := order.Gateway
+	if gatewayName == "" {
+		gatewayName = "other"
+		switch {
+		case order.ClientSecret != "":
+			gatewayName = "stripe"
+		case strings.HasPrefix(order.ID, "order_"):
+			gatewayName = "razorpay"
+		}
+	}
+
+	// A gateway the frontend would drive with a missing browser-side key is a
+	// dead end (silent PaymentIntent churn on Stripe, a throwing Razorpay
+	// modal) — fail loudly so the misconfiguration is fixable, not invisible.
+	if gatewayName == "stripe" && h.publishableKey == "" {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Stripe publishable key)")
+		return
+	}
+	if gatewayName == "razorpay" && h.razorpayKeyID == "" {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Razorpay key id)")
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -226,10 +242,18 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 	}
 
 	if st.Status != "succeeded" {
-		// requires_action / processing (ACH settles over days) — not paid yet.
+		// requires_payment_method / canceled mean the attempt failed (declined
+		// or abandoned) — report that so the buyer can retry, instead of a
+		// "processing" screen that tells them no action is needed. Everything
+		// else (processing, requires_action; ACH settles over days) is genuinely
+		// in flight.
+		checkoutStatus := "processing"
+		if st.Status == "requires_payment_method" || st.Status == "canceled" {
+			checkoutStatus = "failed"
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"data": gin.H{
-				"status":         "processing",
+				"status":         checkoutStatus,
 				"payment_status": st.Status,
 				"invoice_id":     invoice.ID,
 				"invoice_number": invoice.InvoiceNumber,

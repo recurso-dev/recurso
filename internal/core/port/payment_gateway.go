@@ -13,6 +13,10 @@ type PaymentOrder struct {
 	// payment client-side (Stripe PaymentIntent client_secret). Empty for
 	// gateways that don't use a client-confirmed flow (e.g. Razorpay orders).
 	ClientSecret string
+	// Gateway identifies which gateway created the order ("stripe", "razorpay",
+	// "mock"), so callers never infer it from the order-ID format — mock orders
+	// share Razorpay's "order_" prefix.
+	Gateway string
 }
 
 // PaymentStatus is a read-back of a gateway payment/order, used to verify a

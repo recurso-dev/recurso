@@ -95,6 +95,7 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		// PaymentIntent. It is safe to expose to the buyer's browser (it only
 		// authorizes confirming this one intent), unlike the secret API key.
 		ClientSecret: pi.ClientSecret,
+		Gateway:      "stripe",
 	}, nil
 }
 
