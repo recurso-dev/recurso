@@ -130,8 +130,10 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 		return
 	}
 
-	// Set session cookie
-	c.SetCookie("portal_session", session.Token, 60*60*24*7, "/", "", false, true)
+	// Set session cookie. Secure everywhere except local dev (mirrors the
+	// dashboard session cookie) so the portal token isn't sent over plain HTTP.
+	secureCookie := os.Getenv("APP_ENV") != "development"
+	c.SetCookie("portal_session", session.Token, 60*60*24*7, "/", "", secureCookie, true)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message":       "Logged in successfully",
@@ -489,6 +491,6 @@ func (h *PortalAPIHandler) RedeemGift(c *gin.Context) {
 
 // Logout invalidates the session
 func (h *PortalAPIHandler) Logout(c *gin.Context) {
-	c.SetCookie("portal_session", "", -1, "/", "", false, true)
+	c.SetCookie("portal_session", "", -1, "/", "", os.Getenv("APP_ENV") != "development", true)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }

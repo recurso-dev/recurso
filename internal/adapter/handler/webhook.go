@@ -132,17 +132,22 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	signature := c.GetHeader("X-Razorpay-Signature")
 	webhookSecret := os.Getenv("RAZORPAY_WEBHOOK_SECRET")
 
-	if webhookSecret != "" {
-		if !verifyRazorpaySignature(body, signature, webhookSecret) {
-			h.logger.Warn("webhook signature verification failed",
-				"signature", signature,
-				"ip", c.ClientIP(),
-			)
-			respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
-			return
-		}
-	} else {
-		h.logger.Warn("RAZORPAY_WEBHOOK_SECRET not set — skipping signature verification")
+	// Fail CLOSED: an unconfigured secret must reject the webhook, not process
+	// it. Otherwise a forged payment.captured with a known invoice_id would mark
+	// an invoice paid on a misconfigured deploy (ENG-145). Stripe already always
+	// verifies.
+	if webhookSecret == "" {
+		h.logger.Error("RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook (fail closed)", "ip", c.ClientIP())
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "webhook verification not configured")
+		return
+	}
+	if !verifyRazorpaySignature(body, signature, webhookSecret) {
+		h.logger.Warn("webhook signature verification failed",
+			"signature", signature,
+			"ip", c.ClientIP(),
+		)
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
+		return
 	}
 
 	var event RazorpayWebhookPayload

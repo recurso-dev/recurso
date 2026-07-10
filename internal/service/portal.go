@@ -110,9 +110,15 @@ func (s *PortalService) VerifyMagicLink(ctx context.Context, token string) (*dom
 		return nil, ErrMagicLinkUsed
 	}
 
-	// Mark link as used
-	if err := s.magicLinkRepo.MarkUsed(ctx, link.ID); err != nil {
+	// Atomically consume the link. The conditional UPDATE is the real single-use
+	// guard: if a concurrent verify already claimed it, marked is false and we
+	// reject, so two requests can never both mint a session.
+	marked, err := s.magicLinkRepo.MarkUsed(ctx, link.ID)
+	if err != nil {
 		return nil, err
+	}
+	if !marked {
+		return nil, ErrMagicLinkUsed
 	}
 
 	// Create session

@@ -90,9 +90,13 @@ func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, raz
 		return fmt.Errorf("failed to update virtual account: %w", err)
 	}
 
-	// Mark linked invoice as paid
+	// Mark linked invoice as paid. Inject the VA's tenant — MarkInvoicePaid reads
+	// the invoice through the tenant-scoped repository, so without this the
+	// settle fails "tenant_id missing from context" and offline/bank-transfer
+	// payments never settle (ENG-145).
 	if va.InvoiceID != nil && va.AmountReceived >= va.AmountExpected {
-		if err := s.subService.MarkInvoicePaid(ctx, *va.InvoiceID); err != nil {
+		tctx := context.WithValue(ctx, domain.TenantIDKey, va.TenantID)
+		if err := s.subService.MarkInvoicePaid(tctx, *va.InvoiceID); err != nil {
 			return fmt.Errorf("failed to mark invoice paid: %w", err)
 		}
 	}
@@ -131,9 +135,10 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 		return nil, fmt.Errorf("failed to record offline payment: %w", err)
 	}
 
-	// Mark linked invoice as paid
+	// Mark linked invoice as paid (inject tenant — see ReconcileVirtualAccount).
 	if input.InvoiceID != nil {
-		if err := s.subService.MarkInvoicePaid(ctx, *input.InvoiceID); err != nil {
+		tctx := context.WithValue(ctx, domain.TenantIDKey, input.TenantID)
+		if err := s.subService.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
 			return nil, fmt.Errorf("failed to mark invoice paid: %w", err)
 		}
 	}

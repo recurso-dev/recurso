@@ -11,7 +11,9 @@ import (
 type MagicLinkRepository interface {
 	Create(ctx context.Context, link *domain.MagicLink) error
 	GetByToken(ctx context.Context, token string) (*domain.MagicLink, error)
-	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// MarkUsed atomically consumes the link, returning true only if this call
+	// claimed a still-unused link (closes the single-use race).
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 	DeleteExpired(ctx context.Context) error
 }
 
