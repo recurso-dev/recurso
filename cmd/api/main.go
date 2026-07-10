@@ -681,7 +681,6 @@ func main() {
 	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
 	// Phase 48: Unified Portal API Handler
-	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
 	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
 	tenantHandler := handler.NewTenantHandler(tenantService) // P8 Handler
@@ -944,9 +943,6 @@ func main() {
 	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
 	r.GET("/checkout/:id/success", publicLimit, checkoutHandler.CheckoutSuccess)
 	r.POST("/checkout/:id/razorpay/verify", publicLimit, checkoutHandler.RazorpayVerify)
-	r.GET("/portal/:customer_id", publicLimit, portalHandler.ShowDashboard)
-	// Phase 48: Read-only unauthenticated portal data
-	r.GET("/v1/portal/:tenant_id/:customer_id", publicLimit, portalHandler.GetPortalData)
 	r.POST("/payments/order", publicLimit, paymentHandler.CreateOrder)
 	// Recurso Cloud waitlist (ENG-12): public demand capture from the website.
 	r.POST("/waitlist", publicLimit, handler.NewWaitlistHandler(db.NewWaitlistRepository(database)).Join)
