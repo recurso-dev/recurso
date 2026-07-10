@@ -153,6 +153,11 @@ func (s *DunningCampaignService) processExecution(ctx context.Context, exec *dom
 		return fmt.Errorf("failed to get invoice: %w", err)
 	}
 
+	// The campaign worker's background context carries no tenant — inject the
+	// invoice's own before the tenant-scoped customer read (tenant-context
+	// bug class; without this no campaign step ever executed).
+	ctx = context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+
 	// If invoice is already paid, mark recovered
 	if inv.Status == domain.InvoiceStatusPaid {
 		return s.MarkRecovered(ctx, exec.InvoiceID)

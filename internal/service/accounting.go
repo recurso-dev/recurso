@@ -392,6 +392,11 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 		return fmt.Errorf("accounting connection repository not configured")
 	}
 
+	// The sync worker calls with a background context, and the per-entity
+	// helpers below read customers/subscriptions/plans through tenant-scoped
+	// repos (tenant-context bug class) — inject the tenant being synced.
+	ctx = context.WithValue(ctx, domain.TenantIDKey, tenantID)
+
 	conns, err := s.connRepo.ListByTenant(ctx, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to list connections: %w", err)

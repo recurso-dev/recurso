@@ -42,6 +42,11 @@ func NewEInvoiceService(
 // GenerateEInvoice checks eligibility and generates an e-invoice for the given invoice.
 // Returns nil response if the invoice is not eligible for e-invoicing.
 func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.Invoice) (*port.EInvoiceResponse, error) {
+	// Callers include the background retry worker, whose context carries no
+	// tenant — inject the invoice's own so the tenant-scoped customer read
+	// works for every caller (tenant-context bug class).
+	ctx = context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
+
 	// Fetch customer
 	customer, err := s.customerRepo.GetByID(ctx, invoice.CustomerID)
 	if err != nil {

@@ -68,6 +68,11 @@ func (w *ChurnWorker) RunAnalysis(ctx context.Context) {
 
 // AnalyzeTenantCustomers runs analysis for a specific tenant
 func (w *ChurnWorker) AnalyzeTenantCustomers(ctx context.Context, tenantID uuid.UUID) {
+	// ChurnService reads through tenant-scoped repos and the worker's
+	// background context carries no tenant — inject it, or every
+	// AnalyzeCustomer call fails with "tenant_id missing" (the tenant-context
+	// bug class; this meant churn scoring never ran).
+	ctx = context.WithValue(ctx, domain.TenantIDKey, tenantID)
 	offset := 0
 	limit := 100
 
