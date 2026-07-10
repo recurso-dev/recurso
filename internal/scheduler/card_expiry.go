@@ -122,7 +122,7 @@ func (s *CardExpiringScheduler) runCardExpiryNotifications() {
 			CardBrand:        cust.CardBrand,
 			CardLast4:        cust.CardLast4,
 			ExpiryDate:       expiryDate,
-			UpdatePaymentURL: s.portalBaseURL + "/portal",
+			UpdatePaymentURL: s.portalBaseURL + "/portal/login",
 		}
 
 		if err := s.notificationSvc.SendCardExpiringNotification(ctx, data); err != nil {

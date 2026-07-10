@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,19 @@ func NewStripeGateway(apiKey string, webhookSecret string) *StripeGateway {
 //   - sepa_debit: authorized immediately but funds settle over several business
 //     days. The invoice is only marked paid on the payment_intent.succeeded
 //     webhook, which fires once settlement completes.
+//
+// isInactivePaymentMethodErr reports whether Stripe rejected the
+// PaymentIntent because a requested payment_method_type isn't activated on the
+// account (error code payment_intent_invalid_parameter on that param) —
+// verified live: accounts without ACH enabled reject us_bank_account this way.
+func isInactivePaymentMethodErr(err error) bool {
+	var se *stripe.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	return se.Code == stripe.ErrorCode("payment_intent_invalid_parameter") && se.Param == "payment_method_types"
+}
+
 func stripePaymentMethodTypes(currency string) []string {
 	switch strings.ToUpper(currency) {
 	case "EUR":
@@ -72,6 +86,11 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		Amount:             stripe.Int64(amount),
 		Currency:           stripe.String(currency),
 		PaymentMethodTypes: stripe.StringSlice(stripePaymentMethodTypes(currency)),
+		// India-region Stripe accounts treat foreign-currency charges as
+		// exports and reject confirmation without a description
+		// (stripe.com/docs/india-exports); it also labels the payment in the
+		// dashboard everywhere else.
+		Description: stripe.String("Invoice " + receipt),
 		// invoice_id lets the payment_intent.succeeded webhook reconcile
 		// asynchronously-settling methods (SEPA) where there is no
 		// synchronous checkout callback.
@@ -82,6 +101,14 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 	}
 
 	pi, err := s.sc.PaymentIntents.New(params)
+	if err != nil && isInactivePaymentMethodErr(err) {
+		// One of the currency's extra method types (e.g. us_bank_account) isn't
+		// activated on this Stripe account. A card-only checkout beats a dead
+		// one — retry with card and let ops activate the method in the Stripe
+		// dashboard when they want it.
+		params.PaymentMethodTypes = stripe.StringSlice([]string{string(stripe.PaymentMethodTypeCard)})
+		pi, err = s.sc.PaymentIntents.New(params)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("stripe create order failed: %v", err)
 	}
@@ -91,6 +118,184 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		Amount:   pi.Amount,
 		Currency: string(pi.Currency),
 		Receipt:  receipt,
+		// The client_secret lets the frontend Payment Element confirm this exact
+		// PaymentIntent. It is safe to expose to the buyer's browser (it only
+		// authorizes confirming this one intent), unlike the secret API key.
+		ClientSecret: pi.ClientSecret,
+		Gateway:      "stripe",
+	}, nil
+}
+
+// SetOrderBuyer attaches the buyer's name and address to a PaymentIntent as
+// shipping details. India-region Stripe accounts refuse to confirm
+// foreign-currency charges without them (stripe.com/docs/india-exports);
+// elsewhere it just labels the payment in the dashboard.
+func (s *StripeGateway) SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error {
+	params := &stripe.PaymentIntentParams{
+		Shipping: &stripe.ShippingDetailsParams{
+			Name: stripe.String(name),
+			Address: &stripe.AddressParams{
+				Line1:      stripe.String(line1),
+				City:       stripe.String(city),
+				State:      stripe.String(state),
+				PostalCode: stripe.String(zip),
+				Country:    stripe.String(country),
+			},
+		},
+	}
+	_, err := s.sc.PaymentIntents.Update(orderID, params)
+	return err
+}
+
+// GetPaymentStatus fetches a PaymentIntent so a checkout can be verified
+// server-side before an invoice is marked paid. It returns the intent's status
+// plus the invoice_id recorded in its metadata at CreateOrder time — the caller
+// must confirm that invoice_id matches the invoice being settled, so a
+// succeeded intent for one invoice can never be replayed to pay another.
+func (s *StripeGateway) GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error) {
+	pi, err := s.sc.PaymentIntents.Get(orderID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get payment intent %s failed: %w", orderID, err)
+	}
+	return &port.PaymentStatus{
+		Status:         string(pi.Status),
+		InvoiceID:      pi.Metadata["invoice_id"],
+		PaymentID:      pi.ID,
+		AmountReceived: pi.AmountReceived,
+	}, nil
+}
+
+// EnsureStripeCustomer returns existingID unchanged if set, otherwise creates a
+// Stripe Customer for the given email/name and returns its id. Saved payment
+// methods (from the portal SetupIntent flow) attach to this stable customer.
+func (s *StripeGateway) EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error) {
+	if existingID != "" {
+		return existingID, nil
+	}
+	params := &stripe.CustomerParams{}
+	if email != "" {
+		params.Email = stripe.String(email)
+	}
+	if name != "" {
+		params.Name = stripe.String(name)
+	}
+	params.Context = ctx
+	c, err := s.sc.Customers.New(params)
+	if err != nil {
+		return "", fmt.Errorf("stripe create customer failed: %w", err)
+	}
+	return c.ID, nil
+}
+
+// CreateSetupIntent creates a SetupIntent to collect and save a reusable card
+// against stripeCustomerID for future off-session charges, returning the
+// client_secret the browser's Payment Element confirms. metadata carries the
+// Recurso customer_id so the confirm endpoint can bind the saved method to the
+// right customer — there is no setup_intent webhook handler; the portal
+// finalizes inline or on redirect-return via /portal/api/payment-method/confirm.
+// (Card only for now; ACH-mandate save is a later enhancement.)
+func (s *StripeGateway) CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error) {
+	params := &stripe.SetupIntentParams{
+		Customer:           stripe.String(stripeCustomerID),
+		Usage:              stripe.String("off_session"),
+		PaymentMethodTypes: stripe.StringSlice([]string{string(stripe.PaymentMethodTypeCard)}),
+	}
+	for k, v := range metadata {
+		params.AddMetadata(k, v)
+	}
+	params.Context = ctx
+	si, err := s.sc.SetupIntents.New(params)
+	if err != nil {
+		return "", fmt.Errorf("stripe create setup intent failed: %w", err)
+	}
+	return si.ClientSecret, nil
+}
+
+// FinalizeSetupIntent reads back a confirmed SetupIntent, returning the saved
+// payment method's card details and the Recurso customer_id from its metadata.
+// On success it also sets the method as the Stripe Customer's default so future
+// invoices charge it (best-effort). The caller must confirm CustomerID matches
+// the authenticated portal customer before persisting anything.
+func (s *StripeGateway) FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error) {
+	si, err := s.sc.SetupIntents.Get(setupIntentID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get setup intent %s failed: %w", setupIntentID, err)
+	}
+
+	out := &port.SavedCard{
+		Status:     string(si.Status),
+		CustomerID: si.Metadata["customer_id"],
+	}
+	if si.Status != stripe.SetupIntentStatusSucceeded || si.PaymentMethod == nil {
+		return out, nil
+	}
+	out.PaymentMethodID = si.PaymentMethod.ID
+
+	if pm, pmErr := s.sc.PaymentMethods.Get(si.PaymentMethod.ID, nil); pmErr == nil && pm.Card != nil {
+		out.Brand = string(pm.Card.Brand)
+		out.Last4 = pm.Card.Last4
+		out.ExpMonth = int(pm.Card.ExpMonth)
+		out.ExpYear = int(pm.Card.ExpYear)
+	}
+
+	// Make it the default for future (off-session) invoices. Best-effort — the
+	// method is already saved even if this update fails.
+	if si.Customer != nil {
+		_, _ = s.sc.Customers.Update(si.Customer.ID, &stripe.CustomerParams{
+			InvoiceSettings: &stripe.CustomerInvoiceSettingsParams{
+				DefaultPaymentMethod: stripe.String(si.PaymentMethod.ID),
+			},
+		})
+	}
+	return out, nil
+}
+
+// ChargeSavedPaymentMethod charges a customer's saved payment method
+// off-session (unattended, for recurring/retry collection) — the card was
+// authorized earlier via the portal SetupIntent flow. idempotencyKey guards
+// against double-charging the same retry attempt on a worker re-run. A card
+// decline (or a required 3DS step, which off-session can't perform) is returned
+// as a business failure so dunning handles it; only transport errors surface as
+// an error.
+func (s *StripeGateway) ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error) {
+	params := &stripe.PaymentIntentParams{
+		Amount:        stripe.Int64(amount),
+		Currency:      stripe.String(currency),
+		Customer:      stripe.String(stripeCustomerID),
+		PaymentMethod: stripe.String(paymentMethodID),
+		OffSession:    stripe.Bool(true),
+		Confirm:       stripe.Bool(true),
+		Metadata: map[string]string{
+			"invoice_id":    invoiceID,
+			"retry_payment": "true",
+		},
+	}
+	if idempotencyKey != "" {
+		params.SetIdempotencyKey(idempotencyKey)
+	}
+	params.Context = ctx
+
+	pi, err := s.sc.PaymentIntents.New(params)
+	if err != nil {
+		// Declines / authentication_required arrive as *stripe.Error — a dunning
+		// failure, not an infra error.
+		if stripeErr, ok := err.(*stripe.Error); ok {
+			return &port.PaymentResult{
+				Success:   false,
+				ErrorCode: string(stripeErr.Code),
+				ErrorMsg:  stripeErr.Msg,
+			}, nil
+		}
+		return nil, fmt.Errorf("stripe off-session charge infra error: %w", err)
+	}
+
+	if pi.Status == stripe.PaymentIntentStatusSucceeded {
+		return &port.PaymentResult{Success: true, PaymentID: pi.ID}, nil
+	}
+	return &port.PaymentResult{
+		Success:   false,
+		ErrorCode: string(pi.Status),
+		ErrorMsg:  fmt.Sprintf("payment intent status: %s", pi.Status),
 	}, nil
 }
 
@@ -222,7 +427,7 @@ func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amou
 
 var ErrNotSupported = fmt.Errorf("operation not supported by this gateway")
 
-func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	return nil, ErrNotSupported
 }
 

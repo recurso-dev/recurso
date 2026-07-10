@@ -318,6 +318,44 @@ func (r *CustomerRepository) UpdatePaymentMethod(ctx context.Context, customerID
 	return err
 }
 
+// GetStripeCustomerID returns the gateway-side Stripe Customer id saved payment
+// methods attach to, or "" if none has been created yet.
+func (r *CustomerRepository) GetStripeCustomerID(ctx context.Context, customerID uuid.UUID) (string, error) {
+	var id string
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(stripe_customer_id, '') FROM customers WHERE id = $1`, customerID).Scan(&id)
+	return id, err
+}
+
+// SetStripeCustomerID records the Stripe Customer created for this customer.
+func (r *CustomerRepository) SetStripeCustomerID(ctx context.Context, customerID uuid.UUID, stripeCustomerID string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE customers SET stripe_customer_id = $1 WHERE id = $2`, stripeCustomerID, customerID)
+	return err
+}
+
+// SetDefaultPaymentMethod records the reusable PaymentMethod (pm_*) to charge
+// for future invoices, and refreshes the card display fields in one write.
+func (r *CustomerRepository) SetDefaultPaymentMethod(ctx context.Context, customerID uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE customers
+		    SET default_payment_method = $1, card_brand = $2, card_last4 = $3,
+		        card_exp_month = $4, card_exp_year = $5
+		  WHERE id = $6`,
+		paymentMethodID, brand, last4, expMonth, expYear, customerID)
+	return err
+}
+
+// GetSavedPaymentMethod returns the customer's Stripe customer id and default
+// PaymentMethod id for off-session charging. Either may be "" if not set, in
+// which case the caller must fall back to the interactive payment path.
+func (r *CustomerRepository) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error) {
+	err = r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(stripe_customer_id, ''), COALESCE(default_payment_method, '')
+		   FROM customers WHERE id = $1`, customerID).Scan(&stripeCustomerID, &paymentMethodID)
+	return
+}
+
 // CustomerWithExpiringCard holds customer info for card expiry notifications
 type CustomerWithExpiringCard struct {
 	CustomerID    uuid.UUID

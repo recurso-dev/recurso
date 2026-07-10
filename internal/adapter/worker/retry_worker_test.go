@@ -82,7 +82,7 @@ func (m *mockGateway) VerifyPayment(ctx context.Context, orderID, paymentID, sig
 func (m *mockGateway) CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error) {
 	return "", nil
 }
-func (m *mockGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (m *mockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	return nil, nil
 }
 func (m *mockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {

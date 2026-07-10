@@ -80,8 +80,8 @@ func (r *SmartRouter) RetryPayment(ctx context.Context, invoiceID string, amount
 }
 
 // Mandate operations always route to Razorpay (UPI is India-only)
-func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
-	return r.Razorpay.CreateMandate(ctx, customerEmail, vpa, maxAmount, frequency)
+func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+	return r.Razorpay.CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency)
 }
 
 func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {

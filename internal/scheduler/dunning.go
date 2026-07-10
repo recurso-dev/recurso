@@ -163,16 +163,19 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 
 	// Send dunning email
 	data := email.DunningEmailData{
-		CustomerName:     invoice.CustomerName,
-		CustomerEmail:    invoice.CustomerEmail,
-		InvoiceNumber:    invoice.InvoiceNumber,
-		Amount:           formatAmount(invoice.Amount, invoice.Currency),
-		DaysOverdue:      daysOverdue,
-		RetryCount:       invoice.RetryCount + 1,
-		NextRetryDate:    nextRetry.Format("January 2, 2006"),
-		SuspensionDate:   suspensionDate.Format("January 2, 2006"),
-		PayNowURL:        fmt.Sprintf("%s/portal/pay/%s", s.portalBaseURL, invoice.ID),
-		UpdatePaymentURL: s.portalBaseURL + "/portal/payment-methods",
+		CustomerName:   invoice.CustomerName,
+		CustomerEmail:  invoice.CustomerEmail,
+		InvoiceNumber:  invoice.InvoiceNumber,
+		Amount:         formatAmount(invoice.Amount, invoice.Currency),
+		DaysOverdue:    daysOverdue,
+		RetryCount:     invoice.RetryCount + 1,
+		NextRetryDate:  nextRetry.Format("January 2, 2006"),
+		SuspensionDate: suspensionDate.Format("January 2, 2006"),
+		// Real SPA routes: hosted checkout pays the invoice; the portal login
+		// (magic link) fronts the card-update flow. The previous /portal/pay and
+		// /portal/payment-methods paths never existed.
+		PayNowURL:        fmt.Sprintf("%s/checkout/%s", s.portalBaseURL, invoice.ID),
+		UpdatePaymentURL: s.portalBaseURL + "/portal/login",
 	}
 
 	if err := s.notificationSvc.SendDunningEmail(ctx, level, data); err != nil {

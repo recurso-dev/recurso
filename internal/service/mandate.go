@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -33,6 +34,11 @@ func NewMandateService(
 	}
 }
 
+// ErrCustomerPhoneRequired is returned when a UPI mandate is requested for a
+// customer without a contact number — Razorpay rejects recurring registration
+// links without one.
+var ErrCustomerPhoneRequired = errors.New("customer phone number is required for a UPI mandate")
+
 type CreateMandateInput struct {
 	TenantID       uuid.UUID
 	CustomerID     uuid.UUID
@@ -53,7 +59,13 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 		return nil, fmt.Errorf("customer not found: %w", err)
 	}
 
-	result, err := s.gateway.CreateMandate(ctx, customer.Email, input.VPA, input.MaxAmount, input.Frequency)
+	// Razorpay requires a contact number on recurring registration links —
+	// fail with a typed error so handlers can explain what's missing.
+	if customer.Phone == "" {
+		return nil, ErrCustomerPhoneRequired
+	}
+
+	result, err := s.gateway.CreateMandate(ctx, customer.Email, customer.Phone, input.VPA, input.MaxAmount, input.Frequency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mandate with gateway: %w", err)
 	}

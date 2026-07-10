@@ -482,8 +482,18 @@ func main() {
 
 	// 6. Initialize Workers
 	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, paymentGateway, notifier)
+	// ENG-5 Phase 2: charge the customer's saved card off-session on retries.
+	// The mock gateway doesn't implement it, so this stays disabled (interactive
+	// fallback) until real Stripe keys are set.
+	retryStripeCharger, _ := stripeGateway.(interface {
+		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+	})
+	retryWorker.SetSavedMethodCharging(retryStripeCharger, customerRepo)
 	retryWorker.SetDunningCampaignService(dunningCampaignService)
 	retryWorker.SetRecoveryRecorder(dunningRecoveryService)
+	// Successful retries settle through the same ledger-posting MarkInvoicePaid
+	// as checkout and the payment webhooks (idempotent across all three).
+	retryWorker.SetSettler(subscriptionService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
@@ -641,7 +651,27 @@ func main() {
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
-	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway)
+	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
+	// mock can't), so type-assert for the inspector; a nil inspector makes
+	// CheckoutSuccess report status only. subscriptionService is the ledger-path
+	// settler shared with the webhook.
+	checkoutInspector, _ := stripeGateway.(interface {
+		GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error)
+	})
+	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway, checkoutInspector, subscriptionService, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// INR/Razorpay checkout verification (ENG-4 parity). The mock gateway lacks
+	// GetOrderInvoiceID, so this stays disabled until real Razorpay keys are set.
+	razorpayVerifier, _ := razorpayGateway.(interface {
+		VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
+		GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
+	})
+	checkoutHandler.SetRazorpay(razorpayVerifier, os.Getenv("RAZORPAY_KEY_ID"))
+	// Buyer name/address on Stripe intents — required by India-region accounts
+	// for foreign-currency (export) charges; harmless elsewhere.
+	checkoutBuyer, _ := stripeGateway.(interface {
+		SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
+	})
+	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
@@ -715,6 +745,21 @@ func main() {
 	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
 	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
+	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
+	// doesn't implement these methods, so the endpoints stay disabled until real
+	// Stripe keys are set. customerRepo (concrete) provides the PM persistence.
+	portalStripeSetup, _ := stripeGateway.(interface {
+		EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error)
+		CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error)
+		FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
+	})
+	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
+	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
+	// fake authorization page.
+	if os.Getenv("RAZORPAY_KEY_ID") != "" {
+		portalAPIHandler.SetMandateReauth(customerRepo, mandateService, invoiceRepo)
+	}
 
 	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
 	// lives on the portal handler above.
@@ -733,8 +778,10 @@ func main() {
 		getEnvDefault("PDF_COMPANY_PAN", ""),
 		getEnvDefault("PDF_COMPANY_STATE", ""),
 		getEnvDefault("PDF_BANK_DETAILS", "Bank: HDFC Bank\nAccount: 00000000000000\nIFSC: HDFC0000000"),
+		getEnvDefault("PDF_COMPANY_COUNTRY", companyCountry),
+		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
 	)
-	pdfHandler := handler.NewInvoicePDFHandler(pdfService)
+	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
 	gstHandler := handler.NewGSTHandler(gstConfigRepo)
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
@@ -863,6 +910,7 @@ func main() {
 	r.GET("/checkout/:id", publicLimit, checkoutHandler.ShowCheckout)
 	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
 	r.GET("/checkout/:id/success", publicLimit, checkoutHandler.CheckoutSuccess)
+	r.POST("/checkout/:id/razorpay/verify", publicLimit, checkoutHandler.RazorpayVerify)
 	r.GET("/portal/:customer_id", publicLimit, portalHandler.ShowDashboard)
 	// Phase 48: Read-only unauthenticated portal data
 	r.GET("/v1/portal/:tenant_id/:customer_id", publicLimit, portalHandler.GetPortalData)
@@ -896,10 +944,6 @@ func main() {
 	r.GET("/auth/saml/:tenantID/login", publicLimit, ssoHandler.Login)
 	r.POST("/auth/saml/:tenantID/acs", publicLimit, ssoHandler.ACS)
 
-	// Invoice PDF Public (P30 for Demo)
-	r.GET("/v1/invoices/:id/pdf", publicLimit, pdfHandler.DownloadPDF)
-	r.GET("/v1/invoices/:id/preview", publicLimit, pdfHandler.PreviewHTML)
-
 	// Customer Portal Auth (P25)
 	r.POST("/portal/auth/request", publicLimit, portalAPIHandler.RequestMagicLink)
 	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)
@@ -911,6 +955,9 @@ func main() {
 		portal.GET("/profile", portalAPIHandler.GetProfile)
 		portal.GET("/invoices", portalAPIHandler.GetInvoices)
 		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
+		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
+		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)
+		portal.POST("/payment-method/mandate", portalAPIHandler.StartMandateReauth)
 		portal.GET("/disputes", portalAPIHandler.GetDisputes)
 		portal.POST("/invoices/:id/dispute", portalAPIHandler.RaiseDispute)
 		portal.POST("/redeem", portalAPIHandler.RedeemGift)
@@ -945,6 +992,10 @@ func main() {
 		v1.DELETE("/subscriptions/:id/addons/:addonId", subscriptionHandler.RemoveAddon)
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
+		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
+		// address, and GSTIN, so it must never be publicly fetchable by UUID.
+		v1.GET("/invoices/:id/pdf", pdfHandler.DownloadPDF)
+		v1.GET("/invoices/:id/preview", pdfHandler.PreviewHTML)
 
 		// Usage Platform v1
 		v1.POST("/usage/events", usageHandler.RecordEvent)

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { RefreshCw, XCircle, FileDown } from "lucide-react";
 
-import { API_BASE, endpoints } from "../../lib/api";
+import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -118,6 +118,21 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
       });
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    setActionMessage(null);
+    try {
+      const res = await endpoints.getInvoicePdf(invoice.id);
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank", "noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      setActionMessage({
+        type: "error",
+        text: err?.response?.data?.error?.message || "PDF download failed",
+      });
     }
   };
 
@@ -377,15 +392,9 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
 
           {/* Actions */}
           <div className="mt-8">
-            <Button asChild className="w-full">
-              <a
-                href={`${API_BASE}/invoices/${invoice.id}/pdf`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <FileDown className="h-4 w-4" />
-                Download PDF
-              </a>
+            <Button className="w-full" onClick={handleDownloadPdf}>
+              <FileDown className="h-4 w-4" />
+              Download PDF
             </Button>
           </div>
         </div>

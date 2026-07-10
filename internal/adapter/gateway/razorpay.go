@@ -50,6 +50,7 @@ func (g *RazorpayGateway) CreateOrder(ctx context.Context, amount int64, currenc
 		Amount:   amount,
 		Currency: currency,
 		Receipt:  receipt,
+		Gateway:  "razorpay",
 	}, nil
 }
 
@@ -63,6 +64,24 @@ func (g *RazorpayGateway) VerifyPayment(ctx context.Context, orderID, paymentID,
 		return fmt.Errorf("invalid signature")
 	}
 	return nil
+}
+
+// GetOrderInvoiceID fetches a Razorpay order and returns the invoice_id recorded
+// in its notes at creation time. The checkout verify step uses this to bind a
+// signature-verified payment to the right invoice before settling — so a
+// genuine payment for one invoice can't be replayed to settle another (mirrors
+// the Stripe metadata check).
+func (g *RazorpayGateway) GetOrderInvoiceID(ctx context.Context, orderID string) (string, error) {
+	body, err := g.client.Order.Fetch(orderID, nil, nil)
+	if err != nil {
+		return "", fmt.Errorf("razorpay fetch order %s failed: %v", orderID, err)
+	}
+	notes, ok := body["notes"].(map[string]interface{})
+	if !ok {
+		return "", nil
+	}
+	invoiceID, _ := notes["invoice_id"].(string)
+	return invoiceID, nil
 }
 
 func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error) {
@@ -97,21 +116,25 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 	return id, nil
 }
 
-func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+// CreateMandate issues a UPI-Autopay registration link the customer approves on
+// Razorpay's hosted page (short_url). Verified against the live test API:
+// method "upi" (not "emandate", which demands full bank details), a customer
+// contact number (Razorpay rejects recurring links without one), and a minimum
+// ₹1 authorization charge on the link itself.
+func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	data := map[string]interface{}{
 		"type":        "link",
-		"amount":      0,
+		"amount":      100, // ₹1 token-authorization charge — Razorpay's minimum for a registration link
 		"currency":    "INR",
 		"description": "UPI AutoPay Mandate",
 		"subscription_registration": map[string]interface{}{
-			"method":    "emandate",
-			"auth_type": "netbanking",
-			"bank_account": map[string]interface{}{
-				"beneficiary_name": customerEmail,
-			},
+			"method":     "upi",
+			"max_amount": maxAmount,
+			"frequency":  razorpayFrequency(frequency),
 		},
 		"customer": map[string]interface{}{
-			"email": customerEmail,
+			"email":   customerEmail,
+			"contact": customerContact,
 		},
 		"notes": map[string]interface{}{
 			"vpa":       vpa,
@@ -137,6 +160,18 @@ func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, vpa 
 		AuthURL:        shortURL,
 		Status:         status,
 	}, nil
+}
+
+// razorpayFrequency maps a mandate frequency to Razorpay's enum. "quarterly"
+// isn't one of Razorpay's frequencies, so it becomes as_presented (charge on
+// demand within max_amount).
+func razorpayFrequency(f string) string {
+	switch f {
+	case "weekly", "monthly", "yearly":
+		return f
+	default:
+		return "as_presented"
+	}
 }
 
 func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {

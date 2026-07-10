@@ -9,6 +9,37 @@ type PaymentOrder struct {
 	Amount   int64
 	Currency string
 	Receipt  string
+	// ClientSecret is the gateway-side secret the frontend needs to confirm the
+	// payment client-side (Stripe PaymentIntent client_secret). Empty for
+	// gateways that don't use a client-confirmed flow (e.g. Razorpay orders).
+	ClientSecret string
+	// Gateway identifies which gateway created the order ("stripe", "razorpay",
+	// "mock"), so callers never infer it from the order-ID format — mock orders
+	// share Razorpay's "order_" prefix.
+	Gateway string
+}
+
+// PaymentStatus is a read-back of a gateway payment/order, used to verify a
+// checkout server-side before an invoice is marked paid. InvoiceID is the
+// gateway metadata linking the payment back to a Recurso invoice.
+type PaymentStatus struct {
+	Status         string // gateway-reported, e.g. "succeeded", "processing", "requires_payment_method"
+	InvoiceID      string // metadata invoice_id set at CreateOrder time
+	PaymentID      string // gateway payment identifier (Stripe pi_*)
+	AmountReceived int64  // minor units actually received (0 until settled)
+}
+
+// SavedCard is the result of finalizing a portal SetupIntent: the reusable
+// payment method saved for a customer, plus the Recurso customer_id carried in
+// the intent's metadata so the caller can bind it to the right customer.
+type SavedCard struct {
+	Status          string // SetupIntent status, e.g. "succeeded"
+	CustomerID      string // Recurso customer id from the intent metadata
+	PaymentMethodID string // pm_* to charge for future invoices
+	Brand           string
+	Last4           string
+	ExpMonth        int
+	ExpYear         int
 }
 
 // PaymentResult represents the outcome of a payment retry attempt
@@ -38,7 +69,7 @@ type PaymentGateway interface {
 	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
 	CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error)
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)
-	CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
+	CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
 	ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*PaymentResult, error)
 	// RevokeMandate deletes the recurring-payment token at the gateway.
 	// customerID is the gateway-side customer id (required by Razorpay's

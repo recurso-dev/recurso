@@ -1,21 +1,86 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"os"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
+// customerPaymentStore is the customer persistence the portal card-update flow
+// needs. Satisfied by *db.CustomerRepository (kept as a narrow local interface
+// so we don't widen port.CustomerRepository and break its many test mocks).
+// Uses GetByIDPublic (not GetByID) because the portal is public — its request
+// context carries no tenant_id, which GetByID requires.
+type customerPaymentStore interface {
+	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+	GetStripeCustomerID(ctx context.Context, id uuid.UUID) (string, error)
+	SetStripeCustomerID(ctx context.Context, id uuid.UUID, stripeCustomerID string) error
+	SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int) error
+}
+
+// paymentMethodSetup is the Stripe capability for saving a reusable card via a
+// SetupIntent. Satisfied by *gateway.StripeGateway; nil when Stripe isn't
+// configured, which disables the card-update endpoints.
+type paymentMethodSetup interface {
+	EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error)
+	CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error)
+	FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
+}
+
+// mandateReauth creates a fresh UPI mandate whose AuthURL the customer approves
+// on Razorpay's hosted page (ENG-5 Phase 3a). Satisfied by
+// *service.MandateService; nil when Razorpay isn't really configured — the
+// mock gateway's AuthURL would strand customers on a fake page.
+type mandateReauth interface {
+	CreateMandate(ctx context.Context, input service.CreateMandateInput) (*service.CreateMandateOutput, error)
+}
+
+// portalInvoiceReader lists a customer's invoices (newest first) so the re-auth
+// flow can size the mandate cap from what they're actually billed. Satisfied by
+// *db.InvoiceRepository via its customer-scoped query.
+type portalInvoiceReader interface {
+	GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error)
+}
+
 // PortalAPIHandler handles customer-facing portal endpoints
 type PortalAPIHandler struct {
-	portalService *service.PortalService
+	portalService  *service.PortalService
+	customerStore  customerPaymentStore
+	paymentSetup   paymentMethodSetup
+	publishableKey string
+	mandateSvc     mandateReauth
+	invoiceReader  portalInvoiceReader
 }
 
 func NewPortalAPIHandler(portalService *service.PortalService) *PortalAPIHandler {
 	return &PortalAPIHandler{portalService: portalService}
+}
+
+// SetPaymentMethodSetup wires the Stripe SetupIntent card-update flow (ENG-5).
+// When either dependency is nil the card-update endpoints report that
+// self-serve card update isn't available on the deployment.
+func (h *PortalAPIHandler) SetPaymentMethodSetup(store customerPaymentStore, setup paymentMethodSetup, publishableKey string) {
+	h.customerStore = store
+	h.paymentSetup = setup
+	h.publishableKey = publishableKey
+}
+
+// SetMandateReauth wires the UPI-mandate re-authorization flow (ENG-5 Phase
+// 3a). Wire it only with real Razorpay keys; nil leaves the endpoint reporting
+// unavailable.
+func (h *PortalAPIHandler) SetMandateReauth(store customerPaymentStore, svc mandateReauth, invoices portalInvoiceReader) {
+	if h.customerStore == nil {
+		h.customerStore = store
+	}
+	h.mandateSvc = svc
+	h.invoiceReader = invoices
 }
 
 // RequestMagicLinkRequest represents the request body
@@ -142,6 +207,201 @@ func (h *PortalAPIHandler) UpdatePaymentMethod(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// StartPaymentMethodSetup creates a Stripe SetupIntent for the authenticated
+// portal customer and returns the client_secret the Payment Element confirms,
+// plus the publishable key. Card data goes browser->Stripe directly — Recurso
+// never sees the PAN (PCI SAQ-A preserved).
+func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	if h.paymentSetup == nil || h.customerStore == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "self-serve card update isn't available on this deployment")
+		return
+	}
+	id := customerID.(uuid.UUID)
+	ctx := c.Request.Context()
+
+	cust, err := h.customerStore.GetByIDPublic(ctx, id)
+	if err != nil || cust == nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+	existing, err := h.customerStore.GetStripeCustomerID(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+	name := ""
+	if cust.Name != nil {
+		name = *cust.Name
+	}
+
+	stripeCustomerID, err := h.paymentSetup.EnsureStripeCustomer(ctx, existing, cust.Email, name)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to prepare payment setup")
+		return
+	}
+	if stripeCustomerID != existing {
+		if err := h.customerStore.SetStripeCustomerID(ctx, id, stripeCustomerID); err != nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save customer")
+			return
+		}
+	}
+
+	clientSecret, err := h.paymentSetup.CreateSetupIntent(ctx, stripeCustomerID, map[string]string{"customer_id": id.String()})
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start payment setup")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"client_secret":   clientSecret,
+		"publishable_key": h.publishableKey,
+	}})
+}
+
+// ConfirmPaymentMethod finalizes a confirmed SetupIntent: it verifies the saved
+// method belongs to the authenticated customer, records it as the default, and
+// refreshes the displayed card. The frontend sends the setup_intent id after
+// stripe.confirmSetup succeeds.
+func (h *PortalAPIHandler) ConfirmPaymentMethod(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	if h.paymentSetup == nil || h.customerStore == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "self-serve card update isn't available on this deployment")
+		return
+	}
+	var req struct {
+		SetupIntentID string `json:"setup_intent_id" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "setup_intent_id required")
+		return
+	}
+	id := customerID.(uuid.UUID)
+	ctx := c.Request.Context()
+
+	saved, err := h.paymentSetup.FinalizeSetupIntent(ctx, req.SetupIntentID)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to verify payment method")
+		return
+	}
+	// Bind to the authenticated customer — a SetupIntent whose metadata points
+	// at a different customer must never update this one's card.
+	if saved.CustomerID != id.String() {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "payment method does not belong to this customer")
+		return
+	}
+	if saved.Status != "succeeded" || saved.PaymentMethodID == "" {
+		c.JSON(http.StatusOK, gin.H{"data": gin.H{"status": "processing"}})
+		return
+	}
+
+	if err := h.customerStore.SetDefaultPaymentMethod(ctx, id, saved.PaymentMethodID, saved.Brand, saved.Last4, saved.ExpMonth, saved.ExpYear); err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save payment method")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"status": "saved",
+		"card": gin.H{
+			"brand":     saved.Brand,
+			"last4":     saved.Last4,
+			"exp_month": saved.ExpMonth,
+			"exp_year":  saved.ExpYear,
+		},
+	}})
+}
+
+// StartMandateReauth creates a fresh UPI mandate for the authenticated portal
+// customer and returns the Razorpay-hosted authorization URL (ENG-5 Phase 3a).
+// The cap is sized from the customer's own billing history, the frequency is
+// monthly, and the mandate only activates when Razorpay confirms the token
+// (token.confirmed webhook → HandleAuthorization) — nothing here trusts the
+// browser.
+func (h *PortalAPIHandler) StartMandateReauth(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	if h.mandateSvc == nil || h.customerStore == nil || h.invoiceReader == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "self-serve mandate re-authorization isn't available on this deployment")
+		return
+	}
+
+	// VPA is optional — without it Razorpay's hosted page collects the UPI id.
+	var req struct {
+		VPA string `json:"vpa"`
+	}
+	_ = c.ShouldBindJSON(&req)
+
+	id := customerID.(uuid.UUID)
+	ctx := c.Request.Context()
+
+	cust, err := h.customerStore.GetByIDPublic(ctx, id)
+	if err != nil || cust == nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+
+	// Cap = 2× the largest recent invoice: headroom for proration and plan
+	// changes without granting an unbounded pull.
+	invoices, err := h.invoiceReader.GetByCustomerID(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load billing history")
+		return
+	}
+	var maxTotal int64
+	for i, inv := range invoices {
+		if i >= 12 { // newest first; a year of invoices is plenty
+			break
+		}
+		if inv.Status == domain.InvoiceStatusVoid {
+			continue
+		}
+		if inv.Total > maxTotal {
+			maxTotal = inv.Total
+		}
+	}
+	if maxTotal <= 0 {
+		respondError(c, http.StatusConflict, codeValidationFailed, "no billing history to authorize a mandate against")
+		return
+	}
+
+	// MandateService reads the customer through the tenant-scoped repo; the
+	// portal request carries no tenant, so inject the customer's own (same
+	// pattern as the payment webhooks).
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, cust.TenantID)
+	out, err := h.mandateSvc.CreateMandate(tenantCtx, service.CreateMandateInput{
+		TenantID:   cust.TenantID,
+		CustomerID: id,
+		VPA:        req.VPA,
+		MaxAmount:  maxTotal * 2,
+		Frequency:  "monthly",
+	})
+	if err != nil {
+		if errors.Is(err, service.ErrCustomerPhoneRequired) {
+			respondError(c, http.StatusUnprocessableEntity, codeValidationFailed, "a phone number is required for UPI Autopay — please ask the merchant to add one to your account")
+			return
+		}
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start mandate authorization")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"auth_url":   out.AuthURL,
+		"mandate_id": out.Mandate.ID,
+		"status":     string(out.Mandate.Status),
+	}})
 }
 
 // portalDisputeRequest is the body for raising an invoice dispute/query.

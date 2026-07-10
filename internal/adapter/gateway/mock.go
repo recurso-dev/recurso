@@ -41,6 +41,7 @@ func (g *MockGateway) CreateOrder(ctx context.Context, amount int64, currency st
 		Amount:   amount,
 		Currency: currency,
 		Receipt:  receipt,
+		Gateway:  "mock",
 	}, nil
 }
 
@@ -55,7 +56,7 @@ func (g *MockGateway) CreateSubscription(ctx context.Context, planID string, tot
 	return "sub_mock_" + uuid.New().String(), nil
 }
 
-func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	return &port.MandateResult{
 		TokenID:        "tok_mock_" + uuid.New().String(),
 		SubscriptionID: "sub_mock_" + uuid.New().String(),
