@@ -80,6 +80,7 @@ func main() {
 		KeyValue:  "sk_test_12345",
 		Type:      "secret",
 		IsActive:  true,
+		Livemode:  false, // demo key is a test key
 		CreatedAt: time.Now(),
 	}
 	// Note: You may need a context with API Key or similar if CreateAPIKey requires logic,

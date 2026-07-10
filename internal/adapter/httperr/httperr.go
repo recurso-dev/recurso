@@ -28,6 +28,7 @@ const (
 	CodeRateLimited      = "rate_limited"
 	CodeInternalError    = "internal_error"
 	CodeInvalidAPIKey    = "invalid_api_key"
+	CodeKeyModeMismatch  = "key_mode_mismatch"
 
 	// Domain-specific codes.
 	CodeOverRefund         = "over_refund"

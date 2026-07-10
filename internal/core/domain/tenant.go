@@ -38,5 +38,16 @@ type APIKey struct {
 	KeyPrefix string    `json:"key_prefix,omitempty"` // First 8 chars (for lookup + display)
 	Type      string    `json:"type"`                 // "secret"
 	IsActive  bool      `json:"is_active"`
+	Livemode  bool      `json:"livemode"` // true = rsk_live_ (real money), false = rsk_test_
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// NewAPIKeyValue builds a fresh secret key string for the given mode. Live keys
+// are prefixed rsk_live_, test keys rsk_test_ — the prefix is what the auth
+// layer gates against, so a test key can never run on a live-money server.
+func NewAPIKeyValue(livemode bool, randomPart string) string {
+	if livemode {
+		return "rsk_live_" + randomPart
+	}
+	return "rsk_test_" + randomPart
 }

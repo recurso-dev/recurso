@@ -44,10 +44,10 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 		prefix = prefix[:8]
 	}
 
-	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, type, is_active, created_at)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, type, is_active, livemode, created_at)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 	_, err = r.db.ExecContext(ctx, query,
-		key.ID, key.TenantID, "", string(hash), prefix, key.Type, key.IsActive, key.CreatedAt,
+		key.ID, key.TenantID, "", string(hash), prefix, key.Type, key.IsActive, key.Livemode, key.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -59,8 +59,10 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 	return nil
 }
 
-// GetTenantByKey validates an API key using prefix lookup + bcrypt compare.
-func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) (*domain.Tenant, error) {
+// GetTenantByKey validates an API key using prefix lookup + bcrypt compare. The
+// returned bool is the matched key's livemode (true = live, false = test) so the
+// auth layer can gate a test key away from a live-money server.
+func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) (*domain.Tenant, bool, error) {
 	// Try hashed lookup first (prefix match + bcrypt verify)
 	prefix := keyValue
 	if len(prefix) > 8 {
@@ -68,28 +70,29 @@ func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) 
 	}
 
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT t.id, t.name, t.email, k.key_hash
+		SELECT t.id, t.name, t.email, k.key_hash, k.livemode
 		FROM tenants t
 		JOIN api_keys k ON t.id = k.tenant_id
 		WHERE k.key_prefix = $1 AND k.is_active = TRUE AND k.key_hash IS NOT NULL
 	`, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query API keys: %w", err)
+		return nil, false, fmt.Errorf("failed to query API keys: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var t domain.Tenant
 		var keyHash string
-		if err := rows.Scan(&t.ID, &t.Name, &t.Email, &keyHash); err != nil {
+		var livemode bool
+		if err := rows.Scan(&t.ID, &t.Name, &t.Email, &keyHash, &livemode); err != nil {
 			continue
 		}
 		// bcrypt compare
 		if bcrypt.CompareHashAndPassword([]byte(keyHash), []byte(keyValue)) == nil {
-			return &t, nil
+			return &t, livemode, nil
 		}
 	}
 
-	return nil, fmt.Errorf("invalid API key")
+	return nil, false, fmt.Errorf("invalid API key")
 }
 
 func (r *TenantRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error) {
@@ -134,7 +137,7 @@ func (r *TenantRepository) ListTenants(ctx context.Context) ([]*domain.Tenant, e
 }
 
 func (r *TenantRepository) ListAPIKeys(ctx context.Context, tenantID uuid.UUID) ([]*domain.APIKey, error) {
-	query := `SELECT id, tenant_id, key_prefix, type, is_active, created_at FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC`
+	query := `SELECT id, tenant_id, key_prefix, type, is_active, livemode, created_at FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, err
@@ -145,7 +148,7 @@ func (r *TenantRepository) ListAPIKeys(ctx context.Context, tenantID uuid.UUID) 
 	for rows.Next() {
 		var k domain.APIKey
 		var prefix sql.NullString
-		if err := rows.Scan(&k.ID, &k.TenantID, &prefix, &k.Type, &k.IsActive, &k.CreatedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.TenantID, &prefix, &k.Type, &k.IsActive, &k.Livemode, &k.CreatedAt); err != nil {
 			return nil, err
 		}
 		// Show prefix with mask for display: "rk_1a2b...****"

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -67,8 +68,20 @@ func (h *TenantHandler) CreateKey(c *gin.Context) {
 		return
 	}
 
-	// Optional: Bind name if we had it in schema
-	key, err := h.service.GenerateKey(c.Request.Context(), tenantID, "New Key")
+	// Optional body: {"name": "...", "mode": "test"|"live"}. Defaults to a
+	// test-mode key — the safe default, and the one that works on a dev server.
+	var req struct {
+		Name string `json:"name"`
+		Mode string `json:"mode"`
+	}
+	_ = c.ShouldBindJSON(&req)
+	name := req.Name
+	if name == "" {
+		name = "New Key"
+	}
+	livemode := strings.EqualFold(req.Mode, "live")
+
+	key, err := h.service.GenerateKey(c.Request.Context(), tenantID, name, livemode)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return

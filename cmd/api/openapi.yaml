@@ -2792,7 +2792,24 @@ paths:
       operationId: createAPIKey
       tags: [Developer]
       summary: Create an API key
-      description: Generates a new secret key. The raw `key_value` is returned only in this response.
+      description: >-
+        Generates a new secret key. The raw `key_value` is returned only in this
+        response. Choose the mode with `mode`: a `test` key (rsk_test_, the
+        default) works on a non-live server; a `live` key (rsk_live_) works only
+        on a server configured with live payment gateways.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                mode:
+                  type: string
+                  enum: [test, live]
+                  default: test
       responses:
         '201':
           description: Key created.
@@ -6752,6 +6769,9 @@ components:
           examples: [secret]
         is_active:
           type: boolean
+        livemode:
+          type: boolean
+          description: true for a live key (rsk_live_), false for a test key (rsk_test_).
         created_at:
           type: string
           format: date-time

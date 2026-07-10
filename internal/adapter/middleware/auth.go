@@ -29,6 +29,7 @@ type verifiedKeyCache struct {
 
 type verifiedKeyEntry struct {
 	tenantID  uuid.UUID
+	livemode  bool
 	expiresAt time.Time
 }
 
@@ -37,18 +38,18 @@ const (
 	verifiedKeyCacheMax = 10000
 )
 
-func (vc *verifiedKeyCache) get(token string) (uuid.UUID, bool) {
+func (vc *verifiedKeyCache) get(token string) (uuid.UUID, bool, bool) {
 	k := sha256.Sum256([]byte(token))
 	vc.mu.RLock()
 	e, ok := vc.entries[k]
 	vc.mu.RUnlock()
 	if !ok || time.Now().After(e.expiresAt) {
-		return uuid.Nil, false
+		return uuid.Nil, false, false
 	}
-	return e.tenantID, true
+	return e.tenantID, e.livemode, true
 }
 
-func (vc *verifiedKeyCache) put(token string, tenantID uuid.UUID) {
+func (vc *verifiedKeyCache) put(token string, tenantID uuid.UUID, livemode bool) {
 	k := sha256.Sum256([]byte(token))
 	vc.mu.Lock()
 	defer vc.mu.Unlock()
@@ -56,7 +57,7 @@ func (vc *verifiedKeyCache) put(token string, tenantID uuid.UUID) {
 		// Simple pressure valve: drop everything rather than evict finely.
 		vc.entries = make(map[[32]byte]verifiedKeyEntry, verifiedKeyCacheMax/4)
 	}
-	vc.entries[k] = verifiedKeyEntry{tenantID: tenantID, expiresAt: time.Now().Add(verifiedKeyTTL)}
+	vc.entries[k] = verifiedKeyEntry{tenantID: tenantID, livemode: livemode, expiresAt: time.Now().Add(verifiedKeyTTL)}
 }
 
 // extractBearerToken pulls the credential out of the Authorization header,
@@ -79,13 +80,16 @@ func extractBearerToken(c *gin.Context) (string, bool) {
 // context or aborting. This is the single source of truth shared by both the
 // API-key-only middleware and the dual (session-or-key) middleware, so the
 // cache/perf characteristics never diverge.
-func resolveAPIKey(c *gin.Context, token string, cache *verifiedKeyCache, repo *db.TenantRepository, logger *slog.Logger) (uuid.UUID, bool) {
+// resolveAPIKey returns (tenantID, livemode, ok). serverLive is the server's own
+// mode; the dev-bypass path reports the server's mode so it always passes the
+// gate the caller applies.
+func resolveAPIKey(c *gin.Context, token string, cache *verifiedKeyCache, repo *db.TenantRepository, logger *slog.Logger, serverLive bool) (uuid.UUID, bool, bool) {
 	// Dev bypass — ONLY in development mode AND when explicitly enabled.
 	if token == "recurso_secret" {
 		if os.Getenv("APP_ENV") == "development" && os.Getenv("ALLOW_DEV_BYPASS") == "true" {
 			devTenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 			logger.Debug("dev bypass auth used", "tenant_id", devTenantID)
-			return devTenantID, true
+			return devTenantID, serverLive, true
 		}
 		logger.Warn("dev bypass attempted but not enabled",
 			"app_env", os.Getenv("APP_ENV"),
@@ -95,26 +99,36 @@ func resolveAPIKey(c *gin.Context, token string, cache *verifiedKeyCache, repo *
 	}
 
 	// Cache of already-verified keys (avoids per-request bcrypt).
-	if tenantID, ok := cache.get(token); ok {
-		return tenantID, true
+	if tenantID, livemode, ok := cache.get(token); ok {
+		return tenantID, livemode, true
 	}
 
 	// Validate against DB (bcrypt compare).
-	tenant, err := repo.GetTenantByKey(c.Request.Context(), token)
+	tenant, livemode, err := repo.GetTenantByKey(c.Request.Context(), token)
 	if err != nil {
 		logger.Warn("invalid API key attempt",
 			"ip", c.ClientIP(),
 			"user_agent", c.GetHeader("User-Agent"),
 		)
-		return uuid.Nil, false
+		return uuid.Nil, false, false
 	}
-	cache.put(token, tenant.ID)
-	return tenant.ID, true
+	cache.put(token, tenant.ID, livemode)
+	return tenant.ID, livemode, true
 }
 
-// AuthMiddleware checks for a valid API Key using the DB.
-// API keys are validated against the tenants/api_keys table.
-func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
+// keyModeMismatchMessage explains why a key was rejected by the mode gate.
+func keyModeMismatchMessage(serverLive bool) string {
+	if serverLive {
+		return "This is a test-mode API key (rsk_test_…) but the server is configured for live payments. Use a live-mode key."
+	}
+	return "This is a live-mode API key (rsk_live_…) but the server is not configured with live payment gateways. Use a test-mode key."
+}
+
+// AuthMiddleware checks for a valid API Key using the DB. API keys are validated
+// against the tenants/api_keys table, and gated by mode: a key's livemode must
+// match the server's (serverLive), so a test key can never run on a live-money
+// server and vice-versa.
+func AuthMiddleware(repo *db.TenantRepository, serverLive bool) gin.HandlerFunc {
 	logger := slog.Default().With("middleware", "auth")
 	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
 
@@ -124,12 +138,18 @@ func AuthMiddleware(repo *db.TenantRepository) gin.HandlerFunc {
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "Authorization header required")
 			return
 		}
-		tenantID, ok := resolveAPIKey(c, token, cache, repo, logger)
+		tenantID, livemode, ok := resolveAPIKey(c, token, cache, repo, logger, serverLive)
 		if !ok {
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeInvalidAPIKey, "Invalid API Key")
 			return
 		}
+		if livemode != serverLive {
+			logger.Warn("api key mode mismatch", "key_livemode", livemode, "server_live", serverLive, "ip", c.ClientIP())
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeKeyModeMismatch, keyModeMismatchMessage(serverLive))
+			return
+		}
 		c.Set("tenant_id", tenantID)
+		c.Set("livemode", livemode)
 		c.Next()
 	}
 }
@@ -148,7 +168,7 @@ type SessionResolver interface {
 // set, so every existing tenant-scoped handler keeps working unchanged. When
 // authenticated by session, the user id and role are also placed on the
 // context for role-gated endpoints.
-func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolver) gin.HandlerFunc {
+func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolver, serverLive bool) gin.HandlerFunc {
 	logger := slog.Default().With("middleware", "auth")
 	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
 
@@ -176,12 +196,18 @@ func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolv
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeUnauthorized, "Authentication required (session cookie or API key)")
 			return
 		}
-		tenantID, ok := resolveAPIKey(c, token, cache, repo, logger)
+		tenantID, livemode, ok := resolveAPIKey(c, token, cache, repo, logger, serverLive)
 		if !ok {
 			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeInvalidAPIKey, "Invalid API Key")
 			return
 		}
+		if livemode != serverLive {
+			logger.Warn("api key mode mismatch", "key_livemode", livemode, "server_live", serverLive, "ip", c.ClientIP())
+			httperr.Abort(c, http.StatusUnauthorized, httperr.CodeKeyModeMismatch, keyModeMismatchMessage(serverLive))
+			return
+		}
 		c.Set("tenant_id", tenantID)
+		c.Set("livemode", livemode)
 		c.Next()
 	}
 }

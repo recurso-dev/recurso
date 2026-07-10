@@ -28,7 +28,7 @@ func main() {
 
 	// 1. Get Tenant by Key
 	apiKey := "sk_test_12345"
-	tenant, err := tenantRepo.GetTenantByKey(ctx, apiKey)
+	tenant, _, err := tenantRepo.GetTenantByKey(ctx, apiKey)
 	if err != nil {
 		log.Fatalf("❌ Failed to get tenant for key %s: %v", apiKey, err)
 	}

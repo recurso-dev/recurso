@@ -35,7 +35,7 @@ func TestDualAuth_SessionCookieAuthenticates(t *testing.T) {
 	tenantID := uuid.New()
 	userID := uuid.New()
 	resolver := &fakeResolver{user: &domain.User{ID: userID, TenantID: tenantID, Role: domain.RoleAdmin}}
-	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), resolver)
+	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), resolver, false)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/plans", nil)
 	req.AddCookie(&http.Cookie{Name: domain.SessionCookieName, Value: "opaque-token"})
@@ -63,7 +63,7 @@ func TestDualAuth_DevBypassAPIKeyAuthenticates(t *testing.T) {
 	t.Setenv("APP_ENV", "development")
 	t.Setenv("ALLOW_DEV_BYPASS", "true")
 
-	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound})
+	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound}, false)
 	req := httptest.NewRequest(http.MethodGet, "/v1/plans", nil)
 	req.Header.Set("Authorization", "Bearer recurso_secret")
 
@@ -82,7 +82,7 @@ func TestDualAuth_DevBypassAPIKeyAuthenticates(t *testing.T) {
 
 func TestDualAuth_NoCredentialsRejected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound})
+	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound}, false)
 	req := httptest.NewRequest(http.MethodGet, "/v1/plans", nil)
 
 	c, w := runMiddleware(mw, req)
@@ -94,7 +94,7 @@ func TestDualAuth_NoCredentialsRejected(t *testing.T) {
 func TestDualAuth_InvalidSessionNoKeyRejected(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	// Expired/invalid session cookie and no API key → unauthorized.
-	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound})
+	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound}, false)
 	req := httptest.NewRequest(http.MethodGet, "/v1/plans", nil)
 	req.AddCookie(&http.Cookie{Name: domain.SessionCookieName, Value: "expired-token"})
 
@@ -110,7 +110,7 @@ func TestDualAuth_StaleCookieFallsBackToDevBypassKey(t *testing.T) {
 	t.Setenv("ALLOW_DEV_BYPASS", "true")
 
 	// Stale cookie AND a valid (dev-bypass) key: the key path must still authenticate.
-	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound})
+	mw := SessionOrAPIKeyMiddleware(db.NewTenantRepository(nil), &fakeResolver{err: domain.ErrSessionNotFound}, false)
 	req := httptest.NewRequest(http.MethodGet, "/v1/plans", nil)
 	req.AddCookie(&http.Cookie{Name: domain.SessionCookieName, Value: "stale"})
 	req.Header.Set("Authorization", "Bearer recurso_secret")

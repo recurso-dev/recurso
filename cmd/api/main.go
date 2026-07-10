@@ -997,8 +997,11 @@ func main() {
 
 	// Protected Routes (dashboard session cookie OR tenant API key — both
 	// resolve to the same tenant_id, so every handler below is unchanged).
+	// serverLive gates API keys by mode: live keys require a live-gateway
+	// server, test keys require a non-live one.
+	serverLive := gatewayMode == "live"
 	v1 := r.Group("/v1")
-	v1.Use(middleware.SessionOrAPIKeyMiddleware(tenantRepo, authService))
+	v1.Use(middleware.SessionOrAPIKeyMiddleware(tenantRepo, authService, serverLive))
 	v1.Use(middleware.IdempotencyMiddleware(idempotencyStore)) // P30: Idempotency
 	{
 		v1.POST("/plans", catalogHandler.CreatePlan)

@@ -28,11 +28,11 @@ func (s *TenantService) Register(ctx context.Context, name, email string) (*doma
 		UpdatedAt: time.Now(),
 	}
 
-	// Generate a simple secret key
-	// In production, use a secure random generator and larger entropy
+	// New tenants get a test-mode key by default — safe to develop against,
+	// and rejected by a live-money server until the tenant mints a live key.
 	keyID := uuid.New()
 	randomPart := uuid.New().String()
-	keyValue := fmt.Sprintf("sk_live_%s", randomPart)
+	keyValue := domain.NewAPIKeyValue(false, randomPart)
 
 	apiKey := &domain.APIKey{
 		ID:        keyID,
@@ -40,6 +40,7 @@ func (s *TenantService) Register(ctx context.Context, name, email string) (*doma
 		KeyValue:  keyValue,
 		Type:      "secret",
 		IsActive:  true,
+		Livemode:  false,
 		CreatedAt: time.Now(),
 	}
 
@@ -79,11 +80,11 @@ func (s *TenantService) UpdateAccount(ctx context.Context, tenantID uuid.UUID, n
 	return tenant, nil
 }
 
-func (s *TenantService) GenerateKey(ctx context.Context, tenantID uuid.UUID, name string) (*domain.APIKey, error) {
+func (s *TenantService) GenerateKey(ctx context.Context, tenantID uuid.UUID, name string, livemode bool) (*domain.APIKey, error) {
 	// Name is unused in MVP schema, but good for future
 	keyID := uuid.New()
 	randomPart := uuid.New().String()
-	keyValue := fmt.Sprintf("sk_live_%s", randomPart)
+	keyValue := domain.NewAPIKeyValue(livemode, randomPart)
 
 	apiKey := &domain.APIKey{
 		ID:        keyID,
@@ -91,6 +92,7 @@ func (s *TenantService) GenerateKey(ctx context.Context, tenantID uuid.UUID, nam
 		KeyValue:  keyValue,
 		Type:      "secret",
 		IsActive:  true,
+		Livemode:  livemode,
 		CreatedAt: time.Now().UTC(),
 	}
 
