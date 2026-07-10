@@ -229,12 +229,14 @@ const PortalDashboard = () => {
     setDisputeInvoice(invoice);
   };
 
+  // Invoices carry total/amount_paid (minor units); there is no amount_due
+  // field in the payload.
   const paidTotal = invoices
     .filter((inv) => inv.status === "paid")
-    .reduce((acc, inv) => acc + (inv.amount_due || 0), 0);
+    .reduce((acc, inv) => acc + (inv.total || 0), 0);
   const outstandingTotal = invoices
-    .filter((inv) => inv.status !== "paid")
-    .reduce((acc, inv) => acc + (inv.amount_due || 0), 0);
+    .filter((inv) => inv.status !== "paid" && inv.status !== "void")
+    .reduce((acc, inv) => acc + ((inv.total || 0) - (inv.amount_paid || 0)), 0);
 
   if (loading) {
     return (
@@ -390,7 +392,7 @@ const PortalDashboard = () => {
                           {formatDate(invoice.created_at)}
                         </TableCell>
                         <TableCell className="text-right tabular-nums text-foreground">
-                          {formatCurrency(invoice.amount_due, invoice.currency)}
+                          {formatCurrency(invoice.total, invoice.currency)}
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-1">

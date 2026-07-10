@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
@@ -8,12 +8,18 @@ const PortalVerify = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const token = searchParams.get("token");
+  // The magic-link token is single-use, and React StrictMode double-invokes
+  // effects in dev — the second verify would consume an already-used token and
+  // bounce a successfully logged-in customer to the error page.
+  const verifyStarted = useRef(false);
 
   useEffect(() => {
     if (!token) {
       navigate("/portal/login");
       return;
     }
+    if (verifyStarted.current) return;
+    verifyStarted.current = true;
 
     const verifyToken = async () => {
       try {

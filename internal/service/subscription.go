@@ -357,10 +357,13 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 
 		gwSubID, err := s.gateway.CreateSubscription(ctx, rpPlanID, totalCount, customer.Email, nil, price.Currency)
 		if err != nil {
-			s.logger.Error("payment gateway subscription creation failed",
+			// Best-effort mirror only: it uses the Recurso plan code as the
+			// gateway plan/price id, which rarely exists on real gateways.
+			// Billing is unaffected — Recurso's own invoicing + checkout/retry
+			// collect the money — so this is a Warn, not an Error.
+			s.logger.Warn("optional gateway-side subscription not created; billing proceeds via Recurso invoicing",
 				"error", err,
 				"plan_code", plan.Code,
-				"customer_email", customer.Email,
 			)
 		} else {
 			if price.Currency == "INR" {
