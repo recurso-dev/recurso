@@ -3140,6 +3140,88 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/settings/tax/nexus/status:
+    get:
+      operationId: getTaxNexusStatus
+      tags: [Settings]
+      summary: Per-state US economic-nexus status
+      description: >
+        Returns, for the given calendar year (default current), every US state
+        where the tenant has declared or economic nexus or any US sales
+        activity: year-to-date taxable sales and transaction counts, the
+        state's economic-nexus threshold, proximity to it (percent), and
+        whether it is crossed. Crossings detected during the read are
+        auto-established as economic nexus (idempotent). dataset_certified is
+        false until the seeded threshold dataset passes professional review —
+        callers must surface that caveat before the data is relied on for
+        filing.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 2018
+      responses:
+        '200':
+          description: Per-state nexus status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      year:
+                        type: integer
+                      dataset_certified:
+                        type: boolean
+                      states:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            state_code:
+                              type: string
+                            nexus_type:
+                              type: string
+                              enum: [physical, voluntary, economic]
+                            established_at:
+                              type: string
+                              format: date-time
+                            taxable_sales:
+                              type: integer
+                              format: int64
+                              description: USD cents, calendar-year sum of invoice subtotals.
+                            txn_count:
+                              type: integer
+                            threshold:
+                              type: object
+                              properties:
+                                state_code:
+                                  type: string
+                                sales_threshold:
+                                  type: integer
+                                  format: int64
+                                txn_threshold:
+                                  type: integer
+                                combinator:
+                                  type: string
+                                  enum: [or, and]
+                                measurement_period:
+                                  type: string
+                                certified:
+                                  type: boolean
+                            proximity_pct:
+                              type: integer
+                            crossed:
+                              type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/settings/irp:
     get:
       operationId: getIRPConfig

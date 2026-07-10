@@ -587,6 +587,13 @@ func main() {
 	mandateDebitScheduler.Start()
 	defer mandateDebitScheduler.Stop()
 
+	// US economic-nexus evaluation (daily): auto-establish nexus when a
+	// state threshold is crossed (ENG-16 Phase 2).
+	nexusStatusService := service.NewNexusStatusService(taxNexusRepo)
+	nexusScheduler := scheduler.NewNexusScheduler(tenantRepo, nexusStatusService, locker)
+	nexusScheduler.Start()
+	defer nexusScheduler.Stop()
+
 	// Ledger Reconciliation Scheduler (daily) — warns when ledger disagrees with billing records
 	reconciliationScheduler := scheduler.NewReconciliationScheduler(tenantRepo, reconciliationService, locker)
 	reconciliationScheduler.Start()
@@ -784,6 +791,7 @@ func main() {
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
 	gstHandler := handler.NewGSTHandler(gstConfigRepo)
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
+	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
 
 	// Consent Service & Handler (P30 - RBI compliance)
@@ -1097,6 +1105,7 @@ func main() {
 		// US sales-tax nexus config
 		v1.GET("/settings/tax/nexus", taxNexusHandler.GetNexus)
 		v1.PUT("/settings/tax/nexus", taxNexusHandler.SetNexus)
+		v1.GET("/settings/tax/nexus/status", taxNexusHandler.GetNexusStatus)
 		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
 
 		// E-Invoice (P25)
