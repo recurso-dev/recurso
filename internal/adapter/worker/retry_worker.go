@@ -31,6 +31,14 @@ type customerPaymentLookup interface {
 	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error)
 }
 
+// invoiceSettler marks an invoice paid through the ledger path (amount_paid,
+// recovery attribution, ledger entry, rev-rec schedule) — the same idempotent
+// method the checkout and payment webhooks use. Implemented by
+// *service.SubscriptionService.
+type invoiceSettler interface {
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) error
+}
+
 type RetryWorker struct {
 	invoiceRepo            port.InvoiceRepository
 	retryService           *service.SmartRetryService
@@ -40,6 +48,7 @@ type RetryWorker struct {
 	recoveryRecorder       RecoveryRecorder
 	savedCharger           savedMethodCharger
 	customerLookup         customerPaymentLookup
+	settler                invoiceSettler
 }
 
 func NewRetryWorker(
@@ -62,6 +71,13 @@ func (w *RetryWorker) SetDunningCampaignService(svc *service.DunningCampaignServ
 
 func (w *RetryWorker) SetRecoveryRecorder(rr RecoveryRecorder) {
 	w.recoveryRecorder = rr
+}
+
+// SetSettler routes successful retries through the ledger-posting
+// MarkInvoicePaid instead of a bare status update, so recovered payments get
+// amount_paid, a ledger entry, and a rev-rec schedule like every other payment.
+func (w *RetryWorker) SetSettler(s invoiceSettler) {
+	w.settler = s
 }
 
 // SetSavedMethodCharging wires off-session collection with the customer's saved
@@ -169,23 +185,55 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 
 	// 3. Handle result
 	if result.Success {
-		// Mark invoice paid
 		log.Printf("Worker: Payment succeeded for %s (payment_id=%s)", inv.InvoiceNumber, result.PaymentID)
-		now := time.Now()
-		inv.Status = domain.InvoiceStatusPaid
-		inv.PaidAt = &now
-		// Snapshot before dunning fields are cleared — recovery attribution
-		// needs retry_count and the action that was in effect at payment time.
-		recoverySnapshot := *inv
-		inv.NextRetryAt = nil
-		inv.DunningActionID = ""
-		inv.DunningContextKey = ""
-		inv.LastPaymentError = ""
-		if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
-			log.Printf("Worker: Failed to mark invoice %s as paid: %v", inv.ID, updateErr)
-		} else if w.recoveryRecorder != nil {
-			// Recovered revenue attribution (idempotent, non-fatal)
-			w.recoveryRecorder.RecordIfRecovered(ctx, &recoverySnapshot)
+		if w.settler != nil {
+			// Settle through the ledger path — the same idempotent method the
+			// checkout and payment webhooks use, so amount_paid, recovery
+			// attribution, the ledger entry, and the rev-rec schedule all
+			// happen here rather than in a racing webhook that would no-op on
+			// an already-paid invoice. The worker's ctx carries no tenant, so
+			// inject the invoice's own (same as the webhook handlers).
+			tenantCtx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+			if err := w.settler.MarkInvoicePaid(tenantCtx, inv.ID); err != nil {
+				// Leave dunning state untouched: the next poll retries and the
+				// settle is idempotent, so nothing is lost or double-posted.
+				log.Printf("Worker: Failed to settle invoice %s: %v", inv.ID, err)
+				return
+			}
+			// Re-read the settled row before clearing dunning state — Update
+			// writes the full struct and would clobber paid_at/amount_paid.
+			settled, err := w.invoiceRepo.GetByID(tenantCtx, inv.ID)
+			if err != nil || settled == nil {
+				log.Printf("Worker: Failed to reload settled invoice %s: %v", inv.ID, err)
+				return
+			}
+			settled.NextRetryAt = nil
+			settled.DunningActionID = ""
+			settled.DunningContextKey = ""
+			settled.LastPaymentError = ""
+			if updateErr := w.invoiceRepo.Update(ctx, settled); updateErr != nil {
+				log.Printf("Worker: Failed to clear dunning state for %s: %v", inv.ID, updateErr)
+			}
+		} else {
+			// No settler wired (tests / minimal setups): the legacy direct
+			// update, which skips the ledger and rev-rec.
+			now := time.Now()
+			inv.Status = domain.InvoiceStatusPaid
+			inv.PaidAt = &now
+			inv.AmountPaid = inv.Total
+			// Snapshot before dunning fields are cleared — recovery attribution
+			// needs retry_count and the action that was in effect at payment time.
+			recoverySnapshot := *inv
+			inv.NextRetryAt = nil
+			inv.DunningActionID = ""
+			inv.DunningContextKey = ""
+			inv.LastPaymentError = ""
+			if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
+				log.Printf("Worker: Failed to mark invoice %s as paid: %v", inv.ID, updateErr)
+			} else if w.recoveryRecorder != nil {
+				// Recovered revenue attribution (idempotent, non-fatal)
+				w.recoveryRecorder.RecordIfRecovered(ctx, &recoverySnapshot)
+			}
 		}
 
 		// Mark dunning campaign as recovered

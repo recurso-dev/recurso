@@ -491,6 +491,9 @@ func main() {
 	retryWorker.SetSavedMethodCharging(retryStripeCharger, customerRepo)
 	retryWorker.SetDunningCampaignService(dunningCampaignService)
 	retryWorker.SetRecoveryRecorder(dunningRecoveryService)
+	// Successful retries settle through the same ledger-posting MarkInvoicePaid
+	// as checkout and the payment webhooks (idempotent across all three).
+	retryWorker.SetSettler(subscriptionService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
