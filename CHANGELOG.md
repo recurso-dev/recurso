@@ -5,7 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-07-10
+
+### Added
+
+- **Real hosted checkout** — server-verified card/ACH collection via the Stripe
+  Payment Element and UPI/cards/netbanking via Razorpay Checkout, smart-routed by
+  currency (INR → Razorpay, else Stripe) (ENG-4).
+- **Customer self-service portal** — magic-link login, card update via Stripe
+  SetupIntent, UPI mandate re-authorization, and invoice history; payment-recovery
+  emails deep-link straight into it (ENG-5).
+- **Smart dunning depth** — off-session saved-card retries, retries settled
+  through the double-entry ledger, and recovery deep-links (ENG-5).
+- **US economic-nexus tracking** — per-state year-to-date sales/transaction
+  tracking that auto-establishes economic nexus when a threshold is crossed;
+  `GET /v1/settings/tax/nexus/status` reports proximity. Dataset seeded
+  uncertified pending professional review (ENG-16).
+- **Dashboard redesign** — shadcn foundation with stone design tokens, a
+  monospace Money signature, a ⌘K command palette, and a Test-mode chip
+  (ENG-135, ENG-136).
+- **Cloud waitlist** — API-backed early-access signup (`POST /waitlist`) (ENG-12).
+- Jurisdiction-aware invoice PDFs wired to real invoices.
 
 ### Changed
 
@@ -24,6 +44,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `sk_live_` key, either mint an `rsk_test_` key (Settings → API Keys, or the
   developer-keys endpoint) or configure live gateway keys. The demo key
   `sk_test_12345` is unaffected — it is grandfathered as a test key.
+
+### Fixed
+
+- **Tenant-context audit** — features that never worked against a real
+  multi-tenant database: trial conversion (ENG-3), plan changes that silently
+  never persisted (ENG-6), and four more background paths (ENG-134), plus
+  `tenant_id` propagation across 11 handlers and silently-zero consolidated MRR.
+- **Background-job robustness** — NULL / timestamptz scans that aborted the
+  nexus, churn, pre-charge, dunning-retry, and accounting sweeps against real
+  data (ENG-143).
+- **Dashboard** — page crashes (Security, Referrals/Gifts on empty data), sparse
+  or broken detail panels (Customer, Quote, Credit Note, Coupon), and
+  non-functional create buttons/routes.
+- **Live-key payment fixes** — Razorpay UPI-Autopay registration payload, Stripe
+  inactive method types, checkout failure states, and invoice PDF currency
+  symbols.
+
+### Security
+
+- Removed unauthenticated portal routes that exposed cross-tenant PII (ENG-139).
+- GenAI text-to-SQL tenant isolation is now enforced by the database (dedicated
+  schema + read-only role), not the prompt (ENG-137).
+- Tenant-gated the invoice PDF route; patched dependency CVEs flagged by
+  govulncheck / Trivy (jwt/v4 4.5.2, rollup 4.62.2, vite 7.3.6, x/oauth2 0.27.0,
+  goxmldsig 1.6.0, Go 1.25.12).
 
 ## [0.3.0] - 2026-07-07
 
