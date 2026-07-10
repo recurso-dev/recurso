@@ -22,7 +22,7 @@ func NewWaitlistHandler(store waitlistStore) *WaitlistHandler {
 }
 
 type joinWaitlistRequest struct {
-	Email   string `json:"email" binding:"required,email"`
+	Email   string `json:"email" binding:"required,email,max=320"`
 	Name    string `json:"name" binding:"max=200"`
 	Company string `json:"company" binding:"max=200"`
 	Source  string `json:"source" binding:"max=100"`

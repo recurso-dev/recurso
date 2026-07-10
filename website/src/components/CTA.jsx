@@ -13,11 +13,14 @@ const WaitlistForm = () => {
         e.preventDefault()
         if (!email || state === 'busy') return
         setState('busy')
+        // The honeypot value must actually travel to the API — a DOM-driving
+        // bot that fills the hidden field is dropped server-side.
+        const honeypot = e.target.elements.website?.value || ''
         try {
             const res = await fetch(`${API_URL}/waitlist`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, source: 'website-cta' }),
+                body: JSON.stringify({ email, source: 'website-cta', website: honeypot }),
             })
             if (!res.ok) throw new Error('bad status')
             setState('done')

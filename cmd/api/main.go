@@ -841,15 +841,27 @@ func main() {
 	}
 	r.Use(middleware.RateLimitMiddleware(rdb, rateLimit, time.Minute))
 
-	// CORS Middleware - configurable origin
-	allowedOrigin := os.Getenv("CORS_ORIGIN")
-	if allowedOrigin == "" {
-		allowedOrigin = "http://localhost:5173" // Vite dev server default
+	// CORS Middleware — comma-separated allowlist. Multiple origins matter:
+	// the dashboard and the marketing site (whose waitlist form POSTs here)
+	// are different origins. The matching request Origin is echoed back —
+	// never "*", since credentials are allowed.
+	corsEnv := os.Getenv("CORS_ORIGIN")
+	if corsEnv == "" {
+		corsEnv = "http://localhost:5173,http://localhost:5174" // Vite dev defaults
+	}
+	allowedOrigins := map[string]bool{}
+	for _, o := range strings.Split(corsEnv, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
 	}
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		if origin := c.GetHeader("Origin"); origin != "" && allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Idempotency-Key, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, X-Idempotency-Key, X-Portal-Session, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 
 		if c.Request.Method == "OPTIONS" {

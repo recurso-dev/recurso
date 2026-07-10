@@ -7,7 +7,7 @@ const columns = [
             { label: 'Product modules', href: '#products' },
             { label: 'Pricing', href: '#pricing' },
             { label: 'Compare', href: '#compare' },
-            { label: 'Recurso Cloud waitlist', href: '#waitlist' },
+            { label: 'Recurso Cloud waitlist', href: '/#waitlist' },
         ],
     },
     {
