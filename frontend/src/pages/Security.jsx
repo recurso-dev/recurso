@@ -19,6 +19,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -527,6 +528,7 @@ function SSOSection() {
   };
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
@@ -641,6 +643,17 @@ function SSOSection() {
         )}
       </CardContent>
     </Card>
+    <ConfirmDialog
+        open={confirmRemove}
+        onOpenChange={setConfirmRemove}
+        title="Remove the SSO connection?"
+        description="Team members signing in through your identity provider will need email/password or social login instead."
+        confirmLabel="Remove connection"
+        destructive
+        busy={saving}
+        onConfirm={remove}
+      />
+    </>
   );
 }
 
@@ -659,16 +672,6 @@ export default function Security() {
         <SessionsSection />
         {canManageSSO && <SSOSection />}
       </div>
-      <ConfirmDialog
-        open={confirmRemove}
-        onOpenChange={setConfirmRemove}
-        title="Remove the SSO connection?"
-        description="Team members signing in through your identity provider will need email/password or social login instead."
-        confirmLabel="Remove connection"
-        destructive
-        busy={saving}
-        onConfirm={remove}
-      />
     </div>
   );
 }
