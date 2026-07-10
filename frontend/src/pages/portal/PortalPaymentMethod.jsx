@@ -102,6 +102,33 @@ export default function PortalPaymentMethod({
   // no Stripe SetupIntent). Distinct from a transient error: nothing to retry.
   const [unavailable, setUnavailable] = useState(false);
   const [done, setDone] = useState(false);
+  // UPI mandate re-authorization (ENG-5 Phase 3a): the alternative on
+  // Razorpay deployments. On success we leave the page for Razorpay's hosted
+  // authorization; activation lands via the token.confirmed webhook.
+  const [mandateLoading, setMandateLoading] = useState(false);
+  const [mandateError, setMandateError] = useState(null);
+
+  const startMandateReauth = async () => {
+    setMandateLoading(true);
+    setMandateError(null);
+    try {
+      const res = await fetch(`${apiBase}/portal/api/payment-method/mandate`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok || !body.data?.auth_url) {
+        throw new Error(
+          body?.error?.message ||
+            "UPI re-authorization isn't available right now. Please contact the merchant."
+        );
+      }
+      window.location.href = body.data.auth_url;
+    } catch (err) {
+      setMandateError(err.message);
+      setMandateLoading(false);
+    }
+  };
 
   const stripePromise = useMemo(
     () => (publishableKey ? loadStripe(publishableKey) : null),
@@ -160,10 +187,25 @@ export default function PortalPaymentMethod({
             <p className="text-sm text-zinc-600">Your card has been updated.</p>
           </div>
         ) : unavailable ? (
-          <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-            Self-serve card update isn't available for your account yet. Please
-            contact the merchant to update your payment details — they can take
-            it from there.
+          <div className="mt-4 space-y-3">
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+              Card update isn't available on this account. If you pay through
+              UPI Autopay, you can re-authorize your mandate below — you'll be
+              taken to a secure Razorpay page to approve it.
+            </div>
+            {mandateError && (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {mandateError}
+              </div>
+            )}
+            <Button
+              onClick={startMandateReauth}
+              disabled={mandateLoading}
+              className="w-full"
+            >
+              {mandateLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Re-authorize UPI Autopay
+            </Button>
           </div>
         ) : error ? (
           <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

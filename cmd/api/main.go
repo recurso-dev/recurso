@@ -748,6 +748,12 @@ func main() {
 		FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
 	})
 	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
+	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
+	// fake authorization page.
+	if os.Getenv("RAZORPAY_KEY_ID") != "" {
+		portalAPIHandler.SetMandateReauth(customerRepo, mandateService, invoiceRepo)
+	}
 
 	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
 	// lives on the portal handler above.
@@ -945,6 +951,7 @@ func main() {
 		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
 		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
 		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)
+		portal.POST("/payment-method/mandate", portalAPIHandler.StartMandateReauth)
 		portal.GET("/disputes", portalAPIHandler.GetDisputes)
 		portal.POST("/invoices/:id/dispute", portalAPIHandler.RaiseDispute)
 		portal.POST("/redeem", portalAPIHandler.RedeemGift)
