@@ -3,6 +3,7 @@ package tax
 import (
 	"context"
 	"errors"
+	"math"
 
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
@@ -163,7 +164,7 @@ func (e *EUVATEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*
 		}
 	}
 
-	vatAmount := int64(float64(req.Amount) * rate)
+	vatAmount := int64(math.Round(float64(req.Amount) * rate))
 
 	return &port.TaxCalculation{
 		TotalTax:  vatAmount,

@@ -2,6 +2,7 @@ package tax
 
 import (
 	"context"
+	"math"
 	"strings"
 
 	"github.com/swapnull-in/recur-so/internal/core/port"
@@ -65,7 +66,7 @@ func (e *GSTEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*po
 
 	// Reverse Charge Mechanism
 	if req.IsRCM {
-		totalTax := int64(float64(req.Amount) * rate)
+		totalTax := int64(math.Round(float64(req.Amount) * rate))
 		return &port.TaxCalculation{
 			TotalTax:      totalTax,
 			TaxRate:       rate,
@@ -78,7 +79,7 @@ func (e *GSTEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*po
 	customerState := strings.ToUpper(strings.TrimSpace(req.BuyerState))
 	orgState := strings.ToUpper(strings.TrimSpace(e.OrganizationState))
 
-	totalTax := int64(float64(req.Amount) * rate)
+	totalTax := int64(math.Round(float64(req.Amount) * rate))
 
 	calc := &port.TaxCalculation{
 		TotalTax: totalTax,

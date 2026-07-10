@@ -65,3 +65,18 @@ func TestGSTCalculator(t *testing.T) {
 		})
 	}
 }
+
+// TestGSTCalculator_RoundsNotTruncates proves the ENG-146 fix: tax is rounded,
+// not floored, so it doesn't systematically under-collect.
+func TestGSTCalculator_RoundsNotTruncates(t *testing.T) {
+	engine := NewGSTEngine("TN")
+	// 100003 × 18% = 18000.54 — must round to 18001, not truncate to 18000.
+	// Inter-state (KA) puts the whole tax in IGST, avoiding the CGST/SGST split.
+	res := engine.CalculateTaxLegacy(100003, "KA")
+	if res.Total != 18001 {
+		t.Errorf("Total = %d, want 18001 (rounded, not truncated 18000)", res.Total)
+	}
+	if res.IGST != 18001 {
+		t.Errorf("IGST = %d, want 18001", res.IGST)
+	}
+}

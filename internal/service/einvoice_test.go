@@ -318,3 +318,36 @@ func TestRetryFailedEInvoice(t *testing.T) {
 		t.Errorf("Expected retry count 2, got %d", inv.EInvoiceRetryCount)
 	}
 }
+
+// TestGenerateEInvoice_IdempotentWhenIRNExists proves the ENG-146 fix: an
+// invoice that already carries an IRN is not re-submitted to NIC (which would
+// return "Duplicate IRN" and get recorded as a fresh FAILURE). The mock GSP
+// mints a new IRN if called, so an unchanged IRN proves the short-circuit.
+func TestGenerateEInvoice_IdempotentWhenIRNExists(t *testing.T) {
+	invRepo := newMockEInvInvoiceRepo()
+	custRepo := &mockEInvCustomerRepo{customer: &domain.Customer{ID: uuid.New()}}
+	mockGSP := gsp.NewMockGSPAdapter()
+	svc := NewEInvoiceService(mockGSP, invRepo, custRepo, nil, nil)
+
+	inv := &domain.Invoice{
+		ID:             uuid.New(),
+		TenantID:       uuid.New(),
+		IRN:            "EXISTING-IRN-123",
+		AckNo:          "ACK-1",
+		SignedQRCode:   "QR-1",
+		EInvoiceStatus: "FAILED", // stuck: IRN issued at NIC but a prior persist failed
+	}
+	resp, err := svc.GenerateEInvoice(context.Background(), inv)
+	if err != nil {
+		t.Fatalf("GenerateEInvoice: %v", err)
+	}
+	if inv.IRN != "EXISTING-IRN-123" {
+		t.Errorf("IRN = %q — the invoice was re-submitted instead of short-circuiting", inv.IRN)
+	}
+	if inv.EInvoiceStatus != "GENERATED" {
+		t.Errorf("status = %q, want GENERATED (recovered from the stuck FAILED state)", inv.EInvoiceStatus)
+	}
+	if resp == nil || resp.IRN != "EXISTING-IRN-123" {
+		t.Errorf("resp = %+v, want the existing IRN", resp)
+	}
+}

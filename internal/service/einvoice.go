@@ -47,6 +47,23 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 	// works for every caller (tenant-context bug class).
 	ctx = context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
 
+	// Idempotency: if this invoice already carries an IRN, it was issued at NIC —
+	// do not call GenerateIRN again. Re-calling would return "Duplicate IRN",
+	// which the error path below would wrongly record as a fresh FAILURE, leaving
+	// the invoice stuck FAILED while a valid IRN exists (ENG-146).
+	if invoice.IRN != "" {
+		invoice.EInvoiceStatus = "GENERATED"
+		invoice.EInvoiceErrorMessage = ""
+		invoice.EInvoiceNextRetryAt = nil
+		return &port.EInvoiceResponse{
+			IRN:          invoice.IRN,
+			AckNo:        invoice.AckNo,
+			AckDate:      invoice.AckDate,
+			SignedQRCode: invoice.SignedQRCode,
+			Status:       "GENERATED",
+		}, nil
+	}
+
 	// Fetch customer
 	customer, err := s.customerRepo.GetByID(ctx, invoice.CustomerID)
 	if err != nil {
