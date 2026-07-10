@@ -923,6 +923,8 @@ func main() {
 	// Phase 48: Read-only unauthenticated portal data
 	r.GET("/v1/portal/:tenant_id/:customer_id", publicLimit, portalHandler.GetPortalData)
 	r.POST("/payments/order", publicLimit, paymentHandler.CreateOrder)
+	// Recurso Cloud waitlist (ENG-12): public demand capture from the website.
+	r.POST("/waitlist", publicLimit, handler.NewWaitlistHandler(db.NewWaitlistRepository(database)).Join)
 	r.POST("/webhooks/razorpay", webhookHandler.HandleRazorpay) // Webhooks need higher limits
 	r.POST("/webhooks/stripe", webhookHandler.HandleStripe)
 	// Dashboard auth (public): register creates tenant + owner user + session;

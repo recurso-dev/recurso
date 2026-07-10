@@ -1976,6 +1976,54 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /waitlist:
+    post:
+      operationId: joinWaitlist
+      tags: [Platform]
+      summary: Join the Recurso Cloud waitlist
+      description: >
+        Public, rate-limited demand capture used by the marketing site.
+        Duplicate emails are deduplicated silently; the response never reveals
+        whether an email was already on the list. The `website` field is a
+        honeypot — leave it out.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                  maxLength: 200
+                company:
+                  type: string
+                  maxLength: 200
+                source:
+                  type: string
+                  maxLength: 100
+                  description: Where the signup came from (e.g. website-cta, website-footer).
+      responses:
+        '200':
+          description: Signed up (or already on the list).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
   /webhooks/razorpay:
     post:
       operationId: handleRazorpayWebhook
