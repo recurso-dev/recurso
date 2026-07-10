@@ -38,7 +38,7 @@ from recurso.models import (
 
 client = AuthenticatedClient(
     base_url="https://billing.example.com",
-    token="rsk_live_your_api_key",   # sent as: Authorization: Bearer <token>
+    token="sk_live_your_api_key",   # sent as: Authorization: Bearer <token>
 )
 
 with client:

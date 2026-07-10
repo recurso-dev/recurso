@@ -15,7 +15,7 @@ npm link   # or npm pack and install the tarball
 ```typescript
 import { Recurso } from 'recurso-node';
 
-const recurso = new Recurso('rsk_live_your_api_key', 'https://billing.example.com');
+const recurso = new Recurso('sk_live_your_api_key', 'https://billing.example.com');
 
 const plan = await recurso.plans.create({
   name: 'Pro Plan',

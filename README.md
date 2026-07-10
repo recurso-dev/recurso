@@ -36,15 +36,36 @@ Most billing platforms charge a percentage of your revenue and lock you into the
 
 ## Features
 
-- Subscription lifecycle management (trials, upgrades, cancellations, proration)
-- Automatic invoice generation with tax calculation (GST/VAT)
-- Credit notes and refund workflows
-- Usage metering and metered billing
-- Hosted checkout and customer self-service portal
-- Multi-currency payment routing (Stripe, Razorpay)
-- Webhook delivery and email notifications
-- Real-time MRR and revenue analytics
-- Multi-tenant architecture
+- Subscription lifecycle — trials (with expiry reminders and auto-conversion), plan changes with proration preview, pause/resume, add-ons, cancellation
+- Automatic and one-off invoicing with jurisdiction-aware tax and printable/e-invoice-ready PDFs
+- Hosted checkout — real card + ACH collection via the Stripe Payment Element, and UPI/cards/netbanking via Razorpay, with server-verified settlement
+- Customer self-service portal — magic-link login, card update (Stripe SetupIntent), UPI mandate re-authorization, invoice history
+- Multi-currency payment routing (INR → Razorpay, others → Stripe) with saved-card off-session retries
+- Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution
+- Tax — India GST (Place of Supply, HSN, e-invoicing via GSP), EU VAT (VIES), US sales tax (TaxJar) with economic-nexus threshold tracking
+- Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes
+- Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation and ASC 606 revenue recognition
+- Usage metering, real-time FX-normalized MRR, churn scoring, webhook delivery tracking, QuickBooks/Xero sync
+- Platform — native auth (sessions, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy
+
+## Project status
+
+Recurso is **feature-complete and self-hostable today**, and the core money
+paths — checkout, settlement, dunning, the ledger, trials, and proration — are
+covered by end-to-end tests and have been verified against live Stripe and
+Razorpay **test** keys. It is **pre-1.0 and pre-incorporation**: APIs may still
+change, and a few things are deliberately gated on outside sign-off before you
+rely on them in production:
+
+- **India GST / e-invoicing** and the **US economic-nexus thresholds** are
+  implemented but await review by a tax professional before being relied on for
+  filing (the nexus dataset self-reports `dataset_certified: false` until then).
+- **Payment webhooks** are wired but want verification on a deployed environment
+  before real-money use.
+- **SAML SSO** needs certification against a live identity provider.
+
+Self-host it, fork it, build on it. If you're evaluating for production, start
+with [Going to Production](https://docs.recurso.dev/going-to-production).
 
 ## Recurso vs. Alternatives
 
@@ -125,13 +146,15 @@ Building on Recurso? See [`examples/nextjs-starter`](examples/nextjs-starter) fo
 
 ## SDKs
 
-- **Node.js** — a typed client for the Recurso API lives in [`sdk/node`](sdk/node).
-  It is not yet published to npm; install it from the repository:
+Typed clients for the Recurso API live in the repo. They are packaged and
+tested but **not yet published** to npm / PyPI — install from source for now:
 
-  ```bash
-  git clone https://github.com/swapnull-in/recur-so.git
-  npm install ./recur-so/sdk/node
-  ```
+- **Node.js** ([`sdk/node`](sdk/node)) — `npm install ./recur-so/sdk/node`
+- **Python** ([`sdk/python`](sdk/python)) — `pip install ./recur-so/sdk/python`
+- **Go** ([`sdk/go`](sdk/go)) — `import "github.com/swapnull-in/recur-so/sdk/go"`
+
+A [Postman collection](postman/) generated from the OpenAPI spec is also
+included.
 
 ## Documentation
 

@@ -27,7 +27,7 @@ import (
 
 func main() {
 	ctx := context.Background()
-	client := recurso.NewClient("rsk_live_your_api_key")
+	client := recurso.NewClient("sk_live_your_api_key")
 
 	plan, err := client.Plans.Create(ctx, &recurso.PlanCreateParams{
 		Name:          "Pro Plan",
@@ -73,7 +73,7 @@ Every request carries your API key as a bearer token
 (`Authorization: Bearer <key>`). Pass the key to `NewClient`:
 
 ```go
-client := recurso.NewClient("rsk_live_your_api_key")
+client := recurso.NewClient("sk_live_your_api_key")
 ```
 
 ## Configuration
@@ -82,7 +82,7 @@ client := recurso.NewClient("rsk_live_your_api_key")
 
 ```go
 client := recurso.NewClient(
-	"rsk_live_your_api_key",
+	"sk_live_your_api_key",
 	recurso.WithBaseURL("https://billing.example.com/v1"), // default: https://api.recurso.dev/v1
 	recurso.WithHTTPClient(&http.Client{Timeout: 30 * time.Second}),
 )
