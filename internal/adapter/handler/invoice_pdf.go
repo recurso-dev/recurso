@@ -29,16 +29,22 @@ func NewInvoicePDFHandler(pdfService *service.InvoicePDFService, invoiceRepo por
 }
 
 // DownloadPDF renders the invoice as printable HTML.
-// GET /v1/invoices/:id/pdf
+// GET /v1/invoices/:id/pdf (session or API key; tenant-scoped)
 func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
 		return
 	}
 
-	ctx := c.Request.Context()
-	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	inv, err := h.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
 		return
@@ -48,13 +54,15 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 		return
 	}
 
-	// The route is public (no tenant in context); load the buyer through the
-	// tenant-scoped repo by injecting the invoice's own tenant (same pattern as
-	// the payment webhooks).
+	// A tax invoice without its buyer block is legally non-compliant, so a
+	// failed customer lookup is an error, not a blank Bill To.
 	var customer *domain.Customer
 	if h.customerRepo != nil {
-		tenantCtx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
-		customer, _ = h.customerRepo.GetByID(tenantCtx, inv.CustomerID)
+		customer, err = h.customerRepo.GetByID(ctx, inv.CustomerID)
+		if err != nil || customer == nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice customer")
+			return
+		}
 	}
 
 	data := h.pdfService.BuildInvoiceData(inv, customer)

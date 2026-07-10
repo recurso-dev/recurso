@@ -929,10 +929,6 @@ func main() {
 	r.GET("/auth/saml/:tenantID/login", publicLimit, ssoHandler.Login)
 	r.POST("/auth/saml/:tenantID/acs", publicLimit, ssoHandler.ACS)
 
-	// Invoice PDF Public (P30 for Demo)
-	r.GET("/v1/invoices/:id/pdf", publicLimit, pdfHandler.DownloadPDF)
-	r.GET("/v1/invoices/:id/preview", publicLimit, pdfHandler.PreviewHTML)
-
 	// Customer Portal Auth (P25)
 	r.POST("/portal/auth/request", publicLimit, portalAPIHandler.RequestMagicLink)
 	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)
@@ -980,6 +976,10 @@ func main() {
 		v1.DELETE("/subscriptions/:id/addons/:addonId", subscriptionHandler.RemoveAddon)
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
+		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
+		// address, and GSTIN, so it must never be publicly fetchable by UUID.
+		v1.GET("/invoices/:id/pdf", pdfHandler.DownloadPDF)
+		v1.GET("/invoices/:id/preview", pdfHandler.PreviewHTML)
 
 		// Usage Platform v1
 		v1.POST("/usage/events", usageHandler.RecordEvent)

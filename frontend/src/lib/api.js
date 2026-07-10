@@ -75,6 +75,9 @@ export const endpoints = {
   getCustomers: (params) => api.get('/customers', { params }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   getInvoices: (params) => api.get('/invoices', { params }),
+  // Tenant-scoped (session or API key); fetched as a blob so the auth header
+  // is sent — a plain <a href> would only work for cookie sessions.
+  getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   getMRR: () => api.get('/analytics/mrr'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
