@@ -173,21 +173,32 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		anchorType = "acquisition"
 	}
 
+	// The natural end of a full billing interval from `start`.
+	var fullEnd time.Time
+	switch plan.IntervalUnit {
+	case domain.IntervalMonth:
+		fullEnd = start.AddDate(0, plan.IntervalCount, 0)
+	case domain.IntervalYear:
+		fullEnd = start.AddDate(plan.IntervalCount, 0, 0)
+	case domain.IntervalWeek:
+		fullEnd = start.AddDate(0, 0, 7*plan.IntervalCount)
+	case domain.IntervalDay:
+		fullEnd = start.AddDate(0, 0, plan.IntervalCount)
+	}
+
+	// firstPeriodFactor prorates the first charge. With first_of_month the first
+	// period is a short stub (start → 1st of next month); billing the full plan
+	// price for it over-charged the customer (ENG-144). Prorate to the stub's
+	// share of a full interval.
+	firstPeriodFactor := 1.0
 	if anchorType == "first_of_month" && start.Day() != 1 {
-		// Prorate to first of next month
 		year, month, _ := start.Date()
 		end = time.Date(year, month, 1, 0, 0, 0, 0, start.Location()).AddDate(0, 1, 0)
-	} else {
-		switch plan.IntervalUnit {
-		case domain.IntervalMonth:
-			end = start.AddDate(0, plan.IntervalCount, 0)
-		case domain.IntervalYear:
-			end = start.AddDate(plan.IntervalCount, 0, 0)
-		case domain.IntervalWeek:
-			end = start.AddDate(0, 0, 7*plan.IntervalCount)
-		case domain.IntervalDay:
-			end = start.AddDate(0, 0, plan.IntervalCount)
+		if fullEnd.After(start) {
+			firstPeriodFactor = end.Sub(start).Seconds() / fullEnd.Sub(start).Seconds()
 		}
+	} else {
+		end = fullEnd
 	}
 
 	// Trial handling: a trialing subscription defers its first invoice until the
@@ -209,7 +220,8 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	}
 	price := plan.Prices[0]
 
-	subtotal := price.Amount
+	// firstPeriodFactor is 1.0 except for a prorated first_of_month stub period.
+	subtotal := int64(float64(price.Amount) * firstPeriodFactor)
 	discount := int64(0)
 	var couponID *uuid.UUID
 

@@ -172,6 +172,48 @@ func TestCreateSubscription_WithTrial_DefersInvoice(t *testing.T) {
 	}
 }
 
+func TestCreateSubscription_FirstOfMonth_ProratesFirstPeriod(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID:            planID,
+		IntervalUnit:  domain.IntervalMonth,
+		IntervalCount: 1,
+		Prices:        []domain.Price{{Amount: 300000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{}, &subMockGateway{})
+
+	// Jan-20 signup with a first-of-month anchor: the first period is a 12-day
+	// stub (Jan-20 → Feb-1) out of a 31-day full interval (Jan-20 → Feb-20).
+	start := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	if _, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID:          uuid.New(),
+		CustomerID:        customerID,
+		PlanID:            planID,
+		StartDate:         start,
+		BillingAnchorType: "first_of_month",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if invRepo.created == nil {
+		t.Fatal("expected a first invoice")
+	}
+
+	full := int64(300000)
+	want := int64(float64(full) * 12.0 / 31.0) // ~116129, the prorated stub
+	if invRepo.created.Subtotal != want {
+		t.Errorf("first-period Subtotal = %d, want %d (12/31 stub, not the full month %d)",
+			invRepo.created.Subtotal, want, full)
+	}
+	if invRepo.created.Subtotal >= full {
+		t.Errorf("Subtotal %d was not prorated (billed the full period for a 12-day stub)", invRepo.created.Subtotal)
+	}
+}
+
 func TestConvertTrialToActive_GeneratesFirstInvoice(t *testing.T) {
 	planID := uuid.New()
 	customerID := uuid.New()

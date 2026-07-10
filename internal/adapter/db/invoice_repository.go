@@ -251,19 +251,22 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 		    last_payment_error = $17, dunning_managed_by = $18,
 		    payment_wall_active = $19,
 		    updated_at = NOW()
-		WHERE id = $20
+		WHERE id = $20 AND tenant_id = $21
 	`
-	amountPaid := inv.Total // Simplification as we update usually for generic payment
-
+	// Persist the invoice's actual amount_paid — NOT the total. Update is used
+	// for non-payment mutations (retry reschedule, e-invoice status, dunning) on
+	// invoices that are usually UNPAID; hardcoding amount_paid = total corrupted
+	// AR every time one of those ran (ENG-144). The paid transition goes through
+	// MarkPaid, not here.
 	_, err := r.db.ExecContext(ctx, query,
-		inv.Status, amountPaid, inv.PaidAt, inv.NextRetryAt, inv.RetryCount,
+		inv.Status, inv.AmountPaid, inv.PaidAt, inv.NextRetryAt, inv.RetryCount,
 		inv.TDSAmount, inv.SignedQRCode, inv.EInvoiceStatus, inv.IRN,
 		inv.AckNo, inv.AckDate, inv.EInvoiceRetryCount,
 		inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
 		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey),
 		nilIfEmpty(inv.LastPaymentError), nilIfEmpty(inv.DunningManagedBy),
 		inv.PaymentWallActive,
-		inv.ID,
+		inv.ID, inv.TenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update invoice: %w", err)

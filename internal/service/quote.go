@@ -210,11 +210,17 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id uuid.UUID) (*dom
 		TenantID:   quote.TenantID,
 		CustomerID: quote.CustomerID,
 		Status:     "open",
-		AmountDue:  int64(quote.Total),
-		Currency:   quote.Currency,
-		LineItems:  lines,
-		DueDate:    dueDate,
-		CreatedAt:  time.Now(),
+		// Carry the quote's money fields onto the invoice. Setting only AmountDue
+		// left Subtotal/Total/TaxAmount at zero, so the PDF, MarkInvoicePaid, and
+		// the ledger all saw a $0 invoice (ENG-144).
+		Subtotal:  int64(quote.Subtotal),
+		TaxAmount: int64(quote.TaxAmount),
+		Total:     int64(quote.Total),
+		AmountDue: int64(quote.Total),
+		Currency:  quote.Currency,
+		LineItems: lines,
+		DueDate:   dueDate,
+		CreatedAt: time.Now(),
 	}
 
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
