@@ -31,6 +31,7 @@ type InvoiceData struct {
 	CustomerName  string
 	CustomerEmail string
 	InvoiceNumber string
+	InvoiceID     string // used to build the hosted-checkout link when PaymentURL is empty
 	Amount        string
 	DueDate       string
 	PaymentURL    string
@@ -38,6 +39,12 @@ type InvoiceData struct {
 
 // SendInvoiceCreated sends an invoice notification
 func (s *NotificationService) SendInvoiceCreated(ctx context.Context, data InvoiceData) error {
+	// The template renders a "Pay Now" button — an empty href is a dead
+	// button, so default it to the hosted checkout for this invoice.
+	if data.PaymentURL == "" && data.InvoiceID != "" {
+		data.PaymentURL = strings.TrimRight(s.baseURL, "/") + "/checkout/" + data.InvoiceID
+	}
+
 	content, err := s.renderTemplate(email.InvoiceCreatedTemplate, data)
 	if err != nil {
 		return err

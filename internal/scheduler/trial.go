@@ -140,7 +140,9 @@ func (s *TrialScheduler) sendReminders(ctx context.Context) {
 			PlanName:      n.PlanName,
 			Amount:        formatAmount(n.Amount, n.Currency),
 			TrialEndDate:  n.TrialEnd.Format("January 2, 2006"),
-			PortalURL:     s.portalBaseURL + "/portal",
+			// The SPA's portal entry is /portal/login — bare /portal matches
+			// nothing and the router catch-all bounces to the merchant app.
+			PortalURL: s.portalBaseURL + "/portal/login",
 		}
 
 		if err := s.notifier.SendTrialEndingReminder(ctx, data); err != nil {

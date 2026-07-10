@@ -1023,6 +1023,11 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		return nil, fmt.Errorf("subscription %s is not trialing (status=%s)", sub.ID, sub.Status)
 	}
 
+	// The trial scheduler calls with a background context, but every repo
+	// below is tenant-scoped — inject the subscription's own tenant (same
+	// pattern as the payment webhooks). Without this no trial ever converts.
+	ctx = context.WithValue(ctx, domain.TenantIDKey, sub.TenantID)
+
 	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get plan: %w", err)
@@ -1127,9 +1132,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 			CustomerName:  domain.PtrToString(customer.Name),
 			CustomerEmail: customer.Email,
 			InvoiceNumber: invoice.InvoiceNumber,
+			InvoiceID:     invoice.ID.String(),
 			Amount:        formatAmount(total, price.Currency),
 			DueDate:       dueDate.Format("Jan 02, 2006"),
-			PaymentURL:    "",
 		}); err != nil {
 			s.logger.Error("failed to send trial conversion invoice notification", "error", err, "invoice_id", invID)
 		}

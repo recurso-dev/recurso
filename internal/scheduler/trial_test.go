@@ -104,7 +104,7 @@ func TestTrialScheduler_SendsRemindersAndMarksSent(t *testing.T) {
 	if got.Amount != "₹1000.00" {
 		t.Errorf("reminder amount = %q, want ₹1000.00", got.Amount)
 	}
-	if got.PortalURL != "https://portal.test/portal" {
+	if got.PortalURL != "https://portal.test/portal/login" {
 		t.Errorf("reminder portal URL = %q", got.PortalURL)
 	}
 

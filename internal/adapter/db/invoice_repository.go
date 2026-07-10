@@ -433,14 +433,18 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 	var invoices []domain.OverdueInvoice
 	for rows.Next() {
 		var inv domain.OverdueInvoice
+		// customers.name is nullable — scanning it into a plain string would
+		// abort the whole dunning sweep on the first nameless customer.
+		var name sql.NullString
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.CustomerID,
-			&inv.CustomerName, &inv.CustomerEmail,
+			&name, &inv.CustomerEmail,
 			&inv.InvoiceNumber, &inv.Amount, &inv.Currency,
 			&inv.DueDate, &inv.RetryCount, &inv.NextRetryAt,
 		); err != nil {
 			return nil, err
 		}
+		inv.CustomerName = name.String
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil
