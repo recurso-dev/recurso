@@ -37,6 +37,19 @@ type razorpayVerifier interface {
 	GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
 }
 
+// checkoutCustomerReader loads the invoice's buyer on the public checkout
+// route (no tenant in context, hence the Public variant).
+type checkoutCustomerReader interface {
+	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+}
+
+// checkoutBuyerSetter attaches buyer name/address to a created order.
+// Implemented by *gateway.StripeGateway; India-region accounts require these
+// on foreign-currency intents (india-exports rules).
+type checkoutBuyerSetter interface {
+	SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
+}
+
 type CheckoutHandler struct {
 	invoiceRepo    port.InvoiceRepository
 	paymentGateway port.PaymentGateway
@@ -45,6 +58,14 @@ type CheckoutHandler struct {
 	publishableKey string
 	razorpay       razorpayVerifier
 	razorpayKeyID  string
+	customers      checkoutCustomerReader
+	buyerSetter    checkoutBuyerSetter
+}
+
+// SetBuyerDetails wires buyer name/address propagation onto Stripe orders.
+func (h *CheckoutHandler) SetBuyerDetails(customers checkoutCustomerReader, setter checkoutBuyerSetter) {
+	h.customers = customers
+	h.buyerSetter = setter
 }
 
 // SetRazorpay wires the INR/Razorpay checkout verification path (order created
@@ -164,6 +185,17 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 	if gatewayName == "razorpay" && h.razorpayKeyID == "" {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Razorpay key id)")
 		return
+	}
+
+	// India-region Stripe accounts reject foreign-currency confirmation unless
+	// the intent carries the buyer's name and address (india-exports rules) —
+	// attach them from the invoice's customer. Best-effort: a failure here
+	// must not block checkout on accounts that don't require it.
+	if gatewayName == "stripe" && h.buyerSetter != nil && h.customers != nil {
+		if cust, cerr := h.customers.GetByIDPublic(c.Request.Context(), invoice.CustomerID); cerr == nil && cust != nil && cust.Name != nil && *cust.Name != "" {
+			ba := cust.BillingAddress
+			_ = h.buyerSetter.SetOrderBuyer(c.Request.Context(), order.ID, *cust.Name, ba.Line1, ba.City, ba.State, ba.Zip, ba.Country)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{

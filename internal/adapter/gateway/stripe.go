@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -39,6 +40,19 @@ func NewStripeGateway(apiKey string, webhookSecret string) *StripeGateway {
 //   - sepa_debit: authorized immediately but funds settle over several business
 //     days. The invoice is only marked paid on the payment_intent.succeeded
 //     webhook, which fires once settlement completes.
+//
+// isInactivePaymentMethodErr reports whether Stripe rejected the
+// PaymentIntent because a requested payment_method_type isn't activated on the
+// account (error code payment_intent_invalid_parameter on that param) —
+// verified live: accounts without ACH enabled reject us_bank_account this way.
+func isInactivePaymentMethodErr(err error) bool {
+	var se *stripe.Error
+	if !errors.As(err, &se) {
+		return false
+	}
+	return se.Code == stripe.ErrorCode("payment_intent_invalid_parameter") && se.Param == "payment_method_types"
+}
+
 func stripePaymentMethodTypes(currency string) []string {
 	switch strings.ToUpper(currency) {
 	case "EUR":
@@ -72,6 +86,11 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		Amount:             stripe.Int64(amount),
 		Currency:           stripe.String(currency),
 		PaymentMethodTypes: stripe.StringSlice(stripePaymentMethodTypes(currency)),
+		// India-region Stripe accounts treat foreign-currency charges as
+		// exports and reject confirmation without a description
+		// (stripe.com/docs/india-exports); it also labels the payment in the
+		// dashboard everywhere else.
+		Description: stripe.String("Invoice " + receipt),
 		// invoice_id lets the payment_intent.succeeded webhook reconcile
 		// asynchronously-settling methods (SEPA) where there is no
 		// synchronous checkout callback.
@@ -82,6 +101,14 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 	}
 
 	pi, err := s.sc.PaymentIntents.New(params)
+	if err != nil && isInactivePaymentMethodErr(err) {
+		// One of the currency's extra method types (e.g. us_bank_account) isn't
+		// activated on this Stripe account. A card-only checkout beats a dead
+		// one — retry with card and let ops activate the method in the Stripe
+		// dashboard when they want it.
+		params.PaymentMethodTypes = stripe.StringSlice([]string{string(stripe.PaymentMethodTypeCard)})
+		pi, err = s.sc.PaymentIntents.New(params)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("stripe create order failed: %v", err)
 	}
@@ -97,6 +124,27 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		ClientSecret: pi.ClientSecret,
 		Gateway:      "stripe",
 	}, nil
+}
+
+// SetOrderBuyer attaches the buyer's name and address to a PaymentIntent as
+// shipping details. India-region Stripe accounts refuse to confirm
+// foreign-currency charges without them (stripe.com/docs/india-exports);
+// elsewhere it just labels the payment in the dashboard.
+func (s *StripeGateway) SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error {
+	params := &stripe.PaymentIntentParams{
+		Shipping: &stripe.ShippingDetailsParams{
+			Name: stripe.String(name),
+			Address: &stripe.AddressParams{
+				Line1:      stripe.String(line1),
+				City:       stripe.String(city),
+				State:      stripe.String(state),
+				PostalCode: stripe.String(zip),
+				Country:    stripe.String(country),
+			},
+		},
+	}
+	_, err := s.sc.PaymentIntents.Update(orderID, params)
+	return err
 }
 
 // GetPaymentStatus fetches a PaymentIntent so a checkout can be verified

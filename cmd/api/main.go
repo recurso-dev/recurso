@@ -666,6 +666,12 @@ func main() {
 		GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
 	})
 	checkoutHandler.SetRazorpay(razorpayVerifier, os.Getenv("RAZORPAY_KEY_ID"))
+	// Buyer name/address on Stripe intents — required by India-region accounts
+	// for foreign-currency (export) charges; harmless elsewhere.
+	checkoutBuyer, _ := stripeGateway.(interface {
+		SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
+	})
+	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
 	// Phase 48: Unified Portal API Handler
 	portalHandler := handler.NewPortalHandler(customerRepo, invoiceRepo, subscriptionService, invoiceService, customerService)
