@@ -1006,8 +1006,11 @@ paths:
       operationId: downloadInvoicePDF
       tags: [Invoices]
       summary: Download a printable invoice
-      description: Returns a print-ready HTML rendering of the invoice (public, rate-limited).
-      security: []
+      description: >
+        Returns a print-ready HTML rendering of the invoice, tenant-scoped.
+        Requires authentication (API key or dashboard session): the document
+        carries the buyer's legal name, address, and GSTIN, so it is never
+        publicly fetchable by UUID.
       parameters:
         - $ref: '#/components/parameters/PathID'
       responses:
@@ -1019,6 +1022,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /v1/invoices/{id}/einvoice:
     get:
@@ -1770,7 +1777,13 @@ paths:
       operationId: initiateCheckoutPayment
       tags: [Checkout]
       summary: Initiate payment for an invoice
-      description: Creates a payment order on the configured gateway for an unpaid invoice.
+      description: >
+        Creates a payment order on the currency-routed gateway for an unpaid
+        invoice. The response tells the frontend which flow to drive: `stripe`
+        returns a PaymentIntent `client_secret` + `publishable_key` for the
+        Payment Element; `razorpay` returns the order id + `razorpay_key_id`
+        for the Checkout.js modal. Settlement is always verified server-side —
+        see `/checkout/{id}/success` and `/checkout/{id}/razorpay/verify`.
       security: []
       parameters:
         - $ref: '#/components/parameters/PathID'
@@ -1787,6 +1800,7 @@ paths:
                     properties:
                       order_id:
                         type: string
+                        description: Gateway order/intent id (Stripe `pi_*`, Razorpay `order_*`).
                       amount:
                         type: integer
                         format: int64
@@ -1798,23 +1812,111 @@ paths:
                         format: uuid
                       invoice_number:
                         type: string
+                      gateway:
+                        type: string
+                        enum: [stripe, razorpay, mock, other]
+                        description: Which client-side flow to use.
+                      client_secret:
+                        type: string
+                        description: Stripe PaymentIntent client secret (empty for non-Stripe gateways).
+                      publishable_key:
+                        type: string
+                        description: Stripe publishable key for mounting the Payment Element.
+                      razorpay_key_id:
+                        type: string
+                        description: Razorpay public key id for Checkout.js.
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          description: Checkout is not fully configured (e.g. the gateway's browser-side key is missing).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /checkout/{id}/success:
     get:
       operationId: checkoutSuccess
       tags: [Checkout]
-      summary: Confirm checkout success
-      description: Marks the invoice as paid (demo flow) and returns a confirmation payload.
+      summary: Verify a checkout payment and report settlement status
+      description: >
+        Never settles on trust. When `payment_intent` is provided, the intent
+        is verified directly with Stripe — it must have succeeded AND carry
+        this invoice's id in its metadata — before the invoice is marked paid
+        through the ledger path (idempotent with the payment webhook, which
+        remains the authoritative backstop). A declined or abandoned intent
+        reports `failed`; asynchronous methods (ACH, SEPA) report `processing`
+        until the webhook settles them. Without `payment_intent`, the current
+        invoice status is reported unchanged.
       security: []
       parameters:
         - $ref: '#/components/parameters/PathID'
+        - name: payment_intent
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Stripe PaymentIntent id (`pi_*`) to verify — also appended automatically by Stripe on redirect-method returns.
       responses:
         '200':
-          description: Invoice confirmed paid.
+          description: Settlement status for this invoice.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [paid, processing, failed, open, past_due]
+                      payment_status:
+                        type: string
+                        description: Raw gateway intent status (present when a payment_intent was inspected).
+                      invoice_id:
+                        type: string
+                        format: uuid
+                      invoice_number:
+                        type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /checkout/{id}/razorpay/verify:
+    post:
+      operationId: checkoutRazorpayVerify
+      tags: [Checkout]
+      summary: Verify a Razorpay checkout payment and settle the invoice
+      description: >
+        Called by the hosted checkout after the Razorpay modal reports success.
+        Verifies the HMAC signature, fetches the order from Razorpay and
+        confirms its `notes.invoice_id` matches this invoice, then settles
+        through the idempotent ledger path. The `payment.captured` webhook
+        remains the authoritative backstop.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [razorpay_order_id, razorpay_payment_id, razorpay_signature]
+              properties:
+                razorpay_order_id:
+                  type: string
+                razorpay_payment_id:
+                  type: string
+                razorpay_signature:
+                  type: string
+      responses:
+        '200':
+          description: Invoice settled (idempotent — already-paid invoices report paid).
           content:
             application/json:
               schema:
@@ -1835,6 +1937,12 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+        '503':
+          description: Razorpay checkout isn't available on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /payments/order:
     post:
@@ -1960,8 +2068,7 @@ paths:
       operationId: previewInvoiceHTML
       tags: [Invoices]
       summary: Preview an invoice as HTML
-      description: Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
-      security: []
+      description: Returns the same tenant-scoped, authenticated rendering as the PDF endpoint.
       parameters:
         - $ref: '#/components/parameters/PathID'
       responses:
@@ -1973,6 +2080,10 @@ paths:
                 type: string
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
 
   /portal/{customer_id}:
     get:
@@ -2265,6 +2376,167 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+
+  /portal/api/payment-method/setup-intent:
+    post:
+      operationId: portalStartPaymentMethodSetup
+      tags: [Customer Portal]
+      summary: Start a card update (Stripe SetupIntent)
+      description: >
+        Creates a Stripe SetupIntent for the authenticated portal customer and
+        returns the client secret the Payment Element confirms. Card data goes
+        browser→Stripe directly — no PAN ever reaches Recurso (PCI SAQ-A).
+        Reports 503 on deployments without Stripe.
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: SetupIntent created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      client_secret:
+                        type: string
+                      publishable_key:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Self-serve card update isn't available on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /portal/api/payment-method/confirm:
+    post:
+      operationId: portalConfirmPaymentMethod
+      tags: [Customer Portal]
+      summary: Finalize a confirmed SetupIntent
+      description: >
+        Verifies the SetupIntent succeeded and that its metadata customer_id
+        matches the authenticated portal customer, then records the saved card
+        as the customer's default payment method. Called after
+        `stripe.confirmSetup` — inline on success, or from the
+        `?setup_intent=` return param after a 3DS/bank redirect.
+      security:
+        - portalSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [setup_intent_id]
+              properties:
+                setup_intent_id:
+                  type: string
+      responses:
+        '200':
+          description: Saved (status `saved` with card metadata) or still `processing`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        enum: [saved, processing]
+                      card:
+                        type: object
+                        properties:
+                          brand:
+                            type: string
+                          last4:
+                            type: string
+                          exp_month:
+                            type: integer
+                          exp_year:
+                            type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Self-serve card update isn't available on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /portal/api/payment-method/mandate:
+    post:
+      operationId: portalStartMandateReauth
+      tags: [Customer Portal]
+      summary: Re-authorize a UPI Autopay mandate
+      description: >
+        Creates a fresh UPI mandate for the authenticated portal customer and
+        returns Razorpay's hosted authorization URL. The cap is sized from the
+        customer's billing history (2× the largest recent non-void invoice);
+        activation happens only when Razorpay confirms the token via the
+        `token.confirmed` webhook. Requires a phone number on the customer
+        (Razorpay rejects recurring registration links without one) and real
+        Razorpay keys on the deployment.
+      security:
+        - portalSession: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                vpa:
+                  type: string
+                  description: Optional UPI id — Razorpay's hosted page collects it when omitted.
+      responses:
+        '200':
+          description: Mandate created; redirect the customer to auth_url.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      auth_url:
+                        type: string
+                        format: uri
+                      mandate_id:
+                        type: string
+                        format: uuid
+                      status:
+                        type: string
+                        example: created
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: No billing history to size a mandate against.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          description: The customer has no phone number (required for UPI Autopay).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Mandate re-authorization isn't available on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /portal/api/disputes:
     get:
