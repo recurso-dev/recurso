@@ -54,13 +54,16 @@ const CreateCoupon = () => {
     e.preventDefault();
     setLoading(true);
 
-    // Payload is identical to the original create-coupon form.
+    const isPercent = formData.discount_type.toLowerCase().includes("percent");
     const payload = {
       code: formData.code,
-      discount_type: formData.discount_type.toLowerCase().includes("percent")
-        ? "percent"
-        : "amount",
-      discount_value: parseInt(formData.discount_value),
+      discount_type: isPercent ? "percent" : "amount",
+      // Amount-off is typed in major units (e.g. 25 = $25) but the API expects
+      // minor units, so "$25 off" must send 2500 — sending 25 created a $0.25
+      // coupon (ENG-152). Percent stays a plain integer.
+      discount_value: isPercent
+        ? parseInt(formData.discount_value)
+        : Math.round(parseFloat(formData.discount_value) * 100),
       duration: formData.duration.toLowerCase(),
       duration_months:
         formData.duration === "repeating" && formData.duration_months

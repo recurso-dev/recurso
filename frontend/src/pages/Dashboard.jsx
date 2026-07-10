@@ -63,12 +63,18 @@ export default function Dashboard() {
       const mrrVal = mrrRes?.data?.mrr ?? mrrRes?.data?.data?.mrr;
       setMrr(mrrVal ?? null);
 
-      // Recovered revenue from dunning analytics; shape is defensive.
+      // Recovered revenue from dunning analytics. The API sends
+      // recovered_amount_total: a { currency: minorUnits } map — the old reads
+      // (recovered / total_recovered) never matched, so the KPI was always blank
+      // (ENG-152). Sum the map for the headline figure.
+      const recMap =
+        recRes?.data?.recovered_amount_total ??
+        recRes?.data?.data?.recovered_amount_total;
       const recVal =
-        recRes?.data?.recovered ??
-        recRes?.data?.total_recovered ??
-        recRes?.data?.data?.recovered;
-      setRecovered(recVal ?? null);
+        recMap && Object.keys(recMap).length
+          ? Object.values(recMap).reduce((a, b) => a + Number(b || 0), 0)
+          : null;
+      setRecovered(recVal);
 
       setLoading(false);
     })();
