@@ -264,10 +264,7 @@ const PortalDashboard = () => {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => {
-                setPmError(null);
-                setPmOpen(true);
-              }}
+              onClick={() => setPmOpen(true)}
             >
               <CreditCard className="h-4 w-4" />
               Update payment method
