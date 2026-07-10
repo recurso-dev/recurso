@@ -64,13 +64,26 @@ type MandateResult struct {
 	Status         string
 }
 
+// MandateDebitRequest carries everything a gateway needs to initiate a recurring
+// auto-debit against a saved token. Razorpay's recurring-charge API requires the
+// gateway-side customer id plus the customer's email/contact, not just the token.
+type MandateDebitRequest struct {
+	TokenID            string // gateway token (Razorpay token_*)
+	RazorpayCustomerID string // gateway customer id (Razorpay cust_*)
+	Email              string // customer email (required by create/recurring)
+	Contact            string // customer phone/contact (required by create/recurring)
+	Amount             int64
+	Currency           string
+	InvoiceID          string // Recurso invoice id — carried in order notes for webhook settlement
+}
+
 type PaymentGateway interface {
 	CreateOrder(ctx context.Context, amount int64, currency string, receipt string, invoiceID string) (*PaymentOrder, error)
 	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
 	CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error)
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)
 	CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
-	ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*PaymentResult, error)
+	ExecuteMandateDebit(ctx context.Context, req MandateDebitRequest) (*PaymentResult, error)
 	// RevokeMandate deletes the recurring-payment token at the gateway.
 	// customerID is the gateway-side customer id (required by Razorpay's
 	// DELETE /v1/customers/{customer_id}/tokens/{token_id} API).

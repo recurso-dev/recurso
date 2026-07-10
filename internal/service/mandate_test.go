@@ -61,11 +61,26 @@ func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, toke
 	return m.revokeErr
 }
 
-func (m *mandateMockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+func (m *mandateMockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	if m.debitErr != nil {
 		return nil, m.debitErr
 	}
 	return m.debitResult, nil
+}
+
+// mandateMockCustomerRepo supplies the customer contact details ExecuteDebit
+// now fetches for the recurring-charge call.
+type mandateMockCustomerRepo struct {
+	port.CustomerRepository
+	customer *domain.Customer
+}
+
+func (m *mandateMockCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error) {
+	return m.customer, nil
+}
+
+func testMandateCustomerRepo() *mandateMockCustomerRepo {
+	return &mandateMockCustomerRepo{customer: &domain.Customer{Email: "c@example.com", Phone: "+919876543210"}}
 }
 
 type mandatePaymentIDCall struct {
@@ -193,7 +208,7 @@ func TestMandateExecuteDebit_CapturesPaymentIDFromDebitResponse(t *testing.T) {
 	repo := &mandateMockRepo{mandate: mandate}
 	invRepo := &mandateMockInvoiceRepo{}
 	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_debit_123"}}
-	svc := NewMandateService(repo, gw, nil, invRepo)
+	svc := NewMandateService(repo, gw, testMandateCustomerRepo(), invRepo)
 
 	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
 		t.Fatalf("ExecuteDebit returned error: %v", err)
@@ -201,6 +216,18 @@ func TestMandateExecuteDebit_CapturesPaymentIDFromDebitResponse(t *testing.T) {
 
 	if invRepo.created == nil {
 		t.Fatal("invoice was not created for the debit")
+	}
+	// ENG-141: the debit only *initiates* an async auto-debit, so the invoice
+	// must be created OPEN — it's settled solely by the order.paid webhook. A
+	// synchronously-paid invoice here would book revenue never collected.
+	if invRepo.created.Status != domain.InvoiceStatusOpen {
+		t.Errorf("invoice Status = %q, want open (settled only by webhook)", invRepo.created.Status)
+	}
+	if invRepo.created.AmountPaid != 0 {
+		t.Errorf("invoice AmountPaid = %d, want 0 (not paid until webhook)", invRepo.created.AmountPaid)
+	}
+	if invRepo.created.PaidAt != nil {
+		t.Error("invoice PaidAt should be nil until the webhook settles it")
 	}
 	if invRepo.created.GatewayPaymentID != "pay_debit_123" {
 		t.Errorf("invoice GatewayPaymentID = %q, want pay_debit_123", invRepo.created.GatewayPaymentID)
@@ -222,7 +249,7 @@ func TestMandateExecuteDebit_OrderIDIsNotStoredAsPaymentID(t *testing.T) {
 	repo := &mandateMockRepo{mandate: mandate}
 	invRepo := &mandateMockInvoiceRepo{}
 	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "order_Nxy123"}}
-	svc := NewMandateService(repo, gw, nil, invRepo)
+	svc := NewMandateService(repo, gw, testMandateCustomerRepo(), invRepo)
 
 	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
 		t.Fatalf("ExecuteDebit returned error: %v", err)

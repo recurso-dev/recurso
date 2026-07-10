@@ -84,8 +84,8 @@ func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, customer
 	return r.Razorpay.CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency)
 }
 
-func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
-	return r.Razorpay.ExecuteMandateDebit(ctx, tokenID, amount, currency, invoiceID)
+func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
+	return r.Razorpay.ExecuteMandateDebit(ctx, req)
 }
 
 func (r *SmartRouter) RevokeMandate(ctx context.Context, customerID, tokenID string) error {

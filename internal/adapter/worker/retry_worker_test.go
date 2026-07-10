@@ -85,7 +85,7 @@ func (m *mockGateway) CreateSubscription(ctx context.Context, planID string, tot
 func (m *mockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
 	return nil, nil
 }
-func (m *mockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+func (m *mockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return nil, nil
 }
 func (m *mockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {

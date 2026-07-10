@@ -174,31 +174,57 @@ func razorpayFrequency(f string) string {
 	}
 }
 
-func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
-	data := map[string]interface{}{
-		"amount":   amount,
-		"currency": currency,
-		"receipt":  invoiceID,
-		"notes": map[string]interface{}{
-			"invoice_id": invoiceID,
-			"token_id":   tokenID,
-		},
-	}
-
-	body, err := g.client.Order.Create(data, nil)
-	if err != nil {
+func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
+	if req.RazorpayCustomerID == "" || req.TokenID == "" {
 		return &port.PaymentResult{
 			Success:   false,
-			ErrorCode: "mandate_debit_failed",
-			ErrorMsg:  err.Error(),
+			ErrorCode: "mandate_missing_token",
+			ErrorMsg:  "razorpay customer id and token are required for a recurring charge",
 		}, nil
 	}
 
-	orderID, _ := body["id"].(string)
-	return &port.PaymentResult{
-		Success:   true,
-		PaymentID: orderID,
-	}, nil
+	// 1. Create the order the recurring payment settles against. notes.invoice_id
+	//    lets the order.paid / payment.captured webhook resolve the invoice.
+	order, err := g.client.Order.Create(map[string]interface{}{
+		"amount":          req.Amount,
+		"currency":        req.Currency,
+		"receipt":         req.InvoiceID,
+		"payment_capture": 1,
+		"notes": map[string]interface{}{
+			"invoice_id": req.InvoiceID,
+			"token_id":   req.TokenID,
+		},
+	}, nil)
+	if err != nil {
+		return &port.PaymentResult{Success: false, ErrorCode: "mandate_order_failed", ErrorMsg: err.Error()}, nil
+	}
+	orderID, _ := order["id"].(string)
+
+	// 2. Initiate the actual auto-debit against the saved token. The UPI debit
+	//    captures ASYNCHRONOUSLY — settlement is confirmed by the webhook, never
+	//    by this call. Returning success here means the debit was *initiated*;
+	//    the caller must NOT mark the invoice paid on the strength of it.
+	payment, err := g.client.Payment.CreateRecurringPayment(map[string]interface{}{
+		"email":       req.Email,
+		"contact":     req.Contact,
+		"amount":      req.Amount,
+		"currency":    req.Currency,
+		"order_id":    orderID,
+		"customer_id": req.RazorpayCustomerID,
+		"token":       req.TokenID,
+		"recurring":   "1",
+		"description": "Recurring debit for invoice " + req.InvoiceID,
+	}, nil)
+	if err != nil {
+		return &port.PaymentResult{Success: false, ErrorCode: "mandate_debit_failed", ErrorMsg: err.Error()}, nil
+	}
+
+	// The recurring payment id (pay_*) is refundable; the webhook also records it.
+	paymentID, _ := payment["razorpay_payment_id"].(string)
+	if paymentID == "" {
+		paymentID, _ = payment["id"].(string)
+	}
+	return &port.PaymentResult{Success: true, PaymentID: paymentID}, nil
 }
 
 func (g *RazorpayGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {

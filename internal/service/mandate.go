@@ -121,16 +121,33 @@ func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID, razor
 
 func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Mandate, amount int64, currency string) error {
 	invoiceID := uuid.New()
-	result, err := s.gateway.ExecuteMandateDebit(ctx, mandate.RazorpayTokenID, amount, currency, invoiceID.String())
+
+	// The gateway's recurring-charge API needs the customer's contact details.
+	customer, err := s.customerRepo.GetByID(ctx, mandate.CustomerID)
+	if err != nil {
+		return fmt.Errorf("mandate debit: load customer %s: %w", mandate.CustomerID, err)
+	}
+
+	result, err := s.gateway.ExecuteMandateDebit(ctx, port.MandateDebitRequest{
+		TokenID:            mandate.RazorpayTokenID,
+		RazorpayCustomerID: mandate.RazorpayCustomerID,
+		Email:              customer.Email,
+		Contact:            customer.Phone,
+		Amount:             amount,
+		Currency:           currency,
+		InvoiceID:          invoiceID.String(),
+	})
 	if err != nil {
 		return fmt.Errorf("mandate debit failed: %w", err)
 	}
-
 	if !result.Success {
 		return fmt.Errorf("mandate debit unsuccessful: %s", result.ErrorMsg)
 	}
 
-	// Create invoice for this debit
+	// Create the invoice OPEN, not paid. The recurring debit captures
+	// asynchronously, so the invoice is settled ONLY by the order.paid /
+	// payment.captured webhook (which resolves it via notes.invoice_id). Booking
+	// it paid here would record revenue that was never collected (ENG-141).
 	now := time.Now()
 	invoice := &domain.Invoice{
 		ID:             invoiceID,
@@ -140,31 +157,29 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 		InvoiceNumber:  fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
 		BillingReason:  "mandate_debit",
 		AmountDue:      amount,
-		AmountPaid:     amount,
+		AmountPaid:     0,
 		Currency:       currency,
 		Subtotal:       amount,
 		Total:          amount,
-		Status:         domain.InvoiceStatusPaid,
+		Status:         domain.InvoiceStatusOpen,
 		// Itemization (Phase 1): single line for the mandate debit (no tax split).
 		LineItems: []domain.InvoiceItem{
 			newInvoiceLine(invoiceID, "Mandate debit", "", 1, amount, amount, InvoiceTax{}, time.Time{}),
 		},
 		CreatedAt: now,
 		DueDate:   now,
-		PaidAt:    &now,
 	}
 
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
 		return fmt.Errorf("failed to create invoice for mandate debit: %w", err)
 	}
 
-	// Capture the gateway payment id when the debit response carries one —
-	// refunds are issued against it. Razorpay's mandate debit returns an
-	// order id (order_*), not a payment id: the captured pay_* id only
-	// arrives later on the order.paid webhook, which resolves this invoice
-	// through the order's notes.invoice_id and records the payment id via
-	// SetGatewayPaymentID (see WebhookHandler.HandleRazorpay). Storing the
-	// order id here would poison gateway_payment_id and break refunds.
+	// Capture the gateway payment id when the debit response carries a real one
+	// (pay_*) — refunds are issued against it. The recurring-charge call returns
+	// the pay_* id; the order.paid webhook also records it via SetGatewayPaymentID
+	// (see WebhookHandler.HandleRazorpay), so this is a best-effort early capture.
+	// Only a payment id is stored — an order id (order_*) would poison
+	// gateway_payment_id and break refunds, so isGatewayPaymentID guards it.
 	if isGatewayPaymentID(result.PaymentID) {
 		invoice.GatewayPaymentID = result.PaymentID
 		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, result.PaymentID); err != nil {

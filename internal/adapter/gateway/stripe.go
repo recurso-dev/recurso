@@ -431,7 +431,7 @@ func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, custom
 	return nil, ErrNotSupported
 }
 
-func (s *StripeGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+func (s *StripeGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return nil, ErrNotSupported
 }
 

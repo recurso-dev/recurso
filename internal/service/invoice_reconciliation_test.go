@@ -225,7 +225,7 @@ func TestReconcile_MandateDebit(t *testing.T) {
 	mandate := newTestMandate()
 	invRepo := &mandateMockInvoiceRepo{}
 	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_x"}}
-	svc := NewMandateService(&mandateMockRepo{mandate: mandate}, gw, nil, invRepo)
+	svc := NewMandateService(&mandateMockRepo{mandate: mandate}, gw, testMandateCustomerRepo(), invRepo)
 
 	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
 		t.Fatalf("ExecuteDebit error: %v", err)

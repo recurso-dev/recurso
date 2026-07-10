@@ -66,7 +66,7 @@ func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, customer
 	}, nil
 }
 
-func (g *MockGateway) ExecuteMandateDebit(ctx context.Context, tokenID string, amount int64, currency, invoiceID string) (*port.PaymentResult, error) {
+func (g *MockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return &port.PaymentResult{
 		Success:   true,
 		PaymentID: "pay_mock_" + uuid.New().String(),
