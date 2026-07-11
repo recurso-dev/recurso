@@ -86,6 +86,112 @@ func (r *CreditNoteRepository) SumActiveRefundsForInvoice(ctx context.Context, i
 	return total, nil
 }
 
+// SumApplicableAdjustments returns the total spendable balance of a customer's
+// open adjustment credit notes in the given currency (ENG-153). Read-only
+// preview used to reduce a gateway charge before the invoice exists; the actual
+// application (ApplyAdjustmentCredits) re-reads under a row lock.
+func (r *CreditNoteRepository) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+	var total int64
+	err := r.db.GetContext(ctx, &total, `
+		SELECT COALESCE(SUM(balance), 0)
+		FROM credit_notes
+		WHERE tenant_id = $1 AND customer_id = $2 AND currency = $3
+		  AND type = $4 AND status = $5 AND balance > 0`,
+		tenantID, customerID, currency, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued)
+	if err != nil {
+		return 0, fmt.Errorf("failed to sum applicable adjustment credits: %w", err)
+	}
+	return total, nil
+}
+
+// ApplyAdjustmentCredits applies a customer's open adjustment credit notes to an
+// already-persisted invoice, up to invoiceTotal (ENG-153). It runs in one
+// transaction: credit notes are locked oldest-first (FIFO), each is drawn down
+// (balance decremented, flipped to 'used' at zero), an audit row is written to
+// credit_note_applications, and the invoice's credit_applied is set (marking it
+// paid when fully covered). Returns the total applied. The FOR UPDATE lock makes
+// concurrent invoices for the same customer safe from double-spend.
+func (r *CreditNoteRepository) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+	if invoiceTotal <= 0 {
+		return 0, nil
+	}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("begin credit-application tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after commit
+
+	type applicable struct {
+		ID      uuid.UUID `db:"id"`
+		Balance int64     `db:"balance"`
+	}
+	var notes []applicable
+	if err := tx.SelectContext(ctx, &notes, `
+		SELECT id, balance FROM credit_notes
+		WHERE tenant_id = $1 AND customer_id = $2 AND currency = $3
+		  AND type = $4 AND status = $5 AND balance > 0
+		ORDER BY created_at ASC, id ASC
+		FOR UPDATE`,
+		tenantID, customerID, currency, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued); err != nil {
+		return 0, fmt.Errorf("lock applicable credit notes: %w", err)
+	}
+
+	var applied int64
+	remaining := invoiceTotal
+	for _, n := range notes {
+		if remaining <= 0 {
+			break
+		}
+		take := n.Balance
+		if take > remaining {
+			take = remaining
+		}
+		newBalance := n.Balance - take
+		newStatus := domain.CreditNoteStatusIssued
+		if newBalance == 0 {
+			newStatus = domain.CreditNoteStatusUsed
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE credit_notes SET balance = $1, status = $2, updated_at = NOW() WHERE id = $3`,
+			newBalance, newStatus, n.ID); err != nil {
+			return 0, fmt.Errorf("draw down credit note %s: %w", n.ID, err)
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO credit_note_applications (id, tenant_id, credit_note_id, invoice_id, amount, created_at)
+			 VALUES ($1, $2, $3, $4, $5, NOW())`,
+			uuid.New(), tenantID, n.ID, invoiceID, take); err != nil {
+			return 0, fmt.Errorf("record credit application for %s: %w", n.ID, err)
+		}
+		applied += take
+		remaining -= take
+	}
+
+	if applied > 0 {
+		// Set credit_applied and, when the credit fully covers the invoice, mark
+		// it paid (settled by credit, no cash). Guarded on the invoice being
+		// unsettled so we never re-open or clobber a paid invoice.
+		if applied >= invoiceTotal {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE invoices SET credit_applied = $1, status = 'paid', paid_at = NOW(), updated_at = NOW()
+				 WHERE id = $2 AND tenant_id = $3`,
+				applied, invoiceID, tenantID); err != nil {
+				return 0, fmt.Errorf("mark invoice %s credit-paid: %w", invoiceID, err)
+			}
+		} else {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE invoices SET credit_applied = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+				applied, invoiceID, tenantID); err != nil {
+				return 0, fmt.Errorf("set credit_applied on invoice %s: %w", invoiceID, err)
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit credit-application tx: %w", err)
+	}
+	return applied, nil
+}
+
 // GetByRefundID resolves the credit note that owns a gateway refund id
 // (Stripe re_*, Razorpay rfnd_*). Used by the refund webhook consumers.
 // Returns (nil, nil) when no credit note tracks that refund id — callers

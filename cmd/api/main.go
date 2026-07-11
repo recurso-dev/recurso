@@ -343,6 +343,8 @@ func main() {
 	// (add/remove/list) and on the recurring invoice path (extra taxed lines).
 	subscriptionService.SetAddonRepository(subscriptionAddonRepo)
 	invoiceService.AddonRepo = subscriptionAddonRepo
+	// Apply adjustment credit-note balances to generated invoices (ENG-153).
+	invoiceService.CreditApplier = creditNoteRepo
 
 	// Anonymous instance telemetry — strictly opt-in (TELEMETRY_OPTIN=true).
 	// Disabled (the default) means telemetryClient is nil: zero network calls,
@@ -466,6 +468,8 @@ func main() {
 
 	// Phase 2: Mandate Service
 	mandateService := service.NewMandateService(mandateRepo, paymentGateway, customerRepo, invoiceRepo)
+	// Apply account credit against off-session mandate debits (ENG-153).
+	mandateService.SetCreditApplier(creditNoteRepo)
 
 	// Phase 2: Offline Payment Service
 	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, paymentGateway, invoiceRepo, subscriptionService)

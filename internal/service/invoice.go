@@ -27,6 +27,17 @@ type InvoiceService struct {
 	// produces byte-identical single-plan invoices.
 	AddonRepo port.SubscriptionAddonRepository
 	Telemetry *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
+	// CreditApplier applies a customer's adjustment credit-note balances to a
+	// freshly-created invoice (ENG-153). nil-safe: when unset, invoices bill the
+	// full amount and no credit is consumed.
+	CreditApplier creditApplier
+}
+
+// creditApplier applies open adjustment credit-note balances to an invoice,
+// returning the amount applied (ENG-153). Satisfied by *db.CreditNoteRepository.
+type creditApplier interface {
+	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
+	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error)
 }
 
 func NewInvoiceService(
@@ -234,6 +245,22 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// 6. Persist
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
+	}
+
+	// 6b. Apply any account credit (adjustment credit notes) to the new invoice,
+	// reducing what the customer owes (ENG-153). Best-effort: a failure leaves the
+	// invoice at its full amount (recoverable), never fails invoice generation.
+	if s.CreditApplier != nil && inv.Total > 0 {
+		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total); err != nil {
+			slog.Error("credit application failed on invoice generation", "invoice_id", inv.ID, "error", err)
+		} else if applied > 0 {
+			inv.CreditApplied = applied
+			inv.AmountDue = inv.Total - inv.AmountPaid - applied
+			if applied >= inv.Total {
+				inv.Status = domain.InvoiceStatusPaid
+			}
+			slog.Info("applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)
+		}
 	}
 
 	s.Telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled

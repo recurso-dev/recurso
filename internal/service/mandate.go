@@ -18,7 +18,13 @@ type MandateService struct {
 	gateway      port.PaymentGateway
 	customerRepo port.CustomerRepository
 	invoiceRepo  port.InvoiceRepository
+	// creditApplier applies adjustment credit-note balances to the mandate-debit
+	// invoice, reducing the amount actually charged (ENG-153). nil-safe.
+	creditApplier creditApplier
 }
+
+// SetCreditApplier wires credit application into the mandate-debit charge path (ENG-153).
+func (s *MandateService) SetCreditApplier(a creditApplier) { s.creditApplier = a }
 
 func NewMandateService(
 	mandateRepo port.MandateRepository,
@@ -128,26 +134,49 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 		return fmt.Errorf("mandate debit: load customer %s: %w", mandate.CustomerID, err)
 	}
 
-	result, err := s.gateway.ExecuteMandateDebit(ctx, port.MandateDebitRequest{
-		TokenID:            mandate.RazorpayTokenID,
-		RazorpayCustomerID: mandate.RazorpayCustomerID,
-		Email:              customer.Email,
-		Contact:            customer.Phone,
-		Amount:             amount,
-		Currency:           currency,
-		InvoiceID:          invoiceID.String(),
-	})
-	if err != nil {
-		return fmt.Errorf("mandate debit failed: %w", err)
+	// ENG-153: apply the customer's account credit against this debit. Preview
+	// the available adjustment-credit balance and charge the gateway only the
+	// net; the actual draw-down happens after the invoice exists.
+	var previewCredit int64
+	if s.creditApplier != nil {
+		if sum, sErr := s.creditApplier.SumApplicableAdjustments(ctx, mandate.TenantID, mandate.CustomerID, currency); sErr != nil {
+			slog.Default().Error("mandate debit: credit preview failed; charging full amount",
+				"customer_id", mandate.CustomerID, "error", sErr)
+		} else {
+			previewCredit = sum
+			if previewCredit > amount {
+				previewCredit = amount
+			}
+		}
 	}
-	if !result.Success {
-		return fmt.Errorf("mandate debit unsuccessful: %s", result.ErrorMsg)
+	netCharge := amount - previewCredit
+
+	// Charge the gateway for the net. If credit fully covers the debit, skip the
+	// gateway entirely (nothing to collect).
+	var result *port.PaymentResult
+	if netCharge > 0 {
+		result, err = s.gateway.ExecuteMandateDebit(ctx, port.MandateDebitRequest{
+			TokenID:            mandate.RazorpayTokenID,
+			RazorpayCustomerID: mandate.RazorpayCustomerID,
+			Email:              customer.Email,
+			Contact:            customer.Phone,
+			Amount:             netCharge,
+			Currency:           currency,
+			InvoiceID:          invoiceID.String(),
+		})
+		if err != nil {
+			return fmt.Errorf("mandate debit failed: %w", err)
+		}
+		if !result.Success {
+			return fmt.Errorf("mandate debit unsuccessful: %s", result.ErrorMsg)
+		}
 	}
 
 	// Create the invoice OPEN, not paid. The recurring debit captures
 	// asynchronously, so the invoice is settled ONLY by the order.paid /
 	// payment.captured webhook (which resolves it via notes.invoice_id). Booking
-	// it paid here would record revenue that was never collected (ENG-141).
+	// it paid here would record revenue that was never collected (ENG-141). The
+	// invoice total stays GROSS; credit application (below) records credit_applied.
 	now := time.Now()
 	invoice := &domain.Invoice{
 		ID:             invoiceID,
@@ -174,13 +203,30 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 		return fmt.Errorf("failed to create invoice for mandate debit: %w", err)
 	}
 
+	// Draw down the credit against the now-persisted invoice. When it fully
+	// covers the debit, ApplyAdjustmentCredits marks the invoice paid (no webhook
+	// will arrive, since we skipped the gateway). Best-effort: a failure leaves
+	// the invoice open at full amount for the webhook/reconciliation to settle.
+	if s.creditApplier != nil && previewCredit > 0 {
+		applied, aErr := s.creditApplier.ApplyAdjustmentCredits(ctx, mandate.TenantID, mandate.CustomerID, currency, invoice.ID, amount)
+		if aErr != nil {
+			slog.Default().Error("mandate debit: credit application failed", "invoice_id", invoice.ID, "error", aErr)
+		} else {
+			invoice.CreditApplied = applied
+			if applied != previewCredit {
+				slog.Default().Warn("mandate debit: applied credit differs from preview (concurrent draw-down)",
+					"invoice_id", invoice.ID, "preview", previewCredit, "applied", applied, "charged", netCharge)
+			}
+		}
+	}
+
 	// Capture the gateway payment id when the debit response carries a real one
 	// (pay_*) — refunds are issued against it. The recurring-charge call returns
 	// the pay_* id; the order.paid webhook also records it via SetGatewayPaymentID
 	// (see WebhookHandler.HandleRazorpay), so this is a best-effort early capture.
 	// Only a payment id is stored — an order id (order_*) would poison
 	// gateway_payment_id and break refunds, so isGatewayPaymentID guards it.
-	if isGatewayPaymentID(result.PaymentID) {
+	if result != nil && isGatewayPaymentID(result.PaymentID) {
 		invoice.GatewayPaymentID = result.PaymentID
 		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, result.PaymentID); err != nil {
 			// The debit succeeded and the invoice exists; failing the whole

@@ -50,10 +50,33 @@ type mandateRevokeCall struct {
 
 type mandateMockGateway struct {
 	port.PaymentGateway
-	revokeCalls []mandateRevokeCall
-	revokeErr   error
-	debitResult *port.PaymentResult
-	debitErr    error
+	revokeCalls     []mandateRevokeCall
+	revokeErr       error
+	debitResult     *port.PaymentResult
+	debitErr        error
+	debitCalls      int
+	lastDebitAmount int64
+}
+
+// fakeCreditApplier is a test double for the ENG-153 credit applier.
+type fakeCreditApplier struct {
+	available  int64
+	applyCalls int
+	appliedTo  uuid.UUID
+}
+
+func (f *fakeCreditApplier) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+	return f.available, nil
+}
+
+func (f *fakeCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+	f.applyCalls++
+	f.appliedTo = invoiceID
+	applied := f.available
+	if applied > invoiceTotal {
+		applied = invoiceTotal
+	}
+	return applied, nil
 }
 
 func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
@@ -62,6 +85,8 @@ func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, toke
 }
 
 func (m *mandateMockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
+	m.debitCalls++
+	m.lastDebitAmount = req.Amount
 	if m.debitErr != nil {
 		return nil, m.debitErr
 	}
@@ -198,6 +223,67 @@ func TestMandateRevoke_NotFound(t *testing.T) {
 	}
 	if len(gw.revokeCalls) != 0 {
 		t.Errorf("gateway called %d times for unknown mandate, want 0", len(gw.revokeCalls))
+	}
+}
+
+// --- ENG-153: credit application on mandate debit ---
+
+func TestMandateExecuteDebit_AppliesCreditReducesGatewayCharge(t *testing.T) {
+	mandate := newTestMandate()
+	repo := &mandateMockRepo{mandate: mandate}
+	invRepo := &mandateMockInvoiceRepo{}
+	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_x"}}
+	svc := NewMandateService(repo, gw, testMandateCustomerRepo(), invRepo)
+	credit := &fakeCreditApplier{available: 200}
+	svc.SetCreditApplier(credit)
+
+	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
+		t.Fatalf("ExecuteDebit: %v", err)
+	}
+	// Gateway charged the NET (500 - 200 credit), not the full amount.
+	if gw.debitCalls != 1 {
+		t.Fatalf("gateway debit calls = %d, want 1", gw.debitCalls)
+	}
+	if gw.lastDebitAmount != 300 {
+		t.Errorf("gateway charged %d, want 300 (500 total - 200 credit)", gw.lastDebitAmount)
+	}
+	// Invoice keeps the gross total; credit_applied records the offset.
+	if invRepo.created.Total != 500 {
+		t.Errorf("invoice Total = %d, want 500 (gross)", invRepo.created.Total)
+	}
+	if invRepo.created.CreditApplied != 200 {
+		t.Errorf("invoice CreditApplied = %d, want 200", invRepo.created.CreditApplied)
+	}
+	if credit.applyCalls != 1 || credit.appliedTo != invRepo.created.ID {
+		t.Errorf("credit applied to %s in %d calls, want invoice %s once", credit.appliedTo, credit.applyCalls, invRepo.created.ID)
+	}
+}
+
+func TestMandateExecuteDebit_FullCreditSkipsGateway(t *testing.T) {
+	mandate := newTestMandate()
+	repo := &mandateMockRepo{mandate: mandate}
+	invRepo := &mandateMockInvoiceRepo{}
+	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_x"}}
+	svc := NewMandateService(repo, gw, testMandateCustomerRepo(), invRepo)
+	credit := &fakeCreditApplier{available: 800} // exceeds the 500 debit
+	svc.SetCreditApplier(credit)
+
+	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
+		t.Fatalf("ExecuteDebit: %v", err)
+	}
+	// Credit fully covers the debit → the gateway must NOT be charged.
+	if gw.debitCalls != 0 {
+		t.Errorf("gateway debit calls = %d, want 0 (fully covered by credit)", gw.debitCalls)
+	}
+	if invRepo.created == nil {
+		t.Fatal("invoice should still be created when fully covered by credit")
+	}
+	if invRepo.created.CreditApplied != 500 {
+		t.Errorf("invoice CreditApplied = %d, want 500 (capped at total)", invRepo.created.CreditApplied)
+	}
+	// No gateway payment id captured (no charge happened).
+	if len(invRepo.paymentIDCalls) != 0 {
+		t.Errorf("SetGatewayPaymentID calls = %d, want 0 (no gateway charge)", len(invRepo.paymentIDCalls))
 	}
 }
 

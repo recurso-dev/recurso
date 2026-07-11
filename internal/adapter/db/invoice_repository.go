@@ -28,9 +28,10 @@ const invoiceInsertQuery = `
 		signed_qr_code, e_invoice_status, tds_amount,
 		created_at, due_date, next_retry_at, retry_count,
 		ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
-		dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by
+		dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by,
+		credit_applied
 	)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33)
 `
 
 // insertInvoiceRow writes the invoice row against any execer (*sql.DB or *sql.Tx).
@@ -59,6 +60,7 @@ func insertInvoiceRow(ctx context.Context, ex execer, inv *domain.Invoice) error
 		inv.CreatedAt, inv.DueDate, inv.NextRetryAt, inv.RetryCount,
 		inv.AckDate, inv.EInvoiceRetryCount, inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
 		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey), nilIfEmpty(inv.LastPaymentError), managedBy,
+		inv.CreditApplied,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert invoice: %w", err)
@@ -122,9 +124,12 @@ func nilIfEmpty(s string) interface{} {
 // setInvoiceAmounts populates the amount fields on read: AmountPaid (scanned
 // into a local) and AmountDue, which is derived (Total − AmountPaid) and has
 // no stored column.
-func setInvoiceAmounts(inv *domain.Invoice, amountPaid int64) {
+func setInvoiceAmounts(inv *domain.Invoice, amountPaid, creditApplied int64) {
 	inv.AmountPaid = amountPaid
-	inv.AmountDue = inv.Total - amountPaid
+	inv.CreditApplied = creditApplied
+	// Account credit (ENG-153) settles the invoice alongside cash: amount due is
+	// the gross total less both what was paid and what credit was applied.
+	inv.AmountDue = inv.Total - amountPaid - creditApplied
 }
 
 // CreateWithTx creates an invoice within an existing transaction for atomic
@@ -158,12 +163,12 @@ func (r *InvoiceRepository) GetByIDPublic(ctx context.Context, id uuid.UUID) (*d
 
 func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, tenantID *uuid.UUID) (*domain.Invoice, error) {
 	inv := &domain.Invoice{}
-	var amountPaid int64
+	var amountPaid, creditApplied int64
 
 	query := `
 		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
+			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count,
@@ -185,7 +190,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
-		&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
+		&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid, &creditApplied,
 		&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 		&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
 		&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
@@ -209,7 +214,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		return nil, fmt.Errorf("failed to get invoice: %w", err)
 	}
 
-	setInvoiceAmounts(inv, amountPaid)
+	setInvoiceAmounts(inv, amountPaid, creditApplied)
 
 	if items, itErr := r.items.ListByInvoiceID(ctx, inv.ID); itErr != nil {
 		return nil, itErr
@@ -277,13 +282,14 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 // MarkPaid atomically settles an invoice via a single conditional UPDATE. The
 // `AND status <> 'paid'` guard means only the first of several concurrent
 // settlers (inline checkout, gateway webhook, retry worker, offline payment)
-// transitions the row; the rest affect zero rows. amount_paid is set from the
-// invoice's own total column so no read-then-write is needed. Returns true iff
-// this call performed the transition.
+// transitions the row; the rest affect zero rows. amount_paid is the cash
+// portion — total less any account credit already applied (ENG-153) — so
+// amount_paid + credit_applied = total and no read-then-write is needed.
+// Returns true iff this call performed the transition.
 func (r *InvoiceRepository) MarkPaid(ctx context.Context, invoiceID uuid.UUID, paidAt time.Time) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
-		SET status = 'paid', amount_paid = total, paid_at = $2, updated_at = NOW()
+		SET status = 'paid', amount_paid = total - credit_applied, paid_at = $2, updated_at = NOW()
 		WHERE id = $1 AND status <> 'paid'
 	`, invoiceID, paidAt)
 	if err != nil {
@@ -300,7 +306,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 	query := `
 		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
+			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, due_date, paid_at, next_retry_at, retry_count,
@@ -322,7 +328,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
-		var amountPaid int64
+		var amountPaid, creditApplied int64
 		// e-invoice columns are nullable and NULL on non-e-invoiced rows (the
 		// failed invoices this query targets); scanning NULL into a plain
 		// string would abort the whole retry sweep.
@@ -332,7 +338,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 		var dueDate sql.NullTime
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
-			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
+			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid, &creditApplied,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsn, &irn, &ackNo,
 			&qr, &einvStatus, &inv.TDSAmount,
 			&inv.CreatedAt, &dueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
@@ -351,7 +357,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 		inv.DunningContextKey = dunCtx.String
 		inv.LastPaymentError = lastErr.String
 		inv.DunningManagedBy = dunMgr.String
-		setInvoiceAmounts(inv, amountPaid)
+		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil
@@ -361,7 +367,7 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 	query := `
 		SELECT 
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
+			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count
@@ -378,11 +384,11 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
-		var amountPaid int64
+		var amountPaid, creditApplied int64
 		var hsnCode, irn, signedQRCode, eInvoiceStatus, ackNo sql.NullString
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
-			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
+			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid, &creditApplied,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 			&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
 			&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
@@ -394,7 +400,7 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
-		setInvoiceAmounts(inv, amountPaid)
+		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
 	if err := r.hydrateLineItems(ctx, invoices); err != nil {
@@ -407,7 +413,7 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 	query := `
 		SELECT 
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
+			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count
@@ -424,11 +430,11 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
-		var amountPaid int64
+		var amountPaid, creditApplied int64
 		var hsnCode, irn, signedQRCode, eInvoiceStatus, ackNo sql.NullString
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
-			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
+			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid, &creditApplied,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 			&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
 			&inv.CreatedAt, &inv.UpdatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
@@ -440,7 +446,7 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
-		setInvoiceAmounts(inv, amountPaid)
+		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
 	if err := r.hydrateLineItems(ctx, invoices); err != nil {
@@ -525,7 +531,7 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 	query := `
 		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid,
+			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
 			signed_qr_code, e_invoice_status, tds_amount,
 			created_at, due_date, paid_at, next_retry_at, retry_count,
@@ -547,11 +553,11 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
-		var amountPaid int64
+		var amountPaid, creditApplied int64
 		var hsnCode, irn, signedQRCode, eInvoiceStatus, ackNo sql.NullString
 		if err := rows.Scan(
 			&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
-			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid,
+			&inv.Currency, &inv.Subtotal, &inv.TaxAmount, &inv.Total, &amountPaid, &creditApplied,
 			&inv.IGSTAmount, &inv.CGSTAmount, &inv.SGSTAmount, &hsnCode, &irn, &ackNo,
 			&signedQRCode, &eInvoiceStatus, &inv.TDSAmount,
 			&inv.CreatedAt, &inv.DueDate, &inv.PaidAt, &inv.NextRetryAt, &inv.RetryCount,
@@ -565,7 +571,7 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 		inv.AckNo = ackNo.String
 		inv.SignedQRCode = signedQRCode.String
 		inv.EInvoiceStatus = eInvoiceStatus.String
-		setInvoiceAmounts(inv, amountPaid)
+		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
 	return invoices, nil

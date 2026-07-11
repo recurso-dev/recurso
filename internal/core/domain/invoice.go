@@ -28,6 +28,10 @@ type Invoice struct {
 	BillingReason  string     `json:"billing_reason" db:"billing_reason"`
 	AmountDue      int64      `json:"amount_due" db:"amount_due"`
 	AmountPaid     int64      `json:"amount_paid" db:"amount_paid"`
+	// CreditApplied is account credit (adjustment credit notes) applied to this
+	// invoice at billing time (ENG-153). Total stays gross; amount due =
+	// total - amount_paid - credit_applied.
+	CreditApplied int64 `json:"credit_applied" db:"credit_applied"`
 	// Financials
 	Currency  string `json:"currency" db:"currency"`
 	Subtotal  int64  `json:"subtotal" db:"subtotal"`
