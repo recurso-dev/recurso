@@ -79,6 +79,9 @@ export const endpoints = {
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   getMRR: () => api.get('/analytics/mrr'),
+  // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
+  getMRRWaterfall: (start, end) =>
+    api.get('/analytics/mrr/waterfall', { params: { start, end } }),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),

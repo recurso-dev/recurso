@@ -50,6 +50,7 @@ import DunningDashboard from './pages/DunningDashboard'
 // Finance
 import FinanceReconciliation from './pages/FinanceReconciliation'
 import RevenueRecognition from './pages/RevenueRecognition'
+import MRRWaterfall from './pages/MRRWaterfall'
 
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
@@ -108,6 +109,7 @@ function App() {
                             <Route path="/ledger" element={<Ledger />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />
+                            <Route path="/finance/mrr-waterfall" element={<MRRWaterfall />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
                             <Route path="/quotes" element={<Quotes />} />

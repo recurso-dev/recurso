@@ -44,6 +44,7 @@ const TITLES = {
 const PATH_TITLES = {
   "/finance/reconciliation": "Reconciliation",
   "/finance/revenue-recognition": "Revenue Recognition",
+  "/finance/mrr-waterfall": "MRR Waterfall",
 };
 
 function usePageTitle() {
