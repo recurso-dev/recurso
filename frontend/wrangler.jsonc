@@ -3,7 +3,7 @@
   // The Cloudflare build runs `npm run build` (producing ./dist), then
   // `npx wrangler deploy` publishes those files as an assets-only Worker.
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "recur-so",
+  "name": "recurso",
   "compatibility_date": "2025-06-01",
   "assets": {
     "directory": "./dist",
