@@ -86,6 +86,8 @@ export const endpoints = {
   getInvoiceAging: () => api.get('/analytics/invoice-aging'),
   // ARPA / ARPU / LTV.
   getUnitEconomics: () => api.get('/analytics/unit-economics'),
+  // MRR split across plans.
+  getRevenueByPlan: () => api.get('/analytics/revenue-by-plan'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),

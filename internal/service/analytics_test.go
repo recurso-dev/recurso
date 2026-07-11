@@ -731,3 +731,42 @@ func TestGetUnitEconomics(t *testing.T) {
 		t.Errorf("LTV should be unavailable with no history, got HasLTV=%v LTV=%d", ue.HasLTV, ue.LTV)
 	}
 }
+
+// --- revenue by plan ---
+
+// TestGetRevenueByPlan: Pro (2 subs × $2000) + Starter (1 × $1000) → segments
+// sorted largest-first with correct shares.
+func TestGetRevenueByPlan(t *testing.T) {
+	pro := &domain.Plan{ID: uuid.New(), Name: "Pro", Prices: []domain.Price{{Currency: "USD", Amount: 2000}}}
+	starter := &domain.Plan{ID: uuid.New(), Name: "Starter", Prices: []domain.Price{{Currency: "USD", Amount: 1000}}}
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{pro.ID: pro, starter.ID: starter}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), CustomerID: uuid.New(), PlanID: pro.ID},
+		{ID: uuid.New(), CustomerID: uuid.New(), PlanID: pro.ID},
+		{ID: uuid.New(), CustomerID: uuid.New(), PlanID: starter.ID},
+	}}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
+
+	rep, err := svc.GetRevenueByPlan(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetRevenueByPlan: %v", err)
+	}
+	if rep.TotalMRR != 5000 {
+		t.Errorf("TotalMRR = %d, want 5000", rep.TotalMRR)
+	}
+	if len(rep.Segments) != 2 {
+		t.Fatalf("segments = %d, want 2", len(rep.Segments))
+	}
+	// Largest first.
+	if rep.Segments[0].Label != "Pro" || rep.Segments[0].MRR != 4000 || rep.Segments[0].Subscriptions != 2 {
+		t.Errorf("segment[0] = %+v, want Pro/4000/2", rep.Segments[0])
+	}
+	if rep.Segments[0].SharePct < 79.9 || rep.Segments[0].SharePct > 80.1 {
+		t.Errorf("Pro share = %.1f, want 80.0", rep.Segments[0].SharePct)
+	}
+	if rep.Segments[1].Label != "Starter" || rep.Segments[1].MRR != 1000 {
+		t.Errorf("segment[1] = %+v, want Starter/1000", rep.Segments[1])
+	}
+}

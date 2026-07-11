@@ -143,6 +143,23 @@ func (h *AnalyticsHandler) GetUnitEconomics(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": ue})
 }
 
+// GetRevenueByPlan returns MRR broken down by plan.
+func (h *AnalyticsHandler) GetRevenueByPlan(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+
+	report, err := h.svc.GetRevenueByPlan(ctx, tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to compute revenue by plan")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": report})
+}
+
 func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

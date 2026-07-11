@@ -54,6 +54,7 @@ import MRRWaterfall from './pages/MRRWaterfall'
 import InvoiceAging from './pages/InvoiceAging'
 import UnitEconomics from './pages/UnitEconomics'
 import ExecutiveSummary from './pages/ExecutiveSummary'
+import RevenueByPlan from './pages/RevenueByPlan'
 
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
@@ -116,6 +117,7 @@ function App() {
                             <Route path="/finance/invoice-aging" element={<InvoiceAging />} />
                             <Route path="/finance/unit-economics" element={<UnitEconomics />} />
                             <Route path="/overview" element={<ExecutiveSummary />} />
+                            <Route path="/finance/revenue-by-plan" element={<RevenueByPlan />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
                             <Route path="/quotes" element={<Quotes />} />

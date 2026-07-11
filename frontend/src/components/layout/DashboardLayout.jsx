@@ -48,6 +48,7 @@ const PATH_TITLES = {
   "/finance/invoice-aging": "Invoice Aging",
   "/finance/unit-economics": "Unit Economics",
   "/overview": "Executive Summary",
+  "/finance/revenue-by-plan": "Revenue by Plan",
 };
 
 function usePageTitle() {

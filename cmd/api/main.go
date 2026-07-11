@@ -1074,6 +1074,7 @@ func main() {
 			analytics.GET("/mrr/waterfall", analyticsHandler.GetMRRWaterfall)
 			analytics.GET("/invoice-aging", analyticsHandler.GetInvoiceAging)
 			analytics.GET("/unit-economics", analyticsHandler.GetUnitEconomics)
+			analytics.GET("/revenue-by-plan", analyticsHandler.GetRevenueByPlan)
 			analytics.GET("/usage", analyticsHandler.GetUsageStats)
 			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
