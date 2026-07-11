@@ -38,7 +38,7 @@ const plans = [
             { text: 'Custom SLA', included: false },
         ],
         cta: 'Join Cloud waitlist',
-        ctaLink: 'mailto:swapnil.go20@gmail.com',
+        ctaLink: '#waitlist',
         highlighted: true,
     },
     {
@@ -132,12 +132,21 @@ const Pricing = () => (
                 ))}
             </div>
 
-            <p className="mt-12 text-center text-sm text-fg-subtle">
-                Have questions?{' '}
-                <a href="mailto:swapnil.go20@gmail.com" className="font-medium text-brand hover:text-brand-light">
-                    Contact us
+            <div className="mt-12 flex flex-col items-center gap-3 text-sm">
+                <a
+                    href="/pricing"
+                    className="group inline-flex items-center gap-1.5 font-medium text-brand hover:text-brand-light"
+                >
+                    See full pricing, comparison &amp; add-ons
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                 </a>
-            </p>
+                <p className="text-fg-subtle">
+                    Have questions?{' '}
+                    <a href="mailto:swapnil.go20@gmail.com" className="font-medium text-fg-muted hover:text-fg">
+                        Contact us
+                    </a>
+                </p>
+            </div>
         </div>
     </section>
 )

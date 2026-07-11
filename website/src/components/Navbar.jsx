@@ -4,7 +4,7 @@ import { Github, Menu, Star, X } from 'lucide-react'
 const links = [
     { label: 'Product', href: '#products' },
     { label: 'Docs', href: 'https://docs.recurso.dev', external: true },
-    { label: 'Pricing', href: '#pricing' },
+    { label: 'Pricing', href: '/pricing' },
     { label: 'Compare', href: '#compare' },
 ]
 
