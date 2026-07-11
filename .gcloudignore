@@ -1,0 +1,21 @@
+# Keep the Cloud Build upload small & fast: only the Go API needs to be in the
+# build context (cmd/ + internal/ + go.mod/go.sum + Dockerfile). Everything below
+# is irrelevant to building/running the API container.
+.git/
+.gitignore
+.claude/
+**/node_modules/
+frontend/
+website/
+docs/
+sdk/
+pitch/
+postman/
+examples/
+k8s/
+data/
+*.log
+.env
+.env.*
+# stray compiled binary at repo root
+/api
