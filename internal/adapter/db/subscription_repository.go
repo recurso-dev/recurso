@@ -299,26 +299,37 @@ func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscri
 			updated_at = $12
 		WHERE id = $13 AND tenant_id = $14
 	`
-	_, err := r.db.ExecContext(ctx, query,
-		sub.PlanID,
-		sub.Status,
-		sub.CurrentPeriodStart,
-		sub.CurrentPeriodEnd,
-		sub.CancelAtPeriodEnd,
-		sub.CanceledAt,
-		sub.CancellationReason,
-		sub.CancellationFeedback,
-		sub.RazorpaySubscriptionID,
-		sub.StripeSubscriptionID,
-		sub.TrialEnd,
-		sub.UpdatedAt,
-		sub.ID,
-		sub.TenantID,
-	)
+	_, err := r.db.ExecContext(ctx, query, subUpdateArgs(sub)...)
 	if err != nil {
 		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 	return nil
+}
+
+// UpdateWithTx is Update inside a caller-provided transaction, so a plan change
+// (invoice + subscription) can be committed atomically (ENG-150).
+func (r *SubscriptionRepository) UpdateWithTx(ctx context.Context, tx *sql.Tx, sub *domain.Subscription) error {
+	query := `
+		UPDATE subscriptions SET
+			plan_id = $1, status = $2, current_period_start = $3, current_period_end = $4,
+			cancel_at_period_end = $5, canceled_at = $6, cancellation_reason = $7,
+			cancellation_feedback = $8, razorpay_subscription_id = $9, stripe_subscription_id = $10,
+			trial_end = $11, updated_at = $12
+		WHERE id = $13 AND tenant_id = $14
+	`
+	if _, err := tx.ExecContext(ctx, query, subUpdateArgs(sub)...); err != nil {
+		return fmt.Errorf("failed to update subscription (tx): %w", err)
+	}
+	return nil
+}
+
+func subUpdateArgs(sub *domain.Subscription) []interface{} {
+	return []interface{}{
+		sub.PlanID, sub.Status, sub.CurrentPeriodStart, sub.CurrentPeriodEnd,
+		sub.CancelAtPeriodEnd, sub.CanceledAt, sub.CancellationReason, sub.CancellationFeedback,
+		sub.RazorpaySubscriptionID, sub.StripeSubscriptionID, sub.TrialEnd, sub.UpdatedAt,
+		sub.ID, sub.TenantID,
+	}
 }
 
 // GetSubscriptionsDueTomorrow returns active subscriptions that renew tomorrow

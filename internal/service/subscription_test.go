@@ -365,7 +365,7 @@ func TestPreviewPlanChange_MatchesApply_Upgrade(t *testing.T) {
 	}
 }
 
-func TestPreviewPlanChange_Downgrade_CreditNoTax(t *testing.T) {
+func TestPreviewPlanChange_Downgrade_CreditReversesTax(t *testing.T) {
 	tenantID := uuid.New()
 	customerID := uuid.New()
 	currentPlanID := uuid.New()
@@ -395,8 +395,16 @@ func TestPreviewPlanChange_Downgrade_CreditNoTax(t *testing.T) {
 	if preview.NetAmount >= 0 {
 		t.Errorf("expected negative net for a downgrade, got %d", preview.NetAmount)
 	}
-	if preview.TaxAmount != 0 {
-		t.Errorf("credits carry no tax, got tax %d", preview.TaxAmount)
+	// ENG-150: a downgrade credit reverses the GST originally collected, so the
+	// tax is negative (a refund of tax) and the total is net + reversed tax.
+	if preview.TaxAmount >= 0 {
+		t.Errorf("expected reversed (negative) tax on a TN downgrade credit, got %d", preview.TaxAmount)
+	}
+	if preview.TotalAmount != preview.NetAmount+preview.TaxAmount {
+		t.Errorf("total %d != net %d + tax %d", preview.TotalAmount, preview.NetAmount, preview.TaxAmount)
+	}
+	if preview.TotalAmount >= 0 {
+		t.Errorf("expected a negative credit total for a downgrade, got %d", preview.TotalAmount)
 	}
 }
 

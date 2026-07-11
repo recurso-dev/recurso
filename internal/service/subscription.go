@@ -47,6 +47,7 @@ type SubscriptionService struct {
 	txManager           *db.TxManager
 	subRepoImpl         *db.SubscriptionRepository // Concrete type for TX methods
 	invRepoImpl         *db.InvoiceRepository      // Concrete type for TX methods
+	creditNoteRepo      *db.CreditNoteRepository   // Downgrade proration credits (ENG-150); nil-safe
 	revrecService       *RevRecService
 	taxResolver         *TaxResolver
 	recoveryRecorder    PaymentRecoveryRecorder
@@ -102,6 +103,13 @@ func NewSubscriptionService(
 		taxResolver:     taxResolver,
 		logger:          slog.Default().With("service", "subscription"),
 	}
+}
+
+// SetCreditNoteRepo injects the credit-note repository used to persist downgrade
+// proration credits as spendable adjustment credit notes (ENG-150). Nil-safe: if
+// unset, a downgrade credit is logged rather than dropped.
+func (s *SubscriptionService) SetCreditNoteRepo(r *db.CreditNoteRepository) {
+	s.creditNoteRepo = r
 }
 
 // SetEInvoiceService injects the EInvoiceService after construction (avoids circular deps).
@@ -786,8 +794,9 @@ type PlanChangeProration struct {
 }
 
 // computePlanChangeProration is the single source of truth for plan-change
-// math. Tax is only applied to a positive net (a charge); credits carry none,
-// mirroring the invoice built in UpdateSubscription.
+// math. A positive net (a charge) is taxed on the new plan's HSN; a negative net
+// (a downgrade credit) carries the reversed tax computed on the old plan's HSN
+// (ENG-150), so the credit refunds the GST originally collected.
 func (s *SubscriptionService) computePlanChangeProration(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -810,8 +819,20 @@ func (s *SubscriptionService) computePlanChangeProration(
 	)
 
 	var taxRes InvoiceTax
-	if proration.NetAmount > 0 && customer != nil {
-		taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount, newPlan.HSNCode)
+	if customer != nil && proration.NetAmount != 0 {
+		if proration.NetAmount > 0 {
+			taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount, newPlan.HSNCode)
+		} else {
+			// Downgrade credit: reverse the GST collected on the old plan's unused
+			// portion. Resolve on the positive base with the OLD plan's HSN, then
+			// negate so the credit carries the tax reversal (ENG-150) — previously
+			// a credit reversed no tax and under-refunded the customer.
+			t := s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, -proration.NetAmount, currentPlan.HSNCode)
+			taxRes = InvoiceTax{
+				Total: -t.Total, IGST: -t.IGST, CGST: -t.CGST, SGST: -t.SGST,
+				TaxType: t.TaxType, Note: t.Note, Rate: t.Rate, HSN: t.HSN,
+			}
+		}
 	}
 
 	return PlanChangeProration{Proration: proration, Tax: taxRes, Currency: currency, EffectiveDate: now}
@@ -827,8 +848,8 @@ type PlanChangePreview struct {
 	CreditAmount      int64     `json:"credit_amount"`       // credit for unused time on the current plan
 	ChargeAmount      int64     `json:"charge_amount"`       // prorated charge for the remaining period on the new plan
 	NetAmount         int64     `json:"net_amount"`          // charge - credit, before tax
-	TaxAmount         int64     `json:"tax_amount"`          // tax on a positive net (0 for credits)
-	TotalAmount       int64     `json:"total_amount"`        // net + tax: the immediate proration invoice total
+	TaxAmount         int64     `json:"tax_amount"`          // tax on the net: positive on a charge, negative (reversed GST) on a downgrade credit (ENG-150)
+	TotalAmount       int64     `json:"total_amount"`        // net + tax: the immediate proration charge (positive) or credit (negative)
 	EffectiveDate     time.Time `json:"effective_date"`      // when the change would take effect (now)
 	NextInvoiceAmount int64     `json:"next_invoice_amount"` // full new-plan charge incl. tax at the next renewal
 	IsUpgrade         bool      `json:"is_upgrade"`          // true when the new plan costs more than the current one
@@ -948,22 +969,34 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	proration := pcp.Proration
 	taxRes := pcp.Tax
 
-	// 4. Create Invoice for Proration (if diff > 0)
-	// If NetAmount is positive, charge user immediately or add to next bill
-	// If NetAmount is negative, add credit
-	if proration.NetAmount != 0 {
+	// 4. Build the proration record and apply the plan change atomically.
+	//   - NetAmount > 0 (upgrade): issue a CHARGE invoice (tax-inclusive) and
+	//     flip the plan in the same DB transaction, so a plan change can never
+	//     land without its charge (or vice versa).
+	//   - NetAmount < 0 (downgrade): persist the credit as a spendable
+	//     adjustment CREDIT NOTE including the reversed tax. Previously the
+	//     credit was force-zeroed onto a $0 "paid" invoice and silently vanished
+	//     (ENG-150). The credit note is created first, then the plan flips.
+	sub.PlanID = newPlanID
+	sub.UpdatedAt = now
+
+	var chargeInvoice *domain.Invoice
+	var creditNote *domain.CreditNote
+
+	switch {
+	case proration.NetAmount > 0:
 		prInvID := uuid.New()
 		prDesc := "Plan change proration"
 		if newPlan.Name != "" {
 			prDesc = fmt.Sprintf("Proration: %s", newPlan.Name)
 		}
-		invoice := &domain.Invoice{
+		chargeInvoice = &domain.Invoice{
 			ID:             prInvID,
 			TenantID:       tenantID,
 			SubscriptionID: &sub.ID,
 			CustomerID:     sub.CustomerID,
 			InvoiceNumber:  fmt.Sprintf("INV-PR-%d-%s", time.Now().UnixNano(), prInvID.String()[:8]),
-			Status:         domain.InvoiceStatusOpen, // Or Draft if adding to next bill
+			Status:         domain.InvoiceStatusOpen,
 			Currency:       pcp.Currency,
 			Subtotal:       proration.NetAmount,
 			TaxAmount:      taxRes.Total,
@@ -971,9 +1004,6 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			CGSTAmount:     taxRes.CGST,
 			SGSTAmount:     taxRes.SGST,
 			Total:          proration.NetAmount + taxRes.Total,
-			// Itemization (Phase 1): one proration line reconciling to the totals.
-			// The net amount is negative for a credit/downgrade — the line mirrors
-			// the invoice Subtotal exactly either way.
 			LineItems: []domain.InvoiceItem{
 				newInvoiceLine(prInvID, prDesc, taxRes.HSN, 1, proration.NetAmount, proration.NetAmount, taxRes, time.Time{}),
 			},
@@ -981,47 +1011,76 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			DueDate:   now,
 		}
 
-		if proration.NetAmount < 0 {
-			invoice.Status = domain.InvoiceStatusPaid // Credit note essentially
-			// In real world, we'd create a Credit Note entity, but reusing Invoice for P1 simplification
-			invoice.Total = 0 // Credits don't require payment
-			// Improve: Record 'CreditBalance' on Customer entity
-		}
-
-		// P25: E-Invoicing via EInvoiceService
-		if proration.NetAmount > 0 && s.einvoiceService != nil {
-			_, einvErr := s.einvoiceService.GenerateEInvoice(ctx, invoice)
-			if einvErr != nil {
+		// P25: E-Invoicing (charge invoices only — credit notes are not e-invoiced here).
+		if s.einvoiceService != nil {
+			if _, einvErr := s.einvoiceService.GenerateEInvoice(ctx, chargeInvoice); einvErr != nil {
 				s.logger.Error("e-invoice generation failed for proration (will retry)", "error", einvErr)
 			}
-		} else if proration.NetAmount > 0 && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
-			// Fallback: direct GSP call
-			resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
+		} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
+			resp, err := s.gspAdapter.GenerateIRN(ctx, chargeInvoice)
 			if err == nil {
-				invoice.IRN = resp.IRN
-				invoice.SignedQRCode = resp.SignedQRCode
-				invoice.EInvoiceStatus = "GENERATED"
-				invoice.AckNo = resp.AckNo
+				chargeInvoice.IRN = resp.IRN
+				chargeInvoice.SignedQRCode = resp.SignedQRCode
+				chargeInvoice.EInvoiceStatus = "GENERATED"
+				chargeInvoice.AckNo = resp.AckNo
 			} else {
 				s.logger.Error("error generating IRN for proration invoice", "error", err)
-				invoice.EInvoiceStatus = "FAILED"
+				chargeInvoice.EInvoiceStatus = "FAILED"
 			}
 		}
 
-		if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
-			return nil, fmt.Errorf("failed to create proration invoice: %w", err)
+	case proration.NetAmount < 0:
+		// Both proration.NetAmount and taxRes.Total are negative here; negating
+		// their sum yields a positive, spendable credit balance.
+		creditAmount := -(proration.NetAmount + taxRes.Total)
+		creditNote = &domain.CreditNote{
+			ID:           uuid.New(),
+			TenantID:     tenantID,
+			CustomerID:   sub.CustomerID,
+			Amount:       creditAmount,
+			Balance:      creditAmount,
+			Currency:     pcp.Currency,
+			Status:       domain.CreditNoteStatusIssued,
+			Reason:       "Plan downgrade proration credit",
+			Type:         domain.CreditNoteTypeAdjustment,
+			RefundStatus: domain.RefundStatusNone,
+			CreatedAt:    now,
+			UpdatedAt:    now,
 		}
 	}
 
-	// 5. Update Subscription
-	sub.PlanID = newPlanID
-	sub.UpdatedAt = now
-
-	// Reset period? Usually we keep the same period but change the plan
-	// Stripe keeps the anchor. So period end remains same.
-
-	if err := s.subRepo.Update(ctx, sub); err != nil {
-		return nil, fmt.Errorf("failed to update subscription: %w", err)
+	// 5. Persist. Charge path: invoice + plan flip in one transaction. Credit
+	// path: credit note first (an orphaned credit is recoverable), then plan
+	// flip. If the txManager/concrete repos are unavailable (e.g. tests with a
+	// mock repo), fall back to sequential writes.
+	if chargeInvoice != nil && s.txManager != nil && s.invRepoImpl != nil && s.subRepoImpl != nil {
+		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.invRepoImpl.CreateWithTx(ctx, tx, chargeInvoice); err != nil {
+				return fmt.Errorf("failed to create proration invoice: %w", err)
+			}
+			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		if creditNote != nil {
+			if s.creditNoteRepo != nil {
+				if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
+					return nil, fmt.Errorf("failed to create downgrade credit note: %w", err)
+				}
+			} else {
+				s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
+					"subscription_id", sub.ID, "amount", -(proration.NetAmount + taxRes.Total))
+			}
+		}
+		if chargeInvoice != nil {
+			if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
+				return nil, fmt.Errorf("failed to create proration invoice: %w", err)
+			}
+		}
+		if err := s.subRepo.Update(ctx, sub); err != nil {
+			return nil, fmt.Errorf("failed to update subscription: %w", err)
+		}
 	}
 
 	// Sync with Gateway (Razorpay/Stripe) — not implemented yet.

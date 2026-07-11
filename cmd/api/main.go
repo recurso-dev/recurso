@@ -334,6 +334,8 @@ func main() {
 	invoiceService.EInvoiceService = einvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
+	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
+	subscriptionService.SetCreditNoteRepo(creditNoteRepo)
 
 	// Multi-product catalog v1: enable subscription add-ons on the service
 	// (add/remove/list) and on the recurring invoice path (extra taxed lines).
