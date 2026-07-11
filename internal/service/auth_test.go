@@ -94,6 +94,17 @@ func (r *fakeUserRepo) SetMFAEnabled(_ context.Context, tenantID, id uuid.UUID, 
 	return nil
 }
 
+func (r *fakeUserRepo) SetMFALastTimestep(_ context.Context, tenantID, id uuid.UUID, timestep int64) error {
+	u, ok := r.users[id]
+	if !ok || u.TenantID != tenantID {
+		return domain.ErrUserNotFound
+	}
+	if timestep > u.MFALastTimestep { // monotonic, mirrors the real repo guard
+		u.MFALastTimestep = timestep
+	}
+	return nil
+}
+
 func (r *fakeUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error {
 	u, ok := r.users[id]
 	if !ok || u.TenantID != tenantID {

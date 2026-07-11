@@ -80,6 +80,15 @@ func (r *memUserRepo) SetMFAEnabled(_ context.Context, tenantID, id uuid.UUID, e
 	}
 	return domain.ErrUserNotFound
 }
+func (r *memUserRepo) SetMFALastTimestep(_ context.Context, tenantID, id uuid.UUID, timestep int64) error {
+	if u, ok := r.users[id]; ok && u.TenantID == tenantID {
+		if timestep > u.MFALastTimestep {
+			u.MFALastTimestep = timestep
+		}
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
 func (r *memUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error {
 	if u, ok := r.users[id]; ok && u.TenantID == tenantID {
 		u.MFAEnabled = false

@@ -35,6 +35,9 @@ type UserRepository interface {
 	SetMFASecret(ctx context.Context, tenantID, id uuid.UUID, secret string) error
 	// SetMFAEnabled toggles the mfa_enabled flag.
 	SetMFAEnabled(ctx context.Context, tenantID, id uuid.UUID, enabled bool) error
+	// SetMFALastTimestep records the last consumed TOTP timestep for replay
+	// protection; the write is monotonic (never lowers the stored value).
+	SetMFALastTimestep(ctx context.Context, tenantID, id uuid.UUID, timestep int64) error
 	// ClearMFA disables MFA and wipes the stored secret.
 	ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error
 }

@@ -41,7 +41,7 @@ func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var u domain.User
 	var role string
 	var mfaSecret sql.NullString
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.MFALastTimestep, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	u.Role = domain.Role(role)
@@ -51,7 +51,7 @@ func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	return &u, nil
 }
 
-const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, created_at, updated_at`
+const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, mfa_last_timestep, created_at, updated_at`
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT ` + userSelectCols + ` FROM users WHERE lower(email) = lower($1)`
@@ -183,6 +183,18 @@ func (r *UserRepository) SetMFAEnabled(ctx context.Context, tenantID, id uuid.UU
 		return domain.ErrUserNotFound
 	}
 	return nil
+}
+
+// SetMFALastTimestep records the last consumed TOTP timestep (ENG-151). The
+// `$1 > mfa_last_timestep` guard keeps it monotonic, so two concurrent logins
+// with the same code can't both advance it — the replay is rejected.
+func (r *UserRepository) SetMFALastTimestep(ctx context.Context, tenantID, id uuid.UUID, timestep int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET mfa_last_timestep = $1, updated_at = NOW()
+		 WHERE id = $2 AND tenant_id = $3 AND $1 > mfa_last_timestep`,
+		timestep, id, tenantID,
+	)
+	return err
 }
 
 func (r *UserRepository) ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error {

@@ -10,10 +10,66 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// TOTP validation parameters — must match the codes generated at setup
+// (pquerna/otp defaults: 30s period, ±1 step skew, 6 digits, SHA1).
+const (
+	totpPeriod = 30
+	totpSkew   = 1
+)
+
+// matchTOTPTimestep returns the timestep (Unix-time / period) at which code is a
+// valid TOTP for secret within the skew window, or (0, false). Knowing the
+// matched timestep is what lets us enforce single-use (ENG-151).
+func matchTOTPTimestep(code, secret string, now time.Time) (int64, bool) {
+	opts := totp.ValidateOpts{Period: totpPeriod, Skew: totpSkew, Digits: otp.DigitsSix, Algorithm: otp.AlgorithmSHA1}
+	counter := now.Unix() / totpPeriod
+	for d := int64(-totpSkew); d <= totpSkew; d++ {
+		c := counter + d
+		if c < 0 {
+			continue
+		}
+		gen, err := totp.GenerateCodeCustom(secret, time.Unix(c*totpPeriod, 0), opts)
+		if err != nil {
+			continue
+		}
+		if subtle.ConstantTimeCompare([]byte(gen), []byte(code)) == 1 {
+			return c, true
+		}
+	}
+	return 0, false
+}
+
+// validateTOTPSingleUse validates a TOTP code AND enforces that its timestep has
+// not been consumed before (ENG-151): a captured code can no longer be replayed
+// within the 30-90s validity window. On success the consumed timestep is
+// persisted. Fails closed if it can't be persisted — a replay-protection control
+// that silently no-ops on a write error is worse than a retryable login failure.
+func (s *AuthService) validateTOTPSingleUse(ctx context.Context, user *domain.User, code string) bool {
+	if user.MFASecret == "" {
+		return false
+	}
+	ts, ok := matchTOTPTimestep(code, user.MFASecret, time.Now())
+	if !ok {
+		return false
+	}
+	if ts <= user.MFALastTimestep {
+		return false // replay of an already-consumed (or older) code
+	}
+	if err := s.users.SetMFALastTimestep(ctx, user.TenantID, user.ID, ts); err != nil {
+		if s.logger != nil {
+			s.logger.Error("failed to persist consumed TOTP timestep; rejecting to prevent replay", "user_id", user.ID, "error", err)
+		}
+		return false
+	}
+	user.MFALastTimestep = ts
+	return true
+}
 
 // passwordResetTTL is how long an emailed reset link stays valid.
 const passwordResetTTL = time.Hour
@@ -157,6 +213,10 @@ func (s *AuthService) VerifyAndEnableMFA(ctx context.Context, tenantID, userID u
 	if user.MFASecret == "" {
 		return nil, domain.ErrMFANotConfigured
 	}
+	// Enrollment proof-of-possession only — this runs inside an already
+	// authenticated session, so it does NOT consume a login timestep (that would
+	// just block the user's first real login with their current code). The
+	// single-use replay guard is enforced on the login/step-up path below.
 	if !totp.Validate(strings.TrimSpace(code), user.MFASecret) {
 		return nil, domain.ErrInvalidMFACode
 	}
@@ -253,7 +313,7 @@ func (s *AuthService) verifyMFACode(ctx context.Context, user *domain.User, code
 	if code == "" {
 		return false
 	}
-	if user.MFASecret != "" && totp.Validate(code, user.MFASecret) {
+	if s.validateTOTPSingleUse(ctx, user, code) {
 		return true
 	}
 	if s.backupCodes == nil {

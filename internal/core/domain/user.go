@@ -46,9 +46,12 @@ type User struct {
 	// MFASecret is the base32 TOTP secret. Populated at setup time (before the
 	// user proves possession) and only trusted once MFAEnabled is true. Never
 	// serialized to clients.
-	MFASecret string    `json:"-" db:"mfa_secret"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	MFASecret string `json:"-" db:"mfa_secret"`
+	// MFALastTimestep is the last consumed TOTP timestep (Unix-time / 30). A code
+	// whose timestep is <= this value is a replay and is rejected (ENG-151).
+	MFALastTimestep int64     `json:"-" db:"mfa_last_timestep"`
+	CreatedAt       time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // Session is an opaque, server-side login session. Only the SHA-256 hash of the

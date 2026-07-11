@@ -427,6 +427,29 @@ func TestLoginMFA_ValidTOTPOpensSession(t *testing.T) {
 	}
 }
 
+// TestLoginMFA_TOTPSingleUse_ReplayRejected proves ENG-151: a TOTP code, once
+// used to complete a login, cannot be replayed on a fresh challenge within its
+// validity window — the consumed timestep is remembered and rejected.
+func TestLoginMFA_TOTPSingleUse_ReplayRejected(t *testing.T) {
+	svc, _, _, _, _, _ := newPhase2Auth()
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	secret, _ := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
+
+	code, _ := totp.GenerateCode(secret, time.Now())
+
+	// First use: valid.
+	ch1, _ := svc.Login(context.Background(), "a@b.com", "supersecret", "ua")
+	if _, err := svc.LoginMFA(context.Background(), ch1.MFAToken, code, "ua"); err != nil {
+		t.Fatalf("first LoginMFA should succeed: %v", err)
+	}
+
+	// Replay the SAME code on a brand-new challenge (a captured-code attack).
+	ch2, _ := svc.Login(context.Background(), "a@b.com", "supersecret", "ua")
+	if _, err := svc.LoginMFA(context.Background(), ch2.MFAToken, code, "ua"); !errors.Is(err, domain.ErrInvalidMFACode) {
+		t.Fatalf("replayed TOTP err = %v, want ErrInvalidMFACode (single-use)", err)
+	}
+}
+
 func TestLoginMFA_BackupCodeWorksOnceThenConsumed(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
 	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
