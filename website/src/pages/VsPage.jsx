@@ -58,7 +58,7 @@ const VsPage = ({ data }) => (
                             <Github className="h-4 w-4" /> Start self-hosting
                         </a>
                         <a
-                            href="https://swapnull.mintlify.site/quickstart"
+                            href="https://docs.recurso.dev/docs/quickstart"
                             target="_blank"
                             rel="noreferrer"
                             className="btn-secondary w-full sm:w-auto"

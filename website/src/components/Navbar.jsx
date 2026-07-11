@@ -3,7 +3,7 @@ import { Github, Menu, Star, X } from 'lucide-react'
 
 const links = [
     { label: 'Product', href: '#products' },
-    { label: 'Docs', href: 'https://swapnull.mintlify.site', external: true },
+    { label: 'Docs', href: 'https://docs.recurso.dev/docs', external: true },
     { label: 'Pricing', href: '#pricing' },
     { label: 'Compare', href: '#compare' },
 ]
@@ -46,7 +46,7 @@ const Navbar = () => {
                         <span>Star on GitHub</span>
                         <Star className="h-3.5 w-3.5 text-fg-subtle" />
                     </a>
-                    <a href="https://swapnull.mintlify.site/quickstart" target="_blank" rel="noreferrer" className="btn-primary !px-4 !py-2">
+                    <a href="https://docs.recurso.dev/docs/quickstart" target="_blank" rel="noreferrer" className="btn-primary !px-4 !py-2">
                         Get started
                     </a>
                 </div>

@@ -13,11 +13,11 @@ const columns = [
     {
         title: 'Developers',
         links: [
-            { label: 'Documentation', href: 'https://swapnull.mintlify.site', external: true },
-            { label: 'Quickstart', href: 'https://swapnull.mintlify.site/quickstart', external: true },
-            { label: 'API reference', href: 'https://swapnull.mintlify.site/api-reference/introduction', external: true },
-            { label: 'Core concepts', href: 'https://swapnull.mintlify.site/concepts', external: true },
-            { label: 'Going to production', href: 'https://swapnull.mintlify.site/going-to-production', external: true },
+            { label: 'Documentation', href: 'https://docs.recurso.dev/docs', external: true },
+            { label: 'Quickstart', href: 'https://docs.recurso.dev/docs/quickstart', external: true },
+            { label: 'API reference', href: 'https://docs.recurso.dev/docs/api-reference/introduction', external: true },
+            { label: 'Core concepts', href: 'https://docs.recurso.dev/docs/concepts', external: true },
+            { label: 'Going to production', href: 'https://docs.recurso.dev/docs/going-to-production', external: true },
             { label: 'SDKs (Go · Node · Python)', href: 'https://github.com/swapnull-in/recur-so/tree/main/sdk', external: true },
             { label: 'Roadmap', href: 'https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md', external: true },
             { label: 'Changelog', href: 'https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md', external: true },

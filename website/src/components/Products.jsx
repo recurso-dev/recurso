@@ -89,7 +89,7 @@ const Products = () => (
                     </p>
                 </div>
                 <a
-                    href="https://swapnull.mintlify.site/concepts"
+                    href="https://docs.recurso.dev/docs/concepts"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-brand hover:text-brand-light"
