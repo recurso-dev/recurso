@@ -1180,18 +1180,31 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		invoice.EInvoiceStatus = "PENDING"
 	}
 
-	// Persist the first invoice, then activate the subscription. Mirrors the
-	// non-atomic invoice-then-subscription ordering used by UpdateSubscription.
-	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
-		return nil, fmt.Errorf("failed to create trial conversion invoice: %w", err)
-	}
-
 	sub.Status = domain.SubscriptionStatusActive
 	sub.CurrentPeriodStart = start
 	sub.CurrentPeriodEnd = end
 	sub.UpdatedAt = now
-	if err := s.subRepo.Update(ctx, sub); err != nil {
-		return nil, fmt.Errorf("failed to activate subscription after trial: %w", err)
+
+	// Persist the first invoice and activate the subscription atomically, so a
+	// mid-write failure can't leave a trial billed but still trialing (or
+	// activated with no invoice). Falls back to sequential writes when the
+	// txManager/concrete repos are unavailable (e.g. mock-repo tests). (ENG-150)
+	if s.txManager != nil && s.invRepoImpl != nil && s.subRepoImpl != nil {
+		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.invRepoImpl.CreateWithTx(ctx, tx, invoice); err != nil {
+				return fmt.Errorf("failed to create trial conversion invoice: %w", err)
+			}
+			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
+			return nil, fmt.Errorf("failed to create trial conversion invoice: %w", err)
+		}
+		if err := s.subRepo.Update(ctx, sub); err != nil {
+			return nil, fmt.Errorf("failed to activate subscription after trial: %w", err)
+		}
 	}
 
 	// Dual-write to ledger (best-effort; reconciliation covers gaps).
