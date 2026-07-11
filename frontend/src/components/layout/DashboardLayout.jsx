@@ -45,6 +45,7 @@ const PATH_TITLES = {
   "/finance/reconciliation": "Reconciliation",
   "/finance/revenue-recognition": "Revenue Recognition",
   "/finance/mrr-waterfall": "MRR Waterfall",
+  "/finance/invoice-aging": "Invoice Aging",
 };
 
 function usePageTitle() {

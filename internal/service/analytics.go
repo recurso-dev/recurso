@@ -56,7 +56,8 @@ type AnalyticsService struct {
 	tenantLookup      TenantLookup
 	reportingCurrency string // env-level default when the tenant has no base currency
 
-	snapshots MRRSnapshotStore // optional; enables MRR snapshot capture + waterfall
+	snapshots  MRRSnapshotStore  // optional; enables MRR snapshot capture + waterfall
+	agingStore InvoiceAgingStore // optional; enables invoice aging
 }
 
 func NewAnalyticsService(

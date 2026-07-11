@@ -82,6 +82,8 @@ export const endpoints = {
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
   getMRRWaterfall: (start, end) =>
     api.get('/analytics/mrr/waterfall', { params: { start, end } }),
+  // Outstanding receivables bucketed by days past due.
+  getInvoiceAging: () => api.get('/analytics/invoice-aging'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),

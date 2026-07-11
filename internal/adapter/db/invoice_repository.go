@@ -498,6 +498,41 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 	return invoices, nil
 }
 
+// GetInvoiceAgingRows aggregates open/past-due invoices for a tenant into AR
+// aging buckets by how far past due they are, per currency. Outstanding is the
+// generated amount_remaining (total - amount_paid); fully-paid rows are excluded.
+func (r *InvoiceRepository) GetInvoiceAgingRows(ctx context.Context, tenantID uuid.UUID) ([]domain.InvoiceAgingRow, error) {
+	query := `
+		SELECT currency,
+		       CASE
+		         WHEN due_date IS NULL OR due_date >= NOW()        THEN 'current'
+		         WHEN due_date >  NOW() - INTERVAL '30 days'       THEN '1-30'
+		         WHEN due_date >  NOW() - INTERVAL '60 days'       THEN '31-60'
+		         WHEN due_date >  NOW() - INTERVAL '90 days'       THEN '61-90'
+		         ELSE '90+'
+		       END AS bucket,
+		       COUNT(*)                         AS cnt,
+		       COALESCE(SUM(amount_remaining),0) AS amt
+		FROM invoices
+		WHERE tenant_id = $1 AND status IN ('open', 'past_due') AND amount_remaining > 0
+		GROUP BY currency, bucket`
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query invoice aging: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.InvoiceAgingRow
+	for rows.Next() {
+		var row domain.InvoiceAgingRow
+		if err := rows.Scan(&row.Currency, &row.Bucket, &row.Count, &row.Amount); err != nil {
+			return nil, err
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // UpdateRetryInfo updates the retry count and next retry date
 func (r *InvoiceRepository) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
 	query := `

@@ -635,3 +635,59 @@ func TestCaptureMRRSnapshot(t *testing.T) {
 		t.Errorf("captured MRR total = %d, want 2000 (both plans normalize to 1000/mo)", total)
 	}
 }
+
+// --- invoice aging ---
+
+type fakeInvoiceAgingStore struct{ rows []domain.InvoiceAgingRow }
+
+func (f *fakeInvoiceAgingStore) GetInvoiceAgingRows(_ context.Context, _ uuid.UUID) ([]domain.InvoiceAgingRow, error) {
+	return f.rows, nil
+}
+
+// TestGetInvoiceAging_NormalizesAndOrders: buckets come back all-present and
+// ordered, foreign-currency amounts convert to the reporting currency, and the
+// totals sum across buckets.
+func TestGetInvoiceAging_NormalizesAndOrders(t *testing.T) {
+	store := &fakeInvoiceAgingStore{rows: []domain.InvoiceAgingRow{
+		{Currency: "USD", Bucket: "current", Count: 2, Amount: 10000},
+		{Currency: "EUR", Bucket: "1-30", Count: 1, Amount: 9200}, // × 1.25 = 11500
+		{Currency: "USD", Bucket: "90+", Count: 1, Amount: 5000},
+	}}
+	svc := NewAnalyticsService(nil, nil, nil, nil)
+	svc.SetFX(&mockFXForMRR{rates: map[string]float64{"EUR:USD": 1.25}, source: "live"}, nil, "USD")
+	svc.SetInvoiceAgingStore(store)
+
+	rep, err := svc.GetInvoiceAging(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetInvoiceAging: %v", err)
+	}
+	order := []string{"current", "1-30", "31-60", "61-90", "90+"}
+	if len(rep.Buckets) != len(order) {
+		t.Fatalf("got %d buckets, want %d", len(rep.Buckets), len(order))
+	}
+	byLabel := map[string]domain.InvoiceAgingBucket{}
+	for i, b := range rep.Buckets {
+		if b.Label != order[i] {
+			t.Errorf("bucket[%d] = %q, want %q", i, b.Label, order[i])
+		}
+		byLabel[b.Label] = b
+	}
+	if byLabel["current"].Amount != 10000 || byLabel["current"].Count != 2 {
+		t.Errorf("current = %+v, want amt 10000 count 2", byLabel["current"])
+	}
+	if byLabel["1-30"].Amount != 11500 {
+		t.Errorf("1-30 amount = %d, want 11500 (EUR 9200 × 1.25)", byLabel["1-30"].Amount)
+	}
+	if byLabel["31-60"].Amount != 0 || byLabel["61-90"].Amount != 0 {
+		t.Errorf("empty buckets non-zero: 31-60=%d 61-90=%d", byLabel["31-60"].Amount, byLabel["61-90"].Amount)
+	}
+	if byLabel["90+"].Amount != 5000 {
+		t.Errorf("90+ amount = %d, want 5000", byLabel["90+"].Amount)
+	}
+	if rep.TotalOutstanding != 26500 || rep.TotalCount != 4 {
+		t.Errorf("totals = %d / %d, want 26500 / 4", rep.TotalOutstanding, rep.TotalCount)
+	}
+	if rep.ReportingCurrency != "USD" {
+		t.Errorf("reporting currency = %q, want USD", rep.ReportingCurrency)
+	}
+}

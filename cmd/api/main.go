@@ -420,6 +420,9 @@ func main() {
 	analyticsService.SetTenantLookup(tenantRepo)
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
+	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
+		analyticsService.SetInvoiceAgingStore(agingStore)
+	}
 
 	// GenAI (P48)
 	openAIKey := os.Getenv("OPENAI_API_KEY")
@@ -1069,6 +1072,7 @@ func main() {
 		{
 			analytics.GET("/mrr", analyticsHandler.GetMRR)
 			analytics.GET("/mrr/waterfall", analyticsHandler.GetMRRWaterfall)
+			analytics.GET("/invoice-aging", analyticsHandler.GetInvoiceAging)
 			analytics.GET("/usage", analyticsHandler.GetUsageStats)
 			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
