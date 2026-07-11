@@ -316,6 +316,106 @@ func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenant
 	return txID, nil
 }
 
+// RecordDowngradeCredit books the deferred revenue freed by a mid-period plan
+// downgrade as an account-credit liability (ENG-154).
+//
+//	Debit:  Deferred Revenue (Liability) — the over-deferred portion is no
+//	        longer revenue we will earn from this subscription
+//	Credit: Customer Credit (Liability)  — it is now credit we owe the customer
+//
+// referenceID is the downgrade credit note id; code 6 keeps it idempotent and
+// attributable per (reference_id, code).
+func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("downgrade credit %s: %w", creditNoteID, err)
+	}
+	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postTransfer(ctx, deferredAccountID, creditAccountID, amt, 6, creditNoteID, description)
+}
+
+// RecordAdjustmentCreditIssued books a manually-issued adjustment credit note as
+// an account-credit liability (ENG-154).
+//
+//	Debit:  Credits & Adjustments (Expense) — the cost of the credit given
+//	Credit: Customer Credit (Liability)     — the credit we now owe the customer
+//
+// This gives the later application (DR Customer-Credit / CR AR) an origin to draw
+// down, keeping the ledger balanced regardless of where the credit came from.
+// Downgrade credits are booked separately (DR Deferred) and don't pass here.
+func (s *LedgerService) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("adjustment credit %s: %w", creditNoteID, err)
+	}
+	expenseAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postTransfer(ctx, expenseAccountID, creditAccountID, amt, 8, creditNoteID, description)
+}
+
+// RecordCreditApplication books the settlement of an invoice by account credit
+// when an adjustment credit note is applied at billing time (ENG-153/154).
+//
+//	Debit:  Customer Credit (Liability) — draw down the credit we owed
+//	Credit: Customer AR (Asset)         — the customer owes that much less
+//
+// referenceID is the invoice the credit settled; code 7 posts once per invoice.
+func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID, customerID uuid.UUID, referenceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("credit application %s: %w", referenceID, err)
+	}
+	s.ensureCustomerAR(ctx, tenantID, customerID)
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	// AR is a per-customer sub-ledger whose account id is the customer id.
+	return s.postTransfer(ctx, creditAccountID, customerID, amt, 7, referenceID, description)
+}
+
+// postTransfer writes a single ledger transfer (PG always; TigerBeetle when
+// connected), surfacing PG failures for retry/reconciliation.
+func (s *LedgerService) postTransfer(ctx context.Context, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {
+	txID := uuid.New()
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  debitAccountID,
+		CreditAccountID: creditAccountID,
+		Amount:          amount,
+		LedgerID:        1,
+		Code:            code,
+		ReferenceID:     referenceID,
+		Description:     description,
+		Timestamp:       time.Now(),
+	}
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed", "code", code, "reference_id", referenceID, "error", err)
+			return uuid.Nil, fmt.Errorf("ledger write failed (code %d, ref %s): %w", code, referenceID, err)
+		}
+	}
+	if s.tbClient != nil {
+		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	return txID, nil
+}
+
 // ListAccounts returns all ledger accounts for a tenant.
 func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
 	if s.pgRepo != nil {

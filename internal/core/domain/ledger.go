@@ -78,13 +78,15 @@ func (a AccountType) Value() (driver.Value, error) {
 
 // Chart of Accounts — standard account codes
 const (
-	AccountCodeAR               = 1100 // Accounts Receivable (Asset)
-	AccountCodeCash             = 1000 // Cash (Asset)
-	AccountCodeRevenue          = 4000 // Revenue (Income)
-	AccountCodeDeferredRevenue  = 2100 // Deferred Revenue (Liability)
+	AccountCodeAR                = 1100 // Accounts Receivable (Asset)
+	AccountCodeCash              = 1000 // Cash (Asset)
+	AccountCodeRevenue           = 4000 // Revenue (Income)
+	AccountCodeDeferredRevenue   = 2100 // Deferred Revenue (Liability)
 	AccountCodeRecognizedRevenue = 4100 // Recognized Revenue (Income)
-	AccountCodeTaxPayable       = 2200 // Tax Payable (Liability)
-	AccountCodeRefunds          = 5000 // Refunds (Expense)
+	AccountCodeTaxPayable        = 2200 // Tax Payable (Liability)
+	AccountCodeCustomerCredit    = 2300 // Customer Credit (Liability) — account credit owed to customers (ENG-154)
+	AccountCodeRefunds           = 5000 // Refunds (Expense)
+	AccountCodeCreditsIssued     = 5100 // Credits & Adjustments (Expense) — cost of manually-issued account credit (ENG-154)
 )
 
 // StandardChartOfAccounts returns the default accounts for a tenant
@@ -94,9 +96,11 @@ func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 		{ID: uuid.New(), TenantID: tenantID, Name: "Accounts Receivable", Type: AccountTypeAsset, Code: AccountCodeAR, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Deferred Revenue", Type: AccountTypeLiability, Code: AccountCodeDeferredRevenue, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Tax Payable", Type: AccountTypeLiability, Code: AccountCodeTaxPayable, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Customer Credit", Type: AccountTypeLiability, Code: AccountCodeCustomerCredit, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Revenue", Type: AccountTypeRevenue, Code: AccountCodeRevenue, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Recognized Revenue", Type: AccountTypeRevenue, Code: AccountCodeRecognizedRevenue, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Refunds", Type: AccountTypeExpense, Code: AccountCodeRefunds, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Credits & Adjustments", Type: AccountTypeExpense, Code: AccountCodeCreditsIssued, LedgerID: 1},
 	}
 }
 
@@ -106,7 +110,7 @@ type LedgerAccount struct {
 	TenantID      uuid.UUID   `json:"tenant_id" db:"tenant_id"`
 	Name          string      `json:"name" db:"name"`
 	Type          AccountType `json:"type" db:"type"` // asset, liability, equity, revenue, expense
-	Code          int         `json:"code" db:"code"`     // TB: 1000 for Cash etc.
+	Code          int         `json:"code" db:"code"` // TB: 1000 for Cash etc.
 	LedgerID      uint32      `json:"ledger_id" db:"ledger_id"`
 	UserData128   uint128     `json:"user_data_128" db:"user_data_128"`
 	CreditsPosted uint64      `json:"credits_posted" db:"credits_posted"`

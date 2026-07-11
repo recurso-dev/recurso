@@ -195,6 +195,54 @@ func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID, invoiceID,
 	return reverse, nil
 }
 
+// ReduceScheduleForDowngrade shrinks a subscription's active recognition
+// schedule(s) by `amount` when it is downgraded mid-period (ENG-154): the
+// over-deferred portion is removed from the tail (latest events first, splitting
+// the boundary event) so the remaining schedule recognizes only the new, lower
+// plan's amount for the rest of the period. No ledger posting here — the caller
+// pairs this with RecordDowngradeCredit so Deferred and the schedule move
+// together. Returns the amount actually removed (capped at what was pending).
+func (s *RevRecService) ReduceScheduleForDowngrade(ctx context.Context, tenantID, subscriptionID uuid.UUID, amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+	schedules, err := s.repo.GetActiveSchedulesBySubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return 0, fmt.Errorf("load active schedules: %w", err)
+	}
+
+	remaining := amount
+	var reduced int64
+	for _, sched := range schedules {
+		if remaining <= 0 {
+			break
+		}
+		events, err := s.repo.GetPendingEventsBySchedule(ctx, sched.ID)
+		if err != nil {
+			return reduced, fmt.Errorf("load pending events for schedule %s: %w", sched.ID, err)
+		}
+		for _, e := range events {
+			if remaining <= 0 {
+				break
+			}
+			if remaining >= e.Amount {
+				if err := s.repo.CancelEvent(ctx, e.ID); err != nil {
+					return reduced, fmt.Errorf("cancel event %s: %w", e.ID, err)
+				}
+				reduced += e.Amount
+				remaining -= e.Amount
+			} else {
+				if err := s.repo.SetEventAmount(ctx, e.ID, e.Amount-remaining); err != nil {
+					return reduced, fmt.Errorf("reduce event %s: %w", e.ID, err)
+				}
+				reduced += remaining
+				remaining = 0
+			}
+		}
+	}
+	return reduced, nil
+}
+
 // CreateScheduleForInvoice generates a recognition schedule for a paid invoice.
 // If sub is provided, its period dates are used; otherwise the subscription is looked up.
 func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *domain.Invoice, sub *domain.Subscription) error {

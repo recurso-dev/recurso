@@ -338,13 +338,17 @@ func main() {
 	subscriptionService.SetNotificationService(notificationService)
 	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
 	subscriptionService.SetCreditNoteRepo(creditNoteRepo)
+	// Apply account credit to proration-upgrade & trial-conversion charge invoices (ENG-154).
+	subscriptionService.SetCreditApplier(creditNoteService)
 
 	// Multi-product catalog v1: enable subscription add-ons on the service
 	// (add/remove/list) and on the recurring invoice path (extra taxed lines).
 	subscriptionService.SetAddonRepository(subscriptionAddonRepo)
 	invoiceService.AddonRepo = subscriptionAddonRepo
-	// Apply adjustment credit-note balances to generated invoices (ENG-153).
-	invoiceService.CreditApplier = creditNoteRepo
+	// Apply adjustment credit-note balances to generated invoices (ENG-153) and
+	// book the settlement in the ledger (ENG-154). creditNoteService wraps the
+	// repo draw-down with the DR Customer-Credit / CR AR posting.
+	invoiceService.CreditApplier = creditNoteService
 
 	// Anonymous instance telemetry — strictly opt-in (TELEMETRY_OPTIN=true).
 	// Disabled (the default) means telemetryClient is nil: zero network calls,
@@ -468,8 +472,9 @@ func main() {
 
 	// Phase 2: Mandate Service
 	mandateService := service.NewMandateService(mandateRepo, paymentGateway, customerRepo, invoiceRepo)
-	// Apply account credit against off-session mandate debits (ENG-153).
-	mandateService.SetCreditApplier(creditNoteRepo)
+	// Apply account credit against off-session mandate debits (ENG-153) and book
+	// the settlement in the ledger (ENG-154) via creditNoteService.
+	mandateService.SetCreditApplier(creditNoteService)
 
 	// Phase 2: Offline Payment Service
 	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, paymentGateway, invoiceRepo, subscriptionService)

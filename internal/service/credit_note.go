@@ -33,6 +33,10 @@ type CreditNoteRepository interface {
 	// GetByRefundID resolves the credit note that owns a gateway refund id
 	// (Stripe re_*, Razorpay rfnd_*). Returns (nil, nil) when none matches.
 	GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error)
+	// SumApplicableAdjustments / ApplyAdjustmentCredits back credit application at
+	// billing time (ENG-153).
+	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error)
+	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
 }
 
 // creditNoteCustomerReader is the slice of the customer repository we use.
@@ -66,6 +70,31 @@ func (s *CreditNoteService) SetLedgerService(ledger *LedgerService) {
 // of the invoice's recognition schedule (ENG-147). Nil-safe.
 func (s *CreditNoteService) SetRevRecService(revrec *RevRecService) {
 	s.revrec = revrec
+}
+
+// SumApplicableAdjustments previews a customer's open adjustment-credit balance
+// in a currency (ENG-153 preview for gateway-first charge paths).
+func (s *CreditNoteService) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+	return s.repo.SumApplicableAdjustments(ctx, tenantID, customerID, currency)
+}
+
+// ApplyAdjustmentCredits draws down a customer's adjustment credit notes against
+// an invoice (ENG-153) and books the settlement in the ledger (ENG-154):
+// DR Customer-Credit / CR AR for the amount applied, so the credit liability is
+// drawn down as the receivable is settled. The ledger post is best-effort — a
+// failure is logged for reconciliation and never fails billing.
+func (s *CreditNoteService) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+	applied, err := s.repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, currency, invoiceID, invoiceTotal)
+	if err != nil {
+		return 0, err
+	}
+	if applied > 0 && s.ledger != nil {
+		if _, lErr := s.ledger.RecordCreditApplication(ctx, tenantID, customerID, invoiceID, applied, "Account credit applied to invoice"); lErr != nil {
+			s.logger.Error("credit application ledger post failed — reconciliation needed",
+				"invoice_id", invoiceID, "amount", applied, "error", lErr)
+		}
+	}
+	return applied, nil
 }
 
 func NewCreditNoteService(
@@ -122,8 +151,22 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req 
 		if err := s.createRefund(ctx, tenantID, req, cn); err != nil {
 			return nil, err
 		}
-	} else if err := s.repo.Create(ctx, cn); err != nil {
-		return nil, err
+	} else {
+		if err := s.repo.Create(ctx, cn); err != nil {
+			return nil, err
+		}
+		// Book the manually-issued adjustment credit as an account-credit
+		// liability (ENG-154): DR Credits & Adjustments / CR Customer-Credit, so
+		// the ledger has the origin the later application (DR Customer-Credit /
+		// CR AR) draws down. Downgrade credits are booked separately in
+		// UpdateSubscription (DR Deferred), so they don't pass through here.
+		// Best-effort; a failure is logged for reconciliation.
+		if s.ledger != nil {
+			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.ID, cn.Amount, "Adjustment credit issued"); err != nil {
+				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
+					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
+			}
+		}
 	}
 
 	cn.Customer = customer // Populate customer for response

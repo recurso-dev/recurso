@@ -48,6 +48,7 @@ type SubscriptionService struct {
 	subRepoImpl         *db.SubscriptionRepository // Concrete type for TX methods
 	invRepoImpl         *db.InvoiceRepository      // Concrete type for TX methods
 	creditNoteRepo      *db.CreditNoteRepository   // Downgrade proration credits (ENG-150); nil-safe
+	creditApplier       creditApplier              // Apply account credit to charge invoices (ENG-154); nil-safe
 	revrecService       *RevRecService
 	taxResolver         *TaxResolver
 	recoveryRecorder    PaymentRecoveryRecorder
@@ -110,6 +111,33 @@ func NewSubscriptionService(
 // unset, a downgrade credit is logged rather than dropped.
 func (s *SubscriptionService) SetCreditNoteRepo(r *db.CreditNoteRepository) {
 	s.creditNoteRepo = r
+}
+
+// SetCreditApplier wires account-credit application into the proration-upgrade
+// and trial-conversion charge invoices (ENG-154). Nil-safe.
+func (s *SubscriptionService) SetCreditApplier(a creditApplier) { s.creditApplier = a }
+
+// applyCreditToInvoice draws the customer's account credit against a just-created
+// charge invoice, updating the in-memory struct to reflect it. Best-effort: a
+// failure leaves the invoice at full amount. Shared by the proration-upgrade and
+// trial-conversion paths (ENG-154).
+func (s *SubscriptionService) applyCreditToInvoice(ctx context.Context, inv *domain.Invoice) {
+	if s.creditApplier == nil || inv == nil || inv.Total <= 0 {
+		return
+	}
+	applied, err := s.creditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total)
+	if err != nil {
+		s.logger.Error("credit application failed", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	if applied > 0 {
+		inv.CreditApplied = applied
+		inv.AmountDue = inv.Total - inv.AmountPaid - applied
+		if applied >= inv.Total {
+			inv.Status = domain.InvoiceStatusPaid
+		}
+		s.logger.Info("applied account credit to charge invoice", "invoice_id", inv.ID, "credit_applied", applied)
+	}
 }
 
 // SetEInvoiceService injects the EInvoiceService after construction (avoids circular deps).
@@ -1096,6 +1124,34 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		}
 	}
 
+	// Apply account credit to the upgrade charge invoice (ENG-154).
+	if chargeInvoice != nil {
+		s.applyCreditToInvoice(ctx, chargeInvoice)
+	}
+
+	// Rev-rec + ledger for a downgrade credit (ENG-154): the over-deferred
+	// portion of the current period stops being revenue we'll earn and becomes
+	// account credit we owe. Shrink the recognition schedule by the credit amount
+	// (so it recognizes only the new plan's remaining service) and post
+	// DR Deferred / CR Customer-Credit for the same amount, keeping Deferred and
+	// the schedule in step. Best-effort: failures are logged for reconciliation.
+	if creditNote != nil && creditNote.Amount > 0 {
+		if s.revrecService != nil {
+			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, creditNote.Amount); err != nil {
+				s.logger.Error("downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
+			} else if reduced != creditNote.Amount {
+				s.logger.Warn("downgrade schedule reduced less than the credit (deferred/credit may need reconciliation)",
+					"subscription_id", subscriptionID, "credit", creditNote.Amount, "reduced", reduced)
+			}
+		}
+		if s.ledger != nil {
+			if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.ID, creditNote.Amount, "Plan downgrade credit"); err != nil {
+				s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
+					"credit_note_id", creditNote.ID, "amount", creditNote.Amount, "error", err)
+			}
+		}
+	}
+
 	// Sync with Gateway (Razorpay/Stripe) — not implemented yet.
 	// When s.gateway != nil && sub.RazorpaySubscriptionID != "":
 	// s.gateway.UpdateSubscription(ctx, sub.RazorpaySubscriptionID, newPlan.Code)
@@ -1227,6 +1283,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 				"error", err, "invoice_id", invID, "amount", total)
 		}
 	}
+
+	// Apply any account credit to the first invoice (ENG-154).
+	s.applyCreditToInvoice(ctx, invoice)
 
 	s.logger.Info("trial converted to active",
 		"subscription_id", sub.ID, "invoice_id", invID, "amount", total)
