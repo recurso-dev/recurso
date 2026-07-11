@@ -108,7 +108,7 @@ export default function Customers() {
       key: "status",
       header: "Status",
       cell: (c) =>
-        c.activeSubs > 0 ? (
+        c.active_subs > 0 ? (
           <Badge variant="success">Active</Badge>
         ) : (
           <Badge variant="neutral">Inactive</Badge>
@@ -118,7 +118,7 @@ export default function Customers() {
     {
       key: "subs",
       header: "Subscriptions",
-      cell: (c) => <span className="tabular-nums text-muted-foreground">{c.activeSubs ?? 0}</span>,
+      cell: (c) => <span className="tabular-nums text-muted-foreground">{c.active_subs ?? 0}</span>,
     },
     {
       key: "joined",

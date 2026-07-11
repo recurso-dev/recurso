@@ -17,4 +17,8 @@ type SubscriptionRepository interface {
 	GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error)
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error)
 	Update(ctx context.Context, sub *domain.Subscription) error
+	// CountActiveByCustomer returns, for the tenant, how many active
+	// subscriptions each customer has (customer_id -> count). Customers with no
+	// active subscription are absent from the map.
+	CountActiveByCustomer(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int, error)
 }

@@ -3,7 +3,7 @@ import { AreaChart } from "@tremor/react";
 import { DollarSign, Users, TrendingDown, RotateCcw, BarChart3 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";

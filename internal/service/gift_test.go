@@ -61,6 +61,9 @@ func (m *mockSubRepoForGift) GetByID(ctx context.Context, id uuid.UUID) (*domain
 	return nil, nil
 }
 func (m *mockSubRepoForGift) Update(ctx context.Context, s *domain.Subscription) error { return nil }
+func (m *mockSubRepoForGift) CountActiveByCustomer(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int, error) {
+	return nil, nil
+}
 func (m *mockSubRepoForGift) List(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error) {
 	return nil, nil
 }

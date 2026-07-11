@@ -10,12 +10,12 @@ import {
 import { endpoints } from "@/lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EmptyState } from "@/components/patterns/EmptyState";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     const fetchNotifications = async () => {
@@ -63,8 +63,9 @@ export default function Notifications() {
           };
         });
         setNotifications(mapped);
-      } catch (error) {
-        console.error("Failed to fetch notifications:", error);
+      } catch (err) {
+        console.error("Failed to fetch notifications:", err);
+        setError("Failed to load notifications.");
       } finally {
         setLoading(false);
       }
@@ -77,17 +78,20 @@ export default function Notifications() {
       <PageHeader
         title="Notifications"
         description="Stay updated with the latest events."
-        actions={
-          <Button variant="ghost" size="sm">
-            Mark all as read
-          </Button>
-        }
       />
 
       {loading ? (
         <div className="py-10 text-center text-sm text-muted-foreground">
           Loading notifications...
         </div>
+      ) : error ? (
+        <Card>
+          <EmptyState
+            icon={AlertCircle}
+            title={error}
+            description="Please refresh to try again."
+          />
+        </Card>
       ) : notifications.length === 0 ? (
         <Card>
           <EmptyState

@@ -656,7 +656,7 @@ func main() {
 	// 7. Initialize Handlers
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
-	customerHandler := handler.NewCustomerHandler(customerService)
+	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
 	// mock can't), so type-assert for the inspector; a nil inspector makes

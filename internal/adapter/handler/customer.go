@@ -8,15 +8,17 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/swapnull-in/recur-so/internal/core/port"
 	"github.com/swapnull-in/recur-so/internal/service"
 )
 
 type CustomerHandler struct {
 	service *service.CustomerService
+	subs    port.SubscriptionRepository
 }
 
-func NewCustomerHandler(s *service.CustomerService) *CustomerHandler {
-	return &CustomerHandler{service: s}
+func NewCustomerHandler(s *service.CustomerService, subs port.SubscriptionRepository) *CustomerHandler {
+	return &CustomerHandler{service: s, subs: subs}
 }
 
 type createCustomerRequest struct {
@@ -154,5 +156,21 @@ func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 	if customers == nil {
 		customers = []*domain.Customer{}
 	}
-	c.JSON(http.StatusOK, gin.H{"data": customers})
+
+	// Attach each customer's active-subscription count so the list can show a
+	// real Active/Inactive status and sub count. The count is best-effort — a
+	// failure here shouldn't fail the whole list (customers just show 0).
+	counts, err := h.subs.CountActiveByCustomer(ctx, tenantID)
+	if err != nil {
+		counts = map[uuid.UUID]int{}
+	}
+	type customerWithSubs struct {
+		*domain.Customer
+		ActiveSubs int `json:"active_subs"`
+	}
+	out := make([]customerWithSubs, len(customers))
+	for i, cust := range customers {
+		out[i] = customerWithSubs{Customer: cust, ActiveSubs: counts[cust.ID]}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": out})
 }

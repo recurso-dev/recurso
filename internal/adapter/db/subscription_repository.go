@@ -140,6 +140,30 @@ func (r *SubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, 
 // GetActiveSubscriptions returns the tenant's active subscriptions. It MUST be
 // tenant-scoped — an unscoped variant would leak (and mis-total) other tenants'
 // subscriptions into per-tenant analytics like MRR.
+// CountActiveByCustomer returns customer_id -> active-subscription count for the
+// tenant. Customers with none are simply absent from the map.
+func (r *SubscriptionRepository) CountActiveByCustomer(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT customer_id, COUNT(*) FROM subscriptions
+		 WHERE tenant_id = $1 AND status = 'active'
+		 GROUP BY customer_id`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("count active subscriptions by customer: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	counts := make(map[uuid.UUID]int)
+	for rows.Next() {
+		var customerID uuid.UUID
+		var n int
+		if err := rows.Scan(&customerID, &n); err != nil {
+			return nil, err
+		}
+		counts[customerID] = n
+	}
+	return counts, rows.Err()
+}
+
 func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error) {
 	query := `
 		SELECT

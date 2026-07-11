@@ -109,7 +109,7 @@ export default function Ledger() {
       align: "right",
       cell: (e) => (
         <span className="font-medium tabular-nums text-foreground">
-          {formatCurrency(e.amount)}
+          {formatCurrency(e.amount, selectedAccount?.currency)}
         </span>
       ),
     },
@@ -163,7 +163,7 @@ export default function Ledger() {
           <StatCard
             className="md:col-span-1"
             label="Current Balance"
-            value={formatCurrency(selectedAccount.balance || 0)}
+            value={formatCurrency(selectedAccount.balance || 0, selectedAccount.currency)}
             icon={BookOpen}
             hint={`${selectedAccount.name} (${selectedAccount.code})`}
           />
