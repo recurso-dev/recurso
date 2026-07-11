@@ -19,7 +19,6 @@ sdk/node_modules/
 
 # Build outputs
 frontend/dist/
-website/build/
 
 # Environment
 .env

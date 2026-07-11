@@ -6,7 +6,6 @@
 .claude/
 **/node_modules/
 frontend/
-website/
 docs/
 sdk/
 pitch/
