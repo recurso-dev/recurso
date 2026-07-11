@@ -39,10 +39,17 @@ const TITLES = {
   profile: "Profile",
 };
 
+// Full-path titles for nested routes where the first segment isn't enough
+// (e.g. both pages under /finance/*). Checked before the first-segment map.
+const PATH_TITLES = {
+  "/finance/reconciliation": "Reconciliation",
+  "/finance/revenue-recognition": "Revenue Recognition",
+};
+
 function usePageTitle() {
   const { pathname } = useLocation();
   const segment = pathname.split("/").filter(Boolean)[0] || "";
-  return TITLES[segment] ?? "Recurso";
+  return PATH_TITLES[pathname] ?? TITLES[segment] ?? "Recurso";
 }
 
 export function DashboardLayout() {

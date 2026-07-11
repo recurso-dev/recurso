@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Home, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
-  Ticket, Megaphone, Gift, Brain, Landmark, Scale, BarChart3, Code2,
+  Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, BarChart3, Code2,
   Settings, ShieldCheck, UserCog, Plus, Search,
 } from "lucide-react";
 
@@ -24,6 +24,7 @@ const DESTINATIONS = [
   { group: "Go to", label: "Dunning", to: "/dunning", icon: Brain },
   { group: "Go to", label: "Ledger", to: "/ledger", icon: Landmark },
   { group: "Go to", label: "Reconciliation", to: "/finance/reconciliation", icon: Scale },
+  { group: "Go to", label: "Revenue Recognition", to: "/finance/revenue-recognition", icon: CalendarClock },
   { group: "Go to", label: "Usage", to: "/usage", icon: BarChart3 },
   { group: "Go to", label: "Developers", to: "/developers", icon: Code2 },
   { group: "Go to", label: "Settings", to: "/settings", icon: Settings },

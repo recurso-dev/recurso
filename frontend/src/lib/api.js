@@ -84,6 +84,10 @@ export const endpoints = {
   getLedgerAccounts: () => api.get('/ledger/accounts'),
   // On-demand ledger reconciliation (computed per request, never persisted).
   runReconciliation: () => api.get('/finance/reconciliation'),
+  // Deferred-revenue rollforward: recognized in the period, deferred balance,
+  // the month-by-month release schedule, and the per-currency split.
+  getRevenueRecognition: (month, year) =>
+    api.get('/finance/revrec/report', { params: { month, year } }),
   
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),

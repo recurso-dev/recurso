@@ -14,6 +14,7 @@ import {
   Brain,
   Landmark,
   Scale,
+  CalendarClock,
   BarChart3,
   Code2,
   Settings,
@@ -53,6 +54,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/ledger", label: "Ledger", icon: Landmark },
       { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
+      { to: "/finance/revenue-recognition", label: "Revenue Recognition", icon: CalendarClock },
       { to: "/usage", label: "Usage", icon: BarChart3 },
     ],
   },
