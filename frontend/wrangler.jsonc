@@ -1,0 +1,13 @@
+{
+  // Cloudflare Workers Static Assets config for the dashboard SPA.
+  // The Cloudflare build runs `npm run build` (producing ./dist), then
+  // `npx wrangler deploy` publishes those files as an assets-only Worker.
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "recur-so",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    // Serve index.html for unmatched routes so React Router deep links / refreshes work.
+    "not_found_handling": "single-page-application"
+  }
+}
