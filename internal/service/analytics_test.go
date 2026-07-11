@@ -408,3 +408,57 @@ func TestGetConsolidatedMRR_ZeroTenants(t *testing.T) {
 		t.Errorf("expected empty metrics, got %+v", got)
 	}
 }
+
+// --- billing-interval normalization (money correctness) ---
+
+func TestMonthlyMinorUnits(t *testing.T) {
+	cases := []struct {
+		name   string
+		amount int64
+		unit   domain.IntervalUnit
+		count  int
+		want   int64
+	}{
+		{"monthly", 1000, domain.IntervalMonth, 1, 1000},
+		{"unset treated as monthly", 500, "", 0, 500},
+		{"annual -> /12", 12000, domain.IntervalYear, 1, 1000},
+		{"biennial -> /24", 24000, domain.IntervalYear, 2, 1000},
+		{"quarterly -> /3", 3000, domain.IntervalMonth, 3, 1000},
+		{"weekly -> *52/12", 700, domain.IntervalWeek, 1, 3044},
+		{"daily -> *365.25/12", 100, domain.IntervalDay, 1, 3044},
+		{"unknown unit falls back to month-like", 800, domain.IntervalUnit("fortnight"), 1, 800},
+	}
+	for _, tc := range cases {
+		if got := monthlyMinorUnits(tc.amount, tc.unit, tc.count); got != tc.want {
+			t.Errorf("%s: monthlyMinorUnits(%d,%q,%d) = %d, want %d", tc.name, tc.amount, tc.unit, tc.count, got, tc.want)
+		}
+	}
+}
+
+// TestGetMRR_NormalizesBillingInterval proves an annual and a quarterly plan
+// contribute their monthly-equivalent MRR (not their full billed amount), and
+// that ARR is the normalized MRR × 12.
+func TestGetMRR_NormalizesBillingInterval(t *testing.T) {
+	annual := &domain.Plan{
+		ID: uuid.New(), IntervalUnit: domain.IntervalYear, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 12000}}, // 12000/yr -> 1000/mo
+	}
+	quarterly := &domain.Plan{
+		ID: uuid.New(), IntervalUnit: domain.IntervalMonth, IntervalCount: 3,
+		Prices: []domain.Price{{Currency: "USD", Amount: 3000}}, // 3000/qtr -> 1000/mo
+	}
+	subRepo, planRepo := mrrFixture(annual, quarterly)
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
+
+	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	if err != nil {
+		t.Fatalf("GetMRR: %v", err)
+	}
+	if got.NormalizedMRR != 2000 {
+		t.Errorf("NormalizedMRR = %d, want 2000 (1000 annual-normalized + 1000 quarterly-normalized)", got.NormalizedMRR)
+	}
+	if got.ARR != 24000 {
+		t.Errorf("ARR = %d, want 24000 (2000 MRR × 12)", got.ARR)
+	}
+}

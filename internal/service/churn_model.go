@@ -111,7 +111,7 @@ func ExtractFeatures(ctx context.Context, customer *domain.Customer, invoices []
 		if sub.Status == domain.SubscriptionStatusActive {
 			plan, err := planRepo.GetByID(ctx, sub.PlanID)
 			if err == nil && len(plan.Prices) > 0 {
-				features.CurrentMRR += plan.Prices[0].Amount
+				features.CurrentMRR += monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
 			}
 		}
 	}

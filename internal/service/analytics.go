@@ -2,12 +2,43 @@ package service
 
 import (
 	"context"
+	"math"
 	"sort"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 	"github.com/swapnull-in/recur-so/internal/core/port"
 )
+
+// avgDaysPerMonth is the Gregorian average (365.25 / 12), used to normalize
+// day- and week-billed plans into a monthly-equivalent figure.
+const avgDaysPerMonth = 365.25 / 12
+
+// monthlyMinorUnits normalizes a plan's list price — charged once per
+// (IntervalCount × IntervalUnit) — into a per-month figure in the same minor
+// units, so MRR sums correctly across monthly, annual, quarterly, weekly and
+// daily plans. An unset or unrecognized interval is treated as monthly, which
+// preserves the engine's prior behavior for plans that never set an interval.
+func monthlyMinorUnits(amount int64, unit domain.IntervalUnit, count int) int64 {
+	if count <= 0 {
+		count = 1
+	}
+	var periodMonths float64
+	switch unit {
+	case domain.IntervalYear:
+		periodMonths = 12 * float64(count)
+	case domain.IntervalWeek:
+		periodMonths = float64(count) * 7 / avgDaysPerMonth
+	case domain.IntervalDay:
+		periodMonths = float64(count) / avgDaysPerMonth
+	default: // IntervalMonth, "" (unset), or anything unknown → month-like
+		periodMonths = float64(count)
+	}
+	if periodMonths <= 0 {
+		return amount
+	}
+	return int64(math.Round(float64(amount) / periodMonths))
+}
 
 // TenantLookup resolves a tenant so reporting can honor its base currency.
 type TenantLookup interface {
@@ -80,6 +111,7 @@ type MRRMetrics struct {
 	// MRR mirrors NormalizedMRR; the frontend dashboard reads this key.
 	MRR               int64                  `json:"mrr"`
 	NormalizedMRR     int64                  `json:"normalized_mrr"`
+	ARR               int64                  `json:"arr"` // annual run-rate = normalized MRR × 12
 	ReportingCurrency string                 `json:"reporting_currency"`
 	Breakdown         []MRRCurrencyBreakdown `json:"breakdown"`
 	FX                *FXSnapshot            `json:"fx,omitempty"`
@@ -113,14 +145,15 @@ func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRR
 			planCache[sub.PlanID] = plan
 		}
 
-		// Simple Calc: Assuming 1 Price is Monthly.
-		// If implementation requires multiple prices or yearly, we'd normalize here.
+		// Normalize the plan's list price to a monthly-equivalent figure so
+		// annual/quarterly/weekly plans contribute the right MRR (an annual plan
+		// priced 12000/yr is 1000/mo, not 12000).
 		if len(plan.Prices) > 0 {
 			currency := plan.Prices[0].Currency
 			if currency == "" {
 				currency = reporting
 			}
-			perCurrency[currency] += plan.Prices[0].Amount
+			perCurrency[currency] += monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
 			perCurrencyCount[currency]++
 		}
 	}
@@ -152,6 +185,7 @@ func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRR
 		Amount:            normalized,
 		MRR:               normalized,
 		NormalizedMRR:     normalized,
+		ARR:               normalized * 12,
 		ReportingCurrency: reporting,
 		Breakdown:         breakdown,
 		FX:                normalizer.snapshot(),

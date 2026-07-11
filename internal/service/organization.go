@@ -182,7 +182,7 @@ func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid
 			}
 			if len(plan.Prices) > 0 {
 				currency := plan.Prices[0].Currency
-				tenantCurrencyMRR[currency] += plan.Prices[0].Amount
+				tenantCurrencyMRR[currency] += monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
 			}
 		}
 
