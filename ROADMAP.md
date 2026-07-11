@@ -159,7 +159,7 @@ access and the demo key never broke.
       zero missing registered routes, redocly-clean, minimum-path test.
 - [x] Wire Mintlify API playground to the served OpenAPI spec.
 - [x] Generated Python SDK from OpenAPI. Hand-crafted Go SDK
-      (`github.com/recurso-dev/recurso-go`, `sdk/go/`) — 18 resources / 68
+      (`github.com/recurso-dev/recurso-go`, own repo) — 18 resources / 68
       methods, stdlib-only, httptest-tested. (Node, Python, Go all shipped.)
 - [x] Postman collection (generated from OpenAPI into `postman/` — 33
       tag-grouped folders + an environment file; regen command + import steps
