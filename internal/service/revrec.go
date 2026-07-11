@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -17,6 +18,17 @@ type RevRecRepository interface {
 	MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error
 	MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error
 	GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (map[string]interface{}, error)
+
+	// Unwind support (ENG-147): reverse the still-deferred portion of a schedule
+	// when a subscription is canceled or refunded mid-period.
+	GetActiveSchedulesBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RevenueSchedule, error)
+	GetActiveScheduleByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (*domain.RevenueSchedule, error)
+	// GetPendingEventsBySchedule returns the schedule's not-yet-recognized events,
+	// latest recognition_date first (so an unwind reduces from the tail).
+	GetPendingEventsBySchedule(ctx context.Context, scheduleID uuid.UUID) ([]*domain.RecognitionEvent, error)
+	CancelEvent(ctx context.Context, eventID uuid.UUID) error
+	SetEventAmount(ctx context.Context, eventID uuid.UUID, amount int64) error
+	MarkScheduleCanceled(ctx context.Context, scheduleID uuid.UUID) error
 }
 
 type RevRecService struct {
@@ -58,6 +70,129 @@ func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// UnwindOnCancel forfeits the still-deferred revenue of a subscription's active
+// schedules when it is canceled immediately with no refund (ENG-147). Every
+// not-yet-recognized event is voided and its total is recognized as breakage
+// revenue (DR Deferred / CR Recognized), draining Deferred to 0 so future
+// recognition can't keep firing and the deferred balance can't sit forever.
+//
+// Schedule state is the source of truth: events are voided first, then the
+// forfeit is posted to the ledger best-effort (a post failure is logged for
+// reconciliation, never fails the cancel). Idempotent: once the schedule is
+// canceled a repeat call finds nothing to unwind.
+func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int64, error) {
+	schedules, err := s.repo.GetActiveSchedulesBySubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return 0, fmt.Errorf("load active schedules: %w", err)
+	}
+
+	var totalForfeited int64
+	for _, sched := range schedules {
+		events, err := s.repo.GetPendingEventsBySchedule(ctx, sched.ID)
+		if err != nil {
+			return totalForfeited, fmt.Errorf("load pending events for schedule %s: %w", sched.ID, err)
+		}
+		var forfeited int64
+		for _, e := range events {
+			if err := s.repo.CancelEvent(ctx, e.ID); err != nil {
+				return totalForfeited, fmt.Errorf("cancel event %s: %w", e.ID, err)
+			}
+			forfeited += e.Amount
+		}
+		if err := s.repo.MarkScheduleCanceled(ctx, sched.ID); err != nil {
+			return totalForfeited, fmt.Errorf("cancel schedule %s: %w", sched.ID, err)
+		}
+
+		// Forfeited (collected-but-unearned) revenue is recognized as breakage.
+		// referenceID is the schedule id, keeping this posting off the per-event
+		// recognition keys and idempotent under (reference_id, code=2).
+		if forfeited > 0 && s.ledger != nil {
+			if _, err := s.ledger.RecordRecognition(ctx, tenantID, forfeited, sched.ID); err != nil {
+				slog.Error("forfeit recognition ledger post failed — reconciliation needed",
+					"schedule_id", sched.ID, "amount", forfeited, "error", err)
+			}
+		}
+		totalForfeited += forfeited
+	}
+	return totalForfeited, nil
+}
+
+// UnwindOnRefund reverses the still-deferred portion of an invoice's schedule
+// when a refund is issued against it (ENG-147). Up to the unrecognized amount is
+// pulled out of Deferred to offset the Refunds expense (DR Deferred / CR
+// Refunds), and the matching future events are voided/reduced from the tail so
+// they stop recognizing the refunded portion. Amounts already recognized are a
+// genuine refund expense and are left untouched. Returns the amount reversed.
+//
+// Called exactly once per credit note: createRefund creates each credit note
+// once (the over-refund guard blocks a duplicate), so this does not attempt to
+// be idempotent against replays — a replay would reduce the schedule twice while
+// the code-5 ledger posting deduped, diverging the two. The ledger post is
+// best-effort (a failure is logged for reconciliation, never fails the refund).
+func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID, invoiceID, creditNoteID uuid.UUID, refundAmount int64) (int64, error) {
+	if refundAmount <= 0 {
+		return 0, nil
+	}
+	sched, err := s.repo.GetActiveScheduleByInvoice(ctx, tenantID, invoiceID)
+	if err != nil {
+		return 0, fmt.Errorf("load schedule for invoice %s: %w", invoiceID, err)
+	}
+	if sched == nil {
+		return 0, nil // one-off invoice, or already fully recognized/canceled
+	}
+	events, err := s.repo.GetPendingEventsBySchedule(ctx, sched.ID)
+	if err != nil {
+		return 0, fmt.Errorf("load pending events for schedule %s: %w", sched.ID, err)
+	}
+
+	var deferred int64
+	for _, e := range events {
+		deferred += e.Amount
+	}
+	reverse := refundAmount
+	if reverse > deferred {
+		reverse = deferred // only the unearned portion comes out of Deferred
+	}
+	if reverse <= 0 {
+		return 0, nil
+	}
+
+	// Remove exactly `reverse` from the tail (latest events first): void whole
+	// events, splitting the boundary event by reducing its amount.
+	remaining := reverse
+	for _, e := range events {
+		if remaining <= 0 {
+			break
+		}
+		if remaining >= e.Amount {
+			if err := s.repo.CancelEvent(ctx, e.ID); err != nil {
+				return 0, fmt.Errorf("cancel event %s: %w", e.ID, err)
+			}
+			remaining -= e.Amount
+		} else {
+			if err := s.repo.SetEventAmount(ctx, e.ID, e.Amount-remaining); err != nil {
+				return 0, fmt.Errorf("reduce event %s: %w", e.ID, err)
+			}
+			remaining = 0
+		}
+	}
+	if reverse >= deferred {
+		if err := s.repo.MarkScheduleCanceled(ctx, sched.ID); err != nil {
+			return 0, fmt.Errorf("cancel schedule %s: %w", sched.ID, err)
+		}
+	}
+
+	// Post the deferred reversal best-effort (schedule state already corrected).
+	if s.ledger != nil {
+		if _, err := s.ledger.RecordDeferredRefundReversal(ctx, tenantID, creditNoteID, reverse,
+			"Deferred reversal for refund"); err != nil {
+			slog.Error("deferred reversal ledger post failed — reconciliation needed",
+				"credit_note_id", creditNoteID, "amount", reverse, "error", err)
+		}
+	}
+	return reverse, nil
 }
 
 // CreateScheduleForInvoice generates a recognition schedule for a paid invoice.

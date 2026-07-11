@@ -264,6 +264,58 @@ func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, cr
 	return nil
 }
 
+// RecordDeferredRefundReversal reverses still-deferred revenue when a refund is
+// issued against a subscription invoice mid-period (ENG-147).
+//
+//	Debit:  Deferred Revenue (Liability)  — drain the unearned portion
+//	Credit: Refunds (Expense)             — offset the DR Refunds/CR Cash refund
+//
+// so refunding money the customer never earned is not booked as a P&L expense
+// and Deferred is not left overstated. referenceID is the credit note id; the
+// distinct code (5) keeps this off the code-4 cash-refund idempotency key, so
+// the two postings for one credit note never dedupe against each other.
+func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("deferred reversal %s: %w", creditNoteID, err)
+	}
+	txID := uuid.New()
+
+	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  deferredAccountID,
+		CreditAccountID: refundsAccountID,
+		Amount:          amt,
+		LedgerID:        1,
+		Code:            5, // Deferred-revenue reversal (distinct from code 4 cash refund)
+		ReferenceID:     creditNoteID,
+		Description:     description,
+		Timestamp:       time.Now(),
+	}
+
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed for deferred reversal", "error", err)
+			return uuid.Nil, fmt.Errorf("ledger write failed for deferred reversal on credit note %s: %w", creditNoteID, err)
+		}
+	}
+	if s.tbClient != nil {
+		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	return txID, nil
+}
+
 // ListAccounts returns all ledger accounts for a tenant.
 func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
 	if s.pgRepo != nil {

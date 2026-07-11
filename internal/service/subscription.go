@@ -669,6 +669,19 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		}
 	}
 
+	// Rev-rec unwind on immediate cancel: forfeit (recognize) the remaining
+	// deferred revenue and void future recognition events, so a mid-period
+	// cancel doesn't leave deferred sitting forever or keep firing recognition
+	// (ENG-147). Only for immediate cancels — cancel-at-period-end keeps service
+	// (and the natural recognition schedule) running to period end. Best-effort.
+	if immediately && s.revrecService != nil {
+		if forfeited, err := s.revrecService.UnwindOnCancel(ctx, tenantID, subscriptionID); err != nil {
+			s.logger.Error("rev-rec unwind on cancel failed", "error", err, "subscription_id", subscriptionID)
+		} else if forfeited > 0 {
+			s.logger.Info("rev-rec deferred forfeited on cancel", "subscription_id", subscriptionID, "amount", forfeited)
+		}
+	}
+
 	result := &CancelResult{
 		ID:               sub.ID,
 		Status:           string(sub.Status),

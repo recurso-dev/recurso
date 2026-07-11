@@ -313,6 +313,8 @@ func main() {
 	// Revenue Recognition (P5)
 	revrecRepo := db.NewRevRecRepository(database)
 	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
+	// Unwind deferred revenue when a refund is issued (ENG-147).
+	creditNoteService.SetRevRecService(revrecService)
 
 	subscriptionService := service.NewSubscriptionService(
 		subscriptionRepo,

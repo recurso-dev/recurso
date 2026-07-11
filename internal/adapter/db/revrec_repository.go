@@ -95,6 +95,108 @@ func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUI
 	return err
 }
 
+// GetActiveSchedulesBySubscription returns a subscription's active schedules
+// (tenant-scoped) for an unwind (ENG-147).
+func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RevenueSchedule, error) {
+	query := `
+		SELECT id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		FROM revenue_schedules
+		WHERE tenant_id = $1 AND subscription_id = $2 AND status = 'active'
+	`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var schedules []*domain.RevenueSchedule
+	for rows.Next() {
+		var s domain.RevenueSchedule
+		if err := rows.Scan(&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &s.TotalAmount,
+			&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			return nil, err
+		}
+		schedules = append(schedules, &s)
+	}
+	return schedules, rows.Err()
+}
+
+// GetActiveScheduleByInvoice returns the active schedule for an invoice, or nil
+// when there is none (one-off invoice, or already fully recognized/canceled).
+func (r *RevRecRepository) GetActiveScheduleByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (*domain.RevenueSchedule, error) {
+	query := `
+		SELECT id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		FROM revenue_schedules
+		WHERE tenant_id = $1 AND invoice_id = $2 AND status = 'active'
+		LIMIT 1
+	`
+	var s domain.RevenueSchedule
+	err := r.db.QueryRowContext(ctx, query, tenantID, invoiceID).Scan(
+		&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &s.TotalAmount,
+		&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// GetPendingEventsBySchedule returns a schedule's not-yet-recognized events,
+// latest recognition_date first so an unwind reduces from the tail.
+func (r *RevRecRepository) GetPendingEventsBySchedule(ctx context.Context, scheduleID uuid.UUID) ([]*domain.RecognitionEvent, error) {
+	query := `
+		SELECT id, revenue_schedule_id, tenant_id, amount, recognition_date, status, ledger_tx_id, created_at
+		FROM recognition_events
+		WHERE revenue_schedule_id = $1 AND status = 'pending'
+		ORDER BY recognition_date DESC
+	`
+	rows, err := r.db.QueryContext(ctx, query, scheduleID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var events []*domain.RecognitionEvent
+	for rows.Next() {
+		var e domain.RecognitionEvent
+		var ledgerTxID sql.NullString
+		if err := rows.Scan(&e.ID, &e.RevenueScheduleID, &e.TenantID, &e.Amount, &e.RecognitionDate, &e.Status, &ledgerTxID, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		if ledgerTxID.Valid {
+			u := uuid.MustParse(ledgerTxID.String)
+			e.LedgerTxID = &u
+		}
+		events = append(events, &e)
+	}
+	return events, rows.Err()
+}
+
+// CancelEvent voids a pending event so the recognition worker never posts it.
+// Scoped to status='pending' so a recognized event can't be silently unwound.
+func (r *RevRecRepository) CancelEvent(ctx context.Context, eventID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE recognition_events SET status = 'canceled' WHERE id = $1 AND status = 'pending'`, eventID)
+	return err
+}
+
+// SetEventAmount reduces a pending event's amount (boundary split on a partial
+// refund). Scoped to status='pending'.
+func (r *RevRecRepository) SetEventAmount(ctx context.Context, eventID uuid.UUID, amount int64) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE recognition_events SET amount = $1 WHERE id = $2 AND status = 'pending'`, amount, eventID)
+	return err
+}
+
+// MarkScheduleCanceled marks a schedule canceled once its deferred is unwound.
+func (r *RevRecRepository) MarkScheduleCanceled(ctx context.Context, scheduleID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE revenue_schedules SET status = 'canceled', updated_at = NOW() WHERE id = $1`, scheduleID)
+	return err
+}
+
 func (r *RevRecRepository) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (map[string]interface{}, error) {
 	var totalRecognized int64
 	query := `

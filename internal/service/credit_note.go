@@ -53,12 +53,19 @@ type CreditNoteService struct {
 	invoiceRepo  creditNoteInvoiceReader
 	gateway      port.PaymentGateway
 	ledger       *LedgerService
+	revrec       *RevRecService
 	logger       *slog.Logger
 }
 
 // SetLedgerService wires the ledger for refund reversals (optional).
 func (s *CreditNoteService) SetLedgerService(ledger *LedgerService) {
 	s.ledger = ledger
+}
+
+// SetRevRecService wires rev-rec so a refund unwinds the still-deferred portion
+// of the invoice's recognition schedule (ENG-147). Nil-safe.
+func (s *CreditNoteService) SetRevRecService(revrec *RevRecService) {
+	s.revrec = revrec
 }
 
 func NewCreditNoteService(
@@ -219,6 +226,18 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
+		}
+	}
+
+	// Rev-rec unwind: reverse the still-deferred portion of this invoice's
+	// recognition schedule and void the matching future events, so a mid-period
+	// refund doesn't keep recognizing revenue the customer got back (ENG-147).
+	// Best-effort: a failure is logged, never fails the refund.
+	if s.revrec != nil {
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.ID, cn.ID, cn.Amount); err != nil {
+			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
+		} else if reversed > 0 {
+			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
 		}
 	}
 	cn.RefundID = &refundID
