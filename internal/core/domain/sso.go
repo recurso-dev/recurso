@@ -55,4 +55,9 @@ var (
 	// ErrSSOInvalidAssertion is returned when the SAMLResponse fails validation
 	// (signature, audience, timing) or carries no usable email.
 	ErrSSOInvalidAssertion = errors.New("invalid SAML assertion")
+	// ErrSSOAssertionReplay is returned when an assertion ID has already been
+	// consumed — i.e. the same SAMLResponse is being replayed. The service maps
+	// it to ErrSSOInvalidAssertion at the boundary so the caller can't tell a
+	// replay apart from any other invalid assertion.
+	ErrSSOAssertionReplay = errors.New("sso assertion already consumed")
 )

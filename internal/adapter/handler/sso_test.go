@@ -47,6 +47,20 @@ func (r *memSSOConnectionRepo) Delete(_ context.Context, tenantID uuid.UUID) err
 	return nil
 }
 
+// memSSOReplayStore is an in-memory port.SSOAssertionReplayStore for tests.
+type memSSOReplayStore struct{ consumed map[string]bool }
+
+func newMemSSOReplayStore() *memSSOReplayStore {
+	return &memSSOReplayStore{consumed: map[string]bool{}}
+}
+func (r *memSSOReplayStore) MarkConsumed(_ context.Context, _ uuid.UUID, assertionID string, _ time.Time) error {
+	if r.consumed[assertionID] {
+		return domain.ErrSSOAssertionReplay
+	}
+	r.consumed[assertionID] = true
+	return nil
+}
+
 func newSSOHandler(t *testing.T) (*SSOHandler, *service.SSOService, *memUserRepo, *memSSOConnectionRepo) {
 	t.Helper()
 	ur := newMemUserRepo()
@@ -57,7 +71,7 @@ func newSSOHandler(t *testing.T) (*SSOHandler, *service.SSOService, *memUserRepo
 	}
 	// AuthService for session issuance on ACS.
 	auth := service.NewAuthService(ur, newMemSessionRepo(), &memTenants{tenants: map[uuid.UUID]*domain.Tenant{}}, time.Hour)
-	sso := service.NewSSOService(cr, ur, key, cert, "https://api.example.com")
+	sso := service.NewSSOService(cr, ur, newMemSSOReplayStore(), key, cert, "https://api.example.com")
 	h := NewSSOHandler(sso, auth, "http://dash.local", false)
 	return h, sso, ur, cr
 }

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -40,18 +41,26 @@ var commonEmailAttributes = []string{
 type SSOService struct {
 	connections port.SSOConnectionRepository
 	users       port.UserRepository
+	replay      port.SSOAssertionReplayStore
 	spKey       *rsa.PrivateKey
 	spCert      *x509.Certificate
 	baseURL     string // API public base, e.g. https://api.example.com
 }
 
+// defaultAssertionTTL bounds how long a consumed assertion is remembered when
+// the IdP omits Conditions/NotOnOrAfter. It only needs to outlast the window in
+// which a captured response could be replayed.
+const defaultAssertionTTL = 10 * time.Minute
+
 // NewSSOService builds the service. baseURL is the API's public base; SP
 // metadata/ACS URLs are derived per-tenant from it. key/cert are the SP signing
-// material (see LoadOrGenerateSPKeyPair).
-func NewSSOService(connections port.SSOConnectionRepository, users port.UserRepository, key *rsa.PrivateKey, cert *x509.Certificate, baseURL string) *SSOService {
+// material (see LoadOrGenerateSPKeyPair). replay records consumed assertion IDs
+// so a replayed SAMLResponse is rejected.
+func NewSSOService(connections port.SSOConnectionRepository, users port.UserRepository, replay port.SSOAssertionReplayStore, key *rsa.PrivateKey, cert *x509.Certificate, baseURL string) *SSOService {
 	return &SSOService{
 		connections: connections,
 		users:       users,
+		replay:      replay,
 		spKey:       key,
 		spCert:      cert,
 		baseURL:     strings.TrimRight(baseURL, "/"),
@@ -203,11 +212,38 @@ func (s *SSOService) ProcessACS(ctx context.Context, tenantID uuid.UUID, req *ht
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", domain.ErrSSOInvalidAssertion, err)
 	}
+	// Reject replays: an assertion may be consumed exactly once. crewjam validates
+	// the signature, audience and timing above but does NOT dedupe assertion IDs,
+	// so a captured, still-valid SAMLResponse could otherwise be replayed.
+	if err := s.consumeAssertion(ctx, tenantID, assertion); err != nil {
+		return nil, err
+	}
 	email := extractAssertionEmail(assertion)
 	if email == "" {
 		return nil, fmt.Errorf("%w: assertion carries no email", domain.ErrSSOInvalidAssertion)
 	}
 	return s.MapEmailToUser(ctx, tenantID, email)
+}
+
+// consumeAssertion records the assertion's ID in the replay store so it can be
+// used exactly once. A replay (ID already consumed) is reported as a generic
+// invalid assertion so the caller can't distinguish it. Assertions with no ID
+// are rejected outright — there is nothing to key replay protection on.
+func (s *SSOService) consumeAssertion(ctx context.Context, tenantID uuid.UUID, assertion *saml.Assertion) error {
+	if assertion.ID == "" {
+		return fmt.Errorf("%w: assertion has no ID", domain.ErrSSOInvalidAssertion)
+	}
+	expiresAt := time.Now().Add(defaultAssertionTTL)
+	if assertion.Conditions != nil && !assertion.Conditions.NotOnOrAfter.IsZero() {
+		expiresAt = assertion.Conditions.NotOnOrAfter
+	}
+	if err := s.replay.MarkConsumed(ctx, tenantID, assertion.ID, expiresAt); err != nil {
+		if errors.Is(err, domain.ErrSSOAssertionReplay) {
+			return fmt.Errorf("%w: assertion already consumed", domain.ErrSSOInvalidAssertion)
+		}
+		return err
+	}
+	return nil
 }
 
 // MapEmailToUser resolves a validated SSO email to an existing user in the

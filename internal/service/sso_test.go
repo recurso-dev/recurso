@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/crewjam/saml"
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
@@ -47,6 +49,23 @@ func (r *fakeSSOConnectionRepo) Delete(_ context.Context, tenantID uuid.UUID) er
 	return nil
 }
 
+// fakeSSOReplayStore is an in-memory port.SSOAssertionReplayStore for tests.
+type fakeSSOReplayStore struct {
+	consumed map[string]bool
+}
+
+func newFakeSSOReplayStore() *fakeSSOReplayStore {
+	return &fakeSSOReplayStore{consumed: map[string]bool{}}
+}
+
+func (r *fakeSSOReplayStore) MarkConsumed(_ context.Context, _ uuid.UUID, assertionID string, _ time.Time) error {
+	if r.consumed[assertionID] {
+		return domain.ErrSSOAssertionReplay
+	}
+	r.consumed[assertionID] = true
+	return nil
+}
+
 func newSSOTestService(t *testing.T) (*SSOService, *fakeUserRepo, *fakeSSOConnectionRepo) {
 	t.Helper()
 	ur := newFakeUserRepo()
@@ -55,7 +74,7 @@ func newSSOTestService(t *testing.T) (*SSOService, *fakeUserRepo, *fakeSSOConnec
 	if err != nil {
 		t.Fatalf("keypair: %v", err)
 	}
-	svc := NewSSOService(cr, ur, key, cert, "https://api.example.com")
+	svc := NewSSOService(cr, ur, newFakeSSOReplayStore(), key, cert, "https://api.example.com")
 	return svc, ur, cr
 }
 
@@ -218,5 +237,34 @@ func TestSSO_DeleteConnection(t *testing.T) {
 	_, _ = svc.UpsertConnection(context.Background(), tenantID, UpsertConnectionInput{IDPEntityID: "e"})
 	if err := svc.DeleteConnection(context.Background(), tenantID); err != nil {
 		t.Fatalf("delete: %v", err)
+	}
+}
+
+// TestSSO_AssertionReplayRejected covers the replay guard directly (past the
+// signature round-trip that ProcessACS does): the first consume of an assertion
+// ID succeeds, a second consume of the same ID is rejected as an invalid
+// assertion, and a fresh ID is accepted again.
+func TestSSO_AssertionReplayRejected(t *testing.T) {
+	svc, _, _ := newSSOTestService(t)
+	ctx := context.Background()
+	tenantID := uuid.New()
+
+	a1 := &saml.Assertion{ID: "_assertion-abc", Conditions: &saml.Conditions{NotOnOrAfter: time.Now().Add(5 * time.Minute)}}
+	if err := svc.consumeAssertion(ctx, tenantID, a1); err != nil {
+		t.Fatalf("first consume: %v", err)
+	}
+	if err := svc.consumeAssertion(ctx, tenantID, a1); !errors.Is(err, domain.ErrSSOInvalidAssertion) {
+		t.Fatalf("replay consume err = %v, want wraps ErrSSOInvalidAssertion", err)
+	}
+
+	// A different assertion ID is still accepted.
+	a2 := &saml.Assertion{ID: "_assertion-def"}
+	if err := svc.consumeAssertion(ctx, tenantID, a2); err != nil {
+		t.Fatalf("second (distinct) consume: %v", err)
+	}
+
+	// An assertion with no ID has nothing to key replay protection on → rejected.
+	if err := svc.consumeAssertion(ctx, tenantID, &saml.Assertion{}); !errors.Is(err, domain.ErrSSOInvalidAssertion) {
+		t.Fatalf("empty-ID consume err = %v, want wraps ErrSSOInvalidAssertion", err)
 	}
 }

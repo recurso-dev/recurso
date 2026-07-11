@@ -743,6 +743,7 @@ func main() {
 	// generated at boot (fine for bringing the SP up — a stable env pair is
 	// recommended before certifying against a real IdP).
 	ssoConnectionRepo := db.NewSSOConnectionRepository(database)
+	ssoReplayStore := db.NewSSOAssertionReplayRepository(database)
 	spKey, spCert, err := service.LoadOrGenerateSPKeyPair(os.Getenv("SAML_SP_KEY"), os.Getenv("SAML_SP_CERT"))
 	if err != nil {
 		log.Fatalf("failed to load SAML SP key/cert: %v", err)
@@ -750,7 +751,7 @@ func main() {
 	if os.Getenv("SAML_SP_KEY") == "" || os.Getenv("SAML_SP_CERT") == "" {
 		log.Println("SAML_SP_KEY/SAML_SP_CERT not set — generated an ephemeral self-signed SP certificate at boot")
 	}
-	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, spKey, spCert, oauthRedirectBase)
+	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, ssoReplayStore, spKey, spCert, oauthRedirectBase)
 	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
