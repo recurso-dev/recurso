@@ -52,6 +52,7 @@ import FinanceReconciliation from './pages/FinanceReconciliation'
 import RevenueRecognition from './pages/RevenueRecognition'
 import MRRWaterfall from './pages/MRRWaterfall'
 import InvoiceAging from './pages/InvoiceAging'
+import UnitEconomics from './pages/UnitEconomics'
 
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
@@ -112,6 +113,7 @@ function App() {
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />
                             <Route path="/finance/mrr-waterfall" element={<MRRWaterfall />} />
                             <Route path="/finance/invoice-aging" element={<InvoiceAging />} />
+                            <Route path="/finance/unit-economics" element={<UnitEconomics />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
                             <Route path="/quotes" element={<Quotes />} />

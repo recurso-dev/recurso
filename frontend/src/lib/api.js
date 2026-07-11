@@ -84,6 +84,8 @@ export const endpoints = {
     api.get('/analytics/mrr/waterfall', { params: { start, end } }),
   // Outstanding receivables bucketed by days past due.
   getInvoiceAging: () => api.get('/analytics/invoice-aging'),
+  // ARPA / ARPU / LTV.
+  getUnitEconomics: () => api.get('/analytics/unit-economics'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),

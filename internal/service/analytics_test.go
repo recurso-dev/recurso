@@ -691,3 +691,43 @@ func TestGetInvoiceAging_NormalizesAndOrders(t *testing.T) {
 		t.Errorf("reporting currency = %q, want USD", rep.ReportingCurrency)
 	}
 }
+
+// --- unit economics (ARPA / ARPU / LTV) ---
+
+// TestGetUnitEconomics: 3 subscriptions across 2 customers → ARPA = MRR/2,
+// ARPU = MRR/3. LTV needs history, so with no snapshot store it's unavailable.
+func TestGetUnitEconomics(t *testing.T) {
+	c1, c2 := uuid.New(), uuid.New()
+	p1 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 1000}}}
+	p2 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 2000}}}
+	p3 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 3000}}}
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{p1.ID: p1, p2.ID: p2, p3.ID: p3}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), CustomerID: c1, PlanID: p1.ID},
+		{ID: uuid.New(), CustomerID: c1, PlanID: p2.ID},
+		{ID: uuid.New(), CustomerID: c2, PlanID: p3.ID},
+	}}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
+
+	ue, err := svc.GetUnitEconomics(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetUnitEconomics: %v", err)
+	}
+	if ue.MRR != 6000 {
+		t.Errorf("MRR = %d, want 6000", ue.MRR)
+	}
+	if ue.ActiveSubscriptions != 3 || ue.ActiveCustomers != 2 {
+		t.Errorf("counts = %d subs / %d customers, want 3 / 2", ue.ActiveSubscriptions, ue.ActiveCustomers)
+	}
+	if ue.ARPA != 3000 {
+		t.Errorf("ARPA = %d, want 3000 (6000/2)", ue.ARPA)
+	}
+	if ue.ARPU != 2000 {
+		t.Errorf("ARPU = %d, want 2000 (6000/3)", ue.ARPU)
+	}
+	if ue.HasLTV || ue.LTV != 0 {
+		t.Errorf("LTV should be unavailable with no history, got HasLTV=%v LTV=%d", ue.HasLTV, ue.LTV)
+	}
+}

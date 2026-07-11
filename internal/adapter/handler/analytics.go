@@ -126,6 +126,23 @@ func (h *AnalyticsHandler) GetInvoiceAging(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": report})
 }
 
+// GetUnitEconomics returns ARPA, ARPU and LTV for the tenant.
+func (h *AnalyticsHandler) GetUnitEconomics(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+
+	ue, err := h.svc.GetUnitEconomics(ctx, tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to compute unit economics")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": ue})
+}
+
 func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

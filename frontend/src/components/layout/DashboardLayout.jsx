@@ -46,6 +46,7 @@ const PATH_TITLES = {
   "/finance/revenue-recognition": "Revenue Recognition",
   "/finance/mrr-waterfall": "MRR Waterfall",
   "/finance/invoice-aging": "Invoice Aging",
+  "/finance/unit-economics": "Unit Economics",
 };
 
 function usePageTitle() {
