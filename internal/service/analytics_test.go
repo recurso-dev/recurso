@@ -566,6 +566,13 @@ func TestGetMRRWaterfall_Components(t *testing.T) {
 	if !wf.HasStartHistory {
 		t.Error("HasStartHistory = false, want true (a snapshot exists at the start)")
 	}
+	// GDR = (4000 - 400 - 1000)/4000 = 65%; NDR = (4000 + 500 - 400 - 1000)/4000 = 77.5%.
+	if wf.GrossDollarRetention < 64.99 || wf.GrossDollarRetention > 65.01 {
+		t.Errorf("GrossDollarRetention = %.2f, want 65.0", wf.GrossDollarRetention)
+	}
+	if wf.NetDollarRetention < 77.49 || wf.NetDollarRetention > 77.51 {
+		t.Errorf("NetDollarRetention = %.2f, want 77.5", wf.NetDollarRetention)
+	}
 	// The waterfall identity must close.
 	if id := wf.StartingMRR + wf.New + wf.Expansion + wf.Reactivation - wf.Contraction - wf.Churned; id != wf.EndingMRR {
 		t.Errorf("identity broke: %d != EndingMRR %d", id, wf.EndingMRR)

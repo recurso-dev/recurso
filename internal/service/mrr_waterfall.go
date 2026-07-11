@@ -176,5 +176,12 @@ func (s *AnalyticsService) GetMRRWaterfall(ctx context.Context, tenantID uuid.UU
 		}
 	}
 
+	// Retention over the starting cohort (excludes New and Reactivation).
+	if wf.StartingMRR > 0 {
+		s := float64(wf.StartingMRR)
+		wf.GrossDollarRetention = float64(wf.StartingMRR-wf.Contraction-wf.Churned) / s * 100
+		wf.NetDollarRetention = float64(wf.StartingMRR+wf.Expansion-wf.Contraction-wf.Churned) / s * 100
+	}
+
 	return wf, nil
 }

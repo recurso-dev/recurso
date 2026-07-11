@@ -35,6 +35,16 @@ type MRRWaterfall struct {
 	Reactivation      int64     `json:"reactivation"`
 	EndingMRR         int64     `json:"ending_mrr"`
 	ReportingCurrency string    `json:"reporting_currency"`
+	// NetDollarRetention and GrossDollarRetention are percentages of the starting
+	// MRR retained from the existing customer base over the period (New and
+	// Reactivation are excluded — they are not part of the starting cohort):
+	//
+	//	GDR = (Starting - Contraction - Churned) / Starting * 100   (≤ 100)
+	//	NDR = (Starting + Expansion - Contraction - Churned) / Starting * 100
+	//
+	// Both are 0 when StartingMRR is 0 (no base to retain).
+	NetDollarRetention   float64 `json:"net_dollar_retention"`
+	GrossDollarRetention float64 `json:"gross_dollar_retention"`
 	// HasStartHistory is false when no snapshot exists on or before StartDate —
 	// then StartingMRR is 0 and every ending subscription counts as New, so the
 	// UI can warn that history only begins partway through the range.

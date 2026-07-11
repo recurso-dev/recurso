@@ -122,6 +122,21 @@ export default function MRRWaterfall() {
               <StatCard label="Ending MRR" value={money(wf.ending_mrr)} hint={`as of ${wf.end_date ? wf.end_date.slice(0, 10) : end}`} />
             </div>
 
+            {wf.starting_mrr > 0 && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <StatCard
+                  label="Net Dollar Retention"
+                  value={`${(wf.net_dollar_retention || 0).toFixed(1)}%`}
+                  hint="Revenue kept from existing customers, expansion included"
+                />
+                <StatCard
+                  label="Gross Dollar Retention"
+                  value={`${(wf.gross_dollar_retention || 0).toFixed(1)}%`}
+                  hint="Revenue kept before expansion — churn &amp; contraction only"
+                />
+              </div>
+            )}
+
             {!hasData ? (
               <Card className="overflow-hidden">
                 <EmptyState
