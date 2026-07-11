@@ -242,6 +242,30 @@ const mfaLoginTokenTTL = 5 * time.Minute
 // session (no MFA) or, when the user has MFA enabled, returns a short-lived
 // single-use challenge token WITHOUT opening a session. It never reveals whether
 // the email or the password was wrong.
+// Per-account lockout thresholds (ENG-151): after this many consecutive failed
+// password/MFA attempts the account is locked for lockoutDuration, bounding
+// credential-stuffing spread across IPs that evades the per-IP rate limit.
+const (
+	maxFailedLogins = 5
+	lockoutDuration = 15 * time.Minute
+)
+
+// registerFailedLogin records a failed password/MFA attempt and logs when the
+// attempt trips the lock. Best-effort — a bookkeeping write failure must not
+// turn a wrong password into a 500.
+func (s *AuthService) registerFailedLogin(ctx context.Context, user *domain.User) {
+	if err := s.users.RegisterFailedLogin(ctx, user.ID, maxFailedLogins, lockoutDuration); err != nil {
+		if s.logger != nil {
+			s.logger.Error("failed to record failed login attempt", "user_id", user.ID, "error", err)
+		}
+		return
+	}
+	if user.FailedLoginAttempts+1 >= maxFailedLogins && s.logger != nil {
+		s.logger.Warn("account locked after repeated failed auth attempts",
+			"user_id", user.ID, "email", user.Email, "lock_minutes", int(lockoutDuration.Minutes()))
+	}
+}
+
 func (s *AuthService) Login(ctx context.Context, email, password, userAgent string) (*LoginResult, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
@@ -253,7 +277,14 @@ func (s *AuthService) Login(ctx context.Context, email, password, userAgent stri
 		return nil, domain.ErrInvalidCredentials
 	}
 
+	// Per-account lockout (ENG-151): while locked, reject before checking the
+	// password so a credential-stuffing burst can't keep guessing.
+	if user.IsLocked(time.Now()) {
+		return nil, domain.ErrAccountLocked
+	}
+
 	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)); err != nil {
+		s.registerFailedLogin(ctx, user)
 		return nil, domain.ErrInvalidCredentials
 	}
 
@@ -276,6 +307,9 @@ func (s *AuthService) Login(ctx context.Context, email, password, userAgent stri
 		}
 		return &LoginResult{User: user, MFARequired: true, MFAToken: raw}, nil
 	}
+
+	// Full login success (no MFA required) — reset the lockout counter.
+	_ = s.users.ClearFailedLogins(ctx, user.ID)
 
 	tenant, err := s.tenants.GetAccount(ctx, user.TenantID)
 	if err != nil {

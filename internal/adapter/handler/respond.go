@@ -24,6 +24,7 @@ const (
 	codeNotFound           = httperr.CodeNotFound
 	codeConflict           = httperr.CodeConflict
 	codeInternalError      = httperr.CodeInternalError
+	codeRateLimited        = httperr.CodeRateLimited
 	codeInvoiceAlreadyPaid = httperr.CodeInvoiceAlreadyPaid
 )
 

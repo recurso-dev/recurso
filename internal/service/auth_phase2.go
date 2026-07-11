@@ -285,9 +285,19 @@ func (s *AuthService) LoginMFA(ctx context.Context, rawMFAToken, code, userAgent
 		return nil, domain.ErrInvalidMFAToken
 	}
 
+	// Per-account lockout also covers the MFA step, so a stolen password can't be
+	// paired with unlimited TOTP guesses (ENG-151).
+	if user.IsLocked(time.Now()) {
+		return nil, domain.ErrAccountLocked
+	}
+
 	if !s.verifyMFACode(ctx, user, code) {
+		s.registerFailedLogin(ctx, user)
 		return nil, domain.ErrInvalidMFACode
 	}
+
+	// Full login success — reset the lockout counter.
+	_ = s.users.ClearFailedLogins(ctx, user.ID)
 
 	// Consume the single-use challenge token before minting a session.
 	if err := s.mfaTokens.MarkUsed(ctx, tok.ID); err != nil {

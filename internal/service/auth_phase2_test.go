@@ -427,6 +427,47 @@ func TestLoginMFA_ValidTOTPOpensSession(t *testing.T) {
 	}
 }
 
+// TestLogin_PerAccountLockout proves ENG-151: after maxFailedLogins wrong
+// passwords the account locks, and even the CORRECT password is then refused
+// with ErrAccountLocked until the window passes.
+func TestLogin_PerAccountLockout(t *testing.T) {
+	svc, _, _, _, _, _ := newPhase2Auth()
+	_, _ = svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+
+	for i := 0; i < maxFailedLogins; i++ {
+		if _, err := svc.Login(context.Background(), "a@b.com", "wrongpass", "ua"); !errors.Is(err, domain.ErrInvalidCredentials) {
+			t.Fatalf("attempt %d err = %v, want ErrInvalidCredentials", i+1, err)
+		}
+	}
+	// Correct password is now rejected — the account is locked.
+	if _, err := svc.Login(context.Background(), "a@b.com", "supersecret", "ua"); !errors.Is(err, domain.ErrAccountLocked) {
+		t.Fatalf("after %d failures, correct password err = %v, want ErrAccountLocked", maxFailedLogins, err)
+	}
+}
+
+// TestLogin_FailuresResetOnSuccess proves the counter resets on a successful
+// login, so failures don't accumulate forever across sessions.
+func TestLogin_FailuresResetOnSuccess(t *testing.T) {
+	svc, _, _, _, _, _ := newPhase2Auth()
+	_, _ = svc.Register(context.Background(), "Acme", "Bob", "b@b.com", "supersecret", "")
+
+	// Below-threshold failures, then a success clears the counter.
+	for i := 0; i < maxFailedLogins-2; i++ {
+		_, _ = svc.Login(context.Background(), "b@b.com", "wrongpass", "ua")
+	}
+	if _, err := svc.Login(context.Background(), "b@b.com", "supersecret", "ua"); err != nil {
+		t.Fatalf("correct login should succeed: %v", err)
+	}
+	// After the reset, another (maxFailedLogins-1) failures still shouldn't lock
+	// (would have if the earlier failures had persisted).
+	for i := 0; i < maxFailedLogins-1; i++ {
+		_, _ = svc.Login(context.Background(), "b@b.com", "wrongpass", "ua")
+	}
+	if _, err := svc.Login(context.Background(), "b@b.com", "supersecret", "ua"); err != nil {
+		t.Fatalf("counter should have reset; correct login should still succeed: %v", err)
+	}
+}
+
 // TestLoginMFA_TOTPSingleUse_ReplayRejected proves ENG-151: a TOTP code, once
 // used to complete a login, cannot be replayed on a fresh challenge within its
 // validity window — the consumed timestep is remembered and rejected.

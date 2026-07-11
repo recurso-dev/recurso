@@ -105,6 +105,27 @@ func (r *fakeUserRepo) SetMFALastTimestep(_ context.Context, tenantID, id uuid.U
 	return nil
 }
 
+func (r *fakeUserRepo) RegisterFailedLogin(_ context.Context, id uuid.UUID, lockThreshold int, lockFor time.Duration) error {
+	u, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.FailedLoginAttempts++
+	if u.FailedLoginAttempts >= lockThreshold {
+		t := time.Now().Add(lockFor)
+		u.LockedUntil = &t
+	}
+	return nil
+}
+
+func (r *fakeUserRepo) ClearFailedLogins(_ context.Context, id uuid.UUID) error {
+	if u, ok := r.users[id]; ok {
+		u.FailedLoginAttempts = 0
+		u.LockedUntil = nil
+	}
+	return nil
+}
+
 func (r *fakeUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error {
 	u, ok := r.users[id]
 	if !ok || u.TenantID != tenantID {

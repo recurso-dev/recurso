@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
@@ -38,6 +39,11 @@ type UserRepository interface {
 	// SetMFALastTimestep records the last consumed TOTP timestep for replay
 	// protection; the write is monotonic (never lowers the stored value).
 	SetMFALastTimestep(ctx context.Context, tenantID, id uuid.UUID, timestep int64) error
+	// RegisterFailedLogin increments the failed-attempt counter and locks the
+	// account for lockFor once it reaches lockThreshold (per-account lockout).
+	RegisterFailedLogin(ctx context.Context, id uuid.UUID, lockThreshold int, lockFor time.Duration) error
+	// ClearFailedLogins resets the counter and lock on a successful login.
+	ClearFailedLogins(ctx context.Context, id uuid.UUID) error
 	// ClearMFA disables MFA and wipes the stored secret.
 	ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error
 }

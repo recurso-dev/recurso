@@ -2240,6 +2240,33 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /portal/api/invoices/{id}/pdf:
+    get:
+      operationId: getPortalInvoicePDF
+      tags: [Customer Portal]
+      summary: Download the logged-in customer's own invoice PDF
+      description: >
+        Returns a print-ready HTML rendering of an invoice belonging to the
+        authenticated portal customer. Scoped to the customer's own invoices —
+        another customer's invoice id returns 404 (never confirmed to exist).
+      security:
+        - portalSession: []
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Print-ready invoice document.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /portal/api/redeem:
     post:
       operationId: portalRedeemGift

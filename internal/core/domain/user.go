@@ -49,9 +49,17 @@ type User struct {
 	MFASecret string `json:"-" db:"mfa_secret"`
 	// MFALastTimestep is the last consumed TOTP timestep (Unix-time / 30). A code
 	// whose timestep is <= this value is a replay and is rejected (ENG-151).
-	MFALastTimestep int64     `json:"-" db:"mfa_last_timestep"`
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
+	MFALastTimestep int64 `json:"-" db:"mfa_last_timestep"`
+	// FailedLoginAttempts / LockedUntil back the per-account lockout (ENG-151).
+	FailedLoginAttempts int        `json:"-" db:"failed_login_attempts"`
+	LockedUntil         *time.Time `json:"-" db:"locked_until"`
+	CreatedAt           time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at" db:"updated_at"`
+}
+
+// IsLocked reports whether the account is currently within a lockout window.
+func (u *User) IsLocked(now time.Time) bool {
+	return u.LockedUntil != nil && u.LockedUntil.After(now)
 }
 
 // Session is an opaque, server-side login session. Only the SHA-256 hash of the
@@ -109,11 +117,14 @@ var (
 	ErrUserNotFound       = errors.New("user not found")
 	ErrDuplicateEmail     = errors.New("a user with that email already exists")
 	ErrInvalidCredentials = errors.New("invalid credentials")
-	ErrSessionNotFound    = errors.New("session not found or expired")
-	ErrLastOwner          = errors.New("cannot remove or demote the last owner")
-	ErrSelfLockout        = errors.New("you cannot remove your own account")
-	ErrWeakPassword       = errors.New("password must be at least 8 characters")
-	ErrInvalidRole        = errors.New("role must be one of owner, admin, member")
+	// ErrAccountLocked is returned when an account is temporarily locked after
+	// too many failed login/MFA attempts (ENG-151).
+	ErrAccountLocked   = errors.New("account temporarily locked due to too many failed attempts")
+	ErrSessionNotFound = errors.New("session not found or expired")
+	ErrLastOwner       = errors.New("cannot remove or demote the last owner")
+	ErrSelfLockout     = errors.New("you cannot remove your own account")
+	ErrWeakPassword    = errors.New("password must be at least 8 characters")
+	ErrInvalidRole     = errors.New("role must be one of owner, admin, member")
 
 	// Password reset. Deliberately coarse so a caller cannot tell a bad token
 	// from an expired or already-used one.

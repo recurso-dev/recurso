@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/swapnull-in/recur-so/internal/core/domain"
@@ -41,17 +42,21 @@ func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var u domain.User
 	var role string
 	var mfaSecret sql.NullString
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.MFALastTimestep, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var lockedUntil sql.NullTime
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.MFALastTimestep, &u.FailedLoginAttempts, &lockedUntil, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	u.Role = domain.Role(role)
 	if mfaSecret.Valid {
 		u.MFASecret = mfaSecret.String
 	}
+	if lockedUntil.Valid {
+		u.LockedUntil = &lockedUntil.Time
+	}
 	return &u, nil
 }
 
-const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, mfa_last_timestep, created_at, updated_at`
+const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, mfa_last_timestep, failed_login_attempts, locked_until, created_at, updated_at`
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT ` + userSelectCols + ` FROM users WHERE lower(email) = lower($1)`
@@ -194,6 +199,32 @@ func (r *UserRepository) SetMFALastTimestep(ctx context.Context, tenantID, id uu
 		 WHERE id = $2 AND tenant_id = $3 AND $1 > mfa_last_timestep`,
 		timestep, id, tenantID,
 	)
+	return err
+}
+
+// RegisterFailedLogin atomically increments the failed-attempt counter and, once
+// it reaches lockThreshold, sets a lock window of lockFor (ENG-151). Doing the
+// increment and lock in one UPDATE avoids a read-modify-write race under a burst
+// of concurrent attempts. Keyed by id alone — login carries no tenant.
+func (r *UserRepository) RegisterFailedLogin(ctx context.Context, id uuid.UUID, lockThreshold int, lockFor time.Duration) error {
+	_, err := r.db.ExecContext(ctx, `
+		UPDATE users
+		SET failed_login_attempts = failed_login_attempts + 1,
+		    locked_until = CASE
+		        WHEN failed_login_attempts + 1 >= $2 THEN NOW() + make_interval(secs => $3)
+		        ELSE locked_until
+		    END,
+		    updated_at = NOW()
+		WHERE id = $1`,
+		id, lockThreshold, lockFor.Seconds(),
+	)
+	return err
+}
+
+// ClearFailedLogins resets the counter and lock on a fully successful login.
+func (r *UserRepository) ClearFailedLogins(ctx context.Context, id uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE users SET failed_login_attempts = 0, locked_until = NULL, updated_at = NOW() WHERE id = $1`, id)
 	return err
 }
 

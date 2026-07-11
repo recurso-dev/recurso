@@ -117,6 +117,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	res, err := h.auth.Login(c.Request.Context(), req.Email, req.Password, c.GetHeader("User-Agent"))
 	if err != nil {
+		if errors.Is(err, domain.ErrAccountLocked) {
+			respondError(c, http.StatusTooManyRequests, codeRateLimited, "too many failed attempts; try again later")
+			return
+		}
 		// Generic message for BOTH unknown-email and wrong-password.
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid credentials")
 		return
@@ -157,6 +161,10 @@ func (h *AuthHandler) LoginMFA(c *gin.Context) {
 
 	res, err := h.auth.LoginMFA(c.Request.Context(), req.MFAToken, req.Code, c.GetHeader("User-Agent"))
 	if err != nil {
+		if errors.Is(err, domain.ErrAccountLocked) {
+			respondError(c, http.StatusTooManyRequests, codeRateLimited, "too many failed attempts; try again later")
+			return
+		}
 		// Generic: never distinguish a bad code from an expired/used challenge.
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid credentials")
 		return
