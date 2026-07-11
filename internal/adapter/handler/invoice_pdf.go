@@ -90,3 +90,63 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 func (h *InvoicePDFHandler) PreviewHTML(c *gin.Context) {
 	h.DownloadPDF(c)
 }
+
+// PortalDownloadPDF renders an invoice PDF for the authenticated portal customer
+// (ENG-152). It is scoped to the customer's OWN invoices — the ownership check
+// (inv.CustomerID == portal_customer_id) is what makes a public, token-authed
+// route safe to expose, since the tenant-scoped DownloadPDF can't run without a
+// dashboard session/API key.
+// GET /portal/api/invoices/:id/pdf
+func (h *InvoicePDFHandler) PortalDownloadPDF(c *gin.Context) {
+	cidVal, exists := c.Get("portal_customer_id")
+	customerID, ok := cidVal.(uuid.UUID)
+	if !exists || !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "not authenticated")
+		return
+	}
+
+	invoiceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+
+	ctx := c.Request.Context()
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
+		return
+	}
+	// A missing invoice and an invoice belonging to another customer return the
+	// same 404 — never reveal that an id exists but isn't yours.
+	if inv == nil || inv.CustomerID != customerID {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+
+	var customer *domain.Customer
+	if h.customerRepo != nil {
+		customer, err = h.customerRepo.GetByIDPublic(ctx, inv.CustomerID)
+		if err != nil || customer == nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice customer")
+			return
+		}
+	}
+
+	data := h.pdfService.BuildInvoiceData(inv, customer)
+	if data.IRN != "" {
+		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
+			data.QRCodeData = qr
+		}
+	}
+
+	html, err := h.pdfService.GenerateInvoiceHTML(data)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to generate invoice")
+		return
+	}
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Header("Content-Disposition", "inline; filename=\"invoice-"+data.InvoiceNumber+".html\"")
+	c.String(http.StatusOK, html)
+}

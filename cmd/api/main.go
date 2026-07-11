@@ -998,6 +998,9 @@ func main() {
 	{
 		portal.GET("/profile", portalAPIHandler.GetProfile)
 		portal.GET("/invoices", portalAPIHandler.GetInvoices)
+		// Customer-scoped invoice PDF (ownership-checked in the handler) so the
+		// portal's Download-PDF button has a public, token-authed endpoint (ENG-152).
+		portal.GET("/invoices/:id/pdf", pdfHandler.PortalDownloadPDF)
 		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
 		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
 		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)

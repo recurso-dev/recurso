@@ -75,6 +75,24 @@ const PortalDashboard = () => {
     "Content-Type": "application/json",
   };
 
+  // Open the invoice PDF (ENG-152). Fetches the token-authed portal endpoint and
+  // opens the rendered invoice in a new tab.
+  const handleDownloadPdf = async (invoice) => {
+    try {
+      const res = await fetch(
+        `${API_BASE}/portal/api/invoices/${invoice.id}/pdf`,
+        { headers: { "X-Portal-Session": sessionToken } }
+      );
+      if (!res.ok) throw new Error("Couldn't open the invoice. Please try again.");
+      const html = await res.text();
+      const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+      window.open(url, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   useEffect(() => {
     if (!sessionToken) {
       navigate("/portal/login");
@@ -434,6 +452,7 @@ const PortalDashboard = () => {
                             </button>
                             <button
                               type="button"
+                              onClick={() => handleDownloadPdf(invoice)}
                               className="inline-flex items-center gap-1 text-sm font-medium text-primary transition-colors hover:text-primary/80"
                             >
                               <Download className="h-3.5 w-3.5" />

@@ -39,7 +39,10 @@ func NewTaxEngineWithSalesTaxProvider(country, state string, salesTax SalesTaxPr
 		// UK uses VAT but post-Brexit has its own rules
 		return NewEUVATEngine(country)
 	default:
-		// Default to GST for unsupported countries (India-focused product)
-		return NewGSTEngine(state)
+		// Unsupported jurisdiction: charge no tax rather than misapplying India
+		// GST to (say) a Brazilian or Japanese customer (ENG-152). The seller
+		// isn't registered to collect there; a 0% engine with an audit note is
+		// the correct, safe default.
+		return NewNoTaxEngine(country)
 	}
 }
