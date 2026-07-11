@@ -418,6 +418,8 @@ func main() {
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
 	analyticsService.SetFX(fxProvider, fxFallback, reportingCurrency)
 	analyticsService.SetTenantLookup(tenantRepo)
+	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
+	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 
 	// GenAI (P48)
 	openAIKey := os.Getenv("OPENAI_API_KEY")
@@ -612,6 +614,12 @@ func main() {
 	reconciliationScheduler.Start()
 	defer reconciliationScheduler.Stop()
 
+	// MRR Snapshot Scheduler (daily) — captures per-subscription MRR history so
+	// the MRR waterfall (new/expansion/contraction/churned) has movement to diff.
+	mrrSnapshotScheduler := scheduler.NewMRRSnapshotScheduler(tenantRepo, analyticsService, locker)
+	mrrSnapshotScheduler.Start()
+	defer mrrSnapshotScheduler.Stop()
+
 	// Operational alerting (solo-operator safety net) — POSTs to
 	// ALERT_WEBHOOK_URL on component state transitions; no-op when unset.
 	// See docs/incident-runbook.md.
@@ -663,6 +671,7 @@ func main() {
 		cardExpiryScheduler.Stop()
 		mandateDebitScheduler.Stop()
 		reconciliationScheduler.Stop()
+		mrrSnapshotScheduler.Stop()
 		healthAlertScheduler.Stop()
 	}
 
@@ -1059,6 +1068,7 @@ func main() {
 		analytics.Use(middleware.CacheMiddleware(rdb, 5*time.Minute))
 		{
 			analytics.GET("/mrr", analyticsHandler.GetMRR)
+			analytics.GET("/mrr/waterfall", analyticsHandler.GetMRRWaterfall)
 			analytics.GET("/usage", analyticsHandler.GetUsageStats)
 			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)

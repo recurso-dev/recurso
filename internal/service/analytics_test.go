@@ -462,3 +462,169 @@ func TestGetMRR_NormalizesBillingInterval(t *testing.T) {
 		t.Errorf("ARR = %d, want 24000 (2000 MRR × 12)", got.ARR)
 	}
 }
+
+// --- MRR snapshot + waterfall ---
+
+// fakeMRRSnapshotStore is an in-memory MRRSnapshotStore for tests.
+type fakeMRRSnapshotStore struct{ rows []domain.MRRSnapshot }
+
+func (f *fakeMRRSnapshotStore) UpsertSnapshots(_ context.Context, snaps []domain.MRRSnapshot) error {
+	for _, s := range snaps {
+		replaced := false
+		for i, r := range f.rows {
+			if r.TenantID == s.TenantID && r.SubscriptionID == s.SubscriptionID && r.SnapshotDate.Equal(s.SnapshotDate) {
+				f.rows[i] = s
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			f.rows = append(f.rows, s)
+		}
+	}
+	return nil
+}
+
+func (f *fakeMRRSnapshotStore) ResolveSnapshotDate(_ context.Context, tenantID uuid.UUID, onOrBefore time.Time) (time.Time, bool, error) {
+	var best time.Time
+	found := false
+	for _, r := range f.rows {
+		if r.TenantID == tenantID && !r.SnapshotDate.After(onOrBefore) && (!found || r.SnapshotDate.After(best)) {
+			best, found = r.SnapshotDate, true
+		}
+	}
+	return best, found, nil
+}
+
+func (f *fakeMRRSnapshotStore) GetSnapshotsOn(_ context.Context, tenantID uuid.UUID, date time.Time) ([]domain.MRRSnapshot, error) {
+	var out []domain.MRRSnapshot
+	for _, r := range f.rows {
+		if r.TenantID == tenantID && r.SnapshotDate.Equal(date) {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeMRRSnapshotStore) SubscriptionIDsSeenBefore(_ context.Context, tenantID uuid.UUID, date time.Time) (map[uuid.UUID]bool, error) {
+	m := map[uuid.UUID]bool{}
+	for _, r := range f.rows {
+		if r.TenantID == tenantID && r.SnapshotDate.Before(date) {
+			m[r.SubscriptionID] = true
+		}
+	}
+	return m, nil
+}
+
+func snap(tenant, sub uuid.UUID, date time.Time, amount int64) domain.MRRSnapshot {
+	return domain.MRRSnapshot{TenantID: tenant, SubscriptionID: sub, SnapshotDate: date, MRRAmount: amount, Currency: "USD"}
+}
+
+// TestGetMRRWaterfall_Components covers every movement type in one period.
+func TestGetMRRWaterfall_Components(t *testing.T) {
+	tenant := uuid.New()
+	d0 := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC) // before the window (for reactivation)
+	d1 := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC) // start
+	d2 := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC) // end
+
+	subA, subB, subC, subD, subE, subF := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	store := &fakeMRRSnapshotStore{rows: []domain.MRRSnapshot{
+		snap(tenant, subA, d1, 1000), snap(tenant, subA, d2, 1000), // unchanged
+		snap(tenant, subB, d1, 1000), snap(tenant, subB, d2, 1500), // expansion +500
+		snap(tenant, subC, d1, 1000), snap(tenant, subC, d2, 600), // contraction -400
+		snap(tenant, subD, d1, 1000),                             // churned -1000 (absent at d2)
+		snap(tenant, subE, d2, 2000),                             // new +2000 (never seen before)
+		snap(tenant, subF, d0, 800), snap(tenant, subF, d2, 800), // reactivation +800 (seen at d0, gone at d1)
+	}}
+
+	svc := NewAnalyticsService(nil, nil, nil, nil)
+	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
+	svc.SetSnapshotStore(store)
+
+	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, d1, d2)
+	if err != nil {
+		t.Fatalf("GetMRRWaterfall: %v", err)
+	}
+	checks := []struct {
+		name string
+		got  int64
+		want int64
+	}{
+		{"StartingMRR", wf.StartingMRR, 4000},
+		{"EndingMRR", wf.EndingMRR, 5900},
+		{"New", wf.New, 2000},
+		{"Expansion", wf.Expansion, 500},
+		{"Contraction", wf.Contraction, 400},
+		{"Churned", wf.Churned, 1000},
+		{"Reactivation", wf.Reactivation, 800},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s = %d, want %d", c.name, c.got, c.want)
+		}
+	}
+	if !wf.HasStartHistory {
+		t.Error("HasStartHistory = false, want true (a snapshot exists at the start)")
+	}
+	// The waterfall identity must close.
+	if id := wf.StartingMRR + wf.New + wf.Expansion + wf.Reactivation - wf.Contraction - wf.Churned; id != wf.EndingMRR {
+		t.Errorf("identity broke: %d != EndingMRR %d", id, wf.EndingMRR)
+	}
+}
+
+// TestGetMRRWaterfall_NoStartHistory: with no snapshot at/before the start,
+// everything present at the end is New and HasStartHistory is false.
+func TestGetMRRWaterfall_NoStartHistory(t *testing.T) {
+	tenant := uuid.New()
+	d2 := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	sub := uuid.New()
+	store := &fakeMRRSnapshotStore{rows: []domain.MRRSnapshot{snap(tenant, sub, d2, 3000)}}
+
+	svc := NewAnalyticsService(nil, nil, nil, nil)
+	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
+	svc.SetSnapshotStore(store)
+
+	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, d2.AddDate(0, -1, 0), d2)
+	if err != nil {
+		t.Fatalf("GetMRRWaterfall: %v", err)
+	}
+	if wf.HasStartHistory {
+		t.Error("HasStartHistory = true, want false (no snapshot before end)")
+	}
+	if wf.New != 3000 || wf.StartingMRR != 0 || wf.EndingMRR != 3000 {
+		t.Errorf("got New=%d Starting=%d Ending=%d, want 3000/0/3000", wf.New, wf.StartingMRR, wf.EndingMRR)
+	}
+}
+
+// TestCaptureMRRSnapshot writes one snapshot per active subscription, at the
+// monthly-normalized amount (annual plan → /12).
+func TestCaptureMRRSnapshot(t *testing.T) {
+	annual := &domain.Plan{ID: uuid.New(), IntervalUnit: domain.IntervalYear, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 12000}}} // → 1000/mo
+	monthly := &domain.Plan{ID: uuid.New(), IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 1000}}} // → 1000/mo
+	subRepo, planRepo := mrrFixture(annual, monthly)
+	store := &fakeMRRSnapshotStore{}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
+	svc.SetSnapshotStore(store)
+
+	n, err := svc.CaptureMRRSnapshot(context.Background(), uuid.New(), time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("CaptureMRRSnapshot: %v", err)
+	}
+	if n != 2 || len(store.rows) != 2 {
+		t.Fatalf("captured %d snapshots (store has %d), want 2", n, len(store.rows))
+	}
+	var total int64
+	for _, r := range store.rows {
+		total += r.MRRAmount
+		if r.SnapshotDate.Hour() != 0 {
+			t.Errorf("snapshot date not normalized to day: %v", r.SnapshotDate)
+		}
+	}
+	if total != 2000 {
+		t.Errorf("captured MRR total = %d, want 2000 (both plans normalize to 1000/mo)", total)
+	}
+}

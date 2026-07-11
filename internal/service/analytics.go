@@ -55,6 +55,8 @@ type AnalyticsService struct {
 	fxFallback        port.ExchangeRateProvider
 	tenantLookup      TenantLookup
 	reportingCurrency string // env-level default when the tenant has no base currency
+
+	snapshots MRRSnapshotStore // optional; enables MRR snapshot capture + waterfall
 }
 
 func NewAnalyticsService(
@@ -85,6 +87,12 @@ func (s *AnalyticsService) SetFX(provider, fallback port.ExchangeRateProvider, r
 // SetTenantLookup enables per-tenant reporting currency (tenant.BaseCurrency).
 func (s *AnalyticsService) SetTenantLookup(l TenantLookup) {
 	s.tenantLookup = l
+}
+
+// SetSnapshotStore wires the per-subscription MRR history used by the daily
+// capture job and the MRR waterfall.
+func (s *AnalyticsService) SetSnapshotStore(store MRRSnapshotStore) {
+	s.snapshots = store
 }
 
 func (s *AnalyticsService) GetUsageStats(ctx context.Context, tenantID uuid.UUID) ([]*domain.UsageStats, error) {

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -65,6 +66,47 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, mrr)
+}
+
+// GetMRRWaterfall returns the MRR movement breakdown between two dates
+// (?start=YYYY-MM-DD&end=YYYY-MM-DD; default = the trailing month).
+func (h *AnalyticsHandler) GetMRRWaterfall(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+
+	end := time.Now()
+	start := end.AddDate(0, -1, 0) // default: trailing month
+	if v := c.Query("end"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid end date (want YYYY-MM-DD)")
+			return
+		}
+		end = t
+	}
+	if v := c.Query("start"); v != "" {
+		t, err := time.Parse("2006-01-02", v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid start date (want YYYY-MM-DD)")
+			return
+		}
+		start = t
+	}
+	if !start.Before(end) {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "start must be before end")
+		return
+	}
+
+	wf, err := h.svc.GetMRRWaterfall(ctx, tenantID, start, end)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to compute MRR waterfall")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": wf})
 }
 
 func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
