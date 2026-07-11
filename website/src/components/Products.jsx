@@ -17,6 +17,7 @@ const modules = [
         bullets: [
             'Trials, upgrades, cancellations, proration',
             'Usage metering & metered billing',
+            'Entitlements & feature gating',
             'Coupons, quotes & credit notes',
         ],
     },
@@ -46,8 +47,9 @@ const modules = [
         blurb: 'An immutable double-entry ledger your accountant can actually sign off on.',
         bullets: [
             'Double-entry ledger on TigerBeetle',
-            'Revenue recognition',
+            'Revenue recognition & deferred revenue',
             'QuickBooks/Xero sync & daily reconciliation',
+            'Ask-your-data analytics (natural language → SQL)',
         ],
     },
     {
@@ -66,7 +68,7 @@ const modules = [
         blurb: 'A developer platform first: everything is an API with events you can trust.',
         bullets: [
             'REST API + OpenAPI 3.1 at /openapi.json',
-            'Typed Node SDK — 15 resources, 56 methods',
+            'Official SDKs — Go, Node & Python',
             'Signed webhooks & event delivery',
         ],
     },
@@ -87,7 +89,7 @@ const Products = () => (
                     </p>
                 </div>
                 <a
-                    href="https://docs.recurso.dev/concepts"
+                    href="https://swapnull.mintlify.site/concepts"
                     target="_blank"
                     rel="noreferrer"
                     className="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-brand hover:text-brand-light"

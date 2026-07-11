@@ -38,7 +38,7 @@ const plans = [
             { text: 'Custom SLA', included: false },
         ],
         cta: 'Join Cloud waitlist',
-        ctaLink: 'mailto:cloud@recurso.dev',
+        ctaLink: 'mailto:swapnil.go20@gmail.com',
         highlighted: true,
     },
     {
@@ -57,7 +57,7 @@ const plans = [
             { text: 'Custom development', included: true },
         ],
         cta: 'Contact Sales',
-        ctaLink: 'mailto:sales@recurso.dev',
+        ctaLink: 'mailto:swapnil.go20@gmail.com',
         highlighted: false,
     },
 ]
@@ -134,7 +134,7 @@ const Pricing = () => (
 
             <p className="mt-12 text-center text-sm text-fg-subtle">
                 Have questions?{' '}
-                <a href="mailto:sales@recurso.dev" className="font-medium text-brand hover:text-brand-light">
+                <a href="mailto:swapnil.go20@gmail.com" className="font-medium text-brand hover:text-brand-light">
                     Contact us
                 </a>
             </p>

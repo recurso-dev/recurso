@@ -46,7 +46,7 @@ const Hero = () => (
                         <Github className="h-4 w-4" />
                         Start self-hosting
                     </a>
-                    <a href="mailto:cloud@recurso.dev" className="btn-secondary w-full sm:w-auto">
+                    <a href="mailto:swapnil.go20@gmail.com" className="btn-secondary w-full sm:w-auto">
                         <Mail className="h-4 w-4" />
                         Join the Cloud waitlist
                     </a>

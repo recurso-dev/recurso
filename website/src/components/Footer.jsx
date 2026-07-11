@@ -13,12 +13,12 @@ const columns = [
     {
         title: 'Developers',
         links: [
-            { label: 'Documentation', href: 'https://docs.recurso.dev', external: true },
-            { label: 'Quickstart', href: 'https://docs.recurso.dev/quickstart', external: true },
-            { label: 'API reference', href: 'https://docs.recurso.dev/api-reference/introduction', external: true },
-            { label: 'Core concepts', href: 'https://docs.recurso.dev/concepts', external: true },
-            { label: 'Going to production', href: 'https://docs.recurso.dev/going-to-production', external: true },
-            { label: 'Node SDK', href: 'https://github.com/swapnull-in/recur-so/tree/main/sdk/node', external: true },
+            { label: 'Documentation', href: 'https://swapnull.mintlify.site', external: true },
+            { label: 'Quickstart', href: 'https://swapnull.mintlify.site/quickstart', external: true },
+            { label: 'API reference', href: 'https://swapnull.mintlify.site/api-reference/introduction', external: true },
+            { label: 'Core concepts', href: 'https://swapnull.mintlify.site/concepts', external: true },
+            { label: 'Going to production', href: 'https://swapnull.mintlify.site/going-to-production', external: true },
+            { label: 'SDKs (Go · Node · Python)', href: 'https://github.com/swapnull-in/recur-so/tree/main/sdk', external: true },
             { label: 'Roadmap', href: 'https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md', external: true },
             { label: 'Changelog', href: 'https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md', external: true },
         ],
@@ -40,7 +40,7 @@ const columns = [
             { label: 'Community discussions', href: 'https://github.com/swapnull-in/recur-so/discussions', external: true },
             { label: 'Security', href: 'https://github.com/swapnull-in/recur-so/blob/main/docs/security.md', external: true },
             { label: 'License (MIT)', href: 'https://github.com/swapnull-in/recur-so/blob/main/LICENSE', external: true },
-            { label: 'Contact', href: 'mailto:sales@recurso.dev' },
+            { label: 'Contact', href: 'mailto:swapnil.go20@gmail.com' },
         ],
     },
 ]

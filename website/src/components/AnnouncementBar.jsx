@@ -9,8 +9,8 @@ const AnnouncementBar = () => (
     >
         <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
         <span>
-            <span className="font-medium text-fg">Recurso v0.1.1 is out</span>
-            <span className="hidden sm:inline"> — subscriber migration importer and one-command demo data</span>
+            <span className="font-medium text-fg">Recurso v0.4.0 is out</span>
+            <span className="hidden sm:inline"> — real Stripe self-serve checkout & customer-portal card updates</span>
         </span>
         <ArrowRight className="h-3 w-3 text-brand transition-transform group-hover:translate-x-0.5" />
     </a>

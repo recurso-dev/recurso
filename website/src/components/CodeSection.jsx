@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowUpRight, Terminal, Braces } from 'lucide-react'
 
-/* Real API usage — mirrors docs.recurso.dev/quickstart and sdk/node/README.md */
+/* Real API usage — mirrors the docs quickstart and the SDK READMEs */
 
 const curlCode = (
     <>
@@ -54,9 +54,56 @@ const nodeCode = (
     </>
 )
 
+const goCode = (
+    <>
+        <span className="tok-flag">import</span><span className="tok-cmd"> recurso </span><span className="tok-str">"github.com/swapnull-in/recurso-go"</span>{'\n\n'}
+        <span className="tok-cmd">client := recurso.</span><span className="tok-key">NewClient</span><span className="tok-cmd">(</span><span className="tok-str">"sk_live_your_api_key"</span><span className="tok-cmd">)</span>{'\n\n'}
+        <span className="tok-dim">{'// 1. Create a plan'}</span>{'\n'}
+        <span className="tok-cmd">plan, _ := client.Plans.</span><span className="tok-key">Create</span><span className="tok-cmd">{'(ctx, &recurso.PlanCreateParams{'}</span>{'\n'}
+        <span className="tok-cmd">{'  Name:         '}</span><span className="tok-str">"Pro Plan"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'  Amount:       '}</span><span className="tok-brand">2900</span><span className="tok-cmd">,        </span><span className="tok-dim">{'// minor units'}</span>{'\n'}
+        <span className="tok-cmd">{'  Currency:     '}</span><span className="tok-str">"USD"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'  IntervalUnit: '}</span><span className="tok-str">"month"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'})'}</span>{'\n\n'}
+        <span className="tok-dim">{'// 2. Add a customer'}</span>{'\n'}
+        <span className="tok-cmd">customer, _ := client.Customers.</span><span className="tok-key">Create</span><span className="tok-cmd">{'(ctx, &recurso.CustomerCreateParams{'}</span>{'\n'}
+        <span className="tok-cmd">{'  Name:  '}</span><span className="tok-str">"Jane User"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'  Email: '}</span><span className="tok-str">"jane@example.com"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'})'}</span>{'\n\n'}
+        <span className="tok-dim">{'// 3. Start a subscription'}</span>{'\n'}
+        <span className="tok-cmd">client.Subscriptions.</span><span className="tok-key">Create</span><span className="tok-cmd">{'(ctx, &recurso.SubscriptionCreateParams{'}</span>{'\n'}
+        <span className="tok-cmd">{'  CustomerID: customer.ID,'}</span>{'\n'}
+        <span className="tok-cmd">{'  PlanID:     plan.ID,'}</span>{'\n'}
+        <span className="tok-cmd">{'})'}</span>
+    </>
+)
+
+const pythonCode = (
+    <>
+        <span className="tok-flag">from</span><span className="tok-cmd"> recurso </span><span className="tok-flag">import</span><span className="tok-cmd"> AuthenticatedClient</span>{'\n'}
+        <span className="tok-flag">from</span><span className="tok-cmd"> recurso.api.plans </span><span className="tok-flag">import</span><span className="tok-cmd"> create_plan</span>{'\n'}
+        <span className="tok-flag">from</span><span className="tok-cmd"> recurso.models </span><span className="tok-flag">import</span><span className="tok-cmd"> CreatePlanRequest</span>{'\n\n'}
+        <span className="tok-cmd">client = </span><span className="tok-key">AuthenticatedClient</span><span className="tok-cmd">(</span>{'\n'}
+        <span className="tok-cmd">{'  base_url='}</span><span className="tok-str">"https://billing.example.com"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'  token='}</span><span className="tok-str">"sk_live_your_api_key"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">)</span>{'\n\n'}
+        <span className="tok-dim">{'# 1. Create a plan'}</span>{'\n'}
+        <span className="tok-cmd">plan = create_plan.</span><span className="tok-key">sync</span><span className="tok-cmd">(client=client, body=CreatePlanRequest(</span>{'\n'}
+        <span className="tok-cmd">{'  name='}</span><span className="tok-str">"Pro Plan"</span><span className="tok-cmd">, code=</span><span className="tok-str">"PRO-USD"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">{'  amount='}</span><span className="tok-brand">2900</span><span className="tok-cmd">, currency=</span><span className="tok-str">"USD"</span><span className="tok-cmd">,</span>{'\n'}
+        <span className="tok-cmd">))</span>{'\n\n'}
+        <span className="tok-dim">{'# 3. Subscribe (after create_customer)'}</span>{'\n'}
+        <span className="tok-cmd">create_subscription.</span><span className="tok-key">sync</span><span className="tok-cmd">(client=client, body=CreateSubscriptionRequest(</span>{'\n'}
+        <span className="tok-cmd">{'  customer_id=customer.id, plan_id=plan.id,'}</span>{'\n'}
+        <span className="tok-cmd">))</span>
+    </>
+)
+
 const tabs = [
     { id: 'curl', label: 'curl', icon: Terminal, code: curlCode, file: 'quickstart.sh' },
-    { id: 'node', label: 'Node SDK', icon: Braces, code: nodeCode, file: 'billing.ts' },
+    { id: 'node', label: 'Node', icon: Braces, code: nodeCode, file: 'billing.ts' },
+    { id: 'go', label: 'Go', icon: Braces, code: goCode, file: 'main.go' },
+    { id: 'python', label: 'Python', icon: Braces, code: pythonCode, file: 'billing.py' },
 ]
 
 const CodeSection = () => {
@@ -75,12 +122,12 @@ const CodeSection = () => {
                         </h2>
                         <p className="mt-4 text-base leading-relaxed text-fg-muted">
                             A predictable REST API with an OpenAPI 3.1 spec served straight from your
-                            instance, plus a typed Node SDK. Amounts are in minor units, every list is
-                            paginated, and webhooks are HMAC-signed.
+                            instance, plus official typed SDKs for Go, Node, and Python. Amounts are in
+                            minor units, every list is paginated, and webhooks are HMAC-signed.
                         </p>
                         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                             <a
-                                href="https://docs.recurso.dev/api-reference/introduction"
+                                href="https://swapnull.mintlify.site/api-reference/introduction"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="btn-secondary"
@@ -88,12 +135,12 @@ const CodeSection = () => {
                                 API reference <ArrowUpRight className="h-4 w-4" />
                             </a>
                             <a
-                                href="https://github.com/swapnull-in/recur-so/tree/main/sdk/node"
+                                href="https://github.com/swapnull-in/recur-so/tree/main/sdk"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-1.5 px-1 py-2.5 text-sm font-medium text-brand hover:text-brand-light"
                             >
-                                Node SDK on GitHub <ArrowUpRight className="h-3.5 w-3.5" />
+                                SDKs on GitHub <ArrowUpRight className="h-3.5 w-3.5" />
                             </a>
                         </div>
                     </div>

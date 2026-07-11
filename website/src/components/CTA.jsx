@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { Github, Mail, Check } from 'lucide-react'
 
-// The waitlist posts to the deployed Recurso API (ENG-12). Override the origin
-// at build time with VITE_API_URL for staging.
-const API_URL = import.meta.env.VITE_API_URL || 'https://api.recurso.dev'
-
+// Interim: waitlist signups are captured by Netlify Forms (no backend needed)
+// and emailed to the address configured in the Netlify dashboard. Swap to a
+// deployed API later by POSTing to it instead of "/".
 const WaitlistForm = () => {
     const [email, setEmail] = useState('')
     const [state, setState] = useState('idle') // idle | busy | done | error
@@ -13,14 +12,19 @@ const WaitlistForm = () => {
         e.preventDefault()
         if (!email || state === 'busy') return
         setState('busy')
-        // The honeypot value must actually travel to the API — a DOM-driving
-        // bot that fills the hidden field is dropped server-side.
-        const honeypot = e.target.elements.website?.value || ''
+        // Netlify Forms accepts a URL-encoded POST to the site root; the hidden
+        // "bot-field" honeypot is dropped server-side.
+        const honeypot = e.target.elements['bot-field']?.value || ''
         try {
-            const res = await fetch(`${API_URL}/waitlist`, {
+            const res = await fetch('/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, source: 'website-cta', website: honeypot }),
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    'form-name': 'waitlist',
+                    email,
+                    source: 'website-cta',
+                    'bot-field': honeypot,
+                }).toString(),
             })
             if (!res.ok) throw new Error('bad status')
             setState('done')
@@ -38,11 +42,21 @@ const WaitlistForm = () => {
     }
 
     return (
-        <form onSubmit={submit} className="flex w-full max-w-md flex-col gap-3 sm:flex-row" id="waitlist-form">
-            {/* honeypot: hidden from humans, bots fill it and get silently dropped */}
-            <input type="text" name="website" tabIndex="-1" autoComplete="off" className="hidden" aria-hidden="true" />
+        <form
+            name="waitlist"
+            method="POST"
+            data-netlify="true"
+            netlify-honeypot="bot-field"
+            onSubmit={submit}
+            className="flex w-full max-w-md flex-col gap-3 sm:flex-row"
+            id="waitlist-form"
+        >
+            {/* Netlify Forms plumbing: identifies the form + honeypot (hidden from humans) */}
+            <input type="hidden" name="form-name" value="waitlist" />
+            <input type="text" name="bot-field" tabIndex="-1" autoComplete="off" className="hidden" aria-hidden="true" />
             <input
                 type="email"
+                name="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -55,7 +69,7 @@ const WaitlistForm = () => {
             </button>
             {state === 'error' && (
                 <p className="text-xs text-red-400 sm:self-center">
-                    Something went wrong — email cloud@recurso.dev instead.
+                    Something went wrong — email swapnil.go20@gmail.com instead.
                 </p>
             )}
         </form>
