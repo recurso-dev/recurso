@@ -38,7 +38,7 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, account *domain.Le
 
 func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), balance, created_at
+		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
 		 FROM ledger_accounts WHERE tenant_id = $1 ORDER BY code`, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ledger accounts: %w", err)
@@ -49,7 +49,7 @@ func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uui
 	for rows.Next() {
 		a := &domain.LedgerAccount{}
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.Name, &a.Type, &a.Code,
-			&a.LedgerID, &a.Currency, &a.Balance, &a.CreatedAt); err != nil {
+			&a.LedgerID, &a.Currency, &a.DebitsPosted, &a.CreditsPosted, &a.Balance, &a.CreatedAt); err != nil {
 			return nil, fmt.Errorf("failed to scan ledger account: %w", err)
 		}
 		accounts = append(accounts, a)
@@ -60,10 +60,10 @@ func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uui
 func (r *LedgerRepository) GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error) {
 	a := &domain.LedgerAccount{}
 	err := r.db.QueryRowContext(ctx,
-		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), balance, created_at
+		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
 		 FROM ledger_accounts WHERE tenant_id = $1 AND code = $2`,
 		tenantID, code).Scan(&a.ID, &a.TenantID, &a.Name, &a.Type, &a.Code,
-		&a.LedgerID, &a.Currency, &a.Balance, &a.CreatedAt)
+		&a.LedgerID, &a.Currency, &a.DebitsPosted, &a.CreditsPosted, &a.Balance, &a.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -111,14 +111,34 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 	}
 
 	// Balances move only when a new transaction row was actually inserted.
-	// Debit increases asset/expense, credit increases liability/revenue/equity.
+	// Track debits_posted / credits_posted per side and derive a SIGNED balance
+	// from the account's normal side (ENG-148): a debit-normal account
+	// (asset/expense) nets debits − credits; a credit-normal account
+	// (liability/equity/revenue) nets credits − debits. The old code did
+	// `balance += amount` on BOTH sides, so balance was accumulate-only and a
+	// trial balance pulled from it never balanced.
+	//
+	// SQL semantics: every SET RHS reads the row's pre-update column values, so
+	// `debits_posted + $1` in the balance CASE is the new debits total.
 	if _, err := dbtx.ExecContext(ctx,
-		`UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2`,
+		`UPDATE ledger_accounts
+		 SET debits_posted = debits_posted + $1,
+		     balance = CASE WHEN lower(type) IN ('1', '5', 'asset', 'expense')
+		                    THEN (debits_posted + $1) - credits_posted
+		                    ELSE credits_posted - (debits_posted + $1) END,
+		     updated_at = NOW()
+		 WHERE id = $2`,
 		int64(tx.Amount), tx.DebitAccountID); err != nil {
 		return fmt.Errorf("failed to update debit account balance: %w", err)
 	}
 	if _, err := dbtx.ExecContext(ctx,
-		`UPDATE ledger_accounts SET balance = balance + $1 WHERE id = $2`,
+		`UPDATE ledger_accounts
+		 SET credits_posted = credits_posted + $1,
+		     balance = CASE WHEN lower(type) IN ('1', '5', 'asset', 'expense')
+		                    THEN debits_posted - (credits_posted + $1)
+		                    ELSE (credits_posted + $1) - debits_posted END,
+		     updated_at = NOW()
+		 WHERE id = $2`,
 		int64(tx.Amount), tx.CreditAccountID); err != nil {
 		return fmt.Errorf("failed to update credit account balance: %w", err)
 	}

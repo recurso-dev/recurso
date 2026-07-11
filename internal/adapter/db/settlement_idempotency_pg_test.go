@@ -112,11 +112,14 @@ func TestLedgerCreateTransaction_Idempotent_Postgres(t *testing.T) {
 	if got := countTx(t, conn, refID, 3); got != 1 {
 		t.Fatalf("payment rows for (ref, code=3) = %d, want 1 (idempotent)", got)
 	}
+	// Signed double-entry balances (ENG-148): both accounts are debit-normal
+	// assets, so debiting one adds +amt and crediting the other subtracts -amt.
+	// Applied once, not twice (twice would be ±2·amt).
 	if b := balance(t, conn, debit); b != amt {
-		t.Fatalf("debit balance = %d, want %d (applied once, not twice)", b, amt)
+		t.Fatalf("debit (asset) balance = %d, want %d (applied once, not twice)", b, amt)
 	}
-	if b := balance(t, conn, credit); b != amt {
-		t.Fatalf("credit balance = %d, want %d (applied once, not twice)", b, amt)
+	if b := balance(t, conn, credit); b != -amt {
+		t.Fatalf("credit (asset) balance = %d, want %d (asset credited once)", b, -amt)
 	}
 
 	// Recognition rows carry the zero reference and legitimately post repeatedly.
