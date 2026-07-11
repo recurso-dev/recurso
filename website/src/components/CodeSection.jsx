@@ -127,7 +127,7 @@ const CodeSection = () => {
                         </p>
                         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
                             <a
-                                href="https://docs.recurso.dev/docs/api-reference/introduction"
+                                href="https://docs.recurso.dev/api-reference/introduction"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="btn-secondary"
