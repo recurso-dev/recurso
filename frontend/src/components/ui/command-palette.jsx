@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Home, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
+  Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
   Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,
   Settings, ShieldCheck, UserCog, Plus, Search,
 } from "lucide-react";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const DESTINATIONS = [
   { group: "Go to", label: "Home", to: "/", icon: Home },
+  { group: "Go to", label: "Overview", to: "/overview", icon: LayoutDashboard },
   { group: "Go to", label: "Customers", to: "/customers", icon: Users },
   { group: "Go to", label: "Products", to: "/products", icon: Package },
   { group: "Go to", label: "Plans", to: "/plans", icon: Layers },
