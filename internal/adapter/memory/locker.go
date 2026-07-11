@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // NoOpLocker is a dummy locker that always succeeds (for dev mode single instance)

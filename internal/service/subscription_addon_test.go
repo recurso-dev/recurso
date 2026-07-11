@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/adapter/gsp"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/adapter/gsp"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // --- In-memory add-on repository (tenant-scoped) ---

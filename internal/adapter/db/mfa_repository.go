@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // MFABackupCodeRepository is the Postgres-backed store for hashed one-time MFA

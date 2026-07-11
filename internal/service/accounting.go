@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/adapter/accounting"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/adapter/accounting"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // tokenRefreshWindow is how close to expiry a token may get before we

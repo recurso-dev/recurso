@@ -56,7 +56,7 @@ Recurso Cloud.
 
 Notes:
 
-- **GitHub** as a dependency: monitor `https://github.com/swapnull-in/recur-so`
+- **GitHub** as a dependency: monitor `https://github.com/recurso-dev/recurso`
   reachability (that's the deploy source for every provisioning run — see
   [cloud-provisioning-runbook.md](cloud-provisioning-runbook.md)). GitHub's own
   status is at `githubstatus.com`; we only need to know if *our* repo/releases

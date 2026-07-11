@@ -6,8 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/service"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 type DunningCampaignHandler struct {

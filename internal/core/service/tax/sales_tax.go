@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // USSalesTaxEngine calculates US sales tax. US sales tax is

@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
 	"github.com/stripe/stripe-go/v76/webhook"
-	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 type StripeGateway struct {

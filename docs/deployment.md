@@ -5,7 +5,7 @@ A concise runbook for running Recurso in production with Docker Compose, plus po
 ## Quick start (Docker Compose)
 
 ```bash
-git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
+git clone https://github.com/recurso-dev/recurso.git && cd recur-so
 
 # 1. Configure
 cp .env.example .env
@@ -94,7 +94,7 @@ Before applying:
 
 - Put real values in `k8s/secret.yaml` (or replace it with an ExternalSecret/SealedSecret).
 - Change the host in `k8s/ingress.yaml` from `api.recurso.dev` to your own domain (see the comments in that file); it assumes ingress-nginx + cert-manager.
-- The deployment pulls `ghcr.io/swapnull-in/recur-so:latest`; pin a tag for production.
+- The deployment pulls `ghcr.io/recurso-dev/recurso:latest`; pin a tag for production.
 
 Health probes hit `/health` on port 8080; the deployment runs 2 replicas as non-root with a read-only root filesystem.
 

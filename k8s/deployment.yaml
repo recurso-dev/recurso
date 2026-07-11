@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/swapnull-in/recur-so:latest
+          image: ghcr.io/recurso-dev/recurso:latest
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

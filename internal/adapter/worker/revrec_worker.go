@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/service"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 type RevRecWorker struct {

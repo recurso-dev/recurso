@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
-	"github.com/swapnull-in/recur-so/internal/service"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 // PortalAuthMiddleware validates portal session tokens

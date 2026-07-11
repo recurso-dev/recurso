@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/service"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 func main() {

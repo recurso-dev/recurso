@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/adapter/alerting"
+	"github.com/recurso-dev/recurso/internal/adapter/alerting"
 )
 
 // ComponentCheck probes one dependency the /health endpoint reports on

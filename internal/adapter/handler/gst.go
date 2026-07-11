@@ -5,8 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // GSTConfig represents GST configuration for a tenant

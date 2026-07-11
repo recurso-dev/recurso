@@ -20,7 +20,7 @@ services:
     name: recurso-api
     runtime: image
     image:
-      url: ghcr.io/swapnull-in/recur-so:latest
+      url: ghcr.io/recurso-dev/recurso:latest
     plan: starter
     region: oregon
     healthCheckPath: /health

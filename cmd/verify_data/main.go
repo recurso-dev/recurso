@@ -8,7 +8,7 @@ import (
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
 )
 
 func main() {

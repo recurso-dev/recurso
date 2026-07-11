@@ -1,6 +1,6 @@
 {
-  "_client-DV31Glfn.js": {
-    "file": "assets/client-DV31Glfn.js",
+  "_client--S3U1sVU.js": {
+    "file": "assets/client--S3U1sVU.js",
     "name": "client",
     "isDynamicEntry": true,
     "imports": [
@@ -8,13 +8,13 @@
     ]
   },
   "index.html": {
-    "file": "assets/app-B7YVzJ9y.js",
+    "file": "assets/app-DhRS2-OZ.js",
     "name": "app",
     "src": "index.html",
     "isEntry": true,
     "dynamicImports": [
-      "_client-DV31Glfn.js",
-      "_client-DV31Glfn.js"
+      "_client--S3U1sVU.js",
+      "_client--S3U1sVU.js"
     ],
     "css": [
       "assets/app-BC77KA0I.css"

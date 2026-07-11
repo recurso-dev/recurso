@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/stripe/stripe-go/v76"
 	"github.com/stripe/stripe-go/v76/client"
-	"github.com/swapnull-in/recur-so/internal/core/port"
 )
 
 // StripeVault uses Stripe PaymentMethods API for card tokenization.

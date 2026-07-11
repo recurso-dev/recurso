@@ -7,9 +7,9 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/core/port"
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
 // GSTConfigProvider is the slice of the GST config repository the tax

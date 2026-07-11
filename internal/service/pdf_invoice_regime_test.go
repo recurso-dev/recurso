@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 func pdfStr(s string) *string { return &s }

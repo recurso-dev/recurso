@@ -18,9 +18,9 @@ const columns = [
             { label: 'API reference', href: 'https://docs.recurso.dev/api-reference/introduction', external: true },
             { label: 'Core concepts', href: 'https://docs.recurso.dev/concepts', external: true },
             { label: 'Going to production', href: 'https://docs.recurso.dev/going-to-production', external: true },
-            { label: 'SDKs (Go · Node · Python)', href: 'https://github.com/swapnull-in/recur-so/tree/main/sdk', external: true },
-            { label: 'Roadmap', href: 'https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md', external: true },
-            { label: 'Changelog', href: 'https://github.com/swapnull-in/recur-so/blob/main/CHANGELOG.md', external: true },
+            { label: 'SDKs (Go · Node · Python)', href: 'https://github.com/recurso-dev/recurso/tree/main/sdk', external: true },
+            { label: 'Roadmap', href: 'https://github.com/recurso-dev/recurso/blob/main/ROADMAP.md', external: true },
+            { label: 'Changelog', href: 'https://github.com/recurso-dev/recurso/blob/main/CHANGELOG.md', external: true },
         ],
     },
     {
@@ -36,10 +36,10 @@ const columns = [
     {
         title: 'Company',
         links: [
-            { label: 'GitHub', href: 'https://github.com/swapnull-in/recur-so', external: true },
-            { label: 'Community discussions', href: 'https://github.com/swapnull-in/recur-so/discussions', external: true },
-            { label: 'Security', href: 'https://github.com/swapnull-in/recur-so/blob/main/docs/security.md', external: true },
-            { label: 'License (MIT)', href: 'https://github.com/swapnull-in/recur-so/blob/main/LICENSE', external: true },
+            { label: 'GitHub', href: 'https://github.com/recurso-dev/recurso', external: true },
+            { label: 'Community discussions', href: 'https://github.com/recurso-dev/recurso/discussions', external: true },
+            { label: 'Security', href: 'https://github.com/recurso-dev/recurso/blob/main/docs/security.md', external: true },
+            { label: 'License (MIT)', href: 'https://github.com/recurso-dev/recurso/blob/main/LICENSE', external: true },
             { label: 'Contact', href: 'mailto:swapnil.go20@gmail.com' },
         ],
     },
@@ -60,7 +60,7 @@ const Footer = () => (
                         TigerBeetle. MIT licensed.
                     </p>
                     <a
-                        href="https://github.com/swapnull-in/recur-so"
+                        href="https://github.com/recurso-dev/recurso"
                         target="_blank"
                         rel="noreferrer"
                         aria-label="Recurso on GitHub"

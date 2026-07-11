@@ -1,6 +1,6 @@
 # recurso-go
 
-Official Go SDK for the [Recurso](https://github.com/swapnull-in/recur-so) billing API — 18 resources / 68 methods covering plans, customers, the full subscription lifecycle (pause/resume/cancel, add-ons, plan-change preview), invoices, usage, coupons, quotes, entitlements, webhooks (deliveries and redelivery), events, credit notes, gifts, referrals, mandates, ledger, analytics, developer keys, and the tenant account.
+Official Go SDK for the [Recurso](https://github.com/recurso-dev/recurso) billing API — 18 resources / 68 methods covering plans, customers, the full subscription lifecycle (pause/resume/cancel, add-ons, plan-change preview), invoices, usage, coupons, quotes, entitlements, webhooks (deliveries and redelivery), events, credit notes, gifts, referrals, mandates, ledger, analytics, developer keys, and the tenant account.
 
 Standard library only — no third-party dependencies. Requires Go 1.22+.
 
@@ -9,7 +9,7 @@ The client is hand-crafted but generated-in-spirit from the OpenAPI 3.1 descript
 ## Install
 
 ```bash
-go get github.com/swapnull-in/recurso-go
+go get github.com/recurso-dev/recurso-go
 ```
 
 ## Quickstart
@@ -22,7 +22,7 @@ import (
 	"errors"
 	"log"
 
-	recurso "github.com/swapnull-in/recurso-go"
+	recurso "github.com/recurso-dev/recurso-go"
 )
 
 func main() {

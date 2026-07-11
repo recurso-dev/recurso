@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // StaticRatesProvider stores admin-configured exchange rates in memory.

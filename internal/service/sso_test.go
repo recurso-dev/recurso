@@ -10,7 +10,7 @@ import (
 
 	"github.com/crewjam/saml"
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // --- fake sso connection repo ---

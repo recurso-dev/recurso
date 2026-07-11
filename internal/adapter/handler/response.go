@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 )
 
 // Standard API error codes (snake_case machine codes; see httperr package).

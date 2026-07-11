@@ -58,7 +58,7 @@ pip install recurso
 
 ## 3. GHCR — make the image public
 
-The image already publishes to `ghcr.io/swapnull-in/recur-so` on every push to
+The image already publishes to `ghcr.io/recurso-dev/recurso` on every push to
 `main`; it's just **private** by default.
 
 1. GitHub → your profile/org → **Packages** → `recur-so`
@@ -66,7 +66,7 @@ The image already publishes to `ghcr.io/swapnull-in/recur-so` on every push to
 3. Verify from a logged-out shell:
    ```bash
    docker logout ghcr.io
-   docker pull ghcr.io/swapnull-in/recur-so:latest   # should succeed without auth
+   docker pull ghcr.io/recurso-dev/recurso:latest   # should succeed without auth
    ```
 
 ---

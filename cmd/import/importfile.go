@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // ImportFile is the JSON input format for cmd/import. Plans are matched by

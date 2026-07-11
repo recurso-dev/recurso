@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // FXSnapshot records the exchange rates used to normalize a report, plus

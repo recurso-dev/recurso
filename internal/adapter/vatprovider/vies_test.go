@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
 func TestVIES_ValidNumber_RequestShapeAndParsing(t *testing.T) {

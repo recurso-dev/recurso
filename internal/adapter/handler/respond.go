@@ -2,7 +2,7 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 )
 
 // Canonical API error shape (see internal/adapter/httperr):

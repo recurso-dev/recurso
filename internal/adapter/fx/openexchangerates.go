@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // OpenExchangeRatesProvider fetches rates from the OpenExchangeRates API.

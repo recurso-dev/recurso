@@ -20,8 +20,8 @@ import (
 	"github.com/crewjam/saml"
 	"github.com/crewjam/saml/samlsp"
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // commonEmailAttributes are the SAML attribute names IdPs commonly use to carry

@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
 func caQuery() *tax.SalesTaxQuery {

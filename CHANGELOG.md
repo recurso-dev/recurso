@@ -295,4 +295,4 @@ billing engine built with Go, PostgreSQL, and TigerBeetle.
 - The Node.js SDK is not yet published to npm; install it from this
   repository (`sdk/node`).
 
-[0.1.0]: https://github.com/swapnull-in/recur-so/releases/tag/v0.1.0
+[0.1.0]: https://github.com/recurso-dev/recurso/releases/tag/v0.1.0

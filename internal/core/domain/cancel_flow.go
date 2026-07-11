@@ -91,12 +91,12 @@ type RetentionOffer struct {
 
 // FlowStats contains aggregated statistics for a cancel flow
 type FlowStats struct {
-	TotalSessions   int                `json:"total_sessions"`
-	CompletedCount  int                `json:"completed_count"`
-	SavedCount      int                `json:"saved_count"`
-	SaveRate        float64            `json:"save_rate"`
-	ReasonBreakdown map[string]int     `json:"reason_breakdown"`
-	OfferAcceptRate float64            `json:"offer_accept_rate"`
+	TotalSessions   int            `json:"total_sessions"`
+	CompletedCount  int            `json:"completed_count"`
+	SavedCount      int            `json:"saved_count"`
+	SaveRate        float64        `json:"save_rate"`
+	ReasonBreakdown map[string]int `json:"reason_breakdown"`
+	OfferAcceptRate float64        `json:"offer_accept_rate"`
 }
 
 // CooldownActive checks if a customer is within the cooldown period

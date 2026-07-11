@@ -56,7 +56,7 @@ const nodeCode = (
 
 const goCode = (
     <>
-        <span className="tok-flag">import</span><span className="tok-cmd"> recurso </span><span className="tok-str">"github.com/swapnull-in/recurso-go"</span>{'\n\n'}
+        <span className="tok-flag">import</span><span className="tok-cmd"> recurso </span><span className="tok-str">"github.com/recurso-dev/recurso-go"</span>{'\n\n'}
         <span className="tok-cmd">client := recurso.</span><span className="tok-key">NewClient</span><span className="tok-cmd">(</span><span className="tok-str">"sk_live_your_api_key"</span><span className="tok-cmd">)</span>{'\n\n'}
         <span className="tok-dim">{'// 1. Create a plan'}</span>{'\n'}
         <span className="tok-cmd">plan, _ := client.Plans.</span><span className="tok-key">Create</span><span className="tok-cmd">{'(ctx, &recurso.PlanCreateParams{'}</span>{'\n'}
@@ -135,7 +135,7 @@ const CodeSection = () => {
                                 API reference <ArrowUpRight className="h-4 w-4" />
                             </a>
                             <a
-                                href="https://github.com/swapnull-in/recur-so/tree/main/sdk"
+                                href="https://github.com/recurso-dev/recurso/tree/main/sdk"
                                 target="_blank"
                                 rel="noreferrer"
                                 className="inline-flex items-center gap-1.5 px-1 py-2.5 text-sm font-medium text-brand hover:text-brand-light"

@@ -8,7 +8,7 @@ import (
 	"math"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	tb "github.com/tigerbeetle/tigerbeetle-go"
 	tbtypes "github.com/tigerbeetle/tigerbeetle-go/pkg/types"
 )

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
 // DefaultTaxJarURL is TaxJar's production API base. Point TAXJAR_API_URL at

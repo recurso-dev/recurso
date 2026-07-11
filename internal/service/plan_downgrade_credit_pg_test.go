@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // TestPlanDowngradeCredit_Postgres proves the ENG-150 fix end-to-end: a plan

@@ -1,7 +1,7 @@
 .PHONY: build run dev fmt hooks seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
 
 BINARY_NAME=main
-IMAGE_NAME=ghcr.io/swapnull-in/recur-so
+IMAGE_NAME=ghcr.io/recurso-dev/recurso
 IMAGE_TAG?=latest
 VERSION ?= $(shell git describe --tags --always 2>/dev/null || echo dev)
 LDFLAGS=-X main.version=$(VERSION)

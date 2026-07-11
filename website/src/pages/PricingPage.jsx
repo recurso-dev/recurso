@@ -21,7 +21,7 @@ const tiers = [
             'Community support',
         ],
         cta: 'Get started on GitHub',
-        ctaLink: 'https://github.com/swapnull-in/recur-so',
+        ctaLink: 'https://github.com/recurso-dev/recurso',
         highlighted: false,
     },
     {
@@ -319,7 +319,7 @@ const PricingPage = () => (
                         Clone and self-host the whole engine, or get in line for managed Cloud.
                     </p>
                     <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                        <a href="https://github.com/swapnull-in/recur-so" target="_blank" rel="noreferrer" className="btn-primary w-full sm:w-auto">
+                        <a href="https://github.com/recurso-dev/recurso" target="_blank" rel="noreferrer" className="btn-primary w-full sm:w-auto">
                             <Github className="h-4 w-4" /> Start self-hosting
                         </a>
                         <a href="/#waitlist" className="btn-secondary w-full sm:w-auto">

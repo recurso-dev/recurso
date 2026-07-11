@@ -3,7 +3,7 @@ package port
 import (
 	"context"
 
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // EInvoiceRequest wraps all data needed to generate an IRN via NIC/IRP

@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
 // DefaultVIESURL is the European Commission's VIES REST API base. The lookup

@@ -199,7 +199,7 @@ docker compose version   # sanity check
 
 ```bash
 sudo install -d -o deploy -g deploy /opt/recurso
-git clone https://github.com/swapnull-in/recur-so.git /opt/recurso/<CUSTOMER_SLUG>
+git clone https://github.com/recurso-dev/recurso.git /opt/recurso/<CUSTOMER_SLUG>
 cd /opt/recurso/<CUSTOMER_SLUG>
 # Pin to a released tag — never deploy a moving branch to a paying customer:
 git checkout <RECURSO_TAG>          # e.g. v0.2.3, current release

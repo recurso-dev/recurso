@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/adapter/alerting"
+	"github.com/recurso-dev/recurso/internal/adapter/alerting"
 )
 
 // alertCapture is an httptest server that records every alert POSTed to it,

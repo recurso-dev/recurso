@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 	"github.com/redis/go-redis/v9"
-	"github.com/swapnull-in/recur-so/internal/adapter/httperr"
 )
 
 // RateLimitMiddleware implements a fixed-window rate limiter using Redis

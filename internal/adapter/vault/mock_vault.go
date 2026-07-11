@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // MockVault provides an in-memory card token store for dev/testing.

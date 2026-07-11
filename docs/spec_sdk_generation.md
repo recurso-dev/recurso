@@ -43,7 +43,7 @@ openapi-generator-cli generate -i ./openapi.json -g go -o ./sdk/go --package-nam
 
 ## Boundaries
 - **Always**: Ensure the generation script can be run locally without requiring paid cloud accounts (e.g., if using a cloud generator, it must have a free local CLI mode).
-- **Ask first**: Before committing generated code directly to the main repository if it makes the PRs massive. Consider publishing them to separate repositories (e.g., `swapnull-in/recurso-python`) via GitHub Actions.
+- **Ask first**: Before committing generated code directly to the main repository if it makes the PRs massive. Consider publishing them to separate repositories (e.g., `recurso-dev/recurso-python`) via GitHub Actions.
 - **Never**: Manually edit the generated files in `sdk/python` or `sdk/go`. All changes must happen via the `openapi.json` spec or generator templates.
 
 ## Success Criteria

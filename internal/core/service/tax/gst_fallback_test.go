@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // TestGSTFallbackRate locks the Option-C semantics: the tenant's configured

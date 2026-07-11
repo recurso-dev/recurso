@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // InvoiceItemRepository is the SQL-backed store for itemized invoice lines.

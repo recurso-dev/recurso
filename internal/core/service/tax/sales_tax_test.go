@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // fakeSalesTaxProvider counts lookups and returns a fixed result or error.

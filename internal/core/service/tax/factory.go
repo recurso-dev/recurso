@@ -3,7 +3,7 @@ package tax
 import (
 	"strings"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // EU country codes

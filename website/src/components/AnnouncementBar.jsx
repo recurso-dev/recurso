@@ -2,7 +2,7 @@ import { ArrowRight } from 'lucide-react'
 
 const AnnouncementBar = () => (
     <a
-        href="https://github.com/swapnull-in/recur-so/releases"
+        href="https://github.com/recurso-dev/recurso/releases"
         target="_blank"
         rel="noreferrer"
         className="group relative z-50 flex items-center justify-center gap-2 border-b border-line bg-surface-100 px-4 py-2 text-center text-xs text-fg-muted transition-colors hover:text-fg"

@@ -9,17 +9,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/swapnull-in/recur-so/actions"><img src="https://github.com/swapnull-in/recur-so/workflows/CI/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/swapnull-in/recur-so"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+" /></a>
-  <a href="https://github.com/swapnull-in/recur-so/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
-  <a href="https://github.com/swapnull-in/recur-so/stargazers"><img src="https://img.shields.io/github/stars/swapnull-in/recur-so?style=social" alt="GitHub Stars" /></a>
+  <a href="https://github.com/recurso-dev/recurso/actions"><img src="https://github.com/recurso-dev/recurso/workflows/CI/badge.svg" alt="Build Status" /></a>
+  <a href="https://github.com/recurso-dev/recurso"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+" /></a>
+  <a href="https://github.com/recurso-dev/recurso/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
+  <a href="https://github.com/recurso-dev/recurso/stargazers"><img src="https://img.shields.io/github/stars/recurso-dev/recurso?style=social" alt="GitHub Stars" /></a>
 </p>
 
 <p align="center">
   <a href="https://recurso.dev">Website</a> &middot;
   <a href="https://docs.recurso.dev">Docs</a> &middot;
   <a href="https://docs.recurso.dev/quickstart">Quickstart</a> &middot;
-  <a href="https://github.com/swapnull-in/recur-so/discussions">Community</a>
+  <a href="https://github.com/recurso-dev/recurso/discussions">Community</a>
 </p>
 
 ---
@@ -96,7 +96,7 @@ Go (Gin) API  -->  PostgreSQL (state)  -->  TigerBeetle (ledger)
 One command from clone to a populated dashboard — builds and starts the full stack (API, dashboard, PostgreSQL, TigerBeetle, Mailhog) and loads demo data:
 
 ```bash
-git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
+git clone https://github.com/recurso-dev/recurso.git && cd recur-so
 make demo
 ```
 
@@ -107,7 +107,7 @@ Then open the dashboard at `http://localhost:5173` and log in with API key `sk_t
 Prefer to run pieces individually?
 
 ```bash
-git clone https://github.com/swapnull-in/recur-so.git && cd recur-so
+git clone https://github.com/recurso-dev/recurso.git && cd recur-so
 make docker-up    # starts PostgreSQL + TigerBeetle
 make run          # migrations apply automatically
 ```
@@ -132,9 +132,9 @@ See the [Quickstart Guide](https://docs.recurso.dev/quickstart) for a full walkt
 
 Spin up a hosted instance (API + managed PostgreSQL) with one click:
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/swapnull-in/recur-so)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/recurso-dev/recurso)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new)
-[![Deploy to DigitalOcean](https://www.deploy.do/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/swapnull-in/recur-so/tree/main)
+[![Deploy to DigitalOcean](https://www.deploy.do/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/recurso-dev/recurso/tree/main)
 
 - **Render** reads [`render.yaml`](render.yaml).
 - **DigitalOcean** reads [`.do/app.yaml`](.do/app.yaml).
@@ -151,7 +151,7 @@ tested but **not yet published** to npm / PyPI — install from source for now:
 
 - **Node.js** ([`sdk/node`](sdk/node)) — `npm install ./recur-so/sdk/node`
 - **Python** ([`sdk/python`](sdk/python)) — `pip install ./recur-so/sdk/python`
-- **Go** ([`sdk/go`](sdk/go)) — `import "github.com/swapnull-in/recur-so/sdk/go"`
+- **Go** ([`sdk/go`](sdk/go)) — `import "github.com/recurso-dev/recurso/sdk/go"`
 
 A [Postman collection](postman/) generated from the OpenAPI spec is also
 included.

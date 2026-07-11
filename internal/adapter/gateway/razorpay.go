@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/razorpay/razorpay-go"
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 type RazorpayGateway struct {

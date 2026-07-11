@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/swapnull-in/recur-so/internal/core/domain"
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 type MockGSPAdapter struct{}
@@ -23,7 +23,7 @@ func (m *MockGSPAdapter) GenerateIRN(ctx context.Context, invoice *domain.Invoic
 
 	// Simulate success for India B2B
 	// In a real adapter, we'd validate here, but the service should decide when to call.
-	
+
 	// Generate dummy 64-char hex IRN
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {

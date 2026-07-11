@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/skip2/go-qrcode"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
 )
 
 // PDFInvoiceData contains all data needed to generate a GST-compliant PDF invoice

@@ -17,7 +17,7 @@ const plans = [
             { text: 'Managed hosting', included: false },
         ],
         cta: 'Get Started',
-        ctaLink: 'https://github.com/swapnull-in/recur-so',
+        ctaLink: 'https://github.com/recurso-dev/recurso',
         highlighted: false,
     },
     {

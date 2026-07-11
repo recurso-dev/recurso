@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // TestDowngradeCreditLedgerLifecycle_Postgres proves ENG-154 end-to-end: a

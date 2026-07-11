@@ -28,12 +28,12 @@
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/swapnull-in/recur-so.git",
+        "url": "git+https://github.com/recurso-dev/recurso.git",
         "directory": "sdk/node"
     },
     "homepage": "https://docs.recurso.dev",
     "bugs": {
-        "url": "https://github.com/swapnull-in/recur-so/issues"
+        "url": "https://github.com/recurso-dev/recurso/issues"
     },
     "files": [
         "dist",

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/swapnull-in/recur-so/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // eu27 is the canonical set of EU member states the rate table must cover.

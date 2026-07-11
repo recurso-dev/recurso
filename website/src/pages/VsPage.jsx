@@ -50,7 +50,7 @@ const VsPage = ({ data }) => (
                     </p>
                     <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                         <a
-                            href="https://github.com/swapnull-in/recur-so"
+                            href="https://github.com/recurso-dev/recurso"
                             target="_blank"
                             rel="noreferrer"
                             className="btn-primary w-full sm:w-auto"

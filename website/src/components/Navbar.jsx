@@ -37,7 +37,7 @@ const Navbar = () => {
                 {/* Right side */}
                 <div className="hidden items-center gap-3 md:flex">
                     <a
-                        href="https://github.com/swapnull-in/recur-so"
+                        href="https://github.com/recurso-dev/recurso"
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-2 rounded-md border border-line-strong bg-surface-200 px-3.5 py-2 text-sm font-medium text-fg transition-colors hover:border-[#3a4157] hover:bg-surface-300"
@@ -77,7 +77,7 @@ const Navbar = () => {
                             </a>
                         ))}
                         <a
-                            href="https://github.com/swapnull-in/recur-so"
+                            href="https://github.com/recurso-dev/recurso"
                             target="_blank"
                             rel="noreferrer"
                             className="mt-2 inline-flex items-center gap-2 rounded-md border border-line-strong px-3 py-2.5 text-sm font-medium text-fg"

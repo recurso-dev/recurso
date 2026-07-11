@@ -91,7 +91,7 @@ const CTA = () => (
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3">
                 <a
-                    href="https://github.com/swapnull-in/recur-so"
+                    href="https://github.com/recurso-dev/recurso"
                     target="_blank"
                     rel="noreferrer"
                     className="btn-primary w-full sm:w-auto"
@@ -101,7 +101,7 @@ const CTA = () => (
                 <WaitlistForm />
             </div>
             <p className="mt-6 font-mono text-xs text-fg-subtle">
-                git clone https://github.com/swapnull-in/recur-so.git && make demo
+                git clone https://github.com/recurso-dev/recurso.git && make demo
             </p>
         </div>
     </section>

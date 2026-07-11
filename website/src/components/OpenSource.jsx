@@ -5,19 +5,19 @@ const cards = [
         icon: ScrollText,
         title: 'MIT licensed',
         body: 'Fork it, extend it, ship it. No open-core bait — the whole billing engine is in the repo.',
-        link: { label: 'Read the license', href: 'https://github.com/swapnull-in/recur-so/blob/main/LICENSE' },
+        link: { label: 'Read the license', href: 'https://github.com/recurso-dev/recurso/blob/main/LICENSE' },
     },
     {
         icon: Map,
         title: 'Public roadmap',
         body: 'ROADMAP.md is a living document — what shipped, what is next, and in what order.',
-        link: { label: 'View the roadmap', href: 'https://github.com/swapnull-in/recur-so/blob/main/ROADMAP.md' },
+        link: { label: 'View the roadmap', href: 'https://github.com/recurso-dev/recurso/blob/main/ROADMAP.md' },
     },
     {
         icon: GitPullRequest,
         title: 'Contributions welcome',
         body: 'Good first issues, contributor docs, and an e2e suite so you can change billing code with confidence.',
-        link: { label: 'CONTRIBUTING.md', href: 'https://github.com/swapnull-in/recur-so/blob/main/CONTRIBUTING.md' },
+        link: { label: 'CONTRIBUTING.md', href: 'https://github.com/recurso-dev/recurso/blob/main/CONTRIBUTING.md' },
     },
 ]
 
@@ -35,7 +35,7 @@ const OpenSource = () => (
                 </p>
                 <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
                     <a
-                        href="https://github.com/swapnull-in/recur-so"
+                        href="https://github.com/recurso-dev/recurso"
                         target="_blank"
                         rel="noreferrer"
                         className="btn-primary"
@@ -43,7 +43,7 @@ const OpenSource = () => (
                         <Github className="h-4 w-4" /> Explore the repository
                     </a>
                     <a
-                        href="https://github.com/swapnull-in/recur-so/discussions"
+                        href="https://github.com/recurso-dev/recurso/discussions"
                         target="_blank"
                         rel="noreferrer"
                         className="btn-secondary"

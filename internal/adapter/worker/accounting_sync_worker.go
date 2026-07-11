@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/core/port"
-	"github.com/swapnull-in/recur-so/internal/service"
+	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 type AccountingSyncWorker struct {

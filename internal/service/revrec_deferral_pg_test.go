@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/swapnull-in/recur-so/internal/adapter/db"
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // TestRevRecDeferral_Postgres proves the ENG-140 fix end-to-end against the real

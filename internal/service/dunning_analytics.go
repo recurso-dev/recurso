@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 
-	"github.com/swapnull-in/recur-so/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // DunningAnalyticsRepository defines the read methods needed for analytics

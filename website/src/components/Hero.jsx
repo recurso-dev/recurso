@@ -1,7 +1,7 @@
 import { Github, Mail } from 'lucide-react'
 
 const terminalLines = [
-    { prompt: true, text: 'git clone https://github.com/swapnull-in/recur-so.git && cd recur-so' },
+    { prompt: true, text: 'git clone https://github.com/recurso-dev/recurso.git && cd recur-so' },
     { prompt: true, text: 'make demo' },
     { cls: 'tok-dim', text: 'Starting postgres, tigerbeetle, mailhog… done' },
     { cls: 'tok-dim', text: 'Running migrations… 42 applied' },
@@ -38,7 +38,7 @@ const Hero = () => (
 
                 <div className="rise-in rise-in-2 mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
                     <a
-                        href="https://github.com/swapnull-in/recur-so"
+                        href="https://github.com/recurso-dev/recurso"
                         target="_blank"
                         rel="noreferrer"
                         className="btn-primary w-full sm:w-auto"

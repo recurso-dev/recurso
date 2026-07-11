@@ -1,6 +1,6 @@
 # recurso
 
-Official Python SDK for the [Recurso](https://github.com/swapnull-in/recur-so) billing API.
+Official Python SDK for the [Recurso](https://github.com/recurso-dev/recurso) billing API.
 
 Generated from the API's OpenAPI 3.1 specification (`cmd/api/openapi.yaml`) with
 [openapi-python-client](https://github.com/openapi-generators/openapi-python-client), so it covers the
