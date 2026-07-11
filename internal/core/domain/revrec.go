@@ -44,3 +44,29 @@ const (
 	// (cancel/refund mid-period, ENG-147) so the worker never recognizes it.
 	RecognitionStatusCanceled = "canceled"
 )
+
+// DeferredRevenueReport is a point-in-time rollforward of deferred (unearned)
+// revenue: what was recognized in the requested period, the deferred balance
+// still on the books, when that balance is scheduled to release, and how it
+// splits by currency.
+type DeferredRevenueReport struct {
+	Month            int                         `json:"month"`
+	Year             int                         `json:"year"`
+	RecognizedAmount int64                       `json:"recognized_amount"` // recognized in month/year, minor units
+	DeferredBalance  int64                       `json:"deferred_balance"`  // all still-pending recognition, minor units (summed across currencies — see ByCurrency)
+	Upcoming         []DeferredRecognitionBucket `json:"upcoming"`          // the still-pending balance grouped by the month it will recognize
+	ByCurrency       []DeferredCurrencyBalance   `json:"by_currency"`       // deferred balance split by the schedule's currency
+}
+
+// DeferredRecognitionBucket is one month of scheduled future recognition.
+type DeferredRecognitionBucket struct {
+	Month  int   `json:"month"`
+	Year   int   `json:"year"`
+	Amount int64 `json:"amount"` // minor units, summed across currencies
+}
+
+// DeferredCurrencyBalance is the still-deferred balance for one currency.
+type DeferredCurrencyBalance struct {
+	Currency string `json:"currency"`
+	Deferred int64  `json:"deferred"` // minor units, native currency
+}

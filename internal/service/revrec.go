@@ -17,7 +17,7 @@ type RevRecRepository interface {
 	GetDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error)
 	MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error
 	MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error
-	GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (map[string]interface{}, error)
+	GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error)
 
 	// Unwind support (ENG-147): reverse the still-deferred portion of a schedule
 	// when a subscription is canceled or refunded mid-period.
@@ -366,6 +366,6 @@ func (s *RevRecService) CalculateMonthlyAllocation(schedule *domain.RevenueSched
 }
 
 // GetReport returns the revenue recognition report for a given tenant/month/year.
-func (s *RevRecService) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (map[string]interface{}, error) {
+func (s *RevRecService) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error) {
 	return s.repo.GetReport(ctx, tenantID, month, year)
 }

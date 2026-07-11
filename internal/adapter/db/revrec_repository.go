@@ -197,35 +197,90 @@ func (r *RevRecRepository) MarkScheduleCanceled(ctx context.Context, scheduleID 
 	return err
 }
 
-func (r *RevRecRepository) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (map[string]interface{}, error) {
-	var totalRecognized int64
-	query := `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM recognition_events
-		WHERE tenant_id = $1 AND status = 'recognized'
-		AND EXTRACT(MONTH FROM recognition_date) = $2
-		AND EXTRACT(YEAR FROM recognition_date) = $3
-	`
-	err := r.db.QueryRowContext(ctx, query, tenantID, month, year).Scan(&totalRecognized)
-	if err != nil {
-		return nil, err
+// GetReport builds a deferred-revenue rollforward: revenue recognized in the
+// requested month/year, the balance still deferred, the schedule of when that
+// balance releases (grouped by recognition month), and its split by currency.
+func (r *RevRecRepository) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error) {
+	report := &domain.DeferredRevenueReport{
+		Month:      month,
+		Year:       year,
+		Upcoming:   []domain.DeferredRecognitionBucket{},
+		ByCurrency: []domain.DeferredCurrencyBalance{},
 	}
 
-	var totalDeferred int64
-	queryDef := `
-		SELECT COALESCE(SUM(amount), 0)
-		FROM recognition_events
-		WHERE tenant_id = $1 AND status = 'pending'
-	`
-	err = r.db.QueryRowContext(ctx, queryDef, tenantID).Scan(&totalDeferred)
-	if err != nil {
-		return nil, err
+	// Recognized in the requested period.
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0)
+		   FROM recognition_events
+		  WHERE tenant_id = $1 AND status = $2
+		    AND EXTRACT(MONTH FROM recognition_date) = $3
+		    AND EXTRACT(YEAR  FROM recognition_date) = $4`,
+		tenantID, domain.RecognitionStatusRecognized, month, year,
+	).Scan(&report.RecognizedAmount); err != nil {
+		return nil, fmt.Errorf("recognized total: %w", err)
 	}
 
-	return map[string]interface{}{
-		"recognized_amount": totalRecognized,
-		"deferred_amount":   totalDeferred,
-		"month":             month,
-		"year":              year,
-	}, nil
+	// Total balance still deferred (all still-pending recognition).
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0)
+		   FROM recognition_events
+		  WHERE tenant_id = $1 AND status = $2`,
+		tenantID, domain.RecognitionStatusPending,
+	).Scan(&report.DeferredBalance); err != nil {
+		return nil, fmt.Errorf("deferred balance: %w", err)
+	}
+
+	// Release schedule: the deferred balance grouped by the month it recognizes.
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT EXTRACT(YEAR FROM recognition_date)::int  AS y,
+		        EXTRACT(MONTH FROM recognition_date)::int AS m,
+		        COALESCE(SUM(amount), 0)
+		   FROM recognition_events
+		  WHERE tenant_id = $1 AND status = $2
+		  GROUP BY y, m
+		  ORDER BY y, m`,
+		tenantID, domain.RecognitionStatusPending,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("release schedule: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var b domain.DeferredRecognitionBucket
+		if err := rows.Scan(&b.Year, &b.Month, &b.Amount); err != nil {
+			return nil, fmt.Errorf("scan bucket: %w", err)
+		}
+		report.Upcoming = append(report.Upcoming, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("release schedule rows: %w", err)
+	}
+
+	// Deferred balance split by the originating schedule's currency (honest
+	// multi-currency: the flat DeferredBalance sums these).
+	curRows, err := r.db.QueryContext(ctx,
+		`SELECT rs.currency, COALESCE(SUM(re.amount), 0)
+		   FROM recognition_events re
+		   JOIN revenue_schedules rs ON rs.id = re.revenue_schedule_id
+		  WHERE re.tenant_id = $1 AND re.status = $2
+		  GROUP BY rs.currency
+		  ORDER BY rs.currency`,
+		tenantID, domain.RecognitionStatusPending,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("currency split: %w", err)
+	}
+	defer func() { _ = curRows.Close() }()
+	for curRows.Next() {
+		var c domain.DeferredCurrencyBalance
+		if err := curRows.Scan(&c.Currency, &c.Deferred); err != nil {
+			return nil, fmt.Errorf("scan currency: %w", err)
+		}
+		report.ByCurrency = append(report.ByCurrency, c)
+	}
+	if err := curRows.Err(); err != nil {
+		return nil, fmt.Errorf("currency split rows: %w", err)
+	}
+
+	return report, nil
 }
