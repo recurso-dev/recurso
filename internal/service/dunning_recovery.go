@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // RecoveredPaymentRepository persists and aggregates dunning recovery records.
@@ -33,6 +34,13 @@ type PaymentRecoveryRecorder interface {
 
 // DunningRecoverySummary is the API response shape for recovered-revenue analytics.
 type DunningRecoverySummary struct {
+	// ReportingCurrency is the tenant's reporting currency; ReportingTotal is
+	// the recovered total converted into it (via FX), so the headline never
+	// gets hijacked by whichever currency happens to have the largest raw
+	// minor-unit amount. RecoveredAmountTotal keeps the raw per-currency
+	// breakdown for transparency.
+	ReportingCurrency    string                       `json:"reporting_currency"`
+	ReportingTotal       int64                        `json:"reporting_total"`
 	RecoveredAmountTotal map[string]int64             `json:"recovered_amount_total"`
 	RecoveredCount       int                          `json:"recovered_count"`
 	AvgAttempts          float64                      `json:"avg_attempts"`
@@ -49,6 +57,11 @@ type DunningRecoveryService struct {
 	strategy       string
 	logger         *slog.Logger
 	now            func() time.Time
+
+	fxProvider        port.ExchangeRateProvider
+	fxFallback        port.ExchangeRateProvider
+	tenantLookup      TenantLookup
+	reportingCurrency string // env-level default when the tenant has no base currency
 }
 
 // NewDunningRecoveryService builds the service. strategy is the tenant-wide
@@ -60,16 +73,41 @@ func NewDunningRecoveryService(repo RecoveredPaymentRepository, strategy string)
 		strategy = string(StrategyEpsilonGreedy)
 	}
 	return &DunningRecoveryService{
-		repo:     repo,
-		strategy: strategy,
-		logger:   slog.Default().With("service", "dunning_recovery"),
-		now:      time.Now,
+		repo:              repo,
+		strategy:          strategy,
+		logger:            slog.Default().With("service", "dunning_recovery"),
+		now:               time.Now,
+		reportingCurrency: "USD",
 	}
 }
 
 // SetCampaignLookup injects the campaign execution lookup after construction.
 func (s *DunningRecoveryService) SetCampaignLookup(lookup CampaignExecutionLookup) {
 	s.campaignLookup = lookup
+}
+
+// SetFX wires the FX provider (with optional static fallback) and default
+// reporting currency used to normalize recovered revenue into one currency.
+func (s *DunningRecoveryService) SetFX(provider, fallback port.ExchangeRateProvider, reportingCurrency string) {
+	s.fxProvider = provider
+	s.fxFallback = fallback
+	if reportingCurrency != "" {
+		s.reportingCurrency = reportingCurrency
+	}
+}
+
+// SetTenantLookup enables per-tenant reporting currency (tenant.BaseCurrency).
+func (s *DunningRecoveryService) SetTenantLookup(l TenantLookup) {
+	s.tenantLookup = l
+}
+
+func (s *DunningRecoveryService) resolveReportingCurrency(ctx context.Context, tenantID uuid.UUID) string {
+	if s.tenantLookup != nil && tenantID != uuid.Nil {
+		if tenant, err := s.tenantLookup.GetByID(ctx, tenantID); err == nil && tenant != nil && tenant.BaseCurrency != "" {
+			return tenant.BaseCurrency
+		}
+	}
+	return s.reportingCurrency
 }
 
 // RecordIfRecovered inspects the invoice state at payment time and records a
@@ -160,11 +198,59 @@ func (s *DunningRecoveryService) GetRecoveredSummary(ctx context.Context, tenant
 		monthly = []domain.RecoveryMonthBucket{}
 	}
 
+	// Normalize to the tenant's reporting currency (like MRR and the other
+	// analytics do) so the headline isn't decided by raw minor-unit magnitude.
+	reporting := s.resolveReportingCurrency(ctx, tenantID)
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	haveFX := s.fxProvider != nil || s.fxFallback != nil
+
+	var reportingTotal int64
+	for ccy, amt := range amounts {
+		if !haveFX {
+			if ccy == reporting {
+				reportingTotal += amt
+			}
+			continue
+		}
+		if conv, _, err := normalizer.convert(ctx, amt, ccy, reporting); err == nil {
+			reportingTotal += conv
+		}
+	}
+
+	// Collapse the monthly series into a single reporting-currency series so the
+	// chart shows one consistent currency instead of "(INR only)".
+	byMonth := map[string]*domain.RecoveryMonthBucket{}
+	var monthOrder []string
+	for _, b := range monthly {
+		amt := b.Amount
+		if haveFX {
+			conv, _, err := normalizer.convert(ctx, b.Amount, b.Currency, reporting)
+			if err != nil {
+				continue
+			}
+			amt = conv
+		} else if b.Currency != reporting {
+			continue
+		}
+		if byMonth[b.Month] == nil {
+			byMonth[b.Month] = &domain.RecoveryMonthBucket{Month: b.Month, Currency: reporting}
+			monthOrder = append(monthOrder, b.Month)
+		}
+		byMonth[b.Month].Amount += amt
+		byMonth[b.Month].Count += b.Count
+	}
+	normMonthly := make([]domain.RecoveryMonthBucket, 0, len(monthOrder))
+	for _, m := range monthOrder {
+		normMonthly = append(normMonthly, *byMonth[m])
+	}
+
 	return &DunningRecoverySummary{
+		ReportingCurrency:    reporting,
+		ReportingTotal:       reportingTotal,
 		RecoveredAmountTotal: amounts,
 		RecoveredCount:       totals.RecoveredCount,
 		AvgAttempts:          totals.AvgAttempts,
 		AvgDaysToRecover:     totals.AvgDaysToRecover,
-		Monthly:              monthly,
+		Monthly:              normMonthly,
 	}, nil
 }

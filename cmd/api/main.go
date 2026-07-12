@@ -425,6 +425,8 @@ func main() {
 	recoveredPaymentRepo := db.NewRecoveredPaymentRepository(database)
 	dunningRecoveryService := service.NewDunningRecoveryService(recoveredPaymentRepo, os.Getenv("DUNNING_STRATEGY"))
 	dunningRecoveryService.SetCampaignLookup(dunningCampaignRepo)
+	dunningRecoveryService.SetFX(fxProvider, fxFallback, reportingCurrency)
+	dunningRecoveryService.SetTenantLookup(tenantRepo)
 	subscriptionService.SetRecoveryRecorder(dunningRecoveryService)
 
 	// Analytics

@@ -81,36 +81,30 @@ const DunningDashboard = () => {
     contextGroups[w.context_key].push(w);
   });
 
-  // Recovered revenue: pick the currency with the largest recovered total as
-  // the headline; any other currencies are listed in the subtitle.
+  // Recovered revenue is normalized server-side into the tenant's reporting
+  // currency (reporting_total / reporting_currency), so the headline is always
+  // in the account's currency rather than whichever currency has the largest
+  // raw minor-unit amount. The raw per-currency breakdown is shown as context.
   const recoveredTotals = recovered?.recovered_amount_total || {};
-  const currencies = Object.keys(recoveredTotals).sort(
-    (a, b) => recoveredTotals[b] - recoveredTotals[a]
-  );
-  const primaryCurrency = currencies[0] || "USD";
-  const recoveredValue =
-    currencies.length > 0
-      ? formatMoney(recoveredTotals[primaryCurrency], primaryCurrency)
-      : formatMoney(0, "USD");
+  const primaryCurrency = recovered?.reporting_currency || "USD";
+  const recoveredValue = formatMoney(recovered?.reporting_total || 0, primaryCurrency);
+  const sourceCurrencies = Object.keys(recoveredTotals).filter((c) => c !== primaryCurrency);
   const recoveredSubtitleParts = [`${recovered?.recovered_count || 0} invoices`];
   if (recovered?.recovered_count > 0) {
     recoveredSubtitleParts.push(`avg ${(recovered?.avg_attempts || 0).toFixed(1)} attempts`);
   }
-  if (currencies.length > 1) {
+  if (sourceCurrencies.length > 0) {
     recoveredSubtitleParts.push(
-      `+ ${currencies
-        .slice(1)
-        .map((c) => formatMoney(recoveredTotals[c], c))
-        .join(", ")}`
+      `incl. ${sourceCurrencies.map((c) => formatMoney(recoveredTotals[c], c)).join(", ")}`
     );
   }
 
-  // Monthly recovered-revenue series (headline currency drives bar heights).
+  // Monthly series is already normalized to the reporting currency server-side.
   const months = lastTwelveMonths();
   const monthlyByMonth = {};
   (recovered?.monthly || []).forEach((b) => {
     if (!monthlyByMonth[b.month]) monthlyByMonth[b.month] = { amount: 0, count: 0 };
-    if (b.currency === primaryCurrency) monthlyByMonth[b.month].amount += b.amount;
+    monthlyByMonth[b.month].amount += b.amount;
     monthlyByMonth[b.month].count += b.count;
   });
   const chartData = months.map((m) => ({
@@ -173,7 +167,7 @@ const DunningDashboard = () => {
           <CardTitle className="text-base">Recovered Revenue by Month</CardTitle>
           <CardDescription>
             Revenue attributed to the retry/dunning engine over the last 12 months
-            {currencies.length > 1 ? ` (${primaryCurrency} only)` : ""}
+            {` (in ${primaryCurrency})`}
           </CardDescription>
         </CardHeader>
         <CardContent>

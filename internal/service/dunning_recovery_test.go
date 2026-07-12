@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // --- Mocks ---
@@ -325,6 +326,9 @@ func TestGetRecoveredSummary_Shape(t *testing.T) {
 		{Month: "2026-07", Currency: "USD", Amount: 50000, Count: 1},
 	}
 	svc := NewDunningRecoveryService(repo, "")
+	// Wire FX (INR->USD = 0.012) so recovered revenue normalizes to the
+	// reporting currency (ENG-158) instead of the raw largest-minor-units bucket.
+	svc.SetFX(mockFXRate{0.012}, nil, "USD")
 
 	summary, err := svc.GetRecoveredSummary(context.Background(), uuid.New())
 	if err != nil {
@@ -333,15 +337,53 @@ func TestGetRecoveredSummary_Shape(t *testing.T) {
 	if summary.RecoveredCount != 3 {
 		t.Errorf("RecoveredCount = %d, want 3", summary.RecoveredCount)
 	}
+	// Headline is normalized to the reporting currency, not the raw INR pile.
+	if summary.ReportingCurrency != "USD" {
+		t.Errorf("ReportingCurrency = %q, want USD", summary.ReportingCurrency)
+	}
+	// 50000 USD + round(236000 * 0.012) = 50000 + 2832 = 52832.
+	if summary.ReportingTotal != 52832 {
+		t.Errorf("ReportingTotal = %d, want 52832 (USD + INR@0.012)", summary.ReportingTotal)
+	}
+	// Raw per-currency breakdown is preserved for transparency.
 	if summary.RecoveredAmountTotal["INR"] != 236000 {
 		t.Errorf("INR total = %d, want 236000", summary.RecoveredAmountTotal["INR"])
 	}
 	if summary.AvgAttempts != 2.5 || summary.AvgDaysToRecover != 4.0 {
 		t.Errorf("averages = %v/%v, want 2.5/4.0", summary.AvgAttempts, summary.AvgDaysToRecover)
 	}
-	if len(summary.Monthly) != 3 {
-		t.Errorf("Monthly len = %d, want 3", len(summary.Monthly))
+	// Monthly is collapsed into one reporting-currency series: 2026-06 and
+	// 2026-07 (the INR + USD July buckets merge), all in USD.
+	if len(summary.Monthly) != 2 {
+		t.Fatalf("Monthly len = %d, want 2 (merged by month, single currency)", len(summary.Monthly))
 	}
+	for _, b := range summary.Monthly {
+		if b.Currency != "USD" {
+			t.Errorf("monthly bucket %s currency = %q, want USD", b.Month, b.Currency)
+		}
+	}
+}
+
+// mockFXRate is a fixed-rate ExchangeRateProvider for tests. Only GetRate is
+// exercised by the FX normalizer; the rest satisfy the interface.
+type mockFXRate struct{ rate float64 }
+
+func (m mockFXRate) GetRate(_ context.Context, from, to string) (float64, error) {
+	if from == to {
+		return 1, nil
+	}
+	return m.rate, nil
+}
+
+func (m mockFXRate) Convert(_ context.Context, amount int64, from, to string) (int64, float64, error) {
+	if from == to {
+		return amount, 1, nil
+	}
+	return int64(float64(amount) * m.rate), m.rate, nil
+}
+
+func (m mockFXRate) ListRates(_ context.Context, _ string) ([]port.ExchangeRate, error) {
+	return nil, nil
 }
 
 func TestGetRecoveredSummary_EmptyIsNonNil(t *testing.T) {
