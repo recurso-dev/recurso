@@ -5,6 +5,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
+  AddressElement,
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
@@ -76,6 +77,10 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Billing name + address. Required for India-export (foreign-currency)
+          Stripe charges; confirmPayment automatically attaches this element's
+          value to the payment method's billing_details. */}
+      <AddressElement options={{ mode: "billing" }} />
       <PaymentElement />
       {error && (
         <div className="rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
