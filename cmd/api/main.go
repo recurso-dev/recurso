@@ -940,8 +940,11 @@ func main() {
 			}
 		}
 
-		// Check TigerBeetle
-		if ledgerService != nil {
+		// Check TigerBeetle. Report the ACTUAL boot-time connection state
+		// (tbConnected), not ledgerService != nil — the ledger service is always
+		// constructed (PG-only mode passes a nil TB client), so the latter would
+		// always say "connected" and mask a real TigerBeetle outage.
+		if tbConnected {
 			components["tigerbeetle"] = gin.H{"status": "connected"}
 		} else {
 			components["tigerbeetle"] = gin.H{"status": "disconnected"}
