@@ -323,10 +323,14 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 		return
 	}
 
-	// 1. Verify Signature
+	// 1. Verify Signature. IgnoreAPIVersionMismatch keeps HMAC verification but
+	// tolerates events stamped with a different Stripe API version than the
+	// pinned stripe-go release (accounts commonly emit an older default version)
+	// — Stripe's recommended handling; without it every delivery 401s.
 	var event stripe.Event
 	if h.stripeWebhookSecret != "" {
-		event, err = webhook.ConstructEvent(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret)
+		event, err = webhook.ConstructEventWithOptions(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret,
+			webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
 		if err != nil {
 			h.logger.Warn("stripe webhook signature verification failed",
 				"error", err,
