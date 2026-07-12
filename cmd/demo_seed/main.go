@@ -44,6 +44,7 @@ var (
 	flagCustomers    = flag.Int("customers", 42, "number of demo customers to create")
 	flagCreateTenant = flag.Bool("create-tenant", false, "create the tenant if it does not exist (for local testing only)")
 	flagDryRun       = flag.Bool("dry-run", false, "roll back instead of committing (prints the counts it would insert)")
+	flagReset        = flag.Bool("reset", false, "first delete this tenant's existing demo-tagged rows, then re-seed (safe: only touches demo data)")
 )
 
 func main() {
@@ -72,14 +73,14 @@ func main() {
 	}
 	log.Printf("Target tenant: %s (%s) — default currency %s", tenantName, tenantID, currency)
 
-	// Hard stop if this tenant was already demo-seeded — re-running would
-	// duplicate data. This is a one-shot tool by design.
+	// Guard against double-seeding. With --reset we purge the existing demo rows
+	// first (below, inside the tx); otherwise it's a hard stop.
 	var n int
 	_ = conn.QueryRowContext(ctx,
 		`SELECT count(*) FROM customers WHERE tenant_id=$1 AND email LIKE '%@'||$2`,
 		tenantID, demoDomain).Scan(&n)
-	if n > 0 {
-		log.Fatalf("tenant already has %d demo customers — already seeded. Nothing to do.", n)
+	if n > 0 && !*flagReset {
+		log.Fatalf("tenant already has %d demo customers — already seeded. Pass --reset to purge & re-seed.", n)
 	}
 
 	tx, err := conn.BeginTx(ctx, nil)
@@ -101,6 +102,7 @@ func main() {
 		currency: currency,
 		now:      time.Now().UTC(),
 		months:   *flagMonths,
+		reset:    *flagReset,
 		counts:   map[string]int{},
 	}
 	s.run()
@@ -161,6 +163,7 @@ type seeder struct {
 	currency string
 	now      time.Time
 	months   int
+	reset    bool
 	counts   map[string]int
 
 	invoiceSeq int
@@ -214,7 +217,50 @@ func (s *seeder) queryID(q string, args ...any) uuid.UUID {
 
 func (s *seeder) bump(table string, n int) { s.counts[table] += n }
 
+// purge deletes only this tenant's demo-tagged rows (identified by the
+// @demo.recurso.dev / DEMO- markers the seeder stamps), in FK-safe order.
+// Non-demo data for the tenant is never touched. Runs inside the seed tx.
+func (s *seeder) purge() {
+	log.Println("--reset: purging existing demo rows for this tenant…")
+	t := s.tenantID
+	demoCust := `SELECT id FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`
+	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND invoice_number LIKE 'INV-DEMO-%'`
+	demoSub := `SELECT id FROM subscriptions WHERE customer_id IN (` + demoCust + `)`
+	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`
+	stmts := []string{
+		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoInv + `)`,
+		`DELETE FROM invoice_items WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM recovered_payments WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM dunning_history WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM subscription_addons WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM mandates WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM mrr_snapshots WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM churn_alerts WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM offline_payments WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM quotes WHERE tenant_id=$1 AND quote_number LIKE 'Q-DEMO-%'`,
+		`DELETE FROM credit_notes WHERE tenant_id=$1 AND reference LIKE 'CN-DEMO-%'`,
+		`DELETE FROM events WHERE tenant_id=$1 AND data->>'demo'='true'`,
+		`DELETE FROM invoices WHERE tenant_id=$1 AND invoice_number LIKE 'INV-DEMO-%'`,
+		`DELETE FROM subscriptions WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM dunning_campaigns WHERE tenant_id=$1 AND name LIKE '%(demo)%'`,
+		`DELETE FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`,
+		`DELETE FROM prices WHERE plan_id IN (` + demoPlan + `)`,
+		`DELETE FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`,
+		`DELETE FROM coupons WHERE tenant_id=$1 AND code LIKE 'DEMO-%'`,
+		`DELETE FROM webhook_endpoints WHERE tenant_id=$1 AND url LIKE '%` + demoDomain + `%'`,
+	}
+	for _, q := range stmts {
+		s.exec(q, t)
+	}
+	// ledger_accounts are generic (AR/Cash/Revenue/Tax) and reused via
+	// lookup-or-create on re-seed, so they are intentionally left in place.
+}
+
 func (s *seeder) run() {
+	if s.reset {
+		s.purge()
+	}
 	// This runs ~2,000 inserts, one round-trip each. Against a remote DB (Neon)
 	// that can take a few minutes, so log each phase to show it's alive.
 	log.Println("Seeding (~2,000 rows; over a remote DB this can take a few minutes)…")
