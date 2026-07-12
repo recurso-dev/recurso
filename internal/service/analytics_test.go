@@ -770,3 +770,53 @@ func TestGetRevenueByPlan(t *testing.T) {
 		t.Errorf("segment[1] = %+v, want Starter/1000", rep.Segments[1])
 	}
 }
+
+// --- revenue by geography ---
+
+type fakeCustomerLookup struct{ byID map[uuid.UUID]string }
+
+func (f *fakeCustomerLookup) GetByID(_ context.Context, id uuid.UUID) (*domain.Customer, error) {
+	return &domain.Customer{ID: id, BillingAddress: domain.BillingAddress{Country: f.byID[id]}}, nil
+}
+
+// TestGetRevenueByGeography: 2 IN customers ($1000 + $2000) + 1 US ($3000) →
+// India 3000, United States 3000, ISO codes mapped to names, 50/50 split.
+func TestGetRevenueByGeography(t *testing.T) {
+	cIN1, cIN2, cUS := uuid.New(), uuid.New(), uuid.New()
+	p1 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 1000}}}
+	p2 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 2000}}}
+	p3 := &domain.Plan{ID: uuid.New(), Prices: []domain.Price{{Currency: "USD", Amount: 3000}}}
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{p1.ID: p1, p2.ID: p2, p3.ID: p3}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), CustomerID: cIN1, PlanID: p1.ID},
+		{ID: uuid.New(), CustomerID: cIN2, PlanID: p2.ID},
+		{ID: uuid.New(), CustomerID: cUS, PlanID: p3.ID},
+	}}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
+	svc.SetCustomerLookup(&fakeCustomerLookup{byID: map[uuid.UUID]string{cIN1: "IN", cIN2: "IN", cUS: "US"}})
+
+	rep, err := svc.GetRevenueByGeography(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetRevenueByGeography: %v", err)
+	}
+	if rep.TotalMRR != 6000 || len(rep.Segments) != 2 {
+		t.Fatalf("total=%d segments=%d, want 6000 / 2", rep.TotalMRR, len(rep.Segments))
+	}
+	byLabel := map[string]domain.RevenueSegment{}
+	for _, s := range rep.Segments {
+		byLabel[s.Label] = s
+	}
+	in := byLabel["India"]
+	us := byLabel["United States"]
+	if in.MRR != 3000 || in.Subscriptions != 2 {
+		t.Errorf("India = %+v, want MRR 3000 / 2 subs", in)
+	}
+	if us.MRR != 3000 || us.Subscriptions != 1 {
+		t.Errorf("United States = %+v, want MRR 3000 / 1 sub", us)
+	}
+	if in.SharePct < 49.9 || in.SharePct > 50.1 {
+		t.Errorf("India share = %.1f, want 50.0", in.SharePct)
+	}
+}

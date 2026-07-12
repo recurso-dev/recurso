@@ -88,6 +88,8 @@ export const endpoints = {
   getUnitEconomics: () => api.get('/analytics/unit-economics'),
   // MRR split across plans.
   getRevenueByPlan: () => api.get('/analytics/revenue-by-plan'),
+  // MRR split across customer countries.
+  getRevenueByGeography: () => api.get('/analytics/revenue-by-geography'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
   getLedgerAccounts: () => api.get('/ledger/accounts'),

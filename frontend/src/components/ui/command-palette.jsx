@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
   Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,
-  Settings, ShieldCheck, UserCog, Plus, Search, PieChart,
+  Settings, ShieldCheck, UserCog, Plus, Search, PieChart, Globe,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ const DESTINATIONS = [
   { group: "Go to", label: "Invoice Aging", to: "/finance/invoice-aging", icon: FileClock },
   { group: "Go to", label: "Unit Economics", to: "/finance/unit-economics", icon: Gauge },
   { group: "Go to", label: "Revenue by Plan", to: "/finance/revenue-by-plan", icon: PieChart },
+  { group: "Go to", label: "Revenue by Geography", to: "/finance/revenue-by-geography", icon: Globe },
   { group: "Go to", label: "Usage", to: "/usage", icon: BarChart3 },
   { group: "Go to", label: "Developers", to: "/developers", icon: Code2 },
   { group: "Go to", label: "Settings", to: "/settings", icon: Settings },

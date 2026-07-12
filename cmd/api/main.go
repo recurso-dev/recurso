@@ -423,6 +423,7 @@ func main() {
 	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
 		analyticsService.SetInvoiceAgingStore(agingStore)
 	}
+	analyticsService.SetCustomerLookup(customerRepo)
 
 	// GenAI (P48)
 	openAIKey := os.Getenv("OPENAI_API_KEY")
@@ -1075,6 +1076,7 @@ func main() {
 			analytics.GET("/invoice-aging", analyticsHandler.GetInvoiceAging)
 			analytics.GET("/unit-economics", analyticsHandler.GetUnitEconomics)
 			analytics.GET("/revenue-by-plan", analyticsHandler.GetRevenueByPlan)
+			analytics.GET("/revenue-by-geography", analyticsHandler.GetRevenueByGeography)
 			analytics.GET("/usage", analyticsHandler.GetUsageStats)
 			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)

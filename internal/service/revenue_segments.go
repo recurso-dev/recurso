@@ -8,6 +8,125 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
+// CustomerLookup resolves a customer (for the customer's billing country).
+type CustomerLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+}
+
+// SetCustomerLookup wires customer resolution, enabling revenue-by-geography.
+func (s *AnalyticsService) SetCustomerLookup(l CustomerLookup) {
+	s.customers = l
+}
+
+// countryNames maps common ISO-3166 alpha-2 codes to display names; anything
+// else is shown as-is (or "Unknown" when the customer has no country).
+var countryNames = map[string]string{
+	"IN": "India", "US": "United States", "GB": "United Kingdom", "CA": "Canada",
+	"AU": "Australia", "DE": "Germany", "FR": "France", "SG": "Singapore",
+	"AE": "United Arab Emirates", "NL": "Netherlands", "JP": "Japan", "BR": "Brazil",
+}
+
+func countryLabel(code string) string {
+	if code == "" {
+		return "Unknown"
+	}
+	if name, ok := countryNames[code]; ok {
+		return name
+	}
+	return code
+}
+
+// GetRevenueByGeography breaks current MRR down by the customer's billing
+// country, largest-first with each country's share of total. Customers are
+// resolved via the customer lookup (cached); a missing country falls into
+// "Unknown". Requires SetCustomerLookup — otherwise everything is "Unknown".
+func (s *AnalyticsService) GetRevenueByGeography(ctx context.Context, tenantID uuid.UUID) (*domain.RevenueByGeographyReport, error) {
+	subs, err := s.subRepo.GetActiveSubscriptions(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	reporting := s.resolveReportingCurrency(ctx, tenantID)
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+
+	type agg struct {
+		mrr   int64
+		count int
+	}
+	planCache := make(map[uuid.UUID]*domain.Plan)
+	custCountry := make(map[uuid.UUID]string) // customerID -> country code (cache)
+	byCountry := make(map[string]*agg)
+	var total int64
+
+	for _, sub := range subs {
+		plan, ok := planCache[sub.PlanID]
+		if !ok {
+			p, err := s.planRepo.GetByID(ctx, sub.PlanID)
+			if err != nil || p == nil {
+				continue
+			}
+			plan = p
+			planCache[sub.PlanID] = plan
+		}
+		if len(plan.Prices) == 0 {
+			continue
+		}
+		currency := plan.Prices[0].Currency
+		if currency == "" {
+			currency = reporting
+		}
+		monthly := monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
+		converted, _, err := normalizer.convert(ctx, monthly, currency, reporting)
+		if err != nil {
+			continue
+		}
+
+		country, seen := custCountry[sub.CustomerID]
+		if !seen {
+			if s.customers != nil {
+				if cust, err := s.customers.GetByID(ctx, sub.CustomerID); err == nil && cust != nil {
+					country = cust.BillingAddress.Country
+				}
+			}
+			custCountry[sub.CustomerID] = country
+		}
+
+		a := byCountry[country]
+		if a == nil {
+			a = &agg{}
+			byCountry[country] = a
+		}
+		a.mrr += converted
+		a.count++
+		total += converted
+	}
+
+	report := &domain.RevenueByGeographyReport{
+		ReportingCurrency: reporting,
+		TotalMRR:          total,
+		Segments:          make([]domain.RevenueSegment, 0, len(byCountry)),
+	}
+	for code, a := range byCountry {
+		share := 0.0
+		if total > 0 {
+			share = float64(a.mrr) / float64(total) * 100
+		}
+		report.Segments = append(report.Segments, domain.RevenueSegment{
+			Key:           code,
+			Label:         countryLabel(code),
+			MRR:           a.mrr,
+			Subscriptions: a.count,
+			SharePct:      share,
+		})
+	}
+	sort.Slice(report.Segments, func(i, j int) bool {
+		if report.Segments[i].MRR != report.Segments[j].MRR {
+			return report.Segments[i].MRR > report.Segments[j].MRR
+		}
+		return report.Segments[i].Label < report.Segments[j].Label
+	})
+	return report, nil
+}
+
 // GetRevenueByPlan breaks current MRR down by plan: for each active
 // subscription, its monthly-normalized price is converted to the reporting
 // currency and summed per plan. Segments are returned largest-first with each

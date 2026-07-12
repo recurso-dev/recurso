@@ -15,3 +15,10 @@ type RevenueByPlanReport struct {
 	TotalMRR          int64            `json:"total_mrr"`
 	Segments          []RevenueSegment `json:"segments"`
 }
+
+// RevenueByGeographyReport breaks current MRR down by customer country.
+type RevenueByGeographyReport struct {
+	ReportingCurrency string           `json:"reporting_currency"`
+	TotalMRR          int64            `json:"total_mrr"`
+	Segments          []RevenueSegment `json:"segments"`
+}
