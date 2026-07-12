@@ -3,6 +3,7 @@ import { loadStripe } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
+  AddressElement,
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
@@ -68,6 +69,10 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+      {/* Billing name + address, attached to the saved card via confirmSetup.
+          Required so the stored payment method can later be charged off-session
+          for India-export (foreign-currency) invoices. */}
+      <AddressElement options={{ mode: "billing" }} />
       <PaymentElement />
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
