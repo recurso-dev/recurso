@@ -291,7 +291,27 @@ func (s *seeder) run() {
 	step("referrals", func() { s.seedReferrals(custs) })
 	step("gifts", func() { s.seedGifts(custs) })
 	step("events", func() { s.seedEvents(custs, subs) })
+	step("ledger balances", s.recomputeLedgerBalances)
 	log.Println("  · finalizing…")
+}
+
+// recomputeLedgerBalances derives each account's debits_posted / credits_posted
+// / balance from its transactions. Normally LedgerRepository.CreateTransaction
+// maintains these as rows post, but the seeder inserts ledger_transactions
+// directly — so without this every account balance shows 0. Balance sign
+// follows the repo (ENG-148): debit-normal (asset/expense) nets debits−credits;
+// credit-normal (liability/equity/revenue) nets credits−debits.
+func (s *seeder) recomputeLedgerBalances() {
+	s.exec(`UPDATE ledger_accounts la SET
+		debits_posted  = COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE debit_account_id = la.id), 0),
+		credits_posted = COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE credit_account_id = la.id), 0),
+		balance = CASE WHEN lower(la.type) IN ('1','5','asset','expense')
+			THEN COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE debit_account_id = la.id),0)
+			   - COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE credit_account_id = la.id),0)
+			ELSE COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE credit_account_id = la.id),0)
+			   - COALESCE((SELECT sum(amount) FROM ledger_transactions WHERE debit_account_id = la.id),0) END,
+		updated_at = now()
+		WHERE la.tenant_id = $1`, s.tenantID)
 }
 
 // ---- reference data ----
