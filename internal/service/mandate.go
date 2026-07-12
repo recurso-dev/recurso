@@ -253,8 +253,8 @@ func isGatewayPaymentID(id string) bool {
 	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") || strings.HasPrefix(id, "ch_")
 }
 
-func (s *MandateService) Revoke(ctx context.Context, mandateID uuid.UUID) error {
-	mandate, err := s.mandateRepo.GetByID(ctx, mandateID)
+func (s *MandateService) Revoke(ctx context.Context, mandateID, tenantID uuid.UUID) error {
+	mandate, err := s.mandateRepo.GetByID(ctx, mandateID, tenantID)
 	if err != nil {
 		return fmt.Errorf("mandate not found: %w", err)
 	}
@@ -272,8 +272,8 @@ func (s *MandateService) Revoke(ctx context.Context, mandateID uuid.UUID) error 
 	return s.mandateRepo.Update(ctx, mandate)
 }
 
-func (s *MandateService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Mandate, error) {
-	return s.mandateRepo.GetByID(ctx, id)
+func (s *MandateService) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Mandate, error) {
+	return s.mandateRepo.GetByID(ctx, id, tenantID)
 }
 
 func (s *MandateService) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Mandate, error) {

@@ -31,13 +31,13 @@ func (r *MandateRepository) Create(ctx context.Context, mandate *domain.Mandate)
 	return err
 }
 
-func (r *MandateRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Mandate, error) {
+func (r *MandateRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
-		FROM mandates WHERE id = $1`
-	row := r.db.QueryRowContext(ctx, query, id)
+		FROM mandates WHERE id = $1 AND tenant_id = $2`
+	row := r.db.QueryRowContext(ctx, query, id, tenantID)
 	return r.scanMandate(row)
 }
 

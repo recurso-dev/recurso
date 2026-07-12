@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -110,7 +111,17 @@ func (h *WebhookManagementHandler) DeleteEndpoint(c *gin.Context) {
 		return
 	}
 
-	if err := h.webhookService.DeleteEndpoint(c.Request.Context(), id); err != nil {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+
+	if err := h.webhookService.DeleteEndpoint(c.Request.Context(), tenantID.(uuid.UUID), id); err != nil {
+		if errors.Is(err, service.ErrEndpointNotFound) {
+			respondError(c, http.StatusNotFound, codeNotFound, "endpoint not found")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

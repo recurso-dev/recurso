@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -98,8 +100,13 @@ func (h *MandateHandler) GetMandate(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid mandate id")
 		return
 	}
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 
-	mandate, err := h.service.GetByID(c.Request.Context(), id)
+	mandate, err := h.service.GetByID(c.Request.Context(), id, tenantID)
 	if err != nil {
 		respondError(c, http.StatusNotFound, codeNotFound, "mandate not found")
 		return
@@ -114,8 +121,19 @@ func (h *MandateHandler) RevokeMandate(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid mandate id")
 		return
 	}
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 
-	if err := h.service.Revoke(c.Request.Context(), id); err != nil {
+	if err := h.service.Revoke(c.Request.Context(), id, tenantID); err != nil {
+		// Not found (incl. another tenant's id, which the scoped query treats as
+		// missing) → 404, not 500.
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "mandate not found")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -45,7 +47,9 @@ func (h *QuoteHandler) GetQuote(c *gin.Context) {
 		return
 	}
 
-	quote, err := h.quoteService.GetQuote(c.Request.Context(), id)
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	quote, err := h.quoteService.GetQuote(c.Request.Context(), id, tenantID)
 	if err != nil {
 		respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
 		return
@@ -81,14 +85,20 @@ func (h *QuoteHandler) UpdateQuote(c *gin.Context) {
 		return
 	}
 
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
 	var req domain.CreateQuoteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
-	quote, err := h.quoteService.UpdateQuote(c.Request.Context(), id, req)
+	quote, err := h.quoteService.UpdateQuote(c.Request.Context(), id, tenantID, req)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		if err == service.ErrQuoteNotEditable {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
@@ -108,7 +118,13 @@ func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 		return
 	}
 
-	if err := h.quoteService.DeleteQuote(c.Request.Context(), id); err != nil {
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	if err := h.quoteService.DeleteQuote(c.Request.Context(), id, tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		if err == service.ErrQuoteNotEditable {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
@@ -128,8 +144,14 @@ func (h *QuoteHandler) SendQuote(c *gin.Context) {
 		return
 	}
 
-	quote, err := h.quoteService.SendQuote(c.Request.Context(), id)
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	quote, err := h.quoteService.SendQuote(c.Request.Context(), id, tenantID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
@@ -145,8 +167,14 @@ func (h *QuoteHandler) AcceptQuote(c *gin.Context) {
 		return
 	}
 
-	quote, err := h.quoteService.AcceptQuote(c.Request.Context(), id)
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	quote, err := h.quoteService.AcceptQuote(c.Request.Context(), id, tenantID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
@@ -162,8 +190,14 @@ func (h *QuoteHandler) DeclineQuote(c *gin.Context) {
 		return
 	}
 
-	quote, err := h.quoteService.DeclineQuote(c.Request.Context(), id)
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	quote, err := h.quoteService.DeclineQuote(c.Request.Context(), id, tenantID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
@@ -179,8 +213,14 @@ func (h *QuoteHandler) ConvertToInvoice(c *gin.Context) {
 		return
 	}
 
-	invoice, err := h.quoteService.ConvertToInvoice(c.Request.Context(), id)
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+
+	invoice, err := h.quoteService.ConvertToInvoice(c.Request.Context(), id, tenantID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
+			return
+		}
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}

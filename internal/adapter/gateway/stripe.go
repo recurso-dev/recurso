@@ -389,44 +389,20 @@ func (s *StripeGateway) CancelSubscription(ctx context.Context, subscriptionID s
 	return nil
 }
 
+// RetryPayment is the off-session dunning fallback used only when the customer
+// has NO saved payment method (retry_worker.chargeInvoice prefers
+// ChargeSavedPaymentMethod when one exists). Without a saved method there is
+// nothing to charge off-session: a PaymentIntent with Confirm:true but no
+// PaymentMethod/Customer can never succeed — Stripe rejects it — and for a
+// foreign-currency (export) charge on an India-based account it would also fail
+// the india-exports name+address requirement. So rather than burn a doomed
+// Stripe round-trip on every dunning tick, fail closed with a clear decline the
+// worker records as a normal failure (schedules the next dunning step).
 func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
-	params := &stripe.PaymentIntentParams{
-		Amount:   stripe.Int64(amount),
-		Currency: stripe.String(currency),
-		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
-		Confirm: stripe.Bool(true),
-		Metadata: map[string]string{
-			"invoice_id":    invoiceID,
-			"retry_payment": "true",
-		},
-	}
-
-	pi, err := s.sc.PaymentIntents.New(params)
-	if err != nil {
-		stripeErr, ok := err.(*stripe.Error)
-		if ok {
-			return &port.PaymentResult{
-				Success:   false,
-				ErrorCode: string(stripeErr.Code),
-				ErrorMsg:  stripeErr.Msg,
-			}, nil
-		}
-		return nil, fmt.Errorf("stripe retry payment infra error: %w", err)
-	}
-
-	if pi.Status == stripe.PaymentIntentStatusSucceeded {
-		return &port.PaymentResult{
-			Success:   true,
-			PaymentID: pi.ID,
-		}, nil
-	}
-
 	return &port.PaymentResult{
 		Success:   false,
-		ErrorCode: string(pi.Status),
-		ErrorMsg:  fmt.Sprintf("payment intent status: %s", pi.Status),
+		ErrorCode: "no_saved_payment_method",
+		ErrorMsg:  "off-session retry requires a saved payment method; none on file for this customer",
 	}, nil
 }
 

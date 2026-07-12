@@ -40,19 +40,19 @@ func (r *QuoteRepository) Create(ctx context.Context, quote *domain.Quote) error
 	return err
 }
 
-func (r *QuoteRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Quote, error) {
+func (r *QuoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Quote, error) {
 	query := `
 		SELECT id, tenant_id, customer_id, quote_number, status,
 			line_items, subtotal, tax_amount, discount_amount, total, currency,
 			valid_until, notes, terms, invoice_id, accepted_at, declined_at,
 			created_at, updated_at
-		FROM quotes WHERE id = $1
+		FROM quotes WHERE id = $1 AND tenant_id = $2
 	`
 	var quote domain.Quote
 	var lineItemsJSON []byte
 	var notes, terms sql.NullString
 
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&quote.ID, &quote.TenantID, &quote.CustomerID, &quote.QuoteNumber, &quote.Status,
 		&lineItemsJSON, &quote.Subtotal, &quote.TaxAmount, &quote.DiscountAmount, &quote.Total, &quote.Currency,
 		&quote.ValidUntil, &notes, &terms, &quote.InvoiceID, &quote.AcceptedAt, &quote.DeclinedAt,
@@ -78,25 +78,28 @@ func (r *QuoteRepository) Update(ctx context.Context, quote *domain.Quote) error
 		return err
 	}
 
+	// tenant_id in the WHERE clause is defense-in-depth: callers already load the
+	// quote via the tenant-scoped GetByID, but a stray Update must never cross
+	// tenants (ENG-160).
 	query := `
 		UPDATE quotes SET
 			status = $2, line_items = $3, subtotal = $4, tax_amount = $5,
 			discount_amount = $6, total = $7, valid_until = $8, notes = $9,
 			terms = $10, invoice_id = $11, accepted_at = $12, declined_at = $13,
 			updated_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND tenant_id = $14
 	`
 	_, err = r.db.ExecContext(ctx, query,
 		quote.ID, quote.Status, lineItemsJSON, quote.Subtotal, quote.TaxAmount,
 		quote.DiscountAmount, quote.Total, quote.ValidUntil, quote.Notes,
-		quote.Terms, quote.InvoiceID, quote.AcceptedAt, quote.DeclinedAt,
+		quote.Terms, quote.InvoiceID, quote.AcceptedAt, quote.DeclinedAt, quote.TenantID,
 	)
 	return err
 }
 
-func (r *QuoteRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM quotes WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+func (r *QuoteRepository) Delete(ctx context.Context, id, tenantID uuid.UUID) error {
+	query := `DELETE FROM quotes WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
 

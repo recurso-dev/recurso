@@ -450,6 +450,42 @@ func TestRedeliverEvent_TenantIsolation(t *testing.T) {
 	}
 }
 
+// --- DeleteEndpoint ---
+
+func TestDeleteEndpoint_OwnerSucceeds(t *testing.T) {
+	f := newWebhookFixture(t)
+
+	if err := f.svc.DeleteEndpoint(context.Background(), f.tenantID, f.endpoint.ID); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := f.endpointRepo.endpoints[f.endpoint.ID]; ok {
+		t.Error("expected endpoint to be deleted")
+	}
+}
+
+func TestDeleteEndpoint_TenantIsolation(t *testing.T) {
+	f := newWebhookFixture(t)
+	otherTenant := uuid.New()
+
+	err := f.svc.DeleteEndpoint(context.Background(), otherTenant, f.endpoint.ID)
+	if err != ErrEndpointNotFound {
+		t.Fatalf("expected ErrEndpointNotFound for cross-tenant delete, got %v", err)
+	}
+	// The endpoint must survive a cross-tenant delete attempt (ENG-160 IDOR).
+	if _, ok := f.endpointRepo.endpoints[f.endpoint.ID]; !ok {
+		t.Error("cross-tenant delete must not remove the endpoint")
+	}
+}
+
+func TestDeleteEndpoint_NotFound(t *testing.T) {
+	f := newWebhookFixture(t)
+
+	err := f.svc.DeleteEndpoint(context.Background(), f.tenantID, uuid.New())
+	if err != ErrEndpointNotFound {
+		t.Fatalf("expected ErrEndpointNotFound, got %v", err)
+	}
+}
+
 // --- PublishEvent sanity (delivery fan-out feeds the tracking endpoints) ---
 
 func TestPublishEvent_CreatesDeliveryRowsForSubscribedEndpoints(t *testing.T) {

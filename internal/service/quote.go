@@ -64,9 +64,9 @@ func (s *QuoteService) CreateQuote(ctx context.Context, tenantID uuid.UUID, req 
 	return quote, nil
 }
 
-// GetQuote retrieves a quote by ID
-func (s *QuoteService) GetQuote(ctx context.Context, id uuid.UUID) (*domain.Quote, error) {
-	return s.quoteRepo.GetByID(ctx, id)
+// GetQuote retrieves a quote by ID, scoped to the tenant.
+func (s *QuoteService) GetQuote(ctx context.Context, id, tenantID uuid.UUID) (*domain.Quote, error) {
+	return s.quoteRepo.GetByID(ctx, id, tenantID)
 }
 
 // ListQuotes lists quotes with filters
@@ -75,8 +75,8 @@ func (s *QuoteService) ListQuotes(ctx context.Context, tenantID uuid.UUID, filte
 }
 
 // UpdateQuote updates a quote (only if draft)
-func (s *QuoteService) UpdateQuote(ctx context.Context, id uuid.UUID, req domain.CreateQuoteRequest) (*domain.Quote, error) {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) UpdateQuote(ctx context.Context, id, tenantID uuid.UUID, req domain.CreateQuoteRequest) (*domain.Quote, error) {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -103,8 +103,8 @@ func (s *QuoteService) UpdateQuote(ctx context.Context, id uuid.UUID, req domain
 }
 
 // SendQuote marks a quote as sent
-func (s *QuoteService) SendQuote(ctx context.Context, id uuid.UUID) (*domain.Quote, error) {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) SendQuote(ctx context.Context, id, tenantID uuid.UUID) (*domain.Quote, error) {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -124,8 +124,8 @@ func (s *QuoteService) SendQuote(ctx context.Context, id uuid.UUID) (*domain.Quo
 }
 
 // AcceptQuote marks a quote as accepted
-func (s *QuoteService) AcceptQuote(ctx context.Context, id uuid.UUID) (*domain.Quote, error) {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) AcceptQuote(ctx context.Context, id, tenantID uuid.UUID) (*domain.Quote, error) {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -147,8 +147,8 @@ func (s *QuoteService) AcceptQuote(ctx context.Context, id uuid.UUID) (*domain.Q
 }
 
 // DeclineQuote marks a quote as declined
-func (s *QuoteService) DeclineQuote(ctx context.Context, id uuid.UUID) (*domain.Quote, error) {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) DeclineQuote(ctx context.Context, id, tenantID uuid.UUID) (*domain.Quote, error) {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -170,8 +170,8 @@ func (s *QuoteService) DeclineQuote(ctx context.Context, id uuid.UUID) (*domain.
 }
 
 // ConvertToInvoice converts an accepted quote to an invoice
-func (s *QuoteService) ConvertToInvoice(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.UUID) (*domain.Invoice, error) {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -239,8 +239,8 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id uuid.UUID) (*dom
 }
 
 // DeleteQuote deletes a draft quote
-func (s *QuoteService) DeleteQuote(ctx context.Context, id uuid.UUID) error {
-	quote, err := s.quoteRepo.GetByID(ctx, id)
+func (s *QuoteService) DeleteQuote(ctx context.Context, id, tenantID uuid.UUID) error {
+	quote, err := s.quoteRepo.GetByID(ctx, id, tenantID)
 	if err != nil {
 		return err
 	}
@@ -249,7 +249,7 @@ func (s *QuoteService) DeleteQuote(ctx context.Context, id uuid.UUID) error {
 		return ErrQuoteNotEditable
 	}
 
-	return s.quoteRepo.Delete(ctx, id)
+	return s.quoteRepo.Delete(ctx, id, tenantID)
 }
 
 // Quote errors
