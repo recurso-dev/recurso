@@ -340,14 +340,18 @@ func (s *seeder) seedWebhooks() {
 
 // ---- customers ----
 
+// USD-primary: the tenant's currency is USD, so most customers pay USD. India
+// is kept as a small (~14%) cohort so the GST / e-invoice / UPI-mandate flows
+// still have data, without INR dominating the headline numbers.
 var geoPool = []struct {
 	country, state, stateCode string
 	india                     bool
 }{
 	{"US", "California", "CA", false}, {"US", "New York", "NY", false}, {"US", "Texas", "TX", false},
-	{"IN", "Maharashtra", "27", true}, {"IN", "Karnataka", "29", true}, {"IN", "Delhi", "07", true},
-	{"GB", "England", "", false}, {"DE", "Bavaria", "", false}, {"CA", "Ontario", "", false},
-	{"AU", "NSW", "", false}, {"SG", "", "", false},
+	{"US", "Washington", "WA", false}, {"US", "Massachusetts", "MA", false},
+	{"GB", "England", "", false}, {"GB", "Scotland", "", false}, {"DE", "Bavaria", "", false},
+	{"CA", "Ontario", "", false}, {"AU", "NSW", "", false}, {"SG", "", "", false}, {"NL", "", "", false},
+	{"IN", "Maharashtra", "27", true}, {"IN", "Karnataka", "29", true},
 }
 
 var companyWords = []string{"Acme", "Globex", "Initech", "Umbrella", "Hooli", "Stark", "Wayne", "Wonka",
@@ -623,11 +627,19 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 	s.bump("invoice_items", 1)
 
 	// ledger postings + payment recovery for the relevant states
+	// Code-1 (invoice raised) for every non-draft invoice — all seeded invoices
+	// are non-draft, so post it unconditionally. Reconciler requires it.
+	s.postInvoiceLedger(invID, total, p.start)
+	s.bump("ledger_transactions", 1)
 	if status == "paid" {
-		s.postLedger(invID, total, p.end)
-		s.bump("ledger_transactions", 2)
-		// ~9% of paid invoices were recovered after an initial failure (dunning win).
-		if s.rng.Intn(100) < 9 {
+		// Code-3 (payment) for paid invoices, summing to amount_paid.
+		s.postPaymentLedger(invID, amountPaid, p.end)
+		s.bump("ledger_transactions", 1)
+		// ~12% of paid USD invoices were recovered after an initial failure
+		// (dunning win). Kept USD-only so the recovered-revenue headline reads
+		// USD — the dunning card compares raw minor units, where INR paise would
+		// always outrank USD cents.
+		if !c.india && s.rng.Intn(100) < 12 {
 			s.recordDunning(invID, campaignID, sub, total, true)
 		}
 	}
@@ -636,13 +648,20 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 	}
 }
 
-func (s *seeder) postLedger(invID uuid.UUID, amount int64, at time.Time) {
-	// invoice raised: debit AR, credit Revenue; payment: debit Cash, credit AR
+// postInvoiceLedger records the Code-1 (invoice raised) posting: debit AR,
+// credit Revenue. The reconciler requires one for every non-draft invoice,
+// summing to the invoice total.
+func (s *seeder) postInvoiceLedger(invID uuid.UUID, amount int64, at time.Time) {
 	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
-		VALUES ($1,$2,$3,$4,700,1,$5,'Invoice revenue', $6) ON CONFLICT DO NOTHING`,
+		VALUES ($1,$2,$3,$4,700,1,$5,'Invoice raised', $6) ON CONFLICT DO NOTHING`,
 		uuid.New(), s.arAcct, s.revAcct, amount, invID, at)
+}
+
+// postPaymentLedger records the Code-3 (payment) posting: debit Cash, credit AR.
+// The reconciler requires one for every paid invoice, summing to amount_paid.
+func (s *seeder) postPaymentLedger(invID uuid.UUID, amount int64, at time.Time) {
 	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
-		VALUES ($1,$2,$3,$4,700,2,$5,'Payment received', $6) ON CONFLICT DO NOTHING`,
+		VALUES ($1,$2,$3,$4,700,3,$5,'Payment received', $6) ON CONFLICT DO NOTHING`,
 		uuid.New(), s.cashAcct, s.arAcct, amount, invID, at)
 }
 
