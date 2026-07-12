@@ -58,6 +58,7 @@ type AnalyticsService struct {
 
 	snapshots  MRRSnapshotStore  // optional; enables MRR snapshot capture + waterfall
 	agingStore InvoiceAgingStore // optional; enables invoice aging
+	customers  CustomerLookup    // optional; enables revenue-by-geography
 }
 
 func NewAnalyticsService(

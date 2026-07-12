@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Home, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
+  Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
   Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,
-  Settings, ShieldCheck, UserCog, Plus, Search,
+  Settings, ShieldCheck, UserCog, Plus, Search, PieChart, Globe,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const DESTINATIONS = [
   { group: "Go to", label: "Home", to: "/", icon: Home },
+  { group: "Go to", label: "Overview", to: "/overview", icon: LayoutDashboard },
   { group: "Go to", label: "Customers", to: "/customers", icon: Users },
   { group: "Go to", label: "Products", to: "/products", icon: Package },
   { group: "Go to", label: "Plans", to: "/plans", icon: Layers },
@@ -28,6 +29,8 @@ const DESTINATIONS = [
   { group: "Go to", label: "MRR Waterfall", to: "/finance/mrr-waterfall", icon: TrendingUp },
   { group: "Go to", label: "Invoice Aging", to: "/finance/invoice-aging", icon: FileClock },
   { group: "Go to", label: "Unit Economics", to: "/finance/unit-economics", icon: Gauge },
+  { group: "Go to", label: "Revenue by Plan", to: "/finance/revenue-by-plan", icon: PieChart },
+  { group: "Go to", label: "Revenue by Geography", to: "/finance/revenue-by-geography", icon: Globe },
   { group: "Go to", label: "Usage", to: "/usage", icon: BarChart3 },
   { group: "Go to", label: "Developers", to: "/developers", icon: Code2 },
   { group: "Go to", label: "Settings", to: "/settings", icon: Settings },

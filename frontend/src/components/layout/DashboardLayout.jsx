@@ -47,6 +47,9 @@ const PATH_TITLES = {
   "/finance/mrr-waterfall": "MRR Waterfall",
   "/finance/invoice-aging": "Invoice Aging",
   "/finance/unit-economics": "Unit Economics",
+  "/overview": "Executive Summary",
+  "/finance/revenue-by-plan": "Revenue by Plan",
+  "/finance/revenue-by-geography": "Revenue by Geography",
 };
 
 function usePageTitle() {

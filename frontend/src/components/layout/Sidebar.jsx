@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import {
   Home,
+  LayoutDashboard,
   Users,
   Package,
   Layers,
@@ -18,6 +19,8 @@ import {
   TrendingUp,
   FileClock,
   Gauge,
+  PieChart,
+  Globe,
   BarChart3,
   Code2,
   Settings,
@@ -34,6 +37,7 @@ const NAV_GROUPS = [
     label: "Core",
     items: [
       { to: "/", label: "Home", icon: Home, end: true },
+      { to: "/overview", label: "Overview", icon: LayoutDashboard },
       { to: "/customers", label: "Customers", icon: Users },
       { to: "/products", label: "Products", icon: Package },
       { to: "/plans", label: "Plans", icon: Layers },
@@ -61,6 +65,8 @@ const NAV_GROUPS = [
       { to: "/finance/mrr-waterfall", label: "MRR Waterfall", icon: TrendingUp },
       { to: "/finance/invoice-aging", label: "Invoice Aging", icon: FileClock },
       { to: "/finance/unit-economics", label: "Unit Economics", icon: Gauge },
+      { to: "/finance/revenue-by-plan", label: "Revenue by Plan", icon: PieChart },
+      { to: "/finance/revenue-by-geography", label: "Revenue by Geography", icon: Globe },
       { to: "/usage", label: "Usage", icon: BarChart3 },
     ],
   },
