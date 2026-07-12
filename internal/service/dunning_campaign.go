@@ -131,7 +131,7 @@ func (s *DunningCampaignService) ProcessDueSteps(ctx context.Context) error {
 
 func (s *DunningCampaignService) processExecution(ctx context.Context, exec *domain.DunningCampaignExecution) error {
 	// Get campaign with steps
-	campaign, err := s.campaignRepo.GetCampaignByID(ctx, exec.CampaignID)
+	campaign, err := s.campaignRepo.GetCampaignByID(ctx, exec.CampaignID, exec.TenantID)
 	if err != nil || campaign == nil {
 		return fmt.Errorf("failed to get campaign %s: %w", exec.CampaignID, err)
 	}
@@ -413,8 +413,8 @@ func (s *DunningCampaignService) ListCampaigns(ctx context.Context, tenantID uui
 	return s.campaignRepo.ListCampaignsByTenant(ctx, tenantID)
 }
 
-func (s *DunningCampaignService) GetCampaignByID(ctx context.Context, id uuid.UUID) (*domain.DunningCampaign, error) {
-	return s.campaignRepo.GetCampaignByID(ctx, id)
+func (s *DunningCampaignService) GetCampaignByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.DunningCampaign, error) {
+	return s.campaignRepo.GetCampaignByID(ctx, id, tenantID)
 }
 
 func (s *DunningCampaignService) CreateCampaign(ctx context.Context, campaign *domain.DunningCampaign) error {

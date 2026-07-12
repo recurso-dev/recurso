@@ -11,7 +11,7 @@ import (
 type DunningCampaignRepository interface {
 	// Campaign CRUD
 	CreateCampaign(ctx context.Context, campaign *domain.DunningCampaign) error
-	GetCampaignByID(ctx context.Context, id uuid.UUID) (*domain.DunningCampaign, error)
+	GetCampaignByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.DunningCampaign, error)
 	GetActiveCampaignForTenant(ctx context.Context, tenantID uuid.UUID, triggerEvent string) (*domain.DunningCampaign, error)
 	ListCampaignsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.DunningCampaign, error)
 	UpdateCampaign(ctx context.Context, campaign *domain.DunningCampaign) error

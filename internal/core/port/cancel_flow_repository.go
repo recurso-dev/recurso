@@ -18,8 +18,8 @@ type CancelFlowRepository interface {
 	// Step CRUD
 	CreateStep(ctx context.Context, step *domain.CancelFlowStep) error
 	GetStepsByFlow(ctx context.Context, flowID uuid.UUID) ([]domain.CancelFlowStep, error)
-	UpdateStep(ctx context.Context, step *domain.CancelFlowStep) error
-	DeleteStep(ctx context.Context, id uuid.UUID) error
+	UpdateStep(ctx context.Context, step *domain.CancelFlowStep, tenantID uuid.UUID) error
+	DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error
 
 	// Session CRUD
 	CreateSession(ctx context.Context, session *domain.CancelFlowSession) error

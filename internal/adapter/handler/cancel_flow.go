@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -175,9 +177,27 @@ type createStepRequest struct {
 
 // CreateStep adds a step to a cancel flow
 func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	flowID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid flow id")
+		return
+	}
+
+	// Verify the parent flow belongs to this tenant before attaching a step
+	// (ENG-160): without this any tenant could add steps to another's flow.
+	flow, err := h.service.GetFlowByID(c.Request.Context(), flowID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	if flow == nil || flow.TenantID != tenantID {
+		respondError(c, http.StatusNotFound, codeNotFound, "flow not found")
 		return
 	}
 
@@ -217,6 +237,12 @@ type updateStepRequest struct {
 
 // UpdateStep updates a cancel flow step
 func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
@@ -240,7 +266,11 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 		step.Config = req.Config
 	}
 
-	if err := h.service.UpdateStep(c.Request.Context(), step); err != nil {
+	if err := h.service.UpdateStep(c.Request.Context(), step, tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "step not found")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
@@ -250,13 +280,23 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 
 // DeleteStep removes a step from a cancel flow
 func (h *CancelFlowHandler) DeleteStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
-	if err := h.service.DeleteStep(c.Request.Context(), id); err != nil {
+	if err := h.service.DeleteStep(c.Request.Context(), id, tenantID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "step not found")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

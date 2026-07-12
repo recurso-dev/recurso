@@ -87,12 +87,12 @@ func (h *DunningCampaignHandler) GetCampaign(c *gin.Context) {
 		return
 	}
 
-	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id)
+	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id, tenantID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
-	if campaign == nil || campaign.TenantID != tenantID {
+	if campaign == nil {
 		respondError(c, http.StatusNotFound, codeNotFound, "campaign not found")
 		return
 	}
@@ -126,12 +126,12 @@ func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 		return
 	}
 
-	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id)
+	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id, tenantID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
-	if campaign == nil || campaign.TenantID != tenantID {
+	if campaign == nil {
 		respondError(c, http.StatusNotFound, codeNotFound, "campaign not found")
 		return
 	}

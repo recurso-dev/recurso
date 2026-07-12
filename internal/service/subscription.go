@@ -262,7 +262,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	var couponID *uuid.UUID
 
 	if input.CouponCode != "" {
-		coupon, err := s.couponRepo.GetByCode(ctx, input.CouponCode)
+		coupon, err := s.couponRepo.GetByCode(ctx, input.TenantID, input.CouponCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch coupon: %w", err)
 		}

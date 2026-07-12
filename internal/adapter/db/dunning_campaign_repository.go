@@ -36,13 +36,16 @@ func (r *DunningCampaignRepository) CreateCampaign(ctx context.Context, campaign
 	return nil
 }
 
-func (r *DunningCampaignRepository) GetCampaignByID(ctx context.Context, id uuid.UUID) (*domain.DunningCampaign, error) {
+func (r *DunningCampaignRepository) GetCampaignByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.DunningCampaign, error) {
+	// tenant_id scoping (ENG-160 hardening): callers previously relied on a
+	// post-fetch TenantID guard in each handler; scoping here makes a forgotten
+	// guard impossible.
 	query := `
 		SELECT id, tenant_id, name, is_active, trigger_event, created_at, updated_at
-		FROM dunning_campaigns WHERE id = $1
+		FROM dunning_campaigns WHERE id = $1 AND tenant_id = $2
 	`
 	c := &domain.DunningCampaign{}
-	err := r.db.QueryRowContext(ctx, query, id).Scan(
+	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&c.ID, &c.TenantID, &c.Name, &c.IsActive, &c.TriggerEvent, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
