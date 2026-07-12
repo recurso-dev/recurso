@@ -658,14 +658,17 @@ func (s *seeder) seedDunningCampaign() uuid.UUID {
 func (s *seeder) recordDunning(invID, campaignID uuid.UUID, sub *subscription, amount int64, recovered bool) {
 	attempts := 1 + s.rng.Intn(3)
 	for a := 0; a < attempts; a++ {
-		outcome := "failed"
+		// Must match the app's vocabulary ("success"/"failure"): GetHistoryStats
+		// counts successes as `outcome = 'success'`. Using "recovered"/"failed"
+		// makes every retry look failed (Success Rate stuck at 0%).
+		outcome := "failure"
 		if recovered && a == attempts-1 {
-			outcome = "recovered"
+			outcome = "success"
 		}
 		s.exec(`INSERT INTO dunning_history (id, tenant_id, invoice_id, context_key, action_id, retry_interval, outcome, reward, created_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.tenantID, invID, fmt.Sprintf("ctx_%s", sub.cust.ccy),
-			fmt.Sprintf("retry_%dd", 1<<a), (1 << a), outcome, boolToReward(outcome == "recovered"),
+			fmt.Sprintf("retry_%dd", 1<<a), (1 << a), outcome, boolToReward(outcome == "success"),
 			s.now.AddDate(0, 0, -(attempts-a)))
 		s.bump("dunning_history", 1)
 	}
