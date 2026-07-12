@@ -89,6 +89,12 @@ const (
 	AccountCodeCreditsIssued     = 5100 // Credits & Adjustments (Expense) — cost of manually-issued account credit (ENG-154)
 )
 
+// Ledger transaction codes (LedgerTransaction.Code): 1 = invoice, 2 = revenue
+// recognition, 3 = payment. LedgerCodeOutputTax reclassifies collected GST out
+// of revenue into Tax Payable (ENG-159); it's a distinct code so it doesn't
+// collide with the invoice's Code-1 row under uq_ledger_tx_reference_code.
+const LedgerCodeOutputTax uint16 = 6
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

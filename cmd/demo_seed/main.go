@@ -699,10 +699,9 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 	s.bump("invoice_items", 1)
 
 	// ledger postings + payment recovery for the relevant states
-	// Code-1 (invoice raised) for every non-draft invoice — all seeded invoices
-	// are non-draft, so post it unconditionally. Reconciler requires it.
-	s.postInvoiceLedger(invID, total, p.start)
-	s.bump("ledger_transactions", 1)
+	// Code-1 (invoice raised) for every non-draft invoice, split into revenue +
+	// GST legs (matches the app's RecordInvoice, ENG-159).
+	s.postInvoiceLedger(invID, total, tax, p.start)
 	if status == "paid" {
 		// Code-3 (payment) for paid invoices, summing to amount_paid.
 		s.postPaymentLedger(invID, amountPaid, p.end)
@@ -723,13 +722,22 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 	}
 }
 
-// postInvoiceLedger records the Code-1 (invoice raised) posting: debit AR,
-// credit Revenue. The reconciler requires one for every non-draft invoice,
-// summing to the invoice total.
-func (s *seeder) postInvoiceLedger(invID uuid.UUID, amount int64, at time.Time) {
+// postInvoiceLedger records the Code-1 (invoice raised) posting at the gross
+// total, plus — when there's GST — a separate reclassification posting that
+// moves the tax out of Revenue into Tax Payable, matching the app's
+// RecordInvoice (ENG-159). A distinct code avoids the unique (reference_id,
+// code) collision; Code-1 still sums to the total for the reconciler.
+func (s *seeder) postInvoiceLedger(invID uuid.UUID, total, tax int64, at time.Time) {
 	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
 		VALUES ($1,$2,$3,$4,700,1,$5,'Invoice raised', $6) ON CONFLICT DO NOTHING`,
-		uuid.New(), s.arAcct, s.revAcct, amount, invID, at)
+		uuid.New(), s.arAcct, s.revAcct, total, invID, at)
+	s.bump("ledger_transactions", 1)
+	if tax > 0 {
+		s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+			VALUES ($1,$2,$3,$4,700,6,$5,'GST on invoice', $6) ON CONFLICT DO NOTHING`,
+			uuid.New(), s.revAcct, s.taxAcct, tax, invID, at)
+		s.bump("ledger_transactions", 1)
+	}
 }
 
 // postPaymentLedger records the Code-3 (payment) posting: debit Cash, credit AR.

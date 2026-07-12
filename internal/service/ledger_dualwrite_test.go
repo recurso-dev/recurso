@@ -49,10 +49,12 @@ func (m *mockLedgerRepoForLedger) CreateTransaction(ctx context.Context, tx *dom
 func TestLedgerRecordInvoice_DebitsARCreditsRevenue(t *testing.T) {
 	customerID := uuid.New()
 	revenueAcctID := uuid.New()
+	taxAcctID := uuid.New()
 	invoiceID := uuid.New()
 
 	repo := &mockLedgerRepoForLedger{accountsByCode: map[int]*domain.LedgerAccount{
-		domain.AccountCodeRevenue: {ID: revenueAcctID, Code: domain.AccountCodeRevenue},
+		domain.AccountCodeRevenue:    {ID: revenueAcctID, Code: domain.AccountCodeRevenue},
+		domain.AccountCodeTaxPayable: {ID: taxAcctID, Code: domain.AccountCodeTaxPayable},
 	}}
 	svc := NewLedgerService(nil, repo)
 
@@ -70,25 +72,35 @@ func TestLedgerRecordInvoice_DebitsARCreditsRevenue(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(repo.transactions) != 1 {
-		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
+	// ENG-159: Code-1 posts the gross to Revenue; a separate reclassification
+	// (LedgerCodeOutputTax) moves the GST from Revenue to Tax Payable.
+	if len(repo.transactions) != 2 {
+		t.Fatalf("expected 2 transactions (invoice + GST reclass), got %d", len(repo.transactions))
 	}
-	tx := repo.transactions[0]
-	// Amount must be the invoice total (subtotal + tax), not the subtotal.
-	if tx.Amount != 118000 {
-		t.Errorf("Amount = %d, want 118000 (invoice total)", tx.Amount)
+	var invoiceTx, taxTx *domain.LedgerTransaction
+	for _, tx := range repo.transactions {
+		if tx.ReferenceID != invoiceID {
+			t.Errorf("ReferenceID = %v, want %v", tx.ReferenceID, invoiceID)
+		}
+		switch tx.Code {
+		case 1:
+			invoiceTx = tx
+		case domain.LedgerCodeOutputTax:
+			taxTx = tx
+		}
 	}
-	if tx.DebitAccountID != customerID {
-		t.Errorf("DebitAccountID = %v, want customer AR %v", tx.DebitAccountID, customerID)
+	if invoiceTx == nil || taxTx == nil {
+		t.Fatalf("missing a leg: invoice=%v tax=%v", invoiceTx, taxTx)
 	}
-	if tx.CreditAccountID != revenueAcctID {
-		t.Errorf("CreditAccountID = %v, want revenue account %v", tx.CreditAccountID, revenueAcctID)
+	// Code-1: debit AR, credit Revenue, GROSS total (the reconciler expects this).
+	if invoiceTx.DebitAccountID != customerID || invoiceTx.CreditAccountID != revenueAcctID || invoiceTx.Amount != 118000 {
+		t.Errorf("invoice leg = {debit %v credit %v amount %d}, want {AR %v, Revenue %v, 118000}",
+			invoiceTx.DebitAccountID, invoiceTx.CreditAccountID, invoiceTx.Amount, customerID, revenueAcctID)
 	}
-	if tx.ReferenceID != invoiceID {
-		t.Errorf("ReferenceID = %v, want invoice %v", tx.ReferenceID, invoiceID)
-	}
-	if tx.Code != 1 {
-		t.Errorf("Code = %d, want 1 (invoice)", tx.Code)
+	// Reclass: debit Revenue, credit Tax Payable, GST only → nets Revenue to subtotal.
+	if taxTx.DebitAccountID != revenueAcctID || taxTx.CreditAccountID != taxAcctID || taxTx.Amount != 18000 {
+		t.Errorf("GST reclass leg = {debit %v credit %v amount %d}, want {Revenue %v, Tax Payable %v, 18000}",
+			taxTx.DebitAccountID, taxTx.CreditAccountID, taxTx.Amount, revenueAcctID, taxAcctID)
 	}
 }
 
@@ -286,10 +298,12 @@ func TestLedgerRecordRecognition_MovesDeferredToRecognized(t *testing.T) {
 func TestLedgerRecordInvoice_SubscriptionDefersRevenue(t *testing.T) {
 	customerID := uuid.New()
 	deferredAcctID := uuid.New()
+	taxAcctID := uuid.New()
 	subID := uuid.New()
 
 	repo := &mockLedgerRepoForLedger{accountsByCode: map[int]*domain.LedgerAccount{
 		domain.AccountCodeDeferredRevenue: {ID: deferredAcctID, Code: domain.AccountCodeDeferredRevenue},
+		domain.AccountCodeTaxPayable:      {ID: taxAcctID, Code: domain.AccountCodeTaxPayable},
 	}}
 	svc := NewLedgerService(nil, repo)
 
@@ -307,17 +321,31 @@ func TestLedgerRecordInvoice_SubscriptionDefersRevenue(t *testing.T) {
 	if err := svc.RecordInvoice(context.Background(), inv); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(repo.transactions) != 1 {
-		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
+	// ENG-159: Code-1 posts the gross to DEFERRED revenue; the reclassification
+	// moves GST from Deferred to Tax Payable.
+	if len(repo.transactions) != 2 {
+		t.Fatalf("expected 2 transactions (deferred + GST reclass), got %d", len(repo.transactions))
 	}
-	tx := repo.transactions[0]
-	if tx.DebitAccountID != customerID {
-		t.Errorf("DebitAccountID = %v, want customer AR %v", tx.DebitAccountID, customerID)
+	var invoiceTx, taxTx *domain.LedgerTransaction
+	for _, tx := range repo.transactions {
+		switch tx.Code {
+		case 1:
+			invoiceTx = tx
+		case domain.LedgerCodeOutputTax:
+			taxTx = tx
+		}
 	}
-	if tx.CreditAccountID != deferredAcctID {
-		t.Errorf("CreditAccountID = %v, want DEFERRED revenue %v (not Revenue)", tx.CreditAccountID, deferredAcctID)
+	if invoiceTx == nil || taxTx == nil {
+		t.Fatalf("missing a leg: invoice=%v tax=%v", invoiceTx, taxTx)
 	}
-	if tx.Amount != 118000 {
-		t.Errorf("Amount = %d, want 118000 (invoice total)", tx.Amount)
+	// Code-1: debit AR, credit DEFERRED revenue (not Revenue), gross total.
+	if invoiceTx.DebitAccountID != customerID || invoiceTx.CreditAccountID != deferredAcctID || invoiceTx.Amount != 118000 {
+		t.Errorf("invoice leg = {debit %v credit %v amount %d}, want {AR %v, Deferred %v, 118000}",
+			invoiceTx.DebitAccountID, invoiceTx.CreditAccountID, invoiceTx.Amount, customerID, deferredAcctID)
+	}
+	// Reclass: debit Deferred, credit Tax Payable, GST only.
+	if taxTx.DebitAccountID != deferredAcctID || taxTx.CreditAccountID != taxAcctID || taxTx.Amount != 18000 {
+		t.Errorf("GST reclass leg = {debit %v credit %v amount %d}, want {Deferred %v, Tax Payable %v, 18000}",
+			taxTx.DebitAccountID, taxTx.CreditAccountID, taxTx.Amount, deferredAcctID, taxAcctID)
 	}
 }

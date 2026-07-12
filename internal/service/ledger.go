@@ -125,52 +125,78 @@ func (s *LedgerService) getOrCreateTenantAccount(ctx context.Context, tenantID u
 // Debit: Customer AR (Asset)
 // Credit: Revenue
 func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoice) error {
-	amount, err := ledgerAmount(invoice.Total)
-	if err != nil {
-		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+	// Reject invalid amounts up front (the per-leg guards below would otherwise
+	// silently skip a negative total). tax must be within [0, total].
+	if invoice.Total < 0 || invoice.TaxAmount < 0 || invoice.TaxAmount > invoice.Total {
+		return fmt.Errorf("invoice %s: invalid amounts (total=%d tax=%d)", invoice.ID, invoice.Total, invoice.TaxAmount)
 	}
 	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
-	txID := uuid.New()
 
 	// A subscription invoice bills for a service delivered over the period, so
 	// its revenue is DEFERRED (a liability) and recognized month-by-month by the
 	// rev-rec scheduler (which drains Deferred → Recognized). A one-off invoice
 	// is earned immediately, so it credits Revenue directly. Crediting Revenue
 	// for subscriptions is what double-booked revenue against Recognized (ENG-140).
-	var creditAccountID uuid.UUID
+	var revenueAccountID uuid.UUID
+	var err error
 	if invoice.SubscriptionID != nil {
-		creditAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+		revenueAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	} else {
-		creditAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+		revenueAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
 	}
 	if err != nil {
 		return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 	}
 
-	transfer := &domain.LedgerTransaction{
-		ID:              txID,
-		DebitAccountID:  invoice.CustomerID, // AR
-		CreditAccountID: creditAccountID,
-		Amount:          amount,
-		LedgerID:        1,
-		Code:            1, // Invoice
-		ReferenceID:     invoice.ID,
-		Description:     "Invoice " + invoice.InvoiceNumber,
-		Timestamp:       time.Now(),
+	total, err := ledgerAmount(invoice.Total)
+	if err != nil {
+		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 	}
 
-	// Always write to PG; a failed write means the invoice has no ledger
-	// entry, so surface it to the caller rather than losing it in a log line.
+	// Code-1: the whole invoice posts AR → Revenue/Deferred at the gross total.
+	// The reconciler expects exactly one Code-1 per invoice summing to the total,
+	// and uq_ledger_tx_reference_code enforces one row per (reference_id, code) —
+	// so GST is handled as a separate reclassification below, not a 2nd Code-1.
+	transfers := []*domain.LedgerTransaction{{
+		ID: uuid.New(), DebitAccountID: invoice.CustomerID, CreditAccountID: revenueAccountID,
+		Amount: total, LedgerID: 1, Code: 1, ReferenceID: invoice.ID,
+		Description: "Invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+	}}
+
+	// Reclassify the collected GST out of revenue into Tax Payable — it's a
+	// liability owed to the government, not revenue (ENG-159). Debit
+	// Revenue/Deferred, credit Tax Payable, under a distinct code. Net effect:
+	// Revenue = taxable value, Tax Payable = GST, AR = gross; trial balance holds.
+	if invoice.TaxAmount > 0 {
+		taxAccountID, terr := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+		if terr != nil {
+			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, terr)
+		}
+		taxAmt, aerr := ledgerAmount(invoice.TaxAmount)
+		if aerr != nil {
+			return fmt.Errorf("invoice %s: %w", invoice.ID, aerr)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID: uuid.New(), DebitAccountID: revenueAccountID, CreditAccountID: taxAccountID,
+			Amount: taxAmt, LedgerID: 1, Code: domain.LedgerCodeOutputTax, ReferenceID: invoice.ID,
+			Description: "GST on invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+		})
+	}
+
+	// Always write to PG; a failed write means the invoice has no ledger entry,
+	// so surface it to the caller rather than losing it in a log line.
 	if s.pgRepo != nil {
-		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed", "error", err)
-			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
+		for _, t := range transfers {
+			if err := s.pgRepo.CreateTransaction(ctx, t); err != nil {
+				slog.Error("PG CreateTransaction failed", "error", err)
+				return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
+			}
 		}
 	}
 
 	// Write to TB if connected
 	if s.tbClient != nil {
-		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+		return s.tbClient.CreateTransfers(ctx, transfers)
 	}
 	return nil
 }
