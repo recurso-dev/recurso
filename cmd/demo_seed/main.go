@@ -215,21 +215,31 @@ func (s *seeder) queryID(q string, args ...any) uuid.UUID {
 func (s *seeder) bump(table string, n int) { s.counts[table] += n }
 
 func (s *seeder) run() {
-	s.seedLedgerAccounts()
-	s.seedPlans()
-	s.seedCoupons()
-	s.seedWebhooks()
-	custs := s.seedCustomers(*flagCustomers)
-	subs := s.seedSubscriptions(custs)
-	s.seedInvoicesAndDownstream(subs)
-	s.seedMRRSnapshots(subs)
-	s.seedUsage(subs)
-	s.seedMandatesAndAddons(subs)
-	s.seedQuotes(custs)
-	s.seedStandaloneCreditNotes(custs)
-	s.seedChurnAlerts(custs)
-	s.seedOfflinePayments(custs)
-	s.seedEvents(custs, subs)
+	// This runs ~2,000 inserts, one round-trip each. Against a remote DB (Neon)
+	// that can take a few minutes, so log each phase to show it's alive.
+	log.Println("Seeding (~2,000 rows; over a remote DB this can take a few minutes)…")
+	step := func(name string, fn func()) {
+		log.Printf("  · %s", name)
+		fn()
+	}
+	step("ledger accounts", s.seedLedgerAccounts)
+	step("plans & prices", s.seedPlans)
+	step("coupons", s.seedCoupons)
+	step("webhooks", s.seedWebhooks)
+	var custs []*customer
+	var subs []*subscription
+	step("customers", func() { custs = s.seedCustomers(*flagCustomers) })
+	step("subscriptions", func() { subs = s.seedSubscriptions(custs) })
+	step("invoices + items + ledger + dunning (the bulk)", func() { s.seedInvoicesAndDownstream(subs) })
+	step("mrr snapshots", func() { s.seedMRRSnapshots(subs) })
+	step("usage events", func() { s.seedUsage(subs) })
+	step("mandates & add-ons", func() { s.seedMandatesAndAddons(subs) })
+	step("quotes", func() { s.seedQuotes(custs) })
+	step("credit notes", func() { s.seedStandaloneCreditNotes(custs) })
+	step("churn alerts", func() { s.seedChurnAlerts(custs) })
+	step("offline payments", func() { s.seedOfflinePayments(custs) })
+	step("events", func() { s.seedEvents(custs, subs) })
+	log.Println("  · finalizing…")
 }
 
 // ---- reference data ----
