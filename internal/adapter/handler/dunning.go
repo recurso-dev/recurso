@@ -20,7 +20,12 @@ func NewDunningHandler(svc *service.DunningAnalyticsService, recoverySvc *servic
 }
 
 func (h *DunningHandler) GetOverview(c *gin.Context) {
-	overview, err := h.svc.GetOverview(c.Request.Context())
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	overview, err := h.svc.GetOverview(c.Request.Context(), tenantID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning overview")
 		return
@@ -48,7 +53,12 @@ func (h *DunningHandler) GetHistory(c *gin.Context) {
 		}
 	}
 
-	history, err := h.svc.GetRecentHistory(c.Request.Context(), limit)
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	history, err := h.svc.GetRecentHistory(c.Request.Context(), tenantID, limit)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning history")
 		return

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 
+	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
@@ -88,15 +89,16 @@ func (r *DunningRepository) GetAllWeights(ctx context.Context) ([]domain.Dunning
 	return weights, nil
 }
 
-// GetRecentHistory returns the most recent dunning history entries
-func (r *DunningRepository) GetRecentHistory(ctx context.Context, limit int) ([]domain.DunningHistory, error) {
+// GetRecentHistory returns the most recent dunning history entries for a tenant.
+func (r *DunningRepository) GetRecentHistory(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.DunningHistory, error) {
 	query := `
 		SELECT id, tenant_id, invoice_id, context_key, action_id, retry_interval, outcome, reward, created_at
 		FROM dunning_history
+		WHERE tenant_id = $1
 		ORDER BY created_at DESC
-		LIMIT $1
+		LIMIT $2
 	`
-	rows, err := r.db.QueryContext(ctx, query, limit)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -113,14 +115,15 @@ func (r *DunningRepository) GetRecentHistory(ctx context.Context, limit int) ([]
 	return history, nil
 }
 
-// GetHistoryStats returns aggregate stats from dunning history
-func (r *DunningRepository) GetHistoryStats(ctx context.Context) (totalRetries int, totalSuccesses int, err error) {
+// GetHistoryStats returns aggregate dunning-history stats for a single tenant.
+func (r *DunningRepository) GetHistoryStats(ctx context.Context, tenantID uuid.UUID) (totalRetries int, totalSuccesses int, err error) {
 	query := `
 		SELECT
 			COUNT(*) as total_retries,
 			COUNT(*) FILTER (WHERE outcome = 'success') as total_successes
 		FROM dunning_history
+		WHERE tenant_id = $1
 	`
-	err = r.db.QueryRowContext(ctx, query).Scan(&totalRetries, &totalSuccesses)
+	err = r.db.QueryRowContext(ctx, query, tenantID).Scan(&totalRetries, &totalSuccesses)
 	return
 }

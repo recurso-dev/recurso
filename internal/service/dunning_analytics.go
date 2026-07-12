@@ -3,14 +3,19 @@ package service
 import (
 	"context"
 
+	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // DunningAnalyticsRepository defines the read methods needed for analytics
 type DunningAnalyticsRepository interface {
+	// GetAllWeights returns the shared bandit model's weights (keyed by
+	// context/action, not per-tenant) — intentionally global.
 	GetAllWeights(ctx context.Context) ([]domain.DunningWeight, error)
-	GetRecentHistory(ctx context.Context, limit int) ([]domain.DunningHistory, error)
-	GetHistoryStats(ctx context.Context) (totalRetries int, totalSuccesses int, err error)
+	// GetRecentHistory / GetHistoryStats read per-tenant dunning_history and
+	// are tenant-scoped.
+	GetRecentHistory(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.DunningHistory, error)
+	GetHistoryStats(ctx context.Context, tenantID uuid.UUID) (totalRetries int, totalSuccesses int, err error)
 }
 
 type DunningAnalyticsService struct {
@@ -27,8 +32,8 @@ type DunningOverview struct {
 	SuccessRate    float64 `json:"success_rate"`
 }
 
-func (s *DunningAnalyticsService) GetOverview(ctx context.Context) (*DunningOverview, error) {
-	totalRetries, totalSuccesses, err := s.repo.GetHistoryStats(ctx)
+func (s *DunningAnalyticsService) GetOverview(ctx context.Context, tenantID uuid.UUID) (*DunningOverview, error) {
+	totalRetries, totalSuccesses, err := s.repo.GetHistoryStats(ctx, tenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,9 +54,9 @@ func (s *DunningAnalyticsService) GetWeightsByContext(ctx context.Context) ([]do
 	return s.repo.GetAllWeights(ctx)
 }
 
-func (s *DunningAnalyticsService) GetRecentHistory(ctx context.Context, limit int) ([]domain.DunningHistory, error) {
+func (s *DunningAnalyticsService) GetRecentHistory(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.DunningHistory, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
-	return s.repo.GetRecentHistory(ctx, limit)
+	return s.repo.GetRecentHistory(ctx, tenantID, limit)
 }
