@@ -48,6 +48,19 @@ import (
 //	go build -ldflags "-X main.version=v0.1.0"
 var version = "dev"
 
+// On Cloud Run every revision gets a K_REVISION env var (e.g.
+// "recurso-api-00044-abc"). When the build didn't stamp a version — as with the
+// managed Dockerfile Cloud Build trigger, which leaves it "dev" — fall back to
+// that so /version and /health report the actual deployed revision instead of a
+// generic "dev". A real ldflags-stamped version (release builds) still wins.
+func init() {
+	if version == "dev" {
+		if rev := os.Getenv("K_REVISION"); rev != "" {
+			version = rev
+		}
+	}
+}
+
 func getEnvDefault(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
