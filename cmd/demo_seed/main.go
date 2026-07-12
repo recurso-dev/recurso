@@ -998,9 +998,10 @@ func (s *seeder) between(a, b time.Time) time.Time {
 func (s *seeder) report() {
 	log.Println("---- rows inserted (this tenant) ----")
 	order := []string{"plans", "prices", "coupons", "webhook_endpoints", "ledger_accounts", "customers",
-		"subscriptions", "invoices", "invoice_items", "ledger_transactions", "dunning_campaigns",
-		"dunning_history", "recovered_payments", "mrr_snapshots", "usage_events", "mandates",
-		"subscription_addons", "quotes", "credit_notes", "churn_alerts", "offline_payments", "events"}
+		"subscriptions", "invoices", "invoice_items", "ledger_transactions", "revenue_schedules",
+		"recognition_events", "dunning_campaigns", "dunning_history", "recovered_payments", "mrr_snapshots",
+		"usage_events", "mandates", "subscription_addons", "quotes", "credit_notes", "churn_alerts",
+		"offline_payments", "referrals", "gifts", "events"}
 	total := 0
 	for _, k := range order {
 		if v := s.counts[k]; v > 0 {
