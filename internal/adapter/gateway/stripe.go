@@ -265,6 +265,11 @@ func (s *StripeGateway) ChargeSavedPaymentMethod(ctx context.Context, stripeCust
 		PaymentMethod: stripe.String(paymentMethodID),
 		OffSession:    stripe.Bool(true),
 		Confirm:       stripe.Bool(true),
+		// India-region Stripe accounts reject foreign-currency (export) charges
+		// without a description (stripe.com/docs/india-exports) — same rule the
+		// online checkout (CreateOrder) already satisfies. Without this, every
+		// off-session dunning retry of a foreign-currency invoice fails.
+		Description: stripe.String("Invoice " + invoiceID),
 		Metadata: map[string]string{
 			"invoice_id":    invoiceID,
 			"retry_payment": "true",
