@@ -9,5 +9,23 @@
     "directory": "./dist",
     // Serve index.html for unmatched routes so React Router deep links / refreshes work.
     "not_found_handling": "single-page-application"
+  },
+  // Observability — pinned in-repo so log/trace settings stay consistent across
+  // deployments (matches the Cloudflare dashboard). Workers Logs on (persisted,
+  // with invocation logs); traces off.
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 1,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 1,
+      "persist": true,
+      "invocation_logs": true
+    },
+    "traces": {
+      "enabled": false,
+      "persist": true,
+      "head_sampling_rate": 1
+    }
   }
 }
