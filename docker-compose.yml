@@ -1,6 +1,13 @@
 services:
   api:
     build: .
+    # Load local secrets (Stripe/Razorpay keys + webhook secrets, etc.) from
+    # .env when present. Marked optional so a fresh clone without a .env still
+    # `docker compose up`s. The explicit `environment:` values below override
+    # anything in .env, so DATABASE_URL stays pointed at the compose postgres.
+    env_file:
+      - path: .env
+        required: false
     ports:
       - "8080:8080"
     environment:
