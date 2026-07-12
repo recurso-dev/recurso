@@ -10,6 +10,10 @@ RUN go mod download
 
 COPY . .
 ARG VERSION=dev
+# Gate the image — and therefore the Cloud Run deploy — on the test suite: a
+# failing test fails the build, so a broken commit never reaches production.
+# DB-backed tests skip without TEST_DATABASE_URL; unit/logic tests run here.
+RUN CGO_ENABLED=1 go test ./...
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o recurso-api ./cmd/api
 
 # Run Stage
