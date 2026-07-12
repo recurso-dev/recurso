@@ -232,6 +232,10 @@ func (s *seeder) purge() {
 		`DELETE FROM invoice_items WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM recovered_payments WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM dunning_history WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM recognition_events WHERE revenue_schedule_id IN (SELECT id FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `))`,
+		`DELETE FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM referrals WHERE referrer_id IN (` + demoCust + `)`,
+		`DELETE FROM gifts WHERE buyer_customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM subscription_addons WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM mandates WHERE customer_id IN (` + demoCust + `)`,
@@ -284,6 +288,8 @@ func (s *seeder) run() {
 	step("credit notes", func() { s.seedStandaloneCreditNotes(custs) })
 	step("churn alerts", func() { s.seedChurnAlerts(custs) })
 	step("offline payments", func() { s.seedOfflinePayments(custs) })
+	step("referrals", func() { s.seedReferrals(custs) })
+	step("gifts", func() { s.seedGifts(custs) })
 	step("events", func() { s.seedEvents(custs, subs) })
 	log.Println("  · finalizing…")
 }
@@ -681,6 +687,9 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 		// Code-3 (payment) for paid invoices, summing to amount_paid.
 		s.postPaymentLedger(invID, amountPaid, p.end)
 		s.bump("ledger_transactions", 1)
+		// Revenue recognition: spread the invoice over its service period
+		// (monthly plan → 1 month, annual → 12) so deferred revenue shows.
+		s.seedRevSchedule(invID, sub, total, p.start)
 		// ~12% of paid USD invoices were recovered after an initial failure
 		// (dunning win). Kept USD-only so the recovered-revenue headline reads
 		// USD — the dunning card compares raw minor units, where INR paise would
@@ -742,6 +751,84 @@ func (s *seeder) recordDunning(invID, campaignID uuid.UUID, sub *subscription, a
 			VALUES ($1,$2,$3,$4,$5,$6,'smart_dunning',$7,$8,$9) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.tenantID, invID, amount, sub.cust.ccy, attempts, campaignID, attempts, s.now.AddDate(0, 0, -s.rng.Intn(20)))
 		s.bump("recovered_payments", 1)
+	}
+}
+
+// seedRevSchedule creates an ASC-606 revenue schedule for a paid invoice and
+// its monthly recognition events — past dates recognized, future dates pending
+// (so the Revenue Recognition report shows recognized + deferred balance).
+func (s *seeder) seedRevSchedule(invID uuid.UUID, sub *subscription, total int64, start time.Time) {
+	months := 1
+	if sub.pl.interval == "year" {
+		months = 12
+	}
+	schedID := uuid.New()
+	s.exec(`INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'active', now(), now()) ON CONFLICT DO NOTHING`,
+		schedID, s.tenantID, invID, sub.id, total, sub.cust.ccy, start, start.AddDate(0, months, 0))
+	s.bump("revenue_schedules", 1)
+	per := total / int64(months)
+	for i := 0; i < months; i++ {
+		recDate := start.AddDate(0, i, 0)
+		amt := per
+		if i == months-1 {
+			amt = total - per*int64(months-1) // remainder on the final period
+		}
+		st := "pending"
+		if !recDate.After(s.now) {
+			st = "recognized"
+		}
+		s.exec(`INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at)
+			VALUES ($1,$2,$3,$4,$5,$6, now()) ON CONFLICT DO NOTHING`,
+			uuid.New(), schedID, s.tenantID, amt, recDate, st)
+		s.bump("recognition_events", 1)
+	}
+}
+
+func (s *seeder) seedReferrals(custs []*customer) {
+	if len(custs) < 6 {
+		return
+	}
+	statuses := []string{"rewarded", "qualified", "pending", "rewarded", "qualified", "rewarded", "pending", "qualified"}
+	for i := 0; i < 8; i++ {
+		referrer := custs[i]
+		referred := custs[len(custs)-1-i]
+		if referrer.id == referred.id {
+			continue
+		}
+		st := statuses[i%len(statuses)]
+		var qualifiedAt any
+		if st != "pending" {
+			qualifiedAt = s.backdate(s.rng.Intn(6), s.rng.Intn(28))
+		}
+		reward := int64((2 + s.rng.Intn(4)) * 1000) // $20–$50
+		s.exec(`INSERT INTO referrals (id, tenant_id, referrer_id, referred_id, code, status, reward_amount, currency, created_at, updated_at, qualified_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,'USD', now(), now(), $8) ON CONFLICT DO NOTHING`,
+			uuid.New(), s.tenantID, referrer.id, referred.id, "REF-"+strings.ToUpper(randHex(s.rng, 6)), st, reward, qualifiedAt)
+		s.bump("referrals", 1)
+	}
+}
+
+func (s *seeder) seedGifts(custs []*customer) {
+	if len(custs) < 2 || len(s.plans) == 0 {
+		return
+	}
+	for i := 0; i < 6; i++ {
+		buyer := custs[s.rng.Intn(len(custs))]
+		pl := &s.plans[s.rng.Intn(len(s.plans))]
+		dur := []int{3, 6, 12}[s.rng.Intn(3)]
+		st := "purchased"
+		var redeemedBy, redeemedAt any
+		if s.rng.Intn(100) < 50 {
+			st = "redeemed"
+			redeemedBy = custs[s.rng.Intn(len(custs))].id
+			redeemedAt = s.backdate(s.rng.Intn(4), s.rng.Intn(28))
+		}
+		s.exec(`INSERT INTO gifts (id, tenant_id, code, plan_id, buyer_customer_id, recipient_email, status, redeemed_by_customer_id, redeemed_at, duration_months, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, now(), now()) ON CONFLICT DO NOTHING`,
+			uuid.New(), s.tenantID, "GIFT-"+strings.ToUpper(randHex(s.rng, 6)), pl.id, buyer.id,
+			fmt.Sprintf("gift.recipient%d@%s", i, demoDomain), st, redeemedBy, redeemedAt, dur)
+		s.bump("gifts", 1)
 	}
 }
 
