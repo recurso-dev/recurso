@@ -28,7 +28,7 @@
 
 Most billing platforms charge a percentage of your revenue and lock you into their ecosystem. Recurso is different.
 
-- **Immutable Financial Ledger** — Double-entry accounting powered by TigerBeetle. Every transaction is audit-ready from day one.
+- **Immutable Financial Ledger** — Double-entry accounting in PostgreSQL (the authoritative ledger), with an optional TigerBeetle mirror for high-throughput deployments. Every transaction is audit-ready from day one.
 - **India-First Compliance** — Native GST, Place of Supply rules, HSN codes, TDS tracking, and e-invoicing readiness built in, not bolted on.
 - **AI-Powered Dunning** — Smart retry engine analyzes failure patterns and schedules retries with exponential backoff to maximize recovery.
 - **No Success Tax** — Flat infrastructure cost. You don't pay more as your revenue grows.
@@ -74,22 +74,28 @@ with [Going to Production](https://docs.recurso.dev/going-to-production).
 | **Pricing** | Free (self-hosted) | From $599/mo | 0.5%–0.8% of revenue |
 | **Source Code** | Open (MIT) | Closed | Closed |
 | **India Compliance** | Native GST + e-invoicing | Partial | Limited |
-| **Financial Ledger** | Immutable (TigerBeetle) | None | None |
+| **Financial Ledger** | Double-entry (Postgres; optional TigerBeetle mirror) | None | None |
 | **Smart Dunning** | Built-in AI retries | Add-on | Basic |
 | **Data Ownership** | Full (your infrastructure) | Vendor-hosted | Vendor-hosted |
 
 ## Architecture
 
 ```
-Go (Gin) API  -->  PostgreSQL (state)  -->  TigerBeetle (ledger)
-      |                                           |
-      +--> Stripe / Razorpay (payments)           |
-      +--> Email notifications                    |
-      +--> Webhooks                               |
-      +--> Background workers (dunning, metering) +
+Go (Gin) API  -->  PostgreSQL (state + authoritative double-entry ledger)
+      |
+      +--> Stripe / Razorpay (payments)
+      +--> Email notifications
+      +--> Webhooks
+      +--> Background workers (dunning, metering)
+      +--> TigerBeetle (optional ledger mirror; PG stays authoritative)
 ```
 
-**Stack:** Go 1.25+ &middot; PostgreSQL &middot; TigerBeetle &middot; Hexagonal Architecture (Ports & Adapters)
+Postgres is the source of truth for the ledger. TigerBeetle is an optional,
+best-effort mirror that's written non-fatally when connected and only read as a
+fallback — enable it (via `TIGERBEETLE_ADDRESS`) when ledger throughput warrants
+it; the engine runs fully without it.
+
+**Stack:** Go 1.25+ &middot; PostgreSQL &middot; TigerBeetle (optional) &middot; Hexagonal Architecture (Ports & Adapters)
 
 ## Quick Start
 
