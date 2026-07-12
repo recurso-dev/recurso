@@ -1,0 +1,92 @@
+# Continuous deployment for the API, gated on the FULL test suite — including
+# the Postgres-backed tests — before build + deploy. This closes the gap where
+# the managed Dockerfile-only trigger ran `go build` (and unit tests via the
+# Dockerfile) but skipped DB-level tests, so a schema/query regression could
+# reach Cloud Run.
+#
+# To use it: point the Cloud Build trigger's configuration at this file
+# (Trigger → Edit → Configuration → "Cloud Build configuration file" →
+# /cloudbuild.yaml). The build/push/deploy steps mirror the managed trigger
+# exactly; only the Postgres + Test steps are new.
+
+substitutions:
+  _AR_HOSTNAME: asia-south1-docker.pkg.dev
+  _AR_PROJECT_ID: recurso-502110
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _SERVICE_NAME: recurso-api
+  _DEPLOY_REGION: asia-south1
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+images:
+  - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+
+steps:
+  # 1. Postgres for the DB-backed tests. Cloud Build steps share the "cloudbuild"
+  #    network, so later steps reach it at host "postgres".
+  - id: Start Postgres
+    name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - -d
+      - --name=postgres
+      - --network=cloudbuild
+      - -e
+      - POSTGRES_USER=test
+      - -e
+      - POSTGRES_PASSWORD=test
+      - -e
+      - POSTGRES_DB=recurso_test
+      - postgres:16-alpine
+
+  # 2. The gate: the full suite WITH a database. A failing test fails the build,
+  #    so the commit never deploys. Tests run their own migrations.
+  - id: Test
+    name: golang:1.25
+    env:
+      - CGO_ENABLED=1
+      - 'TEST_DATABASE_URL=postgres://test:test@postgres:5432/recurso_test?sslmode=disable'
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        for i in $(seq 1 60); do
+          (echo > /dev/tcp/postgres/5432) >/dev/null 2>&1 && break
+          echo "waiting for postgres ($i)"; sleep 1
+        done
+        go test ./...
+
+  # 3. Build the image (mirrors the managed trigger).
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --no-cache
+      - -t
+      - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+      - .
+      - -f
+      - Dockerfile
+
+  # 4. Push to Artifact Registry.
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+
+  # 5. Deploy the new revision (inherits the service's env vars + secrets).
+  - id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - '${_SERVICE_NAME}'
+      - --platform=managed
+      - --image=${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}
+      - --region=${_DEPLOY_REGION}
+      - --quiet
