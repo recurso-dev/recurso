@@ -140,10 +140,10 @@ Spin up a hosted instance (API + managed PostgreSQL) with one click:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/recurso-dev/recurso)
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new)
-[![Deploy to DigitalOcean](https://www.deploy.do/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/recurso-dev/recurso/tree/main)
+[![Deploy to DigitalOcean](https://www.deploytodo.com/do-btn-blue.svg)](https://cloud.digitalocean.com/apps/new?repo=https://github.com/recurso-dev/recurso/tree/main)
 
 - **Render** reads [`render.yaml`](render.yaml).
-- **DigitalOcean** reads [`.do/app.yaml`](.do/app.yaml).
+- **DigitalOcean** reads [`.do/app.yaml`](.do/app.yaml) (API service + a managed PostgreSQL database). After the first deploy, set `CORS_ORIGIN` to your dashboard's origin — without it the API rejects browser calls from the dashboard. For more than one instance, also attach a managed Redis/Valkey and set `REDIS_URL` (+ `REQUIRE_REDIS=true`) so the scheduler lock is shared; a single instance runs safely without it. Or, on a Droplet, run [`docker-compose.prod.yml`](docker-compose.prod.yml) (bundles Redis).
 - **Railway** reads [`railway.json`](railway.json) to build the API; add a PostgreSQL plugin and set `DATABASE_URL=${{Postgres.DATABASE_URL}}` in the service variables.
 
 These blueprints are provided as-is and have not been verified against live accounts — review sizes, regions, and image visibility before production use. For a self-hosted Docker Compose setup, see the [Self-Hosting Runbook](docs/deployment.md).
