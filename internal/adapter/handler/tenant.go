@@ -6,12 +6,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
 type TenantHandler struct {
 	service *service.TenantService
+}
+
+// requireManager gates API-key management to owner/admin. An API-key (machine)
+// caller carries no user role and is trusted (it already has full tenant
+// access); a dashboard user must be owner or admin. Without this any member
+// could mint a live-mode key granting full tenant API access (ENG-178).
+func (h *TenantHandler) requireManager(c *gin.Context) bool {
+	role, hasUser := middleware.GetUserRole(c)
+	if !hasUser {
+		return true // machine (API key) caller
+	}
+	if domain.Role(role).CanManageTeam() {
+		return true
+	}
+	respondError(c, http.StatusForbidden, codeForbidden, "requires owner or admin role")
+	return false
 }
 
 func NewTenantHandler(service *service.TenantService) *TenantHandler {
@@ -48,6 +65,9 @@ func (h *TenantHandler) ListKeys(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
+	if !h.requireManager(c) {
+		return
+	}
 
 	keys, err := h.service.ListKeys(c.Request.Context(), tenantID)
 	if err != nil {
@@ -65,6 +85,9 @@ func (h *TenantHandler) CreateKey(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if !h.requireManager(c) {
 		return
 	}
 

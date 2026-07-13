@@ -282,8 +282,11 @@ func (s *DunningCampaignService) MarkRecovered(ctx context.Context, invoiceID uu
 }
 
 // GetPaymentWallStatus returns whether a payment wall is active for an invoice
+// GetPaymentWallStatus is tenant-scoped via GetByID (the tenant is injected by
+// the handler): a caller can only read the payment-wall flag for its own
+// invoices, not probe any invoice id in the system.
 func (s *DunningCampaignService) GetPaymentWallStatus(ctx context.Context, invoiceID uuid.UUID) (bool, error) {
-	inv, err := s.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
 		return false, fmt.Errorf("failed to get invoice: %w", err)
 	}

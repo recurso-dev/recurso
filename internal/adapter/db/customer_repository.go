@@ -311,11 +311,28 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 	return customers, nil
 }
 
-// UpdatePaymentMethod updates the stored card details for a customer
+// UpdatePaymentMethod updates the stored card details for a customer. Scoped by
+// tenant (from context) so a caller cannot overwrite another tenant's customer's
+// card — the UPDATE affects zero rows and returns sql.ErrNoRows cross-tenant.
 func (r *CustomerRepository) UpdatePaymentMethod(ctx context.Context, customerID uuid.UUID, brand, last4 string, expMonth, expYear int) error {
-	query := `UPDATE customers SET card_brand = $1, card_last4 = $2, card_exp_month = $3, card_exp_year = $4 WHERE id = $5`
-	_, err := r.db.ExecContext(ctx, query, brand, last4, expMonth, expYear, customerID)
-	return err
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
+	if !ok {
+		return fmt.Errorf("tenant_id missing from context")
+	}
+	query := `UPDATE customers SET card_brand = $1, card_last4 = $2, card_exp_month = $3, card_exp_year = $4
+		WHERE id = $5 AND tenant_id = $6`
+	res, err := r.db.ExecContext(ctx, query, brand, last4, expMonth, expYear, customerID, tenantID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // GetStripeCustomerID returns the gateway-side Stripe Customer id saved payment

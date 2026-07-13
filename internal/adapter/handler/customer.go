@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -83,6 +85,11 @@ type updatePaymentMethodRequest struct {
 }
 
 func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	customerID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
@@ -103,8 +110,14 @@ func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 		ExpYear:    req.ExpYear,
 	}
 
-	ctx := c.Request.Context()
+	// Inject the tenant so the repo scopes the UPDATE — otherwise any tenant
+	// could overwrite another tenant's customer's card (cross-tenant IDOR).
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	if err := h.service.UpdatePaymentMethod(ctx, input); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "customer not found")
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

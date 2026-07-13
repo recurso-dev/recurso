@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"net/http"
@@ -294,13 +295,19 @@ func (h *DunningCampaignHandler) DeleteStep(c *gin.Context) {
 
 // GetPaymentWallStatus returns the payment wall status for an invoice
 func (h *DunningCampaignHandler) GetPaymentWallStatus(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
 		return
 	}
 
-	active, err := h.service.GetPaymentWallStatus(c.Request.Context(), invoiceID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	active, err := h.service.GetPaymentWallStatus(ctx, invoiceID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
