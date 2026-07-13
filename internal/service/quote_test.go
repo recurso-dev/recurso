@@ -86,6 +86,32 @@ func TestQuoteConvertToInvoice_CarriesMoneyFields(t *testing.T) {
 // touch a quote belonging to another tenant. A wrong tenant_id resolves to
 // "not found" (sql.ErrNoRows) at every entry point, and no invoice/delete/update
 // side effect fires.
+// TestQuote_RejectsNegativeAmounts proves the ENG-180 guard: negative
+// quantities/prices/tax/discount and a discount exceeding subtotal+tax are
+// rejected, so a quote (and the invoice it converts to) can't have a negative
+// total.
+func TestQuote_RejectsNegativeAmounts(t *testing.T) {
+	owner := uuid.New()
+	quote := &domain.Quote{ID: uuid.New(), TenantID: owner, Status: domain.QuoteStatusDraft, Currency: "USD"}
+	qr := &qtMockQuoteRepo{quote: quote}
+	svc := NewQuoteService(qr, &qtMockInvoiceRepo{})
+
+	bad := []domain.CreateQuoteRequest{
+		{LineItems: []domain.LineItem{{Quantity: -1, UnitPrice: 100}}},
+		{LineItems: []domain.LineItem{{Quantity: 1, UnitPrice: -100}}},
+		{LineItems: []domain.LineItem{{Quantity: 1, UnitPrice: 100}}, TaxAmount: -5},
+		{LineItems: []domain.LineItem{{Quantity: 1, UnitPrice: 100}}, DiscountAmount: 500}, // discount > subtotal+tax
+	}
+	for i, req := range bad {
+		if _, err := svc.UpdateQuote(context.Background(), quote.ID, owner, req); err != ErrInvalidQuoteAmount {
+			t.Errorf("case %d: err = %v, want ErrInvalidQuoteAmount", i, err)
+		}
+	}
+	if qr.updated != nil {
+		t.Error("an invalid quote must not be persisted")
+	}
+}
+
 func TestQuote_TenantIsolation(t *testing.T) {
 	owner := uuid.New()
 	quote := &domain.Quote{

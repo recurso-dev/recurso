@@ -136,6 +136,14 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req 
 		return nil, fmt.Errorf("%w: unknown credit note type %q", ErrCreditNoteValidation, req.Type)
 	}
 
+	// A credit note (adjustment credit or refund) must be for a positive amount.
+	// A negative amount would book negative account credit, or — on the refund
+	// path — pass the over-refund guard (negative + already <= amountPaid) and
+	// call the gateway with a negative refund (ENG-180).
+	if req.Amount <= 0 {
+		return nil, fmt.Errorf("%w: amount must be greater than zero", ErrCreditNoteValidation)
+	}
+
 	ref := fmt.Sprintf("CN-%d", time.Now().Unix())
 	cn := &domain.CreditNote{
 		TenantID:     tenantID,

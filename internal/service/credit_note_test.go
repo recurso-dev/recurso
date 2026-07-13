@@ -197,6 +197,26 @@ func refundRequest(f *cnFixture, amount int64, currency string) domain.CreateCre
 
 // --- Tests ---
 
+// TestCreditNote_RejectsNonPositiveAmount proves the ENG-180 guard: a zero or
+// negative credit note is refused for both refund and adjustment types, so a
+// negative amount can never book negative account credit or call the gateway
+// with a negative refund.
+func TestCreditNote_RejectsNonPositiveAmount(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	for _, amt := range []int64{0, -1, -5000} {
+		if _, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, amt, "INR")); err == nil {
+			t.Errorf("refund amount %d: expected validation error, got nil", amt)
+		}
+		adj := domain.CreateCreditNoteRequest{CustomerID: f.customerID, Amount: amt, Currency: "INR", Type: string(domain.CreditNoteTypeAdjustment)}
+		if _, err := f.svc.Create(context.Background(), f.tenantID, adj); err == nil {
+			t.Errorf("adjustment amount %d: expected validation error, got nil", amt)
+		}
+	}
+	if len(f.gateway.calls) != 0 {
+		t.Fatalf("gateway refund was called %d times for invalid amounts, want 0", len(f.gateway.calls))
+	}
+}
+
 func TestCreditNote_Refund_CallsGatewayAndPersistsRefundID(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 

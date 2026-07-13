@@ -24,10 +24,34 @@ func NewQuoteService(quoteRepo port.QuoteRepository, invoiceRepo port.InvoiceRep
 }
 
 // CreateQuote creates a new quote
+// validateQuoteAmounts rejects negative quantities/prices/tax/discount and a
+// discount larger than the subtotal+tax (which would make the quote — and the
+// invoice it converts to — a negative total, i.e. a credit to the customer).
+func validateQuoteAmounts(lineItems []domain.LineItem, taxAmount, discountAmount int) error {
+	if taxAmount < 0 || discountAmount < 0 {
+		return ErrInvalidQuoteAmount
+	}
+	subtotal := 0
+	for _, li := range lineItems {
+		if li.Quantity < 0 || li.UnitPrice < 0 {
+			return ErrInvalidQuoteAmount
+		}
+		subtotal += li.Quantity * li.UnitPrice
+	}
+	if discountAmount > subtotal+taxAmount {
+		return ErrInvalidQuoteAmount
+	}
+	return nil
+}
+
 func (s *QuoteService) CreateQuote(ctx context.Context, tenantID uuid.UUID, req domain.CreateQuoteRequest) (*domain.Quote, error) {
 	// Generate quote number
 	quoteNumber, err := s.quoteRepo.GetNextQuoteNumber(ctx, tenantID)
 	if err != nil {
+		return nil, err
+	}
+
+	if err := validateQuoteAmounts(req.LineItems, req.TaxAmount, req.DiscountAmount); err != nil {
 		return nil, err
 	}
 
@@ -83,6 +107,10 @@ func (s *QuoteService) UpdateQuote(ctx context.Context, id, tenantID uuid.UUID, 
 
 	if !quote.IsEditable() {
 		return nil, ErrQuoteNotEditable
+	}
+
+	if err := validateQuoteAmounts(req.LineItems, req.TaxAmount, req.DiscountAmount); err != nil {
+		return nil, err
 	}
 
 	quote.LineItems = req.LineItems
@@ -260,5 +288,6 @@ func (e QuoteError) Error() string { return string(e) }
 const (
 	ErrQuoteNotEditable   = QuoteError("quote is not editable")
 	ErrInvalidQuoteStatus = QuoteError("invalid quote status for this action")
+	ErrInvalidQuoteAmount = QuoteError("quote amounts must be non-negative and the discount cannot exceed the subtotal plus tax")
 	ErrCannotConvertQuote = QuoteError("quote cannot be converted to invoice")
 )
