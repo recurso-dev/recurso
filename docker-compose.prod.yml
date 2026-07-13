@@ -26,10 +26,31 @@ services:
       - API_SECRET=${API_SECRET}
       - GIN_MODE=release
       - TIGERBEETLE_ADDRESS=tigerbeetle:3000
+      - REDIS_URL=redis://redis:6379
+      # Refuse to start on the no-op locker: schedulers must be serialized across
+      # instances or money paths (mandate debit, trial conversion) risk running
+      # twice (ENG-161).
+      - REQUIRE_REDIS=true
     depends_on:
       - postgres
+      - redis
     networks:
       - recurso_net
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - recurso_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Port 6379 is NOT exposed to host in production
 
   postgres:
     image: postgres:15-alpine
@@ -63,6 +84,7 @@ services:
 volumes:
   postgres_data:
   tigerbeetle_data:
+  redis_data:
 
 
 networks:

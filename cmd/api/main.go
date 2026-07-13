@@ -551,7 +551,12 @@ func main() {
 	go dunningCampaignWorker.Start(context.Background())
 	go acctSyncWorker.Start(context.Background())
 
-	// Distributed Locking & Redis
+	// Distributed Locking & Redis. A working Redis makes the scheduler lock and
+	// the idempotency store real across instances; without it the app falls back
+	// to a no-op locker + per-instance in-memory store, which is only safe on a
+	// single instance (see ENG-161). REQUIRE_REDIS lets a multi-instance
+	// deployment refuse to start rather than silently run the unsafe fallback.
+	requireRedis := strings.EqualFold(os.Getenv("REQUIRE_REDIS"), "true")
 	var locker port.Locker
 	var idempotencyStore port.IdempotencyStore
 	var rdb *redis.Client
@@ -559,18 +564,37 @@ func main() {
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		opt, parseErr := redis.ParseURL(redisURL)
 		if parseErr != nil {
+			if requireRedis {
+				log.Fatalf("REQUIRE_REDIS is set but REDIS_URL is invalid: %v", parseErr)
+			}
 			slog.Error("failed to parse REDIS_URL, falling back to in-memory", "error", parseErr)
 		} else {
-			rdb = redis.NewClient(opt)
-			locker = redisAdapter.NewRedisLocker(rdb)
-			idempotencyStore = redisAdapter.NewRedisIdempotencyStore(rdb, 24*time.Hour)
-			log.Println("Using Redis for Locker and Idempotency")
+			client := redis.NewClient(opt)
+			// redis.NewClient is lazy — PING so a dead/misconfigured Redis fails
+			// loudly here instead of silently at the first Obtain/Get under load.
+			pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			pingErr := client.Ping(pingCtx).Err()
+			cancel()
+			if pingErr != nil {
+				_ = client.Close()
+				if requireRedis {
+					log.Fatalf("REQUIRE_REDIS is set but Redis is unreachable at REDIS_URL: %v", pingErr)
+				}
+				slog.Error("Redis unreachable, falling back to in-memory", "error", pingErr)
+			} else {
+				rdb = client
+				locker = redisAdapter.NewRedisLocker(rdb)
+				idempotencyStore = redisAdapter.NewRedisIdempotencyStore(rdb, 24*time.Hour)
+				log.Println("Using Redis for Locker and Idempotency")
+			}
 		}
+	} else if requireRedis {
+		log.Fatal("REQUIRE_REDIS is set but REDIS_URL is empty; refusing to start with a no-op locker")
 	}
 	if locker == nil {
 		locker = memory.NewNoOpLocker()
 		idempotencyStore = memory.NewInMemoryIdempotencyStore(24 * time.Hour)
-		log.Println("Using In-Memory Locker and Idempotency (Redis not configured)")
+		log.Println("⚠️  Using In-Memory Locker and Idempotency (Redis not configured) — safe on a single instance only; set REDIS_URL for multi-instance")
 	}
 
 	// Pre-charge Scheduler (P30 - RBI compliance: 24hr notifications)
