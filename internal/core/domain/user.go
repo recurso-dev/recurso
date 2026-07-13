@@ -125,6 +125,10 @@ var (
 	ErrSelfLockout     = errors.New("you cannot remove your own account")
 	ErrWeakPassword    = errors.New("password must be at least 8 characters")
 	ErrInvalidRole     = errors.New("role must be one of owner, admin, member")
+	// ErrOwnerRoleRequired guards the owner boundary: only an owner may grant the
+	// owner role or remove/demote an existing owner. Without it an admin (who can
+	// manage the team) could self-promote to owner (privilege escalation).
+	ErrOwnerRoleRequired = errors.New("only an owner can grant or remove the owner role")
 
 	// Password reset. Deliberately coarse so a caller cannot tell a bad token
 	// from an expired or already-used one.

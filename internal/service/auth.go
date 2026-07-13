@@ -374,10 +374,14 @@ func (s *AuthService) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]*dom
 }
 
 // CreateUser adds a teammate to the tenant.
-func (s *AuthService) CreateUser(ctx context.Context, tenantID uuid.UUID, email, name string, role domain.Role, password string) (*domain.User, error) {
+func (s *AuthService) CreateUser(ctx context.Context, tenantID uuid.UUID, actorRole domain.Role, email, name string, role domain.Role, password string) (*domain.User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if !role.Valid() {
 		return nil, domain.ErrInvalidRole
+	}
+	// Only an owner may create another owner (privilege-escalation guard).
+	if role == domain.RoleOwner && actorRole != domain.RoleOwner {
+		return nil, domain.ErrOwnerRoleRequired
 	}
 	if len(password) < minPasswordLen {
 		return nil, domain.ErrWeakPassword
@@ -415,13 +419,18 @@ func (s *AuthService) CreateUser(ctx context.Context, tenantID uuid.UUID, email,
 
 // UpdateUserRole changes a teammate's role. It refuses to demote the last owner
 // of the tenant. targetID must belong to tenantID (else ErrUserNotFound).
-func (s *AuthService) UpdateUserRole(ctx context.Context, tenantID, targetID uuid.UUID, role domain.Role) (*domain.User, error) {
+func (s *AuthService) UpdateUserRole(ctx context.Context, tenantID uuid.UUID, actorRole domain.Role, targetID uuid.UUID, role domain.Role) (*domain.User, error) {
 	if !role.Valid() {
 		return nil, domain.ErrInvalidRole
 	}
 	target, err := s.users.GetByID(ctx, tenantID, targetID)
 	if err != nil {
 		return nil, err
+	}
+	// Only an owner may cross the owner boundary — grant the owner role or
+	// demote an existing owner. Otherwise an admin could self-promote to owner.
+	if (role == domain.RoleOwner || target.Role == domain.RoleOwner) && actorRole != domain.RoleOwner {
+		return nil, domain.ErrOwnerRoleRequired
 	}
 	// Demoting the last owner would lock the tenant out of ownership.
 	if target.Role == domain.RoleOwner && role != domain.RoleOwner {
@@ -443,13 +452,17 @@ func (s *AuthService) UpdateUserRole(ctx context.Context, tenantID, targetID uui
 // DeleteUser removes a teammate. It refuses to delete the last owner and refuses
 // to let the acting user delete their own account (self-lockout). actingUserID
 // may be uuid.Nil for machine (API-key) callers, which have no self to lock out.
-func (s *AuthService) DeleteUser(ctx context.Context, tenantID, actingUserID, targetID uuid.UUID) error {
+func (s *AuthService) DeleteUser(ctx context.Context, tenantID uuid.UUID, actorRole domain.Role, actingUserID, targetID uuid.UUID) error {
 	target, err := s.users.GetByID(ctx, tenantID, targetID)
 	if err != nil {
 		return err
 	}
 	if actingUserID != uuid.Nil && actingUserID == targetID {
 		return domain.ErrSelfLockout
+	}
+	// Only an owner may remove an existing owner.
+	if target.Role == domain.RoleOwner && actorRole != domain.RoleOwner {
+		return domain.ErrOwnerRoleRequired
 	}
 	if target.Role == domain.RoleOwner {
 		owners, err := s.users.CountOwners(ctx, tenantID)

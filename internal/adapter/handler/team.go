@@ -42,6 +42,16 @@ func (h *TeamHandler) requireManager(c *gin.Context) bool {
 	return false
 }
 
+// actorRole is the role the owner-boundary checks compare against. A machine
+// (API-key) caller carries no user role and is treated as fully trusted.
+func (h *TeamHandler) actorRole(c *gin.Context) domain.Role {
+	role, hasUser := middleware.GetUserRole(c)
+	if !hasUser {
+		return domain.RoleOwner // API-key caller — full trust
+	}
+	return domain.Role(role)
+}
+
 // mapTeamError translates domain errors into HTTP responses.
 func mapTeamError(c *gin.Context, err error) {
 	switch {
@@ -51,6 +61,8 @@ func mapTeamError(c *gin.Context, err error) {
 		respondError(c, http.StatusConflict, codeConflict, err.Error())
 	case errors.Is(err, domain.ErrLastOwner), errors.Is(err, domain.ErrSelfLockout):
 		respondError(c, http.StatusConflict, codeConflict, err.Error())
+	case errors.Is(err, domain.ErrOwnerRoleRequired):
+		respondError(c, http.StatusForbidden, codeForbidden, err.Error())
 	case errors.Is(err, domain.ErrWeakPassword), errors.Is(err, domain.ErrInvalidRole):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 	default:
@@ -99,7 +111,7 @@ func (h *TeamHandler) CreateUser(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
-	user, err := h.auth.CreateUser(c.Request.Context(), tenantID, req.Email, req.Name, domain.Role(req.Role), req.Password)
+	user, err := h.auth.CreateUser(c.Request.Context(), tenantID, h.actorRole(c), req.Email, req.Name, domain.Role(req.Role), req.Password)
 	if err != nil {
 		mapTeamError(c, err)
 		return
@@ -131,7 +143,7 @@ func (h *TeamHandler) UpdateUser(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
-	user, err := h.auth.UpdateUserRole(c.Request.Context(), tenantID, targetID, domain.Role(req.Role))
+	user, err := h.auth.UpdateUserRole(c.Request.Context(), tenantID, h.actorRole(c), targetID, domain.Role(req.Role))
 	if err != nil {
 		mapTeamError(c, err)
 		return
@@ -155,7 +167,7 @@ func (h *TeamHandler) DeleteUser(c *gin.Context) {
 		return
 	}
 	actingUserID := middleware.GetUserID(c) // uuid.Nil for API-key callers
-	if err := h.auth.DeleteUser(c.Request.Context(), tenantID, actingUserID, targetID); err != nil {
+	if err := h.auth.DeleteUser(c.Request.Context(), tenantID, h.actorRole(c), actingUserID, targetID); err != nil {
 		mapTeamError(c, err)
 		return
 	}

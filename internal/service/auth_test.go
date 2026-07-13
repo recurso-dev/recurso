@@ -380,16 +380,16 @@ func TestTeam_CreateAndCrossTenantIsolation(t *testing.T) {
 	b, _ := svc.Register(context.Background(), "TenantB", "Bob", "bob@b.com", "supersecret", "")
 
 	// Alice adds a member to tenant A.
-	m, err := svc.CreateUser(context.Background(), a.Tenant.ID, "member@a.com", "Mel", domain.RoleMember, "supersecret")
+	m, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "member@a.com", "Mel", domain.RoleMember, "supersecret")
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
 
 	// Bob (tenant B) cannot modify tenant A's member → treated as not found.
-	if _, err := svc.UpdateUserRole(context.Background(), b.Tenant.ID, m.ID, domain.RoleAdmin); !errors.Is(err, domain.ErrUserNotFound) {
+	if _, err := svc.UpdateUserRole(context.Background(), b.Tenant.ID, domain.RoleOwner, m.ID, domain.RoleAdmin); !errors.Is(err, domain.ErrUserNotFound) {
 		t.Fatalf("cross-tenant update err = %v, want ErrUserNotFound", err)
 	}
-	if err := svc.DeleteUser(context.Background(), b.Tenant.ID, b.User.ID, m.ID); !errors.Is(err, domain.ErrUserNotFound) {
+	if err := svc.DeleteUser(context.Background(), b.Tenant.ID, domain.RoleOwner, b.User.ID, m.ID); !errors.Is(err, domain.ErrUserNotFound) {
 		t.Fatalf("cross-tenant delete err = %v, want ErrUserNotFound", err)
 	}
 }
@@ -399,32 +399,72 @@ func TestTeam_LastOwnerProtected(t *testing.T) {
 	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
 
 	// Cannot demote the last owner.
-	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, a.User.ID, domain.RoleMember); !errors.Is(err, domain.ErrLastOwner) {
+	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleOwner, a.User.ID, domain.RoleMember); !errors.Is(err, domain.ErrLastOwner) {
 		t.Fatalf("demote last owner err = %v, want ErrLastOwner", err)
 	}
 	// Cannot delete the last owner.
-	if err := svc.DeleteUser(context.Background(), a.Tenant.ID, uuid.Nil, a.User.ID); !errors.Is(err, domain.ErrLastOwner) {
+	if err := svc.DeleteUser(context.Background(), a.Tenant.ID, domain.RoleOwner, uuid.Nil, a.User.ID); !errors.Is(err, domain.ErrLastOwner) {
 		t.Fatalf("delete last owner err = %v, want ErrLastOwner", err)
 	}
 
 	// Add a second owner, then the original can be demoted.
-	o2, err := svc.CreateUser(context.Background(), a.Tenant.ID, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret")
+	o2, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret")
 	if err != nil {
 		t.Fatalf("create 2nd owner: %v", err)
 	}
-	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, a.User.ID, domain.RoleMember); err != nil {
+	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleOwner, a.User.ID, domain.RoleMember); err != nil {
 		t.Fatalf("demote with 2 owners: %v", err)
 	}
 	_ = o2
+}
+
+// TestTeam_OwnerBoundary proves the owner role is protected: an admin (who can
+// otherwise manage the team) cannot mint an owner, promote anyone to owner, or
+// demote/remove an existing owner. Only an owner may cross that boundary.
+func TestTeam_OwnerBoundary(t *testing.T) {
+	svc, _, _ := newTestAuth()
+	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
+
+	// Alice (owner) provisions an admin and a member.
+	admin, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "admin@a.com", "Addie", domain.RoleAdmin, "supersecret")
+	if err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+	member, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "member@a.com", "Mel", domain.RoleMember, "supersecret")
+	if err != nil {
+		t.Fatalf("create member: %v", err)
+	}
+
+	// An admin cannot create a new owner.
+	if _, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleAdmin, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret"); !errors.Is(err, domain.ErrOwnerRoleRequired) {
+		t.Fatalf("admin creating owner err = %v, want ErrOwnerRoleRequired", err)
+	}
+	// An admin cannot promote a member to owner (self-escalation vector).
+	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleAdmin, member.ID, domain.RoleOwner); !errors.Is(err, domain.ErrOwnerRoleRequired) {
+		t.Fatalf("admin promoting to owner err = %v, want ErrOwnerRoleRequired", err)
+	}
+	// An admin cannot demote the existing owner.
+	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleAdmin, a.User.ID, domain.RoleMember); !errors.Is(err, domain.ErrOwnerRoleRequired) {
+		t.Fatalf("admin demoting owner err = %v, want ErrOwnerRoleRequired", err)
+	}
+	// An admin cannot delete the existing owner.
+	if err := svc.DeleteUser(context.Background(), a.Tenant.ID, domain.RoleAdmin, admin.ID, a.User.ID); !errors.Is(err, domain.ErrOwnerRoleRequired) {
+		t.Fatalf("admin deleting owner err = %v, want ErrOwnerRoleRequired", err)
+	}
+
+	// The owner, by contrast, may promote the member to owner.
+	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleOwner, member.ID, domain.RoleOwner); err != nil {
+		t.Fatalf("owner promoting to owner: %v", err)
+	}
 }
 
 func TestTeam_SelfLockoutRejected(t *testing.T) {
 	svc, _, _ := newTestAuth()
 	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
 	// Add a 2nd owner so the last-owner rule is not what blocks the delete.
-	svc.CreateUser(context.Background(), a.Tenant.ID, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret") //nolint:errcheck
+	svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret") //nolint:errcheck
 
-	if err := svc.DeleteUser(context.Background(), a.Tenant.ID, a.User.ID, a.User.ID); !errors.Is(err, domain.ErrSelfLockout) {
+	if err := svc.DeleteUser(context.Background(), a.Tenant.ID, domain.RoleOwner, a.User.ID, a.User.ID); !errors.Is(err, domain.ErrSelfLockout) {
 		t.Fatalf("self-delete err = %v, want ErrSelfLockout", err)
 	}
 }
