@@ -2,7 +2,10 @@ package db
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -10,6 +13,13 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"golang.org/x/crypto/bcrypt"
 )
+
+// apiKeyLookup is the SHA-256 (hex) of an API key, used as an O(1) indexed
+// lookup at auth time. Safe because API keys are high-entropy random tokens.
+func apiKeyLookup(keyValue string) string {
+	sum := sha256.Sum256([]byte(keyValue))
+	return hex.EncodeToString(sum[:])
+}
 
 type TenantRepository struct {
 	db     *sql.DB
@@ -44,10 +54,10 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 		prefix = prefix[:8]
 	}
 
-	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, type, is_active, livemode, created_at)
-	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+	query := `INSERT INTO api_keys (id, tenant_id, key_value, key_hash, key_prefix, key_lookup, type, is_active, livemode, created_at)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 	_, err = r.db.ExecContext(ctx, query,
-		key.ID, key.TenantID, "", string(hash), prefix, key.Type, key.IsActive, key.Livemode, key.CreatedAt,
+		key.ID, key.TenantID, "", string(hash), prefix, apiKeyLookup(key.KeyValue), key.Type, key.IsActive, key.Livemode, key.CreatedAt,
 	)
 	if err != nil {
 		return err
@@ -63,32 +73,74 @@ func (r *TenantRepository) CreateAPIKey(ctx context.Context, key *domain.APIKey)
 // returned bool is the matched key's livemode (true = live, false = test) so the
 // auth layer can gate a test key away from a live-money server.
 func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) (*domain.Tenant, bool, error) {
-	// Try hashed lookup first (prefix match + bcrypt verify)
+	lookup := apiKeyLookup(keyValue)
+
+	// Fast path: an O(1) exact match on the indexed SHA-256 lookup hash. Because
+	// keys are high-entropy random tokens, a lookup match plus a bcrypt verify of
+	// the single row is a secure authentication. This replaces a prefix scan that,
+	// since every rsk_live_/rsk_test_ key shares the same 8-char prefix, bcrypt-
+	// compared EVERY active key on each request.
+	var (
+		t          domain.Tenant
+		name, mail sql.NullString
+		keyHash    string
+		livemode   bool
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT t.id, t.name, t.email, k.key_hash, k.livemode
+		FROM tenants t
+		JOIN api_keys k ON t.id = k.tenant_id
+		WHERE k.key_lookup = $1 AND k.is_active = TRUE AND k.key_hash IS NOT NULL
+	`, lookup).Scan(&t.ID, &name, &mail, &keyHash, &livemode)
+	if err == nil {
+		if bcrypt.CompareHashAndPassword([]byte(keyHash), []byte(keyValue)) == nil {
+			t.Name, t.Email = name.String, mail.String
+			return &t, livemode, nil
+		}
+		// A lookup hit whose bcrypt does not verify is effectively impossible (it
+		// would require a SHA-256 collision); fall through to the legacy scan.
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return nil, false, fmt.Errorf("failed to query API key by lookup: %w", err)
+	}
+
+	// Legacy fallback: keys created before key_lookup existed (key_lookup IS
+	// NULL). Their plaintext is not stored, so they cannot be backfilled by SQL —
+	// scan the prefix matches and bcrypt-verify. On a match, backfill key_lookup
+	// so this key uses the fast path from the next request on (self-healing: each
+	// legacy key hits the slow path at most once).
 	prefix := keyValue
 	if len(prefix) > 8 {
 		prefix = prefix[:8]
 	}
-
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT t.id, t.name, t.email, k.key_hash, k.livemode
+		SELECT t.id, t.name, t.email, k.id, k.key_hash, k.livemode
 		FROM tenants t
 		JOIN api_keys k ON t.id = k.tenant_id
-		WHERE k.key_prefix = $1 AND k.is_active = TRUE AND k.key_hash IS NOT NULL
+		WHERE k.key_prefix = $1 AND k.is_active = TRUE AND k.key_hash IS NOT NULL AND k.key_lookup IS NULL
 	`, prefix)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to query API keys: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var t domain.Tenant
-		var keyHash string
-		var livemode bool
-		if err := rows.Scan(&t.ID, &t.Name, &t.Email, &keyHash, &livemode); err != nil {
+		var (
+			lt         domain.Tenant
+			lname, lml sql.NullString
+			keyID      uuid.UUID
+			legacyHash string
+			lm         bool
+		)
+		if err := rows.Scan(&lt.ID, &lname, &lml, &keyID, &legacyHash, &lm); err != nil {
 			continue
 		}
-		// bcrypt compare
-		if bcrypt.CompareHashAndPassword([]byte(keyHash), []byte(keyValue)) == nil {
-			return &t, livemode, nil
+		if bcrypt.CompareHashAndPassword([]byte(legacyHash), []byte(keyValue)) == nil {
+			// Best-effort backfill; auth succeeds regardless of the update result.
+			if _, uErr := r.db.ExecContext(ctx,
+				`UPDATE api_keys SET key_lookup = $1 WHERE id = $2 AND key_lookup IS NULL`, lookup, keyID); uErr != nil {
+				slog.Warn("failed to backfill api key lookup hash", "key_id", keyID, "error", uErr)
+			}
+			lt.Name, lt.Email = lname.String, lml.String
+			return &lt, lm, nil
 		}
 	}
 
