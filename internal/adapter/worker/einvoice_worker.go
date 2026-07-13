@@ -88,17 +88,27 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
 		_, retryErr := w.einvoiceService.RetryFailedEInvoice(tctx, inv.ID)
 		if retryErr != nil {
-			// Schedule next retry with exponential backoff
-			backoffIdx := inv.EInvoiceRetryCount
+			// RetryFailedEInvoice re-fetched the invoice and persisted an
+			// INCREMENTED retry count. Re-read that fresh copy before scheduling
+			// the next retry — mutating our stale `inv` and writing it back would
+			// clobber the increment (the count would never advance, so
+			// maxEInvoiceRetries never fires and backoff never escalates).
+			fresh, ferr := w.invoiceRepo.GetByIDPublic(ctx, inv.ID)
+			if ferr != nil || fresh == nil {
+				log.Printf("EInvoiceRetryWorker: could not re-read %s after retry: %v", inv.ID, ferr)
+				continue
+			}
+
+			backoffIdx := fresh.EInvoiceRetryCount
 			if backoffIdx >= len(einvoiceBackoffDurations) {
 				backoffIdx = len(einvoiceBackoffDurations) - 1
 			}
 			nextRetry := time.Now().Add(einvoiceBackoffDurations[backoffIdx])
-			inv.EInvoiceNextRetryAt = &nextRetry
+			fresh.EInvoiceNextRetryAt = &nextRetry
 
-			log.Printf("EInvoiceRetryWorker: Retry failed for %s. Next retry at %v", inv.InvoiceNumber, nextRetry)
+			log.Printf("EInvoiceRetryWorker: Retry failed for %s (attempt %d). Next retry at %v", fresh.InvoiceNumber, fresh.EInvoiceRetryCount, nextRetry)
 
-			if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
+			if updateErr := w.invoiceRepo.Update(ctx, fresh); updateErr != nil {
 				log.Printf("EInvoiceRetryWorker: Failed to update invoice %s: %v", inv.ID, updateErr)
 			}
 		} else {
