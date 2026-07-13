@@ -126,6 +126,12 @@ func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID, razor
 }
 
 func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Mandate, amount int64, currency string) error {
+	// The mandate-debit scheduler calls this with a background context, but every
+	// repo below is tenant-scoped (customer read, invoice create) and fails closed
+	// on a missing tenant — inject the mandate's own tenant so the debit actually
+	// runs instead of erroring at the customer lookup (tenant-context bug class).
+	ctx = context.WithValue(ctx, domain.TenantIDKey, mandate.TenantID)
+
 	invoiceID := uuid.New()
 
 	// The gateway's recurring-charge API needs the customer's contact details.
