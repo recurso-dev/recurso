@@ -502,31 +502,36 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	return sub, nil
 }
 
-func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) error {
+// MarkInvoicePaid settles an invoice and returns whether THIS caller performed
+// the paid transition. Multiple settlers (inline checkout, gateway webhook,
+// retry worker, offline payment) can all call it for the same invoice, but only
+// one gets transitioned=true — callers that fire once-per-settlement side
+// effects (e.g. recording a dunning outcome) must gate on it so a redelivered
+// webhook or a second settler doesn't double-count.
+func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (transitioned bool, err error) {
 	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if inv == nil {
-		return fmt.Errorf("invoice not found")
+		return false, fmt.Errorf("invoice not found")
 	}
 
 	if inv.Status == domain.InvoiceStatusPaid {
-		return nil // Already paid
+		return false, nil // Already paid
 	}
 
 	now := time.Now().UTC()
 	// Atomically claim the paid transition. Only the settler whose conditional
 	// UPDATE actually flips the row runs the side-effects below; concurrent
-	// settlers (inline checkout, gateway webhook, retry worker, offline payment)
-	// get transitioned=false and return without double-posting the ledger or
-	// double-counting recovered revenue.
-	transitioned, err := s.invoiceRepo.MarkPaid(ctx, invoiceID, now)
+	// settlers get transitioned=false and return without double-posting the
+	// ledger or double-counting recovered revenue.
+	transitioned, err = s.invoiceRepo.MarkPaid(ctx, invoiceID, now)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if !transitioned {
-		return nil // another settler already marked it paid
+		return false, nil // another settler already marked it paid
 	}
 	inv.Status = domain.InvoiceStatusPaid
 	inv.PaidAt = &now
@@ -578,7 +583,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		}
 	}
 
-	return nil
+	return true, nil
 }
 
 func (s *SubscriptionService) ListSubscriptions(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error) {

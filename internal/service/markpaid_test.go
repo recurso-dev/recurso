@@ -118,8 +118,14 @@ func TestMarkInvoicePaid_OpenToPaid(t *testing.T) {
 
 	svc := newMarkPaidService(invRepo, ledgerRepo)
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	transitioned, err := svc.MarkInvoicePaid(context.Background(), invoiceID)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	// The caller that flips open→paid gets transitioned=true — this is what gates
+	// once-per-settlement side effects like the dunning-outcome record (ENG-162).
+	if !transitioned {
+		t.Error("expected transitioned=true on the open→paid transition")
 	}
 
 	if invRepo.updated == nil {
@@ -172,8 +178,14 @@ func TestMarkInvoicePaid_AlreadyPaid_NoOp(t *testing.T) {
 
 	svc := newMarkPaidService(invRepo, ledgerRepo)
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	transitioned, err := svc.MarkInvoicePaid(context.Background(), invoiceID)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	// An already-paid invoice is a no-op for this caller — transitioned=false, so
+	// a redelivered webhook won't re-record the dunning outcome (ENG-162).
+	if transitioned {
+		t.Error("expected transitioned=false for an already-paid invoice")
 	}
 
 	if invRepo.updated != nil {
@@ -188,7 +200,7 @@ func TestMarkInvoicePaid_NotFound(t *testing.T) {
 	invRepo := &mockInvoiceRepoForMarkPaid{inv: nil} // GetByID returns nil, nil
 	svc := newMarkPaidService(invRepo, &mockLedgerRepoForMarkPaid{})
 
-	err := svc.MarkInvoicePaid(context.Background(), uuid.New())
+	_, err := svc.MarkInvoicePaid(context.Background(), uuid.New())
 	if err == nil {
 		t.Fatal("expected error for missing invoice")
 	}
@@ -201,7 +213,7 @@ func TestMarkInvoicePaid_GetError_Propagated(t *testing.T) {
 	invRepo := &mockInvoiceRepoForMarkPaid{getErr: errors.New("db read failed")}
 	svc := newMarkPaidService(invRepo, &mockLedgerRepoForMarkPaid{})
 
-	if err := svc.MarkInvoicePaid(context.Background(), uuid.New()); err == nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), uuid.New()); err == nil {
 		t.Fatal("expected error when invoice lookup fails")
 	}
 }
@@ -220,7 +232,7 @@ func TestMarkInvoicePaid_UpdateError_NoLedgerWrite(t *testing.T) {
 
 	svc := newMarkPaidService(invRepo, ledgerRepo)
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err == nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), invoiceID); err == nil {
 		t.Fatal("expected error when invoice update fails")
 	}
 	// The ledger must not record a payment the DB never persisted.
@@ -243,7 +255,7 @@ func TestMarkInvoicePaid_LedgerWriteFails_InvoiceStillPaid(t *testing.T) {
 
 	svc := newMarkPaidService(invRepo, ledgerRepo)
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
 		t.Fatalf("MarkInvoicePaid should not fail on ledger error (current behavior), got: %v", err)
 	}
 	if invRepo.updated == nil || invRepo.updated.Status != domain.InvoiceStatusPaid {

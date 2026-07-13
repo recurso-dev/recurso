@@ -226,7 +226,8 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 		}
 
 		ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
-		if err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID); err != nil {
+		transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
+		if err != nil {
 			h.logger.Error("failed to mark invoice paid",
 				"invoice_id", invoiceID,
 				"error", err,
@@ -250,8 +251,13 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 			}
 		}
 
-		// 3. Record success outcome for RL if this invoice was managed by smart dunning
-		h.recordDunningSuccess(ctx, invoiceID)
+		// 3. Record success outcome for RL if this invoice was managed by smart
+		// dunning — only when THIS delivery performed the paid transition, so a
+		// redelivered webhook (or a second settler) can't double-count the
+		// dunning bandit's reward (ENG-162).
+		if transitioned {
+			h.recordDunningSuccess(ctx, invoiceID)
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -410,7 +416,8 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 	}
 
 	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
-	if err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID); err != nil {
+	transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
+	if err != nil {
 		h.logger.Error("failed to mark invoice paid via stripe webhook",
 			"invoice_id", invoiceID,
 			"error", err,
@@ -431,7 +438,12 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 		}
 	}
 
-	h.recordDunningSuccess(ctx, invoiceID)
+	// Record the dunning success only when THIS delivery performed the paid
+	// transition, so a redelivered payment_intent.succeeded (or a second settler)
+	// can't double-count the dunning bandit's reward (ENG-162).
+	if transitioned {
+		h.recordDunningSuccess(ctx, invoiceID)
+	}
 	return nil
 }
 

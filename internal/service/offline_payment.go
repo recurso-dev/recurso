@@ -96,7 +96,7 @@ func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, raz
 	// payments never settle (ENG-145).
 	if va.InvoiceID != nil && va.AmountReceived >= va.AmountExpected {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, va.TenantID)
-		if err := s.subService.MarkInvoicePaid(tctx, *va.InvoiceID); err != nil {
+		if _, err := s.subService.MarkInvoicePaid(tctx, *va.InvoiceID); err != nil {
 			return fmt.Errorf("failed to mark invoice paid: %w", err)
 		}
 	}
@@ -138,7 +138,7 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 	// Mark linked invoice as paid (inject tenant — see ReconcileVirtualAccount).
 	if input.InvoiceID != nil {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, input.TenantID)
-		if err := s.subService.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
+		if _, err := s.subService.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
 			return nil, fmt.Errorf("failed to mark invoice paid: %w", err)
 		}
 	}

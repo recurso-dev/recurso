@@ -25,7 +25,7 @@ type paymentInspector interface {
 // an already-paid invoice is a no-op, so CheckoutSuccess and the webhook can
 // both call it without double-posting.
 type invoiceSettler interface {
-	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) error
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
 // razorpayVerifier verifies a Razorpay checkout payment (HMAC signature) and
@@ -298,7 +298,7 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 	// path (idempotent with the webhook).
 	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
 	if h.settler != nil {
-		if err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
+		if _, err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
 			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to settle invoice")
 			return
 		}
@@ -387,7 +387,7 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 	// 3. Settle through the ledger path (idempotent with the webhook).
 	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
 	if h.settler != nil {
-		if err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
+		if _, err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
 			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to settle invoice")
 			return
 		}
