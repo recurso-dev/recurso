@@ -884,7 +884,8 @@ func main() {
 	webhookHandler.SetMandateService(mandateService)
 	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
 	webhookHandler.SetDunningCampaignService(dunningCampaignService)
-	webhookHandler.SetCreditNoteService(creditNoteService) // consume gateway refund events (refund.processed/failed, charge.refunded)
+	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
+	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)
