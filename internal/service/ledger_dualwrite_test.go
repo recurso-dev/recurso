@@ -220,6 +220,39 @@ func TestLedgerRecordPayment_DebitsCashCreditsAR(t *testing.T) {
 	}
 }
 
+// TestLedgerRecordPayment_PostsCollectedNotGross proves the ENG-185 fix: when
+// account credit was applied, the payment posts the CASH collected
+// (Total - CreditApplied), not the gross Total — otherwise Cash is overstated
+// and AR is over-credited (driven negative) by the applied credit.
+func TestLedgerRecordPayment_PostsCollectedNotGross(t *testing.T) {
+	repo := &mockLedgerRepoForLedger{accountsByCode: map[int]*domain.LedgerAccount{
+		domain.AccountCodeCash: {ID: uuid.New(), Code: domain.AccountCodeCash},
+	}}
+	svc := NewLedgerService(nil, repo)
+
+	// Total 1000, 300 covered by account credit -> only 700 cash collected.
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: uuid.New(), CustomerID: uuid.New(), InvoiceNumber: "INV-CR", Total: 1000, CreditApplied: 300}
+	if err := svc.RecordPayment(context.Background(), inv); err != nil {
+		t.Fatalf("RecordPayment: %v", err)
+	}
+	if len(repo.transactions) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(repo.transactions))
+	}
+	if got := repo.transactions[0].Amount; got != 700 {
+		t.Fatalf("payment Amount = %d, want 700 (Total 1000 - credit 300)", got)
+	}
+
+	// Fully covered by credit -> no cash leg posted at all.
+	repo.transactions = nil
+	full := &domain.Invoice{ID: uuid.New(), TenantID: uuid.New(), CustomerID: uuid.New(), InvoiceNumber: "INV-FC", Total: 1000, CreditApplied: 1000}
+	if err := svc.RecordPayment(context.Background(), full); err != nil {
+		t.Fatalf("RecordPayment (full credit): %v", err)
+	}
+	if len(repo.transactions) != 0 {
+		t.Fatalf("fully-credit-covered invoice posted %d cash txns, want 0", len(repo.transactions))
+	}
+}
+
 func TestLedgerRecordPayment_ProvisionsCashAccount(t *testing.T) {
 	repo := &mockLedgerRepoForLedger{lookupErr: errors.New("no accounts")}
 	svc := NewLedgerService(nil, repo)

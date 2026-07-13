@@ -205,7 +205,17 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 // Debit: Cash (Asset)
 // Credit: Customer AR (Asset) — reduces the receivable
 func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
-	amount, err := ledgerAmount(invoice.Total)
+	// Post the CASH actually collected, not the gross Total. When account credit
+	// was applied to this invoice, the credit-application posting already
+	// relieved AR by credit_applied; only Total-credit_applied was collected in
+	// cash. Posting the full Total here would over-credit AR (drive it negative)
+	// and overstate Cash by the applied credit (ENG-185).
+	collected := invoice.Total - invoice.CreditApplied
+	if collected <= 0 {
+		// Fully covered by account credit — no cash leg to post.
+		return nil
+	}
+	amount, err := ledgerAmount(collected)
 	if err != nil {
 		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 	}
