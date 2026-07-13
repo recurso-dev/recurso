@@ -19,6 +19,76 @@ func NewCreditNoteRepository(db *sqlx.DB) *CreditNoteRepository {
 	return &CreditNoteRepository{db: db}
 }
 
+// CreateRefundWithinLimit atomically enforces the over-refund limit and inserts
+// the refund credit note in one transaction, serialized on the invoice row.
+// Returns within=false (and inserts nothing) when the requested refund plus the
+// invoice's already-active refunds would exceed what was paid.
+//
+// Why the lock: the plain SumActiveRefundsForInvoice + Create sequence is a
+// read-then-write race — two concurrent refund requests for the same invoice
+// both read a stale "already refunded" total, both pass the guard, both insert a
+// pending note, and each then issues a gateway refund (double-issue). The
+// SELECT ... FOR UPDATE on the invoice makes the second request block until the
+// first commits, then observe its pending note in the sum and be rejected. The
+// caller runs the external gateway refund AFTER this returns, so no network call
+// happens inside the lock.
+func (r *CreditNoteRepository) CreateRefundWithinLimit(ctx context.Context, cn *domain.CreditNote, invoiceID uuid.UUID, amountPaid int64) (bool, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("begin refund tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }() // no-op after Commit
+
+	// Serialize concurrent refunds for this invoice.
+	var lockedID uuid.UUID
+	if err := tx.GetContext(ctx, &lockedID,
+		`SELECT id FROM invoices WHERE id = $1 FOR UPDATE`, invoiceID); err != nil {
+		return false, fmt.Errorf("lock invoice %s for refund: %w", invoiceID, err)
+	}
+
+	// Sum active (non-void) refunds under the lock — includes any pending note a
+	// concurrent request committed before us. Mirrors SumActiveRefundsForInvoice.
+	var already int64
+	if err := tx.GetContext(ctx, &already, `
+		SELECT COALESCE(SUM(amount), 0) FROM credit_notes
+		WHERE invoice_id = $1 AND type = $2 AND status <> $3
+		  AND refund_status IN ($4, $5, $6)`,
+		invoiceID, domain.CreditNoteTypeRefund, domain.CreditNoteStatusVoid,
+		domain.RefundStatusPending, domain.RefundStatusProcessed, domain.RefundStatusManualRequired,
+	); err != nil {
+		return false, fmt.Errorf("sum active refunds: %w", err)
+	}
+	if cn.Amount+already > amountPaid {
+		return false, nil // over-refund; nothing inserted
+	}
+
+	// Insert within the same tx. Reuse the named binding from Create so the
+	// column set can't drift.
+	insert := `
+		INSERT INTO credit_notes (
+			tenant_id, customer_id, invoice_id, reference, amount, balance,
+			currency, status, reason, type, refund_status, refund_id,
+			refund_message, created_at, updated_at
+		) VALUES (
+			:tenant_id, :customer_id, :invoice_id, :reference, :amount, :balance,
+			:currency, :status, :reason, :type, :refund_status, :refund_id,
+			:refund_message, :created_at, :updated_at
+		) RETURNING id`
+	q, args, err := sqlx.Named(insert, cn)
+	if err != nil {
+		return false, fmt.Errorf("bind refund insert: %w", err)
+	}
+	q = tx.Rebind(q)
+	if err := tx.QueryRowxContext(ctx, q, args...).Scan(&cn.ID); err != nil {
+		return false, fmt.Errorf("insert refund credit note: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("commit refund tx: %w", err)
+	}
+	return true, nil
+}
+
 func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.CreditNote) error {
 	query := `
 		INSERT INTO credit_notes (

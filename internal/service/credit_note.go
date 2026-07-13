@@ -30,6 +30,12 @@ type CreditNoteRepository interface {
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.CreditNoteFilter) ([]*domain.CreditNote, error)
 	UpdateRefund(ctx context.Context, id uuid.UUID, status domain.CreditNoteRefundStatus, refundID *string, message string) error
 	SumActiveRefundsForInvoice(ctx context.Context, invoiceID uuid.UUID) (int64, error)
+	// CreateRefundWithinLimit atomically enforces the over-refund limit and
+	// inserts the refund note under an invoice-row lock, so concurrent refund
+	// requests can't both pass a stale over-refund check and double-issue.
+	// within=false means the refund would exceed the refundable amount (nothing
+	// inserted).
+	CreateRefundWithinLimit(ctx context.Context, cn *domain.CreditNote, invoiceID uuid.UUID, amountPaid int64) (within bool, err error)
 	// GetByRefundID resolves the credit note that owns a gateway refund id
 	// (Stripe re_*, Razorpay rfnd_*). Returns (nil, nil) when none matches.
 	GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error)
@@ -200,42 +206,46 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 		return fmt.Errorf("%w: currency %s does not match invoice currency %s", ErrCreditNoteValidation, req.Currency, inv.Currency)
 	}
 
-	// Over-refund guard: this refund plus all previously issued (non-failed,
-	// non-void) refunds must not exceed what the customer actually paid.
-	alreadyRefunded, err := s.repo.SumActiveRefundsForInvoice(ctx, inv.ID)
-	if err != nil {
-		return fmt.Errorf("failed to compute refunded total for invoice %s: %w", inv.ID, err)
-	}
-	if req.Amount+alreadyRefunded > inv.AmountPaid {
-		return fmt.Errorf("%w: refund of %d exceeds refundable amount (paid %d, already refunded %d)",
-			ErrCreditNoteValidation, req.Amount, inv.AmountPaid, alreadyRefunded)
-	}
-
 	// A refund returns money to the customer; it is not a spendable balance.
 	cn.Balance = 0
 
-	// Honesty rule: without a recorded gateway payment id (offline payment,
-	// or invoice paid before payment ids were tracked) no API refund is
-	// possible. Create the note, but say so — never pretend a refund happened.
-	if inv.GatewayPaymentID == "" {
+	// Decide the note's terminal-or-pending status BEFORE persisting, so the
+	// over-refund guard and the insert happen atomically under an invoice lock
+	// (below) for BOTH the manual and gateway paths.
+	//
+	// Honesty rule: without a recorded gateway payment id (offline payment, or
+	// invoice paid before payment ids were tracked) no API refund is possible.
+	// Create the note, but say so — never pretend a refund happened.
+	manual := inv.GatewayPaymentID == ""
+	if manual {
 		cn.RefundStatus = domain.RefundStatusManualRequired
 		cn.RefundMessage = fmt.Sprintf(
 			"invoice %s has no gateway payment id on record (offline or pre-tracking payment); no gateway refund was attempted — process this refund manually",
 			inv.InvoiceNumber)
-		if err := s.repo.Create(ctx, cn); err != nil {
-			return err
-		}
+	} else {
+		// Persist first (pending), then call the gateway, then record the
+		// outcome. This ordering guarantees a gateway refund can never happen
+		// without a credit note row tracking it.
+		cn.RefundStatus = domain.RefundStatusPending
+	}
+
+	// Over-refund guard + insert, atomic and serialized on the invoice row: two
+	// concurrent refund requests can't both read a stale "already refunded"
+	// total and each issue a gateway refund (double-issue). within=false means
+	// this refund plus prior active refunds would exceed what was paid.
+	within, err := s.repo.CreateRefundWithinLimit(ctx, cn, inv.ID, inv.AmountPaid)
+	if err != nil {
+		return fmt.Errorf("failed to record refund for invoice %s: %w", inv.ID, err)
+	}
+	if !within {
+		return fmt.Errorf("%w: refund of %d exceeds refundable amount (paid %d)",
+			ErrCreditNoteValidation, req.Amount, inv.AmountPaid)
+	}
+
+	if manual {
 		s.logger.Warn("refund credit note requires manual processing",
 			"credit_note_id", cn.ID, "invoice_id", inv.ID)
 		return nil
-	}
-
-	// Persist first (pending), then call the gateway, then record the outcome.
-	// This ordering guarantees a gateway refund can never happen without a
-	// credit note row tracking it.
-	cn.RefundStatus = domain.RefundStatusPending
-	if err := s.repo.Create(ctx, cn); err != nil {
-		return err
 	}
 
 	if s.gateway == nil {
