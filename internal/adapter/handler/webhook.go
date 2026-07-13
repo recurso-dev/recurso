@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -155,6 +156,13 @@ type RazorpayWebhookPayload struct {
 }
 
 // verifyRazorpaySignature verifies the HMAC SHA256 signature from Razorpay webhooks
+// isGatewayPaymentID reports whether id is a real gateway PAYMENT id (Razorpay
+// pay_*, Stripe pi_*/ch_*) rather than an order id. Only these are refundable,
+// so only these may be written to invoices.gateway_payment_id.
+func isGatewayPaymentID(id string) bool {
+	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") || strings.HasPrefix(id, "ch_")
+}
+
 func verifyRazorpaySignature(body []byte, signature, secret string) bool {
 	if secret == "" || signature == "" {
 		return false
@@ -296,7 +304,12 @@ func (h *WebhookHandler) handleRazorpayPaymentCaptured(c *gin.Context, event Raz
 	// Persist the gateway payment id (pay_*) — refunds are issued against it. For
 	// mandate-collected invoices this is the only place the actual payment id
 	// becomes known: the debit response returns an order id.
-	if paymentID := event.Payload.Payment.Entity.ID; paymentID != "" && h.invoiceRepo != nil {
+	//
+	// Only store a real payment id: order.paid can carry an order_* (or empty)
+	// value here, and writing that would poison gateway_payment_id so refunds
+	// fail (RazorpayGateway.Refund rejects non-pay_*). ExecuteDebit guards the
+	// same write for this reason; the webhook path did not (ENG-188).
+	if paymentID := event.Payload.Payment.Entity.ID; isGatewayPaymentID(paymentID) && h.invoiceRepo != nil {
 		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, paymentID); err != nil {
 			h.logger.Error("failed to record gateway payment id",
 				"invoice_id", invoiceID, "payment_id", paymentID, "error", err)
