@@ -72,10 +72,14 @@ func (r *MFABackupCodeRepository) ListByUser(ctx context.Context, userID uuid.UU
 	return out, rows.Err()
 }
 
-func (r *MFABackupCodeRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE mfa_backup_codes SET used_at = NOW() WHERE id = $1`, id)
-	return err
+func (r *MFABackupCodeRepository) MarkUsed(ctx context.Context, id uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE mfa_backup_codes SET used_at = NOW() WHERE id = $1 AND used_at IS NULL`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 func (r *MFABackupCodeRepository) DeleteByUser(ctx context.Context, userID uuid.UUID) error {
@@ -122,8 +126,12 @@ func (r *MFALoginTokenRepository) GetByTokenHash(ctx context.Context, tokenHash 
 	return &t, nil
 }
 
-func (r *MFALoginTokenRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE mfa_login_tokens SET used_at = NOW() WHERE id = $1`, id)
-	return err
+func (r *MFALoginTokenRepository) MarkUsed(ctx context.Context, id uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE mfa_login_tokens SET used_at = NOW() WHERE id = $1 AND used_at IS NULL`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }

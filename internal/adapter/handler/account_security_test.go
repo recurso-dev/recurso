@@ -40,13 +40,15 @@ func (r *memResetRepo) GetByTokenHash(_ context.Context, h string) (*domain.Pass
 	cp := *t
 	return &cp, nil
 }
-func (r *memResetRepo) MarkUsed(_ context.Context, id uuid.UUID) error {
-	now := time.Now().UTC()
-	if t, ok := r.byID[id]; ok {
-		t.UsedAt = &now
-		r.byHash[t.TokenHash].UsedAt = &now
+func (r *memResetRepo) MarkUsed(_ context.Context, id uuid.UUID) (bool, error) {
+	t, ok := r.byID[id]
+	if !ok || t.UsedAt != nil {
+		return false, nil
 	}
-	return nil
+	now := time.Now().UTC()
+	t.UsedAt = &now
+	r.byHash[t.TokenHash].UsedAt = &now
+	return true, nil
 }
 
 type memBackupRepo struct{ codes []*domain.MFABackupCode }
@@ -68,14 +70,18 @@ func (r *memBackupRepo) ListByUser(_ context.Context, userID uuid.UUID) ([]*doma
 	}
 	return out, nil
 }
-func (r *memBackupRepo) MarkUsed(_ context.Context, id uuid.UUID) error {
-	now := time.Now().UTC()
+func (r *memBackupRepo) MarkUsed(_ context.Context, id uuid.UUID) (bool, error) {
 	for _, c := range r.codes {
 		if c.ID == id {
+			if c.UsedAt != nil {
+				return false, nil
+			}
+			now := time.Now().UTC()
 			c.UsedAt = &now
+			return true, nil
 		}
 	}
-	return nil
+	return false, nil
 }
 func (r *memBackupRepo) DeleteByUser(_ context.Context, userID uuid.UUID) error {
 	var kept []*domain.MFABackupCode
@@ -110,13 +116,15 @@ func (r *memMFATokenRepo) GetByTokenHash(_ context.Context, h string) (*domain.M
 	cp := *t
 	return &cp, nil
 }
-func (r *memMFATokenRepo) MarkUsed(_ context.Context, id uuid.UUID) error {
-	now := time.Now().UTC()
-	if t, ok := r.byID[id]; ok {
-		t.UsedAt = &now
-		r.byHash[t.TokenHash].UsedAt = &now
+func (r *memMFATokenRepo) MarkUsed(_ context.Context, id uuid.UUID) (bool, error) {
+	t, ok := r.byID[id]
+	if !ok || t.UsedAt != nil {
+		return false, nil
 	}
-	return nil
+	now := time.Now().UTC()
+	t.UsedAt = &now
+	r.byHash[t.TokenHash].UsedAt = &now
+	return true, nil
 }
 
 type memMailer struct {

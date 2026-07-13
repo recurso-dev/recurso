@@ -49,8 +49,12 @@ func (r *PasswordResetRepository) GetByTokenHash(ctx context.Context, tokenHash 
 	return &t, nil
 }
 
-func (r *PasswordResetRepository) MarkUsed(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`, id)
-	return err
+func (r *PasswordResetRepository) MarkUsed(ctx context.Context, id uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1 AND used_at IS NULL`, id)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }

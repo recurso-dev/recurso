@@ -76,8 +76,10 @@ type PasswordResetRepository interface {
 	// GetByTokenHash returns the token for the given hash, or
 	// ErrInvalidResetToken if none exists.
 	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.PasswordResetToken, error)
-	// MarkUsed stamps used_at on the token so it cannot be replayed.
-	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// MarkUsed atomically stamps used_at only if it was NULL, returning true when
+	// this call is the one that consumed the token. Callers use the bool as the
+	// single-use gate so two concurrent requests can't both spend one token.
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // MFABackupCodeRepository persists hashed one-time MFA recovery codes.
@@ -85,7 +87,9 @@ type MFABackupCodeRepository interface {
 	CreateMany(ctx context.Context, codes []*domain.MFABackupCode) error
 	// ListByUser returns all backup codes for a user (used and unused).
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]*domain.MFABackupCode, error)
-	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// MarkUsed atomically consumes the code, returning true only for the caller
+	// that won the claim (see PasswordResetRepository.MarkUsed).
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 	// DeleteByUser removes every backup code for a user (on disable / re-issue).
 	DeleteByUser(ctx context.Context, userID uuid.UUID) error
 }
@@ -97,5 +101,7 @@ type MFALoginTokenRepository interface {
 	// GetByTokenHash returns the token for the given hash, or
 	// ErrInvalidMFAToken if none exists.
 	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.MFALoginToken, error)
-	MarkUsed(ctx context.Context, id uuid.UUID) error
+	// MarkUsed atomically consumes the challenge token, returning true only for
+	// the caller that won the claim (see PasswordResetRepository.MarkUsed).
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 }

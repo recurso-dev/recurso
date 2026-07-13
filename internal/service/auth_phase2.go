@@ -153,10 +153,17 @@ func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword s
 	if err != nil {
 		return fmt.Errorf("failed to hash password: %w", err)
 	}
-	if err := s.users.UpdatePassword(ctx, tok.UserID, string(hash)); err != nil {
+	// Atomically consume the token BEFORE changing the password: MarkUsed returns
+	// true only for the request that wins the claim, so two concurrent requests
+	// carrying the same token can't both reset it.
+	claimed, err := s.resetTokens.MarkUsed(ctx, tok.ID)
+	if err != nil {
 		return err
 	}
-	if err := s.resetTokens.MarkUsed(ctx, tok.ID); err != nil {
+	if !claimed {
+		return domain.ErrInvalidResetToken
+	}
+	if err := s.users.UpdatePassword(ctx, tok.UserID, string(hash)); err != nil {
 		return err
 	}
 	// Force re-login everywhere: a password change invalidates existing sessions.
@@ -299,9 +306,15 @@ func (s *AuthService) LoginMFA(ctx context.Context, rawMFAToken, code, userAgent
 	// Full login success — reset the lockout counter.
 	_ = s.users.ClearFailedLogins(ctx, user.ID)
 
-	// Consume the single-use challenge token before minting a session.
-	if err := s.mfaTokens.MarkUsed(ctx, tok.ID); err != nil {
+	// Consume the single-use challenge token before minting a session. The
+	// atomic claim guards against two concurrent exchanges of the same token
+	// each minting a session.
+	claimed, err := s.mfaTokens.MarkUsed(ctx, tok.ID)
+	if err != nil {
 		return nil, err
+	}
+	if !claimed {
+		return nil, domain.ErrInvalidMFAToken
 	}
 
 	tenant, err := s.tenants.GetAccount(ctx, user.TenantID)
@@ -339,8 +352,13 @@ func (s *AuthService) verifyMFACode(ctx context.Context, user *domain.User, code
 			continue
 		}
 		if subtle.ConstantTimeCompare([]byte(bc.CodeHash), []byte(want)) == 1 {
-			_ = s.backupCodes.MarkUsed(ctx, bc.ID)
-			return true
+			// Accept the code only if THIS request atomically consumed it — a
+			// concurrent login using the same backup code must not also succeed.
+			claimed, err := s.backupCodes.MarkUsed(ctx, bc.ID)
+			if err != nil {
+				return false
+			}
+			return claimed
 		}
 	}
 	return false
