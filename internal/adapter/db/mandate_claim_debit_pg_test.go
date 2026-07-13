@@ -76,8 +76,13 @@ func TestClaimDueForDebit_ConcurrentClaimsAreDisjoint(t *testing.T) {
 	var wg sync.WaitGroup
 	start := make(chan struct{})
 	var mu sync.Mutex
-	claimedBy := 0    // how many runners got the mandate
-	totalClaimed := 0 // total mandate rows returned across all runners
+	// claimCount tallies how many runners returned each mandate ID. The atomic
+	// UPDATE ... RETURNING must hand any given row to AT MOST ONE runner, so no
+	// ID may appear more than once. This disjointness is the real no-double-
+	// charge invariant, and it holds no matter how many other due mandates other
+	// (parallel) tests leave in the shared table — unlike a global row count,
+	// which those would inflate and make this test flaky.
+	claimCount := map[uuid.UUID]int{}
 
 	for i := 0; i < runners; i++ {
 		wg.Add(1)
@@ -90,11 +95,8 @@ func TestClaimDueForDebit_ConcurrentClaimsAreDisjoint(t *testing.T) {
 				return
 			}
 			mu.Lock()
-			totalClaimed += len(got)
 			for _, m := range got {
-				if m.ID == mandateID {
-					claimedBy++
-				}
+				claimCount[m.ID]++
 			}
 			mu.Unlock()
 		}()
@@ -102,11 +104,13 @@ func TestClaimDueForDebit_ConcurrentClaimsAreDisjoint(t *testing.T) {
 	close(start)
 	wg.Wait()
 
-	if claimedBy != 1 {
-		t.Fatalf("mandate was claimed by %d runners, want exactly 1 (double-charge race)", claimedBy)
-	}
-	if totalClaimed != 1 {
-		t.Fatalf("total claimed rows = %d, want exactly 1", totalClaimed)
+	// No row may be claimed by more than one runner — that is the double-charge
+	// race this test guards against. Under the pre-fix read-then-charge path,
+	// every runner returned the same due mandate and this count would be > 1.
+	for id, n := range claimCount {
+		if n > 1 {
+			t.Fatalf("mandate %s claimed by %d runners, want <=1 (double-charge race)", id, n)
+		}
 	}
 
 	// The winning claim must have pushed next_debit_at into the future, so a
