@@ -204,105 +204,110 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 
 	h.logger.Info("webhook received", "event", event.Event)
 
-	// Handle token.confirmed for UPI mandate authorization
-	if event.Event == "token.confirmed" {
+	// Idempotency: skip an event we've already fully processed. Razorpay sends a
+	// unique X-Razorpay-Event-Id header per event; a redelivery reuses it, and
+	// without this a duplicate re-runs non-idempotent side effects (the
+	// payment-failed email, the dunning bandit outcome). Recorded only after a
+	// 2xx below, so a failed delivery is still retried (ENG-162).
+	eventID := c.GetHeader("X-Razorpay-Event-Id")
+	if h.alreadyProcessed(c, "razorpay", eventID) {
+		return
+	}
+
+	// Every case writes its own response; the tail records the event as
+	// processed only when that response was 2xx.
+	switch event.Event {
+	case "token.confirmed": // UPI mandate authorization
 		h.handleTokenConfirmed(c, body)
-		return
-	}
-
-	// Handle virtual_account.credited for offline payment reconciliation
-	if event.Event == "virtual_account.credited" {
+	case "virtual_account.credited": // offline payment reconciliation
 		h.handleVirtualAccountCredited(c, body)
-		return
-	}
-
-	if event.Event == "payment.failed" {
+	case "payment.failed":
 		h.handleRazorpayPaymentFailed(c, event)
-		return
-	}
-
-	// Refund lifecycle events: advance the credit note tracking the refund.
-	if event.Event == "refund.processed" || event.Event == "refund.failed" {
+	case "refund.processed", "refund.failed": // advance the credit note tracking the refund
 		h.handleRazorpayRefundEvent(c, body, event.Event == "refund.processed")
+	case "payment.captured", "order.paid":
+		h.handleRazorpayPaymentCaptured(c, event)
+	default:
+		h.logger.Info("razorpay webhook event ignored", "event", event.Event)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored"})
+	}
+
+	// Record only on a 2xx so a failed delivery (5xx) is retried by Razorpay and
+	// reprocessed (ENG-162).
+	if status := c.Writer.Status(); status >= 200 && status < 300 {
+		h.markProcessed(c.Request.Context(), "razorpay", eventID, event.Event)
+	}
+}
+
+// handleRazorpayPaymentCaptured settles the invoice referenced by a
+// payment.captured / order.paid event and writes the HTTP response.
+func (h *WebhookHandler) handleRazorpayPaymentCaptured(c *gin.Context, event RazorpayWebhookPayload) {
+	invoiceIDStr := event.Payload.Payment.Entity.Notes.InvoiceID
+	if invoiceIDStr == "" {
+		// Mandate-debit payments carry no notes of their own; on order.paid
+		// the order entity holds the notes.invoice_id set when the debit
+		// order was created (see MandateService.ExecuteDebit).
+		invoiceIDStr = event.Payload.Order.Entity.Notes.InvoiceID
+	}
+	if invoiceIDStr == "" {
+		h.logger.Info("webhook ignored — no invoice_id in notes",
+			"event", event.Event,
+			"payment_id", event.Payload.Payment.Entity.ID,
+		)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no invoice_id"})
 		return
 	}
 
-	if event.Event == "payment.captured" || event.Event == "order.paid" {
-		invoiceIDStr := event.Payload.Payment.Entity.Notes.InvoiceID
-		if invoiceIDStr == "" {
-			// Mandate-debit payments carry no notes of their own; on order.paid
-			// the order entity holds the notes.invoice_id set when the debit
-			// order was created (see MandateService.ExecuteDebit).
-			invoiceIDStr = event.Payload.Order.Entity.Notes.InvoiceID
-		}
-		if invoiceIDStr == "" {
-			h.logger.Info("webhook ignored — no invoice_id in notes",
-				"event", event.Event,
-				"payment_id", event.Payload.Payment.Entity.ID,
-			)
-			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "no invoice_id"})
-			return
-		}
+	invoiceID, err := uuid.Parse(invoiceIDStr)
+	if err != nil {
+		h.logger.Warn("invalid invoice_id in webhook", "invoice_id", invoiceIDStr)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "invalid invoice_id"})
+		return
+	}
 
-		invoiceID, err := uuid.Parse(invoiceIDStr)
-		if err != nil {
-			h.logger.Warn("invalid invoice_id in webhook", "invoice_id", invoiceIDStr)
-			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "invalid invoice_id"})
-			return
-		}
+	ctx := c.Request.Context()
 
-		ctx := c.Request.Context()
+	// MarkInvoicePaid reads the invoice through the tenant-scoped repository,
+	// and webhook requests carry no tenant — load the invoice first and inject
+	// its own tenant id. Already-paid invoices (e.g. mandate debits) no-op
+	// inside MarkInvoicePaid, so redelivery is safe.
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil {
+		h.logger.Error("failed to load invoice for payment webhook", "invoice_id", invoiceID, "error", err)
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load invoice")
+		return
+	}
+	if inv == nil {
+		h.logger.Warn("webhook ignored — invoice not found", "invoice_id", invoiceID)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
+		return
+	}
 
-		// 2. Mark Invoice as Paid. MarkInvoicePaid reads the invoice through
-		// the tenant-scoped repository, and webhook requests carry no tenant —
-		// load the invoice first and inject its own tenant id. Already-paid
-		// invoices (e.g. mandate debits, which are created paid) no-op inside
-		// MarkInvoicePaid, so redelivery is safe.
-		inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
-		if err != nil {
-			h.logger.Error("failed to load invoice for payment webhook", "invoice_id", invoiceID, "error", err)
-			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load invoice")
-			return
-		}
-		if inv == nil {
-			h.logger.Warn("webhook ignored — invoice not found", "invoice_id", invoiceID)
-			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
-			return
-		}
+	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+	transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
+	if err != nil {
+		h.logger.Error("failed to mark invoice paid", "invoice_id", invoiceID, "error", err)
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
 
-		ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
-		transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
-		if err != nil {
-			h.logger.Error("failed to mark invoice paid",
-				"invoice_id", invoiceID,
-				"error", err,
-			)
-			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
-			return
-		}
+	h.logger.Info("invoice marked paid via webhook", "invoice_id", invoiceID)
 
-		h.logger.Info("invoice marked paid via webhook", "invoice_id", invoiceID)
-
-		// Persist the gateway payment id (pay_*) — refunds are issued against
-		// it. For mandate-collected invoices this is the only place the actual
-		// payment id becomes known: the debit response returns an order id.
-		if paymentID := event.Payload.Payment.Entity.ID; paymentID != "" && h.invoiceRepo != nil {
-			if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, paymentID); err != nil {
-				h.logger.Error("failed to record gateway payment id",
-					"invoice_id", invoiceID,
-					"payment_id", paymentID,
-					"error", err,
-				)
-			}
+	// Persist the gateway payment id (pay_*) — refunds are issued against it. For
+	// mandate-collected invoices this is the only place the actual payment id
+	// becomes known: the debit response returns an order id.
+	if paymentID := event.Payload.Payment.Entity.ID; paymentID != "" && h.invoiceRepo != nil {
+		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, paymentID); err != nil {
+			h.logger.Error("failed to record gateway payment id",
+				"invoice_id", invoiceID, "payment_id", paymentID, "error", err)
 		}
+	}
 
-		// 3. Record success outcome for RL if this invoice was managed by smart
-		// dunning — only when THIS delivery performed the paid transition, so a
-		// redelivered webhook (or a second settler) can't double-count the
-		// dunning bandit's reward (ENG-162).
-		if transitioned {
-			h.recordDunningSuccess(ctx, invoiceID)
-		}
+	// Record the smart-dunning success only when THIS delivery performed the paid
+	// transition, so a redelivered webhook (or a second settler) can't
+	// double-count the dunning bandit's reward (ENG-162).
+	if transitioned {
+		h.recordDunningSuccess(ctx, invoiceID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
