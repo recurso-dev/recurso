@@ -875,7 +875,7 @@ func main() {
 	mandateHandler := handler.NewMandateHandler(mandateService)
 	offlinePaymentHandler := handler.NewOfflinePaymentHandler(offlinePaymentService)
 	orgHandler := handler.NewOrganizationHandler(orgService)
-	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService)
+	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService, oauthStateSecret)
 	churnHandler := handler.NewChurnHandler(churnService, database)
 
 	// Payment Handlers

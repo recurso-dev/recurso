@@ -22,12 +22,18 @@ import (
 type AccountingHandler struct {
 	connRepo          port.AccountingConnectionRepository
 	accountingService *service.AccountingService
+	// oauthStateSecret signs the accounting OAuth `state` (HMAC-SHA256). It MUST
+	// be a real secret — the caller supplies OAUTH_STATE_SECRET or an ephemeral
+	// per-boot random key. A hardcoded key would let anyone forge a state and
+	// bind an accounting connection to an arbitrary tenant.
+	oauthStateSecret []byte
 }
 
-func NewAccountingHandler(connRepo port.AccountingConnectionRepository, accountingSvc *service.AccountingService) *AccountingHandler {
+func NewAccountingHandler(connRepo port.AccountingConnectionRepository, accountingSvc *service.AccountingService, oauthStateSecret []byte) *AccountingHandler {
 	return &AccountingHandler{
 		connRepo:          connRepo,
 		accountingService: accountingSvc,
+		oauthStateSecret:  oauthStateSecret,
 	}
 }
 
@@ -85,7 +91,7 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 	}
 
 	tenantID, _ := c.MustGet("tenant_id").(uuid.UUID)
-	state := generateOAuthState(tenantID, provider)
+	state := h.generateOAuthState(tenantID, provider)
 
 	authURL := accounting.BuildAuthURL(config, state)
 	c.JSON(http.StatusOK, gin.H{"auth_url": authURL})
@@ -103,7 +109,7 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	}
 
 	// Verify and parse tenant ID from HMAC-signed state
-	tenantID, err := verifyOAuthState(state)
+	tenantID, err := h.verifyOAuthState(state)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or tampered state")
 		return
@@ -269,26 +275,17 @@ func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": logs})
 }
 
-// oauthStateSecret returns the key used to HMAC-sign OAuth state tokens.
-// Falls back to a generated UUID if OAUTH_STATE_SECRET is not set.
-func oauthStateSecret() string {
-	if s := os.Getenv("OAUTH_STATE_SECRET"); s != "" {
-		return s
-	}
-	return "recurso-oauth-state-fallback-key"
-}
-
 // generateOAuthState produces an HMAC-signed state: "tenantID:provider:signature"
-func generateOAuthState(tenantID uuid.UUID, provider string) string {
+func (h *AccountingHandler) generateOAuthState(tenantID uuid.UUID, provider string) string {
 	payload := tenantID.String() + ":" + provider
-	mac := hmac.New(sha256.New, []byte(oauthStateSecret()))
+	mac := hmac.New(sha256.New, h.oauthStateSecret)
 	mac.Write([]byte(payload))
 	sig := hex.EncodeToString(mac.Sum(nil))
 	return payload + ":" + sig
 }
 
 // verifyOAuthState verifies the HMAC signature and extracts the tenant ID.
-func verifyOAuthState(state string) (uuid.UUID, error) {
+func (h *AccountingHandler) verifyOAuthState(state string) (uuid.UUID, error) {
 	parts := strings.SplitN(state, ":", 3)
 	if len(parts) != 3 {
 		return uuid.Nil, fmt.Errorf("malformed state")
@@ -298,7 +295,7 @@ func verifyOAuthState(state string) (uuid.UUID, error) {
 
 	// Recompute expected signature
 	payload := tenantIDStr + ":" + provider
-	mac := hmac.New(sha256.New, []byte(oauthStateSecret()))
+	mac := hmac.New(sha256.New, h.oauthStateSecret)
 	mac.Write([]byte(payload))
 	expected := hex.EncodeToString(mac.Sum(nil))
 
