@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -124,6 +125,26 @@ type RecordOfflinePaymentInput struct {
 }
 
 func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input RecordOfflinePaymentInput) (*domain.OfflinePayment, error) {
+	// When linked to an invoice, validate the linkage BEFORE recording anything:
+	// the invoice must belong to the same customer and be in the same currency —
+	// otherwise an operator could settle customer B's invoice with customer A's
+	// cash, or clear an INR invoice with a JPY amount of equal numeric value.
+	var inv *domain.Invoice
+	tctx := context.WithValue(ctx, domain.TenantIDKey, input.TenantID)
+	if input.InvoiceID != nil {
+		loaded, err := s.invoiceRepo.GetByID(tctx, *input.InvoiceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load invoice: %w", err)
+		}
+		if loaded.CustomerID != input.CustomerID {
+			return nil, fmt.Errorf("offline payment customer does not match the invoice customer")
+		}
+		if input.Currency != "" && !strings.EqualFold(input.Currency, loaded.Currency) {
+			return nil, fmt.Errorf("offline payment currency %q does not match invoice currency %q", input.Currency, loaded.Currency)
+		}
+		inv = loaded
+	}
+
 	payment := &domain.OfflinePayment{
 		ID:              uuid.New(),
 		TenantID:        input.TenantID,
@@ -143,16 +164,9 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 	}
 
 	// Settle the linked invoice ONLY when the payment (plus anything already
-	// paid) covers the total. Previously any amount marked the whole invoice
-	// paid — a typo (₹100 recorded against a ₹10,000 invoice) silently wrote off
-	// the ₹9,900 balance. A short payment is now recorded but leaves the invoice
-	// open. Tenant is injected because the invoice repo is tenant-scoped (ENG-145).
-	if input.InvoiceID != nil {
-		tctx := context.WithValue(ctx, domain.TenantIDKey, input.TenantID)
-		inv, err := s.invoiceRepo.GetByID(tctx, *input.InvoiceID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load invoice for settlement: %w", err)
-		}
+	// paid) covers the total. A short payment is recorded but leaves the invoice
+	// open — previously any amount marked the whole invoice paid (ENG-169).
+	if inv != nil {
 		if input.Amount+inv.AmountPaid >= inv.Total {
 			if _, err := s.invoiceMarker.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
 				return nil, fmt.Errorf("failed to mark invoice paid: %w", err)

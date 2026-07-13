@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
@@ -43,6 +44,14 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 	}
 	if invoice == nil {
 		respondError(c, http.StatusNotFound, codeNotFound, "Invoice not found")
+		return
+	}
+
+	// Don't create a payment order for an already-settled invoice — the buyer
+	// would pay real money for nothing, with no automatic refund path (the
+	// authenticated InitiatePayment path short-circuits the same way).
+	if invoice.Status == domain.InvoiceStatusPaid {
+		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "invoice is already paid")
 		return
 	}
 

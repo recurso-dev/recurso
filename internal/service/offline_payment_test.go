@@ -67,20 +67,25 @@ func (m *fakeInvoiceMarker) MarkInvoicePaid(_ context.Context, id uuid.UUID) (bo
 func TestRecordOfflinePayment_SettlesOnlyWhenCovered(t *testing.T) {
 	tenant := uuid.New()
 	invID := uuid.New()
+	cust := uuid.New()
 
 	newSvc := func(total, alreadyPaid int64) (*OfflinePaymentService, *fakeInvoiceMarker) {
 		invRepo := &fakeOfflineInvoiceRepo{invoices: map[uuid.UUID]*domain.Invoice{
-			invID: {ID: invID, TenantID: tenant, Total: total, AmountPaid: alreadyPaid},
+			invID: {ID: invID, TenantID: tenant, CustomerID: cust, Currency: "INR", Total: total, AmountPaid: alreadyPaid},
 		}}
 		marker := &fakeInvoiceMarker{}
 		return NewOfflinePaymentService(&fakeOfflineRepo{}, nil, invRepo, marker), marker
 	}
+	record := func(svc *OfflinePaymentService, amount int64, currency string, customer uuid.UUID) error {
+		_, err := svc.RecordOfflinePayment(context.Background(), RecordOfflinePaymentInput{
+			TenantID: tenant, CustomerID: customer, InvoiceID: &invID, Amount: amount, Currency: currency, PaymentType: "bank_transfer",
+		})
+		return err
+	}
 
 	// Full payment settles the invoice.
 	svc, marker := newSvc(10000, 0)
-	if _, err := svc.RecordOfflinePayment(context.Background(), RecordOfflinePaymentInput{
-		TenantID: tenant, InvoiceID: &invID, Amount: 10000, Currency: "INR", PaymentType: "bank_transfer",
-	}); err != nil {
+	if err := record(svc, 10000, "INR", cust); err != nil {
 		t.Fatalf("full payment: %v", err)
 	}
 	if len(marker.marked) != 1 {
@@ -89,9 +94,7 @@ func TestRecordOfflinePayment_SettlesOnlyWhenCovered(t *testing.T) {
 
 	// Short payment records but does NOT settle (the revenue-leak case).
 	svc, marker = newSvc(10000, 0)
-	if _, err := svc.RecordOfflinePayment(context.Background(), RecordOfflinePaymentInput{
-		TenantID: tenant, InvoiceID: &invID, Amount: 100, Currency: "INR", PaymentType: "bank_transfer",
-	}); err != nil {
+	if err := record(svc, 100, "INR", cust); err != nil {
 		t.Fatalf("short payment: %v", err)
 	}
 	if len(marker.marked) != 0 {
@@ -100,13 +103,24 @@ func TestRecordOfflinePayment_SettlesOnlyWhenCovered(t *testing.T) {
 
 	// A top-up that brings the paid amount up to the total settles it.
 	svc, marker = newSvc(10000, 9000)
-	if _, err := svc.RecordOfflinePayment(context.Background(), RecordOfflinePaymentInput{
-		TenantID: tenant, InvoiceID: &invID, Amount: 1000, Currency: "INR", PaymentType: "cash",
-	}); err != nil {
+	if err := record(svc, 1000, "INR", cust); err != nil {
 		t.Fatalf("top-up payment: %v", err)
 	}
 	if len(marker.marked) != 1 {
 		t.Fatalf("top-up payment: invoice marked %d times, want 1", len(marker.marked))
+	}
+
+	// A payment for a DIFFERENT customer, or in a different currency, is refused
+	// (ENG-182) — it must not settle this invoice.
+	svc, marker = newSvc(10000, 0)
+	if err := record(svc, 10000, "INR", uuid.New()); err == nil {
+		t.Error("cross-customer offline payment: expected error, got nil")
+	}
+	if err := record(svc, 10000, "JPY", cust); err == nil {
+		t.Error("currency-mismatch offline payment: expected error, got nil")
+	}
+	if len(marker.marked) != 0 {
+		t.Fatalf("mismatched payment settled the invoice (%d marks)", len(marker.marked))
 	}
 }
 
