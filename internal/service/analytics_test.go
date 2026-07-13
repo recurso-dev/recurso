@@ -108,6 +108,7 @@ func (m *mockTenantLookupForMRR) GetByID(ctx context.Context, id uuid.UUID) (*do
 // --- Mock OrganizationRepository (minimal for consolidated MRR tests) ---
 type mockOrgRepoForMRR struct {
 	tenants []*domain.Tenant
+	owner   uuid.UUID // owner_tenant_id returned by GetByID
 }
 
 func (m *mockOrgRepoForMRR) ListTenants(ctx context.Context, orgID uuid.UUID) ([]*domain.Tenant, error) {
@@ -115,11 +116,11 @@ func (m *mockOrgRepoForMRR) ListTenants(ctx context.Context, orgID uuid.UUID) ([
 }
 func (m *mockOrgRepoForMRR) Create(ctx context.Context, org *domain.Organization) error { return nil }
 func (m *mockOrgRepoForMRR) GetByID(ctx context.Context, id uuid.UUID) (*domain.Organization, error) {
-	return nil, nil
+	return &domain.Organization{ID: id, OwnerTenantID: m.owner}, nil
 }
 func (m *mockOrgRepoForMRR) Update(ctx context.Context, org *domain.Organization) error { return nil }
 func (m *mockOrgRepoForMRR) Delete(ctx context.Context, id uuid.UUID) error             { return nil }
-func (m *mockOrgRepoForMRR) List(ctx context.Context) ([]*domain.Organization, error) {
+func (m *mockOrgRepoForMRR) ListByOwner(ctx context.Context, ownerTenantID uuid.UUID) ([]*domain.Organization, error) {
 	return nil, nil
 }
 func (m *mockOrgRepoForMRR) AddTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
@@ -367,13 +368,14 @@ func TestGetConsolidatedMRR_Normalized(t *testing.T) {
 		usdPlan.ID: usdPlan,
 		eurPlan.ID: eurPlan,
 	}}
-	orgRepo := &mockOrgRepoForMRR{tenants: []*domain.Tenant{tenantA, tenantB}}
+	owner := uuid.New()
+	orgRepo := &mockOrgRepoForMRR{tenants: []*domain.Tenant{tenantA, tenantB}, owner: owner}
 	fxp := &mockFXForMRR{rates: map[string]float64{"EUR:USD": 1.25}, source: "live"}
 
 	svc := NewOrganizationService(orgRepo, subRepo, planRepo)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetConsolidatedMRR(context.Background(), uuid.New())
+	got, err := svc.GetConsolidatedMRR(context.Background(), owner, uuid.New())
 	if err != nil {
 		t.Fatalf("GetConsolidatedMRR: %v", err)
 	}
@@ -397,10 +399,11 @@ func TestGetConsolidatedMRR_Normalized(t *testing.T) {
 }
 
 func TestGetConsolidatedMRR_ZeroTenants(t *testing.T) {
-	svc := NewOrganizationService(&mockOrgRepoForMRR{}, &mockSubRepoForMRR{}, &mockPlanRepoForMRR{})
+	owner := uuid.New()
+	svc := NewOrganizationService(&mockOrgRepoForMRR{owner: owner}, &mockSubRepoForMRR{}, &mockPlanRepoForMRR{})
 	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
 
-	got, err := svc.GetConsolidatedMRR(context.Background(), uuid.New())
+	got, err := svc.GetConsolidatedMRR(context.Background(), owner, uuid.New())
 	if err != nil {
 		t.Fatalf("GetConsolidatedMRR: %v", err)
 	}

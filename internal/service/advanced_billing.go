@@ -53,6 +53,12 @@ func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscrip
 	return charge, nil
 }
 
-func (s *AdvancedBillingService) ListUnbilledCharges(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+func (s *AdvancedBillingService) ListUnbilledCharges(ctx context.Context, subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+	// Confirm the subscription belongs to the caller's tenant before exposing
+	// its charges — GetByID is tenant-scoped and fails closed. Without this any
+	// tenant could read another tenant's unbilled charges by subscription ID.
+	if _, err := s.SubscriptionRepo.GetByID(ctx, subscriptionID); err != nil {
+		return nil, err
+	}
 	return s.UnbilledChargeRepo.ListBySubscriptionID(subscriptionID)
 }

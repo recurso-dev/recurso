@@ -5,6 +5,7 @@ import (
 	"log"
 	"time"
 
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
 )
@@ -81,8 +82,11 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 			continue
 		}
 
-		// Attempt retry via EInvoiceService
-		_, retryErr := w.einvoiceService.RetryFailedEInvoice(ctx, inv.ID)
+		// Attempt retry via EInvoiceService. The service now fetches the invoice
+		// tenant-scoped, so inject this invoice's tenant into the context (the
+		// global poller has none of its own).
+		tctx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+		_, retryErr := w.einvoiceService.RetryFailedEInvoice(tctx, inv.ID)
 		if retryErr != nil {
 			// Schedule next retry with exponential backoff
 			backoffIdx := inv.EInvoiceRetryCount

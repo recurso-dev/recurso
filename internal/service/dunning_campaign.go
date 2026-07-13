@@ -362,7 +362,7 @@ func (s *DunningCampaignService) EnsureDefaultCampaign(ctx context.Context, tena
 	}
 
 	for i := range steps {
-		if err := s.campaignRepo.CreateStep(ctx, &steps[i]); err != nil {
+		if err := s.campaignRepo.CreateStep(ctx, &steps[i], tenantID); err != nil {
 			return nil, fmt.Errorf("failed to create default campaign step: %w", err)
 		}
 	}
@@ -425,14 +425,14 @@ func (s *DunningCampaignService) UpdateCampaign(ctx context.Context, campaign *d
 	return s.campaignRepo.UpdateCampaign(ctx, campaign)
 }
 
-func (s *DunningCampaignService) CreateStep(ctx context.Context, step *domain.DunningCampaignStep) error {
-	return s.campaignRepo.CreateStep(ctx, step)
+func (s *DunningCampaignService) CreateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error {
+	return s.campaignRepo.CreateStep(ctx, step, tenantID)
 }
 
-func (s *DunningCampaignService) UpdateStep(ctx context.Context, step *domain.DunningCampaignStep) error {
-	return s.campaignRepo.UpdateStep(ctx, step)
+func (s *DunningCampaignService) UpdateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error {
+	return s.campaignRepo.UpdateStep(ctx, step, tenantID)
 }
 
-func (s *DunningCampaignService) DeleteStep(ctx context.Context, id uuid.UUID) error {
-	return s.campaignRepo.DeleteStep(ctx, id)
+func (s *DunningCampaignService) DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error {
+	return s.campaignRepo.DeleteStep(ctx, id, tenantID)
 }

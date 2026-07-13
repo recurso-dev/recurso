@@ -131,18 +131,29 @@ func (r *DunningCampaignRepository) UpdateCampaign(ctx context.Context, campaign
 
 // --- Step CRUD ---
 
-func (r *DunningCampaignRepository) CreateStep(ctx context.Context, step *domain.DunningCampaignStep) error {
+func (r *DunningCampaignRepository) CreateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error {
+	// Guarded insert: the row is only written when the target campaign belongs
+	// to tenantID, so a caller cannot add steps (e.g. a payment wall) to another
+	// tenant's campaign.
 	query := `
 		INSERT INTO dunning_campaign_steps (id, campaign_id, step_order, channel, delay_hours, template_name, subject, body, is_payment_wall, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
+		WHERE EXISTS (SELECT 1 FROM dunning_campaigns WHERE id = $2 AND tenant_id = $11)
 	`
-	_, err := r.db.ExecContext(ctx, query,
+	res, err := r.db.ExecContext(ctx, query,
 		step.ID, step.CampaignID, step.StepOrder, step.Channel, step.DelayHours,
 		nilIfEmpty(step.TemplateName), nilIfEmpty(step.Subject), nilIfEmpty(step.Body),
-		step.IsPaymentWall, step.CreatedAt,
+		step.IsPaymentWall, step.CreatedAt, tenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create dunning campaign step: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read insert result: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
@@ -182,27 +193,45 @@ func (r *DunningCampaignRepository) GetStepsByCampaign(ctx context.Context, camp
 	return steps, rows.Err()
 }
 
-func (r *DunningCampaignRepository) UpdateStep(ctx context.Context, step *domain.DunningCampaignStep) error {
+func (r *DunningCampaignRepository) UpdateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error {
 	query := `
 		UPDATE dunning_campaign_steps SET step_order = $1, channel = $2, delay_hours = $3,
 		template_name = $4, subject = $5, body = $6, is_payment_wall = $7
 		WHERE id = $8
+		  AND campaign_id IN (SELECT id FROM dunning_campaigns WHERE tenant_id = $9)
 	`
-	_, err := r.db.ExecContext(ctx, query,
+	res, err := r.db.ExecContext(ctx, query,
 		step.StepOrder, step.Channel, step.DelayHours,
 		nilIfEmpty(step.TemplateName), nilIfEmpty(step.Subject), nilIfEmpty(step.Body),
-		step.IsPaymentWall, step.ID,
+		step.IsPaymentWall, step.ID, tenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update dunning campaign step: %w", err)
 	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read update result: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
 	return nil
 }
 
-func (r *DunningCampaignRepository) DeleteStep(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM dunning_campaign_steps WHERE id = $1", id)
+func (r *DunningCampaignRepository) DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM dunning_campaign_steps
+		 WHERE id = $1
+		   AND campaign_id IN (SELECT id FROM dunning_campaigns WHERE tenant_id = $2)`, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to delete dunning campaign step: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read delete result: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

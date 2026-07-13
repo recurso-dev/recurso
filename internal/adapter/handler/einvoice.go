@@ -27,13 +27,20 @@ func NewEInvoiceHandler(einvoiceService *service.EInvoiceService, irpConfigRepo 
 // GetEInvoiceStatus returns the e-invoice status for an invoice.
 // GET /v1/invoices/:id/einvoice
 func (h *EInvoiceHandler) GetEInvoiceStatus(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return
 	}
 
-	status, err := h.einvoiceService.GetEInvoiceStatus(c.Request.Context(), invoiceID)
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	status, err := h.einvoiceService.GetEInvoiceStatus(ctx, invoiceID)
 	if err != nil {
 		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
 		return
@@ -73,6 +80,12 @@ func (h *EInvoiceHandler) RetryEInvoice(c *gin.Context) {
 // CancelEInvoice cancels an IRN for a GENERATED invoice.
 // POST /v1/invoices/:id/einvoice/cancel
 func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
 	invoiceID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
@@ -88,7 +101,8 @@ func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
 		return
 	}
 
-	if err := h.einvoiceService.CancelEInvoice(c.Request.Context(), invoiceID, req.CancelCode, req.Reason); err != nil {
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	if err := h.einvoiceService.CancelEInvoice(ctx, invoiceID, req.CancelCode, req.Reason); err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

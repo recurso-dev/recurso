@@ -17,19 +17,28 @@ func NewOrganizationRepository(db *sql.DB) *OrganizationRepository {
 }
 
 func (r *OrganizationRepository) Create(ctx context.Context, org *domain.Organization) error {
-	query := `INSERT INTO organizations (id, name, owner_email, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)`
-	_, err := r.db.ExecContext(ctx, query, org.ID, org.Name, org.OwnerEmail, org.CreatedAt, org.UpdatedAt)
+	query := `INSERT INTO organizations (id, name, owner_tenant_id, owner_email, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6)`
+	_, err := r.db.ExecContext(ctx, query, org.ID, org.Name, org.OwnerTenantID, org.OwnerEmail, org.CreatedAt, org.UpdatedAt)
 	return err
 }
 
 func (r *OrganizationRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Organization, error) {
-	query := `SELECT id, name, owner_email, created_at, updated_at FROM organizations WHERE id = $1`
+	query := `SELECT id, name, owner_tenant_id, owner_email, created_at, updated_at FROM organizations WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, id)
+	return scanOrganization(row)
+}
+
+// scanOrganization reads a row into an Organization, tolerating a NULL
+// owner_tenant_id on legacy rows (which then fail every ownership check).
+func scanOrganization(row interface{ Scan(...any) error }) (*domain.Organization, error) {
 	var org domain.Organization
-	err := row.Scan(&org.ID, &org.Name, &org.OwnerEmail, &org.CreatedAt, &org.UpdatedAt)
-	if err != nil {
+	var ownerTenant uuid.NullUUID
+	if err := row.Scan(&org.ID, &org.Name, &ownerTenant, &org.OwnerEmail, &org.CreatedAt, &org.UpdatedAt); err != nil {
 		return nil, err
+	}
+	if ownerTenant.Valid {
+		org.OwnerTenantID = ownerTenant.UUID
 	}
 	return &org, nil
 }
@@ -50,9 +59,10 @@ func (r *OrganizationRepository) Delete(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
-func (r *OrganizationRepository) List(ctx context.Context) ([]*domain.Organization, error) {
-	query := `SELECT id, name, owner_email, created_at, updated_at FROM organizations ORDER BY created_at DESC`
-	rows, err := r.db.QueryContext(ctx, query)
+func (r *OrganizationRepository) ListByOwner(ctx context.Context, ownerTenantID uuid.UUID) ([]*domain.Organization, error) {
+	query := `SELECT id, name, owner_tenant_id, owner_email, created_at, updated_at
+		FROM organizations WHERE owner_tenant_id = $1 ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, ownerTenantID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,11 +70,11 @@ func (r *OrganizationRepository) List(ctx context.Context) ([]*domain.Organizati
 
 	var orgs []*domain.Organization
 	for rows.Next() {
-		var org domain.Organization
-		if err := rows.Scan(&org.ID, &org.Name, &org.OwnerEmail, &org.CreatedAt, &org.UpdatedAt); err != nil {
+		org, err := scanOrganization(rows)
+		if err != nil {
 			return nil, err
 		}
-		orgs = append(orgs, &org)
+		orgs = append(orgs, org)
 	}
 	return orgs, rows.Err()
 }

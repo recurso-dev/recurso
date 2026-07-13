@@ -45,13 +45,28 @@ func (s *OrganizationService) SetFX(provider, fallback port.ExchangeRateProvider
 	}
 }
 
-func (s *OrganizationService) Create(ctx context.Context, name, ownerEmail string) (*domain.Organization, error) {
+// requireOwned fetches an organization and confirms the calling tenant owns it.
+// A missing org and a cross-tenant org both surface as ErrOrganizationNotFound
+// so a caller cannot probe for another tenant's organizations.
+func (s *OrganizationService) requireOwned(ctx context.Context, orgID, callerTenantID uuid.UUID) (*domain.Organization, error) {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return nil, domain.ErrOrganizationNotFound
+	}
+	if org.OwnerTenantID != callerTenantID {
+		return nil, domain.ErrOrganizationNotFound
+	}
+	return org, nil
+}
+
+func (s *OrganizationService) Create(ctx context.Context, callerTenantID uuid.UUID, name, ownerEmail string) (*domain.Organization, error) {
 	org := &domain.Organization{
-		ID:         uuid.New(),
-		Name:       name,
-		OwnerEmail: ownerEmail,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
+		ID:            uuid.New(),
+		Name:          name,
+		OwnerTenantID: callerTenantID,
+		OwnerEmail:    ownerEmail,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
 	}
 
 	if err := s.orgRepo.Create(ctx, org); err != nil {
@@ -61,27 +76,34 @@ func (s *OrganizationService) Create(ctx context.Context, name, ownerEmail strin
 	return org, nil
 }
 
-func (s *OrganizationService) GetByID(ctx context.Context, id uuid.UUID) (*domain.Organization, error) {
-	return s.orgRepo.GetByID(ctx, id)
+func (s *OrganizationService) GetByID(ctx context.Context, callerTenantID, id uuid.UUID) (*domain.Organization, error) {
+	return s.requireOwned(ctx, id, callerTenantID)
 }
 
-func (s *OrganizationService) AddTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
-	// Verify org exists
-	if _, err := s.orgRepo.GetByID(ctx, orgID); err != nil {
-		return fmt.Errorf("organization not found: %w", err)
+func (s *OrganizationService) AddTenant(ctx context.Context, callerTenantID, orgID, tenantID uuid.UUID) error {
+	if _, err := s.requireOwned(ctx, orgID, callerTenantID); err != nil {
+		return err
 	}
-
+	// A tenant may only add ITSELF to an org it owns. Attaching a foreign tenant
+	// without that tenant's consent would expose its revenue through consolidated
+	// reporting — a proper cross-tenant invite/consent flow is a separate feature.
+	if tenantID != callerTenantID {
+		return domain.ErrCrossTenantAttach
+	}
 	return s.orgRepo.AddTenant(ctx, orgID, tenantID)
 }
 
-func (s *OrganizationService) ListTenants(ctx context.Context, orgID uuid.UUID) ([]*domain.Tenant, error) {
+func (s *OrganizationService) ListTenants(ctx context.Context, callerTenantID, orgID uuid.UUID) ([]*domain.Tenant, error) {
+	if _, err := s.requireOwned(ctx, orgID, callerTenantID); err != nil {
+		return nil, err
+	}
 	return s.orgRepo.ListTenants(ctx, orgID)
 }
 
-func (s *OrganizationService) Update(ctx context.Context, orgID uuid.UUID, name, ownerEmail string) (*domain.Organization, error) {
-	org, err := s.orgRepo.GetByID(ctx, orgID)
+func (s *OrganizationService) Update(ctx context.Context, callerTenantID, orgID uuid.UUID, name, ownerEmail string) (*domain.Organization, error) {
+	org, err := s.requireOwned(ctx, orgID, callerTenantID)
 	if err != nil {
-		return nil, fmt.Errorf("organization not found: %w", err)
+		return nil, err
 	}
 
 	if name != "" {
@@ -98,22 +120,22 @@ func (s *OrganizationService) Update(ctx context.Context, orgID uuid.UUID, name,
 	return org, nil
 }
 
-func (s *OrganizationService) Delete(ctx context.Context, orgID uuid.UUID) error {
-	if _, err := s.orgRepo.GetByID(ctx, orgID); err != nil {
-		return fmt.Errorf("organization not found: %w", err)
+func (s *OrganizationService) Delete(ctx context.Context, callerTenantID, orgID uuid.UUID) error {
+	if _, err := s.requireOwned(ctx, orgID, callerTenantID); err != nil {
+		return err
 	}
 	return s.orgRepo.Delete(ctx, orgID)
 }
 
-func (s *OrganizationService) RemoveTenant(ctx context.Context, orgID, tenantID uuid.UUID) error {
-	if _, err := s.orgRepo.GetByID(ctx, orgID); err != nil {
-		return fmt.Errorf("organization not found: %w", err)
+func (s *OrganizationService) RemoveTenant(ctx context.Context, callerTenantID, orgID, tenantID uuid.UUID) error {
+	if _, err := s.requireOwned(ctx, orgID, callerTenantID); err != nil {
+		return err
 	}
 	return s.orgRepo.RemoveTenant(ctx, orgID, tenantID)
 }
 
-func (s *OrganizationService) List(ctx context.Context) ([]*domain.Organization, error) {
-	return s.orgRepo.List(ctx)
+func (s *OrganizationService) List(ctx context.Context, callerTenantID uuid.UUID) ([]*domain.Organization, error) {
+	return s.orgRepo.ListByOwner(ctx, callerTenantID)
 }
 
 type CurrencyMRR struct {
@@ -142,7 +164,10 @@ type TenantMRR struct {
 	Currency   string    `json:"currency"`
 }
 
-func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, orgID uuid.UUID) (*OrgMRRMetrics, error) {
+func (s *OrganizationService) GetConsolidatedMRR(ctx context.Context, callerTenantID, orgID uuid.UUID) (*OrgMRRMetrics, error) {
+	if _, err := s.requireOwned(ctx, orgID, callerTenantID); err != nil {
+		return nil, err
+	}
 	tenants, err := s.orgRepo.ListTenants(ctx, orgID)
 	if err != nil {
 		return nil, err

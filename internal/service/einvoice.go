@@ -119,7 +119,7 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 
 // RetryFailedEInvoice retries e-invoice generation for a FAILED invoice.
 func (s *EInvoiceService) RetryFailedEInvoice(ctx context.Context, invoiceID uuid.UUID) (*port.EInvoiceResponse, error) {
-	invoice, err := s.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	invoice, err := s.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get invoice: %w", err)
 	}
@@ -154,7 +154,7 @@ func (s *EInvoiceService) RetryFailedEInvoice(ctx context.Context, invoiceID uui
 
 // CancelEInvoice cancels an IRN within the 24-hour window.
 func (s *EInvoiceService) CancelEInvoice(ctx context.Context, invoiceID uuid.UUID, cancelCode int, reason string) error {
-	invoice, err := s.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	invoice, err := s.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
 		return fmt.Errorf("failed to get invoice: %w", err)
 	}
@@ -204,7 +204,7 @@ func (s *EInvoiceService) CancelEInvoice(ctx context.Context, invoiceID uuid.UUI
 
 // GetEInvoiceStatus returns the e-invoice status details for an invoice.
 func (s *EInvoiceService) GetEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID) (map[string]interface{}, error) {
-	invoice, err := s.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	invoice, err := s.invoiceRepo.GetByID(ctx, invoiceID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get invoice: %w", err)
 	}

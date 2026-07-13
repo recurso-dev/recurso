@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"fmt"
 	"testing"
 	"time"
 
@@ -31,6 +33,21 @@ func (m *mockEInvInvoiceRepo) GetByIDPublic(ctx context.Context, id uuid.UUID) (
 	inv, ok := m.invoices[id]
 	if !ok {
 		return nil, nil
+	}
+	return inv, nil
+}
+
+// GetByID mirrors the real repo's tenant scoping: the tenant must be present in
+// the context and match the invoice, otherwise the row is invisible. This is
+// what makes the e-invoice service's cross-tenant guard (ENG-165 C3) testable.
+func (m *mockEInvInvoiceRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
+	if !ok {
+		return nil, fmt.Errorf("tenant_id missing from context")
+	}
+	inv, ok := m.invoices[id]
+	if !ok || inv.TenantID != tenantID {
+		return nil, sql.ErrNoRows
 	}
 	return inv, nil
 }
@@ -213,9 +230,10 @@ func TestCancelEInvoice_WithinWindow(t *testing.T) {
 	svc := NewEInvoiceService(mockGSP, invRepo, custRepo, nil, nil)
 
 	invID := uuid.New()
+	tenantID := uuid.New()
 	inv := &domain.Invoice{
 		ID:             invID,
-		TenantID:       uuid.New(),
+		TenantID:       tenantID,
 		CustomerID:     custRepo.customer.ID,
 		EInvoiceStatus: "GENERATED",
 		IRN:            "test-irn-12345",
@@ -224,7 +242,8 @@ func TestCancelEInvoice_WithinWindow(t *testing.T) {
 	}
 	invRepo.invoices[invID] = inv
 
-	err := svc.CancelEInvoice(context.Background(), invID, 1, "Duplicate invoice")
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenantID)
+	err := svc.CancelEInvoice(ctx, invID, 1, "Duplicate invoice")
 	if err != nil {
 		t.Fatalf("CancelEInvoice failed: %v", err)
 	}
@@ -242,9 +261,10 @@ func TestCancelEInvoice_AfterWindow(t *testing.T) {
 	svc := NewEInvoiceService(mockGSP, invRepo, custRepo, nil, nil)
 
 	invID := uuid.New()
+	tenantID := uuid.New()
 	inv := &domain.Invoice{
 		ID:             invID,
-		TenantID:       uuid.New(),
+		TenantID:       tenantID,
 		CustomerID:     custRepo.customer.ID,
 		EInvoiceStatus: "GENERATED",
 		IRN:            "test-irn-12345",
@@ -253,9 +273,53 @@ func TestCancelEInvoice_AfterWindow(t *testing.T) {
 	}
 	invRepo.invoices[invID] = inv
 
-	err := svc.CancelEInvoice(context.Background(), invID, 1, "Duplicate invoice")
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenantID)
+	err := svc.CancelEInvoice(ctx, invID, 1, "Duplicate invoice")
 	if err == nil {
 		t.Fatal("Expected error when cancelling after 24hr window")
+	}
+}
+
+// TestEInvoice_TenantIsolation proves the ENG-165 C3 fix: the e-invoice
+// status/cancel/retry paths are tenant-scoped. A caller in a different tenant
+// cannot read the status of, or cancel, another tenant's e-invoice.
+func TestEInvoice_TenantIsolation(t *testing.T) {
+	invRepo := newMockEInvInvoiceRepo()
+	custRepo := &mockEInvCustomerRepo{customer: &domain.Customer{ID: uuid.New()}}
+	svc := NewEInvoiceService(gsp.NewMockGSPAdapter(), invRepo, custRepo, nil, nil)
+
+	invID := uuid.New()
+	owner := uuid.New()
+	attacker := uuid.New()
+	invRepo.invoices[invID] = &domain.Invoice{
+		ID:             invID,
+		TenantID:       owner,
+		CustomerID:     custRepo.customer.ID,
+		EInvoiceStatus: "GENERATED",
+		IRN:            "test-irn-99999",
+		AckDate:        time.Now().Format("02/01/2006 15:04:05"),
+		CreatedAt:      time.Now(),
+	}
+
+	attackerCtx := context.WithValue(context.Background(), domain.TenantIDKey, attacker)
+
+	// Attacker cannot read the status.
+	if _, err := svc.GetEInvoiceStatus(attackerCtx, invID); err == nil {
+		t.Error("cross-tenant GetEInvoiceStatus: expected error, got nil")
+	}
+	// Attacker cannot cancel the IRN.
+	if err := svc.CancelEInvoice(attackerCtx, invID, 1, "malicious cancel"); err == nil {
+		t.Error("cross-tenant CancelEInvoice: expected error, got nil")
+	}
+	// The invoice is untouched by the attacker.
+	if got := invRepo.invoices[invID].EInvoiceStatus; got != "GENERATED" {
+		t.Errorf("attacker mutated e-invoice status: got %s, want GENERATED", got)
+	}
+
+	// The owner can still read its own status.
+	ownerCtx := context.WithValue(context.Background(), domain.TenantIDKey, owner)
+	if _, err := svc.GetEInvoiceStatus(ownerCtx, invID); err != nil {
+		t.Errorf("owner GetEInvoiceStatus: %v", err)
 	}
 }
 
@@ -281,10 +345,11 @@ func TestRetryFailedEInvoice(t *testing.T) {
 	svc := NewEInvoiceService(mockGSP, invRepo, custRepo, nil, nil)
 
 	invID := uuid.New()
+	tenantID := uuid.New()
 	retryAt := time.Now().Add(-1 * time.Minute) // Due for retry
 	inv := &domain.Invoice{
 		ID:                   invID,
-		TenantID:             uuid.New(),
+		TenantID:             tenantID,
 		CustomerID:           custRepo.customer.ID,
 		InvoiceNumber:        "INV-RETRY-001",
 		EInvoiceStatus:       "FAILED",
@@ -299,7 +364,8 @@ func TestRetryFailedEInvoice(t *testing.T) {
 	}
 	invRepo.invoices[invID] = inv
 
-	resp, err := svc.RetryFailedEInvoice(context.Background(), invID)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenantID)
+	resp, err := svc.RetryFailedEInvoice(ctx, invID)
 	if err != nil {
 		t.Fatalf("RetryFailedEInvoice failed: %v", err)
 	}
