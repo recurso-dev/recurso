@@ -113,6 +113,53 @@ func TestSubscriptionLifecycle_NotFoundAndCrossTenant(t *testing.T) {
 	}
 }
 
+// TestSubscriptionLifecycle_CancelIdempotent proves the ENG-183 guard: canceling
+// an already-canceled subscription is a no-op — it returns the terminal state
+// without re-writing (which would reset CanceledAt and re-run the gateway
+// cancel + rev-rec unwind).
+func TestSubscriptionLifecycle_CancelIdempotent(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant)
+	sub.Status = domain.SubscriptionStatusCanceled
+	now := time.Now()
+	sub.CanceledAt = &now
+	svc, repo := newLifecycleSvc(sub)
+
+	res, err := svc.Cancel(context.Background(), tenant, sub.ID, true, "", "")
+	if err != nil {
+		t.Fatalf("idempotent cancel: %v", err)
+	}
+	if res == nil || res.Status != string(domain.SubscriptionStatusCanceled) {
+		t.Fatalf("idempotent cancel result = %+v, want canceled", res)
+	}
+	if repo.updated != 0 {
+		t.Errorf("already-canceled Cancel wrote to the repo %d times, want 0", repo.updated)
+	}
+}
+
+// TestSubscriptionLifecycle_ReactivateClearsCanceledAt proves the ENG-183 fix:
+// reactivating clears CanceledAt, so downstream churn/MRR/rev-rec queries that
+// filter canceled_at IS NOT NULL don't misclassify the live subscription.
+func TestSubscriptionLifecycle_ReactivateClearsCanceledAt(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant)
+	sub.Status = domain.SubscriptionStatusCanceled
+	sub.CancelAtPeriodEnd = true
+	now := time.Now()
+	sub.CanceledAt = &now
+	svc, repo := newLifecycleSvc(sub)
+
+	if _, err := svc.Reactivate(context.Background(), tenant, sub.ID); err != nil {
+		t.Fatalf("reactivate: %v", err)
+	}
+	if repo.subs[sub.ID].CanceledAt != nil {
+		t.Errorf("Reactivate left CanceledAt = %v, want nil", repo.subs[sub.ID].CanceledAt)
+	}
+	if repo.subs[sub.ID].Status != domain.SubscriptionStatusActive {
+		t.Errorf("status after reactivate = %s, want active", repo.subs[sub.ID].Status)
+	}
+}
+
 // TestSubscriptionLifecycle_Reactivate covers reactivating a cancel-at-period-end
 // subscription and the period-ended guard.
 func TestSubscriptionLifecycle_Reactivate(t *testing.T) {

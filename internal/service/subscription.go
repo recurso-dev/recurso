@@ -669,6 +669,13 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		return nil, fmt.Errorf("subscription not found for tenant")
 	}
 
+	// Idempotent: an already-canceled subscription is a no-op. Re-running would
+	// overwrite CanceledAt with a later time, re-call the gateway cancel, and
+	// re-invoke the rev-rec unwind — so guard the terminal state.
+	if sub.Status == domain.SubscriptionStatusCanceled {
+		return &CancelResult{ID: sub.ID, Status: string(sub.Status), CurrentPeriodEnd: sub.CurrentPeriodEnd}, nil
+	}
+
 	// Get customer and plan info for notification (best-effort — the cancel
 	// still succeeds if these fail; the notification fields just stay blank).
 	customer, err := s.customerRepo.GetByID(ctx, sub.CustomerID)
@@ -769,6 +776,7 @@ func (s *SubscriptionService) Reactivate(ctx context.Context, tenantID, subscrip
 	sub.CancelAtPeriodEnd = false
 	sub.CancellationReason = ""
 	sub.CancellationFeedback = ""
+	sub.CanceledAt = nil // clear the cancel timestamp — otherwise churn/MRR/rev-rec queries that filter canceled_at IS NOT NULL misclassify the reactivated (live) subscription as churned
 	sub.Status = domain.SubscriptionStatusActive
 	sub.UpdatedAt = time.Now().UTC()
 
