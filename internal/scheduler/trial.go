@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/email"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 // defaultTrialReminderWindow is how far before trial_end the "trial ending"
@@ -170,6 +172,11 @@ func (s *TrialScheduler) convertExpiredTrials(ctx context.Context) {
 	for _, sub := range subs {
 		inv, err := s.converter.ConvertTrialToActive(ctx, sub)
 		if err != nil {
+			// Another runner already converted this trial (multi-instance race) —
+			// benign, not a failure.
+			if errors.Is(err, service.ErrTrialAlreadyConverted) {
+				continue
+			}
 			log.Printf("Failed to convert trial for subscription %s: %v", sub.ID, err)
 			continue
 		}
