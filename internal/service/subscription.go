@@ -622,6 +622,9 @@ func (s *SubscriptionService) ResumeSubscription(ctx context.Context, tenantID, 
 	if err != nil {
 		return nil, err
 	}
+	if sub == nil {
+		return nil, fmt.Errorf("subscription not found")
+	}
 	if sub.TenantID != tenantID {
 		return nil, fmt.Errorf("subscription not found for tenant")
 	}
