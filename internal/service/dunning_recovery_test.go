@@ -250,7 +250,7 @@ func TestMarkInvoicePaid_WithRetries_RecordsRecovery(t *testing.T) {
 	svc := newMarkPaidService(invRepo, &mockLedgerRepoForMarkPaid{cashAccountID: uuid.New()})
 	svc.SetRecoveryRecorder(recoverySvc)
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
@@ -279,7 +279,7 @@ func TestMarkInvoicePaid_FirstTry_NoRecovery(t *testing.T) {
 	svc := newMarkPaidService(invRepo, &mockLedgerRepoForMarkPaid{cashAccountID: uuid.New()})
 	svc.SetRecoveryRecorder(NewDunningRecoveryService(recRepo, ""))
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(recRepo.records) != 0 {
@@ -302,7 +302,7 @@ func TestMarkInvoicePaid_AlreadyPaid_NoDoubleRecovery(t *testing.T) {
 	svc := newMarkPaidService(invRepo, &mockLedgerRepoForMarkPaid{})
 	svc.SetRecoveryRecorder(NewDunningRecoveryService(recRepo, ""))
 
-	if err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
+	if _, err := svc.MarkInvoicePaid(context.Background(), invoiceID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if repoInserts := recRepo.inserts; repoInserts != 0 {

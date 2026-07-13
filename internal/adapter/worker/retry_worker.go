@@ -36,7 +36,7 @@ type customerPaymentLookup interface {
 // method the checkout and payment webhooks use. Implemented by
 // *service.SubscriptionService.
 type invoiceSettler interface {
-	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) error
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
 type RetryWorker struct {
@@ -194,7 +194,7 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 			// an already-paid invoice. The worker's ctx carries no tenant, so
 			// inject the invoice's own (same as the webhook handlers).
 			tenantCtx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
-			if err := w.settler.MarkInvoicePaid(tenantCtx, inv.ID); err != nil {
+			if _, err := w.settler.MarkInvoicePaid(tenantCtx, inv.ID); err != nil {
 				// Leave dunning state untouched: the next poll retries and the
 				// settle is idempotent, so nothing is lost or double-posted.
 				log.Printf("Worker: Failed to settle invoice %s: %v", inv.ID, err)
