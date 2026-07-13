@@ -10,10 +10,16 @@ import (
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
+// tenantAccountingSyncer is the slice of AccountingService the worker uses.
+// Narrowed to an interface so the fan-out loop is testable with a stub.
+type tenantAccountingSyncer interface {
+	SyncAllForTenant(ctx context.Context, tenantID uuid.UUID, force bool) error
+}
+
 type AccountingSyncWorker struct {
-	connRepo          port.AccountingConnectionRepository
-	accountingService *service.AccountingService
-	interval          time.Duration
+	connRepo port.AccountingConnectionRepository
+	syncer   tenantAccountingSyncer
+	interval time.Duration
 }
 
 func NewAccountingSyncWorker(
@@ -22,9 +28,9 @@ func NewAccountingSyncWorker(
 	interval time.Duration,
 ) *AccountingSyncWorker {
 	return &AccountingSyncWorker{
-		connRepo:          connRepo,
-		accountingService: accountingService,
-		interval:          interval,
+		connRepo: connRepo,
+		syncer:   accountingService,
+		interval: interval,
 	}
 }
 
@@ -66,7 +72,7 @@ func (w *AccountingSyncWorker) RunSync(ctx context.Context) {
 		slog.Info("syncing accounting", "tenant_id", conn.TenantID)
 		// Scheduled runs are incremental (force=false): entities unchanged
 		// since their last successful sync are skipped.
-		if err := w.accountingService.SyncAllForTenant(ctx, conn.TenantID, false); err != nil {
+		if err := w.syncer.SyncAllForTenant(ctx, conn.TenantID, false); err != nil {
 			slog.Error("accounting sync failed", "tenant_id", conn.TenantID, "error", err)
 		}
 	}
