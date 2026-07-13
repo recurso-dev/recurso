@@ -458,12 +458,12 @@ func (s *CancelFlowService) CreateStep(ctx context.Context, step *domain.CancelF
 	return s.flowRepo.CreateStep(ctx, step)
 }
 
-func (s *CancelFlowService) UpdateStep(ctx context.Context, step *domain.CancelFlowStep) error {
-	return s.flowRepo.UpdateStep(ctx, step)
+func (s *CancelFlowService) UpdateStep(ctx context.Context, step *domain.CancelFlowStep, tenantID uuid.UUID) error {
+	return s.flowRepo.UpdateStep(ctx, step, tenantID)
 }
 
-func (s *CancelFlowService) DeleteStep(ctx context.Context, id uuid.UUID) error {
-	return s.flowRepo.DeleteStep(ctx, id)
+func (s *CancelFlowService) DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error {
+	return s.flowRepo.DeleteStep(ctx, id, tenantID)
 }
 
 func (s *CancelFlowService) GetSession(ctx context.Context, id uuid.UUID) (*domain.CancelFlowSession, error) {

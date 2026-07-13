@@ -36,21 +36,19 @@ func (r *CouponRepository) Create(ctx context.Context, coupon *domain.Coupon) er
 	return err
 }
 
-func (r *CouponRepository) GetByCode(ctx context.Context, code string) (*domain.Coupon, error) {
-	tenantID, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID)
-
+// GetByCode looks up a coupon by code, always scoped to the tenant. Previously
+// the tenant filter was applied only when the context happened to carry a
+// tenant id, silently degrading to a global lookup (first match across all
+// tenants) otherwise — an ENG-160 cross-tenant risk. It now requires the tenant
+// explicitly, matching Plan/Referral/Gift GetByCode.
+func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Coupon, error) {
 	query := `
 		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, created_at, updated_at
 		FROM coupons
-		WHERE code = $1
+		WHERE code = $1 AND tenant_id = $2
 	`
-	args := []interface{}{code}
-	if ok {
-		query += ` AND tenant_id = $2`
-		args = append(args, tenantID)
-	}
 
-	row := r.db.QueryRowContext(ctx, query, args...)
+	row := r.db.QueryRowContext(ctx, query, code, tenantID)
 
 	var c domain.Coupon
 	var durationMonths sql.NullInt32

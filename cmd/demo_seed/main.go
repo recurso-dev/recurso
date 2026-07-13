@@ -935,7 +935,10 @@ func (s *seeder) seedQuotes(custs []*customer) {
 		s.quoteSeq++
 		sub := int64(50000 + s.rng.Intn(500000))
 		tax := sub * 18 / 100
-		li, _ := json.Marshal([]map[string]any{{"description": "Enterprise onboarding", "quantity": 1, "amount": sub}})
+		// unit_price must equal amount when quantity is 1 — otherwise the UI renders
+		// a contradictory "1 × $0.00" subtitle against a non-zero line amount (real
+		// quotes stay consistent via Quote.CalculateTotals: amount = qty × unit_price).
+		li, _ := json.Marshal([]map[string]any{{"description": "Enterprise onboarding", "quantity": 1, "unit_price": sub, "amount": sub}})
 		s.exec(`INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status, line_items, subtotal, tax_amount, discount_amount, total, currency, valid_until, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,0,$9,$10,$11,$12,now()) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.tenantID, c.id, fmt.Sprintf("Q-DEMO-%04d", s.quoteSeq),

@@ -308,6 +308,28 @@ func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscri
 
 // UpdateWithTx is Update inside a caller-provided transaction, so a plan change
 // (invoice + subscription) can be committed atomically (ENG-150).
+// ActivateTrialWithTx atomically transitions a subscription from trialing to
+// active and returns whether THIS caller performed the transition. The
+// `AND status = 'trialing'` guard means only one of several concurrent trial-
+// conversion runners flips the row; the losers match zero rows and get false,
+// so only the winner goes on to create the first invoice (ENG-161). Mirrors the
+// atomic MarkPaid pattern used for invoice settlement.
+func (r *SubscriptionRepository) ActivateTrialWithTx(ctx context.Context, tx *sql.Tx, sub *domain.Subscription) (bool, error) {
+	res, err := tx.ExecContext(ctx,
+		`UPDATE subscriptions
+		 SET status = $1, current_period_start = $2, current_period_end = $3, updated_at = $4
+		 WHERE id = $5 AND tenant_id = $6 AND status = 'trialing'`,
+		sub.Status, sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.UpdatedAt, sub.ID, sub.TenantID)
+	if err != nil {
+		return false, fmt.Errorf("failed to activate trial (tx): %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read activate-trial result: %w", err)
+	}
+	return n == 1, nil
+}
+
 func (r *SubscriptionRepository) UpdateWithTx(ctx context.Context, tx *sql.Tx, sub *domain.Subscription) error {
 	query := `
 		UPDATE subscriptions SET

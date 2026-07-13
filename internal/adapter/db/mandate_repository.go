@@ -31,13 +31,13 @@ func (r *MandateRepository) Create(ctx context.Context, mandate *domain.Mandate)
 	return err
 }
 
-func (r *MandateRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Mandate, error) {
+func (r *MandateRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
-		FROM mandates WHERE id = $1`
-	row := r.db.QueryRowContext(ctx, query, id)
+		FROM mandates WHERE id = $1 AND tenant_id = $2`
+	row := r.db.QueryRowContext(ctx, query, id, tenantID)
 	return r.scanMandate(row)
 }
 
@@ -132,6 +132,56 @@ func (r *MandateRepository) GetReadyForDebit(ctx context.Context) ([]*domain.Man
 		AND next_debit_at IS NOT NULL
 		AND next_debit_at <= NOW()`
 	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var mandates []*domain.Mandate
+	for rows.Next() {
+		m, err := r.scanMandateRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		mandates = append(mandates, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return mandates, nil
+}
+
+// ClaimDueForDebit atomically claims every mandate currently due for debit and
+// returns the claimed rows. The single UPDATE ... WHERE next_debit_at <= NOW()
+// RETURNING statement is race-free: Postgres row locks serialize concurrent
+// executions, and the loser re-evaluates its WHERE against the already-advanced
+// next_debit_at (now in the future) and so excludes those rows from its result.
+// Two concurrent schedulers therefore get disjoint sets, and each due mandate is
+// charged by exactly one runner even when the distributed scheduler lock is a
+// no-op (ENG-161).
+//
+// Advancing next_debit_at by claimWindow doubles as the failure-retry lease:
+// ExecuteDebit overwrites it with the full next cycle only on a successful
+// charge; a failed (or crashed) debit leaves the claim value, so the mandate
+// re-qualifies once the window elapses and is retried on a later tick. Keep
+// claimWindow shorter than the scheduler tick so retries land promptly, but
+// longer than a single debit takes so an in-flight debit is never re-claimed.
+func (r *MandateRepository) ClaimDueForDebit(ctx context.Context, claimWindow time.Duration) ([]*domain.Mandate, error) {
+	mins := int(claimWindow.Minutes())
+	if mins < 1 {
+		mins = 1
+	}
+	query := `UPDATE mandates
+		SET next_debit_at = NOW() + $1 * INTERVAL '1 minute', updated_at = NOW()
+		WHERE status = 'active'
+		AND pre_debit_notified = TRUE
+		AND next_debit_at IS NOT NULL
+		AND next_debit_at <= NOW()
+		RETURNING id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
+			razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
+			authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
+			pre_debit_notified, created_at, updated_at`
+	rows, err := r.db.QueryContext(ctx, query, mins)
 	if err != nil {
 		return nil, err
 	}

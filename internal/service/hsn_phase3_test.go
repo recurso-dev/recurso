@@ -122,13 +122,14 @@ func TestCreateSubscription_DiscountedLine_TaxableBase(t *testing.T) {
 		ID: customerID, PlaceOfSupply: domain.StringPtr("TN"), // intra-state -> CGST+SGST
 	}}
 	invRepo := &subMockInvoiceRepo{}
+	couponTenant := uuid.New()
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
-		ID: uuid.New(), Code: "HALF", DiscountType: domain.DiscountTypePercent, DiscountValue: 50,
+		ID: uuid.New(), TenantID: couponTenant, Code: "HALF", DiscountType: domain.DiscountTypePercent, DiscountValue: 50,
 	}}
 	svc := newTestSubscriptionService(&subMockSubRepo{}, invRepo, planRepo, custRepo, couponRepo, &subMockGateway{})
 
 	if _, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
-		TenantID: uuid.New(), CustomerID: customerID, PlanID: planID,
+		TenantID: couponTenant, CustomerID: customerID, PlanID: planID,
 		StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), CouponCode: "HALF",
 	}); err != nil {
 		t.Fatalf("unexpected error: %v", err)

@@ -30,6 +30,14 @@ var (
 	ErrAddonCurrencyMismatch = errors.New("add-on plan currency does not match subscription currency")
 	// ErrInvalidQuantity is returned when an add-on quantity is not positive.
 	ErrInvalidQuantity = errors.New("quantity must be greater than 0")
+	// ErrTrialAlreadyConverted means another runner won the atomic trial->active
+	// transition first, so this caller did nothing. The trial scheduler treats it
+	// as a benign skip, not a failure (ENG-161).
+	ErrTrialAlreadyConverted = errors.New("trial already converted to active")
+	// errTrialRaceLost is the internal signal returned from the conversion tx when
+	// the conditional activate matched zero rows; it rolls the tx back and is
+	// mapped to ErrTrialAlreadyConverted for callers.
+	errTrialRaceLost = errors.New("trial conversion race lost")
 )
 
 type SubscriptionService struct {
@@ -262,7 +270,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	var couponID *uuid.UUID
 
 	if input.CouponCode != "" {
-		coupon, err := s.couponRepo.GetByCode(ctx, input.CouponCode)
+		coupon, err := s.couponRepo.GetByCode(ctx, input.TenantID, input.CouponCode)
 		if err != nil {
 			return nil, fmt.Errorf("failed to fetch coupon: %w", err)
 		}
@@ -1256,15 +1264,30 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 
 	// Persist the first invoice and activate the subscription atomically, so a
 	// mid-write failure can't leave a trial billed but still trialing (or
-	// activated with no invoice). Falls back to sequential writes when the
-	// txManager/concrete repos are unavailable (e.g. mock-repo tests). (ENG-150)
+	// activated with no invoice) (ENG-150). The activation is a CONDITIONAL
+	// transition (WHERE status='trialing'): with the scheduler lock a no-op under
+	// multi-instance, two runners can both read this trial as expired, but only
+	// the one that flips the row creates an invoice — the loser matches zero rows
+	// and bails out, so a trial is billed exactly once (ENG-161). Falls back to
+	// sequential writes when the txManager/concrete repos are unavailable (e.g.
+	// mock-repo tests), where there is no cross-instance concurrency.
 	if s.txManager != nil && s.invRepoImpl != nil && s.subRepoImpl != nil {
 		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			won, err := s.subRepoImpl.ActivateTrialWithTx(ctx, tx, sub)
+			if err != nil {
+				return err
+			}
+			if !won {
+				return errTrialRaceLost // roll back; another runner already converted
+			}
 			if err := s.invRepoImpl.CreateWithTx(ctx, tx, invoice); err != nil {
 				return fmt.Errorf("failed to create trial conversion invoice: %w", err)
 			}
-			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
+			return nil
 		}); err != nil {
+			if errors.Is(err, errTrialRaceLost) {
+				return nil, ErrTrialAlreadyConverted
+			}
 			return nil, err
 		}
 	} else {

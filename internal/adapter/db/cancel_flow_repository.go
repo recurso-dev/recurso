@@ -167,21 +167,44 @@ func (r *CancelFlowRepository) GetStepsByFlow(ctx context.Context, flowID uuid.U
 	return steps, rows.Err()
 }
 
-func (r *CancelFlowRepository) UpdateStep(ctx context.Context, step *domain.CancelFlowStep) error {
+// UpdateStep updates a step only if its parent flow belongs to tenantID
+// (ENG-160 hardening). A step id owned by another tenant affects zero rows and
+// returns sql.ErrNoRows, which handlers map to 404.
+func (r *CancelFlowRepository) UpdateStep(ctx context.Context, step *domain.CancelFlowStep, tenantID uuid.UUID) error {
 	query := `
-		UPDATE cancel_flow_steps SET step_order = $1, step_type = $2, config = $3 WHERE id = $4
+		UPDATE cancel_flow_steps SET step_order = $1, step_type = $2, config = $3
+		WHERE id = $4
+		  AND flow_id IN (SELECT id FROM cancel_flows WHERE tenant_id = $5)
 	`
-	_, err := r.db.ExecContext(ctx, query, step.StepOrder, step.StepType, step.Config, step.ID)
+	res, err := r.db.ExecContext(ctx, query, step.StepOrder, step.StepType, step.Config, step.ID, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to update cancel flow step: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read update result: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }
 
-func (r *CancelFlowRepository) DeleteStep(ctx context.Context, id uuid.UUID) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM cancel_flow_steps WHERE id = $1", id)
+// DeleteStep deletes a step only if its parent flow belongs to tenantID.
+func (r *CancelFlowRepository) DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`DELETE FROM cancel_flow_steps
+		 WHERE id = $1
+		   AND flow_id IN (SELECT id FROM cancel_flows WHERE tenant_id = $2)`, id, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to delete cancel flow step: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to read delete result: %w", err)
+	}
+	if n == 0 {
+		return sql.ErrNoRows
 	}
 	return nil
 }

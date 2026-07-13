@@ -15,6 +15,10 @@ services:
       - API_SECRET=recurso_secret
       - APP_ENV=development
       - GIN_MODE=release
+      # Real distributed locker + idempotency store, so the local stack behaves
+      # like a multi-instance deployment (schedulers run once, idempotency keys
+      # are shared). Without this the app silently uses a no-op locker.
+      - REDIS_URL=redis://redis:6379
       - SMTP_HOST=mailhog
       - SMTP_PORT=1025
       - SMTP_USERNAME=
@@ -23,6 +27,8 @@ services:
     restart: unless-stopped
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       mailhog:
         condition: service_started
@@ -36,6 +42,17 @@ services:
     restart: unless-stopped
     depends_on:
       - api
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
 
   mailhog:
     image: mailhog/mailhog

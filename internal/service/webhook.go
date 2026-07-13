@@ -85,7 +85,12 @@ func (s *WebhookService) GetEndpoint(ctx context.Context, id uuid.UUID) (*domain
 }
 
 // DeleteEndpoint removes a webhook endpoint
-func (s *WebhookService) DeleteEndpoint(ctx context.Context, id uuid.UUID) error {
+func (s *WebhookService) DeleteEndpoint(ctx context.Context, tenantID, id uuid.UUID) error {
+	// Verify tenant ownership before deleting (ENG-160) — otherwise any tenant
+	// could delete another's endpoint by id.
+	if _, err := s.getTenantEndpoint(ctx, tenantID, id); err != nil {
+		return err
+	}
 	return s.endpointRepo.Delete(ctx, id)
 }
 

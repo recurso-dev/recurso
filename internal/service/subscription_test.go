@@ -68,8 +68,9 @@ type subMockCouponRepo struct {
 	coupon *domain.Coupon
 }
 
-func (m *subMockCouponRepo) GetByCode(ctx context.Context, code string) (*domain.Coupon, error) {
-	if m.coupon != nil && m.coupon.Code == code {
+func (m *subMockCouponRepo) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Coupon, error) {
+	// Mirror the real repo: a coupon only resolves within its own tenant.
+	if m.coupon != nil && m.coupon.Code == code && m.coupon.TenantID == tenantID {
 		return m.coupon, nil
 	}
 	return nil, nil
@@ -615,6 +616,7 @@ func TestCreateSubscription_TaxOnZeroTotal(t *testing.T) {
 	planID := uuid.New()
 	customerID := uuid.New()
 	couponID := uuid.New()
+	tenantID := uuid.New()
 
 	planRepo := &subMockPlanRepo{plan: &domain.Plan{
 		ID:            planID,
@@ -629,6 +631,7 @@ func TestCreateSubscription_TaxOnZeroTotal(t *testing.T) {
 	invRepo := &subMockInvoiceRepo{}
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
 		ID:            couponID,
+		TenantID:      tenantID,
 		Code:          "FREE100",
 		DiscountType:  domain.DiscountTypePercent,
 		DiscountValue: 100, // 100% off
@@ -640,7 +643,7 @@ func TestCreateSubscription_TaxOnZeroTotal(t *testing.T) {
 	)
 
 	_, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
-		TenantID:   uuid.New(),
+		TenantID:   tenantID,
 		CustomerID: customerID,
 		PlanID:     planID,
 		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -668,6 +671,7 @@ func TestCreateSubscription_PartialDiscount(t *testing.T) {
 	planID := uuid.New()
 	customerID := uuid.New()
 	couponID := uuid.New()
+	tenantID := uuid.New()
 
 	planRepo := &subMockPlanRepo{plan: &domain.Plan{
 		ID:            planID,
@@ -682,6 +686,7 @@ func TestCreateSubscription_PartialDiscount(t *testing.T) {
 	invRepo := &subMockInvoiceRepo{}
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
 		ID:            couponID,
+		TenantID:      tenantID,
 		Code:          "HALF",
 		DiscountType:  domain.DiscountTypePercent,
 		DiscountValue: 50, // 50% off
@@ -693,7 +698,7 @@ func TestCreateSubscription_PartialDiscount(t *testing.T) {
 	)
 
 	_, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
-		TenantID:   uuid.New(),
+		TenantID:   tenantID,
 		CustomerID: customerID,
 		PlanID:     planID,
 		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -718,6 +723,55 @@ func TestCreateSubscription_PartialDiscount(t *testing.T) {
 	}
 	if inv.Subtotal != 10000 {
 		t.Errorf("Subtotal = %d, want 10000 (pre-discount)", inv.Subtotal)
+	}
+}
+
+// TestCreateSubscription_CouponIsTenantScoped proves the ENG-160 hardening:
+// a coupon owned by tenant A must not apply to a subscription created by
+// tenant B, even if B knows the code. GetByCode is now tenant-scoped, so the
+// lookup returns nil and CreateSubscription rejects the code.
+func TestCreateSubscription_CouponIsTenantScoped(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	ownerTenant := uuid.New()
+	attackerTenant := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID:            planID,
+		IntervalUnit:  domain.IntervalMonth,
+		IntervalCount: 1,
+		Prices:        []domain.Price{{Amount: 10000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{
+		ID:            customerID,
+		PlaceOfSupply: domain.StringPtr("TN"),
+	}}
+	invRepo := &subMockInvoiceRepo{}
+	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
+		ID:            uuid.New(),
+		TenantID:      ownerTenant, // coupon belongs to a DIFFERENT tenant
+		Code:          "SECRET50",
+		DiscountType:  domain.DiscountTypePercent,
+		DiscountValue: 50,
+	}}
+
+	svc := newTestSubscriptionService(
+		&subMockSubRepo{}, invRepo, planRepo, custRepo,
+		couponRepo, &subMockGateway{},
+	)
+
+	_, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID:   attackerTenant, // different tenant tries to use the code
+		CustomerID: customerID,
+		PlanID:     planID,
+		StartDate:  time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		CouponCode: "SECRET50",
+	})
+	if err == nil {
+		t.Fatal("expected cross-tenant coupon to be rejected, got nil error")
+	}
+	if invRepo.created != nil {
+		t.Error("no invoice should be created when the coupon is rejected")
 	}
 }
 

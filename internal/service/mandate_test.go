@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -20,9 +22,11 @@ type mandateMockRepo struct {
 	updateErr   error
 }
 
-func (m *mandateMockRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Mandate, error) {
-	if m.mandate == nil || m.mandate.ID != id {
-		return nil, fmt.Errorf("mandate %s not found", id)
+func (m *mandateMockRepo) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Mandate, error) {
+	// Mirror the real repo: scoped by both id AND tenant, so a mismatched tenant
+	// is "not found".
+	if m.mandate == nil || m.mandate.ID != id || m.mandate.TenantID != tenantID {
+		return nil, sql.ErrNoRows
 	}
 	return m.mandate, nil
 }
@@ -148,7 +152,7 @@ func TestMandateRevoke_Success(t *testing.T) {
 	gw := &mandateMockGateway{}
 	svc := NewMandateService(repo, gw, nil, nil)
 
-	if err := svc.Revoke(context.Background(), mandate.ID); err != nil {
+	if err := svc.Revoke(context.Background(), mandate.ID, mandate.TenantID); err != nil {
 		t.Fatalf("Revoke returned error: %v", err)
 	}
 
@@ -178,7 +182,7 @@ func TestMandateRevoke_GatewayFailureLeavesStatusUntouched(t *testing.T) {
 	gw := &mandateMockGateway{revokeErr: fmt.Errorf("razorpay unavailable")}
 	svc := NewMandateService(repo, gw, nil, nil)
 
-	err := svc.Revoke(context.Background(), mandate.ID)
+	err := svc.Revoke(context.Background(), mandate.ID, mandate.TenantID)
 	if err == nil {
 		t.Fatal("expected error when gateway revoke fails, got nil")
 	}
@@ -201,7 +205,7 @@ func TestMandateRevoke_NoTokenSkipsGateway(t *testing.T) {
 	gw := &mandateMockGateway{}
 	svc := NewMandateService(repo, gw, nil, nil)
 
-	if err := svc.Revoke(context.Background(), mandate.ID); err != nil {
+	if err := svc.Revoke(context.Background(), mandate.ID, mandate.TenantID); err != nil {
 		t.Fatalf("Revoke returned error: %v", err)
 	}
 
@@ -218,11 +222,42 @@ func TestMandateRevoke_NotFound(t *testing.T) {
 	gw := &mandateMockGateway{}
 	svc := NewMandateService(repo, gw, nil, nil)
 
-	if err := svc.Revoke(context.Background(), uuid.New()); err == nil {
+	if err := svc.Revoke(context.Background(), uuid.New(), uuid.New()); err == nil {
 		t.Fatal("expected error for unknown mandate id, got nil")
 	}
 	if len(gw.revokeCalls) != 0 {
 		t.Errorf("gateway called %d times for unknown mandate, want 0", len(gw.revokeCalls))
+	}
+}
+
+// TestMandate_TenantIsolation is the ENG-160 regression: a mandate must not be
+// readable or revocable by another tenant (the repo query is now scoped by
+// tenant_id, so a mismatched tenant is "not found" and no gateway/DB mutation
+// happens).
+func TestMandate_TenantIsolation(t *testing.T) {
+	mandate := newTestMandate() // belongs to mandate.TenantID
+	repo := &mandateMockRepo{mandate: mandate}
+	gw := &mandateMockGateway{}
+	svc := NewMandateService(repo, gw, nil, nil)
+	attacker := uuid.New() // a different tenant
+
+	// Read by the wrong tenant → not found, no data leak.
+	if _, err := svc.GetByID(context.Background(), mandate.ID, attacker); !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("cross-tenant GetByID = %v, want not-found (sql.ErrNoRows)", err)
+	}
+	// Revoke by the wrong tenant → error, and neither the gateway nor the DB is touched.
+	if err := svc.Revoke(context.Background(), mandate.ID, attacker); err == nil {
+		t.Error("cross-tenant Revoke must fail, got nil")
+	}
+	if len(gw.revokeCalls) != 0 {
+		t.Errorf("cross-tenant Revoke called the gateway %d times, want 0", len(gw.revokeCalls))
+	}
+	if repo.updateCalls != 0 {
+		t.Errorf("cross-tenant Revoke updated the mandate %d times, want 0", repo.updateCalls)
+	}
+	// The rightful tenant still succeeds.
+	if _, err := svc.GetByID(context.Background(), mandate.ID, mandate.TenantID); err != nil {
+		t.Errorf("owner GetByID failed: %v", err)
 	}
 }
 
