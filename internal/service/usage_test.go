@@ -432,3 +432,21 @@ func TestRecordEventTenantAndCustomerGuards(t *testing.T) {
 		t.Fatalf("valid record: unexpected error %v", err)
 	}
 }
+
+// TestRecordEventRejectsNonPositiveQuantity proves the ENG-165 H2 guard: a zero
+// or negative usage quantity is refused, so it cannot offset legitimate metered
+// usage at aggregation time. (binding:"required" only rejects 0 at the edge.)
+func TestRecordEventRejectsNonPositiveQuantity(t *testing.T) {
+	f := newUsageFixture()
+	tenantA := uuid.New()
+	custID, subID := uuid.New(), uuid.New()
+	f.subs.subs[subID] = &domain.Subscription{ID: subID, TenantID: tenantA, CustomerID: custID}
+
+	for _, q := range []int64{0, -1, -1000} {
+		ev := &domain.UsageEvent{ID: uuid.New(), SubscriptionID: subID, CustomerID: custID, Dimension: "api_calls", Quantity: q}
+		var valErr UsageValidationError
+		if err := f.svc.RecordEvent(context.Background(), tenantA, ev); !errors.As(err, &valErr) {
+			t.Errorf("RecordEvent(quantity=%d): err = %v, want UsageValidationError", q, err)
+		}
+	}
+}

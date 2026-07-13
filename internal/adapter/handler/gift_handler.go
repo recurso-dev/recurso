@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +42,10 @@ func (h *GiftHandler) PurchaseGift(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
 	gift, err := h.giftService.PurchaseGift(ctx, tenantID.(uuid.UUID), req.BuyerCustomerID, req.PlanID, req.RecipientEmail, req.DurationMonths)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidGiftDuration) {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

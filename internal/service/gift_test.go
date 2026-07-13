@@ -145,6 +145,20 @@ func TestPurchaseGift_Success(t *testing.T) {
 	}
 }
 
+// TestPurchaseGift_RejectsInvalidDuration proves the ENG-165 H3 guard: a
+// non-positive or absurdly large duration is refused, so a caller cannot mint a
+// negative buyer invoice (crediting themselves) or overflow the invoice amount.
+func TestPurchaseGift_RejectsInvalidDuration(t *testing.T) {
+	planID := uuid.New()
+	svc := NewGiftService(newMockGiftRepo(), &mockSubRepoForGift{}, nil, &mockPlanRepoForGift{plan: testPlan(planID)}, nil)
+
+	for _, d := range []int{0, -1, -12, 121, 100000} {
+		if _, err := svc.PurchaseGift(context.Background(), uuid.New(), uuid.New(), planID, "", d); err != ErrInvalidGiftDuration {
+			t.Errorf("PurchaseGift(duration=%d): err = %v, want ErrInvalidGiftDuration", d, err)
+		}
+	}
+}
+
 func TestPurchaseGift_CodeFormat(t *testing.T) {
 	giftRepo := newMockGiftRepo()
 	planID := uuid.New()
