@@ -10,24 +10,31 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
+// invoicePaidMarker is the narrow slice of SubscriptionService this service
+// needs to settle an invoice. Depending on the interface (rather than the
+// concrete *SubscriptionService) keeps the offline-payment logic unit-testable.
+type invoicePaidMarker interface {
+	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
+}
+
 type OfflinePaymentService struct {
-	repo        port.OfflinePaymentRepository
-	gateway     port.PaymentGateway
-	invoiceRepo port.InvoiceRepository
-	subService  *SubscriptionService
+	repo          port.OfflinePaymentRepository
+	gateway       port.PaymentGateway
+	invoiceRepo   port.InvoiceRepository
+	invoiceMarker invoicePaidMarker
 }
 
 func NewOfflinePaymentService(
 	repo port.OfflinePaymentRepository,
 	gateway port.PaymentGateway,
 	invoiceRepo port.InvoiceRepository,
-	subService *SubscriptionService,
+	invoiceMarker invoicePaidMarker,
 ) *OfflinePaymentService {
 	return &OfflinePaymentService{
-		repo:        repo,
-		gateway:     gateway,
-		invoiceRepo: invoiceRepo,
-		subService:  subService,
+		repo:          repo,
+		gateway:       gateway,
+		invoiceRepo:   invoiceRepo,
+		invoiceMarker: invoiceMarker,
 	}
 }
 
@@ -96,7 +103,7 @@ func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, raz
 	// payments never settle (ENG-145).
 	if va.InvoiceID != nil && va.AmountReceived >= va.AmountExpected {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, va.TenantID)
-		if _, err := s.subService.MarkInvoicePaid(tctx, *va.InvoiceID); err != nil {
+		if _, err := s.invoiceMarker.MarkInvoicePaid(tctx, *va.InvoiceID); err != nil {
 			return fmt.Errorf("failed to mark invoice paid: %w", err)
 		}
 	}
@@ -135,11 +142,21 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 		return nil, fmt.Errorf("failed to record offline payment: %w", err)
 	}
 
-	// Mark linked invoice as paid (inject tenant — see ReconcileVirtualAccount).
+	// Settle the linked invoice ONLY when the payment (plus anything already
+	// paid) covers the total. Previously any amount marked the whole invoice
+	// paid — a typo (₹100 recorded against a ₹10,000 invoice) silently wrote off
+	// the ₹9,900 balance. A short payment is now recorded but leaves the invoice
+	// open. Tenant is injected because the invoice repo is tenant-scoped (ENG-145).
 	if input.InvoiceID != nil {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, input.TenantID)
-		if _, err := s.subService.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
-			return nil, fmt.Errorf("failed to mark invoice paid: %w", err)
+		inv, err := s.invoiceRepo.GetByID(tctx, *input.InvoiceID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load invoice for settlement: %w", err)
+		}
+		if input.Amount+inv.AmountPaid >= inv.Total {
+			if _, err := s.invoiceMarker.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
+				return nil, fmt.Errorf("failed to mark invoice paid: %w", err)
+			}
 		}
 	}
 
