@@ -1,0 +1,8 @@
+ALTER TABLE invoices DROP COLUMN IF EXISTS amount_remaining;
+ALTER TABLE invoices ADD COLUMN amount_remaining BIGINT
+  GENERATED ALWAYS AS (total - amount_paid) STORED;
+ALTER TABLE quotes
+  ALTER COLUMN subtotal TYPE INTEGER,
+  ALTER COLUMN tax_amount TYPE INTEGER,
+  ALTER COLUMN discount_amount TYPE INTEGER,
+  ALTER COLUMN total TYPE INTEGER;
