@@ -75,7 +75,11 @@ func (h *AdvancedBillingHandler) ListUnbilledCharges(c *gin.Context) {
 		return
 	}
 
-	charges, err := h.Service.ListUnbilledCharges(subID)
+	ctx, ok := h.tenantCtx(c)
+	if !ok {
+		return
+	}
+	charges, err := h.Service.ListUnbilledCharges(ctx, subID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
