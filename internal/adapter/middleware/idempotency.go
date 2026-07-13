@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
@@ -56,8 +57,11 @@ var mutatingMethods = map[string]bool{
 //     key were present (works with the Redis store or the in-memory
 //     fallback used when Redis is not configured).
 //
-// Known limitation: two concurrent requests with the same key may both be
-// processed; the last completed response wins the stored slot.
+// Concurrency: the key is reserved with an atomic Claim before processing, so
+// two in-flight requests with the same key cannot both execute — the second is
+// rejected with 409 while the first runs, and replays the stored response once
+// it completes. A 5xx or panic releases the reservation so the key stays
+// retryable.
 func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 1. Only mutating methods are subject to idempotency replay.
@@ -82,8 +86,8 @@ func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 		}
 		storageKey := fmt.Sprintf("idem:%s:%s:%s:%s", tenantScope, c.Request.Method, c.Request.URL.Path, key)
 
-		// 4. Check storage (hit -> replay).
-		cached, err := store.Get(c.Request.Context(), storageKey)
+		// 4. Atomically reserve the key. This is the concurrency gate.
+		acquired, existing, err := store.Claim(c.Request.Context(), storageKey)
 		if err != nil {
 			// Storage unavailable: proceed without idempotency rather than
 			// blocking the request (graceful degradation).
@@ -91,51 +95,61 @@ func IdempotencyMiddleware(store port.IdempotencyStore) gin.HandlerFunc {
 			return
 		}
 
-		if cached != nil {
-			// HIT: replay stored response.
-			c.Header("X-Idempotency-Hit", "true")
-
-			for k, v := range cached.Headers {
-				c.Header(k, v)
+		if !acquired {
+			if existing != nil {
+				// A completed response exists — replay it.
+				c.Header("X-Idempotency-Hit", "true")
+				for k, v := range existing.Headers {
+					c.Header(k, v)
+				}
+				c.Data(existing.Status, c.Writer.Header().Get("Content-Type"), existing.Body)
+				c.Abort()
+				return
 			}
-
-			c.Data(cached.Status, c.Writer.Header().Get("Content-Type"), cached.Body)
+			// A concurrent request holds the reservation and is still in flight.
+			httperr.Respond(c, http.StatusConflict, httperr.CodeConflict,
+				"a request with this Idempotency-Key is already in progress")
 			c.Abort()
 			return
 		}
 
-		// 5. MISS: wrap writer to capture the response.
+		// 5. Reservation acquired. Wrap writer to capture the response.
 		w := &responseWriter{
 			ResponseWriter: c.Writer,
 			body:           &bytes.Buffer{},
 		}
 		c.Writer = w
 
-		// 6. Process request.
-		c.Next()
-
-		// 7. Store the response for replay. Skip 5xx so transient server
-		// failures remain retryable with the same key.
-		status := c.Writer.Status()
-		if status >= http.StatusInternalServerError {
-			return
-		}
-
-		headers := make(map[string]string)
-		for k, v := range c.Writer.Header() {
-			if len(v) > 0 {
-				headers[k] = v[0]
+		// 6. On the way out, either persist the completed response or release the
+		// reservation so the key stays retryable. Deferred so a panic (unwinding
+		// to an outer recovery) still releases the key rather than wedging it.
+		defer func() {
+			if rec := recover(); rec != nil {
+				_ = store.Delete(c.Request.Context(), storageKey)
+				panic(rec) // let the outer recovery middleware handle it
 			}
-		}
+			status := c.Writer.Status()
+			// Skip 5xx so transient server failures remain retryable.
+			if status >= http.StatusInternalServerError {
+				_ = store.Delete(c.Request.Context(), storageKey)
+				return
+			}
+			headers := make(map[string]string)
+			for k, v := range c.Writer.Header() {
+				if len(v) > 0 {
+					headers[k] = v[0]
+				}
+			}
+			// Blocking save so a client immediately retrying sees the stored
+			// response consistently.
+			_ = store.Set(c.Request.Context(), storageKey, &domain.StoredResponse{
+				Status:  status,
+				Body:    w.body.Bytes(),
+				Headers: headers,
+			})
+		}()
 
-		res := &domain.StoredResponse{
-			Status:  status,
-			Body:    w.body.Bytes(),
-			Headers: headers,
-		}
-
-		// Blocking save so a client immediately retrying sees the stored
-		// response consistently.
-		_ = store.Set(c.Request.Context(), storageKey, res)
+		// 7. Process request.
+		c.Next()
 	}
 }

@@ -184,6 +184,64 @@ func TestIdempotency_TTLRespected(t *testing.T) {
 	}
 }
 
+// TestIdempotency_ConcurrentSameKeyReturns409 proves the ENG-168 fix: while one
+// request holding a key is still in flight, a second request with the same key
+// is rejected with 409 (not processed a second time). Once the first completes,
+// the key replays the stored response.
+func TestIdempotency_ConcurrentSameKeyReturns409(t *testing.T) {
+	store := memory.NewInMemoryIdempotencyStore(time.Minute)
+	var calls atomic.Int64
+	entered := make(chan struct{})
+	release := make(chan struct{})
+
+	r := gin.New()
+	r.Use(IdempotencyMiddleware(store))
+	r.POST("/v1/subscriptions", func(c *gin.Context) {
+		calls.Add(1)
+		close(entered) // signal: inside the handler, reservation held
+		<-release      // block until the test lets the first request finish
+		c.JSON(http.StatusCreated, gin.H{"ok": true})
+	})
+
+	post := func(w *httptest.ResponseRecorder) {
+		rq := httptest.NewRequest(http.MethodPost, "/v1/subscriptions", nil)
+		rq.Header.Set("Idempotency-Key", "concurrent")
+		r.ServeHTTP(w, rq)
+	}
+
+	// Request 1 acquires the reservation and blocks inside the handler.
+	w1 := httptest.NewRecorder()
+	done := make(chan struct{})
+	go func() { post(w1); close(done) }()
+	<-entered
+
+	// Request 2 arrives mid-flight with the same key -> 409, handler not re-run.
+	w2 := httptest.NewRecorder()
+	post(w2)
+	if w2.Code != http.StatusConflict {
+		t.Fatalf("concurrent same-key status = %d, want 409", w2.Code)
+	}
+
+	close(release)
+	<-done
+	if w1.Code != http.StatusCreated {
+		t.Fatalf("first request status = %d, want 201", w1.Code)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("handler ran %d times, want 1 (only the reservation winner executes)", calls.Load())
+	}
+
+	// After completion the key replays the stored response.
+	w3 := httptest.NewRecorder()
+	post(w3)
+	if w3.Code != http.StatusCreated || w3.Header().Get("X-Idempotency-Hit") != "true" {
+		t.Fatalf("post-completion replay: code=%d hit=%q", w3.Code, w3.Header().Get("X-Idempotency-Hit"))
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("handler ran %d times after replay, want 1", calls.Load())
+	}
+}
+
 // failingStore simulates an unavailable backing store (e.g. Redis down
 // without the in-memory fallback wired).
 type failingStore struct{}
@@ -193,6 +251,14 @@ func (failingStore) Get(context.Context, string) (*domain.StoredResponse, error)
 }
 
 func (failingStore) Set(context.Context, string, *domain.StoredResponse) error {
+	return errors.New("store unavailable")
+}
+
+func (failingStore) Claim(context.Context, string) (bool, *domain.StoredResponse, error) {
+	return false, nil, errors.New("store unavailable")
+}
+
+func (failingStore) Delete(context.Context, string) error {
 	return errors.New("store unavailable")
 }
 

@@ -9,6 +9,14 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
+// claimTTL bounds how long an in-progress reservation is held if the request
+// dies without releasing it (crash mid-flight). After it lapses the key is
+// reclaimable. Requests these keys guard (billing POSTs) complete well inside
+// this window.
+const claimTTL = 5 * time.Minute
+
+// item holds either a completed response (response != nil) or an in-progress
+// reservation (response == nil) placed by Claim.
 type item struct {
 	response *domain.StoredResponse
 	expires  time.Time
@@ -51,7 +59,31 @@ func (s *InMemoryIdempotencyStore) Get(ctx context.Context, key string) (*domain
 		return nil, nil // Expired
 	}
 
-	return it.response, nil
+	return it.response, nil // response == nil for an in-progress reservation
+}
+
+// Claim atomically reserves key if it is free, otherwise reports the existing
+// state. See port.IdempotencyStore.Claim.
+func (s *InMemoryIdempotencyStore) Claim(ctx context.Context, key string) (bool, *domain.StoredResponse, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := time.Now()
+	if it, found := s.store[key]; found && now.Before(it.expires) {
+		// Taken: a completed response (replay) or an in-progress reservation (409).
+		return false, it.response, nil
+	}
+
+	// Free (absent or lapsed) — reserve it.
+	s.store[key] = item{response: nil, expires: now.Add(claimTTL)}
+	return true, nil, nil
+}
+
+func (s *InMemoryIdempotencyStore) Delete(ctx context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.store, key)
+	return nil
 }
 
 func (s *InMemoryIdempotencyStore) Set(ctx context.Context, key string, response *domain.StoredResponse) error {
