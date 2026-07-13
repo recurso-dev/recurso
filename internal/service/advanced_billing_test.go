@@ -38,6 +38,23 @@ func (r *fakeUCRepo) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.U
 	return r.bySub[subscriptionID], nil
 }
 
+// TestAddUnbilledCharge_RejectsNonPositiveAmount proves the ENG-165 H3 guard: a
+// zero or negative unbilled charge is refused before any repo write, so it
+// cannot be used to credit or zero out an invoice.
+func TestAddUnbilledCharge_RejectsNonPositiveAmount(t *testing.T) {
+	subID := uuid.New()
+	owner := uuid.New()
+	subRepo := &fakeUCSubRepo{subs: map[uuid.UUID]uuid.UUID{subID: owner}}
+	svc := NewAdvancedBillingService(&fakeUCRepo{}, subRepo)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, owner)
+
+	for _, amt := range []int64{0, -1, -50000} {
+		if _, err := svc.AddUnbilledCharge(ctx, subID, amt, "INR", "x", ""); err != ErrInvalidChargeAmount {
+			t.Errorf("AddUnbilledCharge(%d): err = %v, want ErrInvalidChargeAmount", amt, err)
+		}
+	}
+}
+
 // TestListUnbilledCharges_TenantIsolation proves the ENG-165 H1 fix: listing a
 // subscription's unbilled charges first verifies the subscription belongs to
 // the caller's tenant, so a foreign tenant cannot read the amounts.

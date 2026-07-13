@@ -2,12 +2,18 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
+
+// ErrInvalidChargeAmount is returned when an unbilled charge amount is not
+// positive. A negative amount would reduce the next invoice total (a caller
+// could zero out or credit an invoice through the charge path).
+var ErrInvalidChargeAmount = errors.New("charge amount must be greater than zero")
 
 type AdvancedBillingService struct {
 	UnbilledChargeRepo port.UnbilledChargeRepository
@@ -29,6 +35,10 @@ func NewAdvancedBillingService(
 // code the charge is taxed at; empty falls back to the tenant SAC at invoice
 // time.
 func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscriptionID uuid.UUID, amount int64, currency, description, hsn string) (*domain.UnbilledCharge, error) {
+	if amount <= 0 {
+		return nil, ErrInvalidChargeAmount
+	}
+
 	// Verify subscription exists
 	_, err := s.SubscriptionRepo.GetByID(ctx, subscriptionID)
 	if err != nil {

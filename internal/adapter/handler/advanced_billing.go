@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -60,6 +61,10 @@ func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
 	}
 	charge, err := h.Service.AddUnbilledCharge(ctx, subID, req.Amount, req.Currency, req.Description, req.HSNCode)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidChargeAmount) {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}

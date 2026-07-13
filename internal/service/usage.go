@@ -73,6 +73,14 @@ func NewUsageService(
 // customer matches the subscription — otherwise any tenant could inflate
 // another tenant's metered usage.
 func (s *UsageService) RecordEvent(ctx context.Context, tenantID uuid.UUID, event *domain.UsageEvent) error {
+	// A usage event records consumption; quantity must be positive. Without this
+	// a negative quantity would offset legitimate metered usage at aggregation
+	// time (SUM), underbilling the customer. (binding:"required" rejects 0 but
+	// not negatives.)
+	if event.Quantity <= 0 {
+		return UsageValidationError("quantity must be greater than zero")
+	}
+
 	sub, err := s.subscriptions.GetByID(ctx, event.SubscriptionID)
 	if err != nil {
 		return err

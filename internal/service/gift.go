@@ -14,6 +14,16 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
+// maxGiftDurationMonths bounds a gift's term. It keeps price.Amount *
+// durationMonths well clear of int64 overflow and rejects absurd inputs.
+const maxGiftDurationMonths = 120
+
+// ErrInvalidGiftDuration is returned when a gift's duration is not a positive
+// number of months within the allowed range. A non-positive duration would
+// produce a negative buyer invoice (crediting the buyer) and a negative-term
+// gift; an unbounded one risks integer overflow on the invoice amount.
+var ErrInvalidGiftDuration = errors.New("gift duration_months must be between 1 and 120")
+
 type GiftService struct {
 	giftRepo            port.GiftRepository
 	subscriptionRepo    port.SubscriptionRepository
@@ -40,6 +50,10 @@ func NewGiftService(
 
 // PurchaseGift creates a new Gift record, generates a buyer invoice, and notifies the recipient.
 func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buyerID uuid.UUID, planID uuid.UUID, recipientEmail string, durationMonths int) (*domain.Gift, error) {
+	if durationMonths < 1 || durationMonths > maxGiftDurationMonths {
+		return nil, ErrInvalidGiftDuration
+	}
+
 	// 1. Fetch plan to calculate price
 	plan, err := s.planRepo.GetByID(ctx, planID)
 	if err != nil {

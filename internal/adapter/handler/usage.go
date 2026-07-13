@@ -67,11 +67,14 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	}
 
 	if err := h.svc.RecordEvent(ctx, tenantID, event); err != nil {
-		switch err {
-		case service.ErrUsageSubscriptionNotFound:
+		var valErr service.UsageValidationError
+		switch {
+		case errors.Is(err, service.ErrUsageSubscriptionNotFound):
 			respondError(c, http.StatusNotFound, codeNotFound, "subscription not found")
-		case service.ErrUsageCustomerMismatch:
+		case errors.Is(err, service.ErrUsageCustomerMismatch):
 			respondError(c, http.StatusBadRequest, codeValidationFailed, "customer does not match subscription")
+		case errors.As(err, &valErr):
+			respondError(c, http.StatusBadRequest, codeValidationFailed, valErr.Error())
 		default:
 			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to record event")
 		}
