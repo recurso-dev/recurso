@@ -11,11 +11,13 @@ import (
 	"io"
 	"log"
 	"math"
+	"net"
 	"net/http"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/httpsafe"
 )
 
 type WebhookWorker struct {
@@ -36,6 +38,18 @@ func NewWebhookWorker(
 		eventRepo:    eventRepo,
 		httpClient: &http.Client{
 			Timeout: 10 * time.Second,
+			// Do not follow redirects — a public URL could 302 to an internal
+			// target, bypassing the create-time SSRF check. Treat the 3xx as the
+			// final response instead.
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			// Re-validate the resolved IP at connect time so a host that rebinds to
+			// a private/loopback/link-local address after creation is still blocked.
+			Transport: &http.Transport{
+				DialContext: (&net.Dialer{
+					Timeout: 10 * time.Second,
+					Control: httpsafe.DialControl,
+				}).DialContext,
+			},
 		},
 	}
 }

@@ -7,11 +7,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"log/slog"
-	"net/url"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/httpsafe"
 )
 
 // WebhookService handles webhook endpoint management and event publishing
@@ -42,8 +42,9 @@ type CreateEndpointInput struct {
 
 // CreateEndpoint creates a new webhook endpoint for a tenant
 func (s *WebhookService) CreateEndpoint(ctx context.Context, input CreateEndpointInput) (*domain.WebhookEndpoint, error) {
-	// Validate URL
-	if _, err := url.ParseRequestURI(input.URL); err != nil {
+	// Validate URL — reject non-http(s) and any host resolving to an internal /
+	// private / link-local address (SSRF: cloud metadata, localhost, VPC hosts).
+	if err := httpsafe.ValidateExternalURL(input.URL); err != nil {
 		return nil, ErrInvalidWebhookURL
 	}
 
