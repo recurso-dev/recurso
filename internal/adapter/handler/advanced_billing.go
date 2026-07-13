@@ -94,7 +94,7 @@ func (h *AdvancedBillingHandler) ListUnbilledCharges(c *gin.Context) {
 }
 
 type AdvanceInvoiceRequest struct {
-	Periods int `json:"periods" binding:"required,min=1"`
+	Periods int `json:"periods" binding:"required,min=1,max=60"`
 }
 
 func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {

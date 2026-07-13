@@ -279,10 +279,23 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 
 // GenerateAdvanceInvoice generates an invoice for N future periods immediately.
 // It extends the subscription's CurrentPeriodEnd.
+// maxAdvancePeriods caps how many billing periods can be pre-charged in one
+// advance invoice. It bounds both the invoice amount (price * periods stays
+// clear of int64 overflow) and the O(periods) period-extension loop below, so a
+// typo (periods: 1000) can neither over-charge a customer nor hang the request.
+const maxAdvancePeriods = 60
+
 func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.UUID, periods int) (*domain.Invoice, error) {
+	if periods < 1 || periods > maxAdvancePeriods {
+		return nil, fmt.Errorf("periods must be between 1 and %d", maxAdvancePeriods)
+	}
+
 	sub, err := s.SubscriptionRepo.GetByID(ctx, subID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get subscription: %w", err)
+	}
+	if sub == nil {
+		return nil, fmt.Errorf("subscription not found")
 	}
 
 	plan, err := s.PlanRepo.GetByID(ctx, sub.PlanID)

@@ -416,6 +416,46 @@ func TestGenerateAdvanceInvoice_AmountsAndPeriodExtension(t *testing.T) {
 	}
 }
 
+// TestGenerateAdvanceInvoice_PeriodsBounds proves the ENG-171 guard: periods
+// must be within [1, maxAdvancePeriods]. An out-of-range value is refused
+// before any invoice is created, so a typo can't over-charge or drive the
+// O(periods) period-extension loop.
+func TestGenerateAdvanceInvoice_PeriodsBounds(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	subID := uuid.New()
+
+	newSvc := func() (*InvoiceService, *mockInvoiceRepoForInvAmt) {
+		invRepo := &mockInvoiceRepoForInvAmt{}
+		planRepo := &mockPlanRepoForInvAmt{plan: &domain.Plan{
+			ID: planID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+			Prices: []domain.Price{{Amount: 10000, Currency: "INR"}},
+		}}
+		custRepo := &mockCustomerRepoForInvAmt{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+		subRepo := &mockSubRepoForInvAmt{sub: &domain.Subscription{
+			ID: subID, TenantID: uuid.New(), CustomerID: customerID, PlanID: planID,
+			CurrentPeriodEnd: time.Now().Add(10 * 24 * time.Hour),
+		}}
+		return newInvAmtService(invRepo, planRepo, custRepo, &mockUCRepoForInvAmt{}, subRepo), invRepo
+	}
+
+	for _, p := range []int{0, -1, maxAdvancePeriods + 1, 1000} {
+		svc, invRepo := newSvc()
+		if _, err := svc.GenerateAdvanceInvoice(context.Background(), subID, p); err == nil {
+			t.Errorf("periods=%d: expected error, got nil", p)
+		}
+		if invRepo.created != nil {
+			t.Errorf("periods=%d: an invoice was created despite an invalid period count", p)
+		}
+	}
+
+	// The boundary value is accepted.
+	svc, _ := newSvc()
+	if _, err := svc.GenerateAdvanceInvoice(context.Background(), subID, maxAdvancePeriods); err != nil {
+		t.Fatalf("periods=%d (max) should be allowed: %v", maxAdvancePeriods, err)
+	}
+}
+
 func TestGenerateAdvanceInvoice_ExpiredPeriodExtendsFromNow(t *testing.T) {
 	planID := uuid.New()
 	customerID := uuid.New()
