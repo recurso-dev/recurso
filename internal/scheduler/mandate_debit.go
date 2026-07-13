@@ -9,6 +9,12 @@ import (
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
+// debitClaimWindow is how far ClaimDueForDebit pushes next_debit_at when it
+// claims a due mandate. It is the failure-retry lease: shorter than the 1h tick
+// so a failed debit retries on the next tick, but far longer than a single
+// gateway debit takes so a mandate being processed is never re-claimed.
+const debitClaimWindow = 15 * time.Minute
+
 type MandateDebitScheduler struct {
 	mandateRepo port.MandateRepository
 	mandateSvc  *service.MandateService
@@ -75,9 +81,12 @@ func (s *MandateDebitScheduler) runDebits() {
 		}
 	}()
 
-	mandates, err := s.mandateRepo.GetReadyForDebit(ctx)
+	// Atomically CLAIM due mandates (not just read them): the distributed lock
+	// above is a no-op without Redis, so the claim is what actually guarantees a
+	// mandate is charged by exactly one runner (ENG-161).
+	mandates, err := s.mandateRepo.ClaimDueForDebit(ctx, debitClaimWindow)
 	if err != nil {
-		log.Printf("Error fetching mandates ready for debit: %v", err)
+		log.Printf("Error claiming mandates ready for debit: %v", err)
 		return
 	}
 
