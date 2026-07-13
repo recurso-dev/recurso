@@ -35,8 +35,53 @@ type WebhookHandler struct {
 	offlinePaymentSvc      *service.OfflinePaymentService
 	dunningCampaignService *service.DunningCampaignService
 	creditNoteService      *service.CreditNoteService
+	inboundDedup           InboundWebhookDedup // nil-safe; when unset, dedup is skipped
 	stripeWebhookSecret    string
 	logger                 *slog.Logger
+}
+
+// InboundWebhookDedup records processed gateway webhook events so redeliveries
+// can be acknowledged without re-running non-idempotent side effects.
+// Satisfied by *db.InboundWebhookRepository.
+type InboundWebhookDedup interface {
+	WasProcessed(ctx context.Context, gateway, eventID string) (bool, error)
+	MarkProcessed(ctx context.Context, gateway, eventID, eventType string) error
+}
+
+// SetInboundWebhookDedup wires inbound webhook idempotency (ENG-162). Nil-safe:
+// left unset, webhook processing is unchanged.
+func (h *WebhookHandler) SetInboundWebhookDedup(d InboundWebhookDedup) { h.inboundDedup = d }
+
+// alreadyProcessed acknowledges and returns true when this (gateway, eventID)
+// was already fully processed — the caller should stop. Fails open (returns
+// false) on a nil store, empty id, or a lookup error, so dedup never blocks a
+// legitimate event.
+func (h *WebhookHandler) alreadyProcessed(c *gin.Context, gateway, eventID string) bool {
+	if h.inboundDedup == nil || eventID == "" {
+		return false
+	}
+	processed, err := h.inboundDedup.WasProcessed(c.Request.Context(), gateway, eventID)
+	if err != nil {
+		h.logger.Error("webhook dedup check failed; processing anyway", "gateway", gateway, "event_id", eventID, "error", err)
+		return false
+	}
+	if processed {
+		h.logger.Info("duplicate webhook ignored", "gateway", gateway, "event_id", eventID)
+		c.JSON(http.StatusOK, gin.H{"status": "duplicate ignored"})
+		return true
+	}
+	return false
+}
+
+// markProcessed records a fully-processed event so redeliveries are skipped.
+// Best-effort: a failure just means a possible reprocess later.
+func (h *WebhookHandler) markProcessed(ctx context.Context, gateway, eventID, eventType string) {
+	if h.inboundDedup == nil || eventID == "" {
+		return
+	}
+	if err := h.inboundDedup.MarkProcessed(ctx, gateway, eventID, eventType); err != nil {
+		h.logger.Error("failed to record processed webhook event", "gateway", gateway, "event_id", eventID, "error", err)
+	}
 }
 
 func NewWebhookHandler(
@@ -357,6 +402,15 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	h.logger.Info("stripe webhook received", "event_type", event.Type)
 	ctx := c.Request.Context()
 
+	// Idempotency: skip an event we've already fully processed. Stripe redelivers
+	// on non-2xx and can deliver duplicates; without this a redelivery re-runs
+	// non-idempotent side effects (the payment-failed email, the dunning bandit
+	// outcome). Recorded only on success below, so a failed delivery still
+	// retries (ENG-162).
+	if h.alreadyProcessed(c, "stripe", event.ID) {
+		return
+	}
+
 	var handlerErr error
 	switch event.Type {
 	case "payment_intent.succeeded":
@@ -377,6 +431,9 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, codeInternalError, handlerErr.Error())
 		return
 	}
+
+	// Processed cleanly — record it so a redelivery is ignored.
+	h.markProcessed(ctx, "stripe", event.ID, string(event.Type))
 
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
