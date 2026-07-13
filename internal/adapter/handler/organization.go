@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -17,19 +18,44 @@ func NewOrganizationHandler(s *service.OrganizationService) *OrganizationHandler
 	return &OrganizationHandler{service: s}
 }
 
+// callerTenantID pulls the authenticated tenant set by the dual-auth middleware.
+func (h *OrganizationHandler) callerTenantID(c *gin.Context) (uuid.UUID, bool) {
+	id, ok := c.MustGet("tenant_id").(uuid.UUID)
+	return id, ok
+}
+
+// mapOrgError translates organization-service errors to HTTP responses. A
+// cross-tenant access is reported as 404 (no existence oracle); an attempt to
+// attach a foreign tenant is a 403.
+func mapOrgError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, domain.ErrOrganizationNotFound):
+		respondError(c, http.StatusNotFound, codeNotFound, "organization not found")
+	case errors.Is(err, domain.ErrCrossTenantAttach):
+		respondError(c, http.StatusForbidden, codeForbidden, err.Error())
+	default:
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	}
+}
+
 type createOrgRequest struct {
 	Name       string `json:"name" binding:"required"`
 	OwnerEmail string `json:"owner_email" binding:"required,email"`
 }
 
 func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	var req createOrgRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
-	org, err := h.service.Create(c.Request.Context(), req.Name, req.OwnerEmail)
+	org, err := h.service.Create(c.Request.Context(), tenantID, req.Name, req.OwnerEmail)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
@@ -39,15 +65,20 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
-	org, err := h.service.GetByID(c.Request.Context(), id)
+	org, err := h.service.GetByID(c.Request.Context(), tenantID, id)
 	if err != nil {
-		respondError(c, http.StatusNotFound, codeNotFound, "organization not found")
+		mapOrgError(c, err)
 		return
 	}
 
@@ -59,6 +90,11 @@ type addTenantRequest struct {
 }
 
 func (h *OrganizationHandler) AddTenant(c *gin.Context) {
+	callerTenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
@@ -77,8 +113,8 @@ func (h *OrganizationHandler) AddTenant(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.AddTenant(c.Request.Context(), orgID, tenantID); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.AddTenant(c.Request.Context(), callerTenantID, orgID, tenantID); err != nil {
+		mapOrgError(c, err)
 		return
 	}
 
@@ -86,15 +122,20 @@ func (h *OrganizationHandler) AddTenant(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) ListTenants(c *gin.Context) {
+	callerTenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
-	tenants, err := h.service.ListTenants(c.Request.Context(), orgID)
+	tenants, err := h.service.ListTenants(c.Request.Context(), callerTenantID, orgID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		mapOrgError(c, err)
 		return
 	}
 
@@ -111,6 +152,11 @@ type updateOrgRequest struct {
 }
 
 func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
@@ -123,9 +169,9 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 		return
 	}
 
-	org, err := h.service.Update(c.Request.Context(), id, req.Name, req.OwnerEmail)
+	org, err := h.service.Update(c.Request.Context(), tenantID, id, req.Name, req.OwnerEmail)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		mapOrgError(c, err)
 		return
 	}
 
@@ -133,14 +179,19 @@ func (h *OrganizationHandler) UpdateOrganization(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.Delete(c.Request.Context(), tenantID, id); err != nil {
+		mapOrgError(c, err)
 		return
 	}
 
@@ -148,6 +199,11 @@ func (h *OrganizationHandler) DeleteOrganization(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
+	callerTenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
@@ -160,8 +216,8 @@ func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.RemoveTenant(c.Request.Context(), orgID, tenantID); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.RemoveTenant(c.Request.Context(), callerTenantID, orgID, tenantID); err != nil {
+		mapOrgError(c, err)
 		return
 	}
 
@@ -169,7 +225,12 @@ func (h *OrganizationHandler) RemoveTenant(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
-	orgs, err := h.service.List(c.Request.Context())
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	orgs, err := h.service.List(c.Request.Context(), tenantID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
@@ -183,15 +244,20 @@ func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
 }
 
 func (h *OrganizationHandler) GetConsolidatedMRR(c *gin.Context) {
+	tenantID, ok := h.callerTenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	orgID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid organization id")
 		return
 	}
 
-	metrics, err := h.service.GetConsolidatedMRR(c.Request.Context(), orgID)
+	metrics, err := h.service.GetConsolidatedMRR(c.Request.Context(), tenantID, orgID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		mapOrgError(c, err)
 		return
 	}
 
