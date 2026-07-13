@@ -80,7 +80,18 @@ const QuoteDetail = ({ quote, isOpen, onClose }) => {
                         {it.description || "Item"}
                       </p>
                       <p className="text-xs text-muted-foreground tabular-nums">
-                        {it.quantity} × {formatCurrency(it.unit_price, currency)}
+                        {it.quantity} ×{" "}
+                        {formatCurrency(
+                          // Fall back to amount ÷ quantity when unit_price is
+                          // 0/missing (e.g. legacy or imported line items), so
+                          // the subtitle never reads "1 × $0.00" against a
+                          // non-zero amount.
+                          it.unit_price ||
+                            (it.quantity
+                              ? Math.round(it.amount / it.quantity)
+                              : it.amount),
+                          currency,
+                        )}
                       </p>
                     </div>
                     <p className="shrink-0 tabular-nums text-foreground">
