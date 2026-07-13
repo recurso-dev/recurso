@@ -205,6 +205,12 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 // Debit: Cash (Asset)
 // Credit: Customer AR (Asset) — reduces the receivable
 func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
+	// Reject invalid amounts up front (a negative total is a caller bug, not a
+	// zero-cash settlement) before the collected-amount short-circuit below.
+	if invoice.Total < 0 || invoice.CreditApplied < 0 {
+		return fmt.Errorf("invoice %s: invalid amounts (total=%d credit_applied=%d)", invoice.ID, invoice.Total, invoice.CreditApplied)
+	}
+
 	// Post the CASH actually collected, not the gross Total. When account credit
 	// was applied to this invoice, the credit-application posting already
 	// relieved AR by credit_applied; only Total-credit_applied was collected in
