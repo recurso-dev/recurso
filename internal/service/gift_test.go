@@ -46,6 +46,33 @@ func (m *mockGiftRepo) Update(ctx context.Context, g *domain.Gift) error {
 	return nil
 }
 
+func (m *mockGiftRepo) MarkRedeemed(_ context.Context, giftID, tenantID, redeemedBy uuid.UUID, at time.Time) (bool, error) {
+	for _, g := range m.gifts {
+		if g.ID == giftID && g.TenantID == tenantID {
+			if g.Status != domain.GiftStatusPurchased {
+				return false, nil // already redeemed — lost the claim
+			}
+			g.Status = domain.GiftStatusRedeemed
+			g.RedeemedByCustomerID = &redeemedBy
+			g.RedeemedAt = &at
+			g.UpdatedAt = at
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (m *mockGiftRepo) RevertRedemption(_ context.Context, giftID, tenantID uuid.UUID) error {
+	for _, g := range m.gifts {
+		if g.ID == giftID && g.TenantID == tenantID {
+			g.Status = domain.GiftStatusPurchased
+			g.RedeemedByCustomerID = nil
+			g.RedeemedAt = nil
+		}
+	}
+	return nil
+}
+
 // --- Mock SubscriptionRepository (minimal for gift tests) ---
 type mockSubRepoForGift struct {
 	created []*domain.Subscription

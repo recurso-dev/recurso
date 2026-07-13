@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -53,6 +54,29 @@ func (r *GiftRepository) List(ctx context.Context, tenantID uuid.UUID, limit, of
 		return nil, err
 	}
 	return gifts, nil
+}
+
+// MarkRedeemed atomically flips purchased -> redeemed. Returns true only when
+// this call made the transition (WHERE status = 'purchased'), so concurrent
+// redemptions of the same gift can't both win.
+func (r *GiftRepository) MarkRedeemed(ctx context.Context, giftID, tenantID, redeemedBy uuid.UUID, at time.Time) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE gifts SET status = $1, redeemed_by_customer_id = $2, redeemed_at = $3, updated_at = $3
+		 WHERE id = $4 AND tenant_id = $5 AND status = $6`,
+		domain.GiftStatusRedeemed, redeemedBy, at, giftID, tenantID, domain.GiftStatusPurchased)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+func (r *GiftRepository) RevertRedemption(ctx context.Context, giftID, tenantID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE gifts SET status = $1, redeemed_by_customer_id = NULL, redeemed_at = NULL, updated_at = NOW()
+		 WHERE id = $2 AND tenant_id = $3`,
+		domain.GiftStatusPurchased, giftID, tenantID)
+	return err
 }
 
 func (r *GiftRepository) Update(ctx context.Context, gift *domain.Gift) error {

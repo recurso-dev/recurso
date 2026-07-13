@@ -158,12 +158,27 @@ func (s *GiftService) RedeemGift(ctx context.Context, tenantID uuid.UUID, recipi
 		return nil, errors.New("gift already redeemed")
 	}
 
-	// 2. Create Subscription
-	plan, err := s.planRepo.GetByID(ctx, gift.PlanID)
+	// 2. Atomically CLAIM the gift (purchased -> redeemed) before minting the
+	// subscription. Without this, two concurrent redemptions of the same code
+	// both pass the status check above and each create a subscription.
+	now := time.Now()
+	claimed, err := s.giftRepo.MarkRedeemed(ctx, gift.ID, tenantID, recipientCustomerID, now)
 	if err != nil {
 		return nil, err
 	}
+	if !claimed {
+		return nil, errors.New("gift already redeemed")
+	}
+	// From here on, revert the claim on any failure so the recipient can retry.
+
+	// 3. Create Subscription
+	plan, err := s.planRepo.GetByID(ctx, gift.PlanID)
+	if err != nil {
+		_ = s.giftRepo.RevertRedemption(ctx, gift.ID, tenantID)
+		return nil, err
+	}
 	if plan == nil {
+		_ = s.giftRepo.RevertRedemption(ctx, gift.ID, tenantID)
 		return nil, errors.New("gift plan not found")
 	}
 
@@ -196,19 +211,11 @@ func (s *GiftService) RedeemGift(ctx context.Context, tenantID uuid.UUID, recipi
 	// If not, adding it is a good idea for Gifts.
 
 	if err := s.subscriptionRepo.Create(ctx, sub); err != nil {
+		// Roll the gift back to purchased so the claim doesn't strand it.
+		_ = s.giftRepo.RevertRedemption(ctx, gift.ID, tenantID)
 		return nil, err
 	}
 
-	// 3. Mark Gift Redeemed
-	now := time.Now()
-	gift.Status = domain.GiftStatusRedeemed
-	gift.RedeemedByCustomerID = &recipientCustomerID
-	gift.RedeemedAt = &now
-	gift.UpdatedAt = now
-
-	if err := s.giftRepo.Update(ctx, gift); err != nil {
-		return nil, err
-	}
-
+	// The gift was already marked redeemed by the atomic claim above.
 	return sub, nil
 }

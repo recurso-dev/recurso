@@ -55,4 +55,11 @@ type GiftRepository interface {
 	GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Gift, error)
 	List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Gift, error)
 	Update(ctx context.Context, gift *domain.Gift) error
+	// MarkRedeemed atomically transitions a gift purchased->redeemed, returning
+	// true only for the caller that won the transition. This is the single-redeem
+	// gate: two concurrent redemptions can't both mint a subscription.
+	MarkRedeemed(ctx context.Context, giftID, tenantID, redeemedBy uuid.UUID, at time.Time) (bool, error)
+	// RevertRedemption returns a gift to purchased, used if the subscription
+	// creation fails after the claim so the recipient can retry.
+	RevertRedemption(ctx context.Context, giftID, tenantID uuid.UUID) error
 }
