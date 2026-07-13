@@ -379,29 +379,30 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 		return
 	}
 
-	// 1. Verify Signature. IgnoreAPIVersionMismatch keeps HMAC verification but
-	// tolerates events stamped with a different Stripe API version than the
-	// pinned stripe-go release (accounts commonly emit an older default version)
-	// — Stripe's recommended handling; without it every delivery 401s.
-	var event stripe.Event
-	if h.stripeWebhookSecret != "" {
-		event, err = webhook.ConstructEventWithOptions(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret,
-			webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
-		if err != nil {
-			h.logger.Warn("stripe webhook signature verification failed",
-				"error", err,
-				"ip", c.ClientIP(),
-			)
-			respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
-			return
-		}
-	} else {
-		h.logger.Warn("STRIPE_WEBHOOK_SECRET not set — skipping signature verification")
-		if err := json.Unmarshal(body, &event); err != nil {
-			h.logger.Error("invalid stripe webhook JSON", "error", err)
-			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid JSON")
-			return
-		}
+	// 1. Verify Signature. Fail CLOSED: an unconfigured secret must REJECT the
+	// webhook, never process it unverified — otherwise a forged
+	// invoice.payment_succeeded / checkout.session.completed with a known
+	// invoice_id would settle an invoice with no real payment on a misconfigured
+	// deploy. (Razorpay fails closed the same way; this path previously fell open,
+	// only logging a warning — ENG-175.)
+	if h.stripeWebhookSecret == "" {
+		h.logger.Error("STRIPE_WEBHOOK_SECRET not set — rejecting webhook (fail closed)", "ip", c.ClientIP())
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "webhook verification not configured")
+		return
+	}
+	// IgnoreAPIVersionMismatch keeps HMAC verification but tolerates events
+	// stamped with a different Stripe API version than the pinned stripe-go
+	// release (accounts commonly emit an older default version) — Stripe's
+	// recommended handling; without it every delivery 401s.
+	event, err := webhook.ConstructEventWithOptions(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret,
+		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
+	if err != nil {
+		h.logger.Warn("stripe webhook signature verification failed",
+			"error", err,
+			"ip", c.ClientIP(),
+		)
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "invalid signature")
+		return
 	}
 
 	h.logger.Info("stripe webhook received", "event_type", event.Type)
