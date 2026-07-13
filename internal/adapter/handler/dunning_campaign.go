@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"time"
 
@@ -9,6 +11,16 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/service"
 )
+
+// respondStepError maps a step-write error: a cross-tenant (or missing)
+// campaign/step surfaces as sql.ErrNoRows and is reported as 404.
+func respondStepError(c *gin.Context, err error) {
+	if errors.Is(err, sql.ErrNoRows) {
+		respondError(c, http.StatusNotFound, codeNotFound, "campaign or step not found")
+		return
+	}
+	respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+}
 
 type DunningCampaignHandler struct {
 	service *service.DunningCampaignService
@@ -167,6 +179,11 @@ type createCampaignStepRequest struct {
 
 // CreateStep adds a step to a dunning campaign
 func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	campaignID, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid campaign id")
@@ -192,8 +209,8 @@ func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
 		CreatedAt:     time.Now().UTC(),
 	}
 
-	if err := h.service.CreateStep(c.Request.Context(), step); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.CreateStep(c.Request.Context(), step, tenantID); err != nil {
+		respondStepError(c, err)
 		return
 	}
 
@@ -212,6 +229,11 @@ type updateCampaignStepRequest struct {
 
 // UpdateStep updates a dunning campaign step
 func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
@@ -241,8 +263,8 @@ func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 		step.IsPaymentWall = *req.IsPaymentWall
 	}
 
-	if err := h.service.UpdateStep(c.Request.Context(), step); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.UpdateStep(c.Request.Context(), step, tenantID); err != nil {
+		respondStepError(c, err)
 		return
 	}
 
@@ -251,14 +273,19 @@ func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 
 // DeleteStep removes a step from a dunning campaign
 func (h *DunningCampaignHandler) DeleteStep(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
 	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid step id")
 		return
 	}
 
-	if err := h.service.DeleteStep(c.Request.Context(), id); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	if err := h.service.DeleteStep(c.Request.Context(), id, tenantID); err != nil {
+		respondStepError(c, err)
 		return
 	}
 

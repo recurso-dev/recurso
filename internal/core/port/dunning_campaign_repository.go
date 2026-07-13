@@ -16,11 +16,12 @@ type DunningCampaignRepository interface {
 	ListCampaignsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.DunningCampaign, error)
 	UpdateCampaign(ctx context.Context, campaign *domain.DunningCampaign) error
 
-	// Step CRUD
-	CreateStep(ctx context.Context, step *domain.DunningCampaignStep) error
+	// Step CRUD. All three are tenant-scoped via the parent campaign: the write
+	// only touches a step whose campaign belongs to tenantID (ENG-165 C2).
+	CreateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error
 	GetStepsByCampaign(ctx context.Context, campaignID uuid.UUID) ([]domain.DunningCampaignStep, error)
-	UpdateStep(ctx context.Context, step *domain.DunningCampaignStep) error
-	DeleteStep(ctx context.Context, id uuid.UUID) error
+	UpdateStep(ctx context.Context, step *domain.DunningCampaignStep, tenantID uuid.UUID) error
+	DeleteStep(ctx context.Context, id, tenantID uuid.UUID) error
 
 	// Execution CRUD
 	CreateExecution(ctx context.Context, exec *domain.DunningCampaignExecution) error
