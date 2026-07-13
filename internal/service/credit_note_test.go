@@ -58,6 +58,24 @@ func (m *mockCreditNoteRepo) SumActiveRefundsForInvoice(ctx context.Context, inv
 	return m.refundedSum, m.sumErr
 }
 
+func (m *mockCreditNoteRepo) CreateRefundWithinLimit(ctx context.Context, cn *domain.CreditNote, invoiceID uuid.UUID, amountPaid int64) (bool, error) {
+	if m.sumErr != nil {
+		return false, m.sumErr
+	}
+	if m.createErr != nil {
+		return false, m.createErr
+	}
+	// Mirror the real repo: over-refund → nothing inserted.
+	if cn.Amount+m.refundedSum > amountPaid {
+		return false, nil
+	}
+	if cn.ID == uuid.Nil {
+		cn.ID = uuid.New()
+	}
+	m.created = append(m.created, cn)
+	return true, nil
+}
+
 func (m *mockCreditNoteRepo) GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error) {
 	if m.getByRefundErr != nil {
 		return nil, m.getByRefundErr
