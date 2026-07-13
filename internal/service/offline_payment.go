@@ -81,21 +81,12 @@ func (s *OfflinePaymentService) CreateVirtualAccount(ctx context.Context, input 
 }
 
 func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, razorpayVAID string, amount int64, paymentID string) error {
-	va, err := s.repo.GetVirtualAccountByRazorpayID(ctx, razorpayVAID)
+	// Atomic increment (not read-modify-write): two concurrent credits for the
+	// same VA — e.g. an invoice paid in two bank transfers, which are DISTINCT
+	// webhook events the inbound dedup doesn't collapse — must both be counted.
+	va, err := s.repo.IncrementAmountReceived(ctx, razorpayVAID, amount)
 	if err != nil {
-		return fmt.Errorf("virtual account not found: %w", err)
-	}
-
-	va.AmountReceived += amount
-
-	if va.AmountReceived >= va.AmountExpected {
-		now := time.Now()
-		va.Status = "closed"
-		va.ClosedAt = &now
-	}
-
-	if err := s.repo.UpdateVirtualAccount(ctx, va); err != nil {
-		return fmt.Errorf("failed to update virtual account: %w", err)
+		return fmt.Errorf("failed to record virtual-account credit: %w", err)
 	}
 
 	// Mark linked invoice as paid. Inject the VA's tenant — MarkInvoicePaid reads

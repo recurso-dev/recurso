@@ -74,6 +74,23 @@ func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tena
 	return accounts, nil
 }
 
+// IncrementAmountReceived atomically applies a credit to the VA in one UPDATE,
+// so two concurrent credits can't lose an increment (the old read-modify-write
+// did last-write-wins). It also closes the VA in the same statement once the
+// expected amount is reached, and returns the updated row.
+func (r *OfflinePaymentRepository) IncrementAmountReceived(ctx context.Context, razorpayVAID string, amount int64) (*domain.VirtualAccount, error) {
+	query := `
+		UPDATE virtual_accounts
+		SET amount_received = amount_received + $2,
+		    status = CASE WHEN amount_received + $2 >= amount_expected THEN 'closed' ELSE status END,
+		    closed_at = CASE WHEN amount_received + $2 >= amount_expected AND closed_at IS NULL THEN NOW() ELSE closed_at END
+		WHERE razorpay_va_id = $1
+		RETURNING id, tenant_id, customer_id, invoice_id, account_number, ifsc_code,
+			bank_name, beneficiary_name, razorpay_va_id, status, amount_expected, amount_received, closed_at, created_at`
+	row := r.db.QueryRowContext(ctx, query, razorpayVAID, amount)
+	return r.scanVA(row)
+}
+
 func (r *OfflinePaymentRepository) UpdateVirtualAccount(ctx context.Context, va *domain.VirtualAccount) error {
 	query := `UPDATE virtual_accounts SET status = $1, amount_received = $2, closed_at = $3 WHERE id = $4`
 	_, err := r.db.ExecContext(ctx, query, va.Status, va.AmountReceived, va.ClosedAt, va.ID)

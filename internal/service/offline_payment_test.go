@@ -31,6 +31,14 @@ func (r *fakeOfflineRepo) UpdateVirtualAccount(_ context.Context, va *domain.Vir
 	r.vas[va.RazorpayVAID] = va
 	return nil
 }
+func (r *fakeOfflineRepo) IncrementAmountReceived(_ context.Context, id string, amount int64) (*domain.VirtualAccount, error) {
+	va := r.vas[id]
+	va.AmountReceived += amount
+	if va.AmountReceived >= va.AmountExpected {
+		va.Status = "closed"
+	}
+	return va, nil
+}
 
 type fakeOfflineInvoiceRepo struct {
 	port.InvoiceRepository
