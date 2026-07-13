@@ -72,6 +72,29 @@ func (r *QuoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (
 	return &quote, nil
 }
 
+// ClaimForConversion atomically stamps invoice_id on an accepted, not-yet-
+// converted quote. Returns true only when this call made the transition
+// (WHERE status = accepted AND invoice_id IS NULL), so two concurrent
+// conversions can't each mint an invoice.
+func (r *QuoteRepository) ClaimForConversion(ctx context.Context, id, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE quotes SET invoice_id = $1, updated_at = NOW()
+		 WHERE id = $2 AND tenant_id = $3 AND status = $4 AND invoice_id IS NULL`,
+		invoiceID, id, tenantID, domain.QuoteStatusAccepted)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+func (r *QuoteRepository) ReleaseConversion(ctx context.Context, id, tenantID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE quotes SET invoice_id = NULL, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
+		id, tenantID)
+	return err
+}
+
 func (r *QuoteRepository) Update(ctx context.Context, quote *domain.Quote) error {
 	lineItemsJSON, err := json.Marshal(quote.LineItems)
 	if err != nil {

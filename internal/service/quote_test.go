@@ -37,6 +37,24 @@ func (m *qtMockQuoteRepo) Update(ctx context.Context, q *domain.Quote) error {
 	return nil
 }
 
+func (m *qtMockQuoteRepo) ClaimForConversion(_ context.Context, id, tenantID, invoiceID uuid.UUID) (bool, error) {
+	if m.quote == nil || m.quote.ID != id || m.quote.TenantID != tenantID {
+		return false, sql.ErrNoRows
+	}
+	if m.quote.Status != domain.QuoteStatusAccepted || m.quote.InvoiceID != nil {
+		return false, nil // lost the claim — already converting/converted
+	}
+	m.quote.InvoiceID = &invoiceID
+	return true, nil
+}
+
+func (m *qtMockQuoteRepo) ReleaseConversion(_ context.Context, id, tenantID uuid.UUID) error {
+	if m.quote != nil && m.quote.ID == id && m.quote.TenantID == tenantID {
+		m.quote.InvoiceID = nil
+	}
+	return nil
+}
+
 type qtMockInvoiceRepo struct {
 	port.InvoiceRepository
 	created *domain.Invoice
@@ -45,6 +63,25 @@ type qtMockInvoiceRepo struct {
 func (m *qtMockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) error {
 	m.created = inv
 	return nil
+}
+
+// TestQuoteConvertToInvoice_ConvertTwiceRejected proves the ENG-184 fix: once a
+// quote is converted (invoice_id stamped by the atomic claim), a second convert
+// is refused — one quote can only ever produce one invoice.
+func TestQuoteConvertToInvoice_ConvertTwiceRejected(t *testing.T) {
+	quote := &domain.Quote{
+		ID: uuid.New(), TenantID: uuid.New(), CustomerID: uuid.New(),
+		QuoteNumber: "Q-CV", Status: domain.QuoteStatusAccepted, Total: 500000, Currency: "USD",
+	}
+	qr := &qtMockQuoteRepo{quote: quote}
+	svc := NewQuoteService(qr, &qtMockInvoiceRepo{})
+
+	if _, err := svc.ConvertToInvoice(context.Background(), quote.ID, quote.TenantID); err != nil {
+		t.Fatalf("first convert: %v", err)
+	}
+	if _, err := svc.ConvertToInvoice(context.Background(), quote.ID, quote.TenantID); err != ErrCannotConvertQuote {
+		t.Fatalf("second convert: err = %v, want ErrCannotConvertQuote", err)
+	}
 }
 
 // TestQuoteConvertToInvoice_CarriesMoneyFields proves the ENG-144 fix: a

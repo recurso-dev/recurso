@@ -208,9 +208,20 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 		return nil, ErrCannotConvertQuote
 	}
 
+	// Atomically CLAIM the quote for conversion (stamp the pre-generated invoice
+	// id) before creating the invoice. Without this, two concurrent conversions
+	// both pass CanConvertToInvoice and each create an invoice for one quote.
+	invID := uuid.New()
+	claimed, err := s.quoteRepo.ClaimForConversion(ctx, id, tenantID, invID)
+	if err != nil {
+		return nil, err
+	}
+	if !claimed {
+		return nil, ErrCannotConvertQuote
+	}
+
 	// Create invoice from quote
 	dueDate := time.Now().AddDate(0, 0, 30) // Net 30
-	invID := uuid.New()
 
 	// Itemization (Phase 1): carry the quote's own line items onto the invoice so
 	// the converted invoice is itemized like every other path. Quotes have no
@@ -252,17 +263,12 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 	}
 
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
+		// Release the claim so the accepted quote can be converted again.
+		_ = s.quoteRepo.ReleaseConversion(ctx, id, tenantID)
 		return nil, err
 	}
 
-	// Update quote with invoice reference
-	quote.InvoiceID = &invoice.ID
-	quote.UpdatedAt = time.Now()
-
-	if err := s.quoteRepo.Update(ctx, quote); err != nil {
-		return nil, err
-	}
-
+	// The quote's invoice_id was already stamped by the atomic claim above.
 	return invoice, nil
 }
 
