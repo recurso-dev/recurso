@@ -39,18 +39,22 @@ func (r *DunningRepository) GetWeights(ctx context.Context, contextKey string) (
 	return weights, nil
 }
 
-func (r *DunningRepository) UpdateWeight(ctx context.Context, weight domain.DunningWeight) error {
+// ApplyOutcome atomically folds one reward into the arm's running average. For
+// a new arm the first observation seeds average=reward, sample_count=1; for an
+// existing arm it computes the incremental average from the CURRENT row values
+// (sample_count+1) in a single statement, so concurrent recordings can't lose an
+// update the way a read-average-then-overwrite did.
+func (r *DunningRepository) ApplyOutcome(ctx context.Context, contextKey, actionID string, reward float64) error {
 	query := `
 		INSERT INTO dunning_weights (context_key, action_id, average_reward, sample_count, updated_at)
-		VALUES ($1, $2, $3, $4, $5)
+		VALUES ($1, $2, $3, 1, NOW())
 		ON CONFLICT (context_key, action_id) DO UPDATE SET
-			average_reward = EXCLUDED.average_reward,
-			sample_count = EXCLUDED.sample_count,
-			updated_at = EXCLUDED.updated_at
+			sample_count = dunning_weights.sample_count + 1,
+			average_reward = dunning_weights.average_reward
+				+ ($3 - dunning_weights.average_reward) / (dunning_weights.sample_count + 1),
+			updated_at = NOW()
 	`
-	_, err := r.db.ExecContext(ctx, query,
-		weight.ContextKey, weight.ActionID, weight.AverageReward, weight.SampleCount, weight.UpdatedAt,
-	)
+	_, err := r.db.ExecContext(ctx, query, contextKey, actionID, reward)
 	return err
 }
 

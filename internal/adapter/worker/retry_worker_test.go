@@ -123,8 +123,15 @@ func (m *mockDunningRepo) GetWeights(ctx context.Context, contextKey string) ([]
 	return results, nil
 }
 
-func (m *mockDunningRepo) UpdateWeight(ctx context.Context, weight domain.DunningWeight) error {
-	m.weights[weight.ContextKey+":"+weight.ActionID] = weight
+func (m *mockDunningRepo) ApplyOutcome(ctx context.Context, contextKey, actionID string, reward float64) error {
+	key := contextKey + ":" + actionID
+	w, ok := m.weights[key]
+	if !ok {
+		w = domain.DunningWeight{ContextKey: contextKey, ActionID: actionID}
+	}
+	w.SampleCount++
+	w.AverageReward += (reward - w.AverageReward) / float64(w.SampleCount)
+	m.weights[key] = w
 	return nil
 }
 

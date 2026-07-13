@@ -22,7 +22,10 @@ const (
 
 type DunningRepository interface {
 	GetWeights(ctx context.Context, contextKey string) ([]domain.DunningWeight, error)
-	UpdateWeight(ctx context.Context, weight domain.DunningWeight) error
+	// ApplyOutcome atomically folds one observed reward into the (context_key,
+	// action_id) weight's running average in SQL, so concurrent outcome
+	// recordings can't lose an update (the old read-average-write did).
+	ApplyOutcome(ctx context.Context, contextKey, actionID string, reward float64) error
 	RecordHistory(ctx context.Context, history domain.DunningHistory) error
 }
 
@@ -272,38 +275,13 @@ func (s *SmartRetryService) RecordOutcome(ctx context.Context, history domain.Du
 		return err
 	}
 
-	// 2. Update Weights (Incremental Average)
-	// NewAverage = OldAverage + (Reward - OldAverage) / NewSampleCount
-	weights, err := s.repo.GetWeights(ctx, history.ContextKey)
-	if err != nil {
-		return err
-	}
-
-	var weight domain.DunningWeight
-	found := false
-	for _, w := range weights {
-		if w.ActionID == history.ActionID {
-			weight = w
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		weight = domain.DunningWeight{
-			ContextKey: history.ContextKey,
-			ActionID:   history.ActionID,
-		}
-	}
-
-	weight.SampleCount++
-	weight.AverageReward += (history.Reward - weight.AverageReward) / float64(weight.SampleCount)
-	weight.UpdatedAt = time.Now()
-
-	// Invalidate cache for this context key
+	// 2. Fold the reward into the (context_key, action_id) running average
+	// ATOMICALLY in SQL — NewAverage = OldAverage + (Reward - OldAverage) /
+	// NewSampleCount computed on the current DB row. The old read-average-then-
+	// write lost updates when two outcomes for the same arm raced (e.g. two
+	// retry-worker instances, or a retry outcome racing a webhook success).
 	s.invalidateCache(history.ContextKey)
-
-	return s.repo.UpdateWeight(ctx, weight)
+	return s.repo.ApplyOutcome(ctx, history.ContextKey, history.ActionID, history.Reward)
 }
 
 // betaSample generates a sample from a Beta(alpha, beta) distribution
