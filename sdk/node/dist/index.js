@@ -3,8 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.Recurso = void 0;
+exports.Recurso = exports.DEFAULT_BASE_URL = void 0;
 const axios_1 = __importDefault(require("axios"));
+/** Default API base URL, used when none is supplied at construction. */
+exports.DEFAULT_BASE_URL = 'http://localhost:8080';
 /**
  * Official Node.js SDK for the Recurso billing API.
  *
@@ -13,7 +15,13 @@ const axios_1 = __importDefault(require("axios"));
  * (cancel, pause, resume, ...) live on their resource.
  */
 class Recurso {
-    constructor(apiKey, baseURL = 'http://localhost:8080') {
+    /**
+     * @param apiKey  API key used for Bearer authentication.
+     * @param options Client options. Pass `{ baseUrl }` to target a specific
+     *                environment; a bare string is also accepted for backward
+     *                compatibility. Defaults to {@link DEFAULT_BASE_URL}.
+     */
+    constructor(apiKey, options = {}) {
         this.get = async (path, params) => (await this.client.get(path, { params })).data;
         this.post = async (path, data) => (await this.client.post(path, data)).data;
         this.put = async (path, data) => (await this.client.put(path, data)).data;
@@ -161,6 +169,7 @@ class Recurso {
             accounts: () => this.get('/v1/ledger/accounts'),
             entries: (params) => this.get('/v1/ledger/entries', params),
         };
+        const baseURL = (typeof options === 'string' ? options : options.baseUrl) ?? exports.DEFAULT_BASE_URL;
         this.client = axios_1.default.create({
             baseURL,
             headers: {
