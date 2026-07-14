@@ -7,17 +7,43 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
+const openAIChatCompletionsURL = "https://api.openai.com/v1/chat/completions"
+
+// openAIHTTPClient is shared and timeout-bounded. Completions can be slow, so
+// the timeout is generous, but a missing one lets a stalled connection hang the
+// caller forever. Reusing one client also pools connections across requests.
+var openAIHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
+const (
+	openAIMaxRetries  = 3
+	openAIBaseBackoff = 500 * time.Millisecond
+)
+
+// openAIBackoff waits an exponentially growing delay before a retry, aborting
+// early (returning false) if the caller's context is cancelled.
+func openAIBackoff(ctx context.Context, attempt int) bool {
+	select {
+	case <-time.After(openAIBaseBackoff * time.Duration(int64(1)<<attempt)):
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 type OpenAIProvider struct {
-	apiKey string
-	model  string
+	apiKey  string
+	model   string
+	baseURL string // overridable in tests; defaults to the OpenAI endpoint
 }
 
 func NewOpenAIProvider(apiKey string) *OpenAIProvider {
 	return &OpenAIProvider{
-		apiKey: apiKey,
-		model:  "gpt-4o",
+		apiKey:  apiKey,
+		model:   "gpt-4o",
+		baseURL: openAIChatCompletionsURL,
 	}
 }
 
@@ -60,28 +86,44 @@ func (p *OpenAIProvider) GenerateCompletion(ctx context.Context, systemPrompt, u
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", err
+	// Send with a bounded timeout and retry transient failures. A raw
+	// &http.Client{} has no timeout, so a stalled connection would hang the
+	// caller (an analytics request) forever. The body is a fixed []byte, so we
+	// rebuild the request each attempt (a consumed body can't be re-sent).
+	var respBody []byte
+	var statusCode int
+	for attempt := 0; ; attempt++ {
+		req, rErr := http.NewRequestWithContext(ctx, "POST", p.baseURL, bytes.NewReader(jsonData))
+		if rErr != nil {
+			return "", rErr
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+		resp, dErr := openAIHTTPClient.Do(req)
+		if dErr != nil {
+			if attempt < openAIMaxRetries && ctx.Err() == nil && openAIBackoff(ctx, attempt) {
+				continue
+			}
+			return "", dErr
+		}
+		respBody, err = io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
+		if err != nil {
+			return "", err
+		}
+		statusCode = resp.StatusCode
+
+		// Retry on rate limit / server errors (transient); other codes are terminal.
+		if (statusCode == http.StatusTooManyRequests || statusCode >= 500) &&
+			attempt < openAIMaxRetries && ctx.Err() == nil && openAIBackoff(ctx, attempt) {
+			continue
+		}
+		break
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("OpenAI API error (%d): %s", resp.StatusCode, string(respBody))
+	if statusCode != http.StatusOK {
+		return "", fmt.Errorf("OpenAI API error (%d): %s", statusCode, string(respBody))
 	}
 
 	var res openAIResponse

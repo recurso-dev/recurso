@@ -172,6 +172,29 @@ func TestCachedSalesTaxProvider_SecondLookupServedFromCache(t *testing.T) {
 	}
 }
 
+func TestCachedSalesTaxProvider_EvictsExpiredEntries(t *testing.T) {
+	fake := &fakeSalesTaxProvider{result: &SalesTaxResult{Rate: 0.05, HasNexus: true}}
+	cached := NewCachedSalesTaxProvider(fake, time.Hour)
+	now := time.Now()
+	cached.now = func() time.Time { return now }
+
+	// Populate five distinct jurisdictions.
+	for _, zip := range []string{"10001", "10002", "10003", "10004", "10005"} {
+		_, _ = cached.LookupSalesTax(context.Background(), &SalesTaxQuery{ToState: "NY", ToZip: zip, Amount: 10000, ToCountry: "US"})
+	}
+	if got := len(cached.entries); got != 5 {
+		t.Fatalf("cached entries = %d, want 5", got)
+	}
+
+	// Advance past the TTL so all five are stale; the next write (a fresh
+	// lookup) must sweep them instead of growing the map to six.
+	now = now.Add(2 * time.Hour)
+	_, _ = cached.LookupSalesTax(context.Background(), &SalesTaxQuery{ToState: "NY", ToZip: "20001", Amount: 10000, ToCountry: "US"})
+	if got := len(cached.entries); got != 1 {
+		t.Errorf("cached entries after eviction = %d, want 1 (5 stale swept + 1 fresh)", got)
+	}
+}
+
 func TestCachedSalesTaxProvider_TTLExpiryRefetches(t *testing.T) {
 	fake := &fakeSalesTaxProvider{result: &SalesTaxResult{Rate: 0.08, TaxAmount: 800, HasNexus: true}}
 	cached := NewCachedSalesTaxProvider(fake, time.Hour)
