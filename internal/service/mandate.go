@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
@@ -218,10 +219,16 @@ func (s *MandateService) DebitSubscription(ctx context.Context, mandate *domain.
 func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mandate, customer *domain.Customer, subtotal int64, tax InvoiceTax, currency string) error {
 	invoiceID := uuid.New()
 	total := subtotal + tax.Total
+	now := time.Now()
 
-	// ENG-153: apply the customer's account credit against this debit. Preview
-	// the available adjustment-credit balance and charge the gateway only the
-	// net; the actual draw-down happens after the invoice exists.
+	// The per-cycle claim key, captured BEFORE the schedule advances (which would
+	// change it). The OPEN invoice carries it under a UNIQUE index, making the
+	// invoice — not the gateway — the durable at-most-once claim (Razorpay does
+	// not honor the idempotency header; verified for ENG-164).
+	cycleKey := mandateDebitIdempotencyKey(mandate)
+
+	// ENG-153: preview the customer's account credit so we charge the gateway only
+	// the net; the actual draw-down happens after the invoice exists.
 	var previewCredit int64
 	if s.creditApplier != nil {
 		if sum, sErr := s.creditApplier.SumApplicableAdjustments(ctx, mandate.TenantID, mandate.CustomerID, currency); sErr != nil {
@@ -235,59 +242,32 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		}
 	}
 	netCharge := total - previewCredit
-	var err error
 
-	// Charge the gateway for the net. If credit fully covers the debit, skip the
-	// gateway entirely (nothing to collect).
-	var result *port.PaymentResult
-	if netCharge > 0 {
-		result, err = s.gateway.ExecuteMandateDebit(ctx, port.MandateDebitRequest{
-			TokenID:            mandate.RazorpayTokenID,
-			RazorpayCustomerID: mandate.RazorpayCustomerID,
-			Email:              customer.Email,
-			Contact:            customer.Phone,
-			Amount:             netCharge,
-			Currency:           currency,
-			InvoiceID:          invoiceID.String(),
-			// Stable per billing cycle: LastDebitAt only advances when a cycle is
-			// SUCCESSFULLY debited, so every retry of the current cycle carries the
-			// same key and the gateway dedupes the charge (ENG-190). This bounds the
-			// exposure where a debit succeeds at the gateway but a later local step
-			// fails and the scheduler re-attempts the same cycle.
-			IdempotencyKey: mandateDebitIdempotencyKey(mandate),
-		})
-		if err != nil {
-			return fmt.Errorf("mandate debit failed: %w", err)
-		}
-		if !result.Success {
-			return fmt.Errorf("mandate debit unsuccessful: %s", result.ErrorMsg)
-		}
-	}
-
-	// Create the invoice OPEN, not paid. The recurring debit captures
-	// asynchronously, so the invoice is settled ONLY by the order.paid /
-	// payment.captured webhook (which resolves it via notes.invoice_id). Booking
-	// it paid here would record revenue that was never collected (ENG-141). The
-	// invoice total stays GROSS; credit application (below) records credit_applied.
-	now := time.Now()
+	// CLAIM FIRST — before any charge. Create the invoice OPEN with the per-cycle
+	// key. If a prior attempt of this cycle already created it, the UNIQUE index
+	// rejects this insert: the cycle is already claimed, so we must NOT charge
+	// again — ensure the schedule has moved on and return cleanly. The invoice is
+	// created OPEN and settled by the order.paid webhook (booking it paid here
+	// would record revenue never collected — ENG-141).
 	invoice := &domain.Invoice{
-		ID:             invoiceID,
-		TenantID:       mandate.TenantID,
-		CustomerID:     mandate.CustomerID,
-		SubscriptionID: mandate.SubscriptionID,
-		InvoiceNumber:  fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
-		BillingReason:  "mandate_debit",
-		AmountDue:      total,
-		AmountPaid:     0,
-		Currency:       currency,
-		Subtotal:       subtotal,
-		TaxAmount:      tax.Total,
-		Total:          total,
-		IGSTAmount:     tax.IGST,
-		CGSTAmount:     tax.CGST,
-		SGSTAmount:     tax.SGST,
-		HSNCode:        tax.HSN,
-		Status:         domain.InvoiceStatusOpen,
+		ID:              invoiceID,
+		TenantID:        mandate.TenantID,
+		CustomerID:      mandate.CustomerID,
+		SubscriptionID:  mandate.SubscriptionID,
+		InvoiceNumber:   fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
+		BillingReason:   "mandate_debit",
+		MandateCycleKey: cycleKey,
+		AmountDue:       total,
+		AmountPaid:      0,
+		Currency:        currency,
+		Subtotal:        subtotal,
+		TaxAmount:       tax.Total,
+		Total:           total,
+		IGSTAmount:      tax.IGST,
+		CGSTAmount:      tax.CGST,
+		SGSTAmount:      tax.SGST,
+		HSNCode:         tax.HSN,
+		Status:          domain.InvoiceStatusOpen,
 		// Single line for the debit, carrying the resolved GST split (zero split on
 		// the legacy fixed-amount path).
 		LineItems: []domain.InvoiceItem{
@@ -296,15 +276,60 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		CreatedAt: now,
 		DueDate:   now,
 	}
-
 	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
+		if isMandateCycleConflict(err) {
+			slog.Default().Warn("mandate debit: cycle already claimed; skipping duplicate charge",
+				"mandate_id", mandate.ID, "cycle_key", cycleKey)
+			// A prior attempt already claimed (and possibly charged) this cycle.
+			// Never charge again; just make sure the schedule advanced so we stop
+			// re-claiming it.
+			if aErr := s.advanceMandateSchedule(ctx, mandate, now); aErr != nil {
+				slog.Default().Error("mandate debit: advance after cycle conflict failed",
+					"mandate_id", mandate.ID, "error", aErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("failed to create invoice for mandate debit: %w", err)
 	}
 
-	// Draw down the credit against the now-persisted invoice. When it fully
-	// covers the debit, ApplyAdjustmentCredits marks the invoice paid (no webhook
-	// will arrive, since we skipped the gateway). Best-effort: a failure leaves
-	// the invoice open at full amount for the webhook/reconciliation to settle.
+	// Advance the schedule to the next full cycle NOW — before the charge — so a
+	// charge that succeeds-then-crashes, or fails, can never re-run this cycle.
+	if err := s.advanceMandateSchedule(ctx, mandate, now); err != nil {
+		// The invoice (claim) exists, so a re-claim conflicts and skips the charge;
+		// surface the error but the double-charge window stays closed.
+		return fmt.Errorf("mandate debit: advance schedule: %w", err)
+	}
+
+	// Now charge the gateway for the net. If credit fully covers the debit, skip
+	// the gateway entirely (nothing to collect).
+	var result *port.PaymentResult
+	if netCharge > 0 {
+		var err error
+		result, err = s.gateway.ExecuteMandateDebit(ctx, port.MandateDebitRequest{
+			TokenID:            mandate.RazorpayTokenID,
+			RazorpayCustomerID: mandate.RazorpayCustomerID,
+			Email:              customer.Email,
+			Contact:            customer.Phone,
+			Amount:             netCharge,
+			Currency:           currency,
+			InvoiceID:          invoiceID.String(),
+			// Sent for completeness; Razorpay does not dedupe on it (verified for
+			// ENG-164), so the real guard is the claimed invoice above.
+			IdempotencyKey: cycleKey,
+		})
+		if err != nil {
+			// Cycle claimed + schedule advanced, so this won't re-charge; the OPEN
+			// invoice is left for dunning / the next cycle.
+			return fmt.Errorf("mandate debit failed: %w", err)
+		}
+		if !result.Success {
+			return fmt.Errorf("mandate debit unsuccessful: %s", result.ErrorMsg)
+		}
+	}
+
+	// Draw down the credit against the persisted invoice. When it fully covers the
+	// debit, ApplyAdjustmentCredits marks the invoice paid (no webhook will arrive,
+	// since we skipped the gateway). Best-effort.
 	if s.creditApplier != nil && previewCredit > 0 {
 		applied, aErr := s.creditApplier.ApplyAdjustmentCredits(ctx, mandate.TenantID, mandate.CustomerID, currency, invoice.ID, total)
 		if aErr != nil {
@@ -318,30 +343,40 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		}
 	}
 
-	// Capture the gateway payment id when the debit response carries a real one
-	// (pay_*) — refunds are issued against it. The recurring-charge call returns
-	// the pay_* id; the order.paid webhook also records it via SetGatewayPaymentID
-	// (see WebhookHandler.HandleRazorpay), so this is a best-effort early capture.
-	// Only a payment id is stored — an order id (order_*) would poison
-	// gateway_payment_id and break refunds, so isGatewayPaymentID guards it.
+	// Best-effort early capture of the gateway payment id (pay_*) for refunds; the
+	// order.paid webhook also records it. An order id (order_*) must never land in
+	// gateway_payment_id, so isGatewayPaymentID guards it.
 	if result != nil && isGatewayPaymentID(result.PaymentID) {
 		invoice.GatewayPaymentID = result.PaymentID
 		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, result.PaymentID); err != nil {
-			// The debit succeeded and the invoice exists; failing the whole
-			// debit here would re-run it next cycle and double-charge. Refunds
-			// for this invoice fall back to manual_required instead.
 			slog.Default().Error("failed to record gateway payment id for mandate debit",
 				"invoice_id", invoice.ID, "payment_id", result.PaymentID, "error", err)
 		}
 	}
 
-	// Advance mandate schedule
+	return nil
+}
+
+// advanceMandateSchedule moves the mandate to its next full billing cycle. Called
+// before the gateway charge so a charge that fails or crashes can't re-run the
+// same cycle (ENG-164).
+func (s *MandateService) advanceMandateSchedule(ctx context.Context, mandate *domain.Mandate, now time.Time) error {
 	mandate.LastDebitAt = &now
 	mandate.PreDebitNotified = false
 	nextDebit := s.calculateNextDebit(now, mandate.Frequency)
 	mandate.NextDebitAt = &nextDebit
-
 	return s.mandateRepo.Update(ctx, mandate)
+}
+
+// isMandateCycleConflict reports whether err is the UNIQUE-violation on the
+// mandate cycle key — i.e. this billing cycle was already claimed by a prior
+// (possibly crashed) debit attempt, so it must not be charged again.
+func isMandateCycleConflict(err error) bool {
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		return pqErr.Code == "23505" && strings.Contains(pqErr.Constraint, "mandate_cycle_key")
+	}
+	return false
 }
 
 // isGatewayPaymentID reports whether id is a refundable gateway payment
