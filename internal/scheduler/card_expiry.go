@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,7 +63,7 @@ func (s *CardExpiringScheduler) Start() {
 		}
 	}()
 
-	log.Println("✅ Card expiry scheduler started (runs every 12 hours)")
+	slog.Info("card expiry scheduler started (runs every 12 hours)")
 }
 
 // Stop stops the scheduler
@@ -72,7 +72,7 @@ func (s *CardExpiringScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("🛑 Card expiry scheduler stopped")
+	slog.Info("card expiry scheduler stopped")
 }
 
 // runCardExpiryNotifications sends notifications for cards expiring next month
@@ -83,7 +83,7 @@ func (s *CardExpiringScheduler) runCardExpiryNotifications() {
 	lockKey := "scheduler:card-expiry"
 	release, acquired, err := s.locker.Obtain(ctx, lockKey, 10*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for card expiry scheduler: %v", err)
+		slog.Error("failed to obtain lock for card expiry scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -91,7 +91,7 @@ func (s *CardExpiringScheduler) runCardExpiryNotifications() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for card expiry scheduler: %v", err)
+			slog.Error("failed to release lock for card expiry scheduler", "error", err)
 		}
 	}()
 
@@ -102,16 +102,16 @@ func (s *CardExpiringScheduler) runCardExpiryNotifications() {
 
 	customers, err := s.customerRepo.GetCustomersWithExpiringCards(ctx, targetMonth, targetYear)
 	if err != nil {
-		log.Printf("Error fetching customers with expiring cards: %v", err)
+		slog.Error("failed to fetch customers with expiring cards", "error", err)
 		return
 	}
 
 	if len(customers) == 0 {
-		log.Println("No cards expiring next month requiring notification")
+		slog.Info("no cards expiring next month requiring notification")
 		return
 	}
 
-	log.Printf("Found %d customers with cards expiring %d/%d", len(customers), targetMonth, targetYear)
+	slog.Info("found customers with expiring cards", "count", len(customers), "expiry_month", targetMonth, "expiry_year", targetYear)
 
 	for _, cust := range customers {
 		expiryDate := fmt.Sprintf("%s %d", time.Month(cust.CardExpMonth).String(), cust.CardExpYear)
@@ -126,14 +126,14 @@ func (s *CardExpiringScheduler) runCardExpiryNotifications() {
 		}
 
 		if err := s.notificationSvc.SendCardExpiringNotification(ctx, data); err != nil {
-			log.Printf("Failed to send card expiry notification for customer %s: %v", cust.CustomerID, err)
+			slog.Error("failed to send card expiry notification", "customer_id", cust.CustomerID, "error", err)
 			continue
 		}
 
 		if err := s.customerRepo.MarkCardExpiryNotificationSent(ctx, cust.CustomerID, cust.TenantID, cust.CardExpMonth, cust.CardExpYear, cust.CardLast4); err != nil {
-			log.Printf("Failed to mark card expiry notification as sent for customer %s: %v", cust.CustomerID, err)
+			slog.Error("failed to mark card expiry notification as sent", "customer_id", cust.CustomerID, "error", err)
 		}
 
-		log.Printf("✉️  Sent card expiry notification for customer %s to %s", cust.CustomerID, cust.CustomerEmail)
+		slog.Info("sent card expiry notification", "customer_id", cust.CustomerID, "customer_email", cust.CustomerEmail)
 	}
 }

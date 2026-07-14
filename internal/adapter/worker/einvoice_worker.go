@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -47,12 +47,12 @@ func (w *EInvoiceRetryWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	log.Println("EInvoiceRetryWorker started...")
+	slog.Info("e-invoice retry worker started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("EInvoiceRetryWorker stopping...")
+			slog.Info("e-invoice retry worker stopping")
 			return
 		case <-ticker.C:
 			w.processRetries(ctx)
@@ -67,7 +67,7 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 	now := time.Now().UTC()
 	invoices, err := w.invoiceRepo.ClaimFailedEInvoices(ctx, now, now.Add(einvoiceClaimLease), 20)
 	if err != nil {
-		log.Printf("EInvoiceRetryWorker: Failed to fetch failed e-invoices: %v", err)
+		slog.Error("e-invoice retry worker: failed to fetch failed e-invoices", "error", err)
 		return
 	}
 
@@ -75,18 +75,18 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 		return
 	}
 
-	log.Printf("EInvoiceRetryWorker: Found %d e-invoices to retry", len(invoices))
+	slog.Info("e-invoice retry worker: found e-invoices to retry", "count", len(invoices))
 
 	for _, inv := range invoices {
-		log.Printf("EInvoiceRetryWorker: Retrying e-invoice for %s (attempt %d)", inv.InvoiceNumber, inv.EInvoiceRetryCount+1)
+		slog.Info("e-invoice retry worker: retrying e-invoice", "invoice_number", inv.InvoiceNumber, "attempt", inv.EInvoiceRetryCount+1)
 
 		// Check max retries
 		if inv.EInvoiceRetryCount >= maxEInvoiceRetries {
-			log.Printf("EInvoiceRetryWorker: Max retries reached for %s. Marking as permanently FAILED.", inv.InvoiceNumber)
+			slog.Warn("e-invoice retry worker: max retries reached, marking permanently failed", "invoice_number", inv.InvoiceNumber)
 			inv.EInvoiceNextRetryAt = nil
 			inv.EInvoiceErrorMessage = "max retries exceeded"
 			if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
-				log.Printf("EInvoiceRetryWorker: Failed to update invoice %s: %v", inv.ID, updateErr)
+				slog.Error("e-invoice retry worker: failed to update invoice", "invoice_id", inv.ID, "error", updateErr)
 			}
 			continue
 		}
@@ -104,7 +104,7 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 			// maxEInvoiceRetries never fires and backoff never escalates).
 			fresh, ferr := w.invoiceRepo.GetByIDPublic(ctx, inv.ID)
 			if ferr != nil || fresh == nil {
-				log.Printf("EInvoiceRetryWorker: could not re-read %s after retry: %v", inv.ID, ferr)
+				slog.Error("e-invoice retry worker: could not re-read invoice after retry", "invoice_id", inv.ID, "error", ferr)
 				continue
 			}
 
@@ -115,13 +115,13 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 			nextRetry := time.Now().Add(einvoiceBackoffDurations[backoffIdx])
 			fresh.EInvoiceNextRetryAt = &nextRetry
 
-			log.Printf("EInvoiceRetryWorker: Retry failed for %s (attempt %d). Next retry at %v", fresh.InvoiceNumber, fresh.EInvoiceRetryCount, nextRetry)
+			slog.Warn("e-invoice retry worker: retry failed, rescheduled", "invoice_number", fresh.InvoiceNumber, "attempt", fresh.EInvoiceRetryCount, "next_retry_at", nextRetry)
 
 			if updateErr := w.invoiceRepo.Update(ctx, fresh); updateErr != nil {
-				log.Printf("EInvoiceRetryWorker: Failed to update invoice %s: %v", inv.ID, updateErr)
+				slog.Error("e-invoice retry worker: failed to update invoice", "invoice_id", inv.ID, "error", updateErr)
 			}
 		} else {
-			log.Printf("EInvoiceRetryWorker: Successfully generated e-invoice for %s", inv.InvoiceNumber)
+			slog.Info("e-invoice retry worker: successfully generated e-invoice", "invoice_number", inv.InvoiceNumber)
 		}
 	}
 }

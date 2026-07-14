@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -86,7 +86,7 @@ func (s *DunningScheduler) Start() {
 		}
 	}()
 
-	log.Println("✅ Dunning scheduler started (runs every 6 hours)")
+	slog.Info("dunning scheduler started (runs every 6 hours)")
 }
 
 // Stop stops the scheduler
@@ -95,7 +95,7 @@ func (s *DunningScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("🛑 Dunning scheduler stopped")
+	slog.Info("dunning scheduler stopped")
 }
 
 // processDunning handles all overdue invoices
@@ -106,7 +106,7 @@ func (s *DunningScheduler) processDunning() {
 	lockKey := "scheduler:dunning"
 	release, acquired, err := s.locker.Obtain(ctx, lockKey, 30*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for dunning scheduler: %v", err)
+		slog.Error("failed to obtain lock for dunning scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -114,22 +114,22 @@ func (s *DunningScheduler) processDunning() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for dunning scheduler: %v", err)
+			slog.Error("failed to release lock for dunning scheduler", "error", err)
 		}
 	}()
 
 	invoices, err := s.invoiceRepo.GetOverdueInvoices(ctx)
 	if err != nil {
-		log.Printf("Error fetching overdue invoices: %v", err)
+		slog.Error("failed to fetch overdue invoices", "error", err)
 		return
 	}
 
 	if len(invoices) == 0 {
-		log.Println("No overdue invoices for dunning")
+		slog.Info("no overdue invoices for dunning")
 		return
 	}
 
-	log.Printf("Processing %d overdue invoices for dunning", len(invoices))
+	slog.Info("processing overdue invoices for dunning", "count", len(invoices))
 
 	for _, invoice := range invoices {
 		s.processInvoice(ctx, invoice)
@@ -149,9 +149,9 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 	// Check if we should mark as uncollectible
 	if daysOverdue >= s.config.CancelAfterDays || invoice.RetryCount >= s.config.MaxRetries {
 		if err := s.invoiceRepo.MarkAsUncollectible(ctx, invoice.ID); err != nil {
-			log.Printf("Failed to mark invoice %s as uncollectible: %v", invoice.InvoiceNumber, err)
+			slog.Error("failed to mark invoice as uncollectible", "invoice_number", invoice.InvoiceNumber, "error", err)
 		} else {
-			log.Printf("📛 Marked invoice %s as uncollectible (days overdue: %d)", invoice.InvoiceNumber, daysOverdue)
+			slog.Info("marked invoice as uncollectible", "invoice_number", invoice.InvoiceNumber, "days_overdue", daysOverdue)
 		}
 		return
 	}
@@ -179,16 +179,16 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 	}
 
 	if err := s.notificationSvc.SendDunningEmail(ctx, level, data); err != nil {
-		log.Printf("Failed to send dunning email for invoice %s: %v", invoice.InvoiceNumber, err)
+		slog.Error("failed to send dunning email", "invoice_number", invoice.InvoiceNumber, "error", err)
 	} else {
-		log.Printf("📧 Sent dunning level %d email for invoice %s to %s", level, invoice.InvoiceNumber, invoice.CustomerEmail)
+		slog.Info("sent dunning email", "level", level, "invoice_number", invoice.InvoiceNumber, "customer_email", invoice.CustomerEmail)
 	}
 
 	// Update retry info and hand off to RetryWorker for smart dunning
 	if err := s.invoiceRepo.UpdateRetryInfoWithDunning(ctx, invoice.ID, nextRetry, invoice.RetryCount+1, "worker"); err != nil {
-		log.Printf("Failed to update retry info for invoice %s: %v", invoice.InvoiceNumber, err)
+		slog.Error("failed to update retry info for invoice", "invoice_number", invoice.InvoiceNumber, "error", err)
 	} else {
-		log.Printf("Handed invoice %s to RetryWorker for smart dunning", invoice.InvoiceNumber)
+		slog.Info("handed invoice to retry worker for smart dunning", "invoice_number", invoice.InvoiceNumber)
 	}
 }
 
