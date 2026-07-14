@@ -202,7 +202,7 @@ export default function Team() {
               They'll sign in with this email and password.
             </SheetDescription>
           </SheetHeader>
-          <form onSubmit={invite} className="mt-6 space-y-5">
+          <form onSubmit={invite} className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
             <FormField label="Name" htmlFor="t-name" required>
               <Input
                 id="t-name"
