@@ -1,15 +1,19 @@
 name: CI (self-hosted)
 
-# Runs the CI gates on the self-hosted runner (a local machine) instead of
+# Runs the full CI on a self-hosted runner (a local machine) instead of
 # GitHub-hosted runners, so CI does not depend on Actions minutes/billing.
-# scripts/local-ci.sh manages its own throwaway Postgres + Redis and runs the
-# same gates as .github/workflows/ci.yml (build, vet, golangci-lint,
-# go test -race, govulncheck).
+# Mirrors .github/workflows/ci.yml (build/vet/lint/test/vuln, e2e, sdk). The
+# single runner executes these jobs sequentially.
 on: [push, pull_request]
 
 concurrency:
   group: ci-selfhosted-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # A launchd service starts with a minimal PATH; make the toolchain
+  # (go, docker, node, python3, golangci-lint, govulncheck) discoverable.
+  TOOLCHAIN_PATH: /usr/local/go/bin:/opt/homebrew/bin:/Users/swapnull/go/bin
 
 jobs:
   local-ci:
@@ -17,9 +21,57 @@ jobs:
     runs-on: [self-hosted]
     steps:
       - uses: actions/checkout@v4
-      - name: Run CI gates
+      - name: Build / vet / lint / test -race / govulncheck
         run: |
-          # A launchd service starts with a minimal PATH; make the toolchain
-          # (go, docker, golangci-lint, govulncheck) discoverable.
-          export PATH="/usr/local/go/bin:/opt/homebrew/bin:$HOME/go/bin:$PATH"
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
           bash scripts/local-ci.sh
+
+  e2e:
+    name: E2E
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start stack + run e2e
+        run: |
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
+          docker compose up -d --build
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:8080/health >/dev/null && break
+            sleep 2
+          done
+          if ! curl -fsS http://localhost:8080/health >/dev/null; then
+            echo "API did not become healthy in time"; docker compose logs api; exit 1
+          fi
+          chmod +x scripts/e2e_test.sh
+          ./scripts/e2e_test.sh
+      - name: Dump API logs on failure
+        if: failure()
+        run: |
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
+          docker compose logs api || true
+      - name: Tear down
+        if: always()
+        run: |
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
+          docker compose down -v || true
+
+  sdk:
+    name: SDK
+    runs-on: [self-hosted]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node SDK build & test
+        working-directory: sdk/node
+        run: |
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
+          npm ci
+          npm run build
+          npm test
+      - name: Python SDK smoke test
+        run: |
+          export PATH="${TOOLCHAIN_PATH}:$PATH"
+          # Use a venv so Homebrew's externally-managed Python (PEP 668) doesn't reject the install.
+          python3 -m venv /tmp/recurso-sdk-venv
+          /tmp/recurso-sdk-venv/bin/pip install -q ./sdk/python
+          /tmp/recurso-sdk-venv/bin/python sdk/python/tests/smoke_test.py
+          rm -rf /tmp/recurso-sdk-venv
