@@ -54,12 +54,13 @@ type mandateRevokeCall struct {
 
 type mandateMockGateway struct {
 	port.PaymentGateway
-	revokeCalls     []mandateRevokeCall
-	revokeErr       error
-	debitResult     *port.PaymentResult
-	debitErr        error
-	debitCalls      int
-	lastDebitAmount int64
+	revokeCalls        []mandateRevokeCall
+	revokeErr          error
+	debitResult        *port.PaymentResult
+	debitErr           error
+	debitCalls         int
+	lastDebitAmount    int64
+	lastIdempotencyKey string
 }
 
 // fakeCreditApplier is a test double for the ENG-153 credit applier.
@@ -91,6 +92,7 @@ func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, toke
 func (m *mandateMockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	m.debitCalls++
 	m.lastDebitAmount = req.Amount
+	m.lastIdempotencyKey = req.IdempotencyKey
 	if m.debitErr != nil {
 		return nil, m.debitErr
 	}
@@ -388,6 +390,32 @@ func TestMandateExecuteDebit_OrderIDIsNotStoredAsPaymentID(t *testing.T) {
 	// The webhook fills the pay_* id later; the mandate schedule must still advance.
 	if repo.updated == nil || repo.updated.NextDebitAt == nil {
 		t.Error("mandate schedule was not advanced after debit")
+	}
+}
+
+// TestMandateExecuteDebit_SendsPerCycleIdempotencyKeyToGateway proves the guard
+// is actually wired: a debit sends the per-cycle key to the gateway request, so
+// a re-attempt of the same cycle carries a key the gateway can dedupe on
+// (ENG-190/ENG-164). Without this, the key logic could be correct but never
+// reach the gateway.
+func TestMandateExecuteDebit_SendsPerCycleIdempotencyKeyToGateway(t *testing.T) {
+	mandate := newTestMandate()
+	repo := &mandateMockRepo{mandate: mandate}
+	invRepo := &mandateMockInvoiceRepo{}
+	gw := &mandateMockGateway{debitResult: &port.PaymentResult{Success: true, PaymentID: "pay_x"}}
+	svc := NewMandateService(repo, gw, testMandateCustomerRepo(), invRepo)
+
+	// The key for the cycle being charged is derived from the pre-debit state.
+	want := mandateDebitIdempotencyKey(mandate)
+
+	if err := svc.ExecuteDebit(context.Background(), mandate, 500, "INR"); err != nil {
+		t.Fatalf("ExecuteDebit: %v", err)
+	}
+	if gw.lastIdempotencyKey == "" {
+		t.Fatal("gateway received an empty idempotency key — a retried debit could double-charge")
+	}
+	if gw.lastIdempotencyKey != want {
+		t.Errorf("gateway idempotency key = %q, want %q (per-cycle key)", gw.lastIdempotencyKey, want)
 	}
 }
 
