@@ -49,7 +49,7 @@ const (
 type CancelSubscriptionRequest struct {
 	CancelAtPeriodEnd bool               `json:"cancel_at_period_end"`
 	Immediately       bool               `json:"immediately"`
-	Reason            CancellationReason `json:"reason" binding:"required"`
+	Reason            CancellationReason `json:"reason" binding:"required,oneof=too_expensive not_using switching_competitor missing_features technical_issues customer_service temporary_pause other"`
 	Feedback          string             `json:"feedback,omitempty"`
 	RevokeConsent     bool               `json:"revoke_consent"`
 }

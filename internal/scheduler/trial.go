@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -90,7 +90,7 @@ func (s *TrialScheduler) Start() {
 		}
 	}()
 
-	log.Println("✅ Trial scheduler started (runs every 6 hours)")
+	slog.Info("trial scheduler started (runs every 6 hours)")
 }
 
 // Stop stops the scheduler.
@@ -99,7 +99,7 @@ func (s *TrialScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("🛑 Trial scheduler stopped")
+	slog.Info("trial scheduler stopped")
 }
 
 // processTrials sends reminders then converts expired trials, under a
@@ -110,7 +110,7 @@ func (s *TrialScheduler) processTrials() {
 	lockKey := "scheduler:trials"
 	release, acquired, err := s.locker.Obtain(ctx, lockKey, 15*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for trial scheduler: %v", err)
+		slog.Error("failed to obtain lock for trial scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -118,7 +118,7 @@ func (s *TrialScheduler) processTrials() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for trial scheduler: %v", err)
+			slog.Error("failed to release lock for trial scheduler", "error", err)
 		}
 	}()
 
@@ -131,7 +131,7 @@ func (s *TrialScheduler) processTrials() {
 func (s *TrialScheduler) sendReminders(ctx context.Context) {
 	notices, err := s.repo.GetTrialsEndingWithin(ctx, s.reminderWindow)
 	if err != nil {
-		log.Printf("Error fetching trials ending soon: %v", err)
+		slog.Error("failed to fetch trials ending soon", "error", err)
 		return
 	}
 
@@ -148,14 +148,14 @@ func (s *TrialScheduler) sendReminders(ctx context.Context) {
 		}
 
 		if err := s.notifier.SendTrialEndingReminder(ctx, data); err != nil {
-			log.Printf("Failed to send trial-ending reminder for subscription %s: %v", n.SubscriptionID, err)
+			slog.Error("failed to send trial-ending reminder", "subscription_id", n.SubscriptionID, "error", err)
 			continue
 		}
 
 		if err := s.repo.MarkTrialReminderSent(ctx, n.SubscriptionID); err != nil {
-			log.Printf("Failed to mark trial reminder sent for subscription %s: %v", n.SubscriptionID, err)
+			slog.Error("failed to mark trial reminder sent", "subscription_id", n.SubscriptionID, "error", err)
 		} else {
-			log.Printf("📧 Sent trial-ending reminder for subscription %s to %s", n.SubscriptionID, n.CustomerEmail)
+			slog.Info("sent trial-ending reminder", "subscription_id", n.SubscriptionID, "customer_email", n.CustomerEmail)
 		}
 	}
 }
@@ -165,7 +165,7 @@ func (s *TrialScheduler) sendReminders(ctx context.Context) {
 func (s *TrialScheduler) convertExpiredTrials(ctx context.Context) {
 	subs, err := s.repo.GetExpiredTrials(ctx)
 	if err != nil {
-		log.Printf("Error fetching expired trials: %v", err)
+		slog.Error("failed to fetch expired trials", "error", err)
 		return
 	}
 
@@ -177,9 +177,9 @@ func (s *TrialScheduler) convertExpiredTrials(ctx context.Context) {
 			if errors.Is(err, service.ErrTrialAlreadyConverted) {
 				continue
 			}
-			log.Printf("Failed to convert trial for subscription %s: %v", sub.ID, err)
+			slog.Error("failed to convert trial for subscription", "subscription_id", sub.ID, "error", err)
 			continue
 		}
-		log.Printf("✅ Converted trial for subscription %s to active (first invoice %s)", sub.ID, inv.ID)
+		slog.Info("converted trial to active", "subscription_id", sub.ID, "invoice_id", inv.ID)
 	}
 }

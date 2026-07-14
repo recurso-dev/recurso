@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/service"
@@ -25,16 +25,16 @@ func (w *DunningCampaignWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	log.Println("DunningCampaignWorker started...")
+	slog.Info("dunning campaign worker started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("DunningCampaignWorker stopping...")
+			slog.Info("dunning campaign worker stopping")
 			return
 		case <-ticker.C:
 			if err := w.campaignService.ProcessDueSteps(ctx); err != nil {
-				log.Printf("DunningCampaignWorker: error processing due steps: %v", err)
+				slog.Error("dunning campaign worker: failed to process due steps", "error", err)
 			}
 		}
 	}

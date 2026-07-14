@@ -55,6 +55,17 @@ const entitlementRowsToPayload = (rows) =>
         }
   );
 
+// DetailRow renders a single labelled field. Defined at module scope so it is a
+// stable component type — an inline definition would remount its subtree every render.
+function DetailRow({ label, value }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="text-sm text-foreground">{value}</div>
+    </div>
+  );
+}
+
 const toEditorRows = (ents) =>
   ents.map((ent) => ({
     feature_key: ent.feature_key,
@@ -151,13 +162,6 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
     }
   };
 
-  const detail = (label, value) => (
-    <div className="flex flex-col gap-1">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className="text-sm text-foreground">{value}</div>
-    </div>
-  );
-
   return (
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
@@ -174,23 +178,25 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
         <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
           {/* Details */}
           <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-            {detail(
-              "Price",
-              price ? formatCurrency(price.amount, price.currency) : "—"
-            )}
-            {detail(
-              "Billing interval",
-              <span className="capitalize">
-                {plan.interval_count > 1 ? `${plan.interval_count} ` : ""}
-                {plan.interval_unit}
-              </span>
-            )}
-            {detail("Created", formatDate(plan.created_at))}
-            {detail("Currency", currency)}
-            {detail(
-              "Code",
-              <span className="font-mono text-foreground">{plan.code}</span>
-            )}
+            <DetailRow
+              label="Price"
+              value={price ? formatCurrency(price.amount, price.currency) : "—"}
+            />
+            <DetailRow
+              label="Billing interval"
+              value={
+                <span className="capitalize">
+                  {plan.interval_count > 1 ? `${plan.interval_count} ` : ""}
+                  {plan.interval_unit}
+                </span>
+              }
+            />
+            <DetailRow label="Created" value={formatDate(plan.created_at)} />
+            <DetailRow label="Currency" value={currency} />
+            <DetailRow
+              label="Code"
+              value={<span className="font-mono text-foreground">{plan.code}</span>}
+            />
           </div>
 
           {/* Entitlements */}

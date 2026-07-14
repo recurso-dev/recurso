@@ -2,7 +2,7 @@ package worker
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -37,7 +37,7 @@ func (w *ChurnWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(w.interval)
 	defer ticker.Stop()
 
-	log.Println("Churn Worker started")
+	slog.Info("churn worker started")
 
 	for {
 		select {
@@ -50,20 +50,20 @@ func (w *ChurnWorker) Start(ctx context.Context) {
 }
 
 func (w *ChurnWorker) RunAnalysis(ctx context.Context) {
-	log.Println("Running Churn Analysis for all tenants...")
+	slog.Info("running churn analysis for all tenants")
 
 	tenants, err := w.tenantRepo.ListTenants(ctx)
 	if err != nil {
-		log.Printf("Failed to list tenants for churn analysis: %v", err)
+		slog.Error("failed to list tenants for churn analysis", "error", err)
 		return
 	}
 
 	for _, tenant := range tenants {
-		log.Printf("Analyzing Churn for Tenant: %s (%s)", tenant.Name, tenant.ID)
+		slog.Info("analyzing churn for tenant", "tenant_name", tenant.Name, "tenant_id", tenant.ID)
 		w.AnalyzeTenantCustomers(ctx, tenant.ID)
 	}
 
-	log.Println("Churn Analysis: Global scan completed.")
+	slog.Info("churn analysis global scan completed")
 }
 
 // AnalyzeTenantCustomers runs analysis for a specific tenant
@@ -79,7 +79,7 @@ func (w *ChurnWorker) AnalyzeTenantCustomers(ctx context.Context, tenantID uuid.
 	for {
 		customers, err := w.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: limit, Offset: offset})
 		if err != nil {
-			log.Printf("Failed to list customers for churn analysis: %v", err)
+			slog.Error("failed to list customers for churn analysis", "error", err)
 			break
 		}
 		if len(customers) == 0 {
@@ -88,7 +88,7 @@ func (w *ChurnWorker) AnalyzeTenantCustomers(ctx context.Context, tenantID uuid.
 
 		for _, customer := range customers {
 			if err := w.churnService.AnalyzeCustomer(ctx, customer.ID); err != nil {
-				log.Printf("Failed to analyze customer %s: %v", customer.ID, err)
+				slog.Error("failed to analyze customer", "customer_id", customer.ID, "error", err)
 			}
 		}
 

@@ -25,12 +25,17 @@ ADDON_ANALYTICS="${CLOUD_ADDON_ANALYTICS:-7900}" # $79.00
 ADDON_ACCOUNTING="${CLOUD_ADDON_ACCOUNTING:-3900}" # $39.00
 ADDON_FX="${CLOUD_ADDON_FX:-2900}"             # $29.00
 
-auth=(-H "Authorization: Bearer ${API_KEY}" -H "Content-Type: application/json")
+# The Authorization header carries the secret API key, so it must NOT sit on
+# the curl argv (it would be visible in `ps aux`). We emit it through a
+# `curl -K` config file supplied via process substitution; only the
+# non-secret Content-Type header stays on the command line.
+auth_config() { printf 'header = "Authorization: Bearer %s"\n' "${API_KEY}"; }
+content_type=(-H "Content-Type: application/json")
 
 echo "→ Recurso Cloud catalog setup on ${API_URL}"
 
 # Existing plan codes (so re-runs are safe).
-existing=$(curl -s "${auth[@]}" "${API_URL}/plans" | python3 -c \
+existing=$(curl -s -K <(auth_config) "${content_type[@]}" "${API_URL}/plans" | python3 -c \
   'import sys,json; d=json.load(sys.stdin); print("\n".join(p.get("code","") for p in (d.get("data") or [])))' 2>/dev/null || true)
 
 # create_plan <code> <name> <amount> — creates the plan unless its code exists.
@@ -44,7 +49,8 @@ create_plan() {
   body=$(printf '{"name":"%s","code":"%s","currency":"%s","amount":%s,"interval_unit":"month","interval_count":1}' \
     "${name}" "${code}" "${CURRENCY}" "${amount}")
   local resp
-  resp=$(curl -s -w '\n%{http_code}' "${auth[@]}" -X POST "${API_URL}/plans" -d "${body}")
+  resp=$(curl -s -w '\n%{http_code}' -K <(auth_config) "${content_type[@]}" \
+    -X POST "${API_URL}/plans" --data @- <<<"${body}")
   local status="${resp##*$'\n'}"
   if [ "${status}" = "200" ] || [ "${status}" = "201" ]; then
     echo "  + created ${code} (${name})"

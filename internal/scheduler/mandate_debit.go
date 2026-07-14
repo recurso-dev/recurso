@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/core/port"
@@ -52,7 +52,7 @@ func (s *MandateDebitScheduler) Start() {
 		}
 	}()
 
-	log.Println("Mandate debit scheduler started (runs hourly)")
+	slog.Info("mandate debit scheduler started (runs hourly)")
 }
 
 func (s *MandateDebitScheduler) Stop() {
@@ -60,7 +60,7 @@ func (s *MandateDebitScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("Mandate debit scheduler stopped")
+	slog.Info("mandate debit scheduler stopped")
 }
 
 func (s *MandateDebitScheduler) runDebits() {
@@ -69,7 +69,7 @@ func (s *MandateDebitScheduler) runDebits() {
 	lockKey := "scheduler:mandate-debit"
 	release, acquired, err := s.locker.Obtain(ctx, lockKey, 10*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for mandate debit scheduler: %v", err)
+		slog.Error("failed to obtain lock for mandate debit scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -77,7 +77,7 @@ func (s *MandateDebitScheduler) runDebits() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for mandate debit scheduler: %v", err)
+			slog.Error("failed to release lock for mandate debit scheduler", "error", err)
 		}
 	}()
 
@@ -86,7 +86,7 @@ func (s *MandateDebitScheduler) runDebits() {
 	// mandate is charged by exactly one runner (ENG-161).
 	mandates, err := s.mandateRepo.ClaimDueForDebit(ctx, debitClaimWindow)
 	if err != nil {
-		log.Printf("Error claiming mandates ready for debit: %v", err)
+		slog.Error("failed to claim mandates ready for debit", "error", err)
 		return
 	}
 
@@ -94,13 +94,13 @@ func (s *MandateDebitScheduler) runDebits() {
 		return
 	}
 
-	log.Printf("Found %d mandates ready for debit", len(mandates))
+	slog.Info("mandates ready for debit", "count", len(mandates))
 
 	for _, mandate := range mandates {
 		if err := s.mandateSvc.ExecuteDebit(ctx, mandate, mandate.MaxAmount, "INR"); err != nil {
-			log.Printf("Failed to execute debit for mandate %s: %v", mandate.ID, err)
+			slog.Error("failed to execute debit for mandate", "mandate_id", mandate.ID, "error", err)
 			continue
 		}
-		log.Printf("Successfully debited mandate %s", mandate.ID)
+		slog.Info("successfully debited mandate", "mandate_id", mandate.ID)
 	}
 }

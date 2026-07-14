@@ -2,7 +2,7 @@ package scheduler
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/adapter/db"
@@ -47,7 +47,7 @@ func (s *NexusScheduler) Start() {
 		}
 	}()
 
-	log.Println("✅ Nexus scheduler started (runs daily)")
+	slog.Info("nexus scheduler started (runs daily)")
 }
 
 func (s *NexusScheduler) Stop() {
@@ -55,7 +55,7 @@ func (s *NexusScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("🛑 Nexus scheduler stopped")
+	slog.Info("nexus scheduler stopped")
 }
 
 func (s *NexusScheduler) run() {
@@ -63,7 +63,7 @@ func (s *NexusScheduler) run() {
 
 	release, acquired, err := s.locker.Obtain(ctx, "scheduler:nexus", 10*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for nexus scheduler: %v", err)
+		slog.Error("failed to obtain lock for nexus scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -71,13 +71,13 @@ func (s *NexusScheduler) run() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for nexus scheduler: %v", err)
+			slog.Error("failed to release lock for nexus scheduler", "error", err)
 		}
 	}()
 
 	tenants, err := s.tenantRepo.ListTenants(ctx)
 	if err != nil {
-		log.Printf("Nexus scheduler: failed to list tenants: %v", err)
+		slog.Error("nexus scheduler: failed to list tenants", "error", err)
 		return
 	}
 
@@ -85,11 +85,11 @@ func (s *NexusScheduler) run() {
 	for _, t := range tenants {
 		established, err := s.status.EvaluateEconomicNexus(ctx, t.ID, year)
 		if err != nil {
-			log.Printf("Nexus scheduler: evaluation failed for tenant %s: %v", t.ID, err)
+			slog.Error("nexus scheduler: evaluation failed for tenant", "tenant_id", t.ID, "error", err)
 			continue
 		}
 		for _, state := range established {
-			log.Printf("📍 Economic nexus established for tenant %s in %s", t.ID, state)
+			slog.Info("economic nexus established", "tenant_id", t.ID, "state", state)
 		}
 	}
 }
