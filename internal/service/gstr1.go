@@ -1,14 +1,47 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
+
+// GSTR1Source is the read side the GSTR-1 export needs: a period's finalized
+// invoices and refund credit notes, flattened with buyer GST identity.
+type GSTR1Source interface {
+	GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error)
+	GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error)
+}
+
+// GSTRService produces the GSTR-1 return for a tenant's tax period.
+type GSTRService struct {
+	src GSTR1Source
+}
+
+func NewGSTRService(src GSTR1Source) *GSTRService { return &GSTRService{src: src} }
+
+// GetGSTR1 assembles the return for a calendar month from that month's finalized
+// invoices and refund credit notes.
+func (s *GSTRService) GetGSTR1(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.GSTR1Return, error) {
+	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+
+	invoices, err := s.src.GetGSTR1Invoices(ctx, tenantID, start, end)
+	if err != nil {
+		return nil, err
+	}
+	creditNotes, err := s.src.GetGSTR1CreditNotes(ctx, tenantID, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return BuildGSTR1(tenantID, month, year, invoices, creditNotes), nil
+}
 
 // gstRate returns the combined GST rate as a whole-ish percentage (GST rates are
 // 0/5/12/18/28), derived from the tax over the taxable value. Zero taxable value
@@ -21,15 +54,17 @@ func gstRate(taxableValue, totalTax int64) float64 {
 }
 
 // BuildGSTR1 assembles a return-ready GSTR-1 from a tenant's finalized invoices
-// for a tax period. Registered buyers (with a GSTIN) go to the invoice-level B2B
-// section; unregistered buyers are summarized rate-wise per place of supply
-// (B2CS); every invoice contributes to the HSN rollup and the control totals.
-// Pure — no database — so the bucketing logic is unit-testable in isolation.
-func BuildGSTR1(tenantID uuid.UUID, month, year int, invoices []domain.GSTR1Invoice) *domain.GSTR1Return {
+// and credit notes for a tax period. Registered buyers (with a GSTIN) go to the
+// invoice-level B2B section; unregistered buyers are summarized rate-wise per
+// place of supply (B2CS); registered credit notes go to CDNR; every invoice
+// contributes to the HSN rollup and the outward-supply totals. Pure — no
+// database — so the bucketing logic is unit-testable in isolation.
+func BuildGSTR1(tenantID uuid.UUID, month, year int, invoices []domain.GSTR1Invoice, creditNotes []domain.GSTR1CreditNote) *domain.GSTR1Return {
 	ret := &domain.GSTR1Return{TenantID: tenantID, Month: month, Year: year}
 
 	b2b := map[string]*domain.GSTR1B2B{}
 	b2cs := map[string]*domain.GSTR1B2CS{}
+	cdnr := map[string]*domain.GSTR1CDNR{}
 	hsn := map[string]*domain.GSTR1HSNSummary{}
 
 	for _, inv := range invoices {
@@ -84,7 +119,46 @@ func BuildGSTR1(tenantID uuid.UUID, month, year int, invoices []domain.GSTR1Invo
 		}
 	}
 
+	// Credit notes to registered buyers -> CDNR (a separate GSTR-1 section;
+	// GSTR-1 does not net them from B2B). Unregistered credit notes (no GSTIN)
+	// belong in CDNUR, which this v1 does not build — they are skipped here and
+	// counted separately so the omission is visible, not silent.
+	for _, cn := range creditNotes {
+		if cn.BuyerGSTIN == "" {
+			continue // CDNUR (unregistered) — out of scope for v1
+		}
+		tax := cn.IGST + cn.CGST + cn.SGST
+		ret.TotalCreditTaxableValue += cn.TaxableValue
+		ret.TotalCreditIGST += cn.IGST
+		ret.TotalCreditCGST += cn.CGST
+		ret.TotalCreditSGST += cn.SGST
+		ret.CreditNoteCount++
+
+		g := cdnr[cn.BuyerGSTIN]
+		if g == nil {
+			g = &domain.GSTR1CDNR{GSTIN: cn.BuyerGSTIN}
+			cdnr[cn.BuyerGSTIN] = g
+		}
+		g.Notes = append(g.Notes, domain.GSTR1CDNRNote{
+			NoteNumber:            cn.NoteNumber,
+			Date:                  cn.Date,
+			OriginalInvoiceNumber: cn.OriginalInvoiceNumber,
+			PlaceOfSupply:         cn.PlaceOfSupply,
+			TaxableValue:          cn.TaxableValue,
+			IGST:                  cn.IGST,
+			CGST:                  cn.CGST,
+			SGST:                  cn.SGST,
+			Rate:                  gstRate(cn.TaxableValue, tax),
+		})
+	}
+
 	// Deterministic ordering so the output (and any golden-file test) is stable.
+	for _, g := range cdnr {
+		sort.Slice(g.Notes, func(i, j int) bool { return g.Notes[i].NoteNumber < g.Notes[j].NoteNumber })
+		ret.CDNR = append(ret.CDNR, *g)
+	}
+	sort.Slice(ret.CDNR, func(i, j int) bool { return ret.CDNR[i].GSTIN < ret.CDNR[j].GSTIN })
+
 	for _, g := range b2b {
 		sort.Slice(g.Invoices, func(i, j int) bool { return g.Invoices[i].InvoiceNumber < g.Invoices[j].InvoiceNumber })
 		ret.B2B = append(ret.B2B, *g)

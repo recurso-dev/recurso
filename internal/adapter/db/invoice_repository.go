@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -659,6 +660,84 @@ func (r *InvoiceRepository) UpdateEInvoiceStatus(ctx context.Context, invoiceID 
 		return fmt.Errorf("failed to update e-invoice status: %w", err)
 	}
 	return nil
+}
+
+// GetGSTR1Invoices returns the tenant's finalized (non-draft, non-void)
+// invoices issued in [start, end), flattened with the buyer's GST identity —
+// the input for the GSTR-1 export. TaxableValue is the invoice subtotal (the
+// GST base); the tax split is what was billed.
+func (r *InvoiceRepository) GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT i.invoice_number, i.created_at,
+		        COALESCE(c.gstin, ''), COALESCE(c.place_of_supply, ''),
+		        i.subtotal::bigint, i.igst_amount, i.cgst_amount, i.sgst_amount, COALESCE(i.hsn_code, '')
+		 FROM invoices i
+		 JOIN customers c ON c.id = i.customer_id
+		 WHERE i.tenant_id = $1
+		   AND i.status NOT IN ('draft', 'void')
+		   AND i.created_at >= $2 AND i.created_at < $3
+		 ORDER BY i.created_at, i.invoice_number`, tenantID, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query gstr-1 invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.GSTR1Invoice
+	for rows.Next() {
+		var g domain.GSTR1Invoice
+		if err := rows.Scan(&g.InvoiceNumber, &g.Date, &g.BuyerGSTIN, &g.PlaceOfSupply,
+			&g.TaxableValue, &g.IGST, &g.CGST, &g.SGST, &g.HSNCode); err != nil {
+			return nil, fmt.Errorf("failed to scan gstr-1 invoice: %w", err)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// GetGSTR1CreditNotes returns refund credit notes issued in [start, end) against
+// an invoice, for the CDNR section. A credit note stores only its gross amount,
+// so the tax it reversed is derived proportionally from the originating
+// invoice's tax split — matching how RecordRefundTaxReversal reverses the ledger.
+func (r *InvoiceRepository) GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT COALESCE(NULLIF(cn.reference, ''), cn.id::text), cn.created_at,
+		        COALESCE(c.gstin, ''), COALESCE(c.place_of_supply, ''),
+		        i.invoice_number, cn.amount, i.total, i.igst_amount, i.cgst_amount, i.sgst_amount
+		 FROM credit_notes cn
+		 JOIN invoices i ON i.id = cn.invoice_id
+		 JOIN customers c ON c.id = cn.customer_id
+		 WHERE cn.tenant_id = $1 AND cn.type = 'refund' AND cn.invoice_id IS NOT NULL
+		   AND cn.created_at >= $2 AND cn.created_at < $3
+		 ORDER BY cn.created_at`, tenantID, start, end)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query gstr-1 credit notes: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.GSTR1CreditNote
+	for rows.Next() {
+		var cn domain.GSTR1CreditNote
+		var amount, invTotal, invIGST, invCGST, invSGST int64
+		if err := rows.Scan(&cn.NoteNumber, &cn.Date, &cn.BuyerGSTIN, &cn.PlaceOfSupply,
+			&cn.OriginalInvoiceNumber, &amount, &invTotal, &invIGST, &invCGST, &invSGST); err != nil {
+			return nil, fmt.Errorf("failed to scan gstr-1 credit note: %w", err)
+		}
+		cn.IGST = proportionalTax(amount, invIGST, invTotal)
+		cn.CGST = proportionalTax(amount, invCGST, invTotal)
+		cn.SGST = proportionalTax(amount, invSGST, invTotal)
+		cn.TaxableValue = amount - (cn.IGST + cn.CGST + cn.SGST)
+		out = append(out, cn)
+	}
+	return out, rows.Err()
+}
+
+// proportionalTax slices a component of the invoice's tax in proportion to how
+// much of the invoice a credit note refunds.
+func proportionalTax(creditAmount, invoiceComponent, invoiceTotal int64) int64 {
+	if invoiceTotal <= 0 || invoiceComponent <= 0 || creditAmount <= 0 {
+		return 0
+	}
+	return int64(math.Round(float64(creditAmount) * float64(invoiceComponent) / float64(invoiceTotal)))
 }
 
 // SetGatewayPaymentID records the gateway-side payment identifier (Stripe
