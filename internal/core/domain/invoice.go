@@ -135,6 +135,10 @@ type OverdueInvoice struct {
 	DueDate       time.Time
 	RetryCount    int
 	NextRetryAt   *time.Time
+	// IsMandate marks a UPI-mandate auto-debit invoice (it carries a
+	// mandate_cycle_key). The dunning worker's gateway retry can't collect one, so
+	// the scheduler keeps it on email dunning instead (ENG-168).
+	IsMandate bool
 }
 
 // CalculateDueDate returns the due date based on payment terms (e.g., "net15", "net30")

@@ -463,7 +463,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 			i.id, i.tenant_id, i.customer_id,
 			c.name as customer_name, c.email as customer_email,
 			i.invoice_number, i.total as amount, i.currency,
-			i.due_date, i.retry_count, i.next_retry_at
+			i.due_date, i.retry_count, i.next_retry_at, (i.mandate_cycle_key IS NOT NULL)
 		FROM invoices i
 		JOIN customers c ON i.customer_id = c.id
 		WHERE i.status IN ('open', 'past_due')
@@ -489,7 +489,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 			&inv.ID, &inv.TenantID, &inv.CustomerID,
 			&name, &inv.CustomerEmail,
 			&inv.InvoiceNumber, &inv.Amount, &inv.Currency,
-			&inv.DueDate, &inv.RetryCount, &inv.NextRetryAt,
+			&inv.DueDate, &inv.RetryCount, &inv.NextRetryAt, &inv.IsMandate,
 		); err != nil {
 			return nil, err
 		}

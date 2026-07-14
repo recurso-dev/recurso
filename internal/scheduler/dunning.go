@@ -184,11 +184,24 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 		slog.Info("sent dunning email", "level", level, "invoice_number", invoice.InvoiceNumber, "customer_email", invoice.CustomerEmail)
 	}
 
-	// Update retry info and hand off to RetryWorker for smart dunning
-	if err := s.invoiceRepo.UpdateRetryInfoWithDunning(ctx, invoice.ID, nextRetry, invoice.RetryCount+1, "worker"); err != nil {
+	// Hand off to the RetryWorker for smart dunning — EXCEPT UPI-mandate invoices.
+	// The worker's gateway retry (RetryPayment) can't collect a mandate: it just
+	// creates a dangling order and never debits the mandate token (ENG-168). And
+	// auto-retrying via the mandate itself is unsafe — Razorpay ignores the
+	// idempotency header and captures async, so a re-attempt double-charges. So
+	// keep mandate invoices on the scheduler's email-dunning path (the pay-now
+	// link lets the customer settle interactively; the mandate charges the next
+	// cycle) and let them escalate to uncollectible here like any other invoice.
+	managedBy := "worker"
+	if invoice.IsMandate {
+		managedBy = "scheduler"
+	}
+	if err := s.invoiceRepo.UpdateRetryInfoWithDunning(ctx, invoice.ID, nextRetry, invoice.RetryCount+1, managedBy); err != nil {
 		slog.Error("failed to update retry info for invoice", "invoice_number", invoice.InvoiceNumber, "error", err)
-	} else {
+	} else if managedBy == "worker" {
 		slog.Info("handed invoice to retry worker for smart dunning", "invoice_number", invoice.InvoiceNumber)
+	} else {
+		slog.Info("mandate invoice kept on email dunning (no gateway auto-retry)", "invoice_number", invoice.InvoiceNumber)
 	}
 }
 
