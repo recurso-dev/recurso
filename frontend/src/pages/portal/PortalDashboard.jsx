@@ -357,6 +357,7 @@ const PortalDashboard = () => {
                     onClick={copyReferral}
                     className="rounded p-1 text-muted-foreground transition-colors hover:text-primary"
                     title="Copy code"
+                    aria-label="Copy referral code"
                   >
                     {copied ? (
                       <Check className="h-4 w-4 text-primary" />

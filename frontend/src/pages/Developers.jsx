@@ -698,6 +698,7 @@ export default function Developers() {
                 size="icon"
                 onClick={() => navigator.clipboard.writeText(generatedKey)}
                 title="Copy to clipboard"
+                aria-label="Copy API key to clipboard"
               >
                 <Copy className="h-4 w-4" />
               </Button>
@@ -741,6 +742,7 @@ export default function Developers() {
                     size="icon"
                     onClick={() => navigator.clipboard.writeText(createdWebhookSecret)}
                     title="Copy to clipboard"
+                    aria-label="Copy webhook signing secret to clipboard"
                   >
                     <Copy className="h-4 w-4" />
                   </Button>

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getApiKey } from './authToken';
 
 // Single source of truth for API locations. In dev both resolve to relative
 // paths served by the Vite proxy; in prod set VITE_API_BASE_URL (e.g.
@@ -21,11 +22,11 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('recurso_api_key');
+    // Legacy API-key mode: the key lives in memory only (see lib/authToken.js),
+    // never in localStorage. The backend accepts "Bearer <api_key>".
+    const token = getApiKey();
     if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`; // Backend expects "Bearer <api_key>" or just "<api_key>"? Middleware check needed.
-      // Checking middleware: "strings.TrimPrefix(authHeader, "Bearer ")" is standard, let's assume standard.
-      // Wait, let's check middleware/auth.go to be sure.
+      config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },
