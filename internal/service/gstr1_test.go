@@ -30,7 +30,7 @@ func TestBuildGSTR1_BucketsAndTotals(t *testing.T) {
 		{InvoiceNumber: "INV-5", Date: d(5), PlaceOfSupply: "27", TaxableValue: 20000, CGST: 1800, SGST: 1800, HSNCode: "9983"},
 	}
 
-	r := BuildGSTR1(tenant, 1, 2026, invs)
+	r := BuildGSTR1(tenant, 1, 2026, invs, nil)
 
 	// --- Totals tie to every invoice ---
 	if r.TotalTaxableValue != 380000 {
@@ -91,9 +91,39 @@ func TestBuildGSTR1_BucketsAndTotals(t *testing.T) {
 	}
 }
 
+// TestBuildGSTR1_CreditNotes: registered credit notes land in CDNR grouped by
+// GSTIN with their own totals; an unregistered note is skipped (CDNUR, v1
+// out-of-scope) but counted nowhere in CDNR.
+func TestBuildGSTR1_CreditNotes(t *testing.T) {
+	notes := []domain.GSTR1CreditNote{
+		{NoteNumber: "CN-1", Date: d(6), BuyerGSTIN: "27AAAAA0000A1Z5", PlaceOfSupply: "27", OriginalInvoiceNumber: "INV-1", TaxableValue: 10000, CGST: 900, SGST: 900},
+		{NoteNumber: "CN-2", Date: d(7), BuyerGSTIN: "27AAAAA0000A1Z5", PlaceOfSupply: "27", OriginalInvoiceNumber: "INV-2", TaxableValue: 20000, CGST: 1800, SGST: 1800},
+		// Unregistered buyer -> CDNUR, not built in v1.
+		{NoteNumber: "CN-3", Date: d(8), BuyerGSTIN: "", PlaceOfSupply: "27", TaxableValue: 5000, CGST: 450, SGST: 450},
+	}
+	r := BuildGSTR1(uuid.New(), 1, 2026, nil, notes)
+
+	if len(r.CDNR) != 1 {
+		t.Fatalf("CDNR groups = %d, want 1 (registered buyer)", len(r.CDNR))
+	}
+	if r.CDNR[0].GSTIN != "27AAAAA0000A1Z5" || len(r.CDNR[0].Notes) != 2 {
+		t.Fatalf("CDNR group = %q with %d notes, want the registered GSTIN with 2", r.CDNR[0].GSTIN, len(r.CDNR[0].Notes))
+	}
+	if r.CDNR[0].Notes[0].NoteNumber != "CN-1" || r.CDNR[0].Notes[1].NoteNumber != "CN-2" {
+		t.Errorf("CDNR notes not sorted by number: %q, %q", r.CDNR[0].Notes[0].NoteNumber, r.CDNR[0].Notes[1].NoteNumber)
+	}
+	// Credit totals cover only the two registered notes (30000 taxable, 2700+2700).
+	if r.TotalCreditTaxableValue != 30000 || r.TotalCreditCGST != 2700 || r.TotalCreditSGST != 2700 {
+		t.Errorf("credit totals = %d/%d/%d, want 30000/2700/2700 (unregistered excluded)", r.TotalCreditTaxableValue, r.TotalCreditCGST, r.TotalCreditSGST)
+	}
+	if r.CreditNoteCount != 2 {
+		t.Errorf("credit note count = %d, want 2 (unregistered not counted in CDNR)", r.CreditNoteCount)
+	}
+}
+
 // TestBuildGSTR1_Empty: no invoices -> a well-formed empty return.
 func TestBuildGSTR1_Empty(t *testing.T) {
-	r := BuildGSTR1(uuid.New(), 3, 2026, nil)
+	r := BuildGSTR1(uuid.New(), 3, 2026, nil, nil)
 	if r.InvoiceCount != 0 || len(r.B2B) != 0 || len(r.B2CS) != 0 || len(r.HSN) != 0 {
 		t.Errorf("empty return not empty: %+v", r)
 	}
@@ -107,7 +137,7 @@ func TestBuildGSTR1_Empty(t *testing.T) {
 func TestBuildGSTR1_ZeroRatedNoDivideByZero(t *testing.T) {
 	r := BuildGSTR1(uuid.New(), 1, 2026, []domain.GSTR1Invoice{
 		{InvoiceNumber: "Z-1", Date: d(1), PlaceOfSupply: "27", TaxableValue: 0, HSNCode: "0000"},
-	})
+	}, nil)
 	if len(r.B2CS) != 1 || r.B2CS[0].Rate != 0 {
 		t.Errorf("zero-rated B2CS = %+v, want one row at rate 0", r.B2CS)
 	}

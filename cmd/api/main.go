@@ -866,7 +866,13 @@ func main() {
 		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
 	)
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
-	gstHandler := handler.NewGSTHandler(gstConfigRepo)
+	// The concrete invoice repository implements the GSTR-1 read side; assert to
+	// the narrow source interface so the export service stays db-agnostic.
+	var gstrService *service.GSTRService
+	if src, ok := invoiceRepo.(service.GSTR1Source); ok {
+		gstrService = service.NewGSTRService(src)
+	}
+	gstHandler := handler.NewGSTHandler(gstConfigRepo, gstrService)
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
@@ -1256,6 +1262,7 @@ func main() {
 		v1.PUT("/settings/tax/nexus", taxNexusHandler.SetNexus)
 		v1.GET("/settings/tax/nexus/status", taxNexusHandler.GetNexusStatus)
 		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
+		v1.GET("/india/gstr1", gstHandler.GetGSTR1)
 
 		// E-Invoice (P25)
 		v1.GET("/invoices/:id/einvoice", einvoiceHandler.GetEInvoiceStatus)

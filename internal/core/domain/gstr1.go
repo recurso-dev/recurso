@@ -51,6 +51,40 @@ type GSTR1B2CS struct {
 	SGST          int64   `json:"sgst"`
 }
 
+// GSTR1CreditNote is one credit note flattened with its buyer's GST identity —
+// the input for the CDNR (Credit/Debit Notes, Registered) section. The tax
+// amounts are the GST reversed by the note; TaxableValue is its net-of-tax value.
+type GSTR1CreditNote struct {
+	NoteNumber            string
+	Date                  time.Time
+	BuyerGSTIN            string // registered => CDNR (this v1 handles registered only)
+	PlaceOfSupply         string
+	OriginalInvoiceNumber string
+	TaxableValue          int64
+	IGST                  int64
+	CGST                  int64
+	SGST                  int64
+}
+
+// GSTR1CDNRNote is one credit note under a registered counterparty.
+type GSTR1CDNRNote struct {
+	NoteNumber            string    `json:"note_number"`
+	Date                  time.Time `json:"date"`
+	OriginalInvoiceNumber string    `json:"original_invoice_number"`
+	PlaceOfSupply         string    `json:"place_of_supply"`
+	TaxableValue          int64     `json:"taxable_value"`
+	IGST                  int64     `json:"igst"`
+	CGST                  int64     `json:"cgst"`
+	SGST                  int64     `json:"sgst"`
+	Rate                  float64   `json:"rate"`
+}
+
+// GSTR1CDNR groups a registered counterparty's credit notes under its GSTIN.
+type GSTR1CDNR struct {
+	GSTIN string          `json:"gstin"`
+	Notes []GSTR1CDNRNote `json:"notes"`
+}
+
 // GSTR1HSNSummary is the per-HSN rollup GSTR-1 requires.
 type GSTR1HSNSummary struct {
 	HSNCode      string `json:"hsn_code"`
@@ -72,11 +106,21 @@ type GSTR1Return struct {
 
 	B2B  []GSTR1B2B        `json:"b2b"`
 	B2CS []GSTR1B2CS       `json:"b2cs"`
+	CDNR []GSTR1CDNR       `json:"cdnr"` // credit notes to registered buyers
 	HSN  []GSTR1HSNSummary `json:"hsn_summary"`
 
+	// Outward-supply totals (from invoices). GSTR-1 reports credit notes in a
+	// separate section, so these are the gross supply figures, not net of notes.
 	TotalTaxableValue int64 `json:"total_taxable_value"`
 	TotalIGST         int64 `json:"total_igst"`
 	TotalCGST         int64 `json:"total_cgst"`
 	TotalSGST         int64 `json:"total_sgst"`
 	InvoiceCount      int   `json:"invoice_count"`
+
+	// Credit-note (CDNR) totals — the tax reduced by notes in the period.
+	TotalCreditTaxableValue int64 `json:"total_credit_taxable_value"`
+	TotalCreditIGST         int64 `json:"total_credit_igst"`
+	TotalCreditCGST         int64 `json:"total_credit_cgst"`
+	TotalCreditSGST         int64 `json:"total_credit_sgst"`
+	CreditNoteCount         int   `json:"credit_note_count"`
 }

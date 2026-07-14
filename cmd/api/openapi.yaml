@@ -3260,6 +3260,49 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/india/gstr1:
+    get:
+      operationId: getGSTR1
+      tags: [Settings]
+      summary: GSTR-1 outward-supply return for a tax period
+      description: >
+        Assembles the GSTR-1 return from the tenant's finalized invoices and
+        refund credit notes for the given month: B2B (registered buyers,
+        invoice-level), B2CS (unregistered, rate-wise), CDNR (credit notes to
+        registered buyers), an HSN rollup, and control totals. Returns the
+        readable sections plus a `gov_schema` object in the GSTN GSTR-1 JSON
+        shape (official field names, amounts in rupees) ready to validate
+        against the government offline tool before filing.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          description: Calendar month of the tax period.
+        - name: year
+          in: query
+          required: true
+          schema: { type: integer, minimum: 2017, maximum: 2100 }
+          description: Year of the tax period.
+      responses:
+        '200':
+          description: The GSTR-1 return, readable and in government JSON shape.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    description: Readable GSTR-1 sections and control totals (amounts in minor units).
+                  gov_schema:
+                    type: object
+                    description: GSTN GSTR-1 upload JSON (official field names, amounts in rupees).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/settings/gst:
     get:
       operationId: getGSTConfig

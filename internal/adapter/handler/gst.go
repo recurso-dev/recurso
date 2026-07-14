@@ -2,11 +2,13 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 // GSTConfig represents GST configuration for a tenant
@@ -26,11 +28,57 @@ type GSTConfig struct {
 // GSTHandler handles GST configuration endpoints
 type GSTHandler struct {
 	gstConfigRepo *db.GSTConfigRepository
+	gstrSvc       *service.GSTRService
 }
 
 // NewGSTHandler creates a new GST handler
-func NewGSTHandler(gstConfigRepo *db.GSTConfigRepository) *GSTHandler {
-	return &GSTHandler{gstConfigRepo: gstConfigRepo}
+func NewGSTHandler(gstConfigRepo *db.GSTConfigRepository, gstrSvc *service.GSTRService) *GSTHandler {
+	return &GSTHandler{gstConfigRepo: gstConfigRepo, gstrSvc: gstrSvc}
+}
+
+// GetGSTR1 returns the GSTR-1 outward-supply return for a tax period, both as
+// readable sections/totals ("data") and as the GSTN upload JSON ("gov_schema").
+// GET /v1/india/gstr1?month=&year=
+func (h *GSTHandler) GetGSTR1(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if h.gstrSvc == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "GSTR-1 export not configured")
+		return
+	}
+
+	month, err := strconv.Atoi(c.Query("month"))
+	if err != nil || month < 1 || month > 12 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "month must be 1-12")
+		return
+	}
+	year, err := strconv.Atoi(c.Query("year"))
+	if err != nil || year < 2017 || year > 2100 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "year must be a valid GST-era year")
+		return
+	}
+
+	ret, err := h.gstrSvc.GetGSTR1(c.Request.Context(), tenantID, month, year)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to build GSTR-1")
+		return
+	}
+
+	// Seller GSTIN for the government JSON header (best-effort; empty if unset).
+	sellerGSTIN := ""
+	if h.gstConfigRepo != nil {
+		if cfg, cerr := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); cerr == nil && cfg != nil {
+			sellerGSTIN = cfg.GSTIN
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       ret,
+		"gov_schema": service.BuildGSTR1GovDocument(sellerGSTIN, ret),
+	})
 }
 
 // GetConfig returns the current GST configuration
