@@ -96,6 +96,36 @@ type createUserRequest struct {
 	Password string `json:"password" binding:"required,min=8"`
 }
 
+type inviteUserRequest struct {
+	Email string `json:"email" binding:"required,email"`
+	Name  string `json:"name" binding:"required"`
+	Role  string `json:"role" binding:"required"`
+}
+
+// InviteUser adds a teammate by emailing them a link to set their own password,
+// so the admin never chooses or sees the member's credential.
+func (h *TeamHandler) InviteUser(c *gin.Context) {
+	tenantID, ok := h.tenantID(c)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if !h.requireManager(c) {
+		return
+	}
+	var req inviteUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	user, err := h.auth.InviteUser(c.Request.Context(), tenantID, h.actorRole(c), req.Email, req.Name, domain.Role(req.Role))
+	if err != nil {
+		mapTeamError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": toUserView(user)})
+}
+
 // POST /v1/users
 func (h *TeamHandler) CreateUser(c *gin.Context) {
 	tenantID, ok := h.tenantID(c)

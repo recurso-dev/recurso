@@ -250,6 +250,19 @@ const PasswordResetTemplate = `
 <p style="font-size: 14px; color: #64748b;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email — your password will not change.</p>
 `
 
+// TeamInviteTemplate invites a new teammate to set their own password.
+const TeamInviteTemplate = `
+<h1>You've been invited to Recurso</h1>
+<p>Hi {{.Name}},</p>
+<p>You've been added to a Recurso workspace. Click the button below to set your password and sign in.</p>
+
+<p style="text-align: center;">
+    <a href="{{.InviteURL}}" class="btn">Accept invitation</a>
+</p>
+
+<p style="font-size: 14px; color: #64748b;">This link will expire in 7 days. If you weren't expecting this invitation, you can safely ignore this email — no account is usable until the link is opened and a password is set.</p>
+`
+
 // PaymentFailedTemplate for failed payments
 const PaymentFailedTemplate = `
 <h1>Payment Failed</h1>

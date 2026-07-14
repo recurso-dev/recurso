@@ -159,6 +159,30 @@ type PasswordResetData struct {
 	ResetURL string
 }
 
+// TeamInviteData backs the team-invite email.
+type TeamInviteData struct {
+	Name      string
+	InviteURL string
+}
+
+// SendInvite emails a team-invite link to a newly-added teammate. The link
+// embeds a single-use token; clicking it lets them set their own password.
+func (s *NotificationService) SendInvite(ctx context.Context, toEmail, name, inviteURL string) error {
+	content, err := s.renderTemplate(email.TeamInviteTemplate, TeamInviteData{Name: name, InviteURL: inviteURL})
+	if err != nil {
+		return err
+	}
+	html, err := s.wrapInBaseTemplate("You've been invited to Recurso", content)
+	if err != nil {
+		return err
+	}
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       toEmail,
+		Subject:  "You've been invited to Recurso",
+		HTMLBody: html,
+	})
+}
+
 // SendPasswordReset emails a password-reset link to a dashboard user. The link
 // already embeds the single-use token.
 func (s *NotificationService) SendPasswordReset(ctx context.Context, toEmail, resetURL string) error {

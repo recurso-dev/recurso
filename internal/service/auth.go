@@ -45,11 +45,13 @@ type tenantRegistrar interface {
 	GetAccount(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error)
 }
 
-// passwordResetEmailer sends the password-reset email. *NotificationService
-// satisfies it; kept as a narrow interface so AuthService need not depend on the
-// whole notification surface (and tests can supply a fake/no-op).
+// passwordResetEmailer sends the account emails AuthService triggers — the
+// password-reset link and the team-invite link. *NotificationService satisfies
+// it; kept as a narrow interface so AuthService need not depend on the whole
+// notification surface (and tests can supply a fake/no-op).
 type passwordResetEmailer interface {
 	SendPasswordReset(ctx context.Context, toEmail, resetURL string) error
+	SendInvite(ctx context.Context, toEmail, name, inviteURL string) error
 }
 
 // AuthService owns dashboard user accounts, sessions, and team management.

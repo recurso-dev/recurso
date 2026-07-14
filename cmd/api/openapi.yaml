@@ -368,6 +368,51 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /v1/users/invite:
+    post:
+      operationId: inviteUser
+      tags: [Team]
+      summary: Invite a team member by email
+      description: |
+        Adds a teammate WITHOUT the admin choosing a password: the account is
+        created unusable and the invitee is emailed a single-use link to set
+        their own password. Requires owner or admin. The accept page calls
+        POST /auth/reset-password with the emailed token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, name, role]
+              properties:
+                email:
+                  type: string
+                  format: email
+                name:
+                  type: string
+                role:
+                  type: string
+                  enum: [owner, admin, member]
+      responses:
+        '201':
+          description: Invitation created and emailed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
   /v1/users/{id}:
     patch:
       operationId: updateUserRole

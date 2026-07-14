@@ -134,10 +134,18 @@ func (r *fakeMFATokenRepo) MarkUsed(_ context.Context, id uuid.UUID) (bool, erro
 }
 
 type fakeMailer struct {
-	sends    int
-	lastTo   string
-	lastURL  string
-	failNext bool
+	sends         int
+	lastTo        string
+	lastURL       string
+	failNext      bool
+	lastInviteTo  string
+	lastInviteURL string
+}
+
+func (m *fakeMailer) SendInvite(_ context.Context, to, _, inviteURL string) error {
+	m.lastInviteTo = to
+	m.lastInviteURL = inviteURL
+	return nil
 }
 
 func (m *fakeMailer) SendPasswordReset(_ context.Context, to, resetURL string) error {

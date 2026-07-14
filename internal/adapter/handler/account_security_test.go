@@ -132,6 +132,11 @@ type memMailer struct {
 	lastURL string
 }
 
+func (m *memMailer) SendInvite(_ context.Context, _, _, _ string) error {
+	m.sends++
+	return nil
+}
+
 func (m *memMailer) SendPasswordReset(_ context.Context, _, resetURL string) error {
 	m.sends++
 	m.lastURL = resetURL

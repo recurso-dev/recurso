@@ -1139,6 +1139,7 @@ func main() {
 		// member; writes are gated to owner/admin inside the handler.
 		v1.GET("/users", teamHandler.ListUsers)
 		v1.POST("/users", teamHandler.CreateUser)
+		v1.POST("/users/invite", teamHandler.InviteUser)
 		v1.PATCH("/users/:id", teamHandler.UpdateUser)
 		v1.DELETE("/users/:id", teamHandler.DeleteUser)
 

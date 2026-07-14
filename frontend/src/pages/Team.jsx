@@ -46,7 +46,7 @@ export default function Team() {
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "member" });
+  const [form, setForm] = useState({ name: "", email: "", role: "member" });
 
   const canManage = user?.role === "owner" || user?.role === "admin";
 
@@ -63,19 +63,15 @@ export default function Team() {
 
   const invite = async (e) => {
     e.preventDefault();
-    if (form.password.length < 8) {
-      toast.error("Password must be at least 8 characters");
-      return;
-    }
     setBusy(true);
     try {
-      await endpoints.createUser(form);
-      toast.success("Teammate added");
+      await endpoints.inviteUser(form);
+      toast.success("Invitation sent — they'll get an email to set their password");
       setInviteOpen(false);
-      setForm({ name: "", email: "", password: "", role: "member" });
+      setForm({ name: "", email: "", role: "member" });
       await load();
     } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to add teammate");
+      toast.error(err?.response?.data?.error?.message || "Failed to send invitation");
     } finally {
       setBusy(false);
     }
@@ -199,7 +195,7 @@ export default function Team() {
           <SheetHeader>
             <SheetTitle>Add a team member</SheetTitle>
             <SheetDescription>
-              They'll sign in with this email and password.
+              We'll email them a link to set their own password and sign in.
             </SheetDescription>
           </SheetHeader>
           <form onSubmit={invite} className="flex-1 space-y-5 overflow-y-auto px-6 py-6">
@@ -220,16 +216,6 @@ export default function Team() {
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
               />
             </FormField>
-            <FormField label="Temporary password" htmlFor="t-pw" required>
-              <Input
-                id="t-pw"
-                type="password"
-                required
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                placeholder="At least 8 characters"
-              />
-            </FormField>
             <FormField label="Role" htmlFor="t-role">
               <Select value={form.role} onValueChange={(r) => setForm({ ...form, role: r })}>
                 <SelectTrigger id="t-role">
@@ -245,7 +231,7 @@ export default function Team() {
               </Select>
             </FormField>
             <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? "Adding…" : "Add member"}
+              {busy ? "Sending…" : "Send invitation"}
             </Button>
           </form>
         </SheetContent>

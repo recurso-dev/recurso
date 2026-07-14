@@ -67,6 +67,8 @@ export const endpoints = {
   // --- Team members (tenant-scoped) ---
   getUsers: () => api.get('/users'),
   createUser: (data) => api.post('/users', data),
+  // Invite a teammate: no password — they get an email to set their own.
+  inviteUser: (data) => api.post('/users/invite', data),
   updateUserRole: (id, role) => api.patch(`/users/${id}`, { role }),
   deleteUser: (id) => api.delete(`/users/${id}`),
   getPlans: (params) => api.get('/plans', { params }),

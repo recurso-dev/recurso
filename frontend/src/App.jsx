@@ -10,6 +10,7 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
+import AcceptInvite from './pages/AcceptInvite'
 import Security from './pages/Security'
 import Subscriptions from './pages/Subscriptions'
 import CreateSubscription from './pages/CreateSubscription'
@@ -87,6 +88,7 @@ function App() {
                     <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/" />} /> {/* Added Register Route */}
                     <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPassword /> : <Navigate to="/" />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/accept-invite" element={<AcceptInvite />} />
 
                     {/* Hosted Checkout (public) */}
                     <Route path="/checkout/:id" element={<Checkout />} />
