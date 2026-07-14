@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net"
 	"net/http"
@@ -55,14 +55,14 @@ func NewWebhookWorker(
 }
 
 func (w *WebhookWorker) Start(ctx context.Context) {
-	log.Println("Webhook Worker started")
+	slog.Info("webhook worker started")
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("Webhook Worker stopping")
+			slog.Info("webhook worker stopping")
 			return
 		case <-ticker.C:
 			w.processDeliveries(ctx)
@@ -90,7 +90,7 @@ func (w *WebhookWorker) processDeliveries(ctx context.Context) {
 
 	deliveries, err := w.deliveryRepo.ListPending(ctx, 10) // Process 10 at a time
 	if err != nil {
-		log.Printf("Error fetching pending webhooks: %v", err)
+		slog.Error("failed to fetch pending webhooks", "error", err)
 		return
 	}
 
@@ -103,14 +103,14 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 	// Get Event
 	event, err := w.eventRepo.GetByID(ctx, delivery.EventID)
 	if err != nil {
-		log.Printf("Error fetching event %v: %v", delivery.EventID, err)
+		slog.Error("failed to fetch event", "event_id", delivery.EventID, "error", err)
 		return // Can't proceed
 	}
 
 	// Get Endpoint
 	endpoint, err := w.endpointRepo.GetByID(ctx, delivery.WebhookEndpointID)
 	if err != nil {
-		log.Printf("Error fetching endpoint %v: %v", delivery.WebhookEndpointID, err)
+		slog.Error("failed to fetch endpoint", "endpoint_id", delivery.WebhookEndpointID, "error", err)
 		return
 	}
 
@@ -148,7 +148,7 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 		delivery.StatusCode = resp.StatusCode
 		delivery.ResponseBody = string(body)
 		if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
-			log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+			slog.Error("failed to update delivery", "delivery_id", delivery.ID, "error", err)
 		}
 	} else {
 		w.retryDelivery(ctx, delivery, resp.StatusCode, fmt.Sprintf("HTTP %d: %s", resp.StatusCode, string(body)))
@@ -165,7 +165,7 @@ func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.Even
 		now := time.Now()
 		delivery.DeliveredAt = &now
 		if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
-			log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+			slog.Error("failed to update delivery", "delivery_id", delivery.ID, "error", err)
 		}
 		return
 	}
@@ -179,7 +179,7 @@ func (w *WebhookWorker) retryDelivery(ctx context.Context, delivery *domain.Even
 	delivery.NextRetryAt = &nextRetry
 
 	if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
-		log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+		slog.Error("failed to update delivery", "delivery_id", delivery.ID, "error", err)
 	}
 }
 
@@ -187,7 +187,7 @@ func (w *WebhookWorker) failDelivery(ctx context.Context, delivery *domain.Event
 	delivery.StatusCode = code
 	delivery.ResponseBody = reason
 	if err := w.deliveryRepo.Update(ctx, delivery); err != nil {
-		log.Printf("Error updating delivery %v: %v", delivery.ID, err)
+		slog.Error("failed to update delivery", "delivery_id", delivery.ID, "error", err)
 	}
 }
 

@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react'
 import { endpoints } from '../lib/api'
+import { getApiKey, setApiKey as storeApiKey, clearApiKey } from '../lib/authToken'
 
 const AuthContext = createContext(null)
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null)
     // Legacy API-key mode (dev / programmatic) coexists with cookie sessions.
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem('recurso_api_key') || '')
+    // The key is held in memory (lib/authToken.js), never in localStorage, so an
+    // XSS payload can't lift it from storage; it clears on refresh.
+    const [apiKey, setApiKeyState] = useState(() => getApiKey())
     const [loading, setLoading] = useState(true)
 
     // On load, resolve the session cookie via /auth/me. If there's no session
@@ -51,10 +54,11 @@ export const AuthProvider = ({ children }) => {
         return res.data
     }
 
-    // Legacy: authenticate by pasting a tenant API key (Bearer).
+    // Legacy: authenticate by pasting a tenant API key (Bearer). Held in memory
+    // only — not persisted to localStorage (XSS hardening).
     const loginWithApiKey = (key) => {
-        localStorage.setItem('recurso_api_key', key)
-        setApiKey(key)
+        storeApiKey(key)
+        setApiKeyState(key)
     }
 
     const logout = async () => {
@@ -63,8 +67,8 @@ export const AuthProvider = ({ children }) => {
         } catch {
             // ignore — clear locally regardless
         }
-        localStorage.removeItem('recurso_api_key')
-        setApiKey('')
+        clearApiKey()
+        setApiKeyState('')
         setUser(null)
     }
 

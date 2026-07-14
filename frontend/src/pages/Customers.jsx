@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Users, Link2 } from "lucide-react";
 
@@ -86,60 +86,69 @@ export default function Customers() {
     setTimeout(() => setSelected(null), 300);
   };
 
-  const copyPortalLink = (e, customer) => {
-    e.stopPropagation();
-    const url = `${window.location.origin}/portal/${customer.tenant_id}/${customer.id}`;
-    navigator.clipboard.writeText(url);
-    toast.success("Portal link copied");
-  };
+  const copyPortalLink = useCallback(
+    (e, customer) => {
+      e.stopPropagation();
+      const url = `${window.location.origin}/portal/${customer.tenant_id}/${customer.id}`;
+      navigator.clipboard.writeText(url);
+      toast.success("Portal link copied");
+    },
+    [toast]
+  );
 
-  const columns = [
-    {
-      key: "customer",
-      header: "Customer",
-      cell: (c) => (
-        <div>
-          <div className="text-sm font-medium text-foreground">{c.name}</div>
-          <div className="text-sm text-muted-foreground">{c.email}</div>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      cell: (c) =>
-        c.active_subs > 0 ? (
-          <Badge variant="success">Active</Badge>
-        ) : (
-          <Badge variant="neutral">Inactive</Badge>
+  const columns = useMemo(
+    () => [
+      {
+        key: "customer",
+        header: "Customer",
+        cell: (c) => (
+          <div>
+            <div className="text-sm font-medium text-foreground">{c.name}</div>
+            <div className="text-sm text-muted-foreground">{c.email}</div>
+          </div>
         ),
-    },
-    { key: "risk", header: "Risk", cell: (c) => <RiskBadge score={c.risk_score} /> },
-    {
-      key: "subs",
-      header: "Subscriptions",
-      cell: (c) => <span className="tabular-nums text-muted-foreground">{c.active_subs ?? 0}</span>,
-    },
-    {
-      key: "joined",
-      header: "Joined",
-      cell: (c) => <span className="text-muted-foreground">{formatDate(c.created_at)}</span>,
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: (c) => (
-        <button
-          onClick={(e) => copyPortalLink(e, c)}
-          className="text-stone-400 transition-colors hover:text-emerald-600"
-          title="Copy portal link"
-        >
-          <Link2 className="h-4 w-4" />
-        </button>
-      ),
-    },
-  ];
+      },
+      {
+        key: "status",
+        header: "Status",
+        cell: (c) =>
+          c.active_subs > 0 ? (
+            <Badge variant="success">Active</Badge>
+          ) : (
+            <Badge variant="neutral">Inactive</Badge>
+          ),
+      },
+      { key: "risk", header: "Risk", cell: (c) => <RiskBadge score={c.risk_score} /> },
+      {
+        key: "subs",
+        header: "Subscriptions",
+        cell: (c) => (
+          <span className="tabular-nums text-muted-foreground">{c.active_subs ?? 0}</span>
+        ),
+      },
+      {
+        key: "joined",
+        header: "Joined",
+        cell: (c) => <span className="text-muted-foreground">{formatDate(c.created_at)}</span>,
+      },
+      {
+        key: "actions",
+        header: "",
+        align: "right",
+        cell: (c) => (
+          <button
+            onClick={(e) => copyPortalLink(e, c)}
+            className="text-stone-400 transition-colors hover:text-emerald-600"
+            title="Copy portal link"
+            aria-label={`Copy portal link for ${c.name}`}
+          >
+            <Link2 className="h-4 w-4" />
+          </button>
+        ),
+      },
+    ],
+    [copyPortalLink]
+  );
 
   return (
     <div>

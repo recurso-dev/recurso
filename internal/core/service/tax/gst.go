@@ -87,14 +87,20 @@ func (e *GSTEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*po
 	}
 
 	if customerState == "" || customerState != orgState {
-		// Inter-state supply (IGST)
+		// Inter-state supply: the whole tax is a single IGST component.
 		calc.IGST = totalTax
 		calc.TaxType = "inter_state"
 	} else {
-		// Intra-state supply (CGST + SGST)
-		halfTax := totalTax / 2
-		calc.CGST = halfTax
-		calc.SGST = totalTax - halfTax
+		// Intra-state supply: CGST and SGST are each levied at half the GST rate
+		// on the same base, so they are computed independently and are always
+		// equal — Indian GST requires CGST == SGST on every invoice. The tax total
+		// is their sum, which keeps TotalTax == CGST + SGST exactly. (Splitting a
+		// pre-rounded combined total instead would make the halves differ by a
+		// paisa on odd totals — e.g. 2 and 3 — which is non-compliant.)
+		half := int64(math.Round(float64(req.Amount) * rate / 2))
+		calc.CGST = half
+		calc.SGST = half
+		calc.TotalTax = half * 2
 		calc.TaxType = "intra_state"
 	}
 

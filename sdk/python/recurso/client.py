@@ -34,7 +34,7 @@ class Client:
             argument to the constructor.
     """
 
-    raise_on_unexpected_status: bool = field(default=False, kw_only=True)
+    raise_on_unexpected_status: bool = field(default=True, kw_only=True)
     _base_url: str = field(alias="base_url")
     _cookies: dict[str, str] = field(factory=dict, kw_only=True, alias="cookies")
     _headers: dict[str, str] = field(factory=dict, kw_only=True, alias="headers")
@@ -164,7 +164,7 @@ class AuthenticatedClient:
         auth_header_name: The name of the Authorization header
     """
 
-    raise_on_unexpected_status: bool = field(default=False, kw_only=True)
+    raise_on_unexpected_status: bool = field(default=True, kw_only=True)
     _base_url: str = field(alias="base_url")
     _cookies: dict[str, str] = field(factory=dict, kw_only=True, alias="cookies")
     _headers: dict[str, str] = field(factory=dict, kw_only=True, alias="headers")

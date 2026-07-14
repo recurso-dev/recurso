@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,7 +63,7 @@ func (s *PreChargeScheduler) Start() {
 		}
 	}()
 
-	log.Println("✅ Pre-charge scheduler started (runs hourly)")
+	slog.Info("pre-charge scheduler started (runs hourly)")
 }
 
 // Stop stops the scheduler
@@ -72,7 +72,7 @@ func (s *PreChargeScheduler) Stop() {
 		s.ticker.Stop()
 	}
 	s.done <- true
-	log.Println("🛑 Pre-charge scheduler stopped")
+	slog.Info("pre-charge scheduler stopped")
 }
 
 // runPreChargeNotifications sends notifications for subscriptions due tomorrow
@@ -83,7 +83,7 @@ func (s *PreChargeScheduler) runPreChargeNotifications() {
 	lockKey := "scheduler:pre-charge"
 	release, acquired, err := s.locker.Obtain(ctx, lockKey, 10*time.Minute)
 	if err != nil {
-		log.Printf("Failed to obtain lock for pre-charge scheduler: %v", err)
+		slog.Error("failed to obtain lock for pre-charge scheduler", "error", err)
 		return
 	}
 	if !acquired {
@@ -92,22 +92,22 @@ func (s *PreChargeScheduler) runPreChargeNotifications() {
 	}
 	defer func() {
 		if err := release(ctx); err != nil {
-			log.Printf("Failed to release lock for pre-charge scheduler: %v", err)
+			slog.Error("failed to release lock for pre-charge scheduler", "error", err)
 		}
 	}()
 
 	subscriptions, err := s.subscriptionRepo.GetSubscriptionsDueTomorrow(ctx)
 	if err != nil {
-		log.Printf("Error fetching subscriptions for pre-charge: %v", err)
+		slog.Error("failed to fetch subscriptions for pre-charge", "error", err)
 		return
 	}
 
 	if len(subscriptions) == 0 {
-		log.Println("No subscriptions due tomorrow for pre-charge notification")
+		slog.Info("no subscriptions due tomorrow for pre-charge notification")
 		return
 	}
 
-	log.Printf("Found %d subscriptions due tomorrow for pre-charge notification", len(subscriptions))
+	slog.Info("found subscriptions due tomorrow for pre-charge notification", "count", len(subscriptions))
 
 	for _, sub := range subscriptions {
 		// Send pre-charge reminder email
@@ -122,16 +122,16 @@ func (s *PreChargeScheduler) runPreChargeNotifications() {
 		}
 
 		if err := s.notificationSvc.SendPreChargeReminder(ctx, data); err != nil {
-			log.Printf("Failed to send pre-charge notification for subscription %s: %v", sub.ID, err)
+			slog.Error("failed to send pre-charge notification", "subscription_id", sub.ID, "error", err)
 			continue
 		}
 
 		// Mark as sent
 		if err := s.subscriptionRepo.MarkPreChargeNotificationSent(ctx, sub.ID, sub.NextBillingDate); err != nil {
-			log.Printf("Failed to mark pre-charge notification as sent for subscription %s: %v", sub.ID, err)
+			slog.Error("failed to mark pre-charge notification as sent", "subscription_id", sub.ID, "error", err)
 		}
 
-		log.Printf("✉️  Sent pre-charge notification for subscription %s to %s", sub.ID, sub.CustomerEmail)
+		slog.Info("sent pre-charge notification", "subscription_id", sub.ID, "customer_email", sub.CustomerEmail)
 	}
 }
 

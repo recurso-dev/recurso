@@ -80,3 +80,24 @@ func TestGSTCalculator_RoundsNotTruncates(t *testing.T) {
 		t.Errorf("IGST = %d, want 18001", res.IGST)
 	}
 }
+
+// TestGSTCalculator_IntraStateHalvesAlwaysEqual proves an intra-state supply
+// splits into CGST == SGST even when the combined tax would be odd, and that the
+// tax total stays exactly CGST + SGST (the invoice-total invariant). "TN" org +
+// "TN" buyer is intra-state, so the tax splits into CGST/SGST.
+func TestGSTCalculator_IntraStateHalvesAlwaysEqual(t *testing.T) {
+	engine := NewGSTEngine("TN")
+	// 100005 × 18% = 18000.9 → 18001 combined, which is odd. Each half is
+	// 100005 × 9% = 9000.45 → 9000, so CGST == SGST == 9000 and the total is
+	// 18000 (their sum), NOT a lopsided 9000/9001 split of a pre-rounded 18001.
+	res := engine.CalculateTaxLegacy(100005, "TN")
+	if res.CGST != res.SGST {
+		t.Errorf("CGST (%d) != SGST (%d) — intra-state halves must be equal", res.CGST, res.SGST)
+	}
+	if res.CGST != 9000 {
+		t.Errorf("CGST = %d, want 9000 (100005 × 9%%, rounded)", res.CGST)
+	}
+	if res.Total != res.CGST+res.SGST {
+		t.Errorf("Total (%d) != CGST+SGST (%d) — tax-total invariant broken", res.Total, res.CGST+res.SGST)
+	}
+}

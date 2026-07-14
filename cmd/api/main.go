@@ -82,6 +82,11 @@ func getEnvBool(key string, fallback bool) bool {
 }
 
 func main() {
+	// Structured JSON logging for the whole process: the workers and schedulers
+	// log via slog, so make the default handler emit JSON to stdout for
+	// machine-parseable, queryable logs in any deployment.
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
 	// 1. Initialize DB
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -545,14 +550,18 @@ func main() {
 	// the accounting service per connection.
 	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
 
-	// Start Workers in Background
-	go retryWorker.Start(context.Background())
-	go webhookWorker.Start(context.Background())
-	go churnWorker.Start(context.Background())
-	go revrecWorker.Start(context.Background())
-	go einvoiceWorker.Start(context.Background())
-	go dunningCampaignWorker.Start(context.Background())
-	go acctSyncWorker.Start(context.Background())
+	// Start Workers in Background. They all select on ctx.Done(), so a single
+	// cancellable context tied to the shutdown signal (cancelWorkers below) lets
+	// them stop their tick loops and drain in-flight work on SIGINT/SIGTERM
+	// instead of being killed mid-operation.
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	go retryWorker.Start(workerCtx)
+	go webhookWorker.Start(workerCtx)
+	go churnWorker.Start(workerCtx)
+	go revrecWorker.Start(workerCtx)
+	go einvoiceWorker.Start(workerCtx)
+	go dunningCampaignWorker.Start(workerCtx)
+	go acctSyncWorker.Start(workerCtx)
 
 	// Distributed Locking & Redis. A working Redis makes the scheduler lock and
 	// the idempotency store real across instances; without it the app falls back
@@ -1360,6 +1369,7 @@ func main() {
 		<-sigChan
 		log.Println("Shutting down gracefully...")
 		shutdownSchedulers()
+		cancelWorkers() // stop the background worker tick loops and drain in-flight work
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
