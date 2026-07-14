@@ -288,6 +288,45 @@ func (r *DunningCampaignRepository) UpdateExecution(ctx context.Context, exec *d
 	return nil
 }
 
+// ClaimDueExecutions atomically leases up to `limit` active executions whose
+// step is due (next_step_at <= now), pushing next_step_at forward to
+// `leaseUntil` so a concurrent runner's claim can't see them. FOR UPDATE SKIP
+// LOCKED serializes the claim across instances; the lease means a runner that
+// crashes mid-send has its rows re-surface after leaseUntil rather than being
+// lost. processExecution overwrites next_step_at with the real next-step time
+// as it sends, so the lease value returned here is only a placeholder.
+func (r *DunningCampaignRepository) ClaimDueExecutions(ctx context.Context, now, leaseUntil time.Time, limit int) ([]*domain.DunningCampaignExecution, error) {
+	query := `
+		UPDATE dunning_campaign_executions
+		SET next_step_at = $2
+		WHERE id IN (
+			SELECT id FROM dunning_campaign_executions
+			WHERE status = 'active' AND next_step_at <= $1
+			ORDER BY next_step_at ASC
+			LIMIT $3
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, tenant_id, invoice_id, campaign_id, current_step_index, status, started_at, next_step_at, completed_at`
+	rows, err := r.db.QueryContext(ctx, query, now, leaseUntil, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim due executions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var executions []*domain.DunningCampaignExecution
+	for rows.Next() {
+		exec := &domain.DunningCampaignExecution{}
+		if err := rows.Scan(
+			&exec.ID, &exec.TenantID, &exec.InvoiceID, &exec.CampaignID,
+			&exec.CurrentStepIndex, &exec.Status, &exec.StartedAt, &exec.NextStepAt, &exec.CompletedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan claimed dunning execution: %w", err)
+		}
+		executions = append(executions, exec)
+	}
+	return executions, rows.Err()
+}
+
 func (r *DunningCampaignRepository) GetDueExecutions(ctx context.Context, now time.Time) ([]*domain.DunningCampaignExecution, error) {
 	query := `
 		SELECT id, tenant_id, invoice_id, campaign_id, current_step_index, status, started_at, next_step_at, completed_at

@@ -109,11 +109,20 @@ func (s *DunningCampaignService) TriggerCampaign(ctx context.Context, invoiceID 
 	return nil
 }
 
-// ProcessDueSteps processes all due campaign steps (called by worker)
+// campaignClaimLease is how long ClaimDueExecutions holds a claimed step before
+// it re-surfaces — longer than a single send takes, so a crashed runner's row
+// is retried rather than lost, but short enough that recovery is timely.
+const campaignClaimLease = 15 * time.Minute
+
+// ProcessDueSteps processes all due campaign steps (called by worker). It
+// atomically CLAIMS due executions rather than just reading them: the scheduler
+// lock is a no-op without Redis, so the claim is what guarantees each step is
+// sent by exactly one instance (no duplicate dunning email/SMS).
 func (s *DunningCampaignService) ProcessDueSteps(ctx context.Context) error {
-	executions, err := s.campaignRepo.GetDueExecutions(ctx, time.Now().UTC())
+	now := time.Now().UTC()
+	executions, err := s.campaignRepo.ClaimDueExecutions(ctx, now, now.Add(campaignClaimLease), 100)
 	if err != nil {
-		return fmt.Errorf("failed to get due executions: %w", err)
+		return fmt.Errorf("failed to claim due executions: %w", err)
 	}
 
 	for _, exec := range executions {

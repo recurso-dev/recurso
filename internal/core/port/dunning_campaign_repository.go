@@ -28,4 +28,9 @@ type DunningCampaignRepository interface {
 	GetExecutionByInvoice(ctx context.Context, invoiceID uuid.UUID) (*domain.DunningCampaignExecution, error)
 	UpdateExecution(ctx context.Context, exec *domain.DunningCampaignExecution) error
 	GetDueExecutions(ctx context.Context, now time.Time) ([]*domain.DunningCampaignExecution, error)
+	// ClaimDueExecutions atomically leases due executions so exactly one runner
+	// processes each — preventing duplicate dunning email/SMS when the worker
+	// runs on more than one instance (the distributed lock is a no-op without
+	// Redis). It pushes next_step_at to leaseUntil under FOR UPDATE SKIP LOCKED.
+	ClaimDueExecutions(ctx context.Context, now, leaseUntil time.Time, limit int) ([]*domain.DunningCampaignExecution, error)
 }
