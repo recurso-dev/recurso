@@ -157,6 +157,10 @@ func (m *acctSyncInvoiceRepo) GetOverdueInvoices(ctx context.Context) ([]domain.
 	return nil, nil
 }
 
+func (m *acctSyncInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Time, _ int) ([]*domain.Invoice, error) {
+	return m.GetFailedEInvoices(ctx)
+}
+
 func (m *acctSyncInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
 	return nil, nil
 }

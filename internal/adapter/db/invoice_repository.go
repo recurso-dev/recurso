@@ -562,29 +562,18 @@ func (r *InvoiceRepository) UpdateRetryInfoWithDunning(ctx context.Context, invo
 }
 
 // GetFailedEInvoices fetches FAILED e-invoices that are due for retry
-func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
-	query := `
-		SELECT
-			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
-			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
-			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count,
-			COALESCE(ack_date, ''), e_invoice_retry_count,
-			e_invoice_next_retry_at, COALESCE(e_invoice_error_message, '')
-		FROM invoices
-		WHERE e_invoice_status = 'FAILED'
-		  AND e_invoice_next_retry_at IS NOT NULL
-		  AND e_invoice_next_retry_at <= $1
-		ORDER BY e_invoice_next_retry_at ASC
-		LIMIT 20
-	`
-	rows, err := r.db.QueryContext(ctx, query, time.Now().UTC())
-	if err != nil {
-		return nil, fmt.Errorf("failed to query failed e-invoices: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+// failedEInvoiceColumns is the shared projection for the failed-e-invoice
+// read/claim paths; the two must return the same columns in the same order so
+// scanFailedEInvoiceRows works for both.
+const failedEInvoiceColumns = `id, tenant_id, subscription_id, customer_id, invoice_number, status,
+	currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
+	igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
+	signed_qr_code, e_invoice_status, tds_amount,
+	created_at, due_date, paid_at, next_retry_at, retry_count,
+	COALESCE(ack_date, ''), e_invoice_retry_count,
+	e_invoice_next_retry_at, COALESCE(e_invoice_error_message, '')`
 
+func scanFailedEInvoiceRows(rows *sql.Rows) ([]*domain.Invoice, error) {
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
@@ -609,7 +598,52 @@ func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.I
 		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
-	return invoices, nil
+	return invoices, rows.Err()
+}
+
+func (r *InvoiceRepository) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
+	query := `SELECT ` + failedEInvoiceColumns + `
+		FROM invoices
+		WHERE e_invoice_status = 'FAILED'
+		  AND e_invoice_next_retry_at IS NOT NULL
+		  AND e_invoice_next_retry_at <= $1
+		ORDER BY e_invoice_next_retry_at ASC
+		LIMIT 20`
+	rows, err := r.db.QueryContext(ctx, query, time.Now().UTC())
+	if err != nil {
+		return nil, fmt.Errorf("failed to query failed e-invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanFailedEInvoiceRows(rows)
+}
+
+// ClaimFailedEInvoices atomically leases up to `limit` failed e-invoices due for
+// retry, pushing e_invoice_next_retry_at forward to `leaseUntil` so a concurrent
+// runner can't see them — preventing duplicate government IRN submissions when
+// the retry worker runs on more than one instance (the distributed lock is a
+// no-op without Redis). FOR UPDATE SKIP LOCKED serializes the claim; the retry
+// path then overwrites e_invoice_next_retry_at with the real backoff (on
+// failure) or moves the row to a non-FAILED status (on success), so the lease is
+// only a placeholder and a crashed runner's row re-surfaces after leaseUntil.
+func (r *InvoiceRepository) ClaimFailedEInvoices(ctx context.Context, now, leaseUntil time.Time, limit int) ([]*domain.Invoice, error) {
+	query := `UPDATE invoices
+		SET e_invoice_next_retry_at = $2
+		WHERE id IN (
+			SELECT id FROM invoices
+			WHERE e_invoice_status = 'FAILED'
+			  AND e_invoice_next_retry_at IS NOT NULL
+			  AND e_invoice_next_retry_at <= $1
+			ORDER BY e_invoice_next_retry_at ASC
+			LIMIT $3
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING ` + failedEInvoiceColumns
+	rows, err := r.db.QueryContext(ctx, query, now, leaseUntil, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim failed e-invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanFailedEInvoiceRows(rows)
 }
 
 // UpdateEInvoiceStatus updates e-invoice specific fields on an invoice

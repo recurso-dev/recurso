@@ -57,6 +57,10 @@ func (m *mockEInvInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) e
 	return nil
 }
 
+func (m *mockEInvInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Time, _ int) ([]*domain.Invoice, error) {
+	return m.GetFailedEInvoices(ctx)
+}
+
 func (m *mockEInvInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
 	var result []*domain.Invoice
 	for _, inv := range m.invoices {

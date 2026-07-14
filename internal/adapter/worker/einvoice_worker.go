@@ -37,6 +37,11 @@ var einvoiceBackoffDurations = []time.Duration{
 
 const maxEInvoiceRetries = 5
 
+// einvoiceClaimLease is how long ClaimFailedEInvoices holds a claimed row before
+// it re-surfaces — longer than one GSP round-trip so a crashed runner's invoice
+// is retried rather than lost, but shorter than the retry backoff.
+const einvoiceClaimLease = 15 * time.Minute
+
 // Start runs the worker loop, polling every 30 seconds.
 func (w *EInvoiceRetryWorker) Start(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
@@ -56,7 +61,11 @@ func (w *EInvoiceRetryWorker) Start(ctx context.Context) {
 }
 
 func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
-	invoices, err := w.invoiceRepo.GetFailedEInvoices(ctx)
+	// CLAIM (not just read) the due failed e-invoices: the scheduler lock is a
+	// no-op without Redis, so the atomic lease is what stops two instances from
+	// both re-submitting the same invoice to the government IRN endpoint.
+	now := time.Now().UTC()
+	invoices, err := w.invoiceRepo.ClaimFailedEInvoices(ctx, now, now.Add(einvoiceClaimLease), 20)
 	if err != nil {
 		log.Printf("EInvoiceRetryWorker: Failed to fetch failed e-invoices: %v", err)
 		return

@@ -37,6 +37,10 @@ type InvoiceRepository interface {
 	SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
 	GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error)
+	// ClaimFailedEInvoices atomically leases due failed e-invoices so exactly one
+	// runner retries each — preventing duplicate government IRN submissions under
+	// a multi-instance deploy (the distributed lock is a no-op without Redis).
+	ClaimFailedEInvoices(ctx context.Context, now, leaseUntil time.Time, limit int) ([]*domain.Invoice, error)
 	UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error
 }
 

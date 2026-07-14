@@ -54,6 +54,10 @@ func (m *mockInvoiceRepo) MarkAsUncollectible(ctx context.Context, invoiceID uui
 func (m *mockInvoiceRepo) GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error) {
 	return nil, nil
 }
+func (m *mockInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Time, _ int) ([]*domain.Invoice, error) {
+	return m.GetFailedEInvoices(ctx)
+}
+
 func (m *mockInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
 	return nil, nil
 }
