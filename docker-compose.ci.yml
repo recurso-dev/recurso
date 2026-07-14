@@ -5,6 +5,10 @@
 # network, so drop their host-port publishing here. Only the API keeps its
 # host port (8080), which the e2e test hits.
 services:
+  # Publish the API on a non-default host port so the CI stack coexists with a
+  # dev stack that may already be on 8080. The e2e job hits localhost:18080.
+  api:
+    ports: !override ["18080:8080"]
   postgres:
     ports: !override []
   redis:

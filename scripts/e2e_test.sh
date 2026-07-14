@@ -6,7 +6,7 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-API_URL="http://localhost:8080"
+API_URL="${API_URL:-http://localhost:8080}"
 
 echo "Starting End-to-End Verification..."
 

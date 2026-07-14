@@ -38,12 +38,15 @@ jobs:
           # services so the stack doesn't collide with anything already bound on
           # the runner (e.g. a Homebrew postgres on 5432).
           COMPOSE="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
+          # CI stack runs on 18080 (docker-compose.ci.yml) to coexist with a dev
+          # stack on 8080.
+          export API_URL="http://localhost:18080"
           $COMPOSE up -d --build
           for _ in $(seq 1 60); do
-            curl -fsS http://localhost:8080/health >/dev/null && break
+            curl -fsS "$API_URL/health" >/dev/null && break
             sleep 2
           done
-          if ! curl -fsS http://localhost:8080/health >/dev/null; then
+          if ! curl -fsS "$API_URL/health" >/dev/null; then
             echo "API did not become healthy in time"; $COMPOSE logs api; exit 1
           fi
           chmod +x scripts/e2e_test.sh
