@@ -113,6 +113,10 @@ func (c *CachedSalesTaxProvider) LookupSalesTax(ctx context.Context, q *SalesTax
 	}
 
 	c.mu.Lock()
+	// Sweep expired entries before inserting so the map can't grow unbounded
+	// with stale jurisdictions. Writes only happen on a cache miss (once per TTL
+	// per jurisdiction), so the O(n) sweep is cheap and n stays small.
+	c.evictExpiredLocked()
 	c.entries[key] = cachedSalesTaxRate{
 		rate:         res.Rate,
 		jurisdiction: res.Jurisdiction,
@@ -121,6 +125,16 @@ func (c *CachedSalesTaxProvider) LookupSalesTax(ctx context.Context, q *SalesTax
 	}
 	c.mu.Unlock()
 	return res, nil
+}
+
+// evictExpiredLocked removes entries whose TTL has passed. Caller holds c.mu.
+func (c *CachedSalesTaxProvider) evictExpiredLocked() {
+	now := c.now()
+	for k, e := range c.entries {
+		if !now.Before(e.expiresAt) {
+			delete(c.entries, k)
+		}
+	}
 }
 
 // salesTaxCacheKey keys rates by destination jurisdiction. Rates depend on
