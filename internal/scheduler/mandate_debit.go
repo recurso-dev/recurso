@@ -97,7 +97,10 @@ func (s *MandateDebitScheduler) runDebits() {
 	log.Printf("Found %d mandates ready for debit", len(mandates))
 
 	for _, mandate := range mandates {
-		if err := s.mandateSvc.ExecuteDebit(ctx, mandate, mandate.MaxAmount, "INR"); err != nil {
+		// Charge the subscription's real recurring amount (plan price + tax),
+		// NOT mandate.MaxAmount — MaxAmount is the authorization ceiling and
+		// debiting it over-charged ~2× every cycle (ENG-165).
+		if err := s.mandateSvc.DebitSubscription(ctx, mandate); err != nil {
 			log.Printf("Failed to execute debit for mandate %s: %v", mandate.ID, err)
 			continue
 		}
