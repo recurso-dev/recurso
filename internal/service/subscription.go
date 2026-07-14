@@ -1160,18 +1160,40 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// DR Deferred / CR Customer-Credit for the same amount, keeping Deferred and
 	// the schedule in step. Best-effort: failures are logged for reconciliation.
 	if creditNote != nil && creditNote.Amount > 0 {
-		if s.revrecService != nil {
-			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, creditNote.Amount); err != nil {
+		// The credit note is GROSS (net + reversed GST). Split it: the NET reduces
+		// Deferred and the recognition schedule (both of which hold net-of-tax
+		// after ENG-191), while the tax portion reverses out of Tax Payable — the
+		// two together credit the customer the gross they paid. Passing the gross
+		// to the net-holding Deferred/schedule would drive Deferred negative by
+		// the tax (ENG-191c).
+		netCredit := -proration.NetAmount
+		if netCredit < 0 {
+			netCredit = 0
+		}
+		taxCredit := -taxRes.Total
+		if taxCredit < 0 {
+			taxCredit = 0
+		}
+		if s.revrecService != nil && netCredit > 0 {
+			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, netCredit); err != nil {
 				s.logger.Error("downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
-			} else if reduced != creditNote.Amount {
-				s.logger.Warn("downgrade schedule reduced less than the credit (deferred/credit may need reconciliation)",
-					"subscription_id", subscriptionID, "credit", creditNote.Amount, "reduced", reduced)
+			} else if reduced != netCredit {
+				s.logger.Warn("downgrade schedule reduced less than the net credit (deferred/credit may need reconciliation)",
+					"subscription_id", subscriptionID, "net_credit", netCredit, "reduced", reduced)
 			}
 		}
 		if s.ledger != nil {
-			if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.ID, creditNote.Amount, "Plan downgrade credit"); err != nil {
-				s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
-					"credit_note_id", creditNote.ID, "amount", creditNote.Amount, "error", err)
+			if netCredit > 0 {
+				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.ID, netCredit, "Plan downgrade credit (net)"); err != nil {
+					s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
+						"credit_note_id", creditNote.ID, "amount", netCredit, "error", err)
+				}
+			}
+			if taxCredit > 0 {
+				if _, err := s.ledger.RecordDowngradeTaxReversal(ctx, tenantID, creditNote.ID, taxCredit, "Plan downgrade GST reversal"); err != nil {
+					s.logger.Error("downgrade tax reversal ledger post failed — reconciliation needed",
+						"credit_note_id", creditNote.ID, "amount", taxCredit, "error", err)
+				}
 			}
 		}
 	}

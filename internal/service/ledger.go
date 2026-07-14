@@ -412,6 +412,34 @@ func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uu
 	return txID, nil
 }
 
+// RecordDowngradeTaxReversal reverses the GST portion of a mid-period downgrade
+// credit out of Tax Payable into the customer's account credit (ENG-191c):
+//
+//	Debit:  Tax Payable (Liability)    — the output GST on the reduced supply is
+//	        no longer owed to the government
+//	Credit: Customer Credit (Liability) — that tax is credited to the customer
+//	        alongside the net (RecordDowngradeCredit posts the net portion), so
+//	        the total account credit is the gross the customer originally paid
+//
+// Pairs with RecordDowngradeCredit (which posts DR Deferred / CR Customer Credit
+// for the NET). Splitting the credit this way keeps Deferred draining only the
+// net it holds (post-ENG-191) instead of going negative by the tax.
+func (s *LedgerService) RecordDowngradeTaxReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(taxAmount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("downgrade tax reversal %s: %w", creditNoteID, err)
+	}
+	taxAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postTransfer(ctx, taxAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeTaxReversal, creditNoteID, description)
+}
+
 // RecordDowngradeCredit books the deferred revenue freed by a mid-period plan
 // downgrade as an account-credit liability (ENG-154).
 //

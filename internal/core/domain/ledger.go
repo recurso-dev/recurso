@@ -135,6 +135,13 @@ const LedgerCodeOutputTax uint16 = 6
 // stays idempotent and attributable per (reference_id, code).
 const LedgerCodeRefundTaxReversal uint16 = 9
 
+// LedgerCodeDowngradeTaxReversal reverses the GST portion of a mid-period plan
+// downgrade out of Tax Payable into the customer's account credit (ENG-191c):
+// the downgrade reduces the value of supply, so the output tax on the reduced
+// portion comes back down and is credited to the customer along with the net.
+// Distinct code so it stays idempotent per (reference_id, code).
+const LedgerCodeDowngradeTaxReversal uint16 = 10
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{
