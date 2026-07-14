@@ -19,6 +19,18 @@ const (
 	InvoiceStatusPastDue       InvoiceStatus = "past_due"
 )
 
+// BillingReason records why an invoice was created (Stripe-aligned). Set at every
+// creation site and persisted to invoices.billing_reason; empty only for rows
+// created before the column existed.
+const (
+	BillingReasonSubscriptionCreate = "subscription_create" // first invoice when a subscription starts
+	BillingReasonSubscriptionCycle  = "subscription_cycle"  // recurring renewal / trial conversion / advance
+	BillingReasonSubscriptionUpdate = "subscription_update" // mid-cycle change (proration)
+	BillingReasonMandateDebit       = "mandate_debit"       // UPI-mandate auto-debit
+	BillingReasonGiftPurchase       = "gift_purchase"       // prepaid gift
+	BillingReasonManual             = "manual"              // one-off / quote conversion
+)
+
 type Invoice struct {
 	ID             uuid.UUID  `json:"id"`
 	TenantID       uuid.UUID  `json:"tenant_id"`

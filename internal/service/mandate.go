@@ -255,7 +255,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		CustomerID:      mandate.CustomerID,
 		SubscriptionID:  mandate.SubscriptionID,
 		InvoiceNumber:   fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
-		BillingReason:   "mandate_debit",
+		BillingReason:   domain.BillingReasonMandateDebit,
 		MandateCycleKey: cycleKey,
 		AmountDue:       total,
 		AmountPaid:      0,
