@@ -183,6 +183,14 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 		}, nil
 	}
 
+	// A stable idempotency key (per billing cycle) so a re-attempt of the same
+	// cycle after a mid-flow failure dedupes at Razorpay instead of debiting the
+	// customer again. Empty key -> nil headers (unchanged behavior).
+	var idemHeaders map[string]string
+	if req.IdempotencyKey != "" {
+		idemHeaders = map[string]string{"X-Razorpay-Idempotency-Key": req.IdempotencyKey}
+	}
+
 	// 1. Create the order the recurring payment settles against. notes.invoice_id
 	//    lets the order.paid / payment.captured webhook resolve the invoice.
 	order, err := g.client.Order.Create(map[string]interface{}{
@@ -194,7 +202,7 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 			"invoice_id": req.InvoiceID,
 			"token_id":   req.TokenID,
 		},
-	}, nil)
+	}, idemHeaders)
 	if err != nil {
 		return &port.PaymentResult{Success: false, ErrorCode: "mandate_order_failed", ErrorMsg: err.Error()}, nil
 	}
@@ -214,7 +222,7 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 		"token":       req.TokenID,
 		"recurring":   "1",
 		"description": "Recurring debit for invoice " + req.InvoiceID,
-	}, nil)
+	}, idemHeaders)
 	if err != nil {
 		return &port.PaymentResult{Success: false, ErrorCode: "mandate_debit_failed", ErrorMsg: err.Error()}, nil
 	}

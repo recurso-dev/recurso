@@ -169,6 +169,12 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 			Amount:             netCharge,
 			Currency:           currency,
 			InvoiceID:          invoiceID.String(),
+			// Stable per billing cycle: LastDebitAt only advances when a cycle is
+			// SUCCESSFULLY debited, so every retry of the current cycle carries the
+			// same key and the gateway dedupes the charge (ENG-190). This bounds the
+			// exposure where a debit succeeds at the gateway but a later local step
+			// fails and the scheduler re-attempts the same cycle.
+			IdempotencyKey: mandateDebitIdempotencyKey(mandate),
 		})
 		if err != nil {
 			return fmt.Errorf("mandate debit failed: %w", err)
@@ -255,6 +261,20 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 // isGatewayPaymentID reports whether id is a refundable gateway payment
 // identifier (Razorpay pay_*, Stripe pi_*/ch_*) rather than an order id —
 // the Refund APIs of both gateways accept only payment identifiers.
+// mandateDebitIdempotencyKey returns a key that is STABLE across every retry of
+// the current billing cycle. LastDebitAt is set only when a cycle is
+// successfully debited, so it uniquely identifies "the cycle after the last
+// success" and doesn't change while that cycle is being (re)attempted — unlike
+// NextDebitAt, which the claim lease rewrites on every tick. First-ever debit
+// (LastDebitAt nil) keys on 0.
+func mandateDebitIdempotencyKey(mandate *domain.Mandate) string {
+	var last int64
+	if mandate.LastDebitAt != nil {
+		last = mandate.LastDebitAt.Unix()
+	}
+	return fmt.Sprintf("md-%s-%d", mandate.ID, last)
+}
+
 func isGatewayPaymentID(id string) bool {
 	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") || strings.HasPrefix(id, "ch_")
 }

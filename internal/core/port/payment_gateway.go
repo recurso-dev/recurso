@@ -75,6 +75,10 @@ type MandateDebitRequest struct {
 	Amount             int64
 	Currency           string
 	InvoiceID          string // Recurso invoice id — carried in order notes for webhook settlement
+	// IdempotencyKey is stable across retries of the SAME billing cycle, so if a
+	// debit succeeds at the gateway but a later local step fails and the cycle is
+	// re-attempted, the gateway dedupes instead of debiting the customer twice.
+	IdempotencyKey string
 }
 
 type PaymentGateway interface {
