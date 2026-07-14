@@ -459,6 +459,11 @@ func normalizeINState(s string) string {
 	if s == "" {
 		return ""
 	}
+	// A single-digit numeric code ("2") is the zero-padded GST state code
+	// ("02"); pad it before the lookup so "2" resolves to HP just like "02".
+	if len(s) == 1 && s[0] >= '0' && s[0] <= '9' {
+		s = "0" + s
+	}
 	if alpha, ok := gstNumericStateToAlpha[s]; ok {
 		return alpha
 	}
