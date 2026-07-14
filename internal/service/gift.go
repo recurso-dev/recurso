@@ -101,7 +101,7 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 			TenantID:      tenantID,
 			CustomerID:    buyerID,
 			InvoiceNumber: fmt.Sprintf("INV-GIFT-%d-%s", now.UnixNano(), invID.String()[:8]),
-			BillingReason: "gift_purchase",
+			BillingReason: domain.BillingReasonGiftPurchase,
 			Status:        domain.InvoiceStatusOpen,
 			Currency:      price.Currency,
 			Subtotal:      giftAmount,

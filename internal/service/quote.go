@@ -245,10 +245,11 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 	}
 
 	invoice := &domain.Invoice{
-		ID:         invID,
-		TenantID:   quote.TenantID,
-		CustomerID: quote.CustomerID,
-		Status:     "open",
+		ID:            invID,
+		TenantID:      quote.TenantID,
+		CustomerID:    quote.CustomerID,
+		Status:        "open",
+		BillingReason: domain.BillingReasonManual,
 		// Carry the quote's money fields onto the invoice. Setting only AmountDue
 		// left Subtotal/Total/TaxAmount at zero, so the PDF, MarkInvoicePaid, and
 		// the ledger all saw a $0 invoice (ENG-144).
