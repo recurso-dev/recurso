@@ -59,31 +59,62 @@ func TestMandateDebitScheduler_RunDebits_Postgres(t *testing.T) {
 		t.Fatalf("create customer: %v", err)
 	}
 
-	// A due mandate: active, pre-notified, next_debit_at already in the past.
+	// The subscription the mandate bills: a plan with a ₹120.00 recurring price.
+	// The mandate's authorization ceiling (max_amount) is 50000 — far above the
+	// real charge — so a debit of the ceiling (the old bug) is unmistakable.
+	planID := uuid.New()
+	seed(t, conn, `INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active) VALUES ($1,$2,'Pro',$3,'month',1,TRUE)`,
+		planID, tenantID, "md-pro-"+planID.String()[:8])
+	seed(t, conn, `INSERT INTO prices (id, plan_id, currency, amount, type, created_at) VALUES ($1,$2,'INR',12000,'recurring',NOW())`,
+		uuid.New(), planID)
+	subID := uuid.New()
+	seed(t, conn, `INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,'active', NOW() - INTERVAL '1 month', NOW(), NOW(), NOW(), NOW())`,
+		subID, tenantID, customer.ID, planID)
+
+	// A due mandate linked to that subscription: active, pre-notified,
+	// next_debit_at already in the past.
 	mandateID := uuid.New()
 	if _, err := conn.ExecContext(ctx,
-		`INSERT INTO mandates (id, tenant_id, customer_id, mandate_type, payment_method, vpa,
+		`INSERT INTO mandates (id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 			razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status, pre_debit_notified, next_debit_at, created_at, updated_at)
-		 VALUES ($1,$2,$3,'upi','upi','md@upi','tok_md','','',50000,'monthly','active',TRUE, NOW() - INTERVAL '1 minute', NOW(), NOW())`,
-		mandateID, tenantID, customer.ID); err != nil {
+		 VALUES ($1,$2,$3,$4,'upi','upi','md@upi','tok_md','','',50000,'monthly','active',TRUE, NOW() - INTERVAL '1 minute', NOW(), NOW())`,
+		mandateID, tenantID, customer.ID, subID); err != nil {
 		t.Fatalf("seed mandate: %v", err)
 	}
 
 	mandateRepo := db.NewMandateRepository(conn)
 	invRepo := db.NewInvoiceRepository(conn)
 	mandateSvc := service.NewMandateService(mandateRepo, &gateway.MockGateway{}, custRepo, invRepo)
+	// Charge the subscription's real recurring amount (plan price + tax), capped
+	// at the mandate ceiling (ENG-165). A fixed 18% GST resolver keeps the tax
+	// deterministic so the asserted total is exact.
+	mandateSvc.SetBillingResolver(db.NewSubscriptionRepository(conn), db.NewPlanRepository(conn), fixedGSTResolver{})
 	sched := NewMandateDebitScheduler(mandateRepo, mandateSvc, memory.NewNoOpLocker())
 
 	sched.runDebits()
 
-	// The due mandate must have been charged — one invoice for the customer.
+	// The due mandate must have been charged — exactly one invoice — and for the
+	// subscription's real amount (₹120 plan price + 18% GST = 14160), NOT the
+	// 50000 authorization ceiling that the old code debited (ENG-165). The GST
+	// split must be stamped on the invoice, not left flat.
 	var invCount int
+	var subtotal, taxAmount, cgst, sgst, total int64
 	if err := conn.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM invoices WHERE customer_id = $1`, customer.ID).Scan(&invCount); err != nil {
-		t.Fatalf("count invoices: %v", err)
+		`SELECT COUNT(*) OVER (), subtotal, tax_amount, cgst_amount, sgst_amount, total
+		   FROM invoices WHERE customer_id = $1`, customer.ID).
+		Scan(&invCount, &subtotal, &taxAmount, &cgst, &sgst, &total); err != nil {
+		t.Fatalf("read invoice: %v", err)
 	}
 	if invCount != 1 {
 		t.Fatalf("invoices created = %d, want 1 (scheduler failed to charge the due mandate)", invCount)
+	}
+	if total == 50000 {
+		t.Fatal("charged 50000 — the mandate MaxAmount ceiling (ENG-165 regression)")
+	}
+	if subtotal != 12000 || taxAmount != 2160 || cgst != 1080 || sgst != 1080 || total != 14160 {
+		t.Errorf("invoice = subtotal %d / tax %d (cgst %d, sgst %d) / total %d, want 12000 / 2160 (1080,1080) / 14160 (plan price + 18%% GST)",
+			subtotal, taxAmount, cgst, sgst, total)
 	}
 
 	// The mandate advanced to the next full cycle (~1 month), not the short claim
@@ -101,4 +132,18 @@ func TestMandateDebitScheduler_RunDebits_Postgres(t *testing.T) {
 	if preNotified {
 		t.Error("pre_debit_notified should be reset to false after a debit")
 	}
+}
+
+// fixedGSTResolver is a deterministic 18% intra-state GST resolver for the test,
+// so the charged total is exact. It satisfies the mandate service's tax-resolver
+// dependency without pulling in the real jurisdiction engine.
+type fixedGSTResolver struct{}
+
+func (fixedGSTResolver) ResolveInvoiceTax(_ context.Context, _ uuid.UUID, _ *domain.Customer, _ string, amount int64, hsn string) service.InvoiceTax {
+	tax := amount * 18 / 100
+	half := tax / 2
+	if hsn == "" {
+		hsn = "998314"
+	}
+	return service.InvoiceTax{Total: tax, CGST: half, SGST: tax - half, TaxType: "intra_state", Rate: 0.18, HSN: hsn}
 }
