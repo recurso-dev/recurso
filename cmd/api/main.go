@@ -945,19 +945,24 @@ func main() {
 		httpStatus := http.StatusOK
 		components := gin.H{}
 
-		// Check Postgres
+		// Check Postgres. Never return the raw error — /health is public and
+		// unauthenticated, and a connection error can leak the host/port (and
+		// sometimes credentials) from the DSN. Log it server-side; expose only
+		// the component status.
 		if err := database.Ping(); err != nil {
+			slog.Error("health check: postgres ping failed", "error", err)
 			status = "degraded"
 			httpStatus = http.StatusServiceUnavailable
-			components["postgres"] = gin.H{"status": "down", "error": err.Error()}
+			components["postgres"] = gin.H{"status": "down"}
 		} else {
 			components["postgres"] = gin.H{"status": "up"}
 		}
 
-		// Check Redis
+		// Check Redis (same info-disclosure stance as Postgres above).
 		if rdb != nil {
 			if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
-				components["redis"] = gin.H{"status": "down", "error": err.Error()}
+				slog.Error("health check: redis ping failed", "error", err)
+				components["redis"] = gin.H{"status": "down"}
 				// Redis down is degraded, not critical
 				if status == "ok" {
 					status = "degraded"
