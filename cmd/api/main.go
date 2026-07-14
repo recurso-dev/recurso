@@ -897,6 +897,29 @@ func main() {
 	// 8. Setup Router
 	r := gin.Default()
 
+	// Client IP must not be spoofable. gin.Default() trusts ALL proxies
+	// (0.0.0.0/0), so it reads a client-supplied X-Forwarded-For — letting
+	// anyone reset the per-IP rate limiter (500/min global, 20/min on public
+	// auth endpoints) by sending a random XFF, defeating login/forgot-password/
+	// register brute-force protection. Trust only real proxy CIDRs: loopback +
+	// RFC-1918 private ranges by default (matches the nginx-in-front docker
+	// deployment and is unspoofable by public clients), overridable via
+	// TRUSTED_PROXIES (comma-separated CIDRs) for a different ingress. Set
+	// TRUSTED_PROXIES to a single space (or configure your LB's egress CIDR) if
+	// the app sits behind a public-IP load balancer.
+	trustedProxies := []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	if tp := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); tp != "" {
+		trustedProxies = trustedProxies[:0]
+		for _, p := range strings.Split(tp, ",") {
+			if s := strings.TrimSpace(p); s != "" {
+				trustedProxies = append(trustedProxies, s)
+			}
+		}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES %v: %v", trustedProxies, err)
+	}
+
 	// Global Middleware (Phase 47)
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
