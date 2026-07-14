@@ -61,6 +61,13 @@ type Invoice struct {
 	// invoices paid before this field existed. Required for API refunds.
 	GatewayPaymentID string `json:"gateway_payment_id,omitempty" db:"gateway_payment_id"`
 
+	// MandateCycleKey is the per-cycle claim key for mandate auto-debits
+	// ("md-<mandate_id>-<cycle>"). A UNIQUE index makes the OPEN invoice the
+	// durable at-most-once claim: a re-attempt of the same cycle can't create a
+	// second invoice, so it can't charge again (ENG-164). Empty for all
+	// non-mandate invoices, which the partial unique index leaves unconstrained.
+	MandateCycleKey string `json:"-" db:"mandate_cycle_key"`
+
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is bumped by InvoiceRepository.Update. The accounting sync
 	// compares it against the invoice's mapping to skip unchanged invoices;
