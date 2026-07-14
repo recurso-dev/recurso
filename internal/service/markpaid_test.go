@@ -70,6 +70,15 @@ func (m *mockLedgerRepoForMarkPaid) CreateAccount(ctx context.Context, acc *doma
 	return nil
 }
 
+func (m *mockLedgerRepoForMarkPaid) CreateTransactions(ctx context.Context, txs []*domain.LedgerTransaction) error {
+	for _, tx := range txs {
+		if err := m.CreateTransaction(ctx, tx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *mockLedgerRepoForMarkPaid) CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error {
 	if m.createTxErr != nil {
 		return m.createTxErr

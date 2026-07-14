@@ -183,14 +183,14 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 		})
 	}
 
-	// Always write to PG; a failed write means the invoice has no ledger entry,
-	// so surface it to the caller rather than losing it in a log line.
+	// Post both legs (AR→Revenue and, for GST, Revenue→Tax-Payable) atomically:
+	// a failure after the first leg would otherwise commit gross revenue with no
+	// tax reclassification. A failed write means the invoice has no ledger entry,
+	// so surface it rather than losing it in a log line.
 	if s.pgRepo != nil {
-		for _, t := range transfers {
-			if err := s.pgRepo.CreateTransaction(ctx, t); err != nil {
-				slog.Error("PG CreateTransaction failed", "error", err)
-				return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
-			}
+		if err := s.pgRepo.CreateTransactions(ctx, transfers); err != nil {
+			slog.Error("PG CreateTransactions failed", "error", err)
+			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 		}
 	}
 
