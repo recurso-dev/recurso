@@ -272,12 +272,22 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 		endDate = startDate.AddDate(0, 1, 0)
 	}
 
+	// Recognize the NET (taxable) revenue, not the gross total. GST is reclassified
+	// out of Deferred into Tax Payable at invoice time (ENG-159), so the Deferred
+	// ledger account holds only Total-Tax. Scheduling the gross here made the
+	// recognition events drain Deferred by more than was ever deferred — Deferred
+	// went negative by the tax and Recognized was overstated by it (tax booked as
+	// revenue), on every GST subscription invoice (ENG-191).
+	netRevenue := invoice.Total - invoice.TaxAmount
+	if netRevenue < 0 {
+		netRevenue = 0
+	}
 	schedule := &domain.RevenueSchedule{
 		ID:             uuid.New(),
 		TenantID:       invoice.TenantID,
 		InvoiceID:      invoice.ID,
 		SubscriptionID: invoice.SubscriptionID,
-		TotalAmount:    invoice.Total,
+		TotalAmount:    netRevenue,
 		Currency:       invoice.Currency,
 		StartDate:      startDate,
 		EndDate:        endDate,
