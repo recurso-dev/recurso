@@ -70,3 +70,23 @@ type DeferredCurrencyBalance struct {
 	Currency string `json:"currency"`
 	Deferred int64  `json:"deferred"` // minor units, native currency
 }
+
+// RevenueWaterfallBucket is one month on the recognition curve: revenue already
+// recognized that month, and revenue still scheduled (pending) to recognize.
+type RevenueWaterfallBucket struct {
+	Year       int   `json:"year"`
+	Month      int   `json:"month"`
+	Recognized int64 `json:"recognized"` // status=recognized, minor units
+	Scheduled  int64 `json:"scheduled"`  // status=pending, minor units
+}
+
+// RevenueWaterfall is a tenant's full recognized-plus-scheduled revenue curve,
+// month by month — the classic rev-rec waterfall an auditor plots to see how
+// deferred revenue releases over time (past recognitions and future schedule
+// in one series).
+type RevenueWaterfall struct {
+	TenantID        uuid.UUID                `json:"tenant_id"`
+	Buckets         []RevenueWaterfallBucket `json:"buckets"`
+	TotalRecognized int64                    `json:"total_recognized"`
+	TotalScheduled  int64                    `json:"total_scheduled"`
+}

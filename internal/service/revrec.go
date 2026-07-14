@@ -18,6 +18,7 @@ type RevRecRepository interface {
 	MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error
 	MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error
 	GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error)
+	GetWaterfall(ctx context.Context, tenantID uuid.UUID) ([]domain.RevenueWaterfallBucket, error)
 
 	// Unwind support (ENG-147): reverse the still-deferred portion of a schedule
 	// when a subscription is canceled or refunded mid-period.

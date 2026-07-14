@@ -57,6 +57,94 @@ func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uui
 	return accounts, rows.Err()
 }
 
+// GetDeferredRollforward returns the movement of the tenant's Deferred Revenue
+// account across [start, end): the opening balance (net credits before start),
+// deferrals added (credits) in the period, and amounts released (debits) in the
+// period. If the tenant has no Deferred account yet, all zeros. Closing is
+// derived by the service (opening + added - released).
+func (r *LedgerRepository) GetDeferredRollforward(ctx context.Context, tenantID uuid.UUID, start, end time.Time) (opening, added, released int64, err error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT
+		   COALESCE(SUM(CASE WHEN t.created_at < $2 AND t.credit_account_id = a.id THEN t.amount
+		                     WHEN t.created_at < $2 AND t.debit_account_id  = a.id THEN -t.amount
+		                     ELSE 0 END), 0)::bigint AS opening,
+		   COALESCE(SUM(CASE WHEN t.created_at >= $2 AND t.created_at < $3 AND t.credit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint AS added,
+		   COALESCE(SUM(CASE WHEN t.created_at >= $2 AND t.created_at < $3 AND t.debit_account_id  = a.id THEN t.amount ELSE 0 END), 0)::bigint AS released
+		 FROM ledger_accounts a
+		 LEFT JOIN ledger_transactions t ON a.id IN (t.debit_account_id, t.credit_account_id)
+		 WHERE a.tenant_id = $1 AND a.code = $4`,
+		tenantID, start, end, domain.AccountCodeDeferredRevenue)
+	if err := row.Scan(&opening, &added, &released); err != nil {
+		if err == sql.ErrNoRows {
+			return 0, 0, 0, nil
+		}
+		return 0, 0, 0, fmt.Errorf("failed to query deferred rollforward: %w", err)
+	}
+	return opening, added, released, nil
+}
+
+// GetGeneralLedgerRows returns every posted transaction for a tenant, flattened
+// with both account codes and names, ordered oldest first. Tenant-scoped via the
+// debit account (both sides of a transfer always belong to the same tenant).
+// This is the read-only general-ledger export an auditor imports.
+func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT t.id, t.created_at, t.code,
+		        da.code, da.name, ca.code, ca.name,
+		        t.amount::bigint, t.reference_id, COALESCE(t.description, '')
+		 FROM ledger_transactions t
+		 JOIN ledger_accounts da ON da.id = t.debit_account_id
+		 JOIN ledger_accounts ca ON ca.id = t.credit_account_id
+		 WHERE da.tenant_id = $1
+		 ORDER BY t.created_at, t.id`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query general ledger: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.GeneralLedgerRow
+	for rows.Next() {
+		var g domain.GeneralLedgerRow
+		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
+			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
+			&g.Amount, &g.ReferenceID, &g.Description); err != nil {
+			return nil, fmt.Errorf("failed to scan general ledger row: %w", err)
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
+// GetTrialBalanceLines aggregates posted debit and credit totals per account
+// for a tenant. Each ledger_transactions row carries one debit account and one
+// credit account, so a row contributes its amount to exactly one side of each
+// of the two accounts it touches. Accounts with no postings return zeros.
+func (r *LedgerRepository) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT a.id, a.code, a.name, a.type,
+		        COALESCE(SUM(CASE WHEN t.debit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint  AS debits,
+		        COALESCE(SUM(CASE WHEN t.credit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint AS credits
+		 FROM ledger_accounts a
+		 LEFT JOIN ledger_transactions t ON a.id IN (t.debit_account_id, t.credit_account_id)
+		 WHERE a.tenant_id = $1
+		 GROUP BY a.id, a.code, a.name, a.type
+		 ORDER BY a.code`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query trial balance: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var lines []domain.TrialBalanceLine
+	for rows.Next() {
+		var l domain.TrialBalanceLine
+		if err := rows.Scan(&l.AccountID, &l.Code, &l.Name, &l.Type, &l.Debits, &l.Credits); err != nil {
+			return nil, fmt.Errorf("failed to scan trial balance line: %w", err)
+		}
+		lines = append(lines, l)
+	}
+	return lines, rows.Err()
+}
+
 func (r *LedgerRepository) GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error) {
 	a := &domain.LedgerAccount{}
 	err := r.db.QueryRowContext(ctx,

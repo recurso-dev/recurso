@@ -3056,6 +3056,83 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/ledger/trial-balance:
+    get:
+      operationId: getTrialBalance
+      tags: [Finance]
+      summary: Trial balance
+      description: |
+        Every account with its posted debit/credit totals, its balance on the
+        account's normal side, an abnormal-sign flag, and the double-entry
+        invariant (total debits == total credits). Read-only.
+      responses:
+        '200':
+          description: Trial balance.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/ledger/export:
+    get:
+      operationId: exportGeneralLedger
+      tags: [Finance]
+      summary: Export the general ledger (CSV)
+      description: |
+        Every posted transaction for the tenant, flattened with both account
+        codes/names, amount, and provenance, as a CSV download. Read-only.
+      responses:
+        '200':
+          description: General ledger as CSV.
+          content:
+            text/csv:
+              schema:
+                type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/ledger/deferred-rollforward:
+    get:
+      operationId: getDeferredRollforward
+      tags: [Finance]
+      summary: Deferred-revenue rollforward
+      description: |
+        The Deferred Revenue account's movement for a calendar month: opening
+        balance, deferrals added, amounts released, and the derived closing
+        (opening + added - released). Read-only.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deferred-revenue rollforward.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/finance/reconciliation:
     get:
       operationId: runReconciliation
@@ -3114,6 +3191,27 @@ paths:
                     description: Report payload (recognized/deferred totals and breakdown rows).
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/finance/revrec/waterfall:
+    get:
+      operationId: getRevenueWaterfall
+      tags: [Finance]
+      summary: Revenue recognition waterfall
+      description: |
+        The recognition curve — revenue already recognized and revenue still
+        scheduled — bucketed by month, with totals. Read-only.
+      responses:
+        '200':
+          description: Revenue waterfall.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
         '401':
           $ref: '#/components/responses/Unauthorized'
 

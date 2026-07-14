@@ -200,6 +200,37 @@ func (r *RevRecRepository) MarkScheduleCanceled(ctx context.Context, scheduleID 
 // GetReport builds a deferred-revenue rollforward: revenue recognized in the
 // requested month/year, the balance still deferred, the schedule of when that
 // balance releases (grouped by recognition month), and its split by currency.
+// GetWaterfall returns the tenant's recognition curve, one row per month:
+// revenue recognized (status=recognized) and revenue still scheduled
+// (status=pending) by the month of recognition_date. Canceled/failed events
+// are excluded.
+func (r *RevRecRepository) GetWaterfall(ctx context.Context, tenantID uuid.UUID) ([]domain.RevenueWaterfallBucket, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT EXTRACT(YEAR FROM recognition_date)::int  AS y,
+		        EXTRACT(MONTH FROM recognition_date)::int AS m,
+		        COALESCE(SUM(CASE WHEN status = $2 THEN amount ELSE 0 END), 0)::bigint AS recognized,
+		        COALESCE(SUM(CASE WHEN status = $3 THEN amount ELSE 0 END), 0)::bigint AS scheduled
+		   FROM recognition_events
+		  WHERE tenant_id = $1 AND status IN ($2, $3)
+		  GROUP BY y, m
+		  ORDER BY y, m`,
+		tenantID, domain.RecognitionStatusRecognized, domain.RecognitionStatusPending)
+	if err != nil {
+		return nil, fmt.Errorf("query revenue waterfall: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var buckets []domain.RevenueWaterfallBucket
+	for rows.Next() {
+		var b domain.RevenueWaterfallBucket
+		if err := rows.Scan(&b.Year, &b.Month, &b.Recognized, &b.Scheduled); err != nil {
+			return nil, fmt.Errorf("scan waterfall bucket: %w", err)
+		}
+		buckets = append(buckets, b)
+	}
+	return buckets, rows.Err()
+}
+
 func (r *RevRecRepository) GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error) {
 	report := &domain.DeferredRevenueReport{
 		Month:      month,

@@ -1165,6 +1165,10 @@ func main() {
 		// Ledger (P22)
 		v1.GET("/ledger/accounts", ledgerHandler.ListAccounts)
 		v1.GET("/ledger/entries", ledgerHandler.GetEntries)
+		// Provable-ledger auditor outputs (ENG-192): trial balance + GL export
+		v1.GET("/ledger/trial-balance", ledgerHandler.GetTrialBalance)
+		v1.GET("/ledger/export", ledgerHandler.ExportGL)
+		v1.GET("/ledger/deferred-rollforward", ledgerHandler.GetDeferredRollforward)
 
 		// Ledger Reconciliation — on-demand drift report for the caller's tenant
 		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
@@ -1258,6 +1262,7 @@ func main() {
 
 		// Revenue Recognition Report
 		v1.GET("/finance/revrec/report", revrecHandler.GetReport)
+		v1.GET("/finance/revrec/waterfall", revrecHandler.GetWaterfall)
 
 		// Phase 2: Organizations (Multi-Entity)
 		v1.GET("/organizations", orgHandler.ListOrganizations)

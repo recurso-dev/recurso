@@ -31,6 +31,9 @@ type mockReconciliationRepo struct {
 	orphanTotal int
 	orphanErr   error
 
+	trialBalanceLines []domain.TrialBalanceLine
+	trialBalanceErr   error
+
 	accounts    []*domain.LedgerAccount
 	accountsErr error
 
@@ -72,6 +75,13 @@ func (m *mockReconciliationRepo) GetOrphanLedgerTransactions(ctx context.Context
 		return nil, 0, m.orphanErr
 	}
 	return m.orphanRows, m.orphanTotal, nil
+}
+
+func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error) {
+	if m.trialBalanceErr != nil {
+		return nil, m.trialBalanceErr
+	}
+	return m.trialBalanceLines, nil
 }
 
 func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {

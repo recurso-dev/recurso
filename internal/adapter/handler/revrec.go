@@ -17,6 +17,24 @@ func NewRevRecHandler(revrecService *service.RevRecService) *RevRecHandler {
 	return &RevRecHandler{revrecService: revrecService}
 }
 
+// GetWaterfall returns the caller's tenant recognized-plus-scheduled revenue
+// curve, month by month, with totals. Read-only.
+func (h *RevRecHandler) GetWaterfall(c *gin.Context) {
+	tid, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	waterfall, err := h.revrecService.GetWaterfall(c.Request.Context(), tid)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": waterfall})
+}
+
 func (h *RevRecHandler) GetReport(c *gin.Context) {
 	tid, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

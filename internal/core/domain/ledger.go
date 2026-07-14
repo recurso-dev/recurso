@@ -76,6 +76,39 @@ func (a AccountType) Value() (driver.Value, error) {
 	return int64(a), nil
 }
 
+// IsDebitNormal reports whether the account's balance normally sits on the
+// debit side — assets and expenses. Liabilities, equity, and revenue are
+// credit-normal. The trial balance uses this to detect an abnormal balance
+// sign (e.g. a liability carrying a net debit, which signals a posting bug).
+func (a AccountType) IsDebitNormal() bool {
+	return a == AccountTypeAsset || a == AccountTypeExpense
+}
+
+// TrialBalanceLine is one account's posted totals plus its balance expressed on
+// the account's normal side. Abnormal is true when that balance is negative.
+type TrialBalanceLine struct {
+	AccountID uuid.UUID   `json:"account_id"`
+	Code      int         `json:"code"`
+	Name      string      `json:"name"`
+	Type      AccountType `json:"type"`
+	Debits    int64       `json:"debits"`   // minor units posted to the debit side
+	Credits   int64       `json:"credits"`  // minor units posted to the credit side
+	Balance   int64       `json:"balance"`  // signed, on the account's normal side
+	Abnormal  bool        `json:"abnormal"` // Balance < 0 — wrong sign for this account
+}
+
+// TrialBalance is a tenant's chart of accounts with posted totals. Balanced is
+// the fundamental double-entry invariant: total debits == total credits across
+// every account. It is the canonical artifact for proving the books balance.
+type TrialBalance struct {
+	TenantID     uuid.UUID          `json:"tenant_id"`
+	Lines        []TrialBalanceLine `json:"lines"`
+	TotalDebits  int64              `json:"total_debits"`
+	TotalCredits int64              `json:"total_credits"`
+	Balanced     bool               `json:"balanced"`
+	AsOf         time.Time          `json:"as_of"`
+}
+
 // Chart of Accounts — standard account codes
 const (
 	AccountCodeAR                = 1100 // Accounts Receivable (Asset)
@@ -108,6 +141,37 @@ func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 		{ID: uuid.New(), TenantID: tenantID, Name: "Refunds", Type: AccountTypeExpense, Code: AccountCodeRefunds, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Credits & Adjustments", Type: AccountTypeExpense, Code: AccountCodeCreditsIssued, LedgerID: 1},
 	}
+}
+
+// DeferredRollforward is the movement of the Deferred Revenue account over a
+// period, sourced straight from the ledger: the opening balance, new deferrals
+// booked (credits), amounts recognized or reversed out (debits), and the
+// closing balance. Opening + Added - Released == Closing. The canonical
+// deferred-revenue rollforward an auditor ties to the trial balance.
+type DeferredRollforward struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	PeriodStart time.Time `json:"period_start"`
+	PeriodEnd   time.Time `json:"period_end"`
+	Opening     int64     `json:"opening"`  // deferred balance at period start, minor units
+	Added       int64     `json:"added"`    // new deferrals booked in period (credits)
+	Released    int64     `json:"released"` // recognized/reversed in period (debits)
+	Closing     int64     `json:"closing"`  // Opening + Added - Released
+}
+
+// GeneralLedgerRow is one posted transaction flattened for export: the two
+// accounts value moved between (by code and name), the amount, and its
+// provenance (code, reference, description). Used for the read-only GL export.
+type GeneralLedgerRow struct {
+	TransactionID     uuid.UUID `json:"transaction_id"`
+	Timestamp         time.Time `json:"timestamp"`
+	Code              uint16    `json:"code"`
+	DebitAccountCode  int       `json:"debit_account_code"`
+	DebitAccountName  string    `json:"debit_account_name"`
+	CreditAccountCode int       `json:"credit_account_code"`
+	CreditAccountName string    `json:"credit_account_name"`
+	Amount            int64     `json:"amount"` // minor units
+	ReferenceID       uuid.UUID `json:"reference_id"`
+	Description       string    `json:"description"`
 }
 
 // LedgerAccount represents a financial account in the ledger.

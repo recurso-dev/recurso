@@ -36,6 +36,12 @@ const (
 	DiscrepancyMissingInTigerBeetle  = "missing_in_tigerbeetle"
 	DiscrepancyMissingInPostgres     = "missing_in_postgres"
 	DiscrepancyTBAmountMismatch      = "tb_amount_mismatch"
+	// Trial-balance integrity: the double-entry books must always balance and
+	// no account may carry a wrong-sign balance (e.g. Deferred Revenue going
+	// net-debit — the ENG-191 class). These make the trial balance a standing
+	// tripwire, not just a report.
+	DiscrepancyLedgerUnbalanced = "ledger_unbalanced"
+	DiscrepancyAbnormalBalance  = "abnormal_account_balance"
 )
 
 // ReconciliationRepository is the narrow, read-only view of the ledger store
@@ -45,6 +51,8 @@ type ReconciliationRepository interface {
 	GetInvoiceLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
+	// GetTrialBalanceLines feeds the double-entry integrity assertion.
+	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error)
 
 	// TigerBeetle comparison inputs (all read-only).
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
@@ -69,6 +77,7 @@ type ReconciliationDiscrepancy struct {
 	InvoiceID      *uuid.UUID `json:"invoice_id,omitempty"`
 	TransactionID  *uuid.UUID `json:"transaction_id,omitempty"`
 	ReferenceID    *uuid.UUID `json:"reference_id,omitempty"`
+	AccountCode    int        `json:"account_code,omitempty"` // set for abnormal_account_balance
 	ExpectedAmount int64      `json:"expected_amount"`
 	FoundAmount    int64      `json:"found_amount"`
 }
@@ -166,7 +175,19 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		})
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + orphanTotal
+	// Double-entry integrity: the books must balance and no account may carry a
+	// wrong-sign balance. Prepended so these critical findings always survive
+	// the maxListed truncation even when billing drift is large.
+	tbLines, err := s.repo.GetTrialBalanceLines(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("trial balance for tenant %s: %w", tenantID, err)
+	}
+	integrity := trialBalanceDiscrepancies(finalizeTrialBalance(tenantID, tbLines, time.Now().UTC()))
+	if len(integrity) > 0 {
+		report.Discrepancies = append(integrity, report.Discrepancies...)
+	}
+
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + orphanTotal + len(integrity)
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"
@@ -181,6 +202,31 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 
 	report.FinishedAt = time.Now().UTC()
 	return report, nil
+}
+
+// trialBalanceDiscrepancies asserts double-entry integrity over a computed
+// trial balance: one ledger_unbalanced finding if total debits != total
+// credits, and one abnormal_account_balance finding per account carrying a
+// wrong-sign balance. Pure so it is unit-testable without a database.
+func trialBalanceDiscrepancies(tb *domain.TrialBalance) []ReconciliationDiscrepancy {
+	var out []ReconciliationDiscrepancy
+	if !tb.Balanced {
+		out = append(out, ReconciliationDiscrepancy{
+			Type:           DiscrepancyLedgerUnbalanced,
+			ExpectedAmount: tb.TotalDebits,
+			FoundAmount:    tb.TotalCredits,
+		})
+	}
+	for _, l := range tb.Lines {
+		if l.Abnormal {
+			out = append(out, ReconciliationDiscrepancy{
+				Type:        DiscrepancyAbnormalBalance,
+				AccountCode: l.Code,
+				FoundAmount: l.Balance,
+			})
+		}
+	}
+	return out
 }
 
 // compareTigerBeetle cross-checks the tenant's Postgres ledger transactions
