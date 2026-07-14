@@ -358,6 +358,60 @@ func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenant
 	return txID, nil
 }
 
+// RecordRefundTaxReversal reverses the GST portion of a refund out of Tax
+// Payable (ENG-191b):
+//
+//	Debit:  Tax Payable (Liability) — we no longer owe the government this GST,
+//	        because it was returned to the customer with the refund
+//	Credit: Refunds (Expense)       — the tax portion is not our expense; it
+//	        offsets the gross DR Refunds booked by RecordRefund
+//
+// This mirrors the invoice-time DR Revenue/Deferred → CR Tax Payable posting in
+// reverse. taxAmount is the tax slice of the refund (proportional to the
+// invoice's tax rate — see refundTaxPortion). referenceID is the credit note id;
+// the distinct code keeps it idempotent and off the code-4/5 keys.
+func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(taxAmount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("refund tax reversal %s: %w", creditNoteID, err)
+	}
+	txID := uuid.New()
+
+	taxAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  taxAccountID,
+		CreditAccountID: refundsAccountID,
+		Amount:          amt,
+		LedgerID:        1,
+		Code:            domain.LedgerCodeRefundTaxReversal,
+		ReferenceID:     creditNoteID,
+		Description:     description,
+		Timestamp:       time.Now(),
+	}
+
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed for refund tax reversal", "error", err)
+			return uuid.Nil, fmt.Errorf("ledger write failed for refund tax reversal on credit note %s: %w", creditNoteID, err)
+		}
+	}
+	if s.tbClient != nil {
+		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	return txID, nil
+}
+
 // RecordDowngradeCredit books the deferred revenue freed by a mid-period plan
 // downgrade as an account-credit liability (ENG-154).
 //

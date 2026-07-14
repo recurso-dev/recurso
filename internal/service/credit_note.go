@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"strings"
 	"time"
 
@@ -16,6 +17,21 @@ import (
 // ErrCreditNoteValidation marks caller-correctable failures (bad request).
 // Handlers should map errors wrapping this sentinel to HTTP 400.
 var ErrCreditNoteValidation = errors.New("credit note validation failed")
+
+// refundTaxPortion returns the GST slice of a refund, proportional to the
+// originating invoice's tax rate: a full refund reverses the full invoice tax,
+// a partial refund reverses proportionally. Zero when the invoice carried no
+// tax. Capped at the invoice tax so rounding can never over-reverse.
+func refundTaxPortion(refundAmount, invoiceTax, invoiceTotal int64) int64 {
+	if refundAmount <= 0 || invoiceTax <= 0 || invoiceTotal <= 0 {
+		return 0
+	}
+	tax := int64(math.Round(float64(refundAmount) * float64(invoiceTax) / float64(invoiceTotal)))
+	if tax > invoiceTax {
+		tax = invoiceTax
+	}
+	return tax
+}
 
 // ErrRefundNotFound marks gateway refund webhook events whose refund id does
 // not match any credit note (refunds issued outside recurso, or from before
@@ -287,6 +303,14 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
+		}
+		// Reverse the GST portion of the refund out of Tax Payable — otherwise the
+		// output-tax liability booked at invoice time stays overstated forever on
+		// every refunded GST invoice (ENG-191b). Proportional to the refund.
+		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
+			}
 		}
 	}
 
