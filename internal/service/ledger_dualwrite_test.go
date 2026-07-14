@@ -36,6 +36,15 @@ func (m *mockLedgerRepoForLedger) CreateAccount(ctx context.Context, acc *domain
 	return nil
 }
 
+func (m *mockLedgerRepoForLedger) CreateTransactions(ctx context.Context, txs []*domain.LedgerTransaction) error {
+	for _, tx := range txs {
+		if err := m.CreateTransaction(ctx, tx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *mockLedgerRepoForLedger) CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error {
 	if m.createTxErr != nil {
 		return m.createTxErr

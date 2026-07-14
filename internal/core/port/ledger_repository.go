@@ -15,6 +15,9 @@ type LedgerRepository interface {
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
 	GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error)
 	CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error
+	// CreateTransactions posts several transfers atomically (one DB transaction),
+	// so a multi-leg posting can't be left half-committed.
+	CreateTransactions(ctx context.Context, txs []*domain.LedgerTransaction) error
 	GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error)
 	// GetTrialBalanceLines returns each of the tenant's accounts with its posted
 	// debit and credit totals (minor units). Balance/Abnormal are computed by the

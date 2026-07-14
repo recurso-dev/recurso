@@ -162,18 +162,47 @@ func (r *LedgerRepository) GetAccountByTenantAndCode(ctx context.Context, tenant
 }
 
 func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error {
-	if tx.Timestamp.IsZero() {
-		tx.Timestamp = time.Now()
-	}
-
-	// The insert and both balance moves run in one transaction so a partial
-	// failure can never leave a posted transaction without its balance effect
-	// (or vice-versa), permanently diverging the ledger.
 	dbtx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin ledger transaction: %w", err)
 	}
 	defer func() { _ = dbtx.Rollback() }() // no-op once committed
+	if err := applyLedgerTx(ctx, dbtx, tx); err != nil {
+		return err
+	}
+	return dbtx.Commit()
+}
+
+// CreateTransactions posts several transfers in a SINGLE database transaction so
+// a multi-leg posting is all-or-nothing. RecordInvoice, for a GST invoice,
+// writes an AR→Revenue leg AND a Revenue→Tax-Payable reclassification; posting
+// them in separate transactions risked committing the first and losing the
+// second, silently leaving Revenue gross and Tax Payable understated (books
+// still "balance" per-leg, so the invariant check wouldn't catch it).
+func (r *LedgerRepository) CreateTransactions(ctx context.Context, txs []*domain.LedgerTransaction) error {
+	if len(txs) == 0 {
+		return nil
+	}
+	dbtx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin ledger transaction: %w", err)
+	}
+	defer func() { _ = dbtx.Rollback() }()
+	for _, tx := range txs {
+		if err := applyLedgerTx(ctx, dbtx, tx); err != nil {
+			return err
+		}
+	}
+	return dbtx.Commit()
+}
+
+// applyLedgerTx inserts one transfer (idempotent on reference_id+code) and moves
+// both account balances, WITHIN the caller's transaction. Extracted so a single
+// post and a multi-leg post share identical semantics; the caller owns commit.
+func applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransaction) error {
+	if tx.Timestamp.IsZero() {
+		tx.Timestamp = time.Now()
+	}
 
 	// Idempotent insert: a duplicate (reference_id, code) for a real reference
 	// (invoice/payment/refund) is a no-op via the partial unique index, so a
@@ -195,7 +224,7 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 	}
 	if n == 0 {
 		// Already posted for this (reference_id, code) — do not re-apply balances.
-		return dbtx.Commit()
+		return nil
 	}
 
 	// Balances move only when a new transaction row was actually inserted.
@@ -231,7 +260,7 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 		return fmt.Errorf("failed to update credit account balance: %w", err)
 	}
 
-	return dbtx.Commit()
+	return nil
 }
 
 // InvoiceLedgerMismatch describes an invoice whose ledger postings for a
