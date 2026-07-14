@@ -99,7 +99,14 @@ export const endpoints = {
   // the month-by-month release schedule, and the per-currency split.
   getRevenueRecognition: (month, year) =>
     api.get('/finance/revrec/report', { params: { month, year } }),
-  
+  // Provable-ledger auditor reports (ENG-192): trial balance, GL CSV export,
+  // the recognition waterfall, and the deferred-revenue rollforward.
+  getTrialBalance: () => api.get('/ledger/trial-balance'),
+  exportGeneralLedger: () => api.get('/ledger/export', { responseType: 'blob' }),
+  getRevenueWaterfall: () => api.get('/finance/revrec/waterfall'),
+  getDeferredRollforward: (month, year) =>
+    api.get('/ledger/deferred-rollforward', { params: { month, year } }),
+
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),
   createKey: (data) => api.post('/developer/keys', data),

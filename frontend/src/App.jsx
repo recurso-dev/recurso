@@ -50,6 +50,8 @@ import DunningDashboard from './pages/DunningDashboard'
 // Finance
 import FinanceReconciliation from './pages/FinanceReconciliation'
 import RevenueRecognition from './pages/RevenueRecognition'
+import RevenueWaterfall from './pages/RevenueWaterfall'
+import TrialBalance from './pages/TrialBalance'
 import MRRWaterfall from './pages/MRRWaterfall'
 import InvoiceAging from './pages/InvoiceAging'
 import UnitEconomics from './pages/UnitEconomics'
@@ -113,7 +115,9 @@ function App() {
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/ledger" element={<Ledger />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
+                            <Route path="/finance/trial-balance" element={<TrialBalance />} />
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />
+                            <Route path="/finance/revenue-waterfall" element={<RevenueWaterfall />} />
                             <Route path="/finance/mrr-waterfall" element={<MRRWaterfall />} />
                             <Route path="/finance/invoice-aging" element={<InvoiceAging />} />
                             <Route path="/finance/unit-economics" element={<UnitEconomics />} />
