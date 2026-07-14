@@ -545,6 +545,10 @@ func TestNormalizeINState(t *testing.T) {
 		"ka":         "KA",
 		"Tamil Nadu": "TN",
 		"":           "",
+		// Single-digit numeric codes are the zero-padded GST code.
+		"1": "JK",
+		"2": "HP",
+		"5": "UK",
 	}
 	for in, want := range cases {
 		if got := normalizeINState(in); got != want {
