@@ -1,0 +1,17 @@
+# CI override for the self-hosted e2e job. The runner machine may already have
+# Postgres/Redis/etc bound on their default host ports (e.g. a Homebrew
+# postgres on 5432), which makes `docker compose up` fail with "port already
+# allocated". These services only need to talk to each other over the compose
+# network, so drop their host-port publishing here. Only the API keeps its
+# host port (8080), which the e2e test hits.
+services:
+  postgres:
+    ports: !override []
+  redis:
+    ports: !override []
+  dashboard:
+    ports: !override []
+  mailhog:
+    ports: !override []
+  tigerbeetle:
+    ports: !override []

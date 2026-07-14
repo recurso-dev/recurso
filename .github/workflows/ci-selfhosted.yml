@@ -34,13 +34,17 @@ jobs:
       - name: Start stack + run e2e
         run: |
           export PATH="${TOOLCHAIN_PATH}:$PATH"
-          docker compose up -d --build
+          # docker-compose.ci.yml drops host-port publishing for the internal
+          # services so the stack doesn't collide with anything already bound on
+          # the runner (e.g. a Homebrew postgres on 5432).
+          COMPOSE="docker compose -f docker-compose.yml -f docker-compose.ci.yml"
+          $COMPOSE up -d --build
           for _ in $(seq 1 60); do
             curl -fsS http://localhost:8080/health >/dev/null && break
             sleep 2
           done
           if ! curl -fsS http://localhost:8080/health >/dev/null; then
-            echo "API did not become healthy in time"; docker compose logs api; exit 1
+            echo "API did not become healthy in time"; $COMPOSE logs api; exit 1
           fi
           chmod +x scripts/e2e_test.sh
           ./scripts/e2e_test.sh
@@ -48,12 +52,12 @@ jobs:
         if: failure()
         run: |
           export PATH="${TOOLCHAIN_PATH}:$PATH"
-          docker compose logs api || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml logs api || true
       - name: Tear down
         if: always()
         run: |
           export PATH="${TOOLCHAIN_PATH}:$PATH"
-          docker compose down -v || true
+          docker compose -f docker-compose.yml -f docker-compose.ci.yml down -v || true
 
   sdk:
     name: SDK
