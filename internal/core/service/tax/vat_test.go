@@ -126,3 +126,46 @@ func TestEUVATEngine_Matrix(t *testing.T) {
 		})
 	}
 }
+
+// TestEUVATEngine_GBSellerDomesticIsNotExport guards the PHASE2 #5 regression:
+// zero-rating ALL non-EU buyers wrongly zero-rated a UK seller's DOMESTIC sales.
+// GB is a valid seller (factory routes "GB" -> EUVATEngine) but isEU("GB") is
+// false, so a GB->GB sale is DOMESTIC UK VAT (20%), NOT an export. Export
+// zero-rating must require a genuine cross-border supply (buyer != seller).
+func TestEUVATEngine_GBSellerDomesticIsNotExport(t *testing.T) {
+	ctx := context.Background()
+	eng := NewEUVATEngine("GB")
+	cases := []struct {
+		name     string
+		req      *port.TaxRequest
+		wantTax  int64
+		wantType string
+		wantRate float64
+	}{
+		{"GB seller -> GB consumer (domestic) = 20% VAT", &port.TaxRequest{Amount: 10000, BuyerCountry: "GB"}, 2000, "vat", 0.20},
+		{"GB seller -> GB business (domestic) = 20% VAT", &port.TaxRequest{Amount: 10000, BuyerCountry: "GB", IsBusiness: true}, 2000, "vat", 0.20},
+		{"GB seller -> US consumer (export) = 0%", &port.TaxRequest{Amount: 10000, BuyerCountry: "US"}, 0, "export_exempt", 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := eng.CalculateTax(ctx, tc.req)
+			if err != nil {
+				t.Fatalf("CalculateTax: %v", err)
+			}
+			if got.TotalTax != tc.wantTax {
+				t.Errorf("TotalTax = %d, want %d", got.TotalTax, tc.wantTax)
+			}
+			if got.TaxType != tc.wantType {
+				t.Errorf("TaxType = %q, want %q", got.TaxType, tc.wantType)
+			}
+			// GetApplicableRate must stay consistent with CalculateTax.
+			rate, err := eng.GetApplicableRate(ctx, tc.req)
+			if err != nil {
+				t.Fatalf("GetApplicableRate: %v", err)
+			}
+			if rate != tc.wantRate {
+				t.Errorf("GetApplicableRate = %v, want %v", rate, tc.wantRate)
+			}
+		})
+	}
+}
