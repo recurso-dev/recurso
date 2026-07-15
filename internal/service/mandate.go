@@ -28,7 +28,17 @@ type MandateService struct {
 	subscriptionRepo port.SubscriptionRepository
 	planRepo         port.PlanRepository
 	taxResolver      mandateTaxResolver
+	// ledger posts the mandate-debit invoice's invoice leg (DR AR / CR
+	// Deferred/Revenue) at charge time, so it isn't left with only a cash leg on
+	// settlement (which would imbalance the ledger — F1). nil-safe.
+	ledger *LedgerService
 }
+
+// SetLedgerService wires ledger posting into the mandate-debit charge path so
+// the debit invoice records its invoice leg like every other invoice-creating
+// flow. Without it the invoice would only get its cash leg on settlement,
+// leaving AR/Deferred permanently imbalanced (reconciler: missing_invoice_transaction).
+func (s *MandateService) SetLedgerService(ledger *LedgerService) { s.ledger = ledger }
 
 // mandateTaxResolver is the slice of TaxResolver the mandate debit needs: resolve
 // the tax for one amount against a customer's jurisdiction. *TaxResolver satisfies it.
@@ -298,6 +308,19 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		// The invoice (claim) exists, so a re-claim conflicts and skips the charge;
 		// surface the error but the double-charge window stays closed.
 		return fmt.Errorf("mandate debit: advance schedule: %w", err)
+	}
+
+	// Post the invoice leg (DR AR / CR Deferred/Revenue) now that the invoice is
+	// durably created — it's a receivable independent of whether the gateway
+	// charge succeeds; the cash leg posts later when the order.paid webhook
+	// settles it. Without this the ledger only ever sees the cash leg for mandate
+	// debits, leaving AR/Deferred imbalanced (F1). Best-effort: reconciliation
+	// covers a post failure, and it must never fail the charge.
+	if s.ledger != nil {
+		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
+			slog.Default().Error("mandate debit ledger invoice post failed — reconciliation needed",
+				"invoice_id", invoice.ID, "amount", invoice.Total, "error", err)
+		}
 	}
 
 	// Now charge the gateway for the net. If credit fully covers the debit, skip
