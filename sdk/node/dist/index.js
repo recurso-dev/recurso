@@ -12,7 +12,8 @@ exports.DEFAULT_BASE_URL = 'http://localhost:8080';
  *
  * Method coverage mirrors the REST surface: list endpoints accept filter
  * params, mutations are grouped per resource, and lifecycle actions
- * (cancel, pause, resume, ...) live on their resource.
+ * (cancel, pause, resume, ...) live on their resource. Return types are
+ * derived from the OpenAPI spec, so responses carry full field-level types.
  */
 class Recurso {
     /**
@@ -155,7 +156,10 @@ class Recurso {
              */
             forCustomer: (customerId) => this.get(`/v1/customers/${customerId}/entitlements`),
             /** Fast single-feature check: {feature_key, granted, limit_value}. */
-            check: (customerId, feature) => this.get('/v1/entitlements/check', { customer_id: customerId, feature }),
+            check: (customerId, feature) => this.get('/v1/entitlements/check', {
+                customer_id: customerId,
+                feature,
+            }),
         };
         this.analytics = {
             /**

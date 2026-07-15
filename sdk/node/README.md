@@ -39,6 +39,40 @@ await recurso.subscriptions.create({
 
 Full method reference and guides: [docs.recurso.dev](https://docs.recurso.dev).
 
+## Typed responses
+
+Requests and responses are fully typed from the API's OpenAPI spec, so results
+carry concrete field types (not an opaque object) and editors autocomplete them:
+
+```typescript
+const { data } = await recurso.subscriptions.list();
+data?.forEach((s) => console.log(s.id, s.status)); // s is Subscription
+
+const sub = await recurso.subscriptions.create({
+  customer_id: customer.id!,
+  plan_id: plan.id!,
+});
+sub.current_period_end; // string | undefined — typed, autocompleted
+```
+
+Resource types are exported for annotating your own code:
+
+```typescript
+import type { Subscription, Customer, Invoice } from 'recurso-node';
+```
+
+### Keeping types in sync (maintainers)
+
+`src/schema.d.ts` is generated from the server's OpenAPI spec — the same source
+of truth the Python SDK is generated from — so the SDK types can never drift
+from the API. After changing the API, regenerate and verify:
+
+```bash
+npm run generate    # regenerate src/schema.d.ts from ../../cmd/api/openapi.yaml
+npm run typecheck   # tsc over the SDK + response-typing assertions in test/
+npm test            # vitest suite
+```
+
 ## License
 
 MIT
