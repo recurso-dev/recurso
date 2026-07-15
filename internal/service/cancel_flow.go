@@ -155,6 +155,22 @@ func (s *CancelFlowService) SubmitStep(ctx context.Context, input SubmitStepInpu
 		return nil, fmt.Errorf("expected step index %d, got %d", session.CurrentStepIndex, input.StepIndex)
 	}
 
+	// Atomically claim this step BEFORE running any side effects. Two concurrent
+	// SubmitStep calls both pass the in-memory checks above (they read the same
+	// pre-update row), so without this a retention offer (trial extension / pause /
+	// plan switch) would be applied twice. ClaimStep advances the step in a single
+	// conditional UPDATE; only the winner proceeds (PHASE2 #2).
+	claimed, err := s.flowRepo.ClaimStep(ctx, session.ID, input.TenantID, input.StepIndex)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim cancel-flow step: %w", err)
+	}
+	if !claimed {
+		return nil, fmt.Errorf("step %d was already processed", input.StepIndex)
+	}
+	// Reflect the claim in the in-memory session so the UpdateSession calls below
+	// persist the advanced index consistently.
+	session.CurrentStepIndex = input.StepIndex + 1
+
 	step := flow.Steps[input.StepIndex]
 
 	// Process based on step type
