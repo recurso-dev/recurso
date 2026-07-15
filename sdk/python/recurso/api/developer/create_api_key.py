@@ -6,17 +6,28 @@ import httpx
 from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.api_key import APIKey
+from ...models.create_api_key_body import CreateAPIKeyBody
 from ...models.error import Error
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
-def _get_kwargs() -> dict[str, Any]:
+def _get_kwargs(
+    *,
+    body: CreateAPIKeyBody | Unset = UNSET,
+) -> dict[str, Any]:
+    headers: dict[str, Any] = {}
 
     _kwargs: dict[str, Any] = {
         "method": "post",
         "url": "/v1/developer/keys",
     }
 
+    if not isinstance(body, Unset):
+        _kwargs["json"] = body.to_dict()
+
+    headers["Content-Type"] = "application/json"
+
+    _kwargs["headers"] = headers
     return _kwargs
 
 
@@ -49,10 +60,16 @@ def _build_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 def sync_detailed(
     *,
     client: AuthenticatedClient | Client,
+    body: CreateAPIKeyBody | Unset = UNSET,
 ) -> Response[APIKey | Error]:
     """Create an API key
 
-     Generates a new secret key. The raw `key_value` is returned only in this response.
+     Generates a new secret key. The raw `key_value` is returned only in this response. Choose the mode
+    with `mode`: a `test` key (rsk_test_, the default) works on a non-live server; a `live` key
+    (rsk_live_) works only on a server configured with live payment gateways.
+
+    Args:
+        body (CreateAPIKeyBody | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -62,7 +79,9 @@ def sync_detailed(
         Response[APIKey | Error]
     """
 
-    kwargs = _get_kwargs()
+    kwargs = _get_kwargs(
+        body=body,
+    )
 
     response = client.get_httpx_client().request(
         **kwargs,
@@ -74,10 +93,16 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient | Client,
+    body: CreateAPIKeyBody | Unset = UNSET,
 ) -> APIKey | Error | None:
     """Create an API key
 
-     Generates a new secret key. The raw `key_value` is returned only in this response.
+     Generates a new secret key. The raw `key_value` is returned only in this response. Choose the mode
+    with `mode`: a `test` key (rsk_test_, the default) works on a non-live server; a `live` key
+    (rsk_live_) works only on a server configured with live payment gateways.
+
+    Args:
+        body (CreateAPIKeyBody | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -89,16 +114,23 @@ def sync(
 
     return sync_detailed(
         client=client,
+        body=body,
     ).parsed
 
 
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient | Client,
+    body: CreateAPIKeyBody | Unset = UNSET,
 ) -> Response[APIKey | Error]:
     """Create an API key
 
-     Generates a new secret key. The raw `key_value` is returned only in this response.
+     Generates a new secret key. The raw `key_value` is returned only in this response. Choose the mode
+    with `mode`: a `test` key (rsk_test_, the default) works on a non-live server; a `live` key
+    (rsk_live_) works only on a server configured with live payment gateways.
+
+    Args:
+        body (CreateAPIKeyBody | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -108,7 +140,9 @@ async def asyncio_detailed(
         Response[APIKey | Error]
     """
 
-    kwargs = _get_kwargs()
+    kwargs = _get_kwargs(
+        body=body,
+    )
 
     response = await client.get_async_httpx_client().request(**kwargs)
 
@@ -118,10 +152,16 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient | Client,
+    body: CreateAPIKeyBody | Unset = UNSET,
 ) -> APIKey | Error | None:
     """Create an API key
 
-     Generates a new secret key. The raw `key_value` is returned only in this response.
+     Generates a new secret key. The raw `key_value` is returned only in this response. Choose the mode
+    with `mode`: a `test` key (rsk_test_, the default) works on a non-live server; a `live` key
+    (rsk_live_) works only on a server configured with live payment gateways.
+
+    Args:
+        body (CreateAPIKeyBody | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -134,5 +174,6 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
+            body=body,
         )
     ).parsed

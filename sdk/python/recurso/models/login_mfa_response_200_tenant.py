@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import Any, TypeVar
 from uuid import UUID
 
 from attrs import define as _attrs_define
@@ -9,21 +9,19 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-T = TypeVar("T", bound="GetPortalDataResponse200Customer")
+T = TypeVar("T", bound="LoginMFAResponse200Tenant")
 
 
 @_attrs_define
-class GetPortalDataResponse200Customer:
+class LoginMFAResponse200Tenant:
     """
     Attributes:
         id (UUID | Unset):
-        name (None | str | Unset):
-        email (str | Unset):
+        name (str | Unset):
     """
 
     id: UUID | Unset = UNSET
-    name: None | str | Unset = UNSET
-    email: str | Unset = UNSET
+    name: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -31,13 +29,7 @@ class GetPortalDataResponse200Customer:
         if not isinstance(self.id, Unset):
             id = str(self.id)
 
-        name: None | str | Unset
-        if isinstance(self.name, Unset):
-            name = UNSET
-        else:
-            name = self.name
-
-        email = self.email
+        name = self.name
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -46,8 +38,6 @@ class GetPortalDataResponse200Customer:
             field_dict["id"] = id
         if name is not UNSET:
             field_dict["name"] = name
-        if email is not UNSET:
-            field_dict["email"] = email
 
         return field_dict
 
@@ -61,25 +51,15 @@ class GetPortalDataResponse200Customer:
         else:
             id = UUID(_id)
 
-        def _parse_name(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
+        name = d.pop("name", UNSET)
 
-        name = _parse_name(d.pop("name", UNSET))
-
-        email = d.pop("email", UNSET)
-
-        get_portal_data_response_200_customer = cls(
+        login_mfa_response_200_tenant = cls(
             id=id,
             name=name,
-            email=email,
         )
 
-        get_portal_data_response_200_customer.additional_properties = d
-        return get_portal_data_response_200_customer
+        login_mfa_response_200_tenant.additional_properties = d
+        return login_mfa_response_200_tenant
 
     @property
     def additional_keys(self) -> list[str]:

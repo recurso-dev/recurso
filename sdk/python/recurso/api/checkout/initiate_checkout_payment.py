@@ -44,6 +44,11 @@ def _parse_response(
 
         return response_404
 
+    if response.status_code == 503:
+        response_503 = Error.from_dict(response.json())
+
+        return response_503
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -68,7 +73,11 @@ def sync_detailed(
 ) -> Response[Error | InitiateCheckoutPaymentResponse200]:
     """Initiate payment for an invoice
 
-     Creates a payment order on the configured gateway for an unpaid invoice.
+     Creates a payment order on the currency-routed gateway for an unpaid invoice. The response tells the
+    frontend which flow to drive: `stripe` returns a PaymentIntent `client_secret` + `publishable_key`
+    for the Payment Element; `razorpay` returns the order id + `razorpay_key_id` for the Checkout.js
+    modal. Settlement is always verified server-side — see `/checkout/{id}/success` and
+    `/checkout/{id}/razorpay/verify`.
 
     Args:
         id (UUID):
@@ -99,7 +108,11 @@ def sync(
 ) -> Error | InitiateCheckoutPaymentResponse200 | None:
     """Initiate payment for an invoice
 
-     Creates a payment order on the configured gateway for an unpaid invoice.
+     Creates a payment order on the currency-routed gateway for an unpaid invoice. The response tells the
+    frontend which flow to drive: `stripe` returns a PaymentIntent `client_secret` + `publishable_key`
+    for the Payment Element; `razorpay` returns the order id + `razorpay_key_id` for the Checkout.js
+    modal. Settlement is always verified server-side — see `/checkout/{id}/success` and
+    `/checkout/{id}/razorpay/verify`.
 
     Args:
         id (UUID):
@@ -125,7 +138,11 @@ async def asyncio_detailed(
 ) -> Response[Error | InitiateCheckoutPaymentResponse200]:
     """Initiate payment for an invoice
 
-     Creates a payment order on the configured gateway for an unpaid invoice.
+     Creates a payment order on the currency-routed gateway for an unpaid invoice. The response tells the
+    frontend which flow to drive: `stripe` returns a PaymentIntent `client_secret` + `publishable_key`
+    for the Payment Element; `razorpay` returns the order id + `razorpay_key_id` for the Checkout.js
+    modal. Settlement is always verified server-side — see `/checkout/{id}/success` and
+    `/checkout/{id}/razorpay/verify`.
 
     Args:
         id (UUID):
@@ -154,7 +171,11 @@ async def asyncio(
 ) -> Error | InitiateCheckoutPaymentResponse200 | None:
     """Initiate payment for an invoice
 
-     Creates a payment order on the configured gateway for an unpaid invoice.
+     Creates a payment order on the currency-routed gateway for an unpaid invoice. The response tells the
+    frontend which flow to drive: `stripe` returns a PaymentIntent `client_secret` + `publishable_key`
+    for the Payment Element; `razorpay` returns the order id + `razorpay_key_id` for the Checkout.js
+    modal. Settlement is always verified server-side — see `/checkout/{id}/success` and
+    `/checkout/{id}/razorpay/verify`.
 
     Args:
         id (UUID):

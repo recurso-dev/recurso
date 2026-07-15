@@ -23,6 +23,7 @@ class UnbilledCharge:
         amount (int | Unset): Amount in the lowest currency unit.
         currency (str | Unset):
         description (str | Unset):
+        hsn_code (str | Unset): HSN/SAC code the charge is taxed at on the invoice.
         status (UnbilledChargeStatus | Unset):
         period_start (datetime.datetime | Unset):
         period_end (datetime.datetime | Unset):
@@ -34,6 +35,7 @@ class UnbilledCharge:
     amount: int | Unset = UNSET
     currency: str | Unset = UNSET
     description: str | Unset = UNSET
+    hsn_code: str | Unset = UNSET
     status: UnbilledChargeStatus | Unset = UNSET
     period_start: datetime.datetime | Unset = UNSET
     period_end: datetime.datetime | Unset = UNSET
@@ -54,6 +56,8 @@ class UnbilledCharge:
         currency = self.currency
 
         description = self.description
+
+        hsn_code = self.hsn_code
 
         status: str | Unset = UNSET
         if not isinstance(self.status, Unset):
@@ -84,6 +88,8 @@ class UnbilledCharge:
             field_dict["currency"] = currency
         if description is not UNSET:
             field_dict["description"] = description
+        if hsn_code is not UNSET:
+            field_dict["hsn_code"] = hsn_code
         if status is not UNSET:
             field_dict["status"] = status
         if period_start is not UNSET:
@@ -117,6 +123,8 @@ class UnbilledCharge:
         currency = d.pop("currency", UNSET)
 
         description = d.pop("description", UNSET)
+
+        hsn_code = d.pop("hsn_code", UNSET)
 
         _status = d.pop("status", UNSET)
         status: UnbilledChargeStatus | Unset
@@ -152,6 +160,7 @@ class UnbilledCharge:
             amount=amount,
             currency=currency,
             description=description,
+            hsn_code=hsn_code,
             status=status,
             period_start=period_start,
             period_end=period_end,

@@ -23,6 +23,7 @@ class APIKey:
         key_prefix (str | Unset): First characters of the key, for display and lookup.
         type_ (str | Unset):
         is_active (bool | Unset):
+        livemode (bool | Unset): true for a live key (rsk_live_), false for a test key (rsk_test_).
         created_at (datetime.datetime | Unset):
     """
 
@@ -32,6 +33,7 @@ class APIKey:
     key_prefix: str | Unset = UNSET
     type_: str | Unset = UNSET
     is_active: bool | Unset = UNSET
+    livemode: bool | Unset = UNSET
     created_at: datetime.datetime | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
@@ -52,6 +54,8 @@ class APIKey:
 
         is_active = self.is_active
 
+        livemode = self.livemode
+
         created_at: str | Unset = UNSET
         if not isinstance(self.created_at, Unset):
             created_at = self.created_at.isoformat()
@@ -71,6 +75,8 @@ class APIKey:
             field_dict["type"] = type_
         if is_active is not UNSET:
             field_dict["is_active"] = is_active
+        if livemode is not UNSET:
+            field_dict["livemode"] = livemode
         if created_at is not UNSET:
             field_dict["created_at"] = created_at
 
@@ -101,6 +107,8 @@ class APIKey:
 
         is_active = d.pop("is_active", UNSET)
 
+        livemode = d.pop("livemode", UNSET)
+
         _created_at = d.pop("created_at", UNSET)
         created_at: datetime.datetime | Unset
         if isinstance(_created_at, Unset):
@@ -115,6 +123,7 @@ class APIKey:
             key_prefix=key_prefix,
             type_=type_,
             is_active=is_active,
+            livemode=livemode,
             created_at=created_at,
         )
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Any, Literal, TypeVar, cast
+from typing import Any, TypeVar
 from uuid import UUID
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..models.checkout_success_response_200_data_status import CheckoutSuccessResponse200DataStatus
 from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="CheckoutSuccessResponse200Data")
@@ -16,18 +17,24 @@ T = TypeVar("T", bound="CheckoutSuccessResponse200Data")
 class CheckoutSuccessResponse200Data:
     """
     Attributes:
-        status (Literal['paid'] | Unset):
+        status (CheckoutSuccessResponse200DataStatus | Unset):
+        payment_status (str | Unset): Raw gateway intent status (present when a payment_intent was inspected).
         invoice_id (UUID | Unset):
         invoice_number (str | Unset):
     """
 
-    status: Literal["paid"] | Unset = UNSET
+    status: CheckoutSuccessResponse200DataStatus | Unset = UNSET
+    payment_status: str | Unset = UNSET
     invoice_id: UUID | Unset = UNSET
     invoice_number: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        status = self.status
+        status: str | Unset = UNSET
+        if not isinstance(self.status, Unset):
+            status = self.status.value
+
+        payment_status = self.payment_status
 
         invoice_id: str | Unset = UNSET
         if not isinstance(self.invoice_id, Unset):
@@ -40,6 +47,8 @@ class CheckoutSuccessResponse200Data:
         field_dict.update({})
         if status is not UNSET:
             field_dict["status"] = status
+        if payment_status is not UNSET:
+            field_dict["payment_status"] = payment_status
         if invoice_id is not UNSET:
             field_dict["invoice_id"] = invoice_id
         if invoice_number is not UNSET:
@@ -50,9 +59,14 @@ class CheckoutSuccessResponse200Data:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
-        status = cast(Literal["paid"] | Unset, d.pop("status", UNSET))
-        if status != "paid" and not isinstance(status, Unset):
-            raise ValueError(f"status must match const 'paid', got '{status}'")
+        _status = d.pop("status", UNSET)
+        status: CheckoutSuccessResponse200DataStatus | Unset
+        if isinstance(_status, Unset):
+            status = UNSET
+        else:
+            status = CheckoutSuccessResponse200DataStatus(_status)
+
+        payment_status = d.pop("payment_status", UNSET)
 
         _invoice_id = d.pop("invoice_id", UNSET)
         invoice_id: UUID | Unset
@@ -65,6 +79,7 @@ class CheckoutSuccessResponse200Data:
 
         checkout_success_response_200_data = cls(
             status=status,
+            payment_status=payment_status,
             invoice_id=invoice_id,
             invoice_number=invoice_number,
         )

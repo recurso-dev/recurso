@@ -35,6 +35,16 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_400
 
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+        return response_404
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -57,7 +67,7 @@ def sync_detailed(
 ) -> Response[Error | str]:
     """Preview an invoice as HTML
 
-     Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
+     Returns the same tenant-scoped, authenticated rendering as the PDF endpoint.
 
     Args:
         id (UUID):
@@ -88,7 +98,7 @@ def sync(
 ) -> Error | str | None:
     """Preview an invoice as HTML
 
-     Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
+     Returns the same tenant-scoped, authenticated rendering as the PDF endpoint.
 
     Args:
         id (UUID):
@@ -114,7 +124,7 @@ async def asyncio_detailed(
 ) -> Response[Error | str]:
     """Preview an invoice as HTML
 
-     Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
+     Returns the same tenant-scoped, authenticated rendering as the PDF endpoint.
 
     Args:
         id (UUID):
@@ -143,7 +153,7 @@ async def asyncio(
 ) -> Error | str | None:
     """Preview an invoice as HTML
 
-     Returns the same print-ready HTML rendering as the PDF endpoint (public, rate-limited).
+     Returns the same tenant-scoped, authenticated rendering as the PDF endpoint.
 
     Args:
         id (UUID):

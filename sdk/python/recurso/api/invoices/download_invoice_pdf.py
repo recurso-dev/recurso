@@ -35,6 +35,16 @@ def _parse_response(*, client: AuthenticatedClient | Client, response: httpx.Res
 
         return response_400
 
+    if response.status_code == 401:
+        response_401 = Error.from_dict(response.json())
+
+        return response_401
+
+    if response.status_code == 404:
+        response_404 = Error.from_dict(response.json())
+
+        return response_404
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -57,7 +67,9 @@ def sync_detailed(
 ) -> Response[Error | str]:
     """Download a printable invoice
 
-     Returns a print-ready HTML rendering of the invoice (public, rate-limited).
+     Returns a print-ready HTML rendering of the invoice, tenant-scoped. Requires authentication (API key
+    or dashboard session): the document carries the buyer's legal name, address, and GSTIN, so it is
+    never publicly fetchable by UUID.
 
     Args:
         id (UUID):
@@ -88,7 +100,9 @@ def sync(
 ) -> Error | str | None:
     """Download a printable invoice
 
-     Returns a print-ready HTML rendering of the invoice (public, rate-limited).
+     Returns a print-ready HTML rendering of the invoice, tenant-scoped. Requires authentication (API key
+    or dashboard session): the document carries the buyer's legal name, address, and GSTIN, so it is
+    never publicly fetchable by UUID.
 
     Args:
         id (UUID):
@@ -114,7 +128,9 @@ async def asyncio_detailed(
 ) -> Response[Error | str]:
     """Download a printable invoice
 
-     Returns a print-ready HTML rendering of the invoice (public, rate-limited).
+     Returns a print-ready HTML rendering of the invoice, tenant-scoped. Requires authentication (API key
+    or dashboard session): the document carries the buyer's legal name, address, and GSTIN, so it is
+    never publicly fetchable by UUID.
 
     Args:
         id (UUID):
@@ -143,7 +159,9 @@ async def asyncio(
 ) -> Error | str | None:
     """Download a printable invoice
 
-     Returns a print-ready HTML rendering of the invoice (public, rate-limited).
+     Returns a print-ready HTML rendering of the invoice, tenant-scoped. Requires authentication (API key
+    or dashboard session): the document carries the buyer's legal name, address, and GSTIN, so it is
+    never publicly fetchable by UUID.
 
     Args:
         id (UUID):

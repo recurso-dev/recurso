@@ -7,6 +7,7 @@ from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..models.create_plan_request_interval_unit import CreatePlanRequestIntervalUnit
+from ..types import UNSET, Unset
 
 T = TypeVar("T", bound="CreatePlanRequest")
 
@@ -21,6 +22,8 @@ class CreatePlanRequest:
         interval_count (int):
         amount (int): Price in the lowest currency unit (e.g. cents/paise).
         currency (str): ISO 4217 code.
+        hsn_code (str | Unset): Optional HSN/SAC code for this plan. Each invoice line for the plan is taxed at this
+            code's GST rate. Empty falls back to the tenant SAC (then the 998314 default).
     """
 
     name: str
@@ -29,6 +32,7 @@ class CreatePlanRequest:
     interval_count: int
     amount: int
     currency: str
+    hsn_code: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +48,8 @@ class CreatePlanRequest:
 
         currency = self.currency
 
+        hsn_code = self.hsn_code
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -56,6 +62,8 @@ class CreatePlanRequest:
                 "currency": currency,
             }
         )
+        if hsn_code is not UNSET:
+            field_dict["hsn_code"] = hsn_code
 
         return field_dict
 
@@ -74,6 +82,8 @@ class CreatePlanRequest:
 
         currency = d.pop("currency")
 
+        hsn_code = d.pop("hsn_code", UNSET)
+
         create_plan_request = cls(
             name=name,
             code=code,
@@ -81,6 +91,7 @@ class CreatePlanRequest:
             interval_count=interval_count,
             amount=amount,
             currency=currency,
+            hsn_code=hsn_code,
         )
 
         create_plan_request.additional_properties = d
