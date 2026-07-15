@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -555,13 +556,24 @@ func main() {
 	// them stop their tick loops and drain in-flight work on SIGINT/SIGTERM
 	// instead of being killed mid-operation.
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
-	go retryWorker.Start(workerCtx)
-	go webhookWorker.Start(workerCtx)
-	go churnWorker.Start(workerCtx)
-	go revrecWorker.Start(workerCtx)
-	go einvoiceWorker.Start(workerCtx)
-	go dunningCampaignWorker.Start(workerCtx)
-	go acctSyncWorker.Start(workerCtx)
+	// workersWG lets shutdown block until every worker's Start loop has
+	// returned after workerCtx is cancelled, so main() doesn't exit (killing
+	// the process and any in-flight tick) before workers finish draining.
+	var workersWG sync.WaitGroup
+	startWorker := func(start func(context.Context)) {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			start(workerCtx)
+		}()
+	}
+	startWorker(retryWorker.Start)
+	startWorker(webhookWorker.Start)
+	startWorker(churnWorker.Start)
+	startWorker(revrecWorker.Start)
+	startWorker(einvoiceWorker.Start)
+	startWorker(dunningCampaignWorker.Start)
+	startWorker(acctSyncWorker.Start)
 
 	// Distributed Locking & Redis. A working Redis makes the scheduler lock and
 	// the idempotency store real across instances; without it the app falls back
@@ -1377,6 +1389,23 @@ func main() {
 		log.Println("Shutting down gracefully...")
 		shutdownSchedulers()
 		cancelWorkers() // stop the background worker tick loops and drain in-flight work
+
+		// Wait for the worker goroutines to actually return, bounded so a stuck
+		// worker can't hang shutdown forever. Each worker's in-flight I/O is
+		// already time-bounded (e.g. the webhook client's 10s HTTP timeout), so
+		// this drain typically completes well inside the budget.
+		workersDone := make(chan struct{})
+		go func() {
+			workersWG.Wait()
+			close(workersDone)
+		}()
+		select {
+		case <-workersDone:
+			log.Println("Background workers drained.")
+		case <-time.After(15 * time.Second):
+			log.Println("Timed out waiting for background workers to drain; exiting anyway.")
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(ctx); err != nil {
