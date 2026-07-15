@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Mapping
-from typing import Any, TypeVar, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 from uuid import UUID
 
 from attrs import define as _attrs_define
@@ -10,6 +10,10 @@ from attrs import field as _attrs_field
 
 from ..models.invoice_status import InvoiceStatus
 from ..types import UNSET, Unset
+
+if TYPE_CHECKING:
+    from ..models.invoice_item import InvoiceItem
+
 
 T = TypeVar("T", bound="Invoice")
 
@@ -54,6 +58,9 @@ class Invoice:
         next_retry_at (datetime.datetime | Unset):
         retry_count (int | Unset):
         payment_wall_active (bool | Unset):
+        line_items (list[InvoiceItem] | Unset): Itemized invoice lines. Each line carries its own HSN/SAC code and per-
+            line GST breakdown; line amounts and per-line taxes reconcile exactly to subtotal/tax_amount. Omitted for legacy
+            invoices created before itemization.
     """
 
     id: UUID | Unset = UNSET
@@ -92,6 +99,7 @@ class Invoice:
     next_retry_at: datetime.datetime | Unset = UNSET
     retry_count: int | Unset = UNSET
     payment_wall_active: bool | Unset = UNSET
+    line_items: list[InvoiceItem] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -195,6 +203,13 @@ class Invoice:
 
         payment_wall_active = self.payment_wall_active
 
+        line_items: list[dict[str, Any]] | Unset = UNSET
+        if not isinstance(self.line_items, Unset):
+            line_items = []
+            for line_items_item_data in self.line_items:
+                line_items_item = line_items_item_data.to_dict()
+                line_items.append(line_items_item)
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
@@ -270,11 +285,15 @@ class Invoice:
             field_dict["retry_count"] = retry_count
         if payment_wall_active is not UNSET:
             field_dict["payment_wall_active"] = payment_wall_active
+        if line_items is not UNSET:
+            field_dict["line_items"] = line_items
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
+        from ..models.invoice_item import InvoiceItem
+
         d = dict(src_dict)
         _id = d.pop("id", UNSET)
         id: UUID | Unset
@@ -418,6 +437,15 @@ class Invoice:
 
         payment_wall_active = d.pop("payment_wall_active", UNSET)
 
+        _line_items = d.pop("line_items", UNSET)
+        line_items: list[InvoiceItem] | Unset = UNSET
+        if _line_items is not UNSET:
+            line_items = []
+            for line_items_item_data in _line_items:
+                line_items_item = InvoiceItem.from_dict(line_items_item_data)
+
+                line_items.append(line_items_item)
+
         invoice = cls(
             id=id,
             tenant_id=tenant_id,
@@ -455,6 +483,7 @@ class Invoice:
             next_retry_at=next_retry_at,
             retry_count=retry_count,
             payment_wall_active=payment_wall_active,
+            line_items=line_items,
         )
 
         invoice.additional_properties = d

@@ -29,6 +29,7 @@ class Plan:
         interval_unit (PlanIntervalUnit | Unset):
         interval_count (int | Unset):
         active (bool | Unset):
+        hsn_code (str | Unset): HSN/SAC code the plan's invoice lines are taxed at (empty = tenant SAC default).
         created_at (datetime.datetime | Unset):
         prices (list[Price] | Unset):
     """
@@ -40,6 +41,7 @@ class Plan:
     interval_unit: PlanIntervalUnit | Unset = UNSET
     interval_count: int | Unset = UNSET
     active: bool | Unset = UNSET
+    hsn_code: str | Unset = UNSET
     created_at: datetime.datetime | Unset = UNSET
     prices: list[Price] | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
@@ -64,6 +66,8 @@ class Plan:
         interval_count = self.interval_count
 
         active = self.active
+
+        hsn_code = self.hsn_code
 
         created_at: str | Unset = UNSET
         if not isinstance(self.created_at, Unset):
@@ -93,6 +97,8 @@ class Plan:
             field_dict["interval_count"] = interval_count
         if active is not UNSET:
             field_dict["active"] = active
+        if hsn_code is not UNSET:
+            field_dict["hsn_code"] = hsn_code
         if created_at is not UNSET:
             field_dict["created_at"] = created_at
         if prices is not UNSET:
@@ -134,6 +140,8 @@ class Plan:
 
         active = d.pop("active", UNSET)
 
+        hsn_code = d.pop("hsn_code", UNSET)
+
         _created_at = d.pop("created_at", UNSET)
         created_at: datetime.datetime | Unset
         if isinstance(_created_at, Unset):
@@ -158,6 +166,7 @@ class Plan:
             interval_unit=interval_unit,
             interval_count=interval_count,
             active=active,
+            hsn_code=hsn_code,
             created_at=created_at,
             prices=prices,
         )

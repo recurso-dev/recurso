@@ -24,3 +24,6 @@ dmypy.json
 
 # ruff
 .ruff_cache/
+
+# uv ephemeral lock (smoke-test runner)
+uv.lock

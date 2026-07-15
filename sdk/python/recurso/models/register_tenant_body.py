@@ -13,25 +13,35 @@ T = TypeVar("T", bound="RegisterTenantBody")
 class RegisterTenantBody:
     """
     Attributes:
-        name (str):
+        company_name (str): The tenant / company name.
+        name (str): The owner user's display name.
         email (str):
+        password (str):
     """
 
+    company_name: str
     name: str
     email: str
+    password: str
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        company_name = self.company_name
+
         name = self.name
 
         email = self.email
+
+        password = self.password
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
             {
+                "company_name": company_name,
                 "name": name,
                 "email": email,
+                "password": password,
             }
         )
 
@@ -40,13 +50,19 @@ class RegisterTenantBody:
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         d = dict(src_dict)
+        company_name = d.pop("company_name")
+
         name = d.pop("name")
 
         email = d.pop("email")
 
+        password = d.pop("password")
+
         register_tenant_body = cls(
+            company_name=company_name,
             name=name,
             email=email,
+            password=password,
         )
 
         register_tenant_body.additional_properties = d

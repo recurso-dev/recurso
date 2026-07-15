@@ -9,18 +9,27 @@ from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.checkout_success_response_200 import CheckoutSuccessResponse200
 from ...models.error import Error
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     id: UUID,
+    *,
+    payment_intent: str | Unset = UNSET,
 ) -> dict[str, Any]:
+
+    params: dict[str, Any] = {}
+
+    params["payment_intent"] = payment_intent
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/checkout/{id}/success".format(
             id=quote(str(id), safe=""),
         ),
+        "params": params,
     }
 
     return _kwargs
@@ -65,13 +74,20 @@ def sync_detailed(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    payment_intent: str | Unset = UNSET,
 ) -> Response[CheckoutSuccessResponse200 | Error]:
-    """Confirm checkout success
+    """Verify a checkout payment and report settlement status
 
-     Marks the invoice as paid (demo flow) and returns a confirmation payload.
+     Never settles on trust. When `payment_intent` is provided, the intent is verified directly with
+    Stripe — it must have succeeded AND carry this invoice's id in its metadata — before the invoice is
+    marked paid through the ledger path (idempotent with the payment webhook, which remains the
+    authoritative backstop). A declined or abandoned intent reports `failed`; asynchronous methods (ACH,
+    SEPA) report `processing` until the webhook settles them. Without `payment_intent`, the current
+    invoice status is reported unchanged.
 
     Args:
         id (UUID):
+        payment_intent (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -83,6 +99,7 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         id=id,
+        payment_intent=payment_intent,
     )
 
     response = client.get_httpx_client().request(
@@ -96,13 +113,20 @@ def sync(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    payment_intent: str | Unset = UNSET,
 ) -> CheckoutSuccessResponse200 | Error | None:
-    """Confirm checkout success
+    """Verify a checkout payment and report settlement status
 
-     Marks the invoice as paid (demo flow) and returns a confirmation payload.
+     Never settles on trust. When `payment_intent` is provided, the intent is verified directly with
+    Stripe — it must have succeeded AND carry this invoice's id in its metadata — before the invoice is
+    marked paid through the ledger path (idempotent with the payment webhook, which remains the
+    authoritative backstop). A declined or abandoned intent reports `failed`; asynchronous methods (ACH,
+    SEPA) report `processing` until the webhook settles them. Without `payment_intent`, the current
+    invoice status is reported unchanged.
 
     Args:
         id (UUID):
+        payment_intent (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -115,6 +139,7 @@ def sync(
     return sync_detailed(
         id=id,
         client=client,
+        payment_intent=payment_intent,
     ).parsed
 
 
@@ -122,13 +147,20 @@ async def asyncio_detailed(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    payment_intent: str | Unset = UNSET,
 ) -> Response[CheckoutSuccessResponse200 | Error]:
-    """Confirm checkout success
+    """Verify a checkout payment and report settlement status
 
-     Marks the invoice as paid (demo flow) and returns a confirmation payload.
+     Never settles on trust. When `payment_intent` is provided, the intent is verified directly with
+    Stripe — it must have succeeded AND carry this invoice's id in its metadata — before the invoice is
+    marked paid through the ledger path (idempotent with the payment webhook, which remains the
+    authoritative backstop). A declined or abandoned intent reports `failed`; asynchronous methods (ACH,
+    SEPA) report `processing` until the webhook settles them. Without `payment_intent`, the current
+    invoice status is reported unchanged.
 
     Args:
         id (UUID):
+        payment_intent (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -140,6 +172,7 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         id=id,
+        payment_intent=payment_intent,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -151,13 +184,20 @@ async def asyncio(
     id: UUID,
     *,
     client: AuthenticatedClient | Client,
+    payment_intent: str | Unset = UNSET,
 ) -> CheckoutSuccessResponse200 | Error | None:
-    """Confirm checkout success
+    """Verify a checkout payment and report settlement status
 
-     Marks the invoice as paid (demo flow) and returns a confirmation payload.
+     Never settles on trust. When `payment_intent` is provided, the intent is verified directly with
+    Stripe — it must have succeeded AND carry this invoice's id in its metadata — before the invoice is
+    marked paid through the ledger path (idempotent with the payment webhook, which remains the
+    authoritative backstop). A declined or abandoned intent reports `failed`; asynchronous methods (ACH,
+    SEPA) report `processing` until the webhook settles them. Without `payment_intent`, the current
+    invoice status is reported unchanged.
 
     Args:
         id (UUID):
+        payment_intent (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -171,5 +211,6 @@ async def asyncio(
         await asyncio_detailed(
             id=id,
             client=client,
+            payment_intent=payment_intent,
         )
     ).parsed

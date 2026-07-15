@@ -43,6 +43,11 @@ def _parse_response(
 
         return response_400
 
+    if response.status_code == 409:
+        response_409 = Error.from_dict(response.json())
+
+        return response_409
+
     if client.raise_on_unexpected_status:
         raise errors.UnexpectedStatus(response.status_code, response.content)
     else:
@@ -65,9 +70,11 @@ def sync_detailed(
     client: AuthenticatedClient | Client,
     body: RegisterTenantBody,
 ) -> Response[Error | RegisterTenantResponse201]:
-    """Register a tenant (signup)
+    """Register a tenant + owner user (signup)
 
-     Creates a tenant and returns its first API key. The key is shown only once.
+     Creates a tenant, its first user (role owner), and opens a login session (sets the httpOnly
+    `recurso_session` cookie). The tenant's first API key is still returned in the body so CLI/dev flows
+    keep a key; it is shown only once.
 
     Args:
         body (RegisterTenantBody):
@@ -96,9 +103,11 @@ def sync(
     client: AuthenticatedClient | Client,
     body: RegisterTenantBody,
 ) -> Error | RegisterTenantResponse201 | None:
-    """Register a tenant (signup)
+    """Register a tenant + owner user (signup)
 
-     Creates a tenant and returns its first API key. The key is shown only once.
+     Creates a tenant, its first user (role owner), and opens a login session (sets the httpOnly
+    `recurso_session` cookie). The tenant's first API key is still returned in the body so CLI/dev flows
+    keep a key; it is shown only once.
 
     Args:
         body (RegisterTenantBody):
@@ -122,9 +131,11 @@ async def asyncio_detailed(
     client: AuthenticatedClient | Client,
     body: RegisterTenantBody,
 ) -> Response[Error | RegisterTenantResponse201]:
-    """Register a tenant (signup)
+    """Register a tenant + owner user (signup)
 
-     Creates a tenant and returns its first API key. The key is shown only once.
+     Creates a tenant, its first user (role owner), and opens a login session (sets the httpOnly
+    `recurso_session` cookie). The tenant's first API key is still returned in the body so CLI/dev flows
+    keep a key; it is shown only once.
 
     Args:
         body (RegisterTenantBody):
@@ -151,9 +162,11 @@ async def asyncio(
     client: AuthenticatedClient | Client,
     body: RegisterTenantBody,
 ) -> Error | RegisterTenantResponse201 | None:
-    """Register a tenant (signup)
+    """Register a tenant + owner user (signup)
 
-     Creates a tenant and returns its first API key. The key is shown only once.
+     Creates a tenant, its first user (role owner), and opens a login session (sets the httpOnly
+    `recurso_session` cookie). The tenant's first API key is still returned in the body so CLI/dev flows
+    keep a key; it is shown only once.
 
     Args:
         body (RegisterTenantBody):

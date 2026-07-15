@@ -10,6 +10,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.tenant import Tenant
+    from ..models.user import User
 
 
 T = TypeVar("T", bound="RegisterTenantResponse201")
@@ -21,10 +22,12 @@ class RegisterTenantResponse201:
     Attributes:
         tenant (Tenant | Unset):
         api_key (str | Unset): The raw API key. Store it securely — it is not retrievable later.
+        user (User | Unset): A dashboard user account within a tenant.
     """
 
     tenant: Tenant | Unset = UNSET
     api_key: str | Unset = UNSET
+    user: User | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -34,6 +37,10 @@ class RegisterTenantResponse201:
 
         api_key = self.api_key
 
+        user: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.user, Unset):
+            user = self.user.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
@@ -41,12 +48,15 @@ class RegisterTenantResponse201:
             field_dict["tenant"] = tenant
         if api_key is not UNSET:
             field_dict["api_key"] = api_key
+        if user is not UNSET:
+            field_dict["user"] = user
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.tenant import Tenant
+        from ..models.user import User
 
         d = dict(src_dict)
         _tenant = d.pop("tenant", UNSET)
@@ -58,9 +68,17 @@ class RegisterTenantResponse201:
 
         api_key = d.pop("api_key", UNSET)
 
+        _user = d.pop("user", UNSET)
+        user: User | Unset
+        if isinstance(_user, Unset):
+            user = UNSET
+        else:
+            user = User.from_dict(_user)
+
         register_tenant_response_201 = cls(
             tenant=tenant,
             api_key=api_key,
+            user=user,
         )
 
         register_tenant_response_201.additional_properties = d

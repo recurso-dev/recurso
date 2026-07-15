@@ -6,6 +6,8 @@ from typing import Any, TypeVar
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
+from ..types import UNSET, Unset
+
 T = TypeVar("T", bound="AddUnbilledChargeBody")
 
 
@@ -16,11 +18,14 @@ class AddUnbilledChargeBody:
         amount (int): Amount in the lowest currency unit (e.g. cents/paise).
         currency (str):
         description (str):
+        hsn_code (str | Unset): Optional HSN/SAC code the charge is taxed at on the invoice. Empty falls back to the
+            tenant SAC.
     """
 
     amount: int
     currency: str
     description: str
+    hsn_code: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -29,6 +34,8 @@ class AddUnbilledChargeBody:
         currency = self.currency
 
         description = self.description
+
+        hsn_code = self.hsn_code
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -39,6 +46,8 @@ class AddUnbilledChargeBody:
                 "description": description,
             }
         )
+        if hsn_code is not UNSET:
+            field_dict["hsn_code"] = hsn_code
 
         return field_dict
 
@@ -51,10 +60,13 @@ class AddUnbilledChargeBody:
 
         description = d.pop("description")
 
+        hsn_code = d.pop("hsn_code", UNSET)
+
         add_unbilled_charge_body = cls(
             amount=amount,
             currency=currency,
             description=description,
+            hsn_code=hsn_code,
         )
 
         add_unbilled_charge_body.additional_properties = d
