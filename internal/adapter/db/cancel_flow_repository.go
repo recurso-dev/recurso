@@ -114,12 +114,16 @@ func (r *CancelFlowRepository) ListFlowsByTenant(ctx context.Context, tenantID u
 }
 
 func (r *CancelFlowRepository) UpdateFlow(ctx context.Context, flow *domain.CancelFlow) error {
+	// tenant_id is scoped in the WHERE (defense-in-depth) so a bug or future
+	// refactor at the service/handler layer can never let this UPDATE touch a
+	// row owned by another tenant. flow.TenantID is the DB-loaded owner, already
+	// verified == the authed tenant by the caller.
 	query := `
 		UPDATE cancel_flows SET name = $1, is_active = $2, is_default = $3,
-		cooldown_days = $4, updated_at = $5 WHERE id = $6
+		cooldown_days = $4, updated_at = $5 WHERE id = $6 AND tenant_id = $7
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		flow.Name, flow.IsActive, flow.IsDefault, flow.CooldownDays, flow.UpdatedAt, flow.ID,
+		flow.Name, flow.IsActive, flow.IsDefault, flow.CooldownDays, flow.UpdatedAt, flow.ID, flow.TenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update cancel flow: %w", err)
@@ -267,18 +271,21 @@ func (r *CancelFlowRepository) GetSessionByID(ctx context.Context, id uuid.UUID)
 }
 
 func (r *CancelFlowRepository) UpdateSession(ctx context.Context, session *domain.CancelFlowSession) error {
+	// tenant_id is scoped in the WHERE (defense-in-depth): SubmitStep already
+	// verifies session.TenantID == the authed tenant before mutating, so this
+	// guarantees the UPDATE can never cross tenants even if that check regresses.
 	query := `
 		UPDATE cancel_flow_sessions SET
 			status = $1, current_step_index = $2, cancellation_reason = $3,
 			feedback = $4, offer_presented = $5, offer_accepted = $6,
 			saved_by_offer = $7, completed_at = $8
-		WHERE id = $9
+		WHERE id = $9 AND tenant_id = $10
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		session.Status, session.CurrentStepIndex,
 		nilIfEmpty(session.CancellationReason), nilIfEmpty(session.Feedback),
 		session.OfferPresented, session.OfferAccepted,
-		session.SavedByOffer, session.CompletedAt, session.ID,
+		session.SavedByOffer, session.CompletedAt, session.ID, session.TenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update cancel flow session: %w", err)
