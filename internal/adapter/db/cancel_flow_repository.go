@@ -286,6 +286,28 @@ func (r *CancelFlowRepository) UpdateSession(ctx context.Context, session *domai
 	return nil
 }
 
+// ClaimStep atomically advances an in-progress session's step from
+// expectedStepIndex. The WHERE matches the CURRENT step and the SET changes it,
+// so of two concurrent callers only the first matches (N -> N+1); the second
+// sees the already-advanced row and affects 0 rows. Exactly one caller wins and
+// may run the step's side effects, so a retention offer can't be applied twice
+// (PHASE2 #2). Also tenant-scoped for defense-in-depth.
+func (r *CancelFlowRepository) ClaimStep(ctx context.Context, sessionID, tenantID uuid.UUID, expectedStepIndex int) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE cancel_flow_sessions
+		 SET current_step_index = current_step_index + 1
+		 WHERE id = $1 AND tenant_id = $2 AND status = 'in_progress' AND current_step_index = $3`,
+		sessionID, tenantID, expectedStepIndex)
+	if err != nil {
+		return false, fmt.Errorf("claim cancel-flow step: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("claim cancel-flow step rows: %w", err)
+	}
+	return n == 1, nil
+}
+
 func (r *CancelFlowRepository) GetRecentSessionByCustomer(ctx context.Context, customerID uuid.UUID) (*domain.CancelFlowSession, error) {
 	query := `
 		SELECT id, tenant_id, customer_id, subscription_id, flow_id, status,

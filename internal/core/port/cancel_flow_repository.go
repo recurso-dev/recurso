@@ -27,6 +27,12 @@ type CancelFlowRepository interface {
 	UpdateSession(ctx context.Context, session *domain.CancelFlowSession) error
 	GetRecentSessionByCustomer(ctx context.Context, customerID uuid.UUID) (*domain.CancelFlowSession, error)
 
+	// ClaimStep atomically advances an in-progress session's step from
+	// expectedStepIndex, returning true only for the single caller that wins the
+	// transition. It serializes concurrent SubmitStep calls so a retention offer
+	// (trial extension / pause / plan switch) can't be applied twice (PHASE2 #2).
+	ClaimStep(ctx context.Context, sessionID, tenantID uuid.UUID, expectedStepIndex int) (bool, error)
+
 	// Analytics
 	GetSessionStats(ctx context.Context, tenantID uuid.UUID, flowID uuid.UUID) (*domain.FlowStats, error)
 }
