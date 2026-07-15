@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios';
+import type { components, operations } from './schema';
 
 /** Default API base URL, used when none is supplied at construction. */
 export const DEFAULT_BASE_URL = 'http://localhost:8080';
@@ -34,19 +35,69 @@ export type JsonValue =
 export type JsonObject = { [key: string]: JsonValue };
 
 /**
- * Generic API response. Endpoints return either a single resource object or a
- * paginated envelope; both are JSON objects, so callers can narrow as needed.
+ * Generic API response. Used only as the fallback for endpoints the spec does
+ * not model; typed endpoints resolve to their concrete resource shape instead.
  */
 export type ApiResponse = JsonObject;
 
-/** Paginated list envelope returned by `list` endpoints. */
-export interface ListResponse<T = JsonObject> {
-    data: T[];
-    page?: number;
-    limit?: number;
-    total?: number;
-    [key: string]: JsonValue | T[] | undefined;
+// --- Spec-derived types (generated from cmd/api/openapi.yaml into ./schema) ---
+//
+// Response and request shapes below are derived from the OpenAPI spec, the same
+// source of truth the Python SDK is generated from. Regenerate `schema.d.ts`
+// with `npm run generate` whenever the API changes so these can never drift.
+
+/** Every resource/request model defined by the API, keyed by schema name. */
+export type Schemas = components['schemas'];
+
+// Ergonomic aliases for the resources these methods return, so callers can
+// name them directly (e.g. `const s: Subscription = await ...`).
+export type Customer = Schemas['Customer'];
+export type Plan = Schemas['Plan'];
+export type Price = Schemas['Price'];
+export type Subscription = Schemas['Subscription'];
+export type UnbilledCharge = Schemas['UnbilledCharge'];
+export type SubscriptionUsage = Schemas['SubscriptionUsage'];
+export type Invoice = Schemas['Invoice'];
+export type Coupon = Schemas['Coupon'];
+export type CreditNote = Schemas['CreditNote'];
+export type Quote = Schemas['Quote'];
+export type QuoteActionResponse = Schemas['QuoteActionResponse'];
+export type WebhookEndpoint = Schemas['WebhookEndpoint'];
+export type Event = Schemas['Event'];
+export type EventDelivery = Schemas['EventDelivery'];
+export type Mandate = Schemas['Mandate'];
+export type Gift = Schemas['Gift'];
+export type Referral = Schemas['Referral'];
+export type MRRMetrics = Schemas['MRRMetrics'];
+export type LedgerAccount = Schemas['LedgerAccount'];
+export type LedgerTransaction = Schemas['LedgerTransaction'];
+export type ChurnScoreResult = Schemas['ChurnScoreResult'];
+export type Consent = Schemas['Consent'];
+export type Tenant = Schemas['Tenant'];
+
+/** The JSON body of an operation's success (2xx) response, per the spec. */
+type SuccessJson<O> = O extends { responses: infer R }
+    ? R extends { 200: { content: { 'application/json': infer B } } }
+        ? B
+        : R extends { 201: { content: { 'application/json': infer B } } }
+          ? B
+          : R extends { 202: { content: { 'application/json': infer B } } }
+            ? B
+            : ApiResponse
+    : ApiResponse;
+
+/** Response body type for a named operation. */
+export type Res<K extends keyof operations> = SuccessJson<operations[K]>;
+
+/** The JSON request body of an operation, if it defines one. */
+type RequestJson<O> = O extends {
+    requestBody?: { content: { 'application/json': infer B } };
 }
+    ? B
+    : never;
+
+/** Request body type for a named operation. */
+export type Body<K extends keyof operations> = RequestJson<operations[K]>;
 
 /** Payload for creating or updating a customer. */
 export interface CustomerInput {
@@ -147,7 +198,8 @@ export interface LedgerEntriesParams {
  *
  * Method coverage mirrors the REST surface: list endpoints accept filter
  * params, mutations are grouped per resource, and lifecycle actions
- * (cancel, pause, resume, ...) live on their resource.
+ * (cancel, pause, resume, ...) live on their resource. Return types are
+ * derived from the OpenAPI spec, so responses carry full field-level types.
  */
 export class Recurso {
     private client: AxiosInstance;
@@ -170,155 +222,180 @@ export class Recurso {
         });
     }
 
-    private get = async (path: string, params?: object): Promise<ApiResponse> =>
-        (await this.client.get<ApiResponse>(path, { params })).data;
-    private post = async (path: string, data?: object): Promise<ApiResponse> =>
-        (await this.client.post<ApiResponse>(path, data)).data;
-    private put = async (path: string, data?: object): Promise<ApiResponse> =>
-        (await this.client.put<ApiResponse>(path, data)).data;
-    private del = async (path: string): Promise<ApiResponse> =>
-        (await this.client.delete<ApiResponse>(path)).data;
+    private get = async <T = ApiResponse>(path: string, params?: object): Promise<T> =>
+        (await this.client.get<T>(path, { params })).data;
+    private post = async <T = ApiResponse>(path: string, data?: unknown): Promise<T> =>
+        (await this.client.post<T>(path, data)).data;
+    private put = async <T = ApiResponse>(path: string, data?: unknown): Promise<T> =>
+        (await this.client.put<T>(path, data)).data;
+    private del = async <T = ApiResponse>(path: string): Promise<T> =>
+        (await this.client.delete<T>(path)).data;
 
     public account = {
-        get: () => this.get('/v1/account'),
-        update: (data: JsonObject) => this.put('/v1/account', data),
+        get: () => this.get<Res<'getAccount'>>('/v1/account'),
+        update: (data: Body<'updateAccount'>) =>
+            this.put<Res<'updateAccount'>>('/v1/account', data),
     };
 
     public customers = {
         create: (data: CustomerInput) =>
-            this.post('/v1/customers', { country: 'US', ...data }),
-        list: (params?: ListParams) => this.get('/v1/customers', params),
-        updatePaymentMethod: (id: string, data: JsonObject) =>
-            this.put(`/v1/customers/${id}/payment-method`, data),
-        churn: (id: string) => this.get(`/v1/customers/${id}/churn`),
-        consents: (id: string) => this.get(`/v1/customers/${id}/consents`),
+            this.post<Res<'createCustomer'>>('/v1/customers', { country: 'US', ...data }),
+        list: (params?: ListParams) => this.get<Res<'listCustomers'>>('/v1/customers', params),
+        updatePaymentMethod: (id: string, data: Body<'updateCustomerPaymentMethod'>) =>
+            this.put<Res<'updateCustomerPaymentMethod'>>(
+                `/v1/customers/${id}/payment-method`,
+                data,
+            ),
+        churn: (id: string) => this.get<Res<'getCustomerChurn'>>(`/v1/customers/${id}/churn`),
+        consents: (id: string) =>
+            this.get<Res<'listCustomerConsents'>>(`/v1/customers/${id}/consents`),
     };
 
     public plans = {
         create: (data: PlanInput) =>
-            this.post('/v1/plans', { interval_count: 1, ...data }),
-        list: (params?: ListParams) => this.get('/v1/plans', params),
+            this.post<Res<'createPlan'>>('/v1/plans', { interval_count: 1, ...data }),
+        list: (params?: ListParams) => this.get<Res<'listPlans'>>('/v1/plans', params),
     };
 
     public subscriptions = {
-        create: (data: SubscriptionInput) => this.post('/v1/subscriptions', data),
-        list: (params?: ListParams) => this.get('/v1/subscriptions', params),
-        update: (id: string, data: JsonObject) =>
-            this.put(`/v1/subscriptions/${id}`, data),
-        cancel: (id: string, data?: JsonObject) =>
-            this.post(`/v1/subscriptions/${id}/cancel`, data),
-        pause: (id: string, data?: JsonObject) =>
-            this.post(`/v1/subscriptions/${id}/pause`, data),
-        resume: (id: string) => this.post(`/v1/subscriptions/${id}/resume`),
-        reactivate: (id: string) => this.post(`/v1/subscriptions/${id}/reactivate`),
+        create: (data: SubscriptionInput) =>
+            this.post<Res<'createSubscription'>>('/v1/subscriptions', data),
+        list: (params?: ListParams) =>
+            this.get<Res<'listSubscriptions'>>('/v1/subscriptions', params),
+        update: (id: string, data: Body<'updateSubscription'>) =>
+            this.put<Res<'updateSubscription'>>(`/v1/subscriptions/${id}`, data),
+        cancel: (id: string, data?: Body<'cancelSubscription'>) =>
+            this.post<Res<'cancelSubscription'>>(`/v1/subscriptions/${id}/cancel`, data),
+        pause: (id: string, data?: Body<'pauseSubscription'>) =>
+            this.post<Res<'pauseSubscription'>>(`/v1/subscriptions/${id}/pause`, data),
+        resume: (id: string) =>
+            this.post<Res<'resumeSubscription'>>(`/v1/subscriptions/${id}/resume`),
+        reactivate: (id: string) =>
+            this.post<Res<'reactivateSubscription'>>(`/v1/subscriptions/${id}/reactivate`),
         /** Bill N future periods immediately (advance invoicing). */
-        advance: (id: string, data: { periods: number }) =>
-            this.post(`/v1/subscriptions/${id}/advance`, data),
-        charges: (id: string) => this.get(`/v1/subscriptions/${id}/charges`),
-        addCharge: (id: string, data: JsonObject) =>
-            this.post(`/v1/subscriptions/${id}/charges`, data),
+        advance: (id: string, data: Body<'generateAdvanceInvoice'>) =>
+            this.post<Res<'generateAdvanceInvoice'>>(`/v1/subscriptions/${id}/advance`, data),
+        charges: (id: string) =>
+            this.get<Res<'listUnbilledCharges'>>(`/v1/subscriptions/${id}/charges`),
+        addCharge: (id: string, data: Body<'addUnbilledCharge'>) =>
+            this.post<Res<'addUnbilledCharge'>>(`/v1/subscriptions/${id}/charges`, data),
         /**
          * Current billing period's usage per dimension plus lifetime
          * totals, with the customer's entitlement limit/remaining joined
          * in where a feature_key matches the dimension name.
          */
-        usage: (id: string) => this.get(`/v1/subscriptions/${id}/usage`),
+        usage: (id: string) =>
+            this.get<Res<'getSubscriptionUsage'>>(`/v1/subscriptions/${id}/usage`),
     };
 
     public invoices = {
-        list: (params?: ListParams) => this.get('/v1/invoices', params),
+        list: (params?: ListParams) => this.get<Res<'listInvoices'>>('/v1/invoices', params),
         /** Public PDF download URL for an invoice. */
-        pdfUrl: (id: string) =>
-            `${this.client.defaults.baseURL}/v1/invoices/${id}/pdf`,
-        eInvoiceStatus: (id: string) => this.get(`/v1/invoices/${id}/einvoice`),
-        retryEInvoice: (id: string) => this.post(`/v1/invoices/${id}/einvoice/retry`),
-        cancelEInvoice: (id: string, data?: JsonObject) =>
-            this.post(`/v1/invoices/${id}/einvoice/cancel`, data),
+        pdfUrl: (id: string) => `${this.client.defaults.baseURL}/v1/invoices/${id}/pdf`,
+        eInvoiceStatus: (id: string) =>
+            this.get<Res<'getEInvoiceStatus'>>(`/v1/invoices/${id}/einvoice`),
+        retryEInvoice: (id: string) =>
+            this.post<Res<'retryEInvoice'>>(`/v1/invoices/${id}/einvoice/retry`),
+        cancelEInvoice: (id: string, data?: Body<'cancelEInvoice'>) =>
+            this.post<Res<'cancelEInvoice'>>(`/v1/invoices/${id}/einvoice/cancel`, data),
     };
 
     public coupons = {
-        create: (data: CouponInput) => this.post('/v1/coupons', data),
-        list: (params?: ListParams) => this.get('/v1/coupons', params),
+        create: (data: CouponInput) => this.post<Res<'createCoupon'>>('/v1/coupons', data),
+        list: (params?: ListParams) => this.get<Res<'listCoupons'>>('/v1/coupons', params),
     };
 
     public usage = {
         /** Record a metered usage event against a subscription. */
-        record: (data: UsageEventInput) => this.post('/v1/usage/events', data),
+        record: (data: UsageEventInput) =>
+            this.post<Res<'recordUsageEvent'>>('/v1/usage/events', data),
         /**
          * Time-windowed usage buckets: {data: [{period, dimension,
          * quantity}], from, to, granularity}. At least one of
          * subscription_id or customer_id is required; the window defaults
          * to the last 30 days at day granularity.
          */
-        query: (params: UsageQueryParams) => this.get('/v1/usage', params),
+        query: (params: UsageQueryParams) => this.get<Res<'queryUsage'>>('/v1/usage', params),
         /** The tenant's dimension catalog with first/last seen and event counts. */
-        dimensions: () => this.get('/v1/usage/dimensions'),
+        dimensions: () => this.get<Res<'listUsageDimensions'>>('/v1/usage/dimensions'),
     };
 
     public creditNotes = {
-        create: (data: JsonObject) => this.post('/v1/credit-notes', data),
-        list: (params?: ListParams) => this.get('/v1/credit-notes', params),
+        create: (data: Body<'createCreditNote'>) =>
+            this.post<Res<'createCreditNote'>>('/v1/credit-notes', data),
+        list: (params?: ListParams) =>
+            this.get<Res<'listCreditNotes'>>('/v1/credit-notes', params),
     };
 
     public quotes = {
-        create: (data: JsonObject) => this.post('/v1/quotes', data),
-        list: (params?: ListParams) => this.get('/v1/quotes', params),
-        get: (id: string) => this.get(`/v1/quotes/${id}`),
-        update: (id: string, data: JsonObject) =>
-            this.put(`/v1/quotes/${id}`, data),
-        send: (id: string) => this.post(`/v1/quotes/${id}/send`),
-        accept: (id: string) => this.post(`/v1/quotes/${id}/accept`),
-        decline: (id: string) => this.post(`/v1/quotes/${id}/decline`),
+        create: (data: Body<'createQuote'>) => this.post<Res<'createQuote'>>('/v1/quotes', data),
+        list: (params?: ListParams) => this.get<Res<'listQuotes'>>('/v1/quotes', params),
+        get: (id: string) => this.get<Res<'getQuote'>>(`/v1/quotes/${id}`),
+        update: (id: string, data: Body<'updateQuote'>) =>
+            this.put<Res<'updateQuote'>>(`/v1/quotes/${id}`, data),
+        send: (id: string) => this.post<Res<'sendQuote'>>(`/v1/quotes/${id}/send`),
+        accept: (id: string) => this.post<Res<'acceptQuote'>>(`/v1/quotes/${id}/accept`),
+        decline: (id: string) => this.post<Res<'declineQuote'>>(`/v1/quotes/${id}/decline`),
         /** Convert an accepted quote into a subscription. */
-        convert: (id: string) => this.post(`/v1/quotes/${id}/convert`),
-        delete: (id: string) => this.del(`/v1/quotes/${id}`),
+        convert: (id: string) =>
+            this.post<Res<'convertQuoteToInvoice'>>(`/v1/quotes/${id}/convert`),
+        delete: (id: string) => this.del<Res<'deleteQuote'>>(`/v1/quotes/${id}`),
     };
 
     public webhooks = {
         /** Register an endpoint to receive event deliveries. */
-        create: (data: WebhookInput) => this.post('/v1/webhooks', data),
-        list: () => this.get('/v1/webhooks'),
-        delete: (id: string) => this.del(`/v1/webhooks/${id}`),
+        create: (data: WebhookInput) =>
+            this.post<Res<'createWebhookEndpoint'>>('/v1/webhooks', data),
+        list: () => this.get<Res<'listWebhookEndpoints'>>('/v1/webhooks'),
+        delete: (id: string) => this.del<Res<'deleteWebhookEndpoint'>>(`/v1/webhooks/${id}`),
         /**
          * Recent delivery attempts to an endpoint, newest first. Filter by
          * derived status (pending | succeeded | failed) and paginate with
          * limit/offset.
          */
         deliveries: (id: string, params?: WebhookDeliveriesParams) =>
-            this.get(`/v1/webhooks/${id}/deliveries`, params),
+            this.get<Res<'listWebhookEndpointDeliveries'>>(
+                `/v1/webhooks/${id}/deliveries`,
+                params,
+            ),
     };
 
     public events = {
-        list: (params?: ListParams) => this.get('/v1/events', params),
-        types: () => this.get('/v1/events/types'),
+        list: (params?: ListParams) => this.get<Res<'listEvents'>>('/v1/events', params),
+        types: () => this.get<Res<'listEventTypes'>>('/v1/events/types'),
         /** Delivery attempts of an event across all webhook endpoints. */
-        deliveries: (id: string) => this.get(`/v1/events/${id}/deliveries`),
+        deliveries: (id: string) =>
+            this.get<Res<'listEventDeliveries'>>(`/v1/events/${id}/deliveries`),
         /**
          * Re-enqueue delivery of an event to every active subscribed
          * endpoint (202: {event_id, deliveries_queued}). Idempotent.
          */
-        redeliver: (id: string) => this.post(`/v1/events/${id}/redeliver`),
+        redeliver: (id: string) => this.post<Res<'redeliverEvent'>>(`/v1/events/${id}/redeliver`),
     };
 
     public mandates = {
-        create: (data: JsonObject) => this.post('/v1/mandates', data),
-        list: (params?: ListParams) => this.get('/v1/mandates', params),
-        get: (id: string) => this.get(`/v1/mandates/${id}`),
-        revoke: (id: string) => this.post(`/v1/mandates/${id}/revoke`),
+        create: (data: Body<'createMandate'>) =>
+            this.post<Res<'createMandate'>>('/v1/mandates', data),
+        list: (params?: ListParams) => this.get<Res<'listMandates'>>('/v1/mandates', params),
+        get: (id: string) => this.get<Res<'getMandate'>>(`/v1/mandates/${id}`),
+        revoke: (id: string) => this.post<Res<'revokeMandate'>>(`/v1/mandates/${id}/revoke`),
     };
 
     public gifts = {
-        purchase: (data: JsonObject) => this.post('/v1/gifts/purchase', data),
-        redeem: (data: GiftRedeemInput) => this.post('/v1/gifts/redeem', data),
-        list: (params?: ListParams) => this.get('/v1/gifts', params),
+        purchase: (data: Body<'purchaseGift'>) =>
+            this.post<Res<'purchaseGift'>>('/v1/gifts/purchase', data),
+        redeem: (data: GiftRedeemInput) => this.post<Res<'redeemGift'>>('/v1/gifts/redeem', data),
+        list: (params?: ListParams) => this.get<Res<'listGifts'>>('/v1/gifts', params),
     };
 
     public referrals = {
-        create: (data: JsonObject) => this.post('/v1/referrals', data),
-        list: (params?: ListParams) => this.get('/v1/referrals', params),
-        generateCode: (data: JsonObject) =>
-            this.post('/v1/referrals/generate-code', data),
-        qualify: (id: string) => this.post(`/v1/referrals/${id}/qualify`),
+        create: (data: Body<'createReferral'>) =>
+            this.post<Res<'createReferral'>>('/v1/referrals', data),
+        list: (params?: ListParams) => this.get<Res<'listReferrals'>>('/v1/referrals', params),
+        generateCode: (data: Body<'generateReferralCode'>) =>
+            this.post<Res<'generateReferralCode'>>('/v1/referrals/generate-code', data),
+        qualify: (id: string) =>
+            this.post<Res<'qualifyReferral'>>(`/v1/referrals/${id}/qualify`),
     };
 
     public entitlements = {
@@ -327,18 +404,22 @@ export class Recurso {
          * keys absent from the list are removed).
          */
         setForPlan: (planId: string, list: Entitlement[]) =>
-            this.put(`/v1/plans/${planId}/entitlements`, list),
-        getForPlan: (planId: string) => this.get(`/v1/plans/${planId}/entitlements`),
+            this.put<Res<'setPlanEntitlements'>>(`/v1/plans/${planId}/entitlements`, list),
+        getForPlan: (planId: string) =>
+            this.get<Res<'getPlanEntitlements'>>(`/v1/plans/${planId}/entitlements`),
         /**
          * Effective entitlements for a customer: the union over the plans
          * of their active/trialing subscriptions (boolean: any-true wins;
          * limit: max across plans).
          */
         forCustomer: (customerId: string) =>
-            this.get(`/v1/customers/${customerId}/entitlements`),
+            this.get<Res<'getCustomerEntitlements'>>(`/v1/customers/${customerId}/entitlements`),
         /** Fast single-feature check: {feature_key, granted, limit_value}. */
         check: (customerId: string, feature: string) =>
-            this.get('/v1/entitlements/check', { customer_id: customerId, feature }),
+            this.get<Res<'checkEntitlement'>>('/v1/entitlements/check', {
+                customer_id: customerId,
+                feature,
+            }),
     };
 
     public analytics = {
@@ -347,12 +428,12 @@ export class Recurso {
          * currency: {mrr, normalized_mrr, reporting_currency, breakdown[],
          * fx: {rates, source, as_of}}.
          */
-        mrr: () => this.get('/v1/analytics/mrr'),
+        mrr: () => this.get<Res<'getMRR'>>('/v1/analytics/mrr'),
     };
 
     public ledger = {
-        accounts: () => this.get('/v1/ledger/accounts'),
+        accounts: () => this.get<Res<'listLedgerAccounts'>>('/v1/ledger/accounts'),
         entries: (params?: LedgerEntriesParams) =>
-            this.get('/v1/ledger/entries', params),
+            this.get<Res<'listLedgerEntries'>>('/v1/ledger/entries', params),
     };
 }
