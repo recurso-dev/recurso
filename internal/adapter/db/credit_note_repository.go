@@ -113,6 +113,24 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 	return fmt.Errorf("failed to return id from create credit note")
 }
 
+// CreateWithTx inserts a credit note on an existing transaction so it commits
+// atomically with a sibling write — e.g. the plan flip on a downgrade, so a
+// failed flip can't leave a spendable credit without the downgrade (PHASE2 #1).
+func (r *CreditNoteRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, cn *domain.CreditNote) error {
+	query := `
+		INSERT INTO credit_notes (
+			tenant_id, customer_id, invoice_id, reference, amount, balance,
+			currency, status, reason, type, refund_status, refund_id,
+			refund_message, created_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		RETURNING id`
+	return tx.QueryRowContext(ctx, query,
+		cn.TenantID, cn.CustomerID, cn.InvoiceID, cn.Reference, cn.Amount, cn.Balance,
+		cn.Currency, cn.Status, cn.Reason, cn.Type, cn.RefundStatus, cn.RefundID,
+		cn.RefundMessage, cn.CreatedAt, cn.UpdatedAt,
+	).Scan(&cn.ID)
+}
+
 // UpdateRefund persists the outcome of a gateway refund attempt on a
 // refund-type credit note.
 func (r *CreditNoteRepository) UpdateRefund(ctx context.Context, id uuid.UUID, status domain.CreditNoteRefundStatus, refundID *string, message string) error {

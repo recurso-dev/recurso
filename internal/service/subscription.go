@@ -979,6 +979,55 @@ func (s *SubscriptionService) PreviewPlanChange(ctx context.Context, tenantID, s
 }
 
 // UpdateSubscription updates a subscription's plan and handles proration
+// persistPlanChange writes the proration invoice and/or downgrade credit note
+// and flips the subscription's plan. See the atomicity note at the transaction
+// branch below (PHASE2 #1).
+func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoice *domain.Invoice, creditNote *domain.CreditNote, sub *domain.Subscription) error {
+	// Atomic path: the proration invoice OR downgrade credit note commits together
+	// with the plan flip in one transaction. A failed flip can never leave an
+	// orphaned charge — or (the exploit) a spendable credit without the actual
+	// downgrade, which a caller could loop for unbounded credit (PHASE2 #1).
+	canTx := s.txManager != nil && s.subRepoImpl != nil && s.invRepoImpl != nil &&
+		(creditNote == nil || s.creditNoteRepo != nil)
+	if canTx {
+		return s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			if chargeInvoice != nil {
+				if err := s.invRepoImpl.CreateWithTx(ctx, tx, chargeInvoice); err != nil {
+					return fmt.Errorf("failed to create proration invoice: %w", err)
+				}
+			}
+			if creditNote != nil {
+				if err := s.creditNoteRepo.CreateWithTx(ctx, tx, creditNote); err != nil {
+					return fmt.Errorf("failed to create downgrade credit note: %w", err)
+				}
+			}
+			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
+		})
+	}
+
+	// Fallback for mock/partial wiring (tests without concrete repos): sequential
+	// best-effort. Not atomic, but only reached when the tx path is unavailable.
+	if creditNote != nil {
+		if s.creditNoteRepo != nil {
+			if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
+				return fmt.Errorf("failed to create downgrade credit note: %w", err)
+			}
+		} else {
+			s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
+				"subscription_id", sub.ID, "amount", creditNote.Amount)
+		}
+	}
+	if chargeInvoice != nil {
+		if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
+			return fmt.Errorf("failed to create proration invoice: %w", err)
+		}
+	}
+	if err := s.subRepo.Update(ctx, sub); err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	return nil
+}
+
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, subscriptionID, newPlanID uuid.UUID) (*domain.Subscription, error) {
 	// 1. Fetch Subscription & Current Plan
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
@@ -1111,34 +1160,8 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// path: credit note first (an orphaned credit is recoverable), then plan
 	// flip. If the txManager/concrete repos are unavailable (e.g. tests with a
 	// mock repo), fall back to sequential writes.
-	if chargeInvoice != nil && s.txManager != nil && s.invRepoImpl != nil && s.subRepoImpl != nil {
-		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
-			if err := s.invRepoImpl.CreateWithTx(ctx, tx, chargeInvoice); err != nil {
-				return fmt.Errorf("failed to create proration invoice: %w", err)
-			}
-			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
-		}); err != nil {
-			return nil, err
-		}
-	} else {
-		if creditNote != nil {
-			if s.creditNoteRepo != nil {
-				if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
-					return nil, fmt.Errorf("failed to create downgrade credit note: %w", err)
-				}
-			} else {
-				s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
-					"subscription_id", sub.ID, "amount", -(proration.NetAmount + taxRes.Total))
-			}
-		}
-		if chargeInvoice != nil {
-			if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
-				return nil, fmt.Errorf("failed to create proration invoice: %w", err)
-			}
-		}
-		if err := s.subRepo.Update(ctx, sub); err != nil {
-			return nil, fmt.Errorf("failed to update subscription: %w", err)
-		}
+	if err := s.persistPlanChange(ctx, chargeInvoice, creditNote, sub); err != nil {
+		return nil, err
 	}
 
 	// Apply account credit to the upgrade charge invoice (ENG-154).
