@@ -71,12 +71,16 @@ func (r *AccountingConnectionRepository) ListByTenant(ctx context.Context, tenan
 }
 
 func (r *AccountingConnectionRepository) Update(ctx context.Context, conn *domain.AccountingConnection) error {
+	// tenant_id scoped in the WHERE (defense-in-depth): conn.TenantID is the
+	// DB-loaded owner (connections are fetched via tenant-scoped GetByTen…/
+	// ListByTenant), so a token refresh or status write can't touch another
+	// tenant's connection.
 	query := `UPDATE accounting_connections SET access_token = $1, refresh_token = $2, token_expires_at = $3,
 		realm_id = $4, last_sync_at = $5, sync_status = $6, last_error = $7, is_active = $8
-		WHERE id = $9`
+		WHERE id = $9 AND tenant_id = $10`
 	_, err := r.db.ExecContext(ctx, query,
 		conn.AccessToken, conn.RefreshToken, conn.TokenExpiresAt,
-		conn.RealmID, conn.LastSyncAt, conn.SyncStatus, conn.LastError, conn.IsActive, conn.ID,
+		conn.RealmID, conn.LastSyncAt, conn.SyncStatus, conn.LastError, conn.IsActive, conn.ID, conn.TenantID,
 	)
 	return err
 }

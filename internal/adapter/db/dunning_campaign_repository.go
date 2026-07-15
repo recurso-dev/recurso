@@ -116,12 +116,16 @@ func (r *DunningCampaignRepository) ListCampaignsByTenant(ctx context.Context, t
 }
 
 func (r *DunningCampaignRepository) UpdateCampaign(ctx context.Context, campaign *domain.DunningCampaign) error {
+	// tenant_id is scoped in the WHERE (defense-in-depth): the handler pre-checks
+	// ownership via GetCampaignByID(id, tenantID), and campaign.TenantID is the
+	// DB-loaded owner — so this can never mutate another tenant's campaign even
+	// if that handler check is dropped in a future refactor.
 	query := `
 		UPDATE dunning_campaigns SET name = $1, is_active = $2, trigger_event = $3, updated_at = $4
-		WHERE id = $5
+		WHERE id = $5 AND tenant_id = $6
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		campaign.Name, campaign.IsActive, campaign.TriggerEvent, campaign.UpdatedAt, campaign.ID,
+		campaign.Name, campaign.IsActive, campaign.TriggerEvent, campaign.UpdatedAt, campaign.ID, campaign.TenantID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update dunning campaign: %w", err)

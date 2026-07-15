@@ -92,12 +92,15 @@ func (s *WebhookService) DeleteEndpoint(ctx context.Context, tenantID, id uuid.U
 	if _, err := s.getTenantEndpoint(ctx, tenantID, id); err != nil {
 		return err
 	}
-	return s.endpointRepo.Delete(ctx, id)
+	return s.endpointRepo.Delete(ctx, tenantID, id)
 }
 
-// UpdateEndpointStatus updates the status (active/inactive) of a webhook endpoint
-func (s *WebhookService) UpdateEndpointStatus(ctx context.Context, id uuid.UUID, status string) error {
-	endpoint, err := s.endpointRepo.GetByID(ctx, id)
+// UpdateEndpointStatus updates the status (active/inactive) of a webhook
+// endpoint. It takes the caller's tenantID and verifies ownership before the
+// write (like DeleteEndpoint, ENG-160) so it can't flip another tenant's
+// endpoint — GetByID alone is not tenant-scoped.
+func (s *WebhookService) UpdateEndpointStatus(ctx context.Context, tenantID, id uuid.UUID, status string) error {
+	endpoint, err := s.getTenantEndpoint(ctx, tenantID, id)
 	if err != nil {
 		return err
 	}

@@ -12,7 +12,7 @@ type WebhookEndpointRepository interface {
 	Create(ctx context.Context, endpoint *domain.WebhookEndpoint) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.WebhookEndpoint, error)
 	ListByTenantID(ctx context.Context, tenantID uuid.UUID) ([]*domain.WebhookEndpoint, error)
-	Delete(ctx context.Context, id uuid.UUID) error
+	Delete(ctx context.Context, tenantID, id uuid.UUID) error
 	Update(ctx context.Context, endpoint *domain.WebhookEndpoint) error
 	// GetByTenantAndEventType returns active endpoints subscribed to a specific event type
 	GetByTenantAndEventType(ctx context.Context, tenantID uuid.UUID, eventType string) ([]*domain.WebhookEndpoint, error)

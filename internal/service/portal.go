@@ -186,7 +186,7 @@ func (s *PortalService) RaiseDispute(ctx context.Context, customerID, invoiceID 
 	}
 	if existing != nil {
 		if reason != "" && reason != existing.Reason {
-			if err := s.disputeRepo.UpdateReason(ctx, existing.ID, reason); err != nil {
+			if err := s.disputeRepo.UpdateReason(ctx, existing.ID, customerID, reason); err != nil {
 				return nil, err
 			}
 			existing.Reason = reason

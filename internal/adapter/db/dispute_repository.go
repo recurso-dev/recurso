@@ -64,10 +64,15 @@ func (r *DisputeRepository) GetOpenByInvoiceID(ctx context.Context, invoiceID uu
 	return d, err
 }
 
-func (r *DisputeRepository) UpdateReason(ctx context.Context, id uuid.UUID, reason string) error {
+// UpdateReason updates an open dispute's reason. It is scoped by customer_id
+// (defense-in-depth): the portal is customer-facing, so the customer that owns
+// the dispute — not a tenant admin — is the authorization boundary. The caller
+// loads the dispute for the authenticated portal customer, so customerID is the
+// verified owner and this can't touch another customer's dispute.
+func (r *DisputeRepository) UpdateReason(ctx context.Context, id, customerID uuid.UUID, reason string) error {
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE invoice_disputes SET reason = $1 WHERE id = $2 AND status = 'open'`,
-		reason, id,
+		`UPDATE invoice_disputes SET reason = $1 WHERE id = $2 AND customer_id = $3 AND status = 'open'`,
+		reason, id, customerID,
 	)
 	return err
 }
