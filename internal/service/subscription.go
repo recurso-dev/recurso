@@ -217,18 +217,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		anchorType = "acquisition"
 	}
 
-	// The natural end of a full billing interval from `start`.
-	var fullEnd time.Time
-	switch plan.IntervalUnit {
-	case domain.IntervalMonth:
-		fullEnd = start.AddDate(0, plan.IntervalCount, 0)
-	case domain.IntervalYear:
-		fullEnd = start.AddDate(plan.IntervalCount, 0, 0)
-	case domain.IntervalWeek:
-		fullEnd = start.AddDate(0, 0, 7*plan.IntervalCount)
-	case domain.IntervalDay:
-		fullEnd = start.AddDate(0, 0, plan.IntervalCount)
-	}
+	// The natural end of a full billing interval from `start`. AddInterval clamps
+	// month/year math to the target month's last day (no Jan 31 -> Mar 3 drift).
+	fullEnd := domain.AddInterval(start, string(plan.IntervalUnit), plan.IntervalCount)
 
 	// firstPeriodFactor prorates the first charge. With first_of_month the first
 	// period is a short stub (start → 1st of next month); billing the full plan

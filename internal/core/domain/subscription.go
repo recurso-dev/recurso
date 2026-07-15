@@ -73,7 +73,10 @@ func (s *Subscription) CalculateNextBillingDate(intervalUnit string, intervalCou
 	return AddInterval(startDate, intervalUnit, intervalCount)
 }
 
-// AddInterval adds a billing interval to a time. Exported for use in advance invoicing.
+// AddInterval adds a billing interval to a time. Month/year math CLAMPS the day
+// to the target month's last valid day rather than overflowing: Go's time.AddDate
+// normalizes Jan 31 + 1 month to Mar 3, which skips February and permanently
+// drifts the billing cycle off its anchor. Exported for use in advance invoicing.
 func AddInterval(t time.Time, unit string, count int) time.Time {
 	switch unit {
 	case "day":
@@ -81,12 +84,33 @@ func AddInterval(t time.Time, unit string, count int) time.Time {
 	case "week":
 		return t.AddDate(0, 0, count*7)
 	case "month":
-		return t.AddDate(0, count, 0)
+		return addMonthsClamped(t, count)
 	case "year":
-		return t.AddDate(count, 0, 0)
+		return addMonthsClamped(t, count*12)
 	default:
-		return t.AddDate(0, 1, 0) // Default to 1 month
+		return addMonthsClamped(t, 1) // Default to 1 month
 	}
+}
+
+// addMonthsClamped adds n months, clamping the day to the target month's last
+// day so it never rolls into the following month (Jan 31 + 1 => Feb 28/29, not
+// Mar 3). Time-of-day and location are preserved.
+func addMonthsClamped(t time.Time, n int) time.Time {
+	y, m, d := t.Date()
+	// The 1st of any month never overflows, so advancing from it lands on the
+	// correct target year/month; then clamp the original day to that month.
+	target := time.Date(y, m, 1, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location()).AddDate(0, n, 0)
+	ty, tm, _ := target.Date()
+	if last := daysInMonth(ty, tm); d > last {
+		d = last
+	}
+	return time.Date(ty, tm, d, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+}
+
+// daysInMonth returns the number of days in the given month, handling leap years.
+// Day 0 of the next month is the last day of this month.
+func daysInMonth(year int, m time.Month) int {
+	return time.Date(year, m+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }
 
 type SubscriptionFilter struct {
