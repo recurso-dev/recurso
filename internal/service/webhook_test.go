@@ -41,8 +41,10 @@ func (m *mockEndpointRepo) ListByTenantID(ctx context.Context, tenantID uuid.UUI
 	return out, nil
 }
 
-func (m *mockEndpointRepo) Delete(ctx context.Context, id uuid.UUID) error {
-	delete(m.endpoints, id)
+func (m *mockEndpointRepo) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	if e, ok := m.endpoints[id]; ok && e.TenantID == tenantID {
+		delete(m.endpoints, id)
+	}
 	return nil
 }
 

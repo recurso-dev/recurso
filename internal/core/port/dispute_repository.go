@@ -15,7 +15,7 @@ type DisputeRepository interface {
 	// if none exists. Used to enforce one-open-dispute-per-invoice semantics.
 	GetOpenByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (*domain.InvoiceDispute, error)
 	// UpdateReason updates the reason of an existing (open) dispute.
-	UpdateReason(ctx context.Context, id uuid.UUID, reason string) error
+	UpdateReason(ctx context.Context, id, customerID uuid.UUID, reason string) error
 	// ListByCustomerID returns all disputes raised by a customer (newest first).
 	ListByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.InvoiceDispute, error)
 	// ListByTenant returns tenant-scoped disputes, optionally filtered by status.

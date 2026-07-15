@@ -45,9 +45,9 @@ func (m *disputeMockRepo) GetOpenByInvoiceID(ctx context.Context, invoiceID uuid
 	return nil, nil
 }
 
-func (m *disputeMockRepo) UpdateReason(ctx context.Context, id uuid.UUID, reason string) error {
+func (m *disputeMockRepo) UpdateReason(ctx context.Context, id, customerID uuid.UUID, reason string) error {
 	for _, d := range m.items {
-		if d.ID == id && d.Status == domain.DisputeStatusOpen {
+		if d.ID == id && d.CustomerID == customerID && d.Status == domain.DisputeStatusOpen {
 			d.Reason = reason
 		}
 	}

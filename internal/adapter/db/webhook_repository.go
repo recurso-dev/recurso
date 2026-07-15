@@ -93,23 +93,29 @@ func (r *WebhookEndpointRepository) ListByTenantID(ctx context.Context, tenantID
 	return endpoints, nil
 }
 
-func (r *WebhookEndpointRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `DELETE FROM webhook_endpoints WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+// Delete removes an endpoint, scoped by tenant_id (defense-in-depth) so a
+// dropped service-layer ownership check can't turn this into a cross-tenant
+// delete. The service verifies ownership via getTenantEndpoint before calling.
+func (r *WebhookEndpointRepository) Delete(ctx context.Context, tenantID, id uuid.UUID) error {
+	query := `DELETE FROM webhook_endpoints WHERE id = $1 AND tenant_id = $2`
+	_, err := r.db.ExecContext(ctx, query, id, tenantID)
 	return err
 }
 
 func (r *WebhookEndpointRepository) Update(ctx context.Context, endpoint *domain.WebhookEndpoint) error {
+	// tenant_id scoped in the WHERE (defense-in-depth): endpoint.TenantID is the
+	// DB-loaded owner, so this can't mutate another tenant's endpoint.
 	query := `
-		UPDATE webhook_endpoints 
+		UPDATE webhook_endpoints
 		SET url = $2, events = $3, status = $4, updated_at = NOW()
-		WHERE id = $1
+		WHERE id = $1 AND tenant_id = $5
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		endpoint.ID,
 		endpoint.URL,
 		pq.Array(endpoint.Events),
 		endpoint.Status,
+		endpoint.TenantID,
 	)
 	return err
 }
