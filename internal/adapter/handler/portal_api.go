@@ -132,7 +132,11 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 
 	// Set session cookie. Secure everywhere except local dev (mirrors the
 	// dashboard session cookie) so the portal token isn't sent over plain HTTP.
+	// SameSite=Lax (explicit, like the dashboard cookie) so the browser doesn't
+	// attach it to cross-site state-changing requests — the CSRF backstop — and
+	// so behavior doesn't depend on the browser's default for an unset attribute.
 	secureCookie := os.Getenv("APP_ENV") != "development"
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("portal_session", session.Token, 60*60*24*7, "/", "", secureCookie, true)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -491,6 +495,9 @@ func (h *PortalAPIHandler) RedeemGift(c *gin.Context) {
 
 // Logout invalidates the session
 func (h *PortalAPIHandler) Logout(c *gin.Context) {
+	// Match the SameSite attribute used when the cookie was set so the deletion
+	// cookie is a reliable overwrite rather than a second, differently-scoped one.
+	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("portal_session", "", -1, "/", "", os.Getenv("APP_ENV") != "development", true)
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
 }
