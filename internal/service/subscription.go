@@ -502,7 +502,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	// UPDATE actually flips the row runs the side-effects below; concurrent
 	// settlers get transitioned=false and return without double-posting the
 	// ledger or double-counting recovered revenue.
-	transitioned, err = s.invoiceRepo.MarkPaid(ctx, invoiceID, now)
+	transitioned, err = s.invoiceRepo.MarkPaid(ctx, inv.TenantID, invoiceID, now)
 	if err != nil {
 		return false, err
 	}

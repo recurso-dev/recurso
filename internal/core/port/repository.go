@@ -27,21 +27,21 @@ type InvoiceRepository interface {
 	// call performed the transition (rowsAffected == 1) and false when the
 	// invoice was already paid — so concurrent settlers can gate their
 	// side-effects on the winner. amount_paid is set to the invoice total.
-	MarkPaid(ctx context.Context, invoiceID uuid.UUID, paidAt time.Time) (bool, error)
+	MarkPaid(ctx context.Context, tenantID, invoiceID uuid.UUID, paidAt time.Time) (bool, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
 	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
 	// SetGatewayPaymentID records the gateway-side payment identifier that
 	// settled the invoice (needed later for API refunds).
-	SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error
+	SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
 	GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimFailedEInvoices atomically leases due failed e-invoices so exactly one
 	// runner retries each — preventing duplicate government IRN submissions under
 	// a multi-instance deploy (the distributed lock is a no-op without Redis).
 	ClaimFailedEInvoices(ctx context.Context, now, leaseUntil time.Time, limit int) ([]*domain.Invoice, error)
-	UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error
+	UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error
 }
 
 type ReferralRepository interface {

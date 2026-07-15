@@ -348,7 +348,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 	// gateway_payment_id, so isGatewayPaymentID guards it.
 	if result != nil && isGatewayPaymentID(result.PaymentID) {
 		invoice.GatewayPaymentID = result.PaymentID
-		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, result.PaymentID); err != nil {
+		if err := s.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, result.PaymentID); err != nil {
 			slog.Default().Error("failed to record gateway payment id for mandate debit",
 				"invoice_id", invoice.ID, "payment_id", result.PaymentID, "error", err)
 		}

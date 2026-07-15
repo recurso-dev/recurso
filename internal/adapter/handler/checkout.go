@@ -306,7 +306,7 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 	if st.PaymentID != "" {
 		// Record the gateway payment id refunds are issued against (best-effort;
 		// the webhook also sets this).
-		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, st.PaymentID)
+		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, st.PaymentID)
 	}
 
 	respondCheckoutStatus(c, invoice, "paid")
@@ -393,7 +393,7 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 		}
 	}
 	if req.PaymentID != "" {
-		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.ID, req.PaymentID)
+		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, req.PaymentID)
 	}
 
 	respondCheckoutStatus(c, invoice, "paid")

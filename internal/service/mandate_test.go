@@ -130,7 +130,7 @@ func (m *mandateMockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice
 	return nil
 }
 
-func (m *mandateMockInvoiceRepo) SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error {
+func (m *mandateMockInvoiceRepo) SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error {
 	m.paymentIDCalls = append(m.paymentIDCalls, mandatePaymentIDCall{invoiceID: invoiceID, paymentID: gatewayPaymentID})
 	return nil
 }

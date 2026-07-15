@@ -61,7 +61,7 @@ func (m *mockInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Ti
 func (m *mockInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
 	return nil, nil
 }
-func (m *mockInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
+func (m *mockInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
 	return nil
 }
 

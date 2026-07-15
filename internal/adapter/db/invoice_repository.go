@@ -289,12 +289,16 @@ func (r *InvoiceRepository) Update(ctx context.Context, inv *domain.Invoice) err
 // portion — total less any account credit already applied (ENG-153) — so
 // amount_paid + credit_applied = total and no read-then-write is needed.
 // Returns true iff this call performed the transition.
-func (r *InvoiceRepository) MarkPaid(ctx context.Context, invoiceID uuid.UUID, paidAt time.Time) (bool, error) {
+func (r *InvoiceRepository) MarkPaid(ctx context.Context, tenantID, invoiceID uuid.UUID, paidAt time.Time) (bool, error) {
+	// tenant_id is scoped in the WHERE (defense-in-depth). Callers pass the
+	// loaded invoice's own TenantID, so the real settler still matches exactly
+	// one row; the guard only ever excludes a cross-tenant id — settlement can
+	// never flip an invoice belonging to another tenant.
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
 		SET status = 'paid', amount_paid = total - credit_applied, paid_at = $2, updated_at = NOW()
-		WHERE id = $1 AND status <> 'paid'
-	`, invoiceID, paidAt)
+		WHERE id = $1 AND tenant_id = $3 AND status <> 'paid'
+	`, invoiceID, paidAt, tenantID)
 	if err != nil {
 		return false, fmt.Errorf("failed to mark invoice paid: %w", err)
 	}
@@ -654,14 +658,14 @@ func (r *InvoiceRepository) ClaimFailedEInvoices(ctx context.Context, now, lease
 }
 
 // UpdateEInvoiceStatus updates e-invoice specific fields on an invoice
-func (r *InvoiceRepository) UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
+func (r *InvoiceRepository) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
 	query := `
 		UPDATE invoices
 		SET e_invoice_status = $1, irn = $2, ack_no = $3, signed_qr_code = $4,
 		    ack_date = $5, e_invoice_error_message = $6
-		WHERE id = $7
+		WHERE id = $7 AND tenant_id = $8
 	`
-	_, err := r.db.ExecContext(ctx, query, status, irn, ackNo, signedQR, ackDate, errorMsg, invoiceID)
+	_, err := r.db.ExecContext(ctx, query, status, irn, ackNo, signedQR, ackDate, errorMsg, invoiceID, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to update e-invoice status: %w", err)
 	}
@@ -749,13 +753,13 @@ func proportionalTax(creditAmount, invoiceComponent, invoiceTotal int64) int64 {
 // SetGatewayPaymentID records the gateway-side payment identifier (Stripe
 // pi_*/ch_*, Razorpay pay_*) that settled the invoice. Called from the
 // payment-success webhook paths; the id is what refunds are issued against.
-func (r *InvoiceRepository) SetGatewayPaymentID(ctx context.Context, invoiceID uuid.UUID, gatewayPaymentID string) error {
+func (r *InvoiceRepository) SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error {
 	query := `
 		UPDATE invoices
 		SET gateway_payment_id = $1
-		WHERE id = $2
+		WHERE id = $2 AND tenant_id = $3
 	`
-	_, err := r.db.ExecContext(ctx, query, gatewayPaymentID, invoiceID)
+	_, err := r.db.ExecContext(ctx, query, gatewayPaymentID, invoiceID, tenantID)
 	if err != nil {
 		return fmt.Errorf("failed to set gateway payment id: %w", err)
 	}

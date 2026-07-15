@@ -53,7 +53,7 @@ func TestMarkPaid_Concurrent_Postgres(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			<-start
-			ok, err := repo.MarkPaid(ctx, invoiceID, now)
+			ok, err := repo.MarkPaid(ctx, tenantID, invoiceID, now)
 			if err == nil && ok {
 				atomic.AddInt64(&wins, 1)
 			}
