@@ -1028,6 +1028,40 @@ func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoi
 	return nil
 }
 
+// generateProrationEInvoice registers the government e-invoice (IRN) for a
+// committed proration charge invoice and persists the result. It MUST be called
+// only after the invoice is durably committed: an IRN is an irreversible
+// external side-effect, so requesting it before commit would leave an orphaned
+// government registration if the transaction rolled back (PHASE2 #3).
+// Best-effort — a failure is logged and the e-invoice status/retry is persisted
+// so the retry worker can pick it up.
+func (s *SubscriptionService) generateProrationEInvoice(ctx context.Context, invoice *domain.Invoice, customer *domain.Customer) {
+	switch {
+	case s.einvoiceService != nil:
+		if _, err := s.einvoiceService.GenerateEInvoice(ctx, invoice); err != nil {
+			s.logger.Error("e-invoice generation failed for proration (will retry)", "error", err, "invoice_id", invoice.ID)
+		}
+	case s.gspAdapter != nil && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business":
+		resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
+		if err == nil {
+			invoice.IRN = resp.IRN
+			invoice.SignedQRCode = resp.SignedQRCode
+			invoice.EInvoiceStatus = "GENERATED"
+			invoice.AckNo = resp.AckNo
+		} else {
+			s.logger.Error("error generating IRN for proration invoice", "error", err, "invoice_id", invoice.ID)
+			invoice.EInvoiceStatus = "FAILED"
+		}
+	default:
+		return // not e-invoice eligible; nothing generated or to persist
+	}
+
+	// Persist the IRN/status (and any retry scheduling) onto the committed row.
+	if err := s.invoiceRepo.Update(ctx, invoice); err != nil {
+		s.logger.Error("failed to persist proration e-invoice result", "invoice_id", invoice.ID, "error", err)
+	}
+}
+
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, subscriptionID, newPlanID uuid.UUID) (*domain.Subscription, error) {
 	// 1. Fetch Subscription & Current Plan
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
@@ -1118,23 +1152,8 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			DueDate:   now,
 		}
 
-		// P25: E-Invoicing (charge invoices only — credit notes are not e-invoiced here).
-		if s.einvoiceService != nil {
-			if _, einvErr := s.einvoiceService.GenerateEInvoice(ctx, chargeInvoice); einvErr != nil {
-				s.logger.Error("e-invoice generation failed for proration (will retry)", "error", einvErr)
-			}
-		} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
-			resp, err := s.gspAdapter.GenerateIRN(ctx, chargeInvoice)
-			if err == nil {
-				chargeInvoice.IRN = resp.IRN
-				chargeInvoice.SignedQRCode = resp.SignedQRCode
-				chargeInvoice.EInvoiceStatus = "GENERATED"
-				chargeInvoice.AckNo = resp.AckNo
-			} else {
-				s.logger.Error("error generating IRN for proration invoice", "error", err)
-				chargeInvoice.EInvoiceStatus = "FAILED"
-			}
-		}
+		// P25 e-invoicing is deferred to AFTER the invoice is committed (below the
+		// persist call) — see generateProrationEInvoice (PHASE2 #3).
 
 	case proration.NetAmount < 0:
 		// Both proration.NetAmount and taxRes.Total are negative here; negating
@@ -1162,6 +1181,13 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// mock repo), fall back to sequential writes.
 	if err := s.persistPlanChange(ctx, chargeInvoice, creditNote, sub); err != nil {
 		return nil, err
+	}
+
+	// P25 e-invoicing runs AFTER the invoice is durably committed: registering a
+	// government IRN before commit would orphan an irreversible IRN at NIC if the
+	// transaction rolled back (PHASE2 #3).
+	if chargeInvoice != nil {
+		s.generateProrationEInvoice(ctx, chargeInvoice, customer)
 	}
 
 	// Apply account credit to the upgrade charge invoice (ENG-154).
