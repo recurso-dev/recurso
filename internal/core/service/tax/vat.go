@@ -136,19 +136,23 @@ func (e *EUVATEngine) CalculateTax(ctx context.Context, req *port.TaxRequest) (*
 		}, nil
 	}
 
-	// Export outside EU: 0% VAT
+	// Export outside the EU: out of scope for EU VAT — 0% for BOTH B2B and B2C.
+	// A B2C digital service to a non-EU consumer must NOT be charged the seller's
+	// domestic rate (the previous fallthrough billed DE 19% to a US buyer). The
+	// strictly-correct treatment of a B2C export can be the destination country's
+	// own consumption tax, but that is routed to that country's engine; within the
+	// EU-VAT engine's remit the output is zero-rated (PHASE2 #5).
 	if !isEU(buyerCountry) {
-		if req.IsBusiness {
-			return &port.TaxCalculation{
-				TotalTax: 0,
-				TaxRate:  0,
-				TaxType:  "export_exempt",
-				Note:     "Export outside EU: zero-rated",
-			}, nil
+		note := "Export outside EU: zero-rated"
+		if !req.IsBusiness {
+			note = "B2C digital service outside EU: out of scope (no EU VAT)"
 		}
-		// B2C outside EU for digital services: MOSS/OSS rules
-		// Seller must register in buyer's country or use OSS
-		// For simplicity, we apply buyer country rate
+		return &port.TaxCalculation{
+			TotalTax: 0,
+			TaxRate:  0,
+			TaxType:  "export_exempt",
+			Note:     note,
+		}, nil
 	}
 
 	// Determine which country's rate to apply
@@ -187,8 +191,8 @@ func (e *EUVATEngine) GetApplicableRate(ctx context.Context, req *port.TaxReques
 		return 0, nil
 	}
 
-	// Export outside EU
-	if !isEU(buyerCountry) && req.IsBusiness {
+	// Export outside EU: zero-rated for both B2B and B2C (PHASE2 #5).
+	if !isEU(buyerCountry) {
 		return 0, nil
 	}
 
