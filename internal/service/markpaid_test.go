@@ -38,7 +38,7 @@ func (m *mockInvoiceRepoForMarkPaid) Update(ctx context.Context, inv *domain.Inv
 
 // MarkPaid mirrors the real conditional UPDATE: it transitions an open invoice
 // once and reports false if the invoice is missing or already paid.
-func (m *mockInvoiceRepoForMarkPaid) MarkPaid(ctx context.Context, id uuid.UUID, paidAt time.Time) (bool, error) {
+func (m *mockInvoiceRepoForMarkPaid) MarkPaid(ctx context.Context, tenantID, id uuid.UUID, paidAt time.Time) (bool, error) {
 	if m.updateErr != nil {
 		return false, m.updateErr
 	}

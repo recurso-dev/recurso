@@ -71,7 +71,7 @@ func (m *mockEInvInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain
 	return result, nil
 }
 
-func (m *mockEInvInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
+func (m *mockEInvInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
 	if inv, ok := m.invoices[invoiceID]; ok {
 		inv.EInvoiceStatus = status
 		inv.IRN = irn

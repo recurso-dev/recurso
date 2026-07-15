@@ -165,7 +165,7 @@ func (m *acctSyncInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain
 	return nil, nil
 }
 
-func (m *acctSyncInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
+func (m *acctSyncInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
 	return nil
 }
 

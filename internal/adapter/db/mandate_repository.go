@@ -78,15 +78,19 @@ func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 }
 
 func (r *MandateRepository) Update(ctx context.Context, mandate *domain.Mandate) error {
+	// tenant_id scoped in the WHERE (defense-in-depth): mandate.TenantID is the
+	// DB-loaded owner (the webhook path loads by razorpay_token_id, the scheduler
+	// and revoke paths by id+tenant), so this can't mutate another tenant's
+	// mandate even though the loaders don't all carry a tenant guard.
 	query := `UPDATE mandates SET status = $1, razorpay_token_id = $2, razorpay_subscription_id = $3,
 		razorpay_customer_id = $4, authorized_at = $5, activated_at = $6, revoked_at = $7, last_debit_at = $8,
 		next_debit_at = $9, pre_debit_notified = $10, updated_at = $11, subscription_id = $12
-		WHERE id = $13`
+		WHERE id = $13 AND tenant_id = $14`
 	_, err := r.db.ExecContext(ctx, query,
 		mandate.Status, mandate.RazorpayTokenID, mandate.RazorpaySubscriptionID,
 		mandate.RazorpayCustomerID, mandate.AuthorizedAt, mandate.ActivatedAt, mandate.RevokedAt,
 		mandate.LastDebitAt, mandate.NextDebitAt, mandate.PreDebitNotified,
-		time.Now(), mandate.SubscriptionID, mandate.ID,
+		time.Now(), mandate.SubscriptionID, mandate.ID, mandate.TenantID,
 	)
 	return err
 }

@@ -310,7 +310,7 @@ func (h *WebhookHandler) handleRazorpayPaymentCaptured(c *gin.Context, event Raz
 	// fail (RazorpayGateway.Refund rejects non-pay_*). ExecuteDebit guards the
 	// same write for this reason; the webhook path did not (ENG-188).
 	if paymentID := event.Payload.Payment.Entity.ID; isGatewayPaymentID(paymentID) && h.invoiceRepo != nil {
-		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, paymentID); err != nil {
+		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, inv.TenantID, invoiceID, paymentID); err != nil {
 			h.logger.Error("failed to record gateway payment id",
 				"invoice_id", invoiceID, "payment_id", paymentID, "error", err)
 		}
@@ -505,7 +505,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 
 	// Persist the gateway payment id — refunds are issued against it.
 	if h.invoiceRepo != nil && pi.ID != "" {
-		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, invoiceID, pi.ID); err != nil {
+		if err := h.invoiceRepo.SetGatewayPaymentID(ctx, inv.TenantID, invoiceID, pi.ID); err != nil {
 			h.logger.Error("failed to record gateway payment id",
 				"invoice_id", invoiceID,
 				"payment_id", pi.ID,

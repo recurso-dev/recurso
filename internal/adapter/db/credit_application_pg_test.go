@@ -201,7 +201,7 @@ func TestMarkPaid_WithCreditApplied_Postgres(t *testing.T) {
 	}
 
 	repo := NewInvoiceRepository(conn).(*InvoiceRepository)
-	ok, err := repo.MarkPaid(ctx, invID, time.Now())
+	ok, err := repo.MarkPaid(ctx, tenantID, invID, time.Now())
 	if err != nil || !ok {
 		t.Fatalf("MarkPaid = (%v, %v), want (true, nil)", ok, err)
 	}
