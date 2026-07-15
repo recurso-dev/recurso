@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -146,6 +147,103 @@ func TestPlanDowngradeCredit_Postgres(t *testing.T) {
 	}
 	if invCount != 0 {
 		t.Errorf("downgrade created %d invoice(s); want 0 (credit is a credit note)", invCount)
+	}
+}
+
+// TestPersistPlanChange_DowngradeCreditRollsBackOnFlipFailure is the PHASE2 #1
+// guard: the downgrade proration credit and the plan flip must commit
+// atomically. If the flip fails, the spendable credit must NOT persist —
+// otherwise a caller could loop failed downgrades to mint unbounded credit
+// while never actually downgrading (the infinite-credit exploit).
+func TestPersistPlanChange_DowngradeCreditRollsBackOnFlipFailure(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed atomicity test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	dbx, err := sqlx.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = dbx.Close() }()
+	conn := dbx.DB
+	ctx := context.Background()
+	run := uuid.New().String()[:8]
+
+	tenantID := uuid.New()
+	if _, err := conn.ExecContext(ctx, `INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1,$2,$3,NOW(),NOW())`,
+		tenantID, "Atomic-"+run, "atomic-"+run+"@t.com"); err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	customerID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		 VALUES ($1,$2,$3,'Acme US','United States','individual',$4,NOW(),NOW())`,
+		customerID, tenantID, "cust-"+run+"@t.com", uuid.New()); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+	planID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active) VALUES ($1,$2,'Pro',$3,'month',1,TRUE)`,
+		planID, tenantID, "pro-"+run); err != nil {
+		t.Fatalf("seed plan: %v", err)
+	}
+	subID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,'active', NOW()-INTERVAL '15 days', NOW()+INTERVAL '15 days', NOW()-INTERVAL '15 days', NOW(), NOW())`,
+		subID, tenantID, customerID, planID); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	subRepo := db.NewSubscriptionRepository(conn)
+	svc := NewSubscriptionService(
+		subRepo, db.NewInvoiceRepository(conn), db.NewPlanRepository(conn), db.NewCustomerRepository(dbx),
+		nil, nil, nil, nil, nil,
+		db.NewTxManager(conn), nil, nil,
+	)
+	svc.SetCreditNoteRepo(db.NewCreditNoteRepository(dbx))
+
+	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	sub, err := subRepo.GetByID(tctx, subID)
+	if err != nil {
+		t.Fatalf("load subscription: %v", err)
+	}
+	// Corrupt the flip: a non-existent plan violates the subscriptions.plan_id FK,
+	// so the plan-flip UPDATE fails deterministically inside the persistence path.
+	sub.PlanID = uuid.New()
+
+	now := time.Now()
+	credit := &domain.CreditNote{
+		TenantID: tenantID, CustomerID: customerID,
+		Amount: 50000, Balance: 50000, Currency: "USD",
+		Status: domain.CreditNoteStatusIssued, Reason: "Plan downgrade proration credit",
+		Type: domain.CreditNoteTypeAdjustment, RefundStatus: domain.RefundStatusNone,
+		CreatedAt: now, UpdatedAt: now,
+	}
+
+	// Act: persist a credit + a plan flip that will fail.
+	if err := svc.persistPlanChange(ctx, nil, credit, sub); err == nil {
+		t.Fatal("expected persistPlanChange to fail on the invalid plan flip, got nil")
+	}
+
+	// Assert: the credit must NOT have persisted (rolled back with the failed flip).
+	var cnCount int
+	if err := conn.QueryRowContext(ctx, `SELECT COUNT(*) FROM credit_notes WHERE tenant_id=$1 AND customer_id=$2`, tenantID, customerID).Scan(&cnCount); err != nil {
+		t.Fatalf("count credit notes: %v", err)
+	}
+	if cnCount != 0 {
+		t.Errorf("credit notes = %d, want 0 — a failed plan flip must roll back the credit (infinite-credit exploit)", cnCount)
+	}
+	// And the plan must be unchanged.
+	var dbPlan uuid.UUID
+	if err := conn.QueryRowContext(ctx, `SELECT plan_id FROM subscriptions WHERE id=$1`, subID).Scan(&dbPlan); err != nil {
+		t.Fatalf("read plan_id: %v", err)
+	}
+	if dbPlan != planID {
+		t.Errorf("plan_id = %s, want unchanged %s", dbPlan, planID)
 	}
 }
 

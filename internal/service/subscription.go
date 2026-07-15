@@ -217,18 +217,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		anchorType = "acquisition"
 	}
 
-	// The natural end of a full billing interval from `start`.
-	var fullEnd time.Time
-	switch plan.IntervalUnit {
-	case domain.IntervalMonth:
-		fullEnd = start.AddDate(0, plan.IntervalCount, 0)
-	case domain.IntervalYear:
-		fullEnd = start.AddDate(plan.IntervalCount, 0, 0)
-	case domain.IntervalWeek:
-		fullEnd = start.AddDate(0, 0, 7*plan.IntervalCount)
-	case domain.IntervalDay:
-		fullEnd = start.AddDate(0, 0, plan.IntervalCount)
-	}
+	// The natural end of a full billing interval from `start`. AddInterval clamps
+	// month/year math to the target month's last day (no Jan 31 -> Mar 3 drift).
+	fullEnd := domain.AddInterval(start, string(plan.IntervalUnit), plan.IntervalCount)
 
 	// firstPeriodFactor prorates the first charge. With first_of_month the first
 	// period is a short stub (start → 1st of next month); billing the full plan
@@ -988,6 +979,89 @@ func (s *SubscriptionService) PreviewPlanChange(ctx context.Context, tenantID, s
 }
 
 // UpdateSubscription updates a subscription's plan and handles proration
+// persistPlanChange writes the proration invoice and/or downgrade credit note
+// and flips the subscription's plan. See the atomicity note at the transaction
+// branch below (PHASE2 #1).
+func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoice *domain.Invoice, creditNote *domain.CreditNote, sub *domain.Subscription) error {
+	// Atomic path: the proration invoice OR downgrade credit note commits together
+	// with the plan flip in one transaction. A failed flip can never leave an
+	// orphaned charge — or (the exploit) a spendable credit without the actual
+	// downgrade, which a caller could loop for unbounded credit (PHASE2 #1).
+	canTx := s.txManager != nil && s.subRepoImpl != nil && s.invRepoImpl != nil &&
+		(creditNote == nil || s.creditNoteRepo != nil)
+	if canTx {
+		return s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			if chargeInvoice != nil {
+				if err := s.invRepoImpl.CreateWithTx(ctx, tx, chargeInvoice); err != nil {
+					return fmt.Errorf("failed to create proration invoice: %w", err)
+				}
+			}
+			if creditNote != nil {
+				if err := s.creditNoteRepo.CreateWithTx(ctx, tx, creditNote); err != nil {
+					return fmt.Errorf("failed to create downgrade credit note: %w", err)
+				}
+			}
+			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
+		})
+	}
+
+	// Fallback for mock/partial wiring (tests without concrete repos): sequential
+	// best-effort. Not atomic, but only reached when the tx path is unavailable.
+	if creditNote != nil {
+		if s.creditNoteRepo != nil {
+			if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
+				return fmt.Errorf("failed to create downgrade credit note: %w", err)
+			}
+		} else {
+			s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
+				"subscription_id", sub.ID, "amount", creditNote.Amount)
+		}
+	}
+	if chargeInvoice != nil {
+		if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
+			return fmt.Errorf("failed to create proration invoice: %w", err)
+		}
+	}
+	if err := s.subRepo.Update(ctx, sub); err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	return nil
+}
+
+// generateProrationEInvoice registers the government e-invoice (IRN) for a
+// committed proration charge invoice and persists the result. It MUST be called
+// only after the invoice is durably committed: an IRN is an irreversible
+// external side-effect, so requesting it before commit would leave an orphaned
+// government registration if the transaction rolled back (PHASE2 #3).
+// Best-effort — a failure is logged and the e-invoice status/retry is persisted
+// so the retry worker can pick it up.
+func (s *SubscriptionService) generateProrationEInvoice(ctx context.Context, invoice *domain.Invoice, customer *domain.Customer) {
+	switch {
+	case s.einvoiceService != nil:
+		if _, err := s.einvoiceService.GenerateEInvoice(ctx, invoice); err != nil {
+			s.logger.Error("e-invoice generation failed for proration (will retry)", "error", err, "invoice_id", invoice.ID)
+		}
+	case s.gspAdapter != nil && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business":
+		resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
+		if err == nil {
+			invoice.IRN = resp.IRN
+			invoice.SignedQRCode = resp.SignedQRCode
+			invoice.EInvoiceStatus = "GENERATED"
+			invoice.AckNo = resp.AckNo
+		} else {
+			s.logger.Error("error generating IRN for proration invoice", "error", err, "invoice_id", invoice.ID)
+			invoice.EInvoiceStatus = "FAILED"
+		}
+	default:
+		return // not e-invoice eligible; nothing generated or to persist
+	}
+
+	// Persist the IRN/status (and any retry scheduling) onto the committed row.
+	if err := s.invoiceRepo.Update(ctx, invoice); err != nil {
+		s.logger.Error("failed to persist proration e-invoice result", "invoice_id", invoice.ID, "error", err)
+	}
+}
+
 func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, subscriptionID, newPlanID uuid.UUID) (*domain.Subscription, error) {
 	// 1. Fetch Subscription & Current Plan
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
@@ -1078,23 +1152,8 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			DueDate:   now,
 		}
 
-		// P25: E-Invoicing (charge invoices only — credit notes are not e-invoiced here).
-		if s.einvoiceService != nil {
-			if _, einvErr := s.einvoiceService.GenerateEInvoice(ctx, chargeInvoice); einvErr != nil {
-				s.logger.Error("e-invoice generation failed for proration (will retry)", "error", einvErr)
-			}
-		} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
-			resp, err := s.gspAdapter.GenerateIRN(ctx, chargeInvoice)
-			if err == nil {
-				chargeInvoice.IRN = resp.IRN
-				chargeInvoice.SignedQRCode = resp.SignedQRCode
-				chargeInvoice.EInvoiceStatus = "GENERATED"
-				chargeInvoice.AckNo = resp.AckNo
-			} else {
-				s.logger.Error("error generating IRN for proration invoice", "error", err)
-				chargeInvoice.EInvoiceStatus = "FAILED"
-			}
-		}
+		// P25 e-invoicing is deferred to AFTER the invoice is committed (below the
+		// persist call) — see generateProrationEInvoice (PHASE2 #3).
 
 	case proration.NetAmount < 0:
 		// Both proration.NetAmount and taxRes.Total are negative here; negating
@@ -1120,34 +1179,15 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// path: credit note first (an orphaned credit is recoverable), then plan
 	// flip. If the txManager/concrete repos are unavailable (e.g. tests with a
 	// mock repo), fall back to sequential writes.
-	if chargeInvoice != nil && s.txManager != nil && s.invRepoImpl != nil && s.subRepoImpl != nil {
-		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
-			if err := s.invRepoImpl.CreateWithTx(ctx, tx, chargeInvoice); err != nil {
-				return fmt.Errorf("failed to create proration invoice: %w", err)
-			}
-			return s.subRepoImpl.UpdateWithTx(ctx, tx, sub)
-		}); err != nil {
-			return nil, err
-		}
-	} else {
-		if creditNote != nil {
-			if s.creditNoteRepo != nil {
-				if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
-					return nil, fmt.Errorf("failed to create downgrade credit note: %w", err)
-				}
-			} else {
-				s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
-					"subscription_id", sub.ID, "amount", -(proration.NetAmount + taxRes.Total))
-			}
-		}
-		if chargeInvoice != nil {
-			if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
-				return nil, fmt.Errorf("failed to create proration invoice: %w", err)
-			}
-		}
-		if err := s.subRepo.Update(ctx, sub); err != nil {
-			return nil, fmt.Errorf("failed to update subscription: %w", err)
-		}
+	if err := s.persistPlanChange(ctx, chargeInvoice, creditNote, sub); err != nil {
+		return nil, err
+	}
+
+	// P25 e-invoicing runs AFTER the invoice is durably committed: registering a
+	// government IRN before commit would orphan an irreversible IRN at NIC if the
+	// transaction rolled back (PHASE2 #3).
+	if chargeInvoice != nil {
+		s.generateProrationEInvoice(ctx, chargeInvoice, customer)
 	}
 
 	// Apply account credit to the upgrade charge invoice (ENG-154).

@@ -153,6 +153,57 @@ func TestCalculateNextBillingDate_ZeroDate(t *testing.T) {
 	}
 }
 
+// TestAddInterval_MonthEndDoesNotOverflow proves the recurring-date-drift fix:
+// adding a month to a day that doesn't exist in the target month must CLAMP to
+// that month's last day, never overflow into the following month. Raw
+// time.AddDate normalizes Jan 31 + 1 month to Mar 3, skipping February entirely
+// and corrupting the billing cycle.
+func TestAddInterval_MonthEndDoesNotOverflow(t *testing.T) {
+	utc := time.UTC
+	cases := []struct {
+		name  string
+		start time.Time
+		unit  string
+		count int
+		wantY int
+		wantM time.Month
+		wantD int
+	}{
+		{"jan31 + 1 month clamps to Feb 28 (non-leap)", time.Date(2025, 1, 31, 10, 30, 0, 0, utc), "month", 1, 2025, time.February, 28},
+		{"jan31 + 1 month clamps to Feb 29 (leap)", time.Date(2024, 1, 31, 10, 30, 0, 0, utc), "month", 1, 2024, time.February, 29},
+		{"mar31 + 1 month clamps to Apr 30", time.Date(2025, 3, 31, 0, 0, 0, 0, utc), "month", 1, 2025, time.April, 30},
+		{"jan31 + 2 months stays Mar 31 (no needless clamp)", time.Date(2025, 1, 31, 0, 0, 0, 0, utc), "month", 2, 2025, time.March, 31},
+		{"feb29 + 1 year clamps to Feb 28", time.Date(2024, 2, 29, 0, 0, 0, 0, utc), "year", 1, 2025, time.February, 28},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AddInterval(tc.start, tc.unit, tc.count)
+			if got.Year() != tc.wantY || got.Month() != tc.wantM || got.Day() != tc.wantD {
+				t.Errorf("AddInterval(%v, %q, %d) = %v, want %04d-%02d-%02d", tc.start, tc.unit, tc.count, got.Format("2006-01-02"), tc.wantY, tc.wantM, tc.wantD)
+			}
+			// Time-of-day must be preserved.
+			if got.Hour() != tc.start.Hour() || got.Minute() != tc.start.Minute() {
+				t.Errorf("time-of-day drifted: got %02d:%02d, want %02d:%02d", got.Hour(), got.Minute(), tc.start.Hour(), tc.start.Minute())
+			}
+		})
+	}
+}
+
+// TestAddInterval_MonthlySeriesSkipsNoMonth proves a year of monthly renewals
+// anchored on the 31st never skips a month (the drift bug billed Jan then Mar).
+func TestAddInterval_MonthlySeriesSkipsNoMonth(t *testing.T) {
+	d := time.Date(2025, 1, 31, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < 12; i++ {
+		next := AddInterval(d, "month", 1)
+		wantMonth := d.Month()%12 + 1 // consecutive month, no gaps
+		if next.Month() != wantMonth {
+			t.Fatalf("month %d: AddInterval(%v) = %v (month %v), want consecutive month %v",
+				i, d.Format("2006-01-02"), next.Format("2006-01-02"), next.Month(), wantMonth)
+		}
+		d = next
+	}
+}
+
 func TestAddInterval(t *testing.T) {
 	base := time.Date(2026, 1, 15, 10, 30, 0, 0, time.UTC)
 

@@ -99,6 +99,14 @@ func TestEUVATEngine_Matrix(t *testing.T) {
 			wantTax:  0,
 			wantType: "export_exempt",
 		},
+		{
+			// PHASE2 #5: a B2C digital service to a non-EU buyer is out of scope
+			// for EU VAT — 0%, NOT the seller's domestic rate (the bug charged DE 19%).
+			name:     "export outside EU B2C -> zero-rated (not domestic VAT)",
+			req:      &port.TaxRequest{Amount: 10000, BuyerCountry: "US"},
+			wantTax:  0,
+			wantType: "export_exempt",
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
