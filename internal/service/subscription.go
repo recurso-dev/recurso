@@ -352,28 +352,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		PaidAt:         nil,
 	}
 
-	// P25: E-Invoicing via EInvoiceService. Skipped for trials — the first
-	// invoice (and its IRN) is generated when the trial converts to active.
-	if !isTrial && s.einvoiceService != nil {
-		_, einvErr := s.einvoiceService.GenerateEInvoice(ctx, invoice)
-		if einvErr != nil {
-			s.logger.Error("e-invoice generation failed (will retry)", "error", einvErr, "invoice_id", invID)
-		}
-	} else if !isTrial && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
-		// Fallback: direct GSP call (backward compat)
-		resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
-		if err == nil {
-			invoice.IRN = resp.IRN
-			invoice.SignedQRCode = resp.SignedQRCode
-			invoice.EInvoiceStatus = "GENERATED"
-			invoice.AckNo = resp.AckNo
-		} else {
-			s.logger.Error("e-invoicing IRN generation failed", "error", err, "invoice_id", invID)
-			invoice.EInvoiceStatus = "FAILED"
-		}
-	} else {
-		invoice.EInvoiceStatus = "PENDING"
-	}
+	// P25 e-invoicing is deferred to AFTER the subscription + invoice commit
+	// (below), so a rolled-back create can't orphan an irreversible government IRN
+	// (PHASE2 #3). Skipped for trials — the IRN is generated on trial conversion.
 
 	anchorDay := 0
 	if anchorType == "first_of_month" {
@@ -454,6 +435,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 
 	if !isTrial {
 		s.telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
+
+		// P25 e-invoicing AFTER the invoice is durably committed (PHASE2 #3).
+		s.generateEInvoiceAfterCommit(ctx, invoice, customer)
 
 		// Dual-write to ledger (outside TX — TigerBeetle is a separate system)
 		if s.ledger != nil {
@@ -1028,14 +1012,15 @@ func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoi
 	return nil
 }
 
-// generateProrationEInvoice registers the government e-invoice (IRN) for a
-// committed proration charge invoice and persists the result. It MUST be called
-// only after the invoice is durably committed: an IRN is an irreversible
-// external side-effect, so requesting it before commit would leave an orphaned
-// government registration if the transaction rolled back (PHASE2 #3).
+// generateEInvoiceAfterCommit registers the government e-invoice (IRN) for a
+// committed invoice and persists the result. Shared by every plan path — first
+// invoice, plan-change proration, and trial conversion. It MUST be called only
+// after the invoice is durably committed: an IRN is an irreversible external
+// side-effect, so requesting it before commit would leave an orphaned government
+// registration if the transaction rolled back (PHASE2 #3 / I1).
 // Best-effort — a failure is logged and the e-invoice status/retry is persisted
 // so the retry worker can pick it up.
-func (s *SubscriptionService) generateProrationEInvoice(ctx context.Context, invoice *domain.Invoice, customer *domain.Customer) {
+func (s *SubscriptionService) generateEInvoiceAfterCommit(ctx context.Context, invoice *domain.Invoice, customer *domain.Customer) {
 	switch {
 	case s.einvoiceService != nil:
 		if _, err := s.einvoiceService.GenerateEInvoice(ctx, invoice); err != nil {
@@ -1153,7 +1138,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		}
 
 		// P25 e-invoicing is deferred to AFTER the invoice is committed (below the
-		// persist call) — see generateProrationEInvoice (PHASE2 #3).
+		// persist call) — see generateEInvoiceAfterCommit (PHASE2 #3).
 
 	case proration.NetAmount < 0:
 		// Both proration.NetAmount and taxRes.Total are negative here; negating
@@ -1187,7 +1172,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// government IRN before commit would orphan an irreversible IRN at NIC if the
 	// transaction rolled back (PHASE2 #3).
 	if chargeInvoice != nil {
-		s.generateProrationEInvoice(ctx, chargeInvoice, customer)
+		s.generateEInvoiceAfterCommit(ctx, chargeInvoice, customer)
 	}
 
 	// Apply account credit to the upgrade charge invoice (ENG-154).
@@ -1329,14 +1314,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		DueDate:      dueDate,
 	}
 
-	// E-invoicing follows the same rules as the first invoice in CreateSubscription.
-	if s.einvoiceService != nil {
-		if _, einvErr := s.einvoiceService.GenerateEInvoice(ctx, invoice); einvErr != nil {
-			s.logger.Error("e-invoice generation failed on trial conversion (will retry)", "error", einvErr, "invoice_id", invID)
-		}
-	} else {
-		invoice.EInvoiceStatus = "PENDING"
-	}
+	// P25 e-invoicing is deferred to AFTER the invoice + activation commit (below),
+	// so a rolled-back conversion — including the atomic trial-race loss — can't
+	// orphan an irreversible government IRN (PHASE2 #3).
 
 	sub.Status = domain.SubscriptionStatusActive
 	sub.CurrentPeriodStart = start
@@ -1379,6 +1359,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 			return nil, fmt.Errorf("failed to activate subscription after trial: %w", err)
 		}
 	}
+
+	// P25 e-invoicing AFTER the invoice is durably committed (PHASE2 #3).
+	s.generateEInvoiceAfterCommit(ctx, invoice, customer)
 
 	// Dual-write to ledger (best-effort; reconciliation covers gaps).
 	if s.ledger != nil {

@@ -22,6 +22,11 @@ func (m *MockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) error
 	return nil
 }
 
+func (m *MockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error {
+	m.CreatedInvoice = inv
+	return nil
+}
+
 type MockPlanRepo struct {
 	port.PlanRepository
 	Plan *domain.Plan

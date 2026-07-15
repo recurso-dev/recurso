@@ -65,6 +65,36 @@ func NewInvoiceService(
 	}
 }
 
+// generateEInvoiceAfterCommit registers the government e-invoice (IRN) for a
+// COMMITTED invoice and persists the result. It must run only after the invoice
+// is durably committed — an IRN is irreversible, so requesting it before commit
+// orphans it if the insert rolls back (PHASE2 #3). Best-effort.
+func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *domain.Invoice, customer *domain.Customer) {
+	switch {
+	case s.EInvoiceService != nil:
+		if _, err := s.EInvoiceService.GenerateEInvoice(ctx, inv); err != nil {
+			slog.Error("e-invoice generation failed (will retry)", "error", err, "invoice_id", inv.ID)
+		}
+	case s.GSPAdapter != nil && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business":
+		resp, err := s.GSPAdapter.GenerateIRN(ctx, inv)
+		if err == nil {
+			inv.IRN = resp.IRN
+			inv.SignedQRCode = resp.SignedQRCode
+			inv.EInvoiceStatus = "GENERATED"
+			inv.AckNo = resp.AckNo
+		} else {
+			slog.Error("error generating IRN", "error", err, "invoice_id", inv.ID)
+			inv.EInvoiceStatus = "FAILED"
+		}
+	default:
+		inv.EInvoiceStatus = "NA"
+	}
+	// Persist the IRN/status (and any retry scheduling) onto the committed row.
+	if err := s.InvoiceRepo.Update(ctx, inv); err != nil {
+		slog.Error("failed to persist e-invoice result", "invoice_id", inv.ID, "error", err)
+	}
+}
+
 func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
 	// 1. Fetch Plan
 	plan, err := s.PlanRepo.GetByID(ctx, sub.PlanID)
@@ -220,33 +250,14 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		RetryCount:   0,
 	}
 
-	// P25: E-Invoicing via EInvoiceService
-	if s.EInvoiceService != nil {
-		_, einvErr := s.EInvoiceService.GenerateEInvoice(ctx, inv)
-		if einvErr != nil {
-			// Soft fail: invoice still gets created, e-invoice retried later
-			slog.Error("e-invoice generation failed (will retry)", "error", einvErr)
-		}
-	} else if customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business" {
-		// Fallback: direct GSP call (backward compat when EInvoiceService is nil)
-		resp, err := s.GSPAdapter.GenerateIRN(ctx, inv)
-		if err == nil {
-			inv.IRN = resp.IRN
-			inv.SignedQRCode = resp.SignedQRCode
-			inv.EInvoiceStatus = "GENERATED"
-			inv.AckNo = resp.AckNo
-		} else {
-			slog.Error("error generating IRN", "error", err)
-			inv.EInvoiceStatus = "FAILED"
-		}
-	} else {
-		inv.EInvoiceStatus = "NA"
-	}
-
-	// 6. Persist
+	// 6. Persist FIRST — P25 e-invoicing runs after commit (below) so a failed
+	// insert can't orphan an irreversible government IRN (PHASE2 #3).
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
 	}
+
+	// P25 e-invoicing on the now-committed invoice.
+	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 
 	// 6b. Apply any account credit (adjustment credit notes) to the new invoice,
 	// reducing what the customer owes (ENG-153). Best-effort: a failure leaves the

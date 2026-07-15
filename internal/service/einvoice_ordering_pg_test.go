@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -120,5 +121,71 @@ func TestProrationEInvoice_RequestedOnlyAfterCommit(t *testing.T) {
 	}
 	if irn != "IRN-TEST" {
 		t.Errorf("persisted irn = %q, want IRN-TEST (post-commit e-invoice must persist the IRN)", irn)
+	}
+}
+
+// TestCreateSubscription_EInvoiceRequestedOnlyAfterCommit is the PHASE2 I1 guard
+// for the first-invoice path: CreateSubscription must register the government IRN
+// only AFTER the subscription + invoice are committed, so a rolled-back create
+// can't orphan an irreversible IRN.
+func TestCreateSubscription_EInvoiceRequestedOnlyAfterCommit(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed e-invoice ordering test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	dbx, err := sqlx.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = dbx.Close() }()
+	conn := dbx.DB
+	ctx := context.Background()
+	run := uuid.New().String()[:8]
+
+	tenantID := uuid.New()
+	if _, err := conn.ExecContext(ctx, `INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1,$2,$3,NOW(),NOW())`,
+		tenantID, "EInvC-"+run, "einvc-"+run+"@t.com"); err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	customerID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, country, gstin, tax_type, ledger_account_id, created_at, updated_at)
+		 VALUES ($1,$2,$3,'Acme India','India','27AAAAA0000A1Z5','business',$4,NOW(),NOW())`,
+		customerID, tenantID, "cust-"+run+"@t.com", uuid.New()); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+	planID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active) VALUES ($1,$2,'Pro',$3,'month',1,TRUE)`,
+		planID, tenantID, "pro-"+run); err != nil {
+		t.Fatalf("seed plan: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO prices (id, plan_id, currency, amount, type) VALUES ($1,$2,'INR',100000,'recurring')`,
+		uuid.New(), planID); err != nil {
+		t.Fatalf("seed price: %v", err)
+	}
+
+	gsp := &commitCheckingGSP{conn: conn}
+	svc := NewSubscriptionService(
+		db.NewSubscriptionRepository(conn), db.NewInvoiceRepository(conn), db.NewPlanRepository(conn), db.NewCustomerRepository(dbx),
+		nil, nil, nil, nil, gsp, db.NewTxManager(conn), nil, nil,
+	)
+
+	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	if _, err := svc.CreateSubscription(tctx, CreateSubscriptionInput{
+		TenantID: tenantID, CustomerID: customerID, PlanID: planID, StartDate: time.Now(),
+	}); err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+
+	if gsp.calls != 1 {
+		t.Fatalf("GSP GenerateIRN called %d times, want 1", gsp.calls)
+	}
+	if !gsp.sawCommitted {
+		t.Error("IRN requested before the first invoice was committed — rollback would orphan a government IRN (PHASE2 I1)")
 	}
 }

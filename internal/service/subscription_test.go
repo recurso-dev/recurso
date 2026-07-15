@@ -45,6 +45,11 @@ func (m *subMockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) er
 	return nil
 }
 
+func (m *subMockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error {
+	m.created = inv
+	return nil
+}
+
 type subMockPlanRepo struct {
 	port.PlanRepository
 	plan *domain.Plan
