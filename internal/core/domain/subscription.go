@@ -53,7 +53,7 @@ func (s *Subscription) CalculateNextBillingDate(intervalUnit string, intervalCou
 
 	// Default: Acquisition based (just add interval)
 	if s.BillingAnchorType == "acquisition" || s.BillingAnchorType == "" {
-		return AddInterval(startDate, intervalUnit, intervalCount)
+		return s.addIntervalAnchored(startDate, intervalUnit, intervalCount)
 	}
 
 	// Calendar Billing: First of Month
@@ -70,7 +70,33 @@ func (s *Subscription) CalculateNextBillingDate(intervalUnit string, intervalCou
 		return firstOfNextMonth
 	}
 
-	return AddInterval(startDate, intervalUnit, intervalCount)
+	return s.addIntervalAnchored(startDate, intervalUnit, intervalCount)
+}
+
+// addIntervalAnchored is AddInterval plus month-end anchor restoration: a
+// subscription anchored on the 31st that was clamped to Feb 28 returns to the
+// 31st in March instead of staying "sticky" at 28. Restoration happens only
+// when advancing FROM a clamped month-end date toward a later anchor day, so
+// cycles that legitimately run mid-month (e.g. after a trial conversion) keep
+// their current day.
+func (s *Subscription) addIntervalAnchored(t time.Time, unit string, count int) time.Time {
+	next := AddInterval(t, unit, count)
+	if unit != "month" && unit != "year" && unit != "" {
+		return next
+	}
+	anchorDay := s.BillingAnchorDay
+	if anchorDay <= 0 && !s.BillingAnchor.IsZero() {
+		anchorDay = s.BillingAnchor.Day()
+	}
+	y, m, d := t.Date()
+	if anchorDay <= d || d != daysInMonth(y, m) {
+		return next
+	}
+	ny, nm, _ := next.Date()
+	if last := daysInMonth(ny, nm); anchorDay > last {
+		anchorDay = last
+	}
+	return time.Date(ny, nm, anchorDay, next.Hour(), next.Minute(), next.Second(), next.Nanosecond(), next.Location())
 }
 
 // AddInterval adds a billing interval to a time. Month/year math CLAMPS the day

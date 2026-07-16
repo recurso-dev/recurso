@@ -232,3 +232,67 @@ func TestAddInterval(t *testing.T) {
 		})
 	}
 }
+
+// A month-end subscription must not get "sticky" at day 28: with the billing
+// anchor on the 31st, the cycle is Jan 31 → Feb 28 → Mar 31 → Apr 30 → May 31,
+// restoring the anchor day in months long enough to hold it.
+func TestCalculateNextBillingDate_ReanchorsAfterClamp(t *testing.T) {
+	anchor := time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC)
+	sub := &Subscription{
+		BillingAnchorType: "acquisition",
+		BillingAnchor:     anchor,
+		CurrentPeriodEnd:  anchor,
+	}
+
+	want := []string{"2026-02-28", "2026-03-31", "2026-04-30", "2026-05-31", "2026-06-30", "2026-07-31"}
+	for i, w := range want {
+		next := sub.CalculateNextBillingDate("month", 1)
+		if got := next.Format("2006-01-02"); got != w {
+			t.Fatalf("cycle %d: got %s, want %s", i, got, w)
+		}
+		sub.CurrentPeriodEnd = next
+	}
+}
+
+// BillingAnchorDay (calendar billing bookkeeping) wins over the anchor date's
+// day when set.
+func TestCalculateNextBillingDate_AnchorDayFieldWins(t *testing.T) {
+	sub := &Subscription{
+		BillingAnchorType: "acquisition",
+		BillingAnchor:     time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC),
+		BillingAnchorDay:  30,
+		CurrentPeriodEnd:  time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC),
+	}
+	next := sub.CalculateNextBillingDate("month", 1)
+	if got := next.Format("2006-01-02"); got != "2026-03-30" {
+		t.Fatalf("got %s, want 2026-03-30", got)
+	}
+}
+
+// Re-anchoring must only restore days lost to month-end clamping. A cycle that
+// runs mid-month (e.g. a trial that converted on the 10th while the original
+// anchor was the 25th) keeps billing on its current day.
+func TestCalculateNextBillingDate_NoReanchorMidMonth(t *testing.T) {
+	sub := &Subscription{
+		BillingAnchorType: "acquisition",
+		BillingAnchor:     time.Date(2026, 1, 25, 0, 0, 0, 0, time.UTC),
+		CurrentPeriodEnd:  time.Date(2026, 3, 10, 0, 0, 0, 0, time.UTC),
+	}
+	next := sub.CalculateNextBillingDate("month", 1)
+	if got := next.Format("2006-01-02"); got != "2026-04-10" {
+		t.Fatalf("got %s, want 2026-04-10 (no re-anchor from a mid-month day)", got)
+	}
+}
+
+// Weekly/daily intervals never re-anchor to a day of month.
+func TestCalculateNextBillingDate_NoReanchorForDayWeek(t *testing.T) {
+	sub := &Subscription{
+		BillingAnchorType: "acquisition",
+		BillingAnchor:     time.Date(2026, 1, 31, 0, 0, 0, 0, time.UTC),
+		CurrentPeriodEnd:  time.Date(2026, 2, 28, 0, 0, 0, 0, time.UTC),
+	}
+	next := sub.CalculateNextBillingDate("week", 1)
+	if got := next.Format("2006-01-02"); got != "2026-03-07" {
+		t.Fatalf("got %s, want 2026-03-07", got)
+	}
+}
