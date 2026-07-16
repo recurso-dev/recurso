@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ type PreChargeScheduler struct {
 	portalBaseURL    string
 	ticker           *time.Ticker
 	done             chan bool
+	stopOnce         sync.Once
 }
 
 // SubscriptionRepoForPreCharge interface for scheduler
@@ -68,11 +70,13 @@ func (s *PreChargeScheduler) Start() {
 
 // Stop stops the scheduler
 func (s *PreChargeScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("pre-charge scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("pre-charge scheduler stopped")
+	})
 }
 
 // runPreChargeNotifications sends notifications for subscriptions due tomorrow

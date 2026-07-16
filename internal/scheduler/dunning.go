@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,6 +49,7 @@ type DunningScheduler struct {
 	portalBaseURL   string
 	ticker          *time.Ticker
 	done            chan bool
+	stopOnce        sync.Once
 }
 
 // NewDunningScheduler creates a new dunning scheduler
@@ -91,11 +93,13 @@ func (s *DunningScheduler) Start() {
 
 // Stop stops the scheduler
 func (s *DunningScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("dunning scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("dunning scheduler stopped")
+	})
 }
 
 // processDunning handles all overdue invoices

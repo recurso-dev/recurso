@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -51,6 +52,7 @@ type TrialScheduler struct {
 	reminderWindow time.Duration
 	ticker         *time.Ticker
 	done           chan bool
+	stopOnce       sync.Once
 }
 
 // NewTrialScheduler creates a trial scheduler with the default 3-day reminder window.
@@ -95,11 +97,13 @@ func (s *TrialScheduler) Start() {
 
 // Stop stops the scheduler.
 func (s *TrialScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("trial scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("trial scheduler stopped")
+	})
 }
 
 // processTrials sends reminders then converts expired trials, under a

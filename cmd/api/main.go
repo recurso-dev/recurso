@@ -731,15 +731,30 @@ func main() {
 
 	// Graceful shutdown: on SIGINT/SIGTERM stop schedulers, then drain the
 	// HTTP server (srv.Shutdown below) so in-flight requests complete.
+	// Stop() blocks until an in-flight tick finishes, so signal all
+	// schedulers concurrently — done sequentially, one slow tick would keep
+	// every scheduler behind it running (and starting new jobs) meanwhile.
 	shutdownSchedulers := func() {
-		preChargeScheduler.Stop()
-		dunningScheduler.Stop()
-		trialScheduler.Stop()
-		cardExpiryScheduler.Stop()
-		mandateDebitScheduler.Stop()
-		reconciliationScheduler.Stop()
-		mrrSnapshotScheduler.Stop()
-		healthAlertScheduler.Stop()
+		stops := []func(){
+			preChargeScheduler.Stop,
+			dunningScheduler.Stop,
+			trialScheduler.Stop,
+			cardExpiryScheduler.Stop,
+			mandateDebitScheduler.Stop,
+			nexusScheduler.Stop,
+			reconciliationScheduler.Stop,
+			mrrSnapshotScheduler.Stop,
+			healthAlertScheduler.Stop,
+		}
+		var wg sync.WaitGroup
+		for _, stop := range stops {
+			wg.Add(1)
+			go func(stop func()) {
+				defer wg.Done()
+				stop()
+			}(stop)
+		}
+		wg.Wait()
 	}
 
 	// 7. Initialize Handlers

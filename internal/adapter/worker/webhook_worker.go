@@ -71,23 +71,6 @@ func (w *WebhookWorker) Start(ctx context.Context) {
 }
 
 func (w *WebhookWorker) processDeliveries(ctx context.Context) {
-	// 1. Fetch pending deliveries (This requires a method in repo that likely doesn't exist yet in the interface shown in previous turns)
-	// We might need to extend the repository interface or implementation.
-	// For MVP, since we don't have GetPendingDeliveries in the interface shown previously,
-	// we will assume we need to implement polling or rely on a "ListPending" method.
-	// However, looking at the previous file view of `webhook_repository.go`, `EventDeliveryRepository` only had:
-	// Create, Update, ListByEventID.
-	// It is missing `ListPending`. I need to add that first?
-	// Or, I can iterate recently created events and check their delivery status? No, that's inefficient.
-
-	// WAIT: I should have caught this in planning.
-	// I'll add methods to the repo interface via a separate step or assume I'm updating it here?
-	// I'll assume I can update the repository. But for now, I'll implement the logic assuming the method exists
-	// and then I will update the repo files.
-
-	// Just kidding, I can't pass compilation if interface doesn't match.
-	// Let's implement the worker logic assuming `ListPending` exists, and I will strictly follow up to update the repo.
-
 	deliveries, err := w.deliveryRepo.ListPending(ctx, 10) // Process 10 at a time
 	if err != nil {
 		slog.Error("failed to fetch pending webhooks", "error", err)
@@ -116,7 +99,7 @@ func (w *WebhookWorker) deliver(ctx context.Context, delivery *domain.EventDeliv
 
 	// Prepare Request
 	payload, _ := json.Marshal(event)
-	req, err := http.NewRequest("POST", endpoint.URL, bytes.NewBuffer(payload))
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint.URL, bytes.NewBuffer(payload))
 	if err != nil {
 		w.failDelivery(ctx, delivery, 0, err.Error())
 		return

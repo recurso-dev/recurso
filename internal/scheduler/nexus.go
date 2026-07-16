@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/adapter/db"
@@ -20,6 +21,7 @@ type NexusScheduler struct {
 	locker     port.Locker
 	ticker     *time.Ticker
 	done       chan bool
+	stopOnce   sync.Once
 }
 
 func NewNexusScheduler(tenantRepo *db.TenantRepository, status *service.NexusStatusService, locker port.Locker) *NexusScheduler {
@@ -51,11 +53,13 @@ func (s *NexusScheduler) Start() {
 }
 
 func (s *NexusScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("nexus scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("nexus scheduler stopped")
+	})
 }
 
 func (s *NexusScheduler) run() {

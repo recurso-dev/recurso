@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/core/port"
@@ -21,6 +22,7 @@ type MandateDebitScheduler struct {
 	locker      port.Locker
 	ticker      *time.Ticker
 	done        chan bool
+	stopOnce    sync.Once
 }
 
 func NewMandateDebitScheduler(
@@ -56,11 +58,13 @@ func (s *MandateDebitScheduler) Start() {
 }
 
 func (s *MandateDebitScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("mandate debit scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("mandate debit scheduler stopped")
+	})
 }
 
 func (s *MandateDebitScheduler) runDebits() {

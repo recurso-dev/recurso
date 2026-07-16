@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,6 +28,7 @@ type CardExpiringScheduler struct {
 	portalBaseURL   string
 	ticker          *time.Ticker
 	done            chan bool
+	stopOnce        sync.Once
 }
 
 // NewCardExpiringScheduler creates a new card expiry scheduler
@@ -68,11 +70,13 @@ func (s *CardExpiringScheduler) Start() {
 
 // Stop stops the scheduler
 func (s *CardExpiringScheduler) Stop() {
-	if s.ticker != nil {
-		s.ticker.Stop()
-	}
-	s.done <- true
-	slog.Info("card expiry scheduler stopped")
+	s.stopOnce.Do(func() {
+		if s.ticker != nil {
+			s.ticker.Stop()
+		}
+		close(s.done)
+		slog.Info("card expiry scheduler stopped")
+	})
 }
 
 // runCardExpiryNotifications sends notifications for cards expiring next month
