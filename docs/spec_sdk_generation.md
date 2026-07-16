@@ -1,5 +1,13 @@
 # Spec: SDK Generation & API Playground
 
+> **Superseded (2026-07-16):** the SDKs no longer live under `sdk/` in this
+> repo. They were extracted to standalone repositories:
+> [recurso-go](https://github.com/recurso-dev/recurso-go),
+> [recurso-node](https://github.com/recurso-dev/recurso-node),
+> [recurso-python](https://github.com/recurso-dev/recurso-python).
+> Paths below reflect the old monorepo layout and are kept for historical
+> context.
+
 ## Objective
 Automate the generation of client SDKs (Python and Go) directly from the OpenAPI specification, wire up a Mintlify-backed API playground for interactive documentation, and provide an auto-generated Postman collection for developers.
 

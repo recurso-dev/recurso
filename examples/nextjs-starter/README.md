@@ -64,8 +64,8 @@ Open http://localhost:3000, go to **Pricing**, complete the signup, then visit
   doesn't grant the `advanced_reports` feature. Grant it to a plan with
   `PUT /v1/plans/{id}/entitlements`, then reload.
 - **No SDK dependency.** This starter uses plain `fetch`. A typed Node SDK
-  lives at `sdk/node` in the main repo; it isn't published to npm yet, so drop
-  it in once it ships.
+  lives at [recurso-node](https://github.com/recurso-dev/recurso-node); it
+  isn't published to npm yet, so drop it in once it ships.
 
 ## Build
 

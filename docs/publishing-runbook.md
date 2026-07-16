@@ -11,8 +11,12 @@ code; it only publishes what exists.
 
 ## 1. npm — `recurso-node`
 
+The Node SDK now lives in its own repo:
+[recurso-node](https://github.com/recurso-dev/recurso-node)
+(local checkout: `../recurso-node`).
+
 ```bash
-cd sdk/node
+cd ../recurso-node
 
 # a) Is the name free? (404 = available; if it prints a package, see "Name taken" below)
 npm view recurso-node
@@ -25,18 +29,22 @@ npm run build
 npm publish --access public
 
 # d) Verify
-npm view recurso-node version   # should print 1.1.0
+npm view recurso-node version   # should print 1.2.0
 ```
 
 **Name taken?** Rename to a scope you own: set `"name": "@your-org/recurso"` in
-`sdk/node/package.json`, then `npm publish --access public`.
+`recurso-node/package.json`, then `npm publish --access public`.
 
 ---
 
 ## 2. PyPI — `recurso`
 
+The Python SDK now lives in its own repo:
+[recurso-python](https://github.com/recurso-dev/recurso-python)
+(local checkout: `../recurso-python`).
+
 ```bash
-cd sdk/python
+cd ../recurso-python
 
 # a) Is the name free? Open https://pypi.org/project/recurso/ — 404 = available.
 #    (If taken, change `name = "recurso"` in pyproject.toml to e.g. "recurso-sdk".)

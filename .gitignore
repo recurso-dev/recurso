@@ -15,7 +15,6 @@ main
 node_modules/
 frontend/node_modules/
 website/node_modules/
-sdk/node_modules/
 
 # Build outputs
 frontend/dist/

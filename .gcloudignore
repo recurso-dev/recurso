@@ -7,7 +7,6 @@
 **/node_modules/
 frontend/
 docs/
-sdk/
 pitch/
 postman/
 examples/

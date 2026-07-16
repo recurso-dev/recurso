@@ -152,11 +152,12 @@ Building on Recurso? See [`examples/nextjs-starter`](examples/nextjs-starter) fo
 
 ## SDKs
 
-Typed clients for the Recurso API live in the repo. They are packaged and
-tested but **not yet published** to npm / PyPI — install from source for now:
+Typed clients for the Recurso API live in their own repositories. They are
+packaged and tested but **not yet published** to npm / PyPI — install from
+source for now:
 
-- **Node.js** ([`sdk/node`](sdk/node)) — `npm install ./recurso/sdk/node`
-- **Python** ([`sdk/python`](sdk/python)) — `pip install ./recurso/sdk/python`
+- **Node.js** ([recurso-node](https://github.com/recurso-dev/recurso-node)) — `npm install ./recurso-node` from a checkout
+- **Python** ([recurso-python](https://github.com/recurso-dev/recurso-python)) — `pip install ./recurso-python` from a checkout
 - **Go** ([recurso-go](https://github.com/recurso-dev/recurso-go)) — `go get github.com/recurso-dev/recurso-go`
 
 A [Postman collection](postman/) generated from the OpenAPI spec is also
