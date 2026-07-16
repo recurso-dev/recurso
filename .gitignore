@@ -49,3 +49,5 @@ stitch_dashboard_home_screen*/
 
 # air hot-reload build output
 tmp/
+demo_seed
+__pycache__/
