@@ -991,23 +991,29 @@ func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoi
 
 	// Fallback for mock/partial wiring (tests without concrete repos): sequential
 	// best-effort. Not atomic, but only reached when the tx path is unavailable.
+	// Tightened: Update the subscription FIRST. If this fails, no credit is
+	// issued. If it succeeds but the credit fails, it's bad UX but financially
+	// safe (prevents the downgrade exploit).
+	if err := s.subRepo.Update(ctx, sub); err != nil {
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+
+	if chargeInvoice != nil {
+		if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
+			s.logger.Error("failed to create proration invoice after plan flip", "subscription_id", sub.ID, "error", err)
+			return fmt.Errorf("plan updated but failed to create proration invoice: %w", err)
+		}
+	}
 	if creditNote != nil {
 		if s.creditNoteRepo != nil {
 			if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
-				return fmt.Errorf("failed to create downgrade credit note: %w", err)
+				s.logger.Error("failed to create downgrade credit note after plan flip", "subscription_id", sub.ID, "error", err)
+				return fmt.Errorf("plan updated but failed to create downgrade credit note: %w", err)
 			}
 		} else {
 			s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
 				"subscription_id", sub.ID, "amount", creditNote.Amount)
 		}
-	}
-	if chargeInvoice != nil {
-		if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
-			return fmt.Errorf("failed to create proration invoice: %w", err)
-		}
-	}
-	if err := s.subRepo.Update(ctx, sub); err != nil {
-		return fmt.Errorf("failed to update subscription: %w", err)
 	}
 	return nil
 }
