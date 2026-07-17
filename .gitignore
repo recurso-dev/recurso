@@ -51,3 +51,8 @@ stitch_dashboard_home_screen*/
 tmp/
 demo_seed
 __pycache__/
+
+# Personal AI-agent workflow config — local only
+.claude/
+.gemini/
+GEMINI.md
