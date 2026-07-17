@@ -5,8 +5,8 @@
 // into a "use client" component — that would ship the key to the browser.
 //
 // We use plain `fetch` here deliberately: a typed Node SDK exists at
-// `sdk/node` in the main repo, but it is not yet published to npm, so this
-// starter stays dependency-free. Swap in the SDK once it ships.
+// https://github.com/recurso-dev/recurso-node, but it is not yet published
+// to npm, so this starter stays dependency-free. Swap in the SDK once it ships.
 
 const BASE_URL = process.env.RECURSO_API_URL ?? "http://localhost:8080";
 const API_KEY = process.env.RECURSO_API_KEY ?? "";
