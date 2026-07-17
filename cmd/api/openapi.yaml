@@ -3303,6 +3303,51 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/india/gstr3b:
+    get:
+      operationId: getGSTR3B
+      tags: [Settings]
+      summary: GSTR-3B summary return for a tax period
+      description: >
+        Assembles the GSTR-3B self-declared summary from the same period inputs
+        as GSTR-1 (finalized invoices and refund credit notes), so the two
+        returns are consistent by construction. Table 3.1(a) outward supplies
+        are net of the period's credit notes; Table 3.2 reports inter-state
+        supplies to unregistered persons per place of supply. Purchase-side
+        sections (inward reverse charge, ITC) are emitted as zeros — the
+        billing engine holds no purchase data; the taxpayer/CA completes them
+        before filing. Returns readable sections plus a `gov_schema` object in
+        the GSTN GSTR-3B JSON shape (official field names, amounts in rupees).
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 12 }
+          description: Calendar month of the tax period.
+        - name: year
+          in: query
+          required: true
+          schema: { type: integer, minimum: 2017, maximum: 2100 }
+          description: Year of the tax period.
+      responses:
+        '200':
+          description: The GSTR-3B return, readable and in government JSON shape.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    description: Readable GSTR-3B sections (amounts in minor units).
+                  gov_schema:
+                    type: object
+                    description: GSTN GSTR-3B upload JSON (official field names, amounts in rupees).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/settings/gst:
     get:
       operationId: getGSTConfig

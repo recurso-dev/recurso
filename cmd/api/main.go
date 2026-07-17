@@ -1290,6 +1290,7 @@ func main() {
 		v1.GET("/settings/tax/nexus/status", taxNexusHandler.GetNexusStatus)
 		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
 		v1.GET("/india/gstr1", gstHandler.GetGSTR1)
+		v1.GET("/india/gstr3b", gstHandler.GetGSTR3B)
 
 		// E-Invoice (P25)
 		v1.GET("/invoices/:id/einvoice", einvoiceHandler.GetEInvoiceStatus)

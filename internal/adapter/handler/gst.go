@@ -81,6 +81,51 @@ func (h *GSTHandler) GetGSTR1(c *gin.Context) {
 	})
 }
 
+// GetGSTR3B returns the GSTR-3B summary return for a tax period, both as
+// readable sections ("data") and as the GSTN upload JSON ("gov_schema").
+// GET /v1/india/gstr3b?month=&year=
+func (h *GSTHandler) GetGSTR3B(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if h.gstrSvc == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "GSTR-3B export not configured")
+		return
+	}
+
+	month, err := strconv.Atoi(c.Query("month"))
+	if err != nil || month < 1 || month > 12 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "month must be 1-12")
+		return
+	}
+	year, err := strconv.Atoi(c.Query("year"))
+	if err != nil || year < 2017 || year > 2100 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "year must be a valid GST-era year")
+		return
+	}
+
+	ret, err := h.gstrSvc.GetGSTR3B(c.Request.Context(), tenantID, month, year)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to build GSTR-3B")
+		return
+	}
+
+	// Seller GSTIN for the government JSON header (best-effort; empty if unset).
+	sellerGSTIN := ""
+	if h.gstConfigRepo != nil {
+		if cfg, cerr := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); cerr == nil && cfg != nil {
+			sellerGSTIN = cfg.GSTIN
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":       ret,
+		"gov_schema": service.BuildGSTR3BGovDocument(sellerGSTIN, ret),
+	})
+}
+
 // GetConfig returns the current GST configuration
 // GET /settings/gst
 func (h *GSTHandler) GetConfig(c *gin.Context) {
