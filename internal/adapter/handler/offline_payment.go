@@ -92,6 +92,7 @@ type recordOfflinePaymentRequest struct {
 	InvoiceID       string `json:"invoice_id"`
 	PaymentType     string `json:"payment_type" binding:"required,oneof=bank_transfer cash cheque"`
 	Amount          int64  `json:"amount" binding:"required,gt=0"`
+	TDSAmount       int64  `json:"tds_amount" binding:"omitempty,gte=0"` // tax deducted at source by the customer; requires invoice_id
 	Currency        string `json:"currency"`
 	ReferenceNumber string `json:"reference_number"`
 	Notes           string `json:"notes"`
@@ -127,6 +128,7 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 		CustomerID:      customerID,
 		PaymentType:     req.PaymentType,
 		Amount:          req.Amount,
+		TDSAmount:       req.TDSAmount,
 		Currency:        currency,
 		ReferenceNumber: req.ReferenceNumber,
 		Notes:           req.Notes,

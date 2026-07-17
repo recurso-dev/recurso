@@ -30,6 +30,7 @@ type OfflinePayment struct {
 	InvoiceID       *uuid.UUID `json:"invoice_id,omitempty" db:"invoice_id"`
 	PaymentType     string     `json:"payment_type" db:"payment_type"`
 	Amount          int64      `json:"amount" db:"amount"`
+	TDSAmount       int64      `json:"tds_amount" db:"tds_amount"` // tax deducted at source by the customer — settles the invoice but is not cash received
 	Currency        string     `json:"currency" db:"currency"`
 	ReferenceNumber string     `json:"reference_number,omitempty" db:"reference_number"`
 	Notes           string     `json:"notes,omitempty" db:"notes"`

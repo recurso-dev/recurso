@@ -120,6 +120,7 @@ const (
 	AccountCodeCustomerCredit    = 2300 // Customer Credit (Liability) — account credit owed to customers (ENG-154)
 	AccountCodeRefunds           = 5000 // Refunds (Expense)
 	AccountCodeCreditsIssued     = 5100 // Credits & Adjustments (Expense) — cost of manually-issued account credit (ENG-154)
+	AccountCodeTDSReceivable     = 1200 // TDS Receivable (Asset) — tax deducted at source by customers, recoverable against income tax (India)
 )
 
 // Ledger transaction codes (LedgerTransaction.Code): 1 = invoice, 2 = revenue
@@ -134,6 +135,12 @@ const LedgerCodeOutputTax uint16 = 6
 // down. Distinct code (codes 4/5/7/8 are the other credit-note postings) so it
 // stays idempotent and attributable per (reference_id, code).
 const LedgerCodeRefundTaxReversal uint16 = 9
+
+// LedgerCodeTDSReceivable books the portion of an invoice the customer
+// withheld as tax deducted at source (India B2B): DR TDS Receivable / CR
+// Customer AR. The receivable is recovered against income tax, not from the
+// customer; the cash payment leg (Code 3) covers only the net amount received.
+const LedgerCodeTDSReceivable uint16 = 10
 
 // LedgerCodeDowngradeTaxReversal reverses the GST portion of a mid-period plan
 // downgrade out of Tax Payable into the customer's account credit (ENG-191c):

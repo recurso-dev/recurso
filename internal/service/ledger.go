@@ -202,60 +202,91 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 }
 
 // RecordPayment posts a payment to the ledger when an invoice is marked paid.
-// Debit: Cash (Asset)
-// Credit: Customer AR (Asset) — reduces the receivable
+// Debit: Cash (Asset) — the net amount actually received
+// Debit: TDS Receivable (Asset) — any portion the customer withheld at source
+// Credit: Customer AR (Asset) — reduced by both legs
 func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
 	// Reject invalid amounts up front (a negative total is a caller bug, not a
 	// zero-cash settlement) before the collected-amount short-circuit below.
-	if invoice.Total < 0 || invoice.CreditApplied < 0 {
-		return fmt.Errorf("invoice %s: invalid amounts (total=%d credit_applied=%d)", invoice.ID, invoice.Total, invoice.CreditApplied)
+	if invoice.Total < 0 || invoice.CreditApplied < 0 || invoice.TDSAmount < 0 {
+		return fmt.Errorf("invoice %s: invalid amounts (total=%d credit_applied=%d tds=%d)",
+			invoice.ID, invoice.Total, invoice.CreditApplied, invoice.TDSAmount)
 	}
 
-	// Post the CASH actually collected, not the gross Total. When account credit
-	// was applied to this invoice, the credit-application posting already
-	// relieved AR by credit_applied; only Total-credit_applied was collected in
-	// cash. Posting the full Total here would over-credit AR (drive it negative)
-	// and overstate Cash by the applied credit (ENG-185).
-	collected := invoice.Total - invoice.CreditApplied
-	if collected <= 0 {
-		// Fully covered by account credit — no cash leg to post.
-		return nil
-	}
-	amount, err := ledgerAmount(collected)
-	if err != nil {
-		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
-	}
 	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
-	txID := uuid.New()
+	var transfers []*domain.LedgerTransaction
 
-	cashAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
-	if err != nil {
-		return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
+	// TDS leg: the customer withheld this portion and remits it to the
+	// government against the seller's PAN. It settles AR but is recovered
+	// against income tax, not from the customer — so it lands in TDS
+	// Receivable, never in Cash (docs/spec_india_decisive.md P1).
+	if invoice.TDSAmount > 0 {
+		tdsAmount, err := ledgerAmount(invoice.TDSAmount)
+		if err != nil {
+			return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+		}
+		tdsAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeTDSReceivable, "TDS Receivable", domain.AccountTypeAsset)
+		if err != nil {
+			return fmt.Errorf("ledger write failed for TDS on invoice %s: %w", invoice.ID, err)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID:              uuid.New(),
+			DebitAccountID:  tdsAccountID,       // TDS Receivable
+			CreditAccountID: invoice.CustomerID, // AR
+			Amount:          tdsAmount,
+			LedgerID:        1,
+			Code:            domain.LedgerCodeTDSReceivable,
+			ReferenceID:     invoice.ID,
+			Description:     "TDS deducted at source on " + invoice.InvoiceNumber,
+			Timestamp:       time.Now(),
+		})
 	}
 
-	transfer := &domain.LedgerTransaction{
-		ID:              txID,
-		DebitAccountID:  cashAccountID,      // Cash
-		CreditAccountID: invoice.CustomerID, // AR
-		Amount:          amount,
-		LedgerID:        1,
-		Code:            3, // Payment
-		ReferenceID:     invoice.ID,
-		Description:     "Payment for " + invoice.InvoiceNumber,
-		Timestamp:       time.Now(),
+	// Post the CASH actually collected, not the gross Total. Account credit
+	// was already relieved from AR by the credit-application posting (ENG-185),
+	// and the TDS portion never arrives as cash — posting either here would
+	// over-credit AR (drive it negative) and overstate Cash.
+	collected := invoice.Total - invoice.CreditApplied - invoice.TDSAmount
+	if collected > 0 {
+		amount, err := ledgerAmount(collected)
+		if err != nil {
+			return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+		}
+		cashAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+		if err != nil {
+			return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID:              uuid.New(),
+			DebitAccountID:  cashAccountID,      // Cash
+			CreditAccountID: invoice.CustomerID, // AR
+			Amount:          amount,
+			LedgerID:        1,
+			Code:            3, // Payment
+			ReferenceID:     invoice.ID,
+			Description:     "Payment for " + invoice.InvoiceNumber,
+			Timestamp:       time.Now(),
+		})
+	}
+
+	if len(transfers) == 0 {
+		// Fully covered by account credit — no legs to post.
+		return nil
 	}
 
 	// Always write to PG; surface failures so callers can retry/reconcile.
 	if s.pgRepo != nil {
-		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed for payment", "error", err)
-			return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
+		for _, transfer := range transfers {
+			if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+				slog.Error("PG CreateTransaction failed for payment", "error", err)
+				return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
+			}
 		}
 	}
 
 	// Write to TB if connected
 	if s.tbClient != nil {
-		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+		return s.tbClient.CreateTransfers(ctx, transfers)
 	}
 	return nil
 }

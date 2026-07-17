@@ -99,11 +99,11 @@ func (r *OfflinePaymentRepository) UpdateVirtualAccount(ctx context.Context, va 
 
 func (r *OfflinePaymentRepository) CreateOfflinePayment(ctx context.Context, payment *domain.OfflinePayment) error {
 	query := `INSERT INTO offline_payments (id, tenant_id, customer_id, invoice_id, payment_type, amount,
-		currency, reference_number, notes, recorded_by, recorded_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`
+		tds_amount, currency, reference_number, notes, recorded_by, recorded_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`
 	_, err := r.db.ExecContext(ctx, query,
 		payment.ID, payment.TenantID, payment.CustomerID, payment.InvoiceID,
-		payment.PaymentType, payment.Amount, payment.Currency,
+		payment.PaymentType, payment.Amount, payment.TDSAmount, payment.Currency,
 		payment.ReferenceNumber, payment.Notes, payment.RecordedBy, payment.RecordedAt,
 	)
 	return err
@@ -111,7 +111,7 @@ func (r *OfflinePaymentRepository) CreateOfflinePayment(ctx context.Context, pay
 
 func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tenantID uuid.UUID) ([]*domain.OfflinePayment, error) {
 	query := `SELECT id, tenant_id, customer_id, invoice_id, payment_type, amount,
-		currency, reference_number, notes, recorded_by, recorded_at
+		tds_amount, currency, reference_number, notes, recorded_by, recorded_at
 		FROM offline_payments WHERE tenant_id = $1 ORDER BY recorded_at DESC`
 	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
@@ -124,7 +124,7 @@ func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tena
 		var p domain.OfflinePayment
 		err := rows.Scan(
 			&p.ID, &p.TenantID, &p.CustomerID, &p.InvoiceID,
-			&p.PaymentType, &p.Amount, &p.Currency,
+			&p.PaymentType, &p.Amount, &p.TDSAmount, &p.Currency,
 			&p.ReferenceNumber, &p.Notes, &p.RecordedBy, &p.RecordedAt,
 		)
 		if err != nil {

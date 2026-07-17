@@ -4208,6 +4208,17 @@ paths:
                   format: int64
                   exclusiveMinimum: 0
                   description: Amount in the lowest currency unit.
+                tds_amount:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  default: 0
+                  description: >
+                    Tax deducted at source by the customer (India B2B), in the
+                    lowest currency unit. Requires invoice_id; counts toward
+                    settling the invoice and is booked to TDS Receivable in the
+                    ledger, but is not part of the cash received. The deduction
+                    cannot exceed the invoice's outstanding balance.
                 currency:
                   type: string
                   default: INR
@@ -7568,6 +7579,10 @@ components:
         amount:
           type: integer
           format: int64
+        tds_amount:
+          type: integer
+          format: int64
+          description: Tax deducted at source by the customer on this receipt.
         currency:
           type: string
         reference_number:

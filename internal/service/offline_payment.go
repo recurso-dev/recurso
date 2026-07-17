@@ -109,6 +109,7 @@ type RecordOfflinePaymentInput struct {
 	InvoiceID       *uuid.UUID
 	PaymentType     string
 	Amount          int64
+	TDSAmount       int64 // tax deducted at source by the customer (India B2B); requires a linked invoice
 	Currency        string
 	ReferenceNumber string
 	Notes           string
@@ -136,6 +137,22 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 		inv = loaded
 	}
 
+	// TDS deducted by the customer settles part of the invoice without cash
+	// changing hands, so it is only meaningful against a linked invoice, and
+	// the deduction (plus what's already deducted) can never exceed what the
+	// invoice still owes.
+	if input.TDSAmount < 0 {
+		return nil, fmt.Errorf("tds_amount cannot be negative")
+	}
+	if input.TDSAmount > 0 {
+		if inv == nil {
+			return nil, fmt.Errorf("tds_amount requires a linked invoice")
+		}
+		if outstanding := inv.Total - inv.AmountPaid - inv.TDSAmount; input.TDSAmount > outstanding {
+			return nil, fmt.Errorf("tds_amount %d exceeds the invoice's outstanding balance %d", input.TDSAmount, outstanding)
+		}
+	}
+
 	payment := &domain.OfflinePayment{
 		ID:              uuid.New(),
 		TenantID:        input.TenantID,
@@ -143,6 +160,7 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 		InvoiceID:       input.InvoiceID,
 		PaymentType:     input.PaymentType,
 		Amount:          input.Amount,
+		TDSAmount:       input.TDSAmount,
 		Currency:        input.Currency,
 		ReferenceNumber: input.ReferenceNumber,
 		Notes:           input.Notes,
@@ -154,11 +172,23 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 		return nil, fmt.Errorf("failed to record offline payment: %w", err)
 	}
 
-	// Settle the linked invoice ONLY when the payment (plus anything already
-	// paid) covers the total. A short payment is recorded but leaves the invoice
-	// open — previously any amount marked the whole invoice paid (ENG-169).
+	// Accumulate the deduction on the invoice BEFORE settling, so the ledger
+	// posting (which reads invoice.TDSAmount when the paid transition fires)
+	// books DR TDS-Receivable / CR AR for the deducted portion and a cash leg
+	// net of it.
+	if inv != nil && input.TDSAmount > 0 {
+		inv.TDSAmount += input.TDSAmount
+		if err := s.invoiceRepo.Update(tctx, inv); err != nil {
+			return nil, fmt.Errorf("failed to record TDS on invoice: %w", err)
+		}
+	}
+
+	// Settle the linked invoice ONLY when the payment plus the customer's TDS
+	// deduction (plus anything already paid/deducted) covers the total. A short
+	// payment is recorded but leaves the invoice open — previously any amount
+	// marked the whole invoice paid (ENG-169).
 	if inv != nil {
-		if input.Amount+inv.AmountPaid >= inv.Total {
+		if input.Amount+inv.TDSAmount+inv.AmountPaid >= inv.Total {
 			if _, err := s.invoiceMarker.MarkInvoicePaid(tctx, *input.InvoiceID); err != nil {
 				return nil, fmt.Errorf("failed to mark invoice paid: %w", err)
 			}
