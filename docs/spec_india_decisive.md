@@ -1,6 +1,15 @@
 # Spec: Own India Decisively
 
-> **Status: DRAFT for founder review (SPECIFY phase).** This is the one P0 workstream that had no spec. It surfaces assumptions and open questions rather than committing to build — correct the assumptions and answer the open questions before this advances to PLAN.
+> **Status: APPROVED (2026-07-17) — advanced to PLAN/BUILD.** Founder resolved
+> the open questions: (1) GSTR is **export-only** in phase one — no direct
+> filing; (2) **e-Way bill deferred** until a goods-selling customer needs it;
+> (3) TDS first pass is **record-on-receipts** (no Form 16A reconciliation yet);
+> (4) the residency promise stands **as worded** below; (5) GSP stays
+> **single-vendor NIC/IRP** behind the existing port.
+>
+> Progress note: **GSTR-1 export shipped** since drafting
+> (`internal/service/gstr1_gov.go`, `GET /v1/india/gstr1`, golden + Postgres
+> tests). Remaining P0: **GSTR-3B export** and the **residency guarantee**.
 
 ## Objective
 
