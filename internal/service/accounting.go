@@ -12,6 +12,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/accounting"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/residency"
 )
 
 // tokenRefreshWindow is how close to expiry a token may get before we
@@ -505,6 +506,17 @@ func (s *AccountingService) unchangedSinceLastSync(ctx context.Context, conn *do
 func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConnection) port.AccountingGateway {
 	if s.adapterFactory != nil {
 		return s.adapterFactory(conn)
+	}
+
+	// Residency guarantee (docs/india-data-residency.md): under
+	// RESIDENCY_MODE=self_hosted no financial data may leave for an
+	// accounting SaaS, even when a connection row already exists in the
+	// database. Tally stays available — it is a local file export, not
+	// network egress.
+	if residency.SelfHosted() && (conn.Provider == "quickbooks" || conn.Provider == "xero") {
+		slog.Warn("accounting sync blocked by RESIDENCY_MODE=self_hosted",
+			"provider", conn.Provider, "connection_id", conn.ID)
+		return s.gateway // mock fallback: records nothing externally
 	}
 
 	switch conn.Provider {

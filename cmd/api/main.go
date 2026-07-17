@@ -39,6 +39,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/vault"
 	"github.com/recurso-dev/recurso/internal/adapter/worker"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/residency"
 	"github.com/recurso-dev/recurso/internal/scheduler"
 	"github.com/recurso-dev/recurso/internal/service"
 	"github.com/redis/go-redis/v9"
@@ -280,9 +281,11 @@ func main() {
 	// US sales tax — TaxJar when a key is set (the resolver caches rates
 	// in-memory for 24h per state+zip); otherwise the US engine stays an
 	// honest 0% stub (invoices marked sales_tax_stub).
-	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" {
+	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" && !residency.SelfHosted() {
 		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewTaxJarProvider(taxjarKey, os.Getenv("TAXJAR_API_URL")))
 		log.Println("US sales tax: TaxJar provider enabled")
+	} else if residency.SelfHosted() {
+		log.Println("US sales tax: 0% stub (external tax API disabled by RESIDENCY_MODE=self_hosted)")
 	} else {
 		log.Println("US sales tax: 0% stub (TAXJAR_API_KEY not set)")
 	}
@@ -478,6 +481,14 @@ func main() {
 			TokenURL:     "https://identity.xero.com/connect/token",
 		},
 	}
+	if residency.SelfHosted() {
+		// Residency guarantee: no accounting-SaaS egress. Blank the OAuth
+		// configs so the connect flow can't start; getAdapterForConnection
+		// additionally refuses QuickBooks/Xero syncs for existing connections.
+		oauthConfigs["quickbooks"].ClientID, oauthConfigs["quickbooks"].ClientSecret = "", ""
+		oauthConfigs["xero"].ClientID, oauthConfigs["xero"].ClientSecret = "", ""
+		log.Println("Accounting sync (QuickBooks/Xero) disabled by RESIDENCY_MODE=self_hosted; Tally file export remains available")
+	}
 	qboConfigured := oauthConfigs["quickbooks"].ClientID != ""
 	xeroConfigured := oauthConfigs["xero"].ClientID != ""
 	switch {
@@ -487,6 +498,8 @@ func main() {
 		log.Println("Accounting sync configured for QuickBooks (set XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable Xero)")
 	case xeroConfigured:
 		log.Println("Accounting sync configured for Xero (set QBO_CLIENT_ID/QBO_CLIENT_SECRET to enable QuickBooks)")
+	case residency.SelfHosted():
+		// Logged above; avoid the misleading "set client id to enable" hint.
 	default:
 		log.Println("Accounting sync running in MOCK mode — set QBO_CLIENT_ID/QBO_CLIENT_SECRET or XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable real providers")
 	}

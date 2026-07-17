@@ -30,6 +30,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/recurso-dev/recurso/internal/residency"
 )
 
 // DefaultEndpoint receives events unless TELEMETRY_ENDPOINT overrides it.
@@ -89,9 +91,11 @@ type Client struct {
 
 // NewFromEnv builds a Client from TELEMETRY_OPTIN / TELEMETRY_ENDPOINT.
 // It returns nil — meaning telemetry is fully disabled, no network calls,
-// no rows written — unless TELEMETRY_OPTIN is exactly "true".
+// no rows written — unless TELEMETRY_OPTIN is exactly "true". Under
+// RESIDENCY_MODE=self_hosted, telemetry stays disabled even when opted in:
+// the residency guarantee outranks the opt-in.
 func NewFromEnv(database *sql.DB, version string) *Client {
-	if os.Getenv("TELEMETRY_OPTIN") != "true" {
+	if os.Getenv("TELEMETRY_OPTIN") != "true" || residency.SelfHosted() {
 		return nil
 	}
 	return New(Config{
