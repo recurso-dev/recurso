@@ -5,6 +5,112 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-17
+
+The India release: the full statutory lifecycle (invoice → IRN → GSTR-1/3B →
+TDS) from a billing engine you self-host, plus the correctness and security
+hardening from a deep multi-agent review of the money paths.
+
+### Added
+
+- **GST returns, return-ready** — `GET /v1/india/gstr1` and
+  `GET /v1/india/gstr3b` assemble both returns from the period's finalized
+  invoices and credit notes: GSTR-1 with B2B/B2CS/CDNR sections and the HSN
+  rollup; GSTR-3B as the net summary (Table 3.1(a) net of credit notes,
+  Table 3.2 inter-state unregistered by place of supply, purchase-side
+  sections as explicit zeros for the CA). Each response carries a
+  `gov_schema` object in the official GSTN JSON shape — government field
+  names, amounts in rupees — ready to validate with the Returns Offline Tool
+  (ENG-203).
+- **Self-hosted data residency** — `RESIDENCY_MODE=self_hosted` hard-disables
+  every optional third-party egress: telemetry (even when opted in),
+  QuickBooks/Xero sync (the connect flow and existing connections), and the
+  TaxJar API. Financial data leaves the deployment only through the payment
+  gateways, GSP, SMTP, and webhook endpoints the operator configures.
+  `docs/india-data-residency.md` states the guarantee for security reviews;
+  every enforcement point is unit-tested.
+- **TDS record-on-receipts** — offline payments accept `tds_amount` for the
+  portion a B2B customer withheld at source. It counts toward settling the
+  invoice, accumulates on `invoices.tds_amount`, and posts
+  DR TDS Receivable / CR AR in the ledger with the cash leg net of TDS.
+- **Provable-ledger auditor outputs** — trial balance, deferred-revenue
+  rollforward, GL export, and the revenue-recognition waterfall, wired into
+  the dashboard's Finance sidebar (ENG-192, ENG-194); deeper analytics
+  endpoints (MRR waterfall, invoice aging, unit economics, revenue by plan
+  and geography).
+- **Real Redis infrastructure** — distributed locking and idempotency backed
+  by Redis, with `REQUIRE_REDIS` to fail closed on multi-instance
+  deployments; the lock's mutual exclusion is proven by test (ENG-161,
+  ENG-193).
+- **Inbound webhook idempotency** for Stripe and Razorpay events (ENG-162),
+  and **team email invites** where teammates set their own password
+  (ENG-196).
+- **Official Go SDK** — hand-crafted, stdlib-only `recurso-go` covering the
+  full API surface.
+- **Demo-data seeder** (`cmd/demo_seed`) — additive, tenant-scoped, with
+  `--reset`, covering rev-rec, referrals, gifts, and reconciling ledger
+  postings.
+
+### Changed
+
+- **SDKs moved to standalone repositories** — `recurso-go`, `recurso-node`
+  (1.2.0, responses/requests typed from the OpenAPI spec), and
+  `recurso-python` (1.1.0, regenerated; unexpected API statuses now raise
+  instead of returning `None`). The in-repo `sdk/` directory and its CI job
+  are gone; install/publishing docs point at the new repos.
+- Ledger documentation now states plainly: PostgreSQL is authoritative,
+  TigerBeetle is an optional mirror.
+- Internal business material (pitch deck, review reports) moved out of the
+  repository.
+
+### Fixed
+
+- **Billing correctness family (ENG-140–154)** — revenue is deferred NET of
+  GST and unwound on cancel/refund/downgrade; signed double-entry balances;
+  atomic trial-conversion billing; downgrade credits reverse GST and persist
+  as adjustment credit notes applied at billing time; account credit is a
+  real liability; cash postings are net of applied credit; first-period
+  proration; no phantom revenue on UPI-Autopay debits.
+- **Month-end billing dates** — interval math clamps instead of overflowing
+  (Jan 31 + 1 month = Feb 28, never Mar 3), and anchored subscriptions
+  restore their day in long months (Feb 28 → Mar 31) instead of sticking at
+  28.
+- **Atomic-claim sweep (ENG-160–200, PHASE2)** — one-shot semantics enforced
+  by conditional updates everywhere a retry or race could double-fire:
+  mandate debits (with the idempotency key proven to reach the gateway),
+  trial activation, dunning steps and bandit weights, e-invoice IRN retries,
+  gift redemption, quote→invoice conversion, cancel-flow retention offers,
+  virtual-account credits, refund over-issue, and idempotency-key claims
+  themselves; downgrade credit + plan flip commit in one transaction; the
+  IRN is registered only after the invoice durably commits.
+- **Graceful shutdown** — background workers drain under a bounded
+  WaitGroup; all schedulers stop concurrently and idempotently (a double
+  Stop previously deadlocked the exiting process); in-flight webhook
+  deliveries respect cancellation.
+- **Tax fixes** — CGST/SGST always split into equal halves; non-EU B2C
+  digital exports are zero-rated instead of falling back to domestic VAT;
+  export exemption requires an actual cross-border supply (GB→GB regression);
+  single-digit GST state codes resolve; GST/VAT rounds instead of
+  truncating.
+- **Tenant isolation (ENG-157–169)** — repository-level tenant scoping for
+  handler-reachable mutations, invoice settlement, and mandate writes;
+  offline payments settle an invoice only when covered and only for the
+  matching customer/currency.
+
+### Security
+
+- Stripe webhook verification fails closed when the secret is unset;
+  outbound webhook URLs are SSRF-guarded (ENG-175, ENG-177).
+- Portal session tokens hashed at rest; auth tokens atomically single-use;
+  TOTP codes can't be replayed; per-account login lockout (ENG-145,
+  ENG-151, ENG-176).
+- Owner role protected from admin privilege escalation; API-key creation
+  gated; multiple cross-tenant IDORs closed (ENG-164, ENG-165, ENG-178,
+  ENG-160).
+- O(1) API-key lookup replaces the bcrypt-per-key scan; trusted proxies
+  configured so X-Forwarded-For can't bypass rate limits; `/health` no
+  longer leaks connection errors (ENG-174, ENG-197, ENG-198).
+
 ## [0.4.0] - 2026-07-10
 
 ### Added
