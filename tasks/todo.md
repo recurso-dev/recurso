@@ -130,18 +130,15 @@ TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
 - [ ] D2: Accounting — NetSuite adapter (accounting sync framework exists)
 - [ ] D3: Tax — Anrok and/or Avalara provider (taxprovider framework exists)
 - [ ] D4: CRM — HubSpot + Salesforce (customer/subscription/invoice sync)
-- [ ] D5: Data — S3 export sink + Segment events; Airbyte/ClickHouse defer
-- [ ] D6: Automation — Zapier/n8n via existing webhooks (docs + templates)
-- [ ] D7: Auth — Okta SSO is covered by existing SAML; document the recipe
+- [x] D5: S3 GL export sink shipped EXPERIMENTAL; Segment events + Airbyte/ClickHouse defer
+- [x] D6: Automation — Zapier/n8n docs shipped (rides signed webhooks)
+- [x] D7: Auth — Okta SAML recipe documented
   - Note: all egress adapters must respect RESIDENCY_MODE guards.
   - Sequencing after C2; each integration is its own spec + PR.
 
 ## Cross-cutting sweep (docs / SDKs / website / dashboard) — founder directive
 
-- [ ] S1: Docs — pages for commitments + usage alerts + batch ingestion;
-      structure pass benchmarked against doc.getlago.com
-- [ ] S2: SDKs — wallets, commitments, usage-alerts, batch methods in
-      Node/Python/Go (next minor versions)
-- [ ] S3: Website — feature sections for usage billing, wallets,
-      commitments, alerts; refresh comparison vs Lago
+- [x] S1: Docs — commitments, usage-alerts, batch/idempotency pages shipped
+- [x] S2: SDKs — Node 1.4.0, Go v1.2.0, Python 1.3.0 (publish gated on founder)
+- [x] S3: Website — features + announcement + honest Lago comparison column
       config, AuditLog page (with C2)

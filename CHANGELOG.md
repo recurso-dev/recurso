@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **S3 finance export (EXPERIMENTAL)** — a daily worker ships each
+  tenant's general ledger CSV to operator-owned object storage
+  (`S3_EXPORT_BUCKET`/`REGION`/`PREFIX`, `S3_EXPORT_ENDPOINT` for
+  MinIO/R2), signed with a dependency-free SigV4 client. Idempotent keys
+  per day; disabled unless configured.
+- **Automation & Okta docs** — Zapier/n8n recipes over the signed webhook
+  surface and the Okta SAML SSO walkthrough (Track D6/D7 ride existing
+  code).
+
 - **GoCardless + Adyen gateways (EXPERIMENTAL)** — bank-debit rails
   (SEPA/BACS via mandate-first billing requests) and global card
   processing (Checkout Sessions, off-session stored-method charges), both

@@ -23,6 +23,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/alerting"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/adapter/email"
+	"github.com/recurso-dev/recurso/internal/adapter/export"
 	"github.com/recurso-dev/recurso/internal/adapter/fx"
 	"github.com/recurso-dev/recurso/internal/adapter/gateway"
 	"github.com/recurso-dev/recurso/internal/adapter/gsp"
@@ -583,6 +584,26 @@ func main() {
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
+	// Track D5 (EXPERIMENTAL): daily GL export to operator-owned object
+	// storage. Enabled only when S3_EXPORT_BUCKET (+region/keys) is set;
+	// the destination is the operator's own bucket, so it is not
+	// residency-blocked (same egress class as SMTP/webhooks).
+	var exportWorker *worker.ExportWorker
+	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" {
+		s3Client := export.NewS3Client(bucket,
+			os.Getenv("S3_EXPORT_REGION"),
+			os.Getenv("AWS_ACCESS_KEY_ID"),
+			os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			os.Getenv("S3_EXPORT_ENDPOINT"))
+		if s3Client.Configured() {
+			exportWorker = worker.NewExportWorker(tenantRepo, ledgerService, s3Client, os.Getenv("S3_EXPORT_PREFIX"))
+			exportWorker.Start()
+			defer exportWorker.Stop()
+			log.Println("S3 finance export configured (EXPERIMENTAL, daily)")
+		} else {
+			log.Println("S3_EXPORT_BUCKET set but region/credentials missing; export disabled")
+		}
+	}
 
 	// P25: E-Invoice Retry Worker
 	einvoiceWorker := worker.NewEInvoiceRetryWorker(invoiceRepo, einvoiceService)
