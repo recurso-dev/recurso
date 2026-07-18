@@ -86,7 +86,7 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
   - Files: domain/commitment.go, adapter/db(+migration), service/invoice.go,
     service/metering.go, handler, openapi.yaml
 
-- [ ] B3a: Usage alerts + sweep + webhook
+- [x] B3a: Usage alerts + sweep + webhook
   - Acceptance: absolute/%-thresholds per subscription+metric; fires once
     per threshold per period via webhook `usage.alert.triggered` + email/
     in-app; dedup proven.

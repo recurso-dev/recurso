@@ -703,6 +703,13 @@ func main() {
 	walletService.SetNotifier(notifier)
 	invoiceService.WalletDrainer = walletService
 
+	// Usage threshold alerts (Lago-parity B3): evaluated on the billing-
+	// cycle tick, fired once per period via webhook + email.
+	usageAlertRepo := db.NewUsageAlertRepository(database)
+	usageAlertService := service.NewUsageAlertService(usageAlertRepo, subscriptionRepo, billableMetricRepo, usageRepo, customerRepo, entitlementService)
+	usageAlertService.SetNotifier(notifier)
+	usageAlertService.SetEventPublisher(webhookService) // usage.alert.triggered
+
 	// Billing Cycle Scheduler (Lago-parity A1): unattended renewal of
 	// locally-billed subscriptions — invoice (flat + metered), anchor-
 	// preserving period advance, best-effort saved-method payment.
@@ -726,7 +733,8 @@ func main() {
 	}
 	if billingCycleInterval > 0 {
 		billingCycleScheduler = scheduler.NewBillingCycleScheduler(renewalService, locker, billingCycleInterval)
-		billingCycleScheduler.SetWalletMaintainer(walletService) // credit expiry + auto-recharge (B1)
+		billingCycleScheduler.SetWalletMaintainer(walletService)   // credit expiry + auto-recharge (B1)
+		billingCycleScheduler.SetAlertEvaluator(usageAlertService) // usage thresholds (B3)
 		billingCycleScheduler.Start()
 		defer billingCycleScheduler.Stop()
 	} else {
@@ -851,8 +859,9 @@ func main() {
 	})
 	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
-	meteringHandler := handler.NewMeteringHandler(meteringService) // Usage-based billing v1
-	walletHandler := handler.NewWalletHandler(walletService)       // Prepaid wallets (B1)
+	meteringHandler := handler.NewMeteringHandler(meteringService)       // Usage-based billing v1
+	walletHandler := handler.NewWalletHandler(walletService)             // Prepaid wallets (B1)
+	usageAlertHandler := handler.NewUsageAlertHandler(usageAlertService) // Usage alerts (B3)
 	// Phase 48: Unified Portal API Handler
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
 	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
@@ -1271,6 +1280,11 @@ func main() {
 		v1.GET("/wallets/:id/transactions", walletHandler.ListTransactions)
 		v1.PUT("/wallets/:id/auto-recharge", walletHandler.UpdateAutoRecharge)
 		v1.GET("/customers/:id/wallets", walletHandler.ListForCustomer)
+
+		// Usage threshold alerts (Lago-parity B3)
+		v1.POST("/usage-alerts", usageAlertHandler.Create)
+		v1.GET("/usage-alerts", usageAlertHandler.List)
+		v1.DELETE("/usage-alerts/:id", usageAlertHandler.Delete)
 
 		// Analytics (Cached)
 		analytics := v1.Group("/analytics")

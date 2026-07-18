@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Usage threshold alerts** — `/v1/usage-alerts` configures per-
+  subscription thresholds on a billable metric (absolute quantity or
+  percent of the matching entitlement limit). The billing-cycle sweep
+  evaluates them and fires AT MOST once per billing period per threshold —
+  a conditional claim dedups concurrent sweeps — emitting the
+  `usage.alert.triggered` webhook event plus an email to the customer.
+
 - **Minimum commitments** — `PUT /v1/subscriptions/{id}/commitment` sets a
   per-period floor (minor units); when a period's subtotal (flat + add-ons
   + metered usage) falls short, a "Minimum commitment true-up" line fills

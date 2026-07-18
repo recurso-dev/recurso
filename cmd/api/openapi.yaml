@@ -5539,6 +5539,74 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/usage-alerts:
+    post:
+      tags: [Metering]
+      summary: Create a usage threshold alert
+      description: >-
+        Fires at most once per billing period per threshold when the
+        subscription's aggregated usage for the metric crosses it — via the
+        `usage.alert.triggered` webhook event plus an email.
+        `threshold_type` is `quantity` (absolute) or `percent_of_limit`
+        (percentage of the entitlement limit whose feature_key equals the
+        metric code; values above 100 alert on overage).
+      operationId: createUsageAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subscription_id, metric_code, threshold_type, threshold]
+              properties:
+                subscription_id: { type: string, format: uuid }
+                metric_code: { type: string }
+                threshold_type: { type: string, enum: [quantity, percent_of_limit] }
+                threshold: { type: integer, format: int64, exclusiveMinimum: 0 }
+      responses:
+        "201":
+          description: The created alert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/UsageAlert" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: An identical alert already exists.
+    get:
+      tags: [Metering]
+      summary: List usage alerts
+      operationId: listUsageAlerts
+      parameters:
+        - { name: subscription_id, in: query, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Configured alerts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/UsageAlert" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/usage-alerts/{id}:
+    delete:
+      tags: [Metering]
+      summary: Delete a usage alert
+      operationId: deleteUsageAlert
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/subscriptions/{id}/commitment:
     put:
       tags: [Subscriptions]
@@ -6540,6 +6608,18 @@ components:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
         hsn_code: { type: string }
+    UsageAlert:
+      type: object
+      description: A usage threshold that fires once per billing period.
+      properties:
+        id: { type: string, format: uuid }
+        subscription_id: { type: string, format: uuid }
+        metric_code: { type: string }
+        threshold_type: { type: string, enum: [quantity, percent_of_limit] }
+        threshold: { type: integer, format: int64 }
+        last_fired_period_start: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     Wallet:
       type: object
       description: >-

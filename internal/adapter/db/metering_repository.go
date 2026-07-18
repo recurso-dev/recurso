@@ -61,6 +61,21 @@ func (r *BillableMetricRepository) GetByID(ctx context.Context, tenantID, id uui
 	return m, nil
 }
 
+func (r *BillableMetricRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.BillableMetric, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT `+metricColumns+` FROM billable_metrics WHERE tenant_id = $1 AND code = $2`,
+		tenantID, code,
+	)
+	m, err := scanMetric(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get billable metric by code: %w", err)
+	}
+	return m, nil
+}
+
 func (r *BillableMetricRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]domain.BillableMetric, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT `+metricColumns+` FROM billable_metrics WHERE tenant_id = $1 ORDER BY code`,

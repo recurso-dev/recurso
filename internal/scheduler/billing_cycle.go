@@ -36,6 +36,7 @@ type walletMaintainer interface {
 type BillingCycleScheduler struct {
 	renewals renewalProcessor
 	wallets  walletMaintainer // nil-safe
+	alerts   alertEvaluator   // nil-safe
 	locker   port.Locker
 	interval time.Duration
 	ticker   *time.Ticker
@@ -45,6 +46,15 @@ type BillingCycleScheduler struct {
 
 // SetWalletMaintainer wires wallet expiry + auto-recharge into the sweep.
 func (s *BillingCycleScheduler) SetWalletMaintainer(w walletMaintainer) { s.wallets = w }
+
+// alertEvaluator is the slice of service.UsageAlertService the sweep runs
+// (Lago-parity B3). nil-safe.
+type alertEvaluator interface {
+	EvaluateAlerts(ctx context.Context) (int, error)
+}
+
+// SetAlertEvaluator wires usage-threshold evaluation into the sweep.
+func (s *BillingCycleScheduler) SetAlertEvaluator(a alertEvaluator) { s.alerts = a }
 
 func NewBillingCycleScheduler(renewals renewalProcessor, locker port.Locker, interval time.Duration) *BillingCycleScheduler {
 	return &BillingCycleScheduler{
@@ -123,6 +133,16 @@ func (s *BillingCycleScheduler) runRenewals() {
 			slog.Error("wallet auto-recharge sweep failed", "error", err)
 		} else if recharged > 0 {
 			slog.Info("wallets auto-recharged", "count", recharged)
+		}
+	}
+
+	// Usage threshold alerts (B3): evaluated on the same tick; the
+	// per-period MarkFired claim keeps concurrent sweeps to one firing.
+	if s.alerts != nil {
+		if fired, err := s.alerts.EvaluateAlerts(ctx); err != nil {
+			slog.Error("usage alert sweep failed", "error", err)
+		} else if fired > 0 {
+			slog.Info("usage alerts fired", "count", fired)
 		}
 	}
 }
