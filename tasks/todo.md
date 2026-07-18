@@ -128,7 +128,7 @@ TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
 - [x] D1: Payments — Adyen + GoCardless adapters shipped EXPERIMENTAL
       (httptest-verified; sandbox verification founder-gated)
 - [ ] D2: Accounting — NetSuite adapter (accounting sync framework exists)
-- [ ] D3: Tax — Anrok and/or Avalara provider (taxprovider framework exists)
+- [x] D3: Tax — Avalara AvaTax provider shipped EXPERIMENTAL; Anrok deferred (no customer signal)
 - [ ] D4: CRM — HubSpot + Salesforce (customer/subscription/invoice sync)
 - [x] D5: S3 GL export sink shipped EXPERIMENTAL; Segment events + Airbyte/ClickHouse defer
 - [x] D6: Automation — Zapier/n8n docs shipped (rides signed webhooks)

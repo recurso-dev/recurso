@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Avalara AvaTax provider (EXPERIMENTAL)** — US sales-tax quotes via
+  uncommitted SalesOrder transactions (`AVALARA_ACCOUNT_ID` /
+  `AVALARA_LICENSE_KEY` / `AVALARA_COMPANY_CODE`), sharing TaxJar's error
+  taxonomy, 24h rate cache, and the `RESIDENCY_MODE=self_hosted` guard.
+  TaxJar takes precedence when both are configured.
+
 - **S3 finance export (EXPERIMENTAL)** — a daily worker ships each
   tenant's general ledger CSV to operator-owned object storage
   (`S3_EXPORT_BUCKET`/`REGION`/`PREFIX`, `S3_EXPORT_ENDPOINT` for

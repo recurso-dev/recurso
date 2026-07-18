@@ -301,6 +301,13 @@ func main() {
 	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" && !residency.SelfHosted() {
 		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewTaxJarProvider(taxjarKey, os.Getenv("TAXJAR_API_URL")))
 		log.Println("US sales tax: TaxJar provider enabled")
+	} else if avalaraAcct := os.Getenv("AVALARA_ACCOUNT_ID"); avalaraAcct != "" && !residency.SelfHosted() {
+		// Track D3 (EXPERIMENTAL): Avalara AvaTax quotes via uncommitted
+		// SalesOrder transactions. Same residency guard as TaxJar.
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewAvalaraProvider(
+			avalaraAcct, os.Getenv("AVALARA_LICENSE_KEY"),
+			os.Getenv("AVALARA_COMPANY_CODE"), os.Getenv("AVALARA_API_URL")))
+		log.Println("US sales tax: Avalara provider enabled (EXPERIMENTAL — sandbox verification pending)")
 	} else if residency.SelfHosted() {
 		log.Println("US sales tax: 0% stub (external tax API disabled by RESIDENCY_MODE=self_hosted)")
 	} else {
