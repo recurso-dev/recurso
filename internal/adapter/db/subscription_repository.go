@@ -492,6 +492,70 @@ func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domai
 	return subs, rows.Err()
 }
 
+// ClaimDueForRenewal atomically claims up to limit ACTIVE, locally-billed
+// subscriptions whose billing period has ended (Lago-parity A1). Locally
+// billed = no UPI mandate and no gateway-managed cycle — those renew through
+// their own flows. The claim leases renewal_claimed_at forward so exactly one
+// runner processes a subscription per lease window even without Redis;
+// FOR UPDATE SKIP LOCKED keeps concurrent claimers from blocking each other.
+// A successful renewal advances current_period_end (undue); a failed one
+// simply lets the lease lapse and retries on a later tick.
+func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease time.Duration, limit int) ([]*domain.Subscription, error) {
+	query := `
+		UPDATE subscriptions SET renewal_claimed_at = NOW()
+		WHERE id IN (
+			SELECT id FROM subscriptions
+			WHERE status = 'active'
+				AND current_period_end <= NOW()
+				AND mandate_id IS NULL
+				AND COALESCE(razorpay_subscription_id, '') = ''
+				AND COALESCE(stripe_subscription_id, '') = ''
+				AND (renewal_claimed_at IS NULL OR renewal_claimed_at < NOW() - $1 * INTERVAL '1 second')
+			ORDER BY current_period_end
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, tenant_id, customer_id, plan_id, status,
+			current_period_start, current_period_end, billing_anchor,
+			billing_anchor_type, billing_anchor_day, payment_terms,
+			cancel_at_period_end, reference_id, razorpay_subscription_id,
+			stripe_subscription_id, created_at, updated_at
+	`
+	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim due renewals: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var subs []*domain.Subscription
+	for rows.Next() {
+		sub := &domain.Subscription{}
+		var razorpayID, stripeID, refID, anchorType, paymentTerms sql.NullString
+		var billingAnchor sql.NullTime
+		var anchorDay sql.NullInt64
+		if err := rows.Scan(
+			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
+			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
+			&anchorType, &anchorDay, &paymentTerms,
+			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
+			&sub.CreatedAt, &sub.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if billingAnchor.Valid {
+			sub.BillingAnchor = billingAnchor.Time
+		}
+		sub.BillingAnchorType = anchorType.String
+		sub.BillingAnchorDay = int(anchorDay.Int64)
+		sub.PaymentTerms = paymentTerms.String
+		sub.ReferenceID = refID.String
+		sub.RazorpaySubscriptionID = razorpayID.String
+		sub.StripeSubscriptionID = stripeID.String
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
 // TrialEndingNotice carries the data needed to email a trial-ending reminder.
 type TrialEndingNotice struct {
 	SubscriptionID uuid.UUID

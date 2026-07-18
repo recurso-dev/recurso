@@ -28,7 +28,13 @@ type MandateService struct {
 	subscriptionRepo port.SubscriptionRepository
 	planRepo         port.PlanRepository
 	taxResolver      mandateTaxResolver
+	// invoiceSvc rates the subscription's metered plan charges onto mandate-debit
+	// invoices (Lago-parity A2). nil-safe: unset means flat-fee-only debits.
+	invoiceSvc *InvoiceService
 }
+
+// SetInvoiceService wires metered-usage rating into mandate debits (nil-safe).
+func (s *MandateService) SetInvoiceService(inv *InvoiceService) { s.invoiceSvc = inv }
 
 // mandateTaxResolver is the slice of TaxResolver the mandate debit needs: resolve
 // the tax for one amount against a customer's jurisdiction. *TaxResolver satisfies it.
@@ -163,7 +169,7 @@ func (s *MandateService) ExecuteDebit(ctx context.Context, mandate *domain.Manda
 	if err != nil {
 		return fmt.Errorf("mandate debit: load customer %s: %w", mandate.CustomerID, err)
 	}
-	return s.chargeMandate(ctx, mandate, customer, amount, InvoiceTax{}, currency)
+	return s.chargeMandate(ctx, mandate, customer, amount, InvoiceTax{}, currency, uuid.New(), nil, nil, nil)
 }
 
 // DebitSubscription charges the mandate's subscription its actual recurring
@@ -200,26 +206,73 @@ func (s *MandateService) DebitSubscription(ctx context.Context, mandate *domain.
 	}
 
 	tax := s.taxResolver.ResolveInvoiceTax(ctx, mandate.TenantID, customer, price.Currency, price.Amount, plan.HSNCode)
-	total := price.Amount + tax.Total
+	baseTotal := price.Amount + tax.Total
+
+	// Lago-parity A2: rate the subscription's metered plan charges for the
+	// elapsed period onto this debit invoice (usage in arrears alongside the
+	// flat fee, mirroring scheduler renewals).
+	invoiceID := uuid.New()
+	var metered []meteredLine
+	if s.invoiceSvc != nil && s.invoiceSvc.ChargeRepo != nil && s.invoiceSvc.UsageRepo != nil {
+		metered = s.invoiceSvc.meteredLines(ctx, sub, customer, plan, price.Currency, invoiceID)
+	}
+	var meteredTotal int64
+	for _, ml := range metered {
+		meteredTotal += ml.item.Amount + ml.tax.Total
+	}
 
 	// Safety ceiling: the mandate authorizes debits only up to MaxAmount. A charge
 	// above it means the plan/tax grew beyond what the customer authorized — skip
 	// and surface it rather than over-charge (the original bug) or silently
 	// under-charge by capping.
-	if total > mandate.MaxAmount {
-		return fmt.Errorf("mandate debit: computed charge %d exceeds authorized max %d for mandate %s", total, mandate.MaxAmount, mandate.ID)
+	if baseTotal > mandate.MaxAmount {
+		return fmt.Errorf("mandate debit: computed charge %d exceeds authorized max %d for mandate %s", baseTotal, mandate.MaxAmount, mandate.ID)
+	}
+	if baseTotal+meteredTotal > mandate.MaxAmount && len(metered) > 0 {
+		// Usage pushed the cycle past the authorization. Never exceed it and
+		// never lose the revenue: debit the flat fee only, and bill the usage
+		// on a separate OPEN invoice collected like any other (dunning owns
+		// recovery). GenerateFinalUsageInvoice claims the same rating window,
+		// so the usage cannot double-bill on the next cycle.
+		slog.Default().Warn("mandate debit: metered usage exceeds mandate ceiling; billing usage separately",
+			"mandate_id", mandate.ID, "base", baseTotal, "metered", meteredTotal, "max", mandate.MaxAmount)
+		metered = nil
+		if _, uErr := s.invoiceSvc.GenerateFinalUsageInvoice(ctx, sub, sub.CurrentPeriodEnd); uErr != nil {
+			slog.Default().Error("mandate debit: separate usage invoice failed (window unclaimed; will retry next cycle)",
+				"subscription_id", sub.ID, "error", uErr)
+		}
 	}
 
-	return s.chargeMandate(ctx, mandate, customer, price.Amount, tax, price.Currency)
+	return s.chargeMandate(ctx, mandate, customer, price.Amount, tax, price.Currency, invoiceID, sub, plan, metered)
 }
 
 // chargeMandate is the shared debit core: charge the gateway the net of account
 // credit, record an OPEN invoice with the given subtotal + tax split, apply
 // credit, and advance the mandate schedule. ctx must already carry the tenant.
-func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mandate, customer *domain.Customer, subtotal int64, tax InvoiceTax, currency string) error {
-	invoiceID := uuid.New()
+//
+// sub/plan/metered are the subscription-debit extras (nil on the legacy
+// fixed-amount path): metered lines join the invoice, and the subscription's
+// billing period advances alongside the mandate schedule so the next cycle
+// rates the next usage window (Lago-parity A2).
+func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mandate, customer *domain.Customer, subtotal int64, tax InvoiceTax, currency string, invoiceID uuid.UUID, sub *domain.Subscription, plan *domain.Plan, metered []meteredLine) error {
 	total := subtotal + tax.Total
 	now := time.Now()
+
+	// Fold the metered lines into the invoice totals; the base line keeps its
+	// own tax split and each metered line carries its own (per-line GST).
+	taxTotal, igst, cgst, sgst := tax.Total, tax.IGST, tax.CGST, tax.SGST
+	lineItems := []domain.InvoiceItem{
+		newInvoiceLine(invoiceID, "Mandate debit", tax.HSN, 1, subtotal, subtotal, tax, time.Time{}),
+	}
+	for _, ml := range metered {
+		subtotal += ml.item.Amount
+		taxTotal += ml.tax.Total
+		igst += ml.tax.IGST
+		cgst += ml.tax.CGST
+		sgst += ml.tax.SGST
+		total += ml.item.Amount + ml.tax.Total
+		lineItems = append(lineItems, ml.item)
+	}
 
 	// The per-cycle claim key, captured BEFORE the schedule advances (which would
 	// change it). The OPEN invoice carries it under a UNIQUE index, making the
@@ -261,18 +314,16 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		AmountPaid:      0,
 		Currency:        currency,
 		Subtotal:        subtotal,
-		TaxAmount:       tax.Total,
+		TaxAmount:       taxTotal,
 		Total:           total,
-		IGSTAmount:      tax.IGST,
-		CGSTAmount:      tax.CGST,
-		SGSTAmount:      tax.SGST,
+		IGSTAmount:      igst,
+		CGSTAmount:      cgst,
+		SGSTAmount:      sgst,
 		HSNCode:         tax.HSN,
 		Status:          domain.InvoiceStatusOpen,
-		// Single line for the debit, carrying the resolved GST split (zero split on
-		// the legacy fixed-amount path).
-		LineItems: []domain.InvoiceItem{
-			newInvoiceLine(invoiceID, "Mandate debit", tax.HSN, 1, subtotal, subtotal, tax, time.Time{}),
-		},
+		// Base debit line plus one line per rated usage charge, each carrying
+		// its own GST split (zero split on the legacy fixed-amount path).
+		LineItems: lineItems,
 		CreatedAt: now,
 		DueDate:   now,
 	}
@@ -290,6 +341,34 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 			return nil
 		}
 		return fmt.Errorf("failed to create invoice for mandate debit: %w", err)
+	}
+
+	// This attempt owns the cycle (the claim insert succeeded): persist the
+	// usage-rating window claims so a re-rating of the same period is
+	// impossible, and advance the subscription's billing period alongside the
+	// mandate schedule so the next debit rates the NEXT usage window. Before
+	// A2 the period never advanced for mandate subs, leaving current-period
+	// usage reporting stale forever.
+	if len(metered) > 0 && s.invoiceSvc != nil && s.invoiceSvc.RatingRepo != nil {
+		for _, ml := range metered {
+			claimed, rErr := s.invoiceSvc.RatingRepo.Create(ctx, ml.rating)
+			if rErr != nil {
+				slog.Default().Error("mandate debit: failed to persist usage rating claim",
+					"invoice_id", invoiceID, "charge_id", ml.rating.ChargeID, "error", rErr)
+			} else if !claimed {
+				slog.Default().Error("mandate debit: usage window was rated concurrently — possible double bill",
+					"invoice_id", invoiceID, "charge_id", ml.rating.ChargeID, "period_start", ml.rating.PeriodStart)
+			}
+		}
+	}
+	if sub != nil && plan != nil {
+		sub.CurrentPeriodStart = sub.CurrentPeriodEnd
+		sub.CurrentPeriodEnd = sub.CalculateNextBillingDate(string(plan.IntervalUnit), plan.IntervalCount)
+		sub.UpdatedAt = now
+		if uErr := s.subscriptionRepo.Update(ctx, sub); uErr != nil {
+			slog.Default().Error("mandate debit: failed to advance subscription period",
+				"subscription_id", sub.ID, "error", uErr)
+		}
 	}
 
 	// Advance the schedule to the next full cycle NOW — before the charge — so a

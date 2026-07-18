@@ -529,6 +529,9 @@ func main() {
 	// Charge the subscription's real recurring amount (plan price + tax) on each
 	// mandate cycle instead of the authorization ceiling (ENG-165).
 	mandateService.SetBillingResolver(subscriptionRepo, planRepo, taxResolver)
+	// Lago-parity A2: mandate-debit invoices carry rated usage lines and the
+	// subscription period advances with each cycle.
+	mandateService.SetInvoiceService(invoiceService)
 
 	// Phase 2: Offline Payment Service
 	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, paymentGateway, invoiceRepo, subscriptionService)
@@ -693,6 +696,34 @@ func main() {
 	mandateDebitScheduler.Start()
 	defer mandateDebitScheduler.Stop()
 
+	// Billing Cycle Scheduler (Lago-parity A1): unattended renewal of
+	// locally-billed subscriptions — invoice (flat + metered), anchor-
+	// preserving period advance, best-effort saved-method payment.
+	// BILLING_CYCLE_INTERVAL=0 disables; default 5m.
+	renewalService := service.NewRenewalService(subscriptionRepo.(*db.SubscriptionRepository), planRepo, invoiceService)
+	renewalCharger, _ := stripeGateway.(interface {
+		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+	})
+	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
+	var billingCycleScheduler *scheduler.BillingCycleScheduler
+	billingCycleInterval := 5 * time.Minute
+	if raw := os.Getenv("BILLING_CYCLE_INTERVAL"); raw != "" {
+		if raw == "0" {
+			billingCycleInterval = 0
+		} else if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			billingCycleInterval = d
+		} else {
+			log.Printf("Invalid BILLING_CYCLE_INTERVAL %q; using default 5m", raw)
+		}
+	}
+	if billingCycleInterval > 0 {
+		billingCycleScheduler = scheduler.NewBillingCycleScheduler(renewalService, locker, billingCycleInterval)
+		billingCycleScheduler.Start()
+		defer billingCycleScheduler.Stop()
+	} else {
+		log.Println("Billing cycle scheduler disabled (BILLING_CYCLE_INTERVAL=0)")
+	}
+
 	// US economic-nexus evaluation (daily): auto-establish nexus when a
 	// state threshold is crossed (ENG-16 Phase 2).
 	nexusStatusService := service.NewNexusStatusService(taxNexusRepo)
@@ -769,6 +800,9 @@ func main() {
 			reconciliationScheduler.Stop,
 			mrrSnapshotScheduler.Stop,
 			healthAlertScheduler.Stop,
+		}
+		if billingCycleScheduler != nil {
+			stops = append(stops, billingCycleScheduler.Stop)
 		}
 		var wg sync.WaitGroup
 		for _, stop := range stops {
