@@ -177,6 +177,25 @@ func (s *SubscriptionService) SetTelemetry(t *telemetry.Client) { s.telemetry = 
 // (usage-based billing v1); nil-safe when unset.
 func (s *SubscriptionService) SetFinalUsageInvoicer(f finalUsageInvoicer) { s.finalUsageInvoicer = f }
 
+// SetCommitment sets the subscription's per-period minimum (Lago-parity
+// B2): when a period's subtotal falls short, a true-up line fills the gap
+// on the renewal invoice. amount 0 clears the commitment.
+func (s *SubscriptionService) SetCommitment(ctx context.Context, tenantID, subscriptionID uuid.UUID, amount int64) (*domain.Subscription, error) {
+	if amount < 0 {
+		return nil, fmt.Errorf("commitment amount must not be negative")
+	}
+	if s.subRepoImpl == nil {
+		return nil, fmt.Errorf("commitment persistence not configured")
+	}
+	if err := s.subRepoImpl.SetCommitment(ctx, tenantID, subscriptionID, amount); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("subscription not found")
+		}
+		return nil, err
+	}
+	return s.GetByID(ctx, tenantID, subscriptionID)
+}
+
 // SetAddonRepository injects the subscription add-on repository after
 // construction (Multi-product catalog v1). Left nil, the add-on service
 // methods return ErrAddonNotFound / errors and the money path is unchanged.

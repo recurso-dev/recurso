@@ -18,29 +18,33 @@ const (
 )
 
 type Subscription struct {
-	ID                     uuid.UUID          `json:"id"`
-	TenantID               uuid.UUID          `json:"tenant_id"`
-	CustomerID             uuid.UUID          `json:"customer_id"`
-	PlanID                 uuid.UUID          `json:"plan_id"`
-	Status                 SubscriptionStatus `json:"status"`
-	CurrentPeriodStart     time.Time          `json:"current_period_start" db:"current_period_start"`
-	CurrentPeriodEnd       time.Time          `json:"current_period_end" db:"current_period_end"`
-	TrialEnd               *time.Time         `json:"trial_end,omitempty" db:"trial_end"`             // set while status = trialing; nil for non-trial subs
-	CancelAtPeriodEnd      bool               `json:"cancel_at_period_end" db:"cancel_at_period_end"` // P43
-	CanceledAt             *time.Time         `json:"canceled_at,omitempty" db:"canceled_at"`
-	CancellationReason     string             `json:"cancellation_reason,omitempty" db:"cancellation_reason"`
-	CancellationFeedback   string             `json:"cancellation_feedback,omitempty" db:"cancellation_feedback"`
-	BillingAnchor          time.Time          `json:"billing_anchor"`
-	BillingAnchorType      string             `json:"billing_anchor_type"`                      // P15
-	BillingAnchorDay       int                `json:"billing_anchor_day"`                       // P15
-	PaymentTerms           string             `json:"payment_terms"`                            // P15
-	CouponID               *uuid.UUID         `json:"coupon_id,omitempty"`                      // P7
-	ReferenceID            string             `json:"reference_id,omitempty" db:"reference_id"` // P43
-	MandateID              *uuid.UUID         `json:"mandate_id,omitempty" db:"mandate_id"`
-	RazorpaySubscriptionID string             `json:"razorpay_subscription_id" db:"razorpay_subscription_id"` // P24
-	StripeSubscriptionID   string             `json:"stripe_subscription_id" db:"stripe_subscription_id"`     // P26
-	CreatedAt              time.Time          `json:"created_at" db:"created_at"`
-	UpdatedAt              time.Time          `json:"updated_at" db:"updated_at"`
+	ID                   uuid.UUID          `json:"id"`
+	TenantID             uuid.UUID          `json:"tenant_id"`
+	CustomerID           uuid.UUID          `json:"customer_id"`
+	PlanID               uuid.UUID          `json:"plan_id"`
+	Status               SubscriptionStatus `json:"status"`
+	CurrentPeriodStart   time.Time          `json:"current_period_start" db:"current_period_start"`
+	CurrentPeriodEnd     time.Time          `json:"current_period_end" db:"current_period_end"`
+	TrialEnd             *time.Time         `json:"trial_end,omitempty" db:"trial_end"`             // set while status = trialing; nil for non-trial subs
+	CancelAtPeriodEnd    bool               `json:"cancel_at_period_end" db:"cancel_at_period_end"` // P43
+	CanceledAt           *time.Time         `json:"canceled_at,omitempty" db:"canceled_at"`
+	CancellationReason   string             `json:"cancellation_reason,omitempty" db:"cancellation_reason"`
+	CancellationFeedback string             `json:"cancellation_feedback,omitempty" db:"cancellation_feedback"`
+	BillingAnchor        time.Time          `json:"billing_anchor"`
+	BillingAnchorType    string             `json:"billing_anchor_type"`                      // P15
+	BillingAnchorDay     int                `json:"billing_anchor_day"`                       // P15
+	PaymentTerms         string             `json:"payment_terms"`                            // P15
+	CouponID             *uuid.UUID         `json:"coupon_id,omitempty"`                      // P7
+	ReferenceID          string             `json:"reference_id,omitempty" db:"reference_id"` // P43
+	MandateID            *uuid.UUID         `json:"mandate_id,omitempty" db:"mandate_id"`
+	// CommitmentAmount is the per-period minimum in minor units (Lago-parity
+	// B2): when a period's subtotal falls short, a true-up line fills the
+	// gap on the renewal invoice. 0 = no commitment.
+	CommitmentAmount       int64     `json:"commitment_amount" db:"commitment_amount"`
+	RazorpaySubscriptionID string    `json:"razorpay_subscription_id" db:"razorpay_subscription_id"` // P24
+	StripeSubscriptionID   string    `json:"stripe_subscription_id" db:"stripe_subscription_id"`     // P26
+	CreatedAt              time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt              time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // CalculateNextBillingDate calculates the end date of the next period based on the anchor.

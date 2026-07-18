@@ -361,3 +361,35 @@ func (h *SubscriptionHandler) ResumeSubscription(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": sub})
 }
+
+// SetCommitment handles PUT /v1/subscriptions/:id/commitment — the
+// per-period minimum in minor units (Lago-parity B2). Amount 0 clears it.
+func (h *SubscriptionHandler) SetCommitment(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription ID")
+		return
+	}
+
+	var req struct {
+		Amount *int64 `json:"amount" binding:"required,gte=0"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	sub, err := h.service.SetCommitment(ctx, tenantID, subID, *req.Amount)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": sub})
+}

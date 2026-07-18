@@ -76,7 +76,7 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at
+			trial_end, commitment_amount, created_at, updated_at
 		FROM subscriptions WHERE id = $1 AND tenant_id = $2
 	`
 	var razorpayID, stripeID, refID sql.NullString
@@ -85,7 +85,7 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
 		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
 		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-		&trialEnd, &sub.CreatedAt, &sub.UpdatedAt,
+		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt,
 	)
 	if billingAnchor.Valid {
 		sub.BillingAnchor = billingAnchor.Time
@@ -492,6 +492,21 @@ func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domai
 	return subs, rows.Err()
 }
 
+// SetCommitment sets the subscription's per-period minimum (Lago-parity
+// B2). Returns sql.ErrNoRows for an unknown/foreign subscription.
+func (r *SubscriptionRepository) SetCommitment(ctx context.Context, tenantID, subscriptionID uuid.UUID, amount int64) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE subscriptions SET commitment_amount = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
+		tenantID, subscriptionID, amount)
+	if err != nil {
+		return fmt.Errorf("failed to set commitment: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 // ClaimDueForRenewal atomically claims up to limit ACTIVE, locally-billed
 // subscriptions whose billing period has ended (Lago-parity A1). Locally
 // billed = no UPI mandate and no gateway-managed cycle — those renew through
@@ -519,7 +534,7 @@ func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease t
 			current_period_start, current_period_end, billing_anchor,
 			billing_anchor_type, billing_anchor_day, payment_terms,
 			cancel_at_period_end, reference_id, razorpay_subscription_id,
-			stripe_subscription_id, created_at, updated_at
+			stripe_subscription_id, commitment_amount, created_at, updated_at
 	`
 	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
 	if err != nil {
@@ -538,7 +553,7 @@ func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease t
 			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
 			&anchorType, &anchorDay, &paymentTerms,
 			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-			&sub.CreatedAt, &sub.UpdatedAt,
+			&sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

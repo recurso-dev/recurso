@@ -296,6 +296,11 @@ type UsageAmount struct {
 	AsOf               time.Time         `json:"as_of"`
 	Charges            []UsageAmountItem `json:"charges"`
 	TotalAmount        int64             `json:"total_amount"`
+	// Commitment projection (Lago-parity B2): what the true-up line would
+	// be if the period closed now — commitment minus (flat fee + usage),
+	// floored at zero. Both zero when no commitment is set.
+	CommitmentAmount int64 `json:"commitment_amount,omitempty"`
+	ProjectedTrueUp  int64 `json:"projected_true_up,omitempty"`
 }
 
 // GetUsageAmount previews what the subscription's current-period usage
@@ -355,6 +360,15 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 			Amount:          amount,
 		})
 		out.TotalAmount += amount
+	}
+
+	// Commitment projection: flat fee + usage vs the committed floor (B2).
+	if sub.CommitmentAmount > 0 {
+		out.CommitmentAmount = sub.CommitmentAmount
+		projected := plan.Prices[0].Amount + out.TotalAmount
+		if projected < sub.CommitmentAmount {
+			out.ProjectedTrueUp = sub.CommitmentAmount - projected
+		}
 	}
 	return out, nil
 }

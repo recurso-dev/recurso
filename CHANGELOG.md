@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Minimum commitments** — `PUT /v1/subscriptions/{id}/commitment` sets a
+  per-period floor (minor units); when a period's subtotal (flat + add-ons
+  + metered usage) falls short, a "Minimum commitment true-up" line fills
+  exactly the difference, taxed at the plan HSN. The usage-amount preview
+  reports the projected true-up. Overage needs nothing: usage past the
+  floor bills naturally.
+
 - **Prepaid wallets** — money-denominated stored value per
   customer+currency (`/v1/wallets`, top-ups, transactions, auto-recharge).
   Invoices drain the wallet FIRST (wallet → credit notes → gateway), with

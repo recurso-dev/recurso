@@ -1262,6 +1262,8 @@ func main() {
 		v1.GET("/plans/:id/charges", meteringHandler.GetPlanCharges)
 		v1.GET("/subscriptions/:id/usage-amount", meteringHandler.GetUsageAmount) // live pre-invoice preview
 
+		v1.PUT("/subscriptions/:id/commitment", subscriptionHandler.SetCommitment) // minimum commitment (B2)
+
 		// Prepaid wallets (Lago-parity B1)
 		v1.POST("/wallets", walletHandler.Create)
 		v1.GET("/wallets/:id", walletHandler.Get)

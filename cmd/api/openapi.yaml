@@ -5539,6 +5539,40 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/subscriptions/{id}/commitment:
+    put:
+      tags: [Subscriptions]
+      summary: Set the per-period minimum commitment
+      description: >-
+        Minor units. When a period's subtotal (flat + add-ons + metered
+        usage) falls short of the commitment, a "Minimum commitment
+        true-up" line fills exactly the difference on the renewal invoice,
+        taxed at the plan HSN. Usage beyond the floor bills naturally.
+        Amount 0 clears the commitment.
+      operationId: setSubscriptionCommitment
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount: { type: integer, format: int64, minimum: 0 }
+      responses:
+        "200":
+          description: The updated subscription
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Subscription" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/wallets:
     post:
       tags: [Wallets]
@@ -6560,6 +6594,16 @@ components:
                 format: int64
                 description: Minor currency units.
         total_amount: { type: integer, format: int64 }
+        commitment_amount:
+          type: integer
+          format: int64
+          description: The subscription's per-period minimum (0 = none).
+        projected_true_up:
+          type: integer
+          format: int64
+          description: >-
+            The true-up that would bill if the period closed now —
+            commitment − (flat fee + usage), floored at zero.
     PlanChangePreview:
       type: object
       description: >-

@@ -78,7 +78,7 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
   - Files: adapter/handler/wallet.go, cmd/api/{main.go,openapi.yaml},
     ../recurso-docs
 
-- [ ] B2a: Commitments + true-up line
+- [x] B2a: Commitments + true-up line
   - Acceptance: per-period minimum on subscription; shortfall line fills
     gap at period close (taxed at plan HSN); exactly-at-commitment adds
     nothing; preview shows projected true-up.

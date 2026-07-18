@@ -247,6 +247,24 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		}
 	}
 
+	// Lago-parity B2: minimum-commitment true-up. When the period's
+	// subtotal (flat + charges + add-ons + metered usage) falls short of
+	// the committed floor, a shortfall line fills exactly the difference —
+	// taxed at the plan HSN like the base fee. At-or-above commitment adds
+	// nothing; usage past the floor bills normally (overage needs no code).
+	if sub.CommitmentAmount > 0 && subtotal < sub.CommitmentAmount {
+		shortfall := sub.CommitmentAmount - subtotal
+		subtotal += shortfall
+
+		trueUpTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, shortfall, plan.HSNCode)
+		taxTotal += trueUpTax.Total
+		igst += trueUpTax.IGST
+		cgst += trueUpTax.CGST
+		sgst += trueUpTax.SGST
+
+		lines = append(lines, newInvoiceLine(invID, "Minimum commitment true-up", trueUpTax.HSN, 1, shortfall, shortfall, trueUpTax, time.Time{}))
+	}
+
 	total := subtotal + taxTotal
 
 	// 4. Determine Payment Terms & Due Date (P15)
