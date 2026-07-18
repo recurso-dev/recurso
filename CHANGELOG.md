@@ -5,7 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-07-19
+
+The usage-based billing release: everything between a usage event and the
+money it becomes — billable metrics, tiered pricing, unattended renewals,
+prepaid wallets, minimum commitments, usage alerts, batch ingestion, an
+append-only audit trail — plus the first wave of ecosystem integrations
+(GoCardless, Adyen, NetSuite, Avalara, HubSpot, S3 export) shipped as
+experimental pending sandbox certification.
 
 ### Added
 
