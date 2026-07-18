@@ -9,31 +9,21 @@ code; it only publishes what exists.
 
 ---
 
-## 1. npm — `recurso-node`
+## 1. npm — `recurso` ✅ DONE (2026-07-18)
 
-The Node SDK now lives in its own repo:
-[recurso-node](https://github.com/recurso-dev/recurso-node)
-(local checkout: `../recurso-node`).
+Published as [`recurso`](https://www.npmjs.com/package/recurso) v1.2.0 (the
+npm name is `recurso`; the repo stays
+[recurso-node](https://github.com/recurso-dev/recurso-node), local checkout
+`../recurso-node`). Owned by the `team-recurso` org.
+
+To publish a new version:
 
 ```bash
 cd ../recurso-node
-
-# a) Is the name free? (404 = available; if it prints a package, see "Name taken" below)
-npm view recurso-node
-
-# b) Log in (opens browser / prompts for OTP if 2FA is on)
-npm login
-
-# c) Build fresh and publish PUBLICLY (unscoped packages need --access public)
-npm run build
-npm publish --access public
-
-# d) Verify
-npm view recurso-node version   # should print 1.2.0
+# bump "version" in package.json, then:
+npm publish --otp=<code>        # prepublishOnly runs the build
+npm view recurso version        # verify
 ```
-
-**Name taken?** Rename to a scope you own: set `"name": "@your-org/recurso"` in
-`recurso-node/package.json`, then `npm publish --access public`.
 
 ---
 
@@ -82,8 +72,9 @@ The image already publishes to `ghcr.io/recurso-dev/recurso` on every push to
 ## After publishing — tell Claude
 
 Once these are live, ask Claude to:
-- Flip the docs' "Not yet published to npm" notes to `npm install recurso-node` /
+- Flip the docs' "Not yet published" notes to `npm install recurso` /
   `pip install recurso`, and add real install badges to the READMEs.
+  (npm side done 2026-07-18.)
 - Update the `examples/nextjs-starter` to use the published SDK instead of plain
   `fetch` (optional).
 - Check the three Track 3 / Lane 3 roadmap boxes (npm publish, GHCR public).

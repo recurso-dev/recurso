@@ -63,9 +63,10 @@ Open http://localhost:3000, go to **Pricing**, complete the signup, then visit
 - **Feature page shows "Locked"?** Expected out of the box — the demo seed
   doesn't grant the `advanced_reports` feature. Grant it to a plan with
   `PUT /v1/plans/{id}/entitlements`, then reload.
-- **No SDK dependency.** This starter uses plain `fetch`. A typed Node SDK
-  lives at [recurso-node](https://github.com/recurso-dev/recurso-node); it
-  isn't published to npm yet, so drop it in once it ships.
+- **No SDK dependency.** This starter uses plain `fetch` to stay
+  dependency-free. A typed Node SDK is available as
+  [`recurso` on npm](https://www.npmjs.com/package/recurso)
+  (`npm install recurso`) if you prefer typed calls.
 
 ## Build
 
