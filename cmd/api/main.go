@@ -21,6 +21,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/accounting"
 	"github.com/recurso-dev/recurso/internal/adapter/ai"
 	"github.com/recurso-dev/recurso/internal/adapter/alerting"
+	"github.com/recurso-dev/recurso/internal/adapter/crm"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/adapter/email"
 	"github.com/recurso-dev/recurso/internal/adapter/export"
@@ -591,6 +592,21 @@ func main() {
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
+	// Track D4 (EXPERIMENTAL): daily CRM contact sync. HubSpot private-app
+	// token; SaaS egress, so blocked under RESIDENCY_MODE=self_hosted like
+	// the accounting SaaS adapters.
+	var crmWorker *worker.CRMSyncWorker
+	if hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN"); hsToken != "" {
+		if residency.SelfHosted() {
+			log.Println("HubSpot CRM sync blocked by RESIDENCY_MODE=self_hosted")
+		} else {
+			crmWorker = worker.NewCRMSyncWorker(tenantRepo, customerRepo, subscriptionRepo.(*db.SubscriptionRepository), crm.NewHubSpotClient(hsToken))
+			crmWorker.Start()
+			defer crmWorker.Stop()
+			log.Println("HubSpot CRM sync configured (EXPERIMENTAL, daily)")
+		}
+	}
+
 	// Track D5 (EXPERIMENTAL): daily GL export to operator-owned object
 	// storage. Enabled only when S3_EXPORT_BUCKET (+region/keys) is set;
 	// the destination is the operator's own bucket, so it is not

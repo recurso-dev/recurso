@@ -129,7 +129,8 @@ TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
       (httptest-verified; sandbox verification founder-gated)
 - [x] D2: Accounting — NetSuite SuiteTalk adapter shipped EXPERIMENTAL
 - [x] D3: Tax — Avalara AvaTax provider shipped EXPERIMENTAL; Anrok deferred (no customer signal)
-- [ ] D4: CRM — HubSpot + Salesforce (customer/subscription/invoice sync)
+- [x] D4: CRM — HubSpot contact sync shipped EXPERIMENTAL; Salesforce
+      needs its own spec (JWT/OAuth design) — follow-up
 - [x] D5: S3 GL export sink shipped EXPERIMENTAL; Segment events + Airbyte/ClickHouse defer
 - [x] D6: Automation — Zapier/n8n docs shipped (rides signed webhooks)
 - [x] D7: Auth — Okta SAML recipe documented

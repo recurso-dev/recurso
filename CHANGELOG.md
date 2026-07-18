@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **HubSpot CRM sync (EXPERIMENTAL)** — a daily worker upserts every
+  customer as a HubSpot contact (keyed by email) carrying
+  `recurso_customer_id` and `recurso_subscription_state`
+  (active/churned). Private-app token via `HUBSPOT_ACCESS_TOKEN`;
+  SaaS egress, so blocked under `RESIDENCY_MODE=self_hosted`.
+  Salesforce follows as its own spec (JWT auth design needed).
+
 - **NetSuite accounting sync (EXPERIMENTAL)** — a SuiteTalk REST adapter
   in the existing accounting-sync framework (customer / invoice / item
   upserts with Location-header id capture, `ErrExternalGone` remapping,
