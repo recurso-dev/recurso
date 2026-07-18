@@ -96,7 +96,7 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
 
 ## Track C — scale + trust
 
-- [ ] C1: Batch ingestion + transaction_id idempotency + covering index
+- [x] C1: Batch ingestion + transaction_id idempotency + covering index
   - Acceptance: POST /v1/usage/events/batch ≤500 items with per-item
     results; duplicate (subscription, transaction_id) collapses to the
     original; covering index on (subscription_id, dimension, timestamp).

@@ -20,27 +20,49 @@ func NewUsageRepository(db *sql.DB) *UsageRepository {
 }
 
 func (r *UsageRepository) RecordEvent(ctx context.Context, event *domain.UsageEvent) error {
+	_, err := r.RecordEventIdempotent(ctx, event)
+	return err
+}
+
+// RecordEventIdempotent inserts the event; when the caller supplied a
+// transaction_id and the (subscription, transaction_id) pair already
+// exists, the insert collapses to the original: duplicate=true and
+// event.ID is rewritten to the original event's id (Lago-parity C1).
+func (r *UsageRepository) RecordEventIdempotent(ctx context.Context, event *domain.UsageEvent) (bool, error) {
 	// properties is NULL (not '{}') for property-less events so the column
 	// stays cheap for the overwhelmingly common bare event.
 	var props any
 	if len(event.Properties) > 0 {
 		b, err := json.Marshal(event.Properties)
 		if err != nil {
-			return fmt.Errorf("failed to encode event properties: %w", err)
+			return false, fmt.Errorf("failed to encode event properties: %w", err)
 		}
 		props = b
 	}
-	query := `
-		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`
-	_, err := r.db.ExecContext(ctx, query,
-		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props,
+	var txID any
+	if event.TransactionID != "" {
+		txID = event.TransactionID
+	}
+	res, err := r.db.ExecContext(ctx, `
+		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties, transaction_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (subscription_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING`,
+		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props, txID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to insert usage event: %w", err)
+		return false, fmt.Errorf("failed to insert usage event: %w", err)
 	}
-	return nil
+	if n, _ := res.RowsAffected(); n > 0 {
+		return false, nil
+	}
+	// Duplicate: surface the original event id.
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM usage_events WHERE subscription_id = $1 AND transaction_id = $2`,
+		event.SubscriptionID, event.TransactionID,
+	).Scan(&event.ID); err != nil {
+		return true, fmt.Errorf("failed to resolve duplicate usage event: %w", err)
+	}
+	return true, nil
 }
 
 // AggregateForMetric reduces the subscription's events for the metric's

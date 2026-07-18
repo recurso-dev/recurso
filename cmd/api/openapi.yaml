@@ -1256,6 +1256,13 @@ paths:
                     Optional free-form attributes (max 20; keys ≤100 chars,
                     values ≤255). The `unique` billable-metric aggregation
                     counts distinct values of one property.
+                transaction_id:
+                  type: string
+                  maxLength: 255
+                  description: >-
+                    Optional idempotency key: a retried event with the same
+                    (subscription, transaction_id) collapses to the original
+                    (200 with status "duplicate" and the original event_id).
       responses:
         '201':
           description: Event recorded.
@@ -1276,6 +1283,58 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/usage/events/batch:
+    post:
+      operationId: recordUsageEventsBatch
+      tags: [Usage]
+      summary: Record up to 500 usage events
+      description: >-
+        Per-item results — one bad event never fails the batch. Items with a
+        `transaction_id` are idempotent (duplicates collapse to the original
+        event with status "duplicate").
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  maxItems: 500
+                  items:
+                    type: object
+                    required: [subscription_id, customer_id, dimension, quantity]
+                    properties:
+                      subscription_id: { type: string, format: uuid }
+                      customer_id: { type: string, format: uuid }
+                      dimension: { type: string }
+                      quantity: { type: integer, format: int64 }
+                      properties:
+                        type: object
+                        additionalProperties: { type: string }
+                      transaction_id: { type: string, maxLength: 255 }
+      responses:
+        '200':
+          description: Per-item outcomes, index-aligned with the request.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index: { type: integer }
+                        status: { type: string, enum: [recorded, duplicate, error] }
+                        event_id: { type: string, format: uuid }
+                        error: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/credit-notes:
     post:

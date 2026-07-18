@@ -1257,6 +1257,7 @@ func main() {
 
 		// Usage Platform v1
 		v1.POST("/usage/events", usageHandler.RecordEvent)
+		v1.POST("/usage/events/batch", usageHandler.RecordEventsBatch)        // <=500 events, per-item results (C1)
 		v1.GET("/usage", usageHandler.QueryUsage)                             // time-windowed buckets
 		v1.GET("/usage/dimensions", usageHandler.ListDimensions)              // dimension catalog
 		v1.GET("/subscriptions/:id/usage", usageHandler.GetSubscriptionUsage) // current period + lifetime

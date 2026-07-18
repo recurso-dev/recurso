@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ingestion hardening** — `POST /v1/usage/events/batch` ingests up to
+  500 events with per-item results, and events accept an optional
+  `transaction_id` idempotency key: a retried event with the same
+  (subscription, transaction_id) collapses to the original, so SDK retries
+  can never inflate usage. A covering index on
+  (subscription_id, dimension, timestamp) backs the aggregation hot path.
+
 - **Usage threshold alerts** — `/v1/usage-alerts` configures per-
   subscription thresholds on a billable metric (absolute quantity or
   percent of the matching entitlement limit). The billing-cycle sweep

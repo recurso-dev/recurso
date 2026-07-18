@@ -47,6 +47,8 @@ const (
 	maxEventProperties       = 20
 	maxEventPropertyKeyLen   = 100
 	maxEventPropertyValueLen = 255
+	// maxTransactionIDLen matches usage_events.transaction_id VARCHAR(255).
+	maxTransactionIDLen = 255
 )
 
 // usageEntitlementChecker is the slice of EntitlementService the usage
@@ -75,17 +77,47 @@ func NewUsageService(
 	}
 }
 
-// RecordEvent persists a metered usage event (POST /v1/usage/events) after
-// verifying the subscription belongs to the caller's tenant and the event's
-// customer matches the subscription — otherwise any tenant could inflate
-// another tenant's metered usage.
+// RecordEvent persists one event; see RecordEventIdempotent for the flag.
 func (s *UsageService) RecordEvent(ctx context.Context, tenantID uuid.UUID, event *domain.UsageEvent) error {
+	_, err := s.RecordEventIdempotent(ctx, tenantID, event)
+	return err
+}
+
+// RecordEventIdempotent persists a metered usage event (POST
+// /v1/usage/events) after verifying the subscription belongs to the
+// caller's tenant and the event's customer matches the subscription —
+// otherwise any tenant could inflate another tenant's metered usage. When
+// the caller supplies a transaction_id, a retry of the same event collapses
+// to the original (duplicate=true, Lago-parity C1).
+func (s *UsageService) RecordEventIdempotent(ctx context.Context, tenantID uuid.UUID, event *domain.UsageEvent) (bool, error) {
+	if err := validateUsageEvent(event); err != nil {
+		return false, err
+	}
+
+	sub, err := s.subscriptions.GetByID(ctx, event.SubscriptionID)
+	if err != nil {
+		return false, err
+	}
+	if sub == nil || sub.TenantID != tenantID {
+		return false, ErrUsageSubscriptionNotFound
+	}
+	if sub.CustomerID != event.CustomerID {
+		return false, ErrUsageCustomerMismatch
+	}
+	return s.usage.RecordEventIdempotent(ctx, event)
+}
+
+// validateUsageEvent enforces the per-event input bounds.
+func validateUsageEvent(event *domain.UsageEvent) error {
 	// A usage event records consumption; quantity must be positive. Without this
 	// a negative quantity would offset legitimate metered usage at aggregation
 	// time (SUM), underbilling the customer. (binding:"required" rejects 0 but
 	// not negatives.)
 	if event.Quantity <= 0 {
 		return UsageValidationError("quantity must be greater than zero")
+	}
+	if len(event.TransactionID) > maxTransactionIDLen {
+		return UsageValidationError(fmt.Sprintf("transaction_id must be at most %d characters", maxTransactionIDLen))
 	}
 	// Bound free-form properties so one caller can't bloat the events table
 	// or the aggregation JSONB paths (usage-based billing v1).
@@ -100,18 +132,70 @@ func (s *UsageService) RecordEvent(ctx context.Context, tenantID uuid.UUID, even
 			return UsageValidationError(fmt.Sprintf("property values must be at most %d characters", maxEventPropertyValueLen))
 		}
 	}
+	return nil
+}
 
-	sub, err := s.subscriptions.GetByID(ctx, event.SubscriptionID)
-	if err != nil {
-		return err
+// maxUsageBatchSize bounds one batch-ingest request (Lago-parity C1).
+const maxUsageBatchSize = 500
+
+// BatchItemResult reports one event's outcome in a batch ingest.
+type BatchItemResult struct {
+	Index   int    `json:"index"`
+	Status  string `json:"status"` // recorded | duplicate | error
+	EventID string `json:"event_id,omitempty"`
+	Error   string `json:"error,omitempty"`
+}
+
+// RecordEvents ingests up to maxUsageBatchSize events with per-item
+// results — one bad event never fails the batch. Subscription ownership is
+// verified once per distinct subscription.
+func (s *UsageService) RecordEvents(ctx context.Context, tenantID uuid.UUID, events []*domain.UsageEvent) ([]BatchItemResult, error) {
+	if len(events) == 0 {
+		return nil, UsageValidationError("events must not be empty")
 	}
-	if sub == nil || sub.TenantID != tenantID {
-		return ErrUsageSubscriptionNotFound
+	if len(events) > maxUsageBatchSize {
+		return nil, UsageValidationError(fmt.Sprintf("at most %d events per batch", maxUsageBatchSize))
 	}
-	if sub.CustomerID != event.CustomerID {
-		return ErrUsageCustomerMismatch
+
+	// One ownership check per distinct subscription in the batch.
+	subs := map[uuid.UUID]*domain.Subscription{}
+	results := make([]BatchItemResult, len(events))
+	for i, event := range events {
+		results[i].Index = i
+		if err := validateUsageEvent(event); err != nil {
+			results[i].Status, results[i].Error = "error", err.Error()
+			continue
+		}
+		sub, ok := subs[event.SubscriptionID]
+		if !ok {
+			loaded, err := s.subscriptions.GetByID(ctx, event.SubscriptionID)
+			if err != nil {
+				results[i].Status, results[i].Error = "error", "subscription lookup failed"
+				continue
+			}
+			sub = loaded
+			subs[event.SubscriptionID] = sub
+		}
+		if sub == nil || sub.TenantID != tenantID {
+			results[i].Status, results[i].Error = "error", ErrUsageSubscriptionNotFound.Error()
+			continue
+		}
+		if sub.CustomerID != event.CustomerID {
+			results[i].Status, results[i].Error = "error", ErrUsageCustomerMismatch.Error()
+			continue
+		}
+
+		duplicate, err := s.usage.RecordEventIdempotent(ctx, event)
+		switch {
+		case err != nil:
+			results[i].Status, results[i].Error = "error", "failed to record event"
+		case duplicate:
+			results[i].Status, results[i].EventID = "duplicate", event.ID.String()
+		default:
+			results[i].Status, results[i].EventID = "recorded", event.ID.String()
+		}
 	}
-	return s.usage.RecordEvent(ctx, event)
+	return results, nil
 }
 
 // UsageQueryParams is the raw (pre-validation) input for QueryUsage.

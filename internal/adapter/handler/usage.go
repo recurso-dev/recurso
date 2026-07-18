@@ -34,7 +34,38 @@ type recordEventRequest struct {
 	// Properties are optional free-form attributes; the unique aggregation
 	// counts distinct values of one property (usage-based billing v1).
 	Properties map[string]string `json:"properties"`
+	// TransactionID is the caller's idempotency key: a retried event with
+	// the same (subscription, transaction_id) collapses to the original.
+	TransactionID string `json:"transaction_id"`
 }
+
+// toEvent converts the request into a domain event (uuid errors reported
+// per field by the caller).
+func (r recordEventRequest) toEvent() (*domain.UsageEvent, error) {
+	subID, err := uuid.Parse(r.SubscriptionID)
+	if err != nil {
+		return nil, errInvalidSubscriptionID
+	}
+	custID, err := uuid.Parse(r.CustomerID)
+	if err != nil {
+		return nil, errInvalidCustomerID
+	}
+	return &domain.UsageEvent{
+		ID:             uuid.New(),
+		SubscriptionID: subID,
+		CustomerID:     custID,
+		Dimension:      r.Dimension,
+		Quantity:       r.Quantity,
+		Timestamp:      time.Now().UTC(),
+		Properties:     r.Properties,
+		TransactionID:  r.TransactionID,
+	}, nil
+}
+
+var (
+	errInvalidSubscriptionID = errors.New("invalid subscription_id")
+	errInvalidCustomerID     = errors.New("invalid customer_id")
+)
 
 func (h *UsageHandler) RecordEvent(c *gin.Context) {
 	tenantID, ctx, ok := usageTenantCtx(c)
@@ -48,29 +79,14 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 		return
 	}
 
-	subID, err := uuid.Parse(req.SubscriptionID)
+	event, err := req.toEvent()
 	if err != nil {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid Subscription ID")
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
-	custID, err := uuid.Parse(req.CustomerID)
+	duplicate, err := h.svc.RecordEventIdempotent(ctx, tenantID, event)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid Customer ID")
-		return
-	}
-
-	event := &domain.UsageEvent{
-		ID:             uuid.New(),
-		SubscriptionID: subID,
-		CustomerID:     custID,
-		Dimension:      req.Dimension,
-		Quantity:       req.Quantity,
-		Timestamp:      time.Now().UTC(),
-		Properties:     req.Properties,
-	}
-
-	if err := h.svc.RecordEvent(ctx, tenantID, event); err != nil {
 		var valErr service.UsageValidationError
 		switch {
 		case errors.Is(err, service.ErrUsageSubscriptionNotFound):
@@ -85,7 +101,61 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"status": "recorded", "event_id": event.ID})
+	status := "recorded"
+	code := http.StatusCreated
+	if duplicate {
+		// Idempotent replay: the original event, not a new one (C1).
+		status = "duplicate"
+		code = http.StatusOK
+	}
+	c.JSON(code, gin.H{"status": status, "event_id": event.ID})
+}
+
+// RecordEventsBatch handles POST /v1/usage/events/batch — up to 500 events
+// with per-item results; one bad event never fails the batch (C1).
+func (h *UsageHandler) RecordEventsBatch(c *gin.Context) {
+	tenantID, ctx, ok := usageTenantCtx(c)
+	if !ok {
+		return
+	}
+
+	var req struct {
+		Events []recordEventRequest `json:"events" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	events := make([]*domain.UsageEvent, len(req.Events))
+	prefail := map[int]string{}
+	for i, item := range req.Events {
+		event, err := item.toEvent()
+		if err != nil {
+			// Keep the slot; the service skips nils via a placeholder that
+			// fails validation, so indices stay aligned.
+			prefail[i] = err.Error()
+			events[i] = &domain.UsageEvent{ID: uuid.New()} // quantity 0 -> validation error placeholder
+			continue
+		}
+		events[i] = event
+	}
+
+	results, err := h.svc.RecordEvents(ctx, tenantID, events)
+	if err != nil {
+		var valErr service.UsageValidationError
+		if errors.As(err, &valErr) {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, valErr.Error())
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to record events")
+		return
+	}
+	// Replace placeholder errors with the real parse failures.
+	for i, msg := range prefail {
+		results[i].Status, results[i].Error, results[i].EventID = "error", msg, ""
+	}
+	c.JSON(http.StatusOK, gin.H{"data": results})
 }
 
 // QueryUsage handles GET /v1/usage — time-windowed usage buckets.

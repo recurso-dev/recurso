@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,10 @@ type mockUsageRepo struct {
 func (m *mockUsageRepo) RecordEvent(_ context.Context, event *domain.UsageEvent) error {
 	m.recorded = append(m.recorded, event)
 	return nil
+}
+
+func (m *mockUsageRepo) RecordEventIdempotent(ctx context.Context, event *domain.UsageEvent) (bool, error) {
+	return false, m.RecordEvent(ctx, event)
 }
 
 func (m *mockUsageRepo) QueryUsage(_ context.Context, tenantID uuid.UUID, filter domain.UsageQueryFilter) ([]domain.UsageBucket, error) {
@@ -448,5 +453,69 @@ func TestRecordEventRejectsNonPositiveQuantity(t *testing.T) {
 		if err := f.svc.RecordEvent(context.Background(), tenantA, ev); !errors.As(err, &valErr) {
 			t.Errorf("RecordEvent(quantity=%d): err = %v, want UsageValidationError", q, err)
 		}
+	}
+}
+
+// --- Batch ingest + idempotency (Lago-parity C1) ---
+
+func TestRecordEventsBatchPerItemResults(t *testing.T) {
+	f := newUsageFixture()
+	sub := f.addSubscription(f.tenantID)
+	good := &domain.UsageEvent{
+		ID: uuid.New(), SubscriptionID: sub.ID, CustomerID: sub.CustomerID,
+		Dimension: "api_calls", Quantity: 5,
+	}
+	badQty := &domain.UsageEvent{
+		ID: uuid.New(), SubscriptionID: sub.ID, CustomerID: sub.CustomerID,
+		Dimension: "api_calls", Quantity: 0,
+	}
+	wrongCustomer := &domain.UsageEvent{
+		ID: uuid.New(), SubscriptionID: sub.ID, CustomerID: uuid.New(),
+		Dimension: "api_calls", Quantity: 5,
+	}
+
+	results, err := f.svc.RecordEvents(context.Background(), f.tenantID, []*domain.UsageEvent{good, badQty, wrongCustomer})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(results) != 3 {
+		t.Fatalf("results = %d, want 3", len(results))
+	}
+	if results[0].Status != "recorded" || results[0].EventID == "" {
+		t.Fatalf("results[0] = %+v, want recorded", results[0])
+	}
+	if results[1].Status != "error" || results[2].Status != "error" {
+		t.Fatalf("results[1..2] = %+v / %+v, want errors", results[1], results[2])
+	}
+	if len(f.usage.recorded) != 1 {
+		t.Fatalf("stored events = %d, want only the valid one", len(f.usage.recorded))
+	}
+}
+
+func TestRecordEventsBatchBounds(t *testing.T) {
+	f := newUsageFixture()
+	sub := f.addSubscription(f.tenantID)
+	if _, err := f.svc.RecordEvents(context.Background(), f.tenantID, nil); err == nil {
+		t.Fatal("empty batch must be rejected")
+	}
+	over := make([]*domain.UsageEvent, 501)
+	for i := range over {
+		over[i] = &domain.UsageEvent{ID: uuid.New(), SubscriptionID: sub.ID, CustomerID: sub.CustomerID, Dimension: "d", Quantity: 1}
+	}
+	if _, err := f.svc.RecordEvents(context.Background(), f.tenantID, over); err == nil {
+		t.Fatal("batches above 500 must be rejected")
+	}
+}
+
+func TestRecordEventTransactionIDTooLong(t *testing.T) {
+	f := newUsageFixture()
+	sub := f.addSubscription(f.tenantID)
+	event := &domain.UsageEvent{
+		ID: uuid.New(), SubscriptionID: sub.ID, CustomerID: sub.CustomerID,
+		Dimension: "api_calls", Quantity: 1,
+		TransactionID: strings.Repeat("x", 256),
+	}
+	if err := f.svc.RecordEvent(context.Background(), f.tenantID, event); err == nil {
+		t.Fatal("oversized transaction_id must be rejected")
 	}
 }

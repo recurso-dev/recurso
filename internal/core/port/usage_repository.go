@@ -10,6 +10,10 @@ import (
 
 type UsageRepository interface {
 	RecordEvent(ctx context.Context, event *domain.UsageEvent) error
+	// RecordEventIdempotent inserts the event, collapsing duplicates by
+	// (subscription_id, transaction_id) to the original: duplicate=true and
+	// the event's ID rewritten to the original's (Lago-parity C1).
+	RecordEventIdempotent(ctx context.Context, event *domain.UsageEvent) (duplicate bool, err error)
 	GetUsageForPeriod(ctx context.Context, subID string, dimension string, start, end time.Time) (int64, error)
 	GetUsageStats(ctx context.Context, tenantID uuid.UUID) ([]*domain.UsageStats, error)
 

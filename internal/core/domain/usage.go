@@ -17,6 +17,10 @@ type UsageEvent struct {
 	// unique aggregation counts distinct values of one property; they also
 	// ground future charge filters/group-by. Nil for property-less events.
 	Properties map[string]string `json:"properties,omitempty"`
+	// TransactionID is the caller's optional idempotency key: a duplicate
+	// (subscription_id, transaction_id) collapses to the original event
+	// (Lago-parity C1). Empty = no idempotency guarantee.
+	TransactionID string `json:"transaction_id,omitempty"`
 }
 
 // Usage query granularities for time-windowed aggregation.
