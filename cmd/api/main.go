@@ -699,6 +699,7 @@ func main() {
 	// Prepaid wallets (Lago-parity B1): money-denominated balance drained
 	// at invoice time before credit notes and the gateway (D3).
 	walletRepo := db.NewWalletRepository(database)
+	auditLogRepo := db.NewAuditLogRepository(database) // C2: append-only audit trail
 	walletService := service.NewWalletService(walletRepo, customerRepo, ledgerService)
 	walletService.SetNotifier(notifier)
 	invoiceService.WalletDrainer = walletService
@@ -862,6 +863,7 @@ func main() {
 	meteringHandler := handler.NewMeteringHandler(meteringService)       // Usage-based billing v1
 	walletHandler := handler.NewWalletHandler(walletService)             // Prepaid wallets (B1)
 	usageAlertHandler := handler.NewUsageAlertHandler(usageAlertService) // Usage alerts (B3)
+	auditHandler := handler.NewAuditHandler(auditLogRepo)                // Audit trail (C2)
 	// Phase 48: Unified Portal API Handler
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
 	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
@@ -1227,6 +1229,7 @@ func main() {
 	v1 := r.Group("/v1")
 	v1.Use(middleware.SessionOrAPIKeyMiddleware(tenantRepo, authService, serverLive))
 	v1.Use(middleware.IdempotencyMiddleware(idempotencyStore)) // P30: Idempotency
+	v1.Use(middleware.Audit(auditLogRepo))                     // C2: append-only config audit trail
 	{
 		v1.POST("/plans", catalogHandler.CreatePlan)
 		v1.GET("/plans", catalogHandler.ListPlans)
@@ -1286,6 +1289,9 @@ func main() {
 		v1.POST("/usage-alerts", usageAlertHandler.Create)
 		v1.GET("/usage-alerts", usageAlertHandler.List)
 		v1.DELETE("/usage-alerts/:id", usageAlertHandler.Delete)
+
+		// Append-only audit trail (Lago-parity C2)
+		v1.GET("/audit-logs", auditHandler.List)
 
 		// Analytics (Cached)
 		analytics := v1.Group("/analytics")

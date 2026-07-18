@@ -55,3 +55,9 @@ type UsageRatingRepository interface {
 	// Exists reports whether the window is already rated.
 	Exists(ctx context.Context, subscriptionID, chargeID uuid.UUID, periodStart time.Time) (bool, error)
 }
+
+// AuditLogRepository persists the append-only audit trail (Lago-parity C2).
+type AuditLogRepository interface {
+	Insert(ctx context.Context, a *domain.AuditLog) error
+	List(ctx context.Context, tenantID uuid.UUID, filter domain.AuditLogFilter) ([]domain.AuditLog, error)
+}

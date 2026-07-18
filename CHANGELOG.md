@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Append-only audit trail** — every successful config-grade mutation
+  (plans, metrics, charges, coupons, webhooks, wallets, alerts, team,
+  settings, ...) is recorded via middleware with actor (dashboard user or
+  API key), route, entity, and the truncated request payload.
+  `GET /v1/audit-logs` filters by entity/actor/time; the table rejects
+  UPDATE and DELETE at the database level.
+
 - **Ingestion hardening** — `POST /v1/usage/events/batch` ingests up to
   500 events with per-item results, and events accept an optional
   `transaction_id` idempotency key: a retried event with the same

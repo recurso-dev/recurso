@@ -5598,6 +5598,38 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/audit-logs:
+    get:
+      tags: [Account]
+      summary: List the append-only audit trail
+      description: >-
+        Every successful config-grade mutation (plans, metrics, charges,
+        coupons, webhooks, wallets, alerts, team, settings, ...) is
+        recorded with actor, route, entity, and the request payload. The
+        table is immutable: updates and deletes are rejected at the
+        database level.
+      operationId: listAuditLogs
+      parameters:
+        - { name: entity_type, in: query, schema: { type: string } }
+        - { name: entity_id, in: query, schema: { type: string } }
+        - { name: actor, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        "200":
+          description: Audit entries, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditLog" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/usage-alerts:
     post:
       tags: [Metering]
@@ -6667,6 +6699,19 @@ components:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
         hsn_code: { type: string }
+    AuditLog:
+      type: object
+      description: One immutable record of a config-grade mutation.
+      properties:
+        id: { type: string, format: uuid }
+        actor: { type: string, description: "Dashboard user id, or api_key" }
+        action: { type: string, description: "METHOD + route template" }
+        entity_type: { type: string }
+        entity_id: { type: string }
+        status: { type: integer }
+        request_body: { type: string, description: "Truncated to 4KB" }
+        ip: { type: string }
+        created_at: { type: string, format: date-time }
     UsageAlert:
       type: object
       description: A usage threshold that fires once per billing period.

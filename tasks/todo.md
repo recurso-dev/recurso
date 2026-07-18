@@ -104,7 +104,7 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
   - Files: adapter/handler/usage.go, service/usage.go, adapter/db
     (+migration), openapi.yaml
 
-- [ ] C2: Append-only audit log
+- [x] C2: Append-only audit log
   - Acceptance: config-grade mutations (plans, charges, metrics, coupons,
     entitlements, webhooks, team, wallets, commitments, alerts) write
     audit rows; GET /v1/audit-logs filters by entity/actor/time; table
