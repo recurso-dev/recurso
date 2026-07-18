@@ -1,6 +1,7 @@
 # Spec: Lago Parity Program (Usage-Billing Phase 2 + Platform Tail)
 
-> **Status: DRAFT — awaiting founder review (assumptions A1–A6, decisions D1–D8)**
+> **Status: APPROVED (2026-07-18) — founder accepted assumptions A1–A6,
+> decisions D1–D8, and the open-question defaults as written**
 >
 > Successor to `spec_usage_billing.md` (v1 shipped 2026-07-18, commit
 > e457bc9). Target: functional parity with Lago (getlago.com, 10.2k★,
