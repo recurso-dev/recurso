@@ -118,3 +118,30 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
 - [ ] Docs + OpenAPI sync + CHANGELOG Unreleased entry per track
 - [ ] Dashboard UI: plan-charges editor, Wallets page, AuditLog page
       (after B1e / C2; may batch)
+
+## Track D — integration parity with Lago (added 2026-07-18, founder directive)
+
+Reference surface: getlago.com integrations + doc.getlago.com. Recurso
+already has: Stripe, Razorpay (Lago lacks it), QuickBooks, Xero, Tally,
+TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
+
+- [ ] D1: Payments — Adyen, GoCardless gateway adapters (port.PaymentGateway)
+- [ ] D2: Accounting — NetSuite adapter (accounting sync framework exists)
+- [ ] D3: Tax — Anrok and/or Avalara provider (taxprovider framework exists)
+- [ ] D4: CRM — HubSpot + Salesforce (customer/subscription/invoice sync)
+- [ ] D5: Data — S3 export sink + Segment events; Airbyte/ClickHouse defer
+- [ ] D6: Automation — Zapier/n8n via existing webhooks (docs + templates)
+- [ ] D7: Auth — Okta SSO is covered by existing SAML; document the recipe
+  - Note: all egress adapters must respect RESIDENCY_MODE guards.
+  - Sequencing after C2; each integration is its own spec + PR.
+
+## Cross-cutting sweep (docs / SDKs / website / dashboard) — founder directive
+
+- [ ] S1: Docs — pages for commitments + usage alerts + batch ingestion;
+      structure pass benchmarked against doc.getlago.com
+- [ ] S2: SDKs — wallets, commitments, usage-alerts, batch methods in
+      Node/Python/Go (next minor versions)
+- [ ] S3: Website — feature sections for usage billing, wallets,
+      commitments, alerts; refresh comparison vs Lago
+- [ ] S4: Dashboard — plan-charges editor, Wallets page, usage-alerts
+      config, AuditLog page (with C2)
