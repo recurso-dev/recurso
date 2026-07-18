@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NetSuite accounting sync (EXPERIMENTAL)** — a SuiteTalk REST adapter
+  in the existing accounting-sync framework (customer / invoice / item
+  upserts with Location-header id capture, `ErrExternalGone` remapping,
+  per-line major-unit amounts). Residency-guarded like QuickBooks/Xero;
+  connect with provider `netsuite` (RealmID = NetSuite account id).
+
 - **Avalara AvaTax provider (EXPERIMENTAL)** — US sales-tax quotes via
   uncommitted SalesOrder transactions (`AVALARA_ACCOUNT_ID` /
   `AVALARA_LICENSE_KEY` / `AVALARA_COMPANY_CODE`), sharing TaxJar's error

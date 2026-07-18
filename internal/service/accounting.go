@@ -513,7 +513,7 @@ func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConne
 	// accounting SaaS, even when a connection row already exists in the
 	// database. Tally stays available — it is a local file export, not
 	// network egress.
-	if residency.SelfHosted() && (conn.Provider == "quickbooks" || conn.Provider == "xero") {
+	if residency.SelfHosted() && (conn.Provider == "quickbooks" || conn.Provider == "xero" || conn.Provider == "netsuite") {
 		slog.Warn("accounting sync blocked by RESIDENCY_MODE=self_hosted",
 			"provider", conn.Provider, "connection_id", conn.ID)
 		return s.gateway // mock fallback: records nothing externally
@@ -525,6 +525,11 @@ func (s *AccountingService) getAdapterForConnection(conn *domain.AccountingConne
 		return adapter
 	case "xero":
 		adapter := accounting.NewXeroAdapter(conn.AccessToken, conn.RealmID)
+		return adapter
+	case "netsuite":
+		// Track D2 (EXPERIMENTAL): SuiteTalk REST; RealmID carries the
+		// NetSuite account id, mirroring how QBO uses it.
+		adapter := accounting.NewNetSuiteAdapter(conn.AccessToken, conn.RealmID)
 		return adapter
 	case "tally":
 		adapter := accounting.NewTallyAdapter("")
