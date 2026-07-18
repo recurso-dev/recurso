@@ -18,6 +18,7 @@ type WalletRepository interface {
 	// wallet in the currency.
 	GetByCustomerAndCurrency(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (*domain.Wallet, error)
 	ListByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.Wallet, error)
+	ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.Wallet, error)
 	UpdateAutoRecharge(ctx context.Context, tenantID, id uuid.UUID, threshold, amount *int64) error
 
 	// TopUp appends a top_up transaction (with residue) and increases the

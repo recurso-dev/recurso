@@ -1279,6 +1279,7 @@ func main() {
 
 		// Prepaid wallets (Lago-parity B1)
 		v1.POST("/wallets", walletHandler.Create)
+		v1.GET("/wallets", walletHandler.List)
 		v1.GET("/wallets/:id", walletHandler.Get)
 		v1.POST("/wallets/:id/top-up", walletHandler.TopUp)
 		v1.GET("/wallets/:id/transactions", walletHandler.ListTransactions)

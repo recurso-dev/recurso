@@ -69,6 +69,20 @@ func (h *WalletHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"data": w})
 }
 
+func (h *WalletHandler) List(c *gin.Context) {
+	tenantID, ctx, ok := walletTenantCtx(c)
+	if !ok {
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
+	wallets, err := h.svc.ListWallets(ctx, tenantID, limit)
+	if err != nil {
+		respondWalletError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": wallets})
+}
+
 func (h *WalletHandler) Get(c *gin.Context) {
 	tenantID, ctx, ok := walletTenantCtx(c)
 	if !ok {

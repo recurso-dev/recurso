@@ -91,6 +91,28 @@ func (r *WalletRepository) ListByCustomer(ctx context.Context, tenantID, custome
 	return wallets, rows.Err()
 }
 
+func (r *WalletRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.Wallet, error) {
+	if limit <= 0 || limit > 500 {
+		limit = 200
+	}
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 ORDER BY updated_at DESC LIMIT $2`,
+		tenantID, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list tenant wallets: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	wallets := []domain.Wallet{}
+	for rows.Next() {
+		w, err := scanWallet(rows)
+		if err != nil {
+			return nil, err
+		}
+		wallets = append(wallets, *w)
+	}
+	return wallets, rows.Err()
+}
+
 func (r *WalletRepository) UpdateAutoRecharge(ctx context.Context, tenantID, id uuid.UUID, threshold, amount *int64) error {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE wallets SET auto_recharge_threshold = $3, auto_recharge_amount = $4, updated_at = NOW()

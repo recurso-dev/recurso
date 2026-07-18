@@ -140,6 +140,18 @@ func (s *WalletService) GetWallet(ctx context.Context, tenantID, id uuid.UUID) (
 	return w, nil
 }
 
+// ListWallets returns the tenant's wallets, most recently active first.
+func (s *WalletService) ListWallets(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.Wallet, error) {
+	wallets, err := s.wallets.ListByTenant(ctx, tenantID, limit)
+	if err != nil {
+		return nil, err
+	}
+	if wallets == nil {
+		wallets = []domain.Wallet{}
+	}
+	return wallets, nil
+}
+
 func (s *WalletService) ListCustomerWallets(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.Wallet, error) {
 	wallets, err := s.wallets.ListByCustomer(ctx, tenantID, customerID)
 	if err != nil {

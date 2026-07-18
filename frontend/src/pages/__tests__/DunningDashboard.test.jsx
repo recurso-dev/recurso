@@ -38,6 +38,8 @@ describe('DunningDashboard Component', () => {
         endpoints.getDunningRecovered.mockResolvedValue({
             data: {
                 recovered_amount_total: { INR: 236000 },
+                reporting_currency: 'INR',
+                reporting_total: 236000,
                 recovered_count: 2,
                 avg_attempts: 2.5,
                 avg_days_to_recover: 4,
