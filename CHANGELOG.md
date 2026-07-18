@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Usage-based billing v1** (`docs/spec_usage_billing.md`) — the metering
+  engine: **billable metrics** (`POST/GET/PUT/DELETE /v1/billable-metrics`)
+  aggregate usage events by `count`, `sum`, `max`, or `unique` (distinct
+  values of an event property); **charges** attach `per_unit`, `graduated`,
+  `volume`, or `package` pricing for a metric to a plan
+  (`PUT/GET /v1/plans/{id}/charges`), with per-currency amounts and
+  sub-minor-unit decimal rates (0.0035/call) computed exactly and rounded
+  once per line; **rating at period close** bills the elapsed period's
+  usage in arrears on the renewal invoice as tax-resolved line items, with
+  a `usage_ratings` window claim making retried generation idempotent;
+  immediate cancellation bills the partial window on a final usage invoice.
+  `GET /v1/subscriptions/{id}/usage-amount` previews the running period,
+  and `POST /v1/usage/events` accepts optional `properties`.
+
 ## [0.5.0] - 2026-07-17
 
 The India release: the full statutory lifecycle (invoice → IRN → GSTR-1/3B →
