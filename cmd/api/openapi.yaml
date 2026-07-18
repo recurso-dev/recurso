@@ -5733,6 +5733,24 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/wallets:
+    get:
+      tags: [Wallets]
+      summary: List the tenant's wallets
+      operationId: listWallets
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        "200":
+          description: Wallets, most recently active first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Wallet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
     post:
       tags: [Wallets]
       summary: Create a prepaid wallet
