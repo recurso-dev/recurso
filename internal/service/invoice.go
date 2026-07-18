@@ -37,6 +37,15 @@ type InvoiceService struct {
 	ChargeRepo port.ChargeRepository
 	UsageRepo  port.UsageRepository
 	RatingRepo port.UsageRatingRepository
+	// WalletDrainer applies prepaid wallet balance to a committed invoice
+	// BEFORE adjustment credit notes and the gateway (Lago-parity B1, D3).
+	// nil-safe. Satisfied by *WalletService.
+	WalletDrainer walletDrainer
+}
+
+// walletDrainer consumes prepaid balance against a committed invoice.
+type walletDrainer interface {
+	DrainForInvoice(ctx context.Context, inv *domain.Invoice) (int64, error)
 }
 
 // creditApplier applies open adjustment credit-note balances to an invoice,
@@ -285,16 +294,37 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// P25 e-invoicing on the now-committed invoice.
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 
+	// 6a. Drain the customer's prepaid wallet FIRST (Lago-parity B1, D3
+	// ordering: wallet → adjustment credit notes → gateway). The drain is a
+	// payment from stored value: AmountPaid rises and the ledger books
+	// DR Customer Credit / CR AR inside the drainer. Best-effort.
+	if s.WalletDrainer != nil && inv.Total > 0 {
+		if drained, err := s.WalletDrainer.DrainForInvoice(ctx, inv); err != nil {
+			slog.Error("wallet drain failed on invoice generation", "invoice_id", inv.ID, "error", err)
+		} else if drained > 0 {
+			inv.AmountPaid += drained
+			inv.AmountDue = inv.Total - inv.AmountPaid - inv.CreditApplied
+			if inv.AmountPaid+inv.CreditApplied >= inv.Total {
+				inv.Status = domain.InvoiceStatusPaid
+			}
+			if err := s.InvoiceRepo.Update(ctx, inv); err != nil {
+				slog.Error("failed to persist wallet application", "invoice_id", inv.ID, "error", err)
+			}
+			slog.Info("applied wallet balance to invoice", "invoice_id", inv.ID, "wallet_applied", drained)
+		}
+	}
+
 	// 6b. Apply any account credit (adjustment credit notes) to the new invoice,
 	// reducing what the customer owes (ENG-153). Best-effort: a failure leaves the
 	// invoice at its full amount (recoverable), never fails invoice generation.
-	if s.CreditApplier != nil && inv.Total > 0 {
-		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total); err != nil {
+	// The applicable ceiling is what remains AFTER the wallet drain.
+	if s.CreditApplier != nil && inv.Total-inv.AmountPaid > 0 {
+		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total-inv.AmountPaid); err != nil {
 			slog.Error("credit application failed on invoice generation", "invoice_id", inv.ID, "error", err)
 		} else if applied > 0 {
 			inv.CreditApplied = applied
 			inv.AmountDue = inv.Total - inv.AmountPaid - applied
-			if applied >= inv.Total {
+			if inv.AmountPaid+applied >= inv.Total {
 				inv.Status = domain.InvoiceStatusPaid
 			}
 			slog.Info("applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)

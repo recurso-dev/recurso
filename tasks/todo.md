@@ -45,33 +45,33 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
 
 ## Track B — commerce
 
-- [ ] B1a: Wallet domain + migrations + repositories
+- [x] B1a: Wallet domain + migrations + repositories
   - Acceptance: wallets (customer+currency unique) and wallet_transactions
     (append-only, balance_after) tables + ports + pg repos.
   - Verify: build + repo tests; migration up/down clean.
   - Files: internal/core/domain/wallet.go, core/port, adapter/db(+migrations)
 
-- [ ] B1b: WalletService — top-up, expiry, ledger postings
+- [x] B1b: WalletService — top-up, expiry, ledger postings
   - Acceptance: top-up via offline payment or gateway produces receipt +
     ledger legs (DR Cash / CR Customer Credit); promotional top-ups carry
     expiry; expired balance excluded from available.
   - Verify: service tests incl. expiry-ordering table tests.
   - Files: internal/service/wallet.go(+_test), service/ledger.go
 
-- [ ] B1c: Wallet drain on invoice generation (D3 ordering)
+- [x] B1c: Wallet drain on invoice generation (D3 ordering)
   - Acceptance: after invoice commit: wallet → adjustment credits →
     gateway; drains recorded as transactions + ledger legs; invariants
     (`Total == Subtotal+Tax`, Σ lines) untouched; zero-balance no-op.
   - Verify: invoice tests extended; payment-order test.
   - Files: internal/service/invoice.go, wallet.go(+_test)
 
-- [ ] B1d: Auto-recharge
+- [x] B1d: Auto-recharge
   - Acceptance: balance < threshold triggers top-up via stored method in
     the billing-cycle sweep; no method → notify tenant+customer, no crash.
   - Verify: scheduler test with fake gateway.
   - Files: internal/scheduler/billing_cycle.go, service/wallet.go
 
-- [ ] B1e: Wallet API + OpenAPI + docs
+- [x] B1e: Wallet API + OpenAPI + docs
   - Acceptance: POST/GET /v1/wallets, POST /v1/wallets/{id}/top-up,
     GET /v1/wallets/{id}/transactions; docs page; spec synced.
   - Verify: handler tests; YAML valid.

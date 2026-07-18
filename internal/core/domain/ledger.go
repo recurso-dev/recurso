@@ -147,7 +147,20 @@ const LedgerCodeTDSReceivable uint16 = 10
 // the downgrade reduces the value of supply, so the output tax on the reduced
 // portion comes back down and is credited to the customer along with the net.
 // Distinct code so it stays idempotent per (reference_id, code).
+// NOTE: shares value 10 with LedgerCodeTDSReceivable — benign today because
+// the two post against different reference types (credit note vs invoice),
+// but new codes must not reuse either.
 const LedgerCodeDowngradeTaxReversal uint16 = 10
+
+// LedgerCodeWalletTopUp books money received into a prepaid wallet
+// (Lago-parity B1): DR Cash / CR Customer Credit — the tenant holds the
+// customer's money as a liability until usage consumes it.
+const LedgerCodeWalletTopUp uint16 = 11
+
+// LedgerCodeWalletDrain books wallet balance settling an invoice:
+// DR Customer Credit / CR Customer AR — the stored-value liability shrinks
+// and the customer owes that much less.
+const LedgerCodeWalletDrain uint16 = 12
 
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {

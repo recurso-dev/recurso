@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Prepaid wallets** — money-denominated stored value per
+  customer+currency (`/v1/wallets`, top-ups, transactions, auto-recharge).
+  Invoices drain the wallet FIRST (wallet → credit notes → gateway), with
+  residues consumed oldest-expiring-first so dated promotional credit is
+  spent before it lapses; expired residue is written off by the sweep.
+  Every movement is append-only with balance-after and posts balanced
+  ledger legs (DR Cash / CR Customer Credit on top-up; DR Customer Credit /
+  CR AR on drain). Auto-recharge tops up below-threshold wallets from the
+  saved payment method on the billing-cycle tick.
+
 - **Unattended renewals** — a billing-cycle scheduler claims due,
   locally-billed subscriptions (leased at-most-once claims), generates the
   renewal invoice (flat fee in advance + metered usage in arrears),

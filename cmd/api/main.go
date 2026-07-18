@@ -696,6 +696,13 @@ func main() {
 	mandateDebitScheduler.Start()
 	defer mandateDebitScheduler.Stop()
 
+	// Prepaid wallets (Lago-parity B1): money-denominated balance drained
+	// at invoice time before credit notes and the gateway (D3).
+	walletRepo := db.NewWalletRepository(database)
+	walletService := service.NewWalletService(walletRepo, customerRepo, ledgerService)
+	walletService.SetNotifier(notifier)
+	invoiceService.WalletDrainer = walletService
+
 	// Billing Cycle Scheduler (Lago-parity A1): unattended renewal of
 	// locally-billed subscriptions — invoice (flat + metered), anchor-
 	// preserving period advance, best-effort saved-method payment.
@@ -705,6 +712,7 @@ func main() {
 		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
+	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
 	var billingCycleScheduler *scheduler.BillingCycleScheduler
 	billingCycleInterval := 5 * time.Minute
 	if raw := os.Getenv("BILLING_CYCLE_INTERVAL"); raw != "" {
@@ -718,6 +726,7 @@ func main() {
 	}
 	if billingCycleInterval > 0 {
 		billingCycleScheduler = scheduler.NewBillingCycleScheduler(renewalService, locker, billingCycleInterval)
+		billingCycleScheduler.SetWalletMaintainer(walletService) // credit expiry + auto-recharge (B1)
 		billingCycleScheduler.Start()
 		defer billingCycleScheduler.Stop()
 	} else {
@@ -843,6 +852,7 @@ func main() {
 	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
 	meteringHandler := handler.NewMeteringHandler(meteringService) // Usage-based billing v1
+	walletHandler := handler.NewWalletHandler(walletService)       // Prepaid wallets (B1)
 	// Phase 48: Unified Portal API Handler
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
 	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
@@ -1251,6 +1261,14 @@ func main() {
 		v1.PUT("/plans/:id/charges", meteringHandler.SetPlanCharges)
 		v1.GET("/plans/:id/charges", meteringHandler.GetPlanCharges)
 		v1.GET("/subscriptions/:id/usage-amount", meteringHandler.GetUsageAmount) // live pre-invoice preview
+
+		// Prepaid wallets (Lago-parity B1)
+		v1.POST("/wallets", walletHandler.Create)
+		v1.GET("/wallets/:id", walletHandler.Get)
+		v1.POST("/wallets/:id/top-up", walletHandler.TopUp)
+		v1.GET("/wallets/:id/transactions", walletHandler.ListTransactions)
+		v1.PUT("/wallets/:id/auto-recharge", walletHandler.UpdateAutoRecharge)
+		v1.GET("/customers/:id/wallets", walletHandler.ListForCustomer)
 
 		// Analytics (Cached)
 		analytics := v1.Group("/analytics")

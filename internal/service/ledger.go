@@ -542,6 +542,49 @@ func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID, c
 	return s.postTransfer(ctx, creditAccountID, customerID, amt, 7, referenceID, description)
 }
 
+// RecordWalletTopUp books money received into a prepaid wallet (B1):
+//
+//	Debit:  Cash (Asset)                — money in
+//	Credit: Customer Credit (Liability) — stored value owed to the customer
+//
+// referenceID is the wallet transaction. Promotional (unpaid) top-ups must
+// use RecordAdjustmentCreditIssued instead — no cash moved.
+func (s *LedgerService) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("wallet top-up %s: %w", walletTxID, err)
+	}
+	cashAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postTransfer(ctx, cashAccountID, creditAccountID, amt, domain.LedgerCodeWalletTopUp, walletTxID, description)
+}
+
+// RecordWalletDrain books wallet balance settling an invoice (B1):
+//
+//	Debit:  Customer Credit (Liability) — stored value consumed
+//	Credit: Customer AR (Asset)         — the customer owes that much less
+//
+// referenceID is the settled invoice.
+func (s *LedgerService) RecordWalletDrain(ctx context.Context, tenantID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("wallet drain %s: %w", invoiceID, err)
+	}
+	s.ensureCustomerAR(ctx, tenantID, customerID)
+	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	// AR is a per-customer sub-ledger whose account id is the customer id.
+	return s.postTransfer(ctx, creditAccountID, customerID, amt, domain.LedgerCodeWalletDrain, invoiceID, description)
+}
+
 // postTransfer writes a single ledger transfer (PG always; TigerBeetle when
 // connected), surfacing PG failures for retry/reconciliation.
 func (s *LedgerService) postTransfer(ctx context.Context, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {

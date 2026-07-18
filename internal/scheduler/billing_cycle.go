@@ -25,14 +25,26 @@ type renewalProcessor interface {
 	ProcessDueRenewals(ctx context.Context) (int, error)
 }
 
+// walletMaintainer is the slice of service.WalletService the sweep runs:
+// expiring dated promotional credit and topping up below-threshold wallets
+// (Lago-parity B1). nil-safe.
+type walletMaintainer interface {
+	ExpireOverdueCredits(ctx context.Context) (int, error)
+	ProcessAutoRecharges(ctx context.Context) (int, error)
+}
+
 type BillingCycleScheduler struct {
 	renewals renewalProcessor
+	wallets  walletMaintainer // nil-safe
 	locker   port.Locker
 	interval time.Duration
 	ticker   *time.Ticker
 	done     chan bool
 	stopOnce sync.Once
 }
+
+// SetWalletMaintainer wires wallet expiry + auto-recharge into the sweep.
+func (s *BillingCycleScheduler) SetWalletMaintainer(w walletMaintainer) { s.wallets = w }
 
 func NewBillingCycleScheduler(renewals renewalProcessor, locker port.Locker, interval time.Duration) *BillingCycleScheduler {
 	return &BillingCycleScheduler{
@@ -96,5 +108,21 @@ func (s *BillingCycleScheduler) runRenewals() {
 	}
 	if renewed > 0 {
 		slog.Info("billing cycle sweep complete", "renewed", renewed)
+	}
+
+	// Wallet maintenance rides the same tick: write off expired promotional
+	// credit BEFORE evaluating recharges, so a wallet whose balance was
+	// mostly expired credit tops up in the same sweep.
+	if s.wallets != nil {
+		if expired, err := s.wallets.ExpireOverdueCredits(ctx); err != nil {
+			slog.Error("wallet expiry sweep failed", "error", err)
+		} else if expired > 0 {
+			slog.Info("expired wallet credit written off", "wallets", expired)
+		}
+		if recharged, err := s.wallets.ProcessAutoRecharges(ctx); err != nil {
+			slog.Error("wallet auto-recharge sweep failed", "error", err)
+		} else if recharged > 0 {
+			slog.Info("wallets auto-recharged", "count", recharged)
+		}
 	}
 }

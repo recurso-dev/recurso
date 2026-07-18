@@ -5539,6 +5539,180 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/wallets:
+    post:
+      tags: [Wallets]
+      summary: Create a prepaid wallet
+      description: >-
+        One wallet per customer+currency, holding money-denominated balance
+        (minor units). At invoice time the wallet drains FIRST — before
+        adjustment credit notes and before the payment gateway.
+      operationId: createWallet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [customer_id, currency]
+              properties:
+                customer_id: { type: string, format: uuid }
+                currency: { type: string, minLength: 3, maxLength: 3 }
+                auto_recharge_threshold:
+                  type: [integer, 'null']
+                  format: int64
+                  description: Recharge when balance falls below this (minor units).
+                auto_recharge_amount:
+                  type: [integer, 'null']
+                  format: int64
+                  description: Amount charged to the saved payment method on recharge.
+      responses:
+        "201":
+          description: The created wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Wallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A wallet for this customer and currency already exists.
+
+  /v1/wallets/{id}:
+    get:
+      tags: [Wallets]
+      summary: Fetch a wallet
+      operationId: getWallet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Wallet" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/wallets/{id}/top-up:
+    post:
+      tags: [Wallets]
+      summary: Add balance to a wallet
+      description: >-
+        `manual` records money already received (bank transfer / offline);
+        `promotional` grants credit with no money movement and may carry an
+        `expires_at`. Every top-up posts balanced ledger legs.
+      operationId: topUpWallet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount]
+              properties:
+                amount:
+                  type: integer
+                  format: int64
+                  exclusiveMinimum: 0
+                  description: Minor currency units.
+                source: { type: string, enum: [manual, promotional], default: manual }
+                expires_at:
+                  type: [string, 'null']
+                  format: date-time
+                  description: Promotional top-ups only.
+      responses:
+        "201":
+          description: The recorded top-up transaction
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/WalletTransaction" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/wallets/{id}/transactions:
+    get:
+      tags: [Wallets]
+      summary: Wallet movement history
+      operationId: listWalletTransactions
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Transactions, newest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/WalletTransaction" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/wallets/{id}/auto-recharge:
+    put:
+      tags: [Wallets]
+      summary: Set or clear the auto-recharge rule
+      description: Send both fields to enable, both null to disable.
+      operationId: updateWalletAutoRecharge
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                auto_recharge_threshold: { type: [integer, 'null'], format: int64 }
+                auto_recharge_amount: { type: [integer, 'null'], format: int64 }
+      responses:
+        "200":
+          description: The updated wallet
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/Wallet" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/customers/{id}/wallets:
+    get:
+      tags: [Wallets]
+      summary: A customer's wallets
+      operationId: listCustomerWallets
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The customer's wallets across currencies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Wallet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/customers/{id}/entitlements:
     get:
       tags: [Entitlements]
@@ -6332,6 +6506,37 @@ components:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
         hsn_code: { type: string }
+    Wallet:
+      type: object
+      description: >-
+        Prepaid balance per customer+currency, drained before credit notes
+        and the gateway at invoice time. Amounts are minor units.
+      properties:
+        id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+        currency: { type: string }
+        balance: { type: integer, format: int64 }
+        auto_recharge_threshold: { type: [integer, 'null'], format: int64 }
+        auto_recharge_amount: { type: [integer, 'null'], format: int64 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    WalletTransaction:
+      type: object
+      description: One append-only wallet movement with the balance after it.
+      properties:
+        id: { type: string, format: uuid }
+        wallet_id: { type: string, format: uuid }
+        type: { type: string, enum: [top_up, drain, expiry] }
+        source: { type: string, enum: [manual, promotional, auto_recharge, ''] }
+        amount: { type: integer, format: int64 }
+        remaining:
+          type: [integer, 'null']
+          format: int64
+          description: Undrained residue of a top_up row.
+        balance_after: { type: integer, format: int64 }
+        invoice_id: { type: [string, 'null'], format: uuid }
+        expires_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
     UsageAmount:
       type: object
       description: Live preview of the current period's usage priced as of now.
