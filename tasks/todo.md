@@ -125,7 +125,8 @@ Reference surface: getlago.com integrations + doc.getlago.com. Recurso
 already has: Stripe, Razorpay (Lago lacks it), QuickBooks, Xero, Tally,
 TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
 
-- [ ] D1: Payments — Adyen, GoCardless gateway adapters (port.PaymentGateway)
+- [x] D1: Payments — Adyen + GoCardless adapters shipped EXPERIMENTAL
+      (httptest-verified; sandbox verification founder-gated)
 - [ ] D2: Accounting — NetSuite adapter (accounting sync framework exists)
 - [ ] D3: Tax — Anrok and/or Avalara provider (taxprovider framework exists)
 - [ ] D4: CRM — HubSpot + Salesforce (customer/subscription/invoice sync)

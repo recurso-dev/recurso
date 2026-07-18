@@ -11,6 +11,12 @@ import (
 type SmartRouter struct {
 	Razorpay port.PaymentGateway
 	Stripe   port.PaymentGateway
+	// Extra holds additional gateways by name ("gocardless", "adyen", ...)
+	// reachable only through currency overrides (Track D1).
+	Extra map[string]port.PaymentGateway
+	// currencyOverrides maps UPPER-CASE ISO currency -> gateway name,
+	// consulted before the built-in INR->Razorpay / default->Stripe rule.
+	currencyOverrides map[string]string
 }
 
 func NewSmartRouter(razorpay port.PaymentGateway, stripe port.PaymentGateway) *SmartRouter {
@@ -20,10 +26,59 @@ func NewSmartRouter(razorpay port.PaymentGateway, stripe port.PaymentGateway) *S
 	}
 }
 
+// RegisterGateway makes an extra gateway addressable from currency
+// overrides (Track D1).
+func (r *SmartRouter) RegisterGateway(name string, gw port.PaymentGateway) {
+	if r.Extra == nil {
+		r.Extra = map[string]port.PaymentGateway{}
+	}
+	r.Extra[strings.ToLower(name)] = gw
+}
+
+// SetCurrencyOverrides parses "EUR=gocardless,GBP=gocardless,SGD=adyen"
+// (GATEWAY_CURRENCY_OVERRIDES). Unknown gateway names error at boot rather
+// than misrouting money at charge time.
+func (r *SmartRouter) SetCurrencyOverrides(spec string) error {
+	if strings.TrimSpace(spec) == "" {
+		return nil
+	}
+	overrides := map[string]string{}
+	for _, pair := range strings.Split(spec, ",") {
+		parts := strings.SplitN(strings.TrimSpace(pair), "=", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return fmt.Errorf("invalid GATEWAY_CURRENCY_OVERRIDES entry %q (want CUR=gateway)", pair)
+		}
+		name := strings.ToLower(strings.TrimSpace(parts[1]))
+		if r.resolveByName(name) == nil {
+			return fmt.Errorf("GATEWAY_CURRENCY_OVERRIDES names unconfigured gateway %q", name)
+		}
+		overrides[strings.ToUpper(strings.TrimSpace(parts[0]))] = name
+	}
+	r.currencyOverrides = overrides
+	return nil
+}
+
+func (r *SmartRouter) resolveByName(name string) port.PaymentGateway {
+	switch name {
+	case "razorpay":
+		return r.Razorpay
+	case "stripe":
+		return r.Stripe
+	}
+	return r.Extra[name]
+}
+
 // gatewayFor returns the gateway for a currency, or an error when that
 // gateway was not configured (previously a nil-pointer panic).
 func (r *SmartRouter) gatewayFor(currency string) (port.PaymentGateway, error) {
-	if strings.ToUpper(currency) == "INR" {
+	cur := strings.ToUpper(currency)
+	if name, ok := r.currencyOverrides[cur]; ok {
+		if gw := r.resolveByName(name); gw != nil {
+			return gw, nil
+		}
+		return nil, fmt.Errorf("gateway %q for currency %s not configured", name, cur)
+	}
+	if cur == "INR" {
 		if r.Razorpay == nil {
 			return nil, fmt.Errorf("razorpay gateway not configured for currency %s", currency)
 		}

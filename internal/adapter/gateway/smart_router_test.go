@@ -197,3 +197,44 @@ func TestSmartRouter_VerifyPayment_UnknownPrefix_Error(t *testing.T) {
 		t.Errorf("no gateway should be called for unknown prefix: razorpay=%d stripe=%d", razorpay.verifyCalls, stripe.verifyCalls)
 	}
 }
+
+// --- Currency overrides (Track D1) ---
+
+func TestSmartRouterCurrencyOverrides(t *testing.T) {
+	razorpay := NewMockGateway()
+	stripe := NewMockGateway()
+	gc := NewMockGateway()
+	r := NewSmartRouter(razorpay, stripe)
+	r.RegisterGateway("gocardless", gc)
+
+	if err := r.SetCurrencyOverrides("EUR=gocardless, GBP=gocardless"); err != nil {
+		t.Fatalf("SetCurrencyOverrides: %v", err)
+	}
+
+	gw, err := r.gatewayFor("eur")
+	if err != nil || gw != port.PaymentGateway(gc) {
+		t.Fatalf("EUR should route to gocardless, got %v (%v)", gw, err)
+	}
+	// Non-overridden currencies keep the existing rule.
+	gw, _ = r.gatewayFor("INR")
+	if gw != port.PaymentGateway(razorpay) {
+		t.Fatal("INR must still route to razorpay")
+	}
+	gw, _ = r.gatewayFor("USD")
+	if gw != port.PaymentGateway(stripe) {
+		t.Fatal("USD must still default to stripe")
+	}
+}
+
+func TestSmartRouterOverridesRejectUnknownGateway(t *testing.T) {
+	r := NewSmartRouter(NewMockGateway(), NewMockGateway())
+	if err := r.SetCurrencyOverrides("EUR=gocardless"); err == nil {
+		t.Fatal("naming an unconfigured gateway must fail at boot, not misroute at charge time")
+	}
+	if err := r.SetCurrencyOverrides("EUR"); err == nil {
+		t.Fatal("malformed entries must be rejected")
+	}
+	if err := r.SetCurrencyOverrides(""); err != nil {
+		t.Fatalf("empty spec is valid: %v", err)
+	}
+}

@@ -211,6 +211,22 @@ func main() {
 	// Smart Router routes based on Currency (INR -> Razorpay, USD -> Stripe)
 	paymentGateway := gateway.NewSmartRouter(razorpayGateway, stripeGateway)
 
+	// Track D1 (EXPERIMENTAL until sandbox-verified): GoCardless bank debit
+	// and Adyen card processing, reachable via GATEWAY_CURRENCY_OVERRIDES
+	// (e.g. "EUR=gocardless,SGD=adyen").
+	if token := os.Getenv("GOCARDLESS_ACCESS_TOKEN"); token != "" {
+		paymentGateway.RegisterGateway("gocardless", gateway.NewGoCardlessGateway(token, os.Getenv("GOCARDLESS_ENV")))
+		log.Println("GoCardless gateway configured (EXPERIMENTAL — sandbox verification pending)")
+	}
+	if key := os.Getenv("ADYEN_API_KEY"); key != "" {
+		paymentGateway.RegisterGateway("adyen", gateway.NewAdyenGateway(key,
+			os.Getenv("ADYEN_MERCHANT_ACCOUNT"), os.Getenv("ADYEN_ENV"), os.Getenv("ADYEN_LIVE_URL_PREFIX")))
+		log.Println("Adyen gateway configured (EXPERIMENTAL — sandbox verification pending)")
+	}
+	if err := paymentGateway.SetCurrencyOverrides(os.Getenv("GATEWAY_CURRENCY_OVERRIDES")); err != nil {
+		log.Fatalf("Invalid GATEWAY_CURRENCY_OVERRIDES: %v", err)
+	}
+
 	// Card Vault — uses Stripe if key exists, else Mock for dev
 	var cardVault port.CardVault
 	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {

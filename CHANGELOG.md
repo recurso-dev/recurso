@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **GoCardless + Adyen gateways (EXPERIMENTAL)** — bank-debit rails
+  (SEPA/BACS via mandate-first billing requests) and global card
+  processing (Checkout Sessions, off-session stored-method charges), both
+  behind `GATEWAY_CURRENCY_OVERRIDES` (e.g. `EUR=gocardless,SGD=adyen`)
+  with the existing INR→Razorpay / default→Stripe routing untouched.
+  httptest-verified request shapes and idempotency keys; sandbox
+  verification pending (founder-gated).
+
 - **Append-only audit trail** — every successful config-grade mutation
   (plans, metrics, charges, coupons, webhooks, wallets, alerts, team,
   settings, ...) is recorded via middleware with actor (dashboard user or
