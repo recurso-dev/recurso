@@ -143,5 +143,4 @@ TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
       Node/Python/Go (next minor versions)
 - [ ] S3: Website — feature sections for usage billing, wallets,
       commitments, alerts; refresh comparison vs Lago
-- [ ] S4: Dashboard — plan-charges editor, Wallets page, usage-alerts
       config, AuditLog page (with C2)

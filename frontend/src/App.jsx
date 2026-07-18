@@ -17,6 +17,9 @@ import CreateSubscription from './pages/CreateSubscription'
 import Invoices from './pages/Invoices'
 import Products from './pages/Products'
 import Coupons from './pages/Coupons'
+import Metering from './pages/Metering'
+import Wallets from './pages/Wallets'
+import AuditLog from './pages/AuditLog'
 import CreateCoupon from './pages/CreateCoupon'
 import Usage from './pages/Usage'
 import Developers from './pages/Developers'
@@ -116,6 +119,9 @@ function App() {
                             <Route path="/usage" element={<Usage />} />
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/ledger" element={<Ledger />} />
+                            <Route path="/metering" element={<Metering />} />
+                            <Route path="/wallets" element={<Wallets />} />
+                            <Route path="/audit-log" element={<AuditLog />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
                             <Route path="/finance/trial-balance" element={<TrialBalance />} />
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />

@@ -192,6 +192,31 @@ export const endpoints = {
   getIRPConfig: () => api.get('/settings/irp'),
   updateIRPConfig: (data) => api.put('/settings/irp', data),
   testIRPConfig: () => api.post('/settings/irp/test'),
+
+  // Usage-based billing (metering)
+  getBillableMetrics: () => api.get('/billable-metrics'),
+  createBillableMetric: (data) => api.post('/billable-metrics', data),
+  deleteBillableMetric: (id) => api.delete(`/billable-metrics/${id}`),
+  getPlanCharges: (planId) => api.get(`/plans/${planId}/charges`),
+  setPlanCharges: (planId, charges) => api.put(`/plans/${planId}/charges`, charges),
+  getUsageAmount: (subId) => api.get(`/subscriptions/${subId}/usage-amount`),
+
+  // Prepaid wallets
+  getWallets: (params) => api.get('/wallets', { params }),
+  createWallet: (data) => api.post('/wallets', data),
+  getWallet: (id) => api.get(`/wallets/${id}`),
+  topUpWallet: (id, data) => api.post(`/wallets/${id}/top-up`, data),
+  getWalletTransactions: (id, params) => api.get(`/wallets/${id}/transactions`, { params }),
+  setWalletAutoRecharge: (id, data) => api.put(`/wallets/${id}/auto-recharge`, data),
+
+  // Usage alerts
+  getUsageAlerts: (params) => api.get('/usage-alerts', { params }),
+  createUsageAlert: (data) => api.post('/usage-alerts', data),
+  deleteUsageAlert: (id) => api.delete(`/usage-alerts/${id}`),
+
+  // Audit trail
+  getAuditLogs: (params) => api.get('/audit-logs', { params }),
 };
+
 
 export default api;
