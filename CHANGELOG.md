@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unattended renewals** — a billing-cycle scheduler claims due,
+  locally-billed subscriptions (leased at-most-once claims), generates the
+  renewal invoice (flat fee in advance + metered usage in arrears),
+  advances the period anchor-preservingly, and best-effort charges the
+  saved payment method; declines flow to dunning. `BILLING_CYCLE_INTERVAL`
+  configures the tick (default `5m`, `0` disables). `cancel_at_period_end`
+  subscriptions get their final usage rated, then cancel.
+- **Metered mandate debits** — UPI-mandate debit invoices now carry the
+  subscription's rated usage lines, and the subscription billing period
+  advances with each cycle (it previously never advanced for mandate
+  subscriptions, leaving current-period usage reporting stale). Usage that
+  would exceed the mandate's authorized ceiling is billed on a separate
+  open invoice instead of over-charging.
+- **SDK metering methods** — Node `recurso@1.3.0`, Go `v1.1.0`, and Python
+  `1.2.0` expose billable metrics, plan charges, the usage-amount preview,
+  and event properties.
+
 - **Usage-based billing v1** (`docs/spec_usage_billing.md`) — the metering
   engine: **billable metrics** (`POST/GET/PUT/DELETE /v1/billable-metrics`)
   aggregate usage events by `count`, `sum`, `max`, or `unique` (distinct

@@ -4,7 +4,7 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
 
 ## Track A — honest flags
 
-- [ ] A1a: Billing-cycle scheduler with at-most-once claims
+- [x] A1a: Billing-cycle scheduler with at-most-once claims
   - Acceptance: due ACTIVE non-mandate subscriptions get a renewal invoice
     (flat + metered) and an anchor-preserving period advance; concurrent
     ticks cannot double-process; `cancel_at_period_end` subs get final
@@ -13,32 +13,32 @@ Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
     concurrency claim test; full suite green.
   - Files: internal/scheduler/billing_cycle.go(+_test), cmd/api/main.go
 
-- [ ] A1b: Payment attempt on scheduler-generated invoices
+- [x] A1b: Payment attempt on scheduler-generated invoices
   - Acceptance: invoice charged via stored gateway method when present;
     failure leaves invoice open for dunning (no crash, no retry storm).
   - Verify: scheduler test with failing/succeeding fake gateway.
   - Files: internal/scheduler/billing_cycle.go, internal/service (reuse
     existing charge path)
 
-- [ ] A2: Metered lines on mandate-debit invoices
+- [x] A2: Metered lines on mandate-debit invoices
   - Acceptance: mandate debit invoice includes rated usage lines; retry of
     the same cycle produces no duplicate lines (cycle-key + rating claim).
   - Verify: `go test ./internal/service/ -run Mandate` extended cases.
   - Files: internal/service/mandate.go(+_test)
 
-- [ ] A3a: Node SDK metering methods (recurso@1.3.0)
+- [x] A3a: Node SDK metering methods (recurso@1.3.0)
   - Acceptance: billableMetrics CRUD, plans.setCharges/getCharges,
     subscriptions.usageAmount, usage.record properties — typed, tested.
   - Verify: `npm run typecheck && npm test` in recurso-node.
   - Files: ../recurso-node/src/*, test/*, package.json
 
-- [ ] A3b: Python SDK regen + release prep (recurso 1.2.0)
+- [x] A3b: Python SDK regen + release prep (recurso 1.2.0)
   - Acceptance: regenerated from synced OpenAPI; new endpoint modules
     importable; version bumped.
   - Verify: pytest in recurso-python.
   - Files: ../recurso-python/*
 
-- [ ] A3c: Go SDK metering methods (v1.1.0)
+- [x] A3c: Go SDK metering methods (v1.1.0)
   - Acceptance: same surface, stdlib-only, APIError semantics kept.
   - Verify: `go test ./...` in recurso-go; tag prepared.
   - Files: ../recurso-go/*
