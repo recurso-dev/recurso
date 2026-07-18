@@ -50,8 +50,8 @@ func TestClaimDueForRenewal_ExclusiveAndFiltered_Postgres(t *testing.T) {
 			end = "NOW() + INTERVAL '10 days'"
 		}
 		mustExec(t, conn, `INSERT INTO subscriptions
-			(id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, razorpay_subscription_id, stripe_subscription_id, mandate_id, created_at, updated_at)
-			VALUES ($1,$2,$3,$4,$5, NOW() - INTERVAL '1 month', `+end+`, $6, $7, $8, NOW(), NOW())`,
+			(id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, razorpay_subscription_id, stripe_subscription_id, mandate_id, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,$5, NOW() - INTERVAL '1 month', `+end+`, NOW() - INTERVAL '1 month', $6, $7, $8, NOW(), NOW())`,
 			id, tenantID, customerID, planID, status, razorpayID, stripeID, mandate)
 		return id
 	}
