@@ -31,6 +31,9 @@ type recordEventRequest struct {
 	CustomerID     string `json:"customer_id" binding:"required"`
 	Dimension      string `json:"dimension" binding:"required"`
 	Quantity       int64  `json:"quantity" binding:"required"`
+	// Properties are optional free-form attributes; the unique aggregation
+	// counts distinct values of one property (usage-based billing v1).
+	Properties map[string]string `json:"properties"`
 }
 
 func (h *UsageHandler) RecordEvent(c *gin.Context) {
@@ -64,6 +67,7 @@ func (h *UsageHandler) RecordEvent(c *gin.Context) {
 		Dimension:      req.Dimension,
 		Quantity:       req.Quantity,
 		Timestamp:      time.Now().UTC(),
+		Properties:     req.Properties,
 	}
 
 	if err := h.svc.RecordEvent(ctx, tenantID, event); err != nil {

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -19,17 +20,69 @@ func NewUsageRepository(db *sql.DB) *UsageRepository {
 }
 
 func (r *UsageRepository) RecordEvent(ctx context.Context, event *domain.UsageEvent) error {
+	// properties is NULL (not '{}') for property-less events so the column
+	// stays cheap for the overwhelmingly common bare event.
+	var props any
+	if len(event.Properties) > 0 {
+		b, err := json.Marshal(event.Properties)
+		if err != nil {
+			return fmt.Errorf("failed to encode event properties: %w", err)
+		}
+		props = b
+	}
 	query := `
-		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp,
+		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert usage event: %w", err)
 	}
 	return nil
+}
+
+// AggregateForMetric reduces the subscription's events for the metric's
+// dimension (== metric.Code) inside [start, end) to one quantity:
+//
+//	count:  number of events
+//	sum:    Σ quantity
+//	max:    largest single-event quantity
+//	unique: COUNT(DISTINCT properties->>field_name), NULL-property events excluded
+//
+// The aggregation SQL is selected from a fixed set (never interpolated from
+// caller input); metric.AggregationType must be pre-validated by the service.
+func (r *UsageRepository) AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error) {
+	var agg string
+	args := []interface{}{subscriptionID, metric.Code, start, end}
+	switch metric.AggregationType {
+	case domain.AggregationCount:
+		agg = `COUNT(*)`
+	case domain.AggregationSum:
+		agg = `COALESCE(SUM(quantity), 0)`
+	case domain.AggregationMax:
+		agg = `COALESCE(MAX(quantity), 0)`
+	case domain.AggregationUnique:
+		agg = `COUNT(DISTINCT properties->>$5)`
+		args = append(args, metric.FieldName)
+	default:
+		return 0, fmt.Errorf("unsupported aggregation type %q", metric.AggregationType)
+	}
+
+	query := `
+		SELECT ` + agg + `
+		FROM usage_events
+		WHERE subscription_id = $1
+		AND dimension = $2
+		AND timestamp >= $3
+		AND timestamp < $4
+	`
+	var total int64
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to aggregate usage for metric %q: %w", metric.Code, err)
+	}
+	return total, nil
 }
 
 // GetUsageForPeriod aggregates usage (SUM) for billing.

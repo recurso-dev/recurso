@@ -1,6 +1,6 @@
 # Spec: Usage-Based Billing (Billable Metrics + Charge Models + Rating)
 
-> **Status: DRAFT — awaiting founder decisions (D1–D6 below)**
+> **Status: APPROVED (2026-07-18) — founder accepted recommendations D1–D6 as written**
 >
 > Closes the competitive gap vs. Lago identified 2026-07-18: Recurso ingests
 > usage events but cannot price them. This spec adds billable metrics with

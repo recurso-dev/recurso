@@ -31,6 +31,12 @@ type InvoiceService struct {
 	// freshly-created invoice (ENG-153). nil-safe: when unset, invoices bill the
 	// full amount and no credit is consumed.
 	CreditApplier creditApplier
+	// Usage-based billing v1 (spec_usage_billing.md): plan charges are rated
+	// into metered invoice lines at period close. All three are nil-safe —
+	// when unset, invoices are byte-identical to pre-metering behaviour.
+	ChargeRepo port.ChargeRepository
+	UsageRepo  port.UsageRepository
+	RatingRepo port.UsageRatingRepository
 }
 
 // creditApplier applies open adjustment credit-note balances to an invoice,
@@ -212,6 +218,26 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		}
 	}
 
+	// Usage-based billing v1: rate the subscription's plan charges over the
+	// elapsed billing period into metered lines (arrears, D3). The window is
+	// the subscription's current period AT GENERATION TIME — the cycle
+	// generator runs at period end, before the period advances. Each line
+	// flows through newInvoiceLine and the same per-line tax resolution, so
+	// the Σ-line == subtotal and GST invariants hold by construction.
+	var ratings []*domain.UsageRating
+	if s.ChargeRepo != nil && s.UsageRepo != nil {
+		metered := s.meteredLines(ctx, sub, customer, plan, price.Currency, invID)
+		for _, ml := range metered {
+			subtotal += ml.item.Amount
+			taxTotal += ml.tax.Total
+			igst += ml.tax.IGST
+			cgst += ml.tax.CGST
+			sgst += ml.tax.SGST
+			lines = append(lines, ml.item)
+			ratings = append(ratings, ml.rating)
+		}
+	}
+
 	total := subtotal + taxTotal
 
 	// 4. Determine Payment Terms & Due Date (P15)
@@ -286,7 +312,218 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		_ = s.UnbilledChargeRepo.MarkAsInvoiced(ids)
 	}
 
+	// Claim the rated usage windows on the now-committed invoice. A claim
+	// that conflicts means another generation billed the same window
+	// concurrently — loud alarm, since this invoice then double-bills it.
+	// (The pre-check in meteredLines makes the plain retry path skip cleanly;
+	// this is the last-resort race detector.)
+	if s.RatingRepo != nil {
+		for _, rating := range ratings {
+			claimed, err := s.RatingRepo.Create(ctx, rating)
+			if err != nil {
+				slog.Error("failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
+			} else if !claimed {
+				slog.Error("usage window was rated concurrently — possible double bill",
+					"invoice_id", inv.ID, "charge_id", rating.ChargeID, "period_start", rating.PeriodStart)
+			}
+		}
+	}
+
 	return inv, nil
+}
+
+// GenerateFinalUsageInvoice bills the metered charges of a just-canceled
+// subscription over the partial elapsed window [CurrentPeriodStart, endedAt)
+// — the flat fee was already billed in advance at period start; only usage
+// is outstanding (spec_usage_billing.md, final invoice). Returns (nil, nil)
+// when metering is not wired or the window rates to no lines. The rating
+// claim on period_start also blocks any later full-period rating of the
+// same window, so a cancel-then-regenerate cannot double-bill.
+func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *domain.Subscription, endedAt time.Time) (*domain.Invoice, error) {
+	if s.ChargeRepo == nil || s.UsageRepo == nil {
+		return nil, nil
+	}
+
+	plan, err := s.PlanRepo.GetByID(ctx, sub.PlanID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get plan: %w", err)
+	}
+	customer, err := s.CustomerRepo.GetByID(ctx, sub.CustomerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get customer: %w", err)
+	}
+	if len(plan.Prices) == 0 {
+		return nil, fmt.Errorf("plan has no prices")
+	}
+	price := plan.Prices[0]
+
+	invID := uuid.New()
+
+	// Rate over the truncated window by presenting a copy whose period end
+	// is the cancellation time.
+	windowSub := *sub
+	windowSub.CurrentPeriodEnd = endedAt
+	metered := s.meteredLines(ctx, &windowSub, customer, plan, price.Currency, invID)
+	if len(metered) == 0 {
+		return nil, nil
+	}
+
+	var subtotal, taxTotal, igst, cgst, sgst int64
+	lines := make([]domain.InvoiceItem, 0, len(metered))
+	ratings := make([]*domain.UsageRating, 0, len(metered))
+	for _, ml := range metered {
+		subtotal += ml.item.Amount
+		taxTotal += ml.tax.Total
+		igst += ml.tax.IGST
+		cgst += ml.tax.CGST
+		sgst += ml.tax.SGST
+		lines = append(lines, ml.item)
+		ratings = append(ratings, ml.rating)
+	}
+
+	now := time.Now()
+	terms := sub.PaymentTerms
+	if terms == "" {
+		terms = "net0"
+	}
+	inv := &domain.Invoice{
+		ID:             invID,
+		TenantID:       sub.TenantID,
+		SubscriptionID: &sub.ID,
+		CustomerID:     sub.CustomerID,
+		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
+		BillingReason:  domain.BillingReasonSubscriptionCycle,
+		Status:         domain.InvoiceStatusOpen,
+		Currency:       price.Currency,
+		Subtotal:       subtotal,
+		TaxAmount:      taxTotal,
+		Total:          subtotal + taxTotal,
+		IGSTAmount:     igst,
+		CGSTAmount:     cgst,
+		SGSTAmount:     sgst,
+		LineItems:      lines,
+		CreatedAt:      now,
+		DueDate:        domain.CalculateDueDate(now, terms),
+		PaymentTerms:   terms,
+	}
+
+	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
+		return nil, fmt.Errorf("failed to create final usage invoice: %w", err)
+	}
+
+	s.generateEInvoiceAfterCommit(ctx, inv, customer)
+
+	if s.RatingRepo != nil {
+		for _, rating := range ratings {
+			claimed, err := s.RatingRepo.Create(ctx, rating)
+			if err != nil {
+				slog.Error("failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
+			} else if !claimed {
+				slog.Error("usage window was rated concurrently — possible double bill",
+					"invoice_id", inv.ID, "charge_id", rating.ChargeID, "period_start", rating.PeriodStart)
+			}
+		}
+	}
+	return inv, nil
+}
+
+// meteredLine is one rated plan charge: the invoice line, the per-line tax
+// already summed into the invoice totals by the caller, and the rating
+// claim to persist after the invoice commits.
+type meteredLine struct {
+	item   domain.InvoiceItem
+	tax    InvoiceTax
+	rating *domain.UsageRating
+}
+
+// meteredLines aggregates and prices every plan charge for the elapsed
+// window [sub.CurrentPeriodStart, sub.CurrentPeriodEnd). Per charge:
+//
+//   - already-rated windows are skipped (idempotent retry),
+//   - zero usage emits no line (and no claim, so late-arriving events for
+//     the window can still bill on a legitimate later generation),
+//   - a missing currency entry or rating error skips the charge with a
+//     warning, mirroring how currency-mismatched add-ons are handled.
+//
+// The line carries Quantity 1 with the usage count in the description:
+// sub-minor-unit rates (₹0.0035/call) have no representable int64 unit
+// price, and quantity 1 × unitAmount == amount keeps the line-math
+// invariant every existing renderer assumes.
+func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscription, customer *domain.Customer, plan *domain.Plan, currency string, invID uuid.UUID) []meteredLine {
+	charges, err := s.ChargeRepo.ListByPlan(ctx, sub.TenantID, sub.PlanID)
+	if err != nil {
+		slog.Warn("skipping metered lines: charge list failed", "error", err, "subscription_id", sub.ID)
+		return nil
+	}
+
+	periodStart, periodEnd := sub.CurrentPeriodStart, sub.CurrentPeriodEnd
+	cur := strings.ToUpper(currency)
+	now := time.Now()
+
+	var out []meteredLine
+	for _, ch := range charges {
+		if ch.Metric == nil {
+			continue
+		}
+		if s.RatingRepo != nil {
+			rated, err := s.RatingRepo.Exists(ctx, sub.ID, ch.ID, periodStart)
+			if err != nil {
+				slog.Warn("skipping metered charge: rating check failed", "error", err, "charge_id", ch.ID)
+				continue
+			}
+			if rated {
+				continue // window already billed (retried generation)
+			}
+		}
+
+		amounts, ok := ch.Amounts[cur]
+		if !ok {
+			slog.Warn("skipping metered charge without pricing for invoice currency",
+				"charge_id", ch.ID, "metric", ch.Metric.Code, "invoice_currency", cur)
+			continue
+		}
+
+		qty, err := s.UsageRepo.AggregateForMetric(ctx, sub.ID, *ch.Metric, periodStart, periodEnd)
+		if err != nil {
+			slog.Warn("skipping metered charge: aggregation failed", "error", err, "metric", ch.Metric.Code)
+			continue
+		}
+		if qty == 0 {
+			continue
+		}
+
+		amount, err := RateCharge(ch.ChargeModel, amounts, qty)
+		if err != nil {
+			slog.Warn("skipping metered charge: rating failed", "error", err, "metric", ch.Metric.Code)
+			continue
+		}
+
+		hsn := ch.HSNCode
+		if hsn == "" {
+			hsn = plan.HSNCode
+		}
+		tax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, currency, amount, hsn)
+		desc := fmt.Sprintf("%s — %d × usage (%s to %s)",
+			ch.Metric.Name, qty, periodStart.Format("2 Jan 2006"), periodEnd.Format("2 Jan 2006"))
+
+		out = append(out, meteredLine{
+			item: newInvoiceLine(invID, desc, tax.HSN, 1, amount, amount, tax, time.Time{}),
+			tax:  tax,
+			rating: &domain.UsageRating{
+				ID:             uuid.New(),
+				TenantID:       sub.TenantID,
+				SubscriptionID: sub.ID,
+				ChargeID:       ch.ID,
+				PeriodStart:    periodStart,
+				PeriodEnd:      periodEnd,
+				InvoiceID:      invID,
+				Quantity:       qty,
+				Amount:         amount,
+				CreatedAt:      now,
+			},
+		})
+	}
+	return out
 }
 
 // GenerateAdvanceInvoice generates an invoice for N future periods immediately.

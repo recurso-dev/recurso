@@ -62,7 +62,14 @@ type SubscriptionService struct {
 	recoveryRecorder    PaymentRecoveryRecorder
 	addonRepo           port.SubscriptionAddonRepository // Multi-product catalog v1; nil-safe (add-ons disabled)
 	telemetry           *telemetry.Client                // nil-safe; only set when TELEMETRY_OPTIN=true
+	finalUsageInvoicer  finalUsageInvoicer               // Usage-based billing v1: bill the partial window on immediate cancel; nil-safe
 	logger              *slog.Logger
+}
+
+// finalUsageInvoicer bills a canceled subscription's metered usage for the
+// partial elapsed window. Satisfied by *InvoiceService.
+type finalUsageInvoicer interface {
+	GenerateFinalUsageInvoice(ctx context.Context, sub *domain.Subscription, endedAt time.Time) (*domain.Invoice, error)
 }
 
 func NewSubscriptionService(
@@ -165,6 +172,10 @@ func (s *SubscriptionService) SetRecoveryRecorder(rr PaymentRecoveryRecorder) {
 
 // SetTelemetry injects the opt-in anonymous telemetry client after construction.
 func (s *SubscriptionService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
+
+// SetFinalUsageInvoicer wires the metered final invoice on immediate cancel
+// (usage-based billing v1); nil-safe when unset.
+func (s *SubscriptionService) SetFinalUsageInvoicer(f finalUsageInvoicer) { s.finalUsageInvoicer = f }
 
 // SetAddonRepository injects the subscription add-on repository after
 // construction (Multi-product catalog v1). Left nil, the add-on service
@@ -693,6 +704,21 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 			if err := s.gateway.CancelSubscription(ctx, sub.StripeSubscriptionID); err != nil {
 				s.logger.Error("failed to cancel subscription on payment gateway", "error", err, "gateway", "stripe", "subscription_id", sub.StripeSubscriptionID)
 			}
+		}
+	}
+
+	// Usage-based billing v1: bill the metered usage of the partial elapsed
+	// window on immediate cancel — the flat fee was paid in advance, but the
+	// usage since period start would otherwise never be invoiced. Best-effort:
+	// a failure logs loudly and leaves the window unclaimed for a manual rerun.
+	// Cancel-at-period-end needs nothing here: the normal cycle generator
+	// rates the full period when it closes.
+	if immediately && s.finalUsageInvoicer != nil {
+		if finalInv, err := s.finalUsageInvoicer.GenerateFinalUsageInvoice(ctx, sub, now); err != nil {
+			s.logger.Error("final usage invoice on cancel failed", "error", err, "subscription_id", sub.ID)
+		} else if finalInv != nil {
+			s.logger.Info("final usage invoice generated on cancel",
+				"subscription_id", sub.ID, "invoice_id", finalInv.ID, "total", finalInv.Total)
 		}
 	}
 

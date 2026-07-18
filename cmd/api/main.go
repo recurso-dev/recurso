@@ -305,9 +305,19 @@ func main() {
 	// 4. Initialize Core Services (Invoice)
 	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter, taxResolver) // P15, P25
 
+	// Usage-based billing v1 (spec_usage_billing.md): billable metrics,
+	// plan charges, and rating of usage into metered invoice lines.
+	billableMetricRepo := db.NewBillableMetricRepository(database)
+	chargeRepo := db.NewChargeRepository(database)
+	usageRatingRepo := db.NewUsageRatingRepository(database)
+	invoiceService.ChargeRepo = chargeRepo
+	invoiceService.UsageRepo = usageRepo
+	invoiceService.RatingRepo = usageRatingRepo
+
 	catalogService := service.NewCatalogService(planRepo)
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
 	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
+	meteringService := service.NewMeteringService(billableMetricRepo, chargeRepo, planRepo, subscriptionRepo, usageRepo)
 	customerService := service.NewCustomerService(customerRepo)
 	tenantService := service.NewTenantService(tenantRepo) // P8 Service
 
@@ -358,6 +368,7 @@ func main() {
 	invoiceService.EInvoiceService = einvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
+	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
 	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
 	subscriptionService.SetCreditNoteRepo(creditNoteRepo)
 	// Apply account credit to proration-upgrade & trial-conversion charge invoices (ENG-154).
@@ -797,6 +808,7 @@ func main() {
 	})
 	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
 	usageHandler := handler.NewUsageHandler(usageService)
+	meteringHandler := handler.NewMeteringHandler(meteringService) // Usage-based billing v1
 	// Phase 48: Unified Portal API Handler
 	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
 	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
@@ -1195,6 +1207,16 @@ func main() {
 		v1.GET("/usage", usageHandler.QueryUsage)                             // time-windowed buckets
 		v1.GET("/usage/dimensions", usageHandler.ListDimensions)              // dimension catalog
 		v1.GET("/subscriptions/:id/usage", usageHandler.GetSubscriptionUsage) // current period + lifetime
+
+		// Usage-based billing v1 (spec_usage_billing.md)
+		v1.POST("/billable-metrics", meteringHandler.CreateMetric)
+		v1.GET("/billable-metrics", meteringHandler.ListMetrics)
+		v1.GET("/billable-metrics/:id", meteringHandler.GetMetric)
+		v1.PUT("/billable-metrics/:id", meteringHandler.UpdateMetric)
+		v1.DELETE("/billable-metrics/:id", meteringHandler.DeleteMetric)
+		v1.PUT("/plans/:id/charges", meteringHandler.SetPlanCharges)
+		v1.GET("/plans/:id/charges", meteringHandler.GetPlanCharges)
+		v1.GET("/subscriptions/:id/usage-amount", meteringHandler.GetUsageAmount) // live pre-invoice preview
 
 		// Analytics (Cached)
 		analytics := v1.Group("/analytics")

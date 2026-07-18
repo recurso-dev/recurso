@@ -1249,6 +1249,13 @@ paths:
                 quantity:
                   type: integer
                   format: int64
+                properties:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: >-
+                    Optional free-form attributes (max 20; keys ≤100 chars,
+                    values ≤255). The `unique` billable-metric aggregation
+                    counts distinct values of one property.
       responses:
         '201':
           description: Event recorded.
@@ -5355,6 +5362,183 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/billable-metrics:
+    post:
+      tags: [Metering]
+      summary: Create a billable metric
+      description: >-
+        A metric is a tenant-defined meter over usage events; its `code`
+        doubles as the event `dimension` it aggregates. Aggregations:
+        `count`, `sum`, `max`, `unique` (distinct values of the event
+        property named by `field_name`).
+      operationId: createBillableMetric
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BillableMetricInput" }
+      responses:
+        "201":
+          description: The created metric
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/BillableMetric" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: A metric with this code already exists.
+    get:
+      tags: [Metering]
+      summary: List billable metrics
+      operationId: listBillableMetrics
+      responses:
+        "200":
+          description: The tenant's metrics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/BillableMetric" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/billable-metrics/{id}:
+    get:
+      tags: [Metering]
+      summary: Fetch a billable metric
+      operationId: getBillableMetric
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The metric
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/BillableMetric" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Metering]
+      summary: Update a billable metric
+      description: "`code` is immutable — it is the metric's identity link to recorded events."
+      operationId: updateBillableMetric
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BillableMetricInput" }
+      responses:
+        "200":
+          description: The updated metric
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/BillableMetric" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      tags: [Metering]
+      summary: Delete a billable metric
+      operationId: deleteBillableMetric
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Deleted. }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: The metric is referenced by a plan charge.
+
+  /v1/plans/{id}/charges:
+    get:
+      tags: [Metering]
+      summary: List a plan's usage charges
+      operationId: getPlanCharges
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The plan's charges with metrics joined
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Charge" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Metering]
+      summary: Replace a plan's usage charge set
+      description: >-
+        Full replacement (like entitlements) — charges absent from the
+        request are removed. Flat subscription fees stay on the plan's
+        prices; a plan holding both is hybrid: flat fee billed in advance,
+        usage billed in arrears at period close.
+      operationId: setPlanCharges
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items: { $ref: "#/components/schemas/ChargeInput" }
+      responses:
+        "200":
+          description: The stored charge set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items: { $ref: "#/components/schemas/Charge" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/subscriptions/{id}/usage-amount:
+    get:
+      tags: [Metering]
+      summary: Live usage-amount preview
+      description: >-
+        What the subscription's current-period usage would rate to if
+        invoiced now — per charge, aggregated over
+        [current_period_start, now) and priced with the plan's charge
+        models. Amounts are minor currency units.
+      operationId: getSubscriptionUsageAmount
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Per-charge quantities and priced amounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/UsageAmount" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/customers/{id}/entitlements:
     get:
       tags: [Entitlements]
@@ -6059,6 +6243,118 @@ components:
         kind: { type: string, enum: [boolean, limit] }
         bool_value: { type: boolean }
         limit_value: { type: integer, format: int64 }
+    BillableMetric:
+      type: object
+      description: >-
+        A tenant-defined meter over usage events; `code` equals the event
+        `dimension` it aggregates and is unique per tenant.
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: string }
+        aggregation_type: { type: string, enum: [count, sum, max, unique] }
+        field_name:
+          type: string
+          description: Event property counted by the `unique` aggregation.
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    BillableMetricInput:
+      type: object
+      required: [name, code, aggregation_type]
+      properties:
+        name: { type: string }
+        code:
+          type: string
+          maxLength: 50
+          description: Doubles as the usage event dimension; immutable after create.
+        aggregation_type: { type: string, enum: [count, sum, max, unique] }
+        field_name:
+          type: string
+          description: Required for `unique`, forbidden otherwise.
+    ChargeTier:
+      type: object
+      required: [up_to, unit_amount]
+      properties:
+        up_to:
+          type: [integer, 'null']
+          format: int64
+          description: Inclusive upper unit bound; null = unbounded (last tier only).
+        unit_amount:
+          type: string
+          description: Per-unit rate as a decimal string in MAJOR currency units (e.g. "0.0035").
+        flat_amount:
+          type: integer
+          format: int64
+          description: Minor units, added once when any unit lands in the tier.
+    ChargeAmounts:
+      type: object
+      description: Pricing properties for one currency; fields depend on the charge model.
+      properties:
+        unit_amount:
+          type: string
+          description: (per_unit) decimal-string rate in MAJOR currency units.
+        package_amount:
+          type: integer
+          format: int64
+          description: (package) price in minor units per bundle.
+        package_size:
+          type: integer
+          format: int64
+          description: (package) units per bundle; partial bundles round up.
+        tiers:
+          type: array
+          items: { $ref: "#/components/schemas/ChargeTier" }
+          description: (graduated/volume) price bands.
+    Charge:
+      type: object
+      description: >-
+        Usage pricing for one billable metric on a plan. Usage is billed in
+        arrears at period close; flat plan prices stay on the plan.
+      properties:
+        id: { type: string, format: uuid }
+        plan_id: { type: string, format: uuid }
+        metric_id: { type: string, format: uuid }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package] }
+        amounts:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
+          description: Pricing per ISO currency code.
+        hsn_code: { type: string }
+        metric: { $ref: "#/components/schemas/BillableMetric" }
+    ChargeInput:
+      type: object
+      required: [metric_id, charge_model, amounts]
+      properties:
+        metric_id: { type: string, format: uuid }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package] }
+        amounts:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
+        hsn_code: { type: string }
+    UsageAmount:
+      type: object
+      description: Live preview of the current period's usage priced as of now.
+      properties:
+        subscription_id: { type: string, format: uuid }
+        currency: { type: string }
+        current_period_start: { type: string, format: date-time }
+        as_of: { type: string, format: date-time }
+        charges:
+          type: array
+          items:
+            type: object
+            properties:
+              metric_code: { type: string }
+              metric_name: { type: string }
+              aggregation_type: { type: string }
+              charge_model: { type: string }
+              quantity: { type: integer, format: int64 }
+              amount:
+                type: integer
+                format: int64
+                description: Minor currency units.
+        total_amount: { type: integer, format: int64 }
     PlanChangePreview:
       type: object
       description: >-

@@ -42,6 +42,13 @@ func (e UsageValidationError) Error() string { return string(e) }
 // defaultUsageWindow is the query window when from/to are omitted.
 const defaultUsageWindow = 30 * 24 * time.Hour
 
+// Event property bounds (usage-based billing v1).
+const (
+	maxEventProperties       = 20
+	maxEventPropertyKeyLen   = 100
+	maxEventPropertyValueLen = 255
+)
+
 // usageEntitlementChecker is the slice of EntitlementService the usage
 // platform needs; *EntitlementService satisfies it.
 type usageEntitlementChecker interface {
@@ -79,6 +86,19 @@ func (s *UsageService) RecordEvent(ctx context.Context, tenantID uuid.UUID, even
 	// not negatives.)
 	if event.Quantity <= 0 {
 		return UsageValidationError("quantity must be greater than zero")
+	}
+	// Bound free-form properties so one caller can't bloat the events table
+	// or the aggregation JSONB paths (usage-based billing v1).
+	if len(event.Properties) > maxEventProperties {
+		return UsageValidationError(fmt.Sprintf("at most %d properties per event", maxEventProperties))
+	}
+	for k, v := range event.Properties {
+		if k == "" || len(k) > maxEventPropertyKeyLen {
+			return UsageValidationError(fmt.Sprintf("property keys must be 1-%d characters", maxEventPropertyKeyLen))
+		}
+		if len(v) > maxEventPropertyValueLen {
+			return UsageValidationError(fmt.Sprintf("property values must be at most %d characters", maxEventPropertyValueLen))
+		}
 	}
 
 	sub, err := s.subscriptions.GetByID(ctx, event.SubscriptionID)

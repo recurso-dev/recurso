@@ -25,4 +25,10 @@ type UsageRepository interface {
 	// ListDimensions returns the tenant's distinct usage dimensions with
 	// event counts and first/last seen timestamps.
 	ListDimensions(ctx context.Context, tenantID uuid.UUID) ([]domain.UsageDimension, error)
+
+	// AggregateForMetric reduces a subscription's events for the metric's
+	// dimension inside [start, end) to one quantity per the metric's
+	// aggregation type (count | sum | max | unique on properties->>field_name).
+	// Zero events aggregate to 0 (usage-based billing v1).
+	AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error)
 }

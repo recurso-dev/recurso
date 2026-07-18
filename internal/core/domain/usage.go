@@ -13,6 +13,10 @@ type UsageEvent struct {
 	Dimension      string    `json:"dimension"` // e.g., "api_calls", "storage_gb"
 	Quantity       int64     `json:"quantity"`
 	Timestamp      time.Time `json:"timestamp"`
+	// Properties are optional free-form event attributes (JSONB). The
+	// unique aggregation counts distinct values of one property; they also
+	// ground future charge filters/group-by. Nil for property-less events.
+	Properties map[string]string `json:"properties,omitempty"`
 }
 
 // Usage query granularities for time-windowed aggregation.
