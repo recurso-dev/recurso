@@ -87,7 +87,10 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
   if (!customer) return null;
 
   const risk = customer.churn_risk ?? customer.risk_score ?? null;
-  const activeSubs = customer.activeSubs ?? customer.active_subscriptions ?? 0;
+  // The customers list serves the count as active_subs; older callers used
+  // activeSubs / active_subscriptions. Read all three or the badge shows 0.
+  const activeSubs =
+    customer.active_subs ?? customer.activeSubs ?? customer.active_subscriptions ?? 0;
   const address = formatAddress(customer.billing_address);
   const hasBilling =
     address || customer.tax_type || customer.gstin || customer.place_of_supply;

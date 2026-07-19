@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Loader2, Mail } from "lucide-react";
 
 import { API_ROOT as API_BASE } from "../../lib/api";
@@ -9,7 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
 const PortalLogin = () => {
-  const [email, setEmail] = useState("");
+  // Support prefilled links from the admin dashboard: /portal/login?email=…
+  const [searchParams] = useSearchParams();
+  const [email, setEmail] = useState(searchParams.get("email") || "");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [devLink, setDevLink] = useState(null);

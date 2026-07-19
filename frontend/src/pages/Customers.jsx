@@ -98,7 +98,9 @@ export default function Customers() {
   const copyPortalLink = useCallback(
     (e, customer) => {
       e.stopPropagation();
-      const url = `${window.location.origin}/portal/${customer.tenant_id}/${customer.id}`;
+      // The portal is entered via magic-link login; prefill the customer's
+      // email. (The old /portal/{tenant}/{customer} path never existed.)
+      const url = `${window.location.origin}/portal/login?email=${encodeURIComponent(customer.email || "")}`;
       navigator.clipboard.writeText(url);
       toast.success("Portal link copied");
     },
