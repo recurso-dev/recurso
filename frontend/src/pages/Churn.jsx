@@ -25,6 +25,7 @@ const Churn = () => {
   const [hrLoading, setHrLoading] = useState(true);
   const [hrError, setHrError] = useState(null);
   const [acking, setAcking] = useState(null);
+  const [customerNames, setCustomerNames] = useState({});
 
   const fetchAlerts = async () => {
     setAlertsLoading(true);
@@ -54,7 +55,25 @@ const Churn = () => {
   useEffect(() => {
     fetchAlerts();
     fetchHighRisk();
+    // Resolve customer ids to names (best-effort; ids remain the fallback).
+    api
+      .getCustomers({ limit: 1000 })
+      .then((res) => {
+        const names = {};
+        (res?.data?.data || []).forEach((c) => {
+          names[c.id] = c.name;
+        });
+        setCustomerNames(names);
+      })
+      .catch(() => {});
   }, []);
+
+  const customerLabel = (id) =>
+    customerNames[id] ? (
+      <span className="text-sm text-foreground">{customerNames[id]}</span>
+    ) : (
+      <span className="font-mono text-xs text-muted-foreground">{shortId(id)}</span>
+    );
 
   const acknowledge = async (id) => {
     setAcking(id);
@@ -73,9 +92,7 @@ const Churn = () => {
     {
       key: "customer_id",
       header: "Customer",
-      cell: (r) => (
-        <span className="font-mono text-xs text-muted-foreground">{shortId(r.customer_id)}</span>
-      ),
+      cell: (r) => customerLabel(r.customer_id),
     },
     {
       key: "score",
@@ -121,9 +138,7 @@ const Churn = () => {
               <CardContent className="flex flex-col gap-3 p-5">
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <p className="font-mono text-xs text-muted-foreground">
-                      {shortId(a.customer_id)}
-                    </p>
+                    <div className="text-xs">{customerLabel(a.customer_id)}</div>
                     <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
                       <span className="tabular-nums">{a.previous_score}</span>
                       <ArrowUpRight className="h-4 w-4 text-red-600" />
