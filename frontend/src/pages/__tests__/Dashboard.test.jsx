@@ -4,7 +4,8 @@ import Dashboard from '../Dashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
 
-// Mock the API module (redesign wires MRR + dunning recovered + lists).
+// Mock the API module (cockpit wires MRR + dunning recovered + lists +
+// the needs-attention feeds).
 vi.mock('../../lib/api', () => ({
     endpoints: {
         getSubscriptions: vi.fn(),
@@ -12,6 +13,8 @@ vi.mock('../../lib/api', () => ({
         getCustomers: vi.fn(),
         getMRR: vi.fn(),
         getDunningRecovered: vi.fn(),
+        getDisputes: vi.fn(),
+        getChurnAlerts: vi.fn(),
     }
 }));
 
@@ -31,6 +34,8 @@ describe('Dashboard (redesign)', () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
         endpoints.getMRR.mockResolvedValue({ data: { mrr: 0 } });
         endpoints.getDunningRecovered.mockResolvedValue({ data: { recovered: 0 } });
+        endpoints.getDisputes.mockResolvedValue({ data: { data: [] } });
+        endpoints.getChurnAlerts.mockResolvedValue({ data: { data: [] } });
     });
 
     it('renders the KPI cards after loading', async () => {
@@ -52,14 +57,49 @@ describe('Dashboard (redesign)', () => {
         renderDashboard();
 
         await waitFor(() => {
-            expect(
-              screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$1,000.00")
-            ).toBeInTheDocument();
+            // KPI values render as plain formatted text (consistent with Overview).
+            expect(screen.getByText('$1,000.00')).toBeInTheDocument();
         });
         // 2 active subscriptions.
         expect(screen.getByText('2')).toBeInTheDocument();
         // Churn = 1 canceled / 3 total = 33.3%.
         expect(screen.getByText('33.3%')).toBeInTheDocument();
+    });
+
+    it('surfaces overdue invoices in the needs-attention strip', async () => {
+        endpoints.getInvoices.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 'inv_od',
+                        total: 50000,
+                        amount_due: 50000,
+                        status: 'past_due',
+                        currency: 'USD',
+                        customer_id: 'cus_1',
+                        created_at: new Date().toISOString(),
+                    },
+                ],
+            },
+        });
+
+        renderDashboard();
+
+        await waitFor(() => {
+            expect(screen.getByText('1 overdue invoice')).toBeInTheDocument();
+        });
+        // The card links to the aging report.
+        expect(screen.getByText('1 overdue invoice').closest('a')).toHaveAttribute(
+            'href',
+            '/finance/invoice-aging'
+        );
+    });
+
+    it('shows the all-clear line when nothing needs attention', async () => {
+        renderDashboard();
+        await waitFor(() => {
+            expect(screen.getByText(/All clear/)).toBeInTheDocument();
+        });
     });
 
     it('shows a graceful empty state when there are no invoices', async () => {
