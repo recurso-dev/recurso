@@ -388,10 +388,10 @@ func (s *seeder) seedCoupons() {
 		val         int64
 		dur         string
 	}{
-		{"DEMO-WELCOME20", "percentage", 20, "once"},
-		{"DEMO-SAVE10", "percentage", 10, "forever"},
-		{"DEMO-FLAT50", "fixed", 5000, "once"},
-		{"DEMO-BLACKFRIDAY", "percentage", 30, "repeating"},
+		{"DEMO-WELCOME20", "percent", 20, "once"},
+		{"DEMO-SAVE10", "percent", 10, "forever"},
+		{"DEMO-FLAT50", "amount", 5000, "once"},
+		{"DEMO-BLACKFRIDAY", "percent", 30, "repeating"},
 	}
 	for _, c := range coupons {
 		s.exec(`INSERT INTO coupons (id, tenant_id, code, discount_type, discount_value, duration, created_at, updated_at)

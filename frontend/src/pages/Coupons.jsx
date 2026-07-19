@@ -41,8 +41,10 @@ const Coupons = () => {
         status: c.active ? "active" : "inactive",
         redemptions: 0,
         max_redemptions: null,
+        // "percentage" is a legacy alias from pre-normalization seed data
+        // (migration 000104 rewrites it; tolerated here for older rows).
         discount:
-          c.discount_type === "percent"
+          c.discount_type === "percent" || c.discount_type === "percentage"
             ? `${c.discount_value}%`
             : `$${(c.discount_value / 100).toFixed(2)}`,
         duration_in_months: c.duration_months,
@@ -112,7 +114,11 @@ const Coupons = () => {
       header: "Duration",
       cell: (c) => (
         <span className="capitalize text-muted-foreground">
-          {c.duration === "repeating" ? `For ${c.duration_in_months} months` : c.duration}
+          {c.duration === "repeating"
+            ? c.duration_in_months
+              ? `For ${c.duration_in_months} months`
+              : "Repeating"
+            : c.duration}
         </span>
       ),
     },

@@ -9,6 +9,7 @@ import { ToastProvider } from '../../components/Toast';
 vi.mock('../../lib/api', () => ({
     endpoints: {
         getInvoices: vi.fn(),
+        getCustomers: vi.fn(),
     }
 }));
 
@@ -42,6 +43,7 @@ const mockInvoices = [
 describe('Invoices Page', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
     });
 
     it('shows loading skeleton initially', async () => {

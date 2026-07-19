@@ -22,18 +22,27 @@ export const AuthProvider = ({ children }) => {
         const params = new URLSearchParams(window.location.search)
         const wantsDemo = params.get('demo') === '1'
 
-        const resolve = () =>
-            endpoints
-                .authMe()
-                .then((res) => {
+        // Only a 401 means "no session". Transient failures (rate limit, cold
+        // start, network blip) get two retries with backoff — without this,
+        // any hiccup bounced a validly-logged-in user to the login screen.
+        const resolve = async () => {
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await endpoints.authMe()
                     if (active) setUser(res.data?.user || null)
-                })
-                .catch(() => {
-                    if (active) setUser(null)
-                })
-                .finally(() => {
-                    if (active) setLoading(false)
-                })
+                    break
+                } catch (err) {
+                    const status = err?.response?.status
+                    if (status === 401 || attempt === 2) {
+                        if (active) setUser(null)
+                        break
+                    }
+                    await new Promise((r) => setTimeout(r, 750 * (attempt + 1)))
+                    if (!active) break
+                }
+            }
+            if (active) setLoading(false)
+        }
 
         if (wantsDemo) {
             endpoints
