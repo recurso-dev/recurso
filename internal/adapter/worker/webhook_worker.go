@@ -25,7 +25,14 @@ type WebhookWorker struct {
 	endpointRepo port.WebhookEndpointRepository
 	eventRepo    port.EventRepository
 	httpClient   *http.Client
+	// deliveriesDisabled parks the worker (demo mode): endpoints and
+	// deliveries stay creatable and inspectable, nothing egresses.
+	deliveriesDisabled bool
 }
+
+// DisableDeliveries parks the worker without touching the queue —
+// the public-sandbox guarantee (docs/spec_demo_mode.md).
+func (w *WebhookWorker) DisableDeliveries() { w.deliveriesDisabled = true }
 
 func NewWebhookWorker(
 	deliveryRepo port.EventDeliveryRepository,
@@ -55,6 +62,10 @@ func NewWebhookWorker(
 }
 
 func (w *WebhookWorker) Start(ctx context.Context) {
+	if w.deliveriesDisabled {
+		slog.Info("webhook deliveries disabled (demo mode); worker parked")
+		return
+	}
 	slog.Info("webhook worker started")
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

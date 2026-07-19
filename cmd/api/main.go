@@ -41,6 +41,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/vault"
 	"github.com/recurso-dev/recurso/internal/adapter/worker"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/demo"
 	"github.com/recurso-dev/recurso/internal/residency"
 	"github.com/recurso-dev/recurso/internal/scheduler"
 	"github.com/recurso-dev/recurso/internal/service"
@@ -152,6 +153,13 @@ func main() {
 		log.Println("Using Console Notifier (Mock)")
 	}
 
+	// DEMO_MODE (docs/spec_demo_mode.md): the public sandbox must never
+	// email a human — force the console notifier regardless of SMTP env.
+	if demo.Enabled() {
+		notifier = notification.NewConsoleNotifier()
+		log.Println("DEMO_MODE: notifier forced to console")
+	}
+
 	var emailSender port.EmailSender = email.NewConsoleSender()
 	if host := os.Getenv("SMTP_HOST"); host != "" {
 		smtpPort, _ := strconv.Atoi(getEnvDefault("SMTP_PORT", "587"))
@@ -210,22 +218,30 @@ func main() {
 		log.Println("Using Stripe Gateway (Mock)")
 	}
 
+	// DEMO_MODE: no real money can move — both gateways forced to mocks
+	// at the construction site, so stray keys in the env are inert.
+	if demo.Enabled() {
+		razorpayGateway = gateway.NewMockGateway()
+		stripeGateway = gateway.NewMockGateway()
+		log.Println("DEMO_MODE: payment gateways forced to mocks")
+	}
+
 	// Smart Router routes based on Currency (INR -> Razorpay, USD -> Stripe)
 	paymentGateway := gateway.NewSmartRouter(razorpayGateway, stripeGateway)
 
 	// Track D1 (EXPERIMENTAL until sandbox-verified): GoCardless bank debit
 	// and Adyen card processing, reachable via GATEWAY_CURRENCY_OVERRIDES
 	// (e.g. "EUR=gocardless,SGD=adyen").
-	if token := os.Getenv("GOCARDLESS_ACCESS_TOKEN"); token != "" {
+	if token := os.Getenv("GOCARDLESS_ACCESS_TOKEN"); token != "" && !demo.Enabled() {
 		paymentGateway.RegisterGateway("gocardless", gateway.NewGoCardlessGateway(token, os.Getenv("GOCARDLESS_ENV")))
 		log.Println("GoCardless gateway configured (EXPERIMENTAL — sandbox verification pending)")
 	}
-	if key := os.Getenv("ADYEN_API_KEY"); key != "" {
+	if key := os.Getenv("ADYEN_API_KEY"); key != "" && !demo.Enabled() {
 		paymentGateway.RegisterGateway("adyen", gateway.NewAdyenGateway(key,
 			os.Getenv("ADYEN_MERCHANT_ACCOUNT"), os.Getenv("ADYEN_ENV"), os.Getenv("ADYEN_LIVE_URL_PREFIX")))
 		log.Println("Adyen gateway configured (EXPERIMENTAL — sandbox verification pending)")
 	}
-	if err := paymentGateway.SetCurrencyOverrides(os.Getenv("GATEWAY_CURRENCY_OVERRIDES")); err != nil {
+	if err := paymentGateway.SetCurrencyOverrides(os.Getenv("GATEWAY_CURRENCY_OVERRIDES")); err != nil && !demo.Enabled() {
 		log.Fatalf("Invalid GATEWAY_CURRENCY_OVERRIDES: %v", err)
 	}
 
@@ -245,9 +261,10 @@ func main() {
 	gstConfigRepo := db.NewGSTConfigRepository(database)
 	taxNexusRepo := db.NewTaxNexusRepository(database)
 
-	// P25: GSP Adapter — use NIC if private key is available, else mock
+	// P25: GSP Adapter — use NIC if private key is available, else mock.
+	// DEMO_MODE: forced to mock below — a demo must never submit an IRN.
 	var gspAdapter port.GSPAdapter
-	if nicKeyPath := os.Getenv("NIC_PRIVATE_KEY_PATH"); nicKeyPath != "" {
+	if nicKeyPath := os.Getenv("NIC_PRIVATE_KEY_PATH"); nicKeyPath != "" && !demo.Enabled() {
 		nicKeyPEM, err := os.ReadFile(nicKeyPath)
 		if err != nil {
 			log.Printf("Warning: Failed to read NIC private key from %s: %v. Falling back to mock.", nicKeyPath, err)
@@ -299,10 +316,10 @@ func main() {
 	// US sales tax — TaxJar when a key is set (the resolver caches rates
 	// in-memory for 24h per state+zip); otherwise the US engine stays an
 	// honest 0% stub (invoices marked sales_tax_stub).
-	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" && !residency.SelfHosted() {
+	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" && !residency.SelfHosted() && !demo.Enabled() {
 		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewTaxJarProvider(taxjarKey, os.Getenv("TAXJAR_API_URL")))
 		log.Println("US sales tax: TaxJar provider enabled")
-	} else if avalaraAcct := os.Getenv("AVALARA_ACCOUNT_ID"); avalaraAcct != "" && !residency.SelfHosted() {
+	} else if avalaraAcct := os.Getenv("AVALARA_ACCOUNT_ID"); avalaraAcct != "" && !residency.SelfHosted() && !demo.Enabled() {
 		// Track D3 (EXPERIMENTAL): Avalara AvaTax quotes via uncommitted
 		// SalesOrder transactions. Same residency guard as TaxJar.
 		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewAvalaraProvider(
@@ -413,6 +430,9 @@ func main() {
 	// zero rows written; all hooks below are nil-safe no-ops. docs/telemetry.md
 	// documents every payload.
 	telemetryClient := telemetry.NewFromEnv(database, version)
+	if demo.Enabled() {
+		telemetryClient = nil // DEMO_MODE: never phone home
+	}
 	if telemetryClient != nil {
 		telemetryClient.Start(context.Background())
 		defer telemetryClient.Stop()
@@ -590,13 +610,16 @@ func main() {
 	// as checkout and the payment webhooks (idempotent across all three).
 	retryWorker.SetSettler(subscriptionService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
+	if demo.Enabled() {
+		webhookWorker.DisableDeliveries() // endpoints inspectable, zero egress
+	}
 	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
 	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
 	// Track D4 (EXPERIMENTAL): daily CRM contact sync. HubSpot private-app
 	// token; SaaS egress, so blocked under RESIDENCY_MODE=self_hosted like
 	// the accounting SaaS adapters.
 	var crmWorker *worker.CRMSyncWorker
-	if hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN"); hsToken != "" {
+	if hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN"); hsToken != "" && !demo.Enabled() {
 		if residency.SelfHosted() {
 			log.Println("HubSpot CRM sync blocked by RESIDENCY_MODE=self_hosted")
 		} else {
@@ -612,7 +635,7 @@ func main() {
 	// the destination is the operator's own bucket, so it is not
 	// residency-blocked (same egress class as SMTP/webhooks).
 	var exportWorker *worker.ExportWorker
-	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" {
+	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" && !demo.Enabled() {
 		s3Client := export.NewS3Client(bucket,
 			os.Getenv("S3_EXPORT_REGION"),
 			os.Getenv("AWS_ACCESS_KEY_ID"),
@@ -660,7 +683,9 @@ func main() {
 	startWorker(revrecWorker.Start)
 	startWorker(einvoiceWorker.Start)
 	startWorker(dunningCampaignWorker.Start)
-	startWorker(acctSyncWorker.Start)
+	if !demo.Enabled() {
+		startWorker(acctSyncWorker.Start) // parked in DEMO_MODE: no SaaS egress
+	}
 
 	// Distributed Locking & Redis. A working Redis makes the scheduler lock and
 	// the idempotency store real across instances; without it the app falls back
@@ -1106,6 +1131,10 @@ func main() {
 	}
 
 	// Global Middleware (Phase 47)
+	if demo.Enabled() {
+		r.Use(middleware.DemoGuard()) // public-sandbox destructive-edge guard
+		log.Println("DEMO_MODE: sandbox guards active; data resets every", demo.ResetInterval())
+	}
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
 	// Rate limit (per key/IP): RATE_LIMIT_PER_MINUTE, default 500.
