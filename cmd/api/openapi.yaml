@@ -208,6 +208,35 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /auth/demo:
+    post:
+      operationId: startDemoSession
+      tags: [Auth]
+      summary: Start a demo sandbox session
+      description: >
+        Opens a session in the shared demo sandbox (sets the httpOnly
+        `recurso_session` cookie) and returns the demo user's email and API
+        key. Only available when the server runs with DEMO_MODE enabled;
+        returns 404 otherwise.
+      security: []
+      responses:
+        '200':
+          description: Demo session opened. Sets the recurso_session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      demo: { type: boolean }
+                      email: { type: string, format: email }
+                      api_key: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Demo environment is still warming up — retry shortly.
   /auth/login:
     post:
       operationId: login
