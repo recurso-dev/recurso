@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Landmark, RefreshCw, Check } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -24,6 +25,17 @@ const PROVIDERS = [
   },
 ];
 
+// Error codes the OAuth callback redirect can carry (see the backend's
+// redirectToIntegrations) mapped to human-readable messages.
+const OAUTH_ERRORS = {
+  missing_code: "The provider did not return an authorization code. Please try again.",
+  invalid_state: "The connection link was invalid or expired. Please try again.",
+  unsupported_provider: "That provider is not supported.",
+  exchange_failed: "The provider rejected the token exchange. Please try again.",
+  org_lookup_failed: "Could not resolve your Xero organisation.",
+  save_failed: "Connected, but saving the connection failed. Please try again.",
+};
+
 const syncStatusVariant = (status) =>
   ({ success: "success", synced: "success", failed: "destructive", error: "destructive" })[
     status
@@ -42,6 +54,7 @@ const Integrations = () => {
   const [syncing, setSyncing] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const fetchConnections = async () => {
     setLoading(true);
@@ -72,6 +85,23 @@ const Integrations = () => {
   useEffect(() => {
     fetchConnections();
     fetchLogs();
+  }, []);
+
+  // The OAuth callback lands back here with ?connected=<provider> or
+  // ?error=<code> — surface it as a toast once, then clean the URL.
+  useEffect(() => {
+    const connected = searchParams.get("connected");
+    const oauthError = searchParams.get("error");
+    if (!connected && !oauthError) return;
+    if (connected) {
+      const name = PROVIDERS.find((p) => p.id === connected)?.name || connected;
+      toast.success(`${name} connected.`);
+    } else {
+      toast.error(OAUTH_ERRORS[oauthError] || "Connection failed. Please try again.");
+    }
+    setSearchParams({}, { replace: true });
+    // Runs once for the params present at mount; the redirect is a full page load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const connectionFor = (providerId) =>
