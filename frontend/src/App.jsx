@@ -72,6 +72,12 @@ import RevenueByGeography from './pages/RevenueByGeography'
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
 import GSTSettings from './pages/settings/GSTSettings'
+import TaxNexusSettings from './pages/settings/TaxNexusSettings'
+
+// Multi-tenant + tax + GenAI
+import Organizations from './pages/Organizations'
+import GSTReturns from './pages/GSTReturns'
+import AskAnalytics from './pages/AskAnalytics'
 
 const PrivateRoute = () => {
     const { isAuthenticated, loading } = useAuth();
@@ -160,6 +166,10 @@ function App() {
                             <Route path="/payments/offline" element={<OfflinePayments />} />
                             <Route path="/settings/irp" element={<IRPSettings />} />
                             <Route path="/settings/gst" element={<GSTSettings />} />
+                            <Route path="/settings/tax-nexus" element={<TaxNexusSettings />} />
+                            <Route path="/organizations" element={<Organizations />} />
+                            <Route path="/finance/gst-returns" element={<GSTReturns />} />
+                            <Route path="/ask" element={<AskAnalytics />} />
                         </Route>
                     </Route>
 

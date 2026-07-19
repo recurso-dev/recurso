@@ -266,6 +266,31 @@ export const endpoints = {
   // Audit trail
   getAuditLogs: (params) => api.get('/audit-logs', { params }),
 
+  // Organizations (multi-tenant admin)
+  getOrganizations: () => api.get('/organizations'),
+  getOrganization: (id) => api.get(`/organizations/${id}`),
+  createOrganization: (data) => api.post('/organizations', data),
+  updateOrganization: (id, data) => api.put(`/organizations/${id}`, data),
+  deleteOrganization: (id) => api.delete(`/organizations/${id}`),
+  getOrgTenants: (id) => api.get(`/organizations/${id}/tenants`),
+  addOrgTenant: (id, tenantId) => api.post(`/organizations/${id}/tenants`, { tenant_id: tenantId }),
+  removeOrgTenant: (id, tenantId) => api.delete(`/organizations/${id}/tenants/${tenantId}`),
+  getOrgMRR: (id) => api.get(`/organizations/${id}/analytics/mrr`),
+
+  // US sales-tax nexus
+  getTaxNexus: () => api.get('/settings/tax/nexus'),
+  // Full replacement of the declared-state set.
+  setTaxNexus: (states) => api.put('/settings/tax/nexus', { states }),
+  getTaxNexusStatus: (year) =>
+    api.get('/settings/tax/nexus/status', { params: year ? { year } : {} }),
+
+  // India GST returns (readable sections + GSTN upload JSON)
+  getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
+  getGSTR3B: (month, year) => api.get('/india/gstr3b', { params: { month, year } }),
+
+  // GenAI analytics: natural-language question -> { data, query }
+  askAnalytics: (question) => api.post('/analytics/ask', { question }),
+
   // Accounting integrations (QuickBooks / Xero)
   getAccountingConnections: () => api.get('/accounting/connections'),
   // Returns { auth_url } — redirect the browser there to start OAuth.

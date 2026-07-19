@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion } from "lucide-react";
+import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -11,6 +11,7 @@ const NAV_GROUPS = [
     items: [
       { to: "/", label: "Home", icon: Home, end: true },
       { to: "/overview", label: "Overview", icon: LayoutDashboard },
+      { to: "/ask", label: "Ask AI", icon: Sparkles },
       { to: "/customers", label: "Customers", icon: Users },
       { to: "/products", label: "Products", icon: Package },
       { to: "/plans", label: "Plans", icon: Layers },
@@ -57,6 +58,7 @@ const NAV_GROUPS = [
       { to: "/finance/revenue-by-plan", label: "Revenue by Plan", icon: PieChart },
       { to: "/finance/revenue-by-geography", label: "Revenue by Geography", icon: Globe },
       { to: "/usage", label: "Usage", icon: BarChart3 },
+      { to: "/finance/gst-returns", label: "GST Returns", icon: FileSpreadsheet },
     ],
   },
   {
@@ -67,6 +69,7 @@ const NAV_GROUPS = [
       { to: "/settings", label: "Settings", icon: Settings },
       { to: "/security", label: "Security", icon: ShieldCheck },
       { to: "/team", label: "Team", icon: UserCog },
+      { to: "/organizations", label: "Organizations", icon: Building2 },
     ],
   },
 ];
