@@ -1,0 +1,57 @@
+# Public demo sandbox (docs/spec_demo_mode.md).
+#
+#   docker compose -f docker-compose.demo.yml up -d
+#
+# serves the whole demo — API (DEMO_MODE=true, auto-seeded, hourly reset)
+# on :8080 and the dashboard on :80. Point demo.recurso.dev at this box and
+# link to https://demo.recurso.dev/?demo=1 from the website.
+#
+# DEMO_MODE forces every outward adapter to mocks in code, so this stack
+# can never email a human, charge a card, deliver a webhook, or reach a
+# SaaS — no secrets are needed and none should be provided.
+
+services:
+  api:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DEMO_MODE=true
+      - DEMO_RESET_INTERVAL=1h
+      - DEMO_SEED_BIN=/app/demo-seed
+      - DATABASE_URL=postgres://user:password@postgres:5432/recurso?sslmode=disable
+      - API_SECRET=demo_only_secret
+      - APP_ENV=production
+      - GIN_MODE=release
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dashboard:
+    build: ./frontend
+    ports:
+      - "80:8080"
+    environment:
+      - VITE_API_BASE_URL=/v1
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=recurso
+    volumes:
+      - demo_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d recurso"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  demo_pgdata:

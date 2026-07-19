@@ -237,6 +237,12 @@ func (s *seeder) purge() {
 		`DELETE FROM referrals WHERE referrer_id IN (` + demoCust + `)`,
 		`DELETE FROM gifts WHERE buyer_customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM usage_ratings WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM usage_alerts WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE customer_id IN (` + demoCust + `))`,
+		`DELETE FROM wallets WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM plan_charges WHERE plan_id IN (` + demoPlan + `)`,
+		`DELETE FROM billable_metrics WHERE tenant_id=$1 AND code IN ('api_calls','active_users')`,
 		`DELETE FROM subscription_addons WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM mandates WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM mrr_snapshots WHERE customer_id IN (` + demoCust + `)`,
@@ -283,6 +289,7 @@ func (s *seeder) run() {
 	step("invoices + items + ledger + dunning (the bulk)", func() { s.seedInvoicesAndDownstream(subs) })
 	step("mrr snapshots", func() { s.seedMRRSnapshots(subs) })
 	step("usage events", func() { s.seedUsage(subs) })
+	step("metering, wallets, commitments, alerts", func() { s.seedMetering(custs, subs) })
 	step("mandates & add-ons", func() { s.seedMandatesAndAddons(subs) })
 	step("quotes", func() { s.seedQuotes(custs) })
 	step("credit notes", func() { s.seedStandaloneCreditNotes(custs) })
@@ -1098,4 +1105,80 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// seedMetering populates the v0.6.0 usage-billing surface: billable
+// metrics, charges on the Growth plan, a funded wallet with movement
+// history, a usage alert, and a commitment — so the metering pages,
+// wallet screens, and usage-amount previews all demo well.
+func (s *seeder) seedMetering(custs []*customer, subs []*subscription) {
+	// Metrics (idempotent on tenant+code).
+	apiCallsID := s.queryID(`INSERT INTO billable_metrics (id, tenant_id, name, code, aggregation_type, field_name, created_at, updated_at)
+		VALUES ($1,$2,'API calls','api_calls','sum','', now(), now())
+		ON CONFLICT (tenant_id, code) DO UPDATE SET updated_at=now() RETURNING id`,
+		uuid.New(), s.tenantID)
+	s.queryID(`INSERT INTO billable_metrics (id, tenant_id, name, code, aggregation_type, field_name, created_at, updated_at)
+		VALUES ($1,$2,'Active users','active_users','unique','user_id', now(), now())
+		ON CONFLICT (tenant_id, code) DO UPDATE SET updated_at=now() RETURNING id`,
+		uuid.New(), s.tenantID)
+	s.bump("billable_metrics", 2)
+
+	// Graduated charge on the Growth plan: first 100k free, then per-call.
+	var growthID uuid.UUID
+	if err := s.tx.QueryRowContext(s.ctx,
+		`SELECT id FROM plans WHERE tenant_id=$1 AND code='demo_growth'`, s.tenantID).Scan(&growthID); err == nil {
+		amounts := `{"INR":{"tiers":[{"up_to":100000,"unit_amount":"0"},{"up_to":1000000,"unit_amount":"0.05"},{"up_to":null,"unit_amount":"0.0035"}]},` +
+			`"USD":{"tiers":[{"up_to":100000,"unit_amount":"0"},{"up_to":null,"unit_amount":"0.0008"}]}}`
+		s.exec(`INSERT INTO plan_charges (id, tenant_id, plan_id, metric_id, charge_model, amounts, hsn_code, created_at, updated_at)
+			VALUES ($1,$2,$3,$4,'graduated',$5::jsonb,'', now(), now())
+			ON CONFLICT (plan_id, metric_id) DO UPDATE SET amounts=EXCLUDED.amounts, updated_at=now()`,
+			uuid.New(), s.tenantID, growthID, apiCallsID, amounts)
+		s.bump("plan_charges", 1)
+	}
+
+	// A funded wallet for the first active INR customer: paid top-up,
+	// expiring promotional credit, and a drain against a demo invoice.
+	for _, c := range custs {
+		if !c.india {
+			continue
+		}
+		wid := s.queryID(`INSERT INTO wallets (id, tenant_id, customer_id, currency, balance, created_at, updated_at)
+			VALUES ($1,$2,$3,'INR',0, now(), now())
+			ON CONFLICT (tenant_id, customer_id, currency) DO UPDATE SET updated_at=now() RETURNING id`,
+			uuid.New(), s.tenantID, c.id)
+		var txCount int
+		_ = s.tx.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id=$1`, wid).Scan(&txCount)
+		if txCount == 0 {
+			topUp := int64(50000000) // ₹5,00,000.00
+			promo := int64(2500000)  // ₹25,000 promotional, expires in 20 days
+			drain := int64(11800000) // one invoice paid from the wallet
+			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, created_at)
+				VALUES ($1,$2,$3,'top_up','manual',$4,$5,$4,$6)`,
+				uuid.New(), s.tenantID, wid, topUp, topUp-drain, s.backdate(0, 12))
+			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, amount, balance_after, created_at)
+				VALUES ($1,$2,$3,'drain',$4,$5,$6)`,
+				uuid.New(), s.tenantID, wid, drain, topUp-drain, s.backdate(0, 6))
+			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, expires_at, created_at)
+				VALUES ($1,$2,$3,'top_up','promotional',$4,$4,$5, now() + interval '20 days', $6)`,
+				uuid.New(), s.tenantID, wid, promo, topUp-drain+promo, s.backdate(0, 2))
+			s.exec(`UPDATE wallets SET balance=$2, updated_at=now() WHERE id=$1`, wid, topUp-drain+promo)
+			s.bump("wallet_transactions", 3)
+		}
+		s.bump("wallets", 1)
+		break
+	}
+
+	// A commitment + usage alert on the first active Growth subscription.
+	for _, sub := range subs {
+		if sub.status != "active" || sub.pl.code != "growth" {
+			continue
+		}
+		s.exec(`UPDATE subscriptions SET commitment_amount=$2 WHERE id=$1`, sub.id, int64(1500000)) // ₹15,000 floor
+		s.exec(`INSERT INTO usage_alerts (id, tenant_id, subscription_id, metric_code, threshold_type, threshold, created_at, updated_at)
+			VALUES ($1,$2,$3,'api_calls','quantity',1000000, now(), now())
+			ON CONFLICT (subscription_id, metric_code, threshold_type, threshold) DO NOTHING`,
+			uuid.New(), s.tenantID, sub.id)
+		s.bump("usage_alerts", 1)
+		break
+	}
 }

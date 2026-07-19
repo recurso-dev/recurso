@@ -957,6 +957,19 @@ func main() {
 	// development so they still work over plain http://localhost.
 	secureCookie := os.Getenv("APP_ENV") != "development"
 	authHandler := handler.NewAuthHandler(authService, secureCookie)
+
+	// DEMO_MODE (docs/spec_demo_mode.md): bootstrap the sandbox tenant/user/
+	// key + seed data, expose /auth/demo, and reset on an interval.
+	var demoService *service.DemoService
+	if demo.Enabled() {
+		demoService = service.NewDemoService(authService, userRepo, tenantRepo, os.Getenv("DEMO_SEED_BIN"))
+		if _, err := demoService.EnsureBootstrapped(context.Background()); err != nil {
+			log.Printf("DEMO_MODE bootstrap failed (will still serve): %v", err)
+		}
+		demoResetWorker := worker.NewDemoResetWorker(demoService, demo.ResetInterval())
+		demoResetWorker.Start()
+		defer demoResetWorker.Stop()
+	}
 	teamHandler := handler.NewTeamHandler(authService)
 
 	// Phase 3 auth: native OAuth social login (Google + GitHub). A provider is
@@ -1264,6 +1277,10 @@ func main() {
 	// login/logout/me operate purely on the recurso_session cookie.
 	r.POST("/auth/register", publicLimit, authHandler.Register)
 	r.POST("/auth/login", publicLimit, authHandler.Login)
+	if demo.Enabled() && demoService != nil {
+		demoHandler := handler.NewDemoHandler(demoService, authService, secureCookie)
+		r.POST("/auth/demo", publicLimit, demoHandler.StartSession) // sandbox entry (404 outside DEMO_MODE)
+	}
 	r.POST("/auth/login/mfa", publicLimit, authHandler.LoginMFA)
 	r.POST("/auth/logout", publicLimit, authHandler.Logout)
 	r.GET("/auth/me", publicLimit, authHandler.Me)

@@ -14,19 +14,35 @@ export const AuthProvider = ({ children }) => {
 
     // On load, resolve the session cookie via /auth/me. If there's no session
     // but a stored API key exists, we stay authenticated in legacy mode.
+    // ?demo=1 (the public sandbox entry) first opens a demo session via
+    // POST /auth/demo — the endpoint only exists when the server runs
+    // DEMO_MODE, so this is inert everywhere else.
     useEffect(() => {
         let active = true
-        endpoints
-            .authMe()
-            .then((res) => {
-                if (active) setUser(res.data?.user || null)
-            })
-            .catch(() => {
-                if (active) setUser(null)
-            })
-            .finally(() => {
-                if (active) setLoading(false)
-            })
+        const params = new URLSearchParams(window.location.search)
+        const wantsDemo = params.get('demo') === '1'
+
+        const resolve = () =>
+            endpoints
+                .authMe()
+                .then((res) => {
+                    if (active) setUser(res.data?.user || null)
+                })
+                .catch(() => {
+                    if (active) setUser(null)
+                })
+                .finally(() => {
+                    if (active) setLoading(false)
+                })
+
+        if (wantsDemo) {
+            endpoints
+                .authDemo()
+                .catch(() => {})
+                .finally(resolve)
+        } else {
+            resolve()
+        }
         return () => {
             active = false
         }

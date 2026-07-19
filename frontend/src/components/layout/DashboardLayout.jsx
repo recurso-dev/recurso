@@ -59,7 +59,8 @@ function usePageTitle() {
 }
 
 export function DashboardLayout() {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
+  const isDemo = user?.email === "demo@demo.recurso.dev";
   const navigate = useNavigate();
   const title = usePageTitle();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -96,6 +97,15 @@ export function DashboardLayout() {
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {isDemo && (
+          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800">
+            <span className="font-semibold">Demo environment</span>
+            <span className="hidden sm:inline">
+              — data is public and resets every hour. API key for curl:
+            </span>
+            <code className="hidden rounded bg-amber-100 px-1.5 py-0.5 font-mono sm:inline">sk_test_12345</code>
+          </div>
+        )}
         {/* Top bar */}
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-white/80 px-6 backdrop-blur">
           <h1 className="text-sm font-semibold text-foreground">{title}</h1>

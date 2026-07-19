@@ -44,6 +44,8 @@ export const endpoints = {
     axios.post(`${API_ROOT}/auth/login/mfa`, { mfa_token, code }),
   authLogout: () => axios.post(`${API_ROOT}/auth/logout`),
   authMe: () => axios.get(`${API_ROOT}/auth/me`),
+  // Public-sandbox entry: only exists when the server runs DEMO_MODE.
+  authDemo: () => axios.post(`${API_ROOT}/auth/demo`),
   // Password reset (public, cookie-less).
   forgotPassword: (email) =>
     axios.post(`${API_ROOT}/auth/forgot-password`, { email }),

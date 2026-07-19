@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Demo mode** — `DEMO_MODE=true` turns an instance into a safe public
+  sandbox: every outward adapter (gateways, notifier, GSP, telemetry,
+  webhook delivery, SaaS sync/export) is forced to its mock at the
+  construction site; destructive identity edges 403 with code
+  `demo_mode`; the sandbox bootstraps a demo tenant/user/key and a rich
+  seeded data set (now including metering, a funded wallet, a commitment,
+  and a usage alert) on first boot; `POST /auth/demo` + dashboard
+  `?demo=1` land visitors logged in; and a reset worker restores pristine
+  data every `DEMO_RESET_INTERVAL` (default 1h).
+  `docker-compose.demo.yml` serves the whole sandbox with one command.
+
 ## [0.6.0] - 2026-07-19
 
 The usage-based billing release: everything between a usage event and the

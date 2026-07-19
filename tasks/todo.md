@@ -4,7 +4,7 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
 
 ## Phase 1 — Safety core
 
-- [ ] T1: internal/demo package + forced-safe wiring (M)
+- [x] T1: internal/demo package + forced-safe wiring (M)
   - Acceptance: `demo.Enabled()` reads DEMO_MODE; when true, main.go
     constructs mock gateways, console notifier, nil GSP/IRP, disables
     webhook deliveries and CRM/S3/accounting egress regardless of env;
@@ -13,7 +13,7 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
   - Files: internal/demo/demo.go(+_test), cmd/api/main.go,
     internal/adapter/worker/webhook_worker.go
 
-- [ ] T2: demo guard middleware (S)
+- [x] T2: demo guard middleware (S)
   - Acceptance: POST/PUT/DELETE on team, SSO settings, live-key rotation,
     data-region, account-delete routes 403 `{code: demo_mode}`; everything
     else untouched; wired on /v1 + /auth subsets only when enabled.
@@ -24,7 +24,7 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
 
 ## Phase 2 — Experience
 
-- [ ] T3: seed extension for v0.6.0 showcase (M)
+- [x] T3: seed extension for v0.6.0 showcase (M)
   - Acceptance: demo seed also creates 2 billable metrics, graduated
     charges on one plan, usage events, a funded wallet (+promo credit),
     one usage alert, a commitment; seed is idempotent (re-run = no dupes).
@@ -32,7 +32,7 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
     fake-repo unit path; make demo output lists new objects.
   - Files: cmd/demo_seed/*, seed helpers
 
-- [ ] T4: /auth/demo + dashboard auto-login + banner (M)
+- [x] T4: /auth/demo + dashboard auto-login + banner (M)
   - Acceptance: POST /auth/demo (only when enabled) creates a session for
     the seeded demo user; dashboard ?demo=1 auto-calls it and lands
     logged in; banner shows reset cadence + sk_test_12345; endpoint 404s
@@ -41,7 +41,7 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
   - Files: internal/adapter/handler/auth demo bits, cmd/api/main.go,
     frontend (App/banner)
 
-- [ ] T5: reset worker (M)
+- [x] T5: reset worker (M)
   - Acceptance: every DEMO_RESET_INTERVAL (default 1h) tenant data is
     truncated and reseeded via the same boot path; logs each reset; only
     runs when enabled.
@@ -53,14 +53,14 @@ Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan
 
 ## Phase 3 — Delivery
 
-- [ ] T6: docker-compose.demo.yml + docs (S)
+- [x] T6: docker-compose.demo.yml + docs (S)
   - Acceptance: one command serves Postgres+API(DEMO_MODE)+dashboard on
     :80 from a clean checkout; docs page documents self-hosting the demo;
     CHANGELOG entry.
   - Verify: compose config validates; local smoke if Docker available.
   - Files: docker-compose.demo.yml, recurso-docs page, CHANGELOG.md
 
-- [ ] T7: website "Open live demo" CTA behind flag (S)
+- [x] T7: website "Open live demo" CTA behind flag (S)
   - Acceptance: VITE_DEMO_URL set → primary hero CTA appears linking
     ?demo=1; unset → current hero unchanged.
   - Verify: website builds both ways.
