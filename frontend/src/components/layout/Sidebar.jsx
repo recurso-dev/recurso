@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet } from "lucide-react";
+import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,6 @@ const NAV_GROUPS = [
       { to: "/overview", label: "Overview", icon: LayoutDashboard },
       { to: "/ask", label: "Ask AI", icon: Sparkles },
       { to: "/customers", label: "Customers", icon: Users },
-      { to: "/products", label: "Products", icon: Package },
       { to: "/plans", label: "Plans", icon: Layers },
       { to: "/subscriptions", label: "Subscriptions", icon: Repeat },
       { to: "/invoices", label: "Invoices", icon: Receipt },
