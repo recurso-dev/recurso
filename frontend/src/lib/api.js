@@ -187,6 +187,31 @@ export const endpoints = {
   getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
   getDunningRecovered: () => api.get('/analytics/dunning/recovered'),
 
+  // Churn risk
+  getChurnAlerts: () => api.get('/churn/alerts'),
+  acknowledgeChurnAlert: (id) => api.post(`/churn/alerts/${id}/ack`),
+  getHighRiskCustomers: (threshold) =>
+    api.get('/churn/high-risk', { params: threshold ? { threshold } : {} }),
+
+  // Cancellation / retention flows (list/get/stats return the payload directly)
+  getCancelFlows: () => api.get('/cancel-flows'),
+  getCancelFlow: (id) => api.get(`/cancel-flows/${id}`),
+  createCancelFlow: (data) => api.post('/cancel-flows', data),
+  updateCancelFlow: (id, data) => api.put(`/cancel-flows/${id}`, data),
+  createCancelFlowStep: (flowId, data) => api.post(`/cancel-flows/${flowId}/steps`, data),
+  updateCancelFlowStep: (stepId, data) => api.put(`/cancel-flows/steps/${stepId}`, data),
+  deleteCancelFlowStep: (stepId) => api.delete(`/cancel-flows/steps/${stepId}`),
+  getCancelFlowStats: (flowId) => api.get('/cancel-flows/stats', { params: { flow_id: flowId } }),
+
+  // Dunning campaign config (list/get return the payload directly, not { data })
+  getDunningCampaigns: () => api.get('/dunning-campaigns'),
+  getDunningCampaign: (id) => api.get(`/dunning-campaigns/${id}`),
+  createDunningCampaign: (data) => api.post('/dunning-campaigns', data),
+  updateDunningCampaign: (id, data) => api.put(`/dunning-campaigns/${id}`, data),
+  createDunningStep: (campaignId, data) => api.post(`/dunning-campaigns/${campaignId}/steps`, data),
+  updateDunningStep: (stepId, data) => api.put(`/dunning-campaigns/steps/${stepId}`, data),
+  deleteDunningStep: (stepId) => api.delete(`/dunning-campaigns/steps/${stepId}`),
+
   // E-Invoice (P25)
   getEInvoiceStatus: (invoiceId) => api.get(`/invoices/${invoiceId}/einvoice`),
   retryEInvoice: (invoiceId) => api.post(`/invoices/${invoiceId}/einvoice/retry`),
@@ -218,6 +243,14 @@ export const endpoints = {
 
   // Audit trail
   getAuditLogs: (params) => api.get('/audit-logs', { params }),
+
+  // Accounting integrations (QuickBooks / Xero)
+  getAccountingConnections: () => api.get('/accounting/connections'),
+  // Returns { auth_url } — redirect the browser there to start OAuth.
+  connectAccounting: (provider) => api.post(`/accounting/connect/${provider}`),
+  disconnectAccounting: (id) => api.delete(`/accounting/connections/${id}`),
+  triggerAccountingSync: () => api.post('/accounting/sync'),
+  getAccountingSyncStatus: () => api.get('/accounting/sync/status'),
 };
 
 

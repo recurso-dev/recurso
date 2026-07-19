@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { BarChart } from "@tremor/react";
-import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3 } from "lucide-react";
+import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3, Settings2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { Button } from "@/components/ui/button";
 import { formatNumber } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -130,6 +132,14 @@ const DunningDashboard = () => {
       <PageHeader
         title="Smart Dunning"
         description="RL-based payment retry optimization — epsilon-greedy multi-armed bandit."
+        actions={
+          <Button variant="outline" asChild>
+            <Link to="/dunning/campaigns">
+              <Settings2 className="h-4 w-4" />
+              Manage campaigns
+            </Link>
+          </Button>
+        }
       />
 
       {/* Overview KPIs */}

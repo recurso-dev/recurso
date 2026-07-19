@@ -1,4 +1,3 @@
-import React from 'react'
 import ErrorBoundary from './components/ErrorBoundary'
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
@@ -23,6 +22,7 @@ import AuditLog from './pages/AuditLog'
 import CreateCoupon from './pages/CreateCoupon'
 import Usage from './pages/Usage'
 import Developers from './pages/Developers'
+import Integrations from './pages/Integrations'
 import Ledger from './pages/Ledger'
 import CreditNotes from './pages/CreditNotes'
 import CreateCreditNote from './pages/CreateCreditNote'
@@ -50,6 +50,9 @@ import Checkout from './pages/Checkout'
 
 // Smart Dunning
 import DunningDashboard from './pages/DunningDashboard'
+import DunningCampaigns from './pages/DunningCampaigns'
+import CancelFlows from './pages/CancelFlows'
+import Churn from './pages/Churn'
 
 // Finance
 import FinanceReconciliation from './pages/FinanceReconciliation'
@@ -65,6 +68,7 @@ import RevenueByGeography from './pages/RevenueByGeography'
 
 // Settings
 import IRPSettings from './pages/settings/IRPSettings'
+import GSTSettings from './pages/settings/GSTSettings'
 
 const PrivateRoute = () => {
     const { isAuthenticated, loading } = useAuth();
@@ -118,6 +122,7 @@ function App() {
                             <Route path="/coupons/new" element={<CreateCoupon />} />
                             <Route path="/usage" element={<Usage />} />
                             <Route path="/developers" element={<Developers />} />
+                            <Route path="/integrations" element={<Integrations />} />
                             <Route path="/ledger" element={<Ledger />} />
                             <Route path="/metering" element={<Metering />} />
                             <Route path="/wallets" element={<Wallets />} />
@@ -144,7 +149,11 @@ function App() {
                             <Route path="/referrals" element={<Referrals />} />
                             <Route path="/gifts" element={<Gifts />} />
                             <Route path="/dunning" element={<DunningDashboard />} />
+                            <Route path="/dunning/campaigns" element={<DunningCampaigns />} />
+                            <Route path="/cancel-flows" element={<CancelFlows />} />
+                            <Route path="/churn" element={<Churn />} />
                             <Route path="/settings/irp" element={<IRPSettings />} />
+                            <Route path="/settings/gst" element={<GSTSettings />} />
                         </Route>
                     </Route>
 

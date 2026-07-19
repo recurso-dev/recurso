@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2 } from "lucide-react";
+import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -29,6 +29,9 @@ const NAV_GROUPS = [
       { to: "/referrals", label: "Referrals", icon: Megaphone },
       { to: "/gifts", label: "Gifts", icon: Gift },
       { to: "/dunning", label: "Dunning", icon: Brain },
+      { to: "/dunning/campaigns", label: "Dunning Campaigns", icon: MailWarning },
+      { to: "/cancel-flows", label: "Cancel Flows", icon: HeartHandshake },
+      { to: "/churn", label: "Churn Risk", icon: TrendingDown },
     ],
   },
   {
@@ -52,6 +55,7 @@ const NAV_GROUPS = [
     label: "System",
     items: [
       { to: "/developers", label: "Developers", icon: Code2 },
+      { to: "/integrations", label: "Integrations", icon: Plug },
       { to: "/settings", label: "Settings", icon: Settings },
       { to: "/security", label: "Security", icon: ShieldCheck },
       { to: "/team", label: "Team", icon: UserCog },
