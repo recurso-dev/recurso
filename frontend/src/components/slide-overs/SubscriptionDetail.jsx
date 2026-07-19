@@ -297,7 +297,7 @@ export default function SubscriptionDetail({
                 Cancel
               </Button>
             )}
-            {subscription.status === "cancelled" && (
+            {subscription.status === "canceled" && (
               <Button
                 variant="outline"
                 size="sm"
