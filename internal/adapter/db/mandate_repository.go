@@ -207,10 +207,12 @@ func (r *MandateRepository) ClaimDueForDebit(ctx context.Context, claimWindow ti
 
 func (r *MandateRepository) scanMandate(row *sql.Row) (*domain.Mandate, error) {
 	var m domain.Mandate
+	// Same NULL-tolerant scanning as scanMandateRow (see comment there).
+	var vpa, tokenID, subID, custID sql.NullString
 	err := row.Scan(
 		&m.ID, &m.TenantID, &m.CustomerID, &m.SubscriptionID,
-		&m.MandateType, &m.PaymentMethod, &m.VPA,
-		&m.RazorpayTokenID, &m.RazorpaySubscriptionID, &m.RazorpayCustomerID,
+		&m.MandateType, &m.PaymentMethod, &vpa,
+		&tokenID, &subID, &custID,
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,
@@ -219,15 +221,24 @@ func (r *MandateRepository) scanMandate(row *sql.Row) (*domain.Mandate, error) {
 	if err != nil {
 		return nil, err
 	}
+	m.VPA = vpa.String
+	m.RazorpayTokenID = tokenID.String
+	m.RazorpaySubscriptionID = subID.String
+	m.RazorpayCustomerID = custID.String
 	return &m, nil
 }
 
 func (r *MandateRepository) scanMandateRow(rows *sql.Rows) (*domain.Mandate, error) {
 	var m domain.Mandate
+	// The text columns are nullable in the schema (a mandate has no gateway
+	// ids until authorization completes) but plain strings on the struct —
+	// scanning NULL into string errors, which 500'd GET /v1/mandates for any
+	// tenant with a pre-authorization mandate.
+	var vpa, tokenID, subID, custID sql.NullString
 	err := rows.Scan(
 		&m.ID, &m.TenantID, &m.CustomerID, &m.SubscriptionID,
-		&m.MandateType, &m.PaymentMethod, &m.VPA,
-		&m.RazorpayTokenID, &m.RazorpaySubscriptionID, &m.RazorpayCustomerID,
+		&m.MandateType, &m.PaymentMethod, &vpa,
+		&tokenID, &subID, &custID,
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,
@@ -236,5 +247,9 @@ func (r *MandateRepository) scanMandateRow(rows *sql.Rows) (*domain.Mandate, err
 	if err != nil {
 		return nil, err
 	}
+	m.VPA = vpa.String
+	m.RazorpayTokenID = tokenID.String
+	m.RazorpaySubscriptionID = subID.String
+	m.RazorpayCustomerID = custID.String
 	return &m, nil
 }

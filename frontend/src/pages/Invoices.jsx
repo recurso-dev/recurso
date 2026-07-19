@@ -44,6 +44,7 @@ const Invoices = () => {
   const [search, setSearch] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [customerNames, setCustomerNames] = useState({});
   const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -52,8 +53,16 @@ const Invoices = () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await endpoints.getInvoices();
+      const [response, custRes] = await Promise.all([
+        endpoints.getInvoices(),
+        endpoints.getCustomers({ limit: 1000 }).catch(() => null),
+      ]);
       setInvoices(response.data.data || []);
+      const names = {};
+      (custRes?.data?.data || []).forEach((c) => {
+        names[c.id] = c.name;
+      });
+      setCustomerNames(names);
     } catch (err) {
       const msg =
         err?.response?.data?.error?.message || err?.message || "Failed to load invoices";
@@ -114,11 +123,14 @@ const Invoices = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (inv) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {inv.customer_id ? `${inv.customer_id.slice(0, 8)}…` : "—"}
-        </span>
-      ),
+      cell: (inv) =>
+        customerNames[inv.customer_id] ? (
+          <span className="text-sm text-foreground">{customerNames[inv.customer_id]}</span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">
+            {inv.customer_id ? `${inv.customer_id.slice(0, 8)}…` : "—"}
+          </span>
+        ),
     },
     {
       key: "amount",
