@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Repeat, MoreHorizontal } from "lucide-react";
+import { Plus, Repeat } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { useDebounce } from "../hooks/useDebounce";
@@ -201,16 +201,6 @@ export default function Subscriptions() {
       cell: (s) => (
         <span className="text-muted-foreground">
           {formatDate(s.current_period_end)}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: () => (
-        <span className="inline-flex text-stone-400">
-          <MoreHorizontal className="h-4 w-4" />
         </span>
       ),
     },
