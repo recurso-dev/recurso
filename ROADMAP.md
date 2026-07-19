@@ -12,6 +12,24 @@ Node SDK, subscriber migration importer, `make demo`, OpenAPI spec at
 `/openapi.json`, hardened deployment (non-root containers, K8s RBAC/network
 policies), CI with security scanning, tagged releases to GHCR.
 
+**Shipped v0.4–v0.6.0 (July 2026):** usage-based billing v1 — billable
+metrics (count/sum/max/unique), per-unit/graduated/volume/package charge
+models with decimal sub-paise rates, arrears rating onto the renewal
+invoice, idempotent batch ingestion (≤500 events/call); an automatic
+renewal scheduler (leased claims, anchor-preserving billing dates — mandate
+and gateway-managed subscriptions excluded); prepaid wallets (top-ups,
+promotional credit with expiry, FIFO drain paying invoices before any
+gateway, ledger-posted); minimum commitments with automatic true-up; usage
+alerts (once per period, webhook + email); append-only audit log (DB
+trigger enforced); experimental integrations behind env flags — GoCardless,
+Adyen, NetSuite, Avalara AvaTax, HubSpot, S3/MinIO GL export; per-currency
+gateway overrides and `RESIDENCY_MODE=self_hosted` egress guards; demo mode
+(`DEMO_MODE=true` — forced-safe mocks, guard middleware, hourly reset,
+one-command `docker-compose.demo.yml`); dashboard pages for metering,
+wallets, and audit; SDKs at Node 1.4.0 (21 resources / 84 methods),
+Python 1.3.0, Go 1.2.0; marketing site redesigned (light fintech) with
+comparison pages and a Netlify-form cloud waitlist.
+
 ---
 
 ## Track 1 — Trust & correctness (design-partner blockers)
@@ -97,6 +115,20 @@ can sign off on the output.
 
 ## Track 2 — Product depth
 
+- [x] **Usage-based billing v1** (v0.6.0) — metrics, four charge models,
+      rating engine (big.Rat, half-up once per line), renewal scheduler,
+      wallets, commitments, alerts, batch ingestion, audit log. Spec:
+      `docs/spec_usage_billing.md`, `docs/spec_lago_parity.md`.
+- [ ] Plan-charges visual editor in the dashboard (tier builder for
+      graduated/volume pricing; today charges are JSON-configured).
+- [ ] End-to-end renewal test rig (compose-based clock-advance harness
+      exercising renew → rate → invoice → wallet drain → gateway).
+- [ ] **Integration certification** 🔒 — GoCardless, Adyen, NetSuite,
+      Avalara, and HubSpot are shipped experimental and unit-tested against
+      recorded responses; each needs sandbox credentials to certify before
+      dropping the "beta" label.
+- [ ] Salesforce CRM sync (JWT-bearer auth design; HubSpot adapter is the
+      template).
 - [x] Webhook delivery visibility in the dashboard (attempts, retries,
       dead-letter, manual redelivery).
 - [x] Plan-change proration UX in the dashboard (preview endpoint +
@@ -151,10 +183,24 @@ access and the demo key never broke.
 ## Track 3 — Developer experience & adoption
 
 - [x] `make demo` one-command demo; seeded dataset with printed API key.
+- [x] **Hosted-sandbox demo mode** (v0.6.0-dev) — `DEMO_MODE=true` forces
+      mock gateways/console email/no egress at construction time, blocks
+      destructive settings routes, auto-logs visitors in via `/auth/demo`,
+      and reseeds hourly; `docker-compose.demo.yml` runs the whole thing.
+      🔒 remaining: point `demo.recurso.dev` at a box running it, then the
+      website hero gains an "Open live demo" CTA (`VITE_DEMO_URL`).
 - [x] OpenAPI 3.1 served at `/openapi.json` / `/openapi.yaml`.
 - [x] Dashboard getting-started checklist.
-- [ ] **Publish `recurso-node` to npm** 🔒 (metadata is ready).
+- [ ] **Publish `recurso` (Node SDK) 1.4.0 to npm** 🔒 (`npm publish --otp`
+      under the team-recurso org; package renamed from recurso-node).
+- [ ] **Publish `recurso` (Python SDK) 1.3.0 to PyPI** 🔒 (dist built and
+      twine-checked; first upload needs the founder's token).
 - [ ] **Make GHCR image public** 🔒 (one toggle in GitHub package settings).
+- [ ] **Grant the fresh repo write access to the GHCR package** 🔒 — the
+      v0.6.0 Release workflow fails with `write_package` denied because the
+      package is still owned by the archived repo (org → Packages →
+      recurso → Manage Actions access → add recurso-dev/recurso, Write);
+      re-run the Release workflow after granting.
 - [x] OpenAPI spec covers the full surface: 109 paths / 137 operations,
       zero missing registered routes, redocly-clean, minimum-path test.
 - [x] Wire Mintlify API playground to the served OpenAPI spec.
@@ -176,8 +222,9 @@ access and the demo key never broke.
 
 ## Track 4 — Recurso Cloud
 
-- [ ] Real waitlist form on the website (replaces mailto) 🔒 (needs a
-      form backend / inbox decision).
+- [x] Real waitlist form on the website — Netlify Forms capture with
+      honeypot; submissions email the address configured in the Netlify
+      dashboard 🔒 (set the notification address there).
 - [x] Manual provisioning runbook: single-tenant instance per customer;
       onboard the first ~10 by hand. Runbook written
       (docs/cloud-provisioning-runbook.md — Docker Compose per VM); the
@@ -257,13 +304,20 @@ re-derived every quarter.
       ALERT_WEBHOOK_URL transition-based health alerting.
 
 **Next (Phase 2, after design partners):**
-- Usage platform depth (seats, storage, active-user dimensions; credits)
-- CRM integrations (HubSpot first), workflow automation on billing events
+- Usage platform depth — metrics/charges/wallets/commitments/alerts
+  shipped in v0.6.0; remaining: seats and active-user dimensions,
+  filtered/grouped metrics, real-time usage endpoints
+- CRM integrations — HubSpot shipped experimental (v0.6.0); Salesforce
+  next; workflow automation on billing events
 - Multi-product catalog: add-ons, bundles, one-time services
 - CPQ: ramp pricing and custom contract schedules for enterprise quotes
-- Localized payment methods via Stripe rails (SEPA, iDEAL) and UPI depth
-- Developer platform: CLI, MCP server, Terraform provider, generated
-  Python/Go SDKs (now unblocked by the complete OpenAPI spec)
+- Localized payment methods — GoCardless (bank debit) and Adyen shipped
+  experimental (v0.6.0); Stripe rails (SEPA, iDEAL) and UPI depth
+- Developer platform: CLI, MCP server, Terraform provider (Python/Go
+  SDKs shipped)
+- Deferred integrations, recorded so they aren't re-derived: Anrok,
+  Segment, Airbyte, ClickHouse-backed analytics; India: e-way bill,
+  Form 16A TDS certificates
 
 **Later (Phase 3–4, needs scale/data):**
 - Revenue intelligence (leak detection, forecasting, anomalies)
@@ -273,16 +327,18 @@ re-derived every quarter.
 
 ---
 
-## Sequencing
+## Sequencing (refreshed 2026-07-19, post-v0.6.0)
 
-**Next 30 days:** finish the two in-progress Track 1 items; non-INR tax at
-invoice time; per-tenant tax config; refunds verification; npm + GHCR
-publishing; waitlist form; incorporation decision + CA engaged; design-
-partner outreach starts.
+**Next 30 days:** founder unblocks — GHCR package access + public image,
+npm/PyPI publishes, `demo.recurso.dev` DNS + box, CA engaged for GST
+review; integration sandbox credentials (GoCardless/Adyen first);
+plan-charges visual editor; end-to-end renewal test rig; design-partner
+outreach starts with the live demo as the pitch.
 
-**Days 30–60:** first design partner migrated and live; load test +
-security page published; ledger reconciliation; webhook visibility;
-deploy buttons + examples; launch prep.
+**Days 30–60:** first design partner migrated and live on usage billing;
+integration certifications land (drop "beta" labels); Salesforce sync;
+SAML certified against a live IdP; launch prep.
 
-**Days 60–90:** public launches; manual cloud onboarding; Python SDK;
-bootstrap-vs-raise decision with real usage data.
+**Days 60–90:** public launches (Show HN → Product Hunt → r/selfhosted →
+SaaSBoomi); manual cloud onboarding; bootstrap-vs-raise decision with
+real usage data.
