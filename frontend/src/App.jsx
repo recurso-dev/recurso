@@ -14,7 +14,6 @@ import Security from './pages/Security'
 import Subscriptions from './pages/Subscriptions'
 import CreateSubscription from './pages/CreateSubscription'
 import Invoices from './pages/Invoices'
-import Products from './pages/Products'
 import Coupons from './pages/Coupons'
 import Metering from './pages/Metering'
 import Wallets from './pages/Wallets'
@@ -126,7 +125,7 @@ function App() {
                             <Route path="/subscriptions" element={<Subscriptions />} />
                             <Route path="/subscriptions/new" element={<CreateSubscription />} />
                             <Route path="/invoices" element={<Invoices />} />
-                            <Route path="/products" element={<Products />} />
+                            <Route path="/products" element={<Navigate to="/plans" replace />} />
                             <Route path="/coupons" element={<Coupons />} />
                             <Route path="/coupons/new" element={<CreateCoupon />} />
                             <Route path="/usage" element={<Usage />} />

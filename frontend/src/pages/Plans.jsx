@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Gift, Package, MoreHorizontal } from "lucide-react";
+import { Plus, Gift, Package } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useDebounce } from "../hooks/useDebounce";
 import BuyGiftModal from "../components/BuyGiftModal";
 import PlanDetail from "../components/slide-overs/PlanDetail";
 import { formatCurrency } from "@/lib/utils";
@@ -20,6 +21,7 @@ import {
 
 const CURRENCY_FILTERS = ["all", "USD", "INR"];
 const INTERVAL_FILTERS = ["all", "month", "year"];
+const PAGE_SIZE = 10;
 
 export default function Plans() {
   const navigate = useNavigate();
@@ -30,6 +32,8 @@ export default function Plans() {
   const [search, setSearch] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("all");
   const [intervalFilter, setIntervalFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search, 500);
 
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -39,7 +43,11 @@ export default function Plans() {
     setLoading(true);
     setError(null);
     try {
-      const response = await endpoints.getPlans();
+      // The backend defaults to limit 10 — without explicit paging the list
+      // silently truncated past ten plans.
+      const params = { page, limit: PAGE_SIZE };
+      if (debouncedSearch) params.q = debouncedSearch;
+      const response = await endpoints.getPlans(params);
       setPlans(response.data.data || []);
     } catch (err) {
       setError(
@@ -48,11 +56,16 @@ export default function Plans() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, debouncedSearch]);
 
   useEffect(() => {
     fetchPlans();
   }, [fetchPlans]);
+
+  // Reset to page 1 whenever the query changes.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   // Filter logic — preserved from the original (currency over prices, interval unit),
   // plus a client-side name/code search over the already-fetched list.
@@ -141,16 +154,6 @@ export default function Plans() {
         </Badge>
       ),
     },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: () => (
-        <span className="inline-flex text-stone-400">
-          <MoreHorizontal className="h-4 w-4" />
-        </span>
-      ),
-    },
   ];
 
   return (
@@ -224,6 +227,12 @@ export default function Plans() {
               New plan
             </Button>
           ) : null,
+        }}
+        pagination={{
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext: plans.length >= PAGE_SIZE,
         }}
       />
 
