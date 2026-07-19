@@ -53,6 +53,9 @@ import DunningDashboard from './pages/DunningDashboard'
 import DunningCampaigns from './pages/DunningCampaigns'
 import CancelFlows from './pages/CancelFlows'
 import Churn from './pages/Churn'
+import Mandates from './pages/Mandates'
+import Disputes from './pages/Disputes'
+import OfflinePayments from './pages/OfflinePayments'
 
 // Finance
 import FinanceReconciliation from './pages/FinanceReconciliation'
@@ -152,6 +155,9 @@ function App() {
                             <Route path="/dunning/campaigns" element={<DunningCampaigns />} />
                             <Route path="/cancel-flows" element={<CancelFlows />} />
                             <Route path="/churn" element={<Churn />} />
+                            <Route path="/mandates" element={<Mandates />} />
+                            <Route path="/disputes" element={<Disputes />} />
+                            <Route path="/payments/offline" element={<OfflinePayments />} />
                             <Route path="/settings/irp" element={<IRPSettings />} />
                             <Route path="/settings/gst" element={<GSTSettings />} />
                         </Route>

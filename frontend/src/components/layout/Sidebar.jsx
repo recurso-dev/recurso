@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown } from "lucide-react";
+import { Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -32,6 +32,14 @@ const NAV_GROUPS = [
       { to: "/dunning/campaigns", label: "Dunning Campaigns", icon: MailWarning },
       { to: "/cancel-flows", label: "Cancel Flows", icon: HeartHandshake },
       { to: "/churn", label: "Churn Risk", icon: TrendingDown },
+    ],
+  },
+  {
+    label: "Payments",
+    items: [
+      { to: "/mandates", label: "Mandates", icon: Repeat2 },
+      { to: "/payments/offline", label: "Offline Payments", icon: Banknote },
+      { to: "/disputes", label: "Disputes", icon: FileQuestion },
     ],
   },
   {

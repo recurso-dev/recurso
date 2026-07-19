@@ -190,6 +190,21 @@ export const endpoints = {
   getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
   getDunningRecovered: () => api.get('/analytics/dunning/recovered'),
 
+  // Payment mandates (UPI Autopay)
+  getMandates: () => api.get('/mandates'),
+  createMandate: (data) => api.post('/mandates', data),
+  revokeMandate: (id) => api.post(`/mandates/${id}/revoke`),
+
+  // Invoice disputes (admin)
+  getDisputes: (status) => api.get('/disputes', { params: status ? { status } : {} }),
+  resolveDispute: (id, note) => api.post(`/disputes/${id}/resolve`, { note }),
+
+  // Offline payments + virtual accounts
+  getOfflinePayments: () => api.get('/payments/offline'),
+  recordOfflinePayment: (data) => api.post('/payments/offline', data),
+  getVirtualAccounts: () => api.get('/virtual-accounts'),
+  createVirtualAccount: (data) => api.post('/virtual-accounts', data),
+
   // Churn risk
   getChurnAlerts: () => api.get('/churn/alerts'),
   acknowledgeChurnAlert: (id) => api.post(`/churn/alerts/${id}/ack`),
