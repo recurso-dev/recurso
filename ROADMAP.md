@@ -155,6 +155,38 @@ can sign off on the output.
       needs a US sales-tax pro to certify (compliance boundary). Design + Phase 1
       tasks: `docs/design-us-nexus.md`.
 
+### US market readiness (added 2026-07-19)
+
+Make Recurso as credible for a US SaaS as it is for an Indian one. Already
+true: TaxJar rates, nexus Phase 1, US quickstart docs, Stripe cards, USD
+multi-currency, zero-rated exports. The gap list:
+
+- [ ] **ACH payments via Stripe** — `us_bank_account` payment methods with
+      mandate acceptance, micro-deposit/instant verification states, and the
+      slow-settlement lifecycle (payment "processing" for days; webhooks
+      drive final paid/failed). ACH is table stakes for US B2B invoices.
+- [ ] **US economic-nexus Phase 2 certification** 🔒 — threshold dataset
+      (per-state revenue/transaction triggers) reviewed by a US sales-tax
+      professional before alerts ship as compliance guidance.
+- [ ] **Sales-tax exemption certificates** — store a customer's exemption
+      certificate (number, state, expiry, document), skip tax for exempt
+      buyers, and carry the exemption reason on the invoice.
+- [ ] **Avalara AvaTax certification** 🔒 — shipped experimental; needs
+      sandbox credentials to certify as the TaxJar alternative.
+- [ ] **US invoice presentation** — invoice template variant with no GST
+      artifacts (GSTIN/HSN/IRN blocks hidden for non-IN sellers), US date
+      formats, and sales-tax-by-jurisdiction lines.
+- [ ] **US-first onboarding defaults** — tenant country=US flips defaults:
+      USD, Stripe primary, TaxJar prompts, W-9 (not GSTIN) fields.
+- [ ] **GoCardless ACH debit certification** 🔒 — the experimental adapter
+      also covers ACH; certify for US usage alongside UK/EU bank debit.
+- [ ] **SOC 2 posture** 🔒 — already on the Enterprise plan promise; start
+      the evidence-collection groundwork (policies, access reviews, audit
+      logging is shipped) before a US enterprise deal forces the timeline.
+- [ ] **Docs: US launch path** — expand `us-quickstart` into a "US go-live
+      checklist" (registrations, nexus, exemptions, ACH, dunning windows)
+      mirroring the India GST tutorial's depth.
+
 ### Authentication & Access (dashboard)
 
 Real per-user dashboard accounts, shipped in three phases (July 2026) — all
@@ -329,7 +361,8 @@ re-derived every quarter.
 
 ## Sequencing (refreshed 2026-07-19, post-v0.6.0)
 
-**Next 30 days:** founder unblocks — GHCR package access + public image,
+**Next 30 days:** US-readiness build starts (ACH via Stripe, exemption
+certificates, US invoice variant); founder unblocks — GHCR package access + public image,
 npm/PyPI publishes, `demo.recurso.dev` DNS + box, CA engaged for GST
 review; integration sandbox credentials (GoCardless/Adyen first);
 plan-charges visual editor; end-to-end renewal test rig; design-partner
