@@ -357,6 +357,35 @@ re-derived every quarter.
 - Identity platform (SAML/SCIM/RBAC) as the enterprise tier
 - Marketplace/plugins, embedded finance
 
+### AI product maturity (added 2026-07-19)
+
+The AI surfaces already shipped are engineered well — NL→SQL "ask"
+(`/v1/analytics/ask`) runs under a dedicated read-only Postgres role +
+tenant scoping with prompt guards as belt-and-braces; churn scoring is a
+transparent logistic model; smart-retry is a real contextual bandit
+(epsilon-greedy / Thompson) with atomic reward folding. The gap is the
+product loop around them — evaluation, feedback, and trust. Highest
+leverage first:
+
+- [ ] **NL→SQL evaluation harness** — a golden set of ~30 real billing
+      questions with expected results, run on every prompt/model change.
+      The foundation for improving "ask" safely; nothing measures answer
+      correctness today.
+- [ ] **Close the "ask" trust loop** — return
+      `{answer_summary, sql, rows, follow_ups}` and render the generated
+      SQL (trust), a one-line NL summary, and suggested follow-ups; capture
+      thumbs-up/down feedback to feed back in.
+- [ ] **Churn model calibration + backtest** — score historical customers
+      against who actually churned (we already collect recovered-payment
+      outcomes), publish precision/recall like the load-test perf numbers,
+      and recalibrate the hand-tuned weights. Keeps the honest-flags ethos.
+- [ ] **Smart-retry attribution dashboard** — surface recovered-revenue
+      per strategy and the exploration/exploitation split so the RL is
+      legible; track regret over time.
+- [ ] **AI cost & latency controls** — per-tenant token budgets, caching
+      of common "ask" questions, and graceful degradation when the LLM is
+      unavailable (already mocked/disabled in demo + self-hosted mode).
+
 ---
 
 ## Sequencing (refreshed 2026-07-19, post-v0.6.0)
