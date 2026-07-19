@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { AreaChart } from "@tremor/react";
 import { DollarSign, Users, TrendingDown, RotateCcw, BarChart3 } from "lucide-react";
 
@@ -37,6 +38,7 @@ export default function Dashboard() {
   const [customerNames, setCustomerNames] = useState({});
   const [mrr, setMrr] = useState(null);
   const [recovered, setRecovered] = useState(null);
+  const [recoveredCurrency, setRecoveredCurrency] = useState("USD");
 
   useEffect(() => {
     let active = true;
@@ -63,18 +65,12 @@ export default function Dashboard() {
       const mrrVal = mrrRes?.data?.mrr ?? mrrRes?.data?.data?.mrr;
       setMrr(mrrVal ?? null);
 
-      // Recovered revenue from dunning analytics. The API sends
-      // recovered_amount_total: a { currency: minorUnits } map — the old reads
-      // (recovered / total_recovered) never matched, so the KPI was always blank
-      // (ENG-152). Sum the map for the headline figure.
-      const recMap =
-        recRes?.data?.recovered_amount_total ??
-        recRes?.data?.data?.recovered_amount_total;
-      const recVal =
-        recMap && Object.keys(recMap).length
-          ? Object.values(recMap).reduce((a, b) => a + Number(b || 0), 0)
-          : null;
-      setRecovered(recVal);
+      // Recovered revenue, normalized server-side into the tenant's reporting
+      // currency (reporting_total / reporting_currency). Summing the raw
+      // per-currency map would add ₹ and $ minor units together.
+      const rec = recRes?.data?.data ?? recRes?.data;
+      setRecovered(rec?.reporting_total ?? null);
+      setRecoveredCurrency(rec?.reporting_currency || "USD");
 
       setLoading(false);
     })();
@@ -96,20 +92,30 @@ export default function Dashboard() {
     return (canceled / denom) * 100;
   }, [subscriptions, activeSubs]);
 
-  // Revenue-over-time series: sum invoice totals by day (minor units → major).
-  const revenueSeries = useMemo(() => {
+  // Revenue-over-time, one series per currency: different currencies cannot be
+  // summed into one line without FX, so each gets its own (₹ and $ don't add).
+  const { revenueSeries, revenueCurrencies } = useMemo(() => {
     const byDay = {};
+    const currencies = new Set();
     invoices.forEach((inv) => {
       if (!inv.created_at) return;
       const key = new Date(inv.created_at).toISOString().slice(0, 10);
-      byDay[key] = (byDay[key] || 0) + (inv.total || 0);
+      const cur = (inv.currency || "USD").toUpperCase();
+      currencies.add(cur);
+      byDay[key] = byDay[key] || {};
+      byDay[key][cur] = (byDay[key][cur] || 0) + (inv.total || 0);
     });
-    return Object.keys(byDay)
+    const curs = [...currencies].sort();
+    const series = Object.keys(byDay)
       .sort()
-      .map((day) => ({
-        date: formatDate(day, { month: "short", day: "numeric" }),
-        Revenue: byDay[day] / 100,
-      }));
+      .map((day) => {
+        const row = { date: formatDate(day, { month: "short", day: "numeric" }) };
+        curs.forEach((c) => {
+          row[c] = (byDay[day][c] || 0) / 100;
+        });
+        return row;
+      });
+    return { revenueSeries: series, revenueCurrencies: curs };
   }, [invoices]);
 
   const recentInvoices = useMemo(
@@ -137,24 +143,28 @@ export default function Dashboard() {
             value={mrr != null ? <Money amountMinor={mrr} /> : "—"}
             icon={DollarSign}
             hint="Monthly recurring revenue"
+            to="/overview"
           />
           <StatCard
             label="Active Subscriptions"
             value={activeSubs.toLocaleString()}
             icon={Users}
             hint="Currently active"
+            to="/subscriptions"
           />
           <StatCard
             label="Churn"
             value={churnRate != null ? `${churnRate.toFixed(1)}%` : "—"}
             icon={TrendingDown}
             hint="Canceled vs. total"
+            to="/churn"
           />
           <StatCard
             label="Recovered Revenue"
-            value={recovered != null ? <Money amountMinor={recovered} /> : "—"}
+            value={recovered != null ? <Money amountMinor={recovered} currency={recoveredCurrency} /> : "—"}
             icon={RotateCcw}
             hint="Via smart dunning"
+            to="/dunning"
           />
         </div>
       )}
@@ -173,16 +183,12 @@ export default function Dashboard() {
                 className="h-72"
                 data={revenueSeries}
                 index="date"
-                categories={["Revenue"]}
-                colors={["emerald"]}
+                categories={revenueCurrencies}
+                colors={["emerald", "blue", "amber", "violet"]}
                 valueFormatter={(v) =>
-                  new Intl.NumberFormat("en-US", {
-                    style: "currency",
-                    currency: "USD",
-                    maximumFractionDigits: 0,
-                  }).format(v)
+                  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v)
                 }
-                showLegend={false}
+                showLegend={revenueCurrencies.length > 1}
                 showGridLines
                 curveType="monotone"
                 yAxisWidth={64}
@@ -198,8 +204,11 @@ export default function Dashboard() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Recent invoices</CardTitle>
+            <Link to="/invoices" className="text-sm font-medium text-emerald-700 hover:underline">
+              View all
+            </Link>
           </CardHeader>
           <CardContent className="px-0 pb-0">
             {loading ? (
