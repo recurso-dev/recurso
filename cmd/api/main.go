@@ -361,6 +361,7 @@ func main() {
 	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
 	meteringService := service.NewMeteringService(billableMetricRepo, chargeRepo, planRepo, subscriptionRepo, usageRepo)
 	customerService := service.NewCustomerService(customerRepo)
+	customerService.SetSubscriptionRepo(subscriptionRepo) // archive gate: refuse archiving with active subs
 	tenantService := service.NewTenantService(tenantRepo) // P8 Service
 
 	// Admin-dashboard auth: real user accounts + opaque sessions layered on top
@@ -1350,6 +1351,8 @@ func main() {
 
 		v1.POST("/customers", customerHandler.CreateCustomer)
 		v1.GET("/customers", customerHandler.ListCustomers)
+		v1.GET("/customers/:id", customerHandler.GetCustomer)
+		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
 
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)

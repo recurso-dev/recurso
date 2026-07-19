@@ -78,6 +78,10 @@ export const endpoints = {
   getAccount: () => api.get('/account'),
   updateAccount: (data) => api.put('/account', data),
   getCustomers: (params) => api.get('/customers', { params }),
+  getCustomer: (id) => api.get(`/customers/${id}`),
+  // Partial update; { active: false } archives (blocked while subscriptions
+  // are active), { active: true } restores.
+  updateCustomer: (id, data) => api.put(`/customers/${id}`, data),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   getInvoices: (params) => api.get('/invoices', { params }),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header

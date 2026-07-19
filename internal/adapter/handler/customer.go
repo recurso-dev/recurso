@@ -125,6 +125,103 @@ func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// GetCustomer handles GET /v1/customers/:id.
+func (h *CustomerHandler) GetCustomer(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	customer, err := h.service.GetCustomer(ctx, tenantID, customerID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	if customer == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "customer not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": customer})
+}
+
+// updateCustomerRequest is a partial update: nil fields are left unchanged, so
+// the same endpoint edits contact/tax details or archives (active=false).
+type updateCustomerRequest struct {
+	Name          *string `json:"name"`
+	Email         *string `json:"email" binding:"omitempty,email"`
+	Phone         *string `json:"phone"`
+	TaxID         *string `json:"tax_id"`
+	GSTIN         *string `json:"gstin"`
+	TaxType       *string `json:"tax_type" binding:"omitempty,oneof=business consumer"`
+	PlaceOfSupply *string `json:"place_of_supply"`
+	Line1         *string `json:"line1"`
+	City          *string `json:"city"`
+	State         *string `json:"state"`
+	Zip           *string `json:"zip"`
+	Country       *string `json:"country" binding:"omitempty,len=2"`
+	Active        *bool   `json:"active"`
+}
+
+// UpdateCustomer handles PUT /v1/customers/:id. Archiving (active=false) is
+// refused while the customer has active subscriptions.
+func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
+		return
+	}
+
+	var req updateCustomerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	customer, err := h.service.UpdateCustomer(ctx, service.UpdateCustomerInput{
+		TenantID:      tenantID,
+		CustomerID:    customerID,
+		Name:          req.Name,
+		Email:         req.Email,
+		Phone:         req.Phone,
+		TaxID:         req.TaxID,
+		GSTIN:         req.GSTIN,
+		TaxType:       req.TaxType,
+		PlaceOfSupply: req.PlaceOfSupply,
+		Line1:         req.Line1,
+		City:          req.City,
+		State:         req.State,
+		Zip:           req.Zip,
+		Country:       req.Country,
+		Active:        req.Active,
+	})
+	if err != nil {
+		// The archive gate ("active subscriptions") and field validation are
+		// caller-fixable, so they surface as 400s.
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	if customer == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "customer not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": customer})
+}
+
 func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

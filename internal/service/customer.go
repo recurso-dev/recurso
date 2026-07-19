@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -12,11 +13,16 @@ import (
 
 type CustomerService struct {
 	repo      port.CustomerRepository
-	telemetry *telemetry.Client // nil-safe; only set when TELEMETRY_OPTIN=true
+	subs      port.SubscriptionRepository // nil-safe; gates archiving on active subscriptions
+	telemetry *telemetry.Client           // nil-safe; only set when TELEMETRY_OPTIN=true
 }
 
 // SetTelemetry injects the opt-in anonymous telemetry client after construction.
 func (s *CustomerService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
+
+// SetSubscriptionRepo enables the archive gate (refuse archiving customers
+// with active subscriptions). Without it, archiving skips the check.
+func (s *CustomerService) SetSubscriptionRepo(r port.SubscriptionRepository) { s.subs = r }
 
 func NewCustomerService(repo port.CustomerRepository) *CustomerService {
 	return &CustomerService{repo: repo}
@@ -74,6 +80,7 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustom
 			Country: input.Country,
 		},
 		LedgerAccountID: ledgerID,
+		Active:          true,
 		CreatedAt:       time.Now().UTC(),
 	}
 
@@ -95,9 +102,108 @@ func (s *CustomerService) GetCustomer(ctx context.Context, tenantID uuid.UUID, c
 	if err != nil {
 		return nil, err
 	}
-	// Verify tenant
-	if customer.TenantID != tenantID {
-		return nil, nil // Or return a not found error
+	// Verify existence + tenant (GetByID returns nil, nil when missing).
+	if customer == nil || customer.TenantID != tenantID {
+		return nil, nil
+	}
+	return customer, nil
+}
+
+// UpdateCustomerInput carries the editable customer fields. Nil pointers are
+// left unchanged, so the same call edits contact/tax details or archives
+// (Active=false) / restores (true).
+type UpdateCustomerInput struct {
+	TenantID   uuid.UUID
+	CustomerID uuid.UUID
+
+	Name          *string
+	Email         *string
+	Phone         *string
+	TaxID         *string
+	GSTIN         *string
+	TaxType       *string
+	PlaceOfSupply *string
+	Line1         *string
+	City          *string
+	State         *string
+	Zip           *string
+	Country       *string
+	Active        *bool
+}
+
+// UpdateCustomer applies a partial update. Returns (nil, nil) when the
+// customer does not exist for the tenant. Archiving is refused while the
+// customer has active subscriptions — cancel or pause them first.
+func (s *CustomerService) UpdateCustomer(ctx context.Context, input UpdateCustomerInput) (*domain.Customer, error) {
+	customer, err := s.GetCustomer(ctx, input.TenantID, input.CustomerID)
+	if err != nil {
+		return nil, err
+	}
+	if customer == nil {
+		return nil, nil
+	}
+
+	if input.Name != nil {
+		customer.Name = input.Name
+	}
+	if input.Email != nil {
+		if *input.Email == "" {
+			return nil, fmt.Errorf("email cannot be empty")
+		}
+		customer.Email = *input.Email
+	}
+	if input.Phone != nil {
+		customer.Phone = *input.Phone
+	}
+	if input.TaxID != nil {
+		customer.TaxID = input.TaxID
+	}
+	if input.GSTIN != nil {
+		customer.GSTIN = input.GSTIN
+	}
+	if input.TaxType != nil {
+		switch *input.TaxType {
+		case "business", "consumer":
+		default:
+			return nil, fmt.Errorf("tax_type must be 'business' or 'consumer'")
+		}
+		customer.TaxType = *input.TaxType
+	}
+	if input.PlaceOfSupply != nil {
+		customer.PlaceOfSupply = input.PlaceOfSupply
+	}
+	if input.Line1 != nil {
+		customer.BillingAddress.Line1 = *input.Line1
+	}
+	if input.City != nil {
+		customer.BillingAddress.City = *input.City
+	}
+	if input.State != nil {
+		customer.BillingAddress.State = *input.State
+	}
+	if input.Zip != nil {
+		customer.BillingAddress.Zip = *input.Zip
+	}
+	if input.Country != nil {
+		customer.BillingAddress.Country = *input.Country
+	}
+
+	if input.Active != nil {
+		// Archiving with live subscriptions would orphan active billing.
+		if customer.Active && !*input.Active && s.subs != nil {
+			counts, err := s.subs.CountActiveByCustomer(ctx, input.TenantID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to check active subscriptions: %w", err)
+			}
+			if counts[customer.ID] > 0 {
+				return nil, fmt.Errorf("customer has %d active subscription(s) — cancel or pause them before archiving", counts[customer.ID])
+			}
+		}
+		customer.Active = *input.Active
+	}
+
+	if err := s.repo.Update(ctx, customer); err != nil {
+		return nil, err
 	}
 	return customer, nil
 }
