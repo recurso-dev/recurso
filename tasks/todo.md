@@ -1,145 +1,69 @@
-# Tasks: Lago Parity Program
+# Tasks: Demo Mode & Hosted Sandbox
 
-Spec: `docs/spec_lago_parity.md` · Plan: `tasks/plan.md`
+Spec: `docs/spec_demo_mode.md` (APPROVED, D1–D6 accepted) · Plan: `tasks/plan.md`
 
-## Track A — honest flags
+## Phase 1 — Safety core
 
-- [x] A1a: Billing-cycle scheduler with at-most-once claims
-  - Acceptance: due ACTIVE non-mandate subscriptions get a renewal invoice
-    (flat + metered) and an anchor-preserving period advance; concurrent
-    ticks cannot double-process; `cancel_at_period_end` subs get final
-    rating then cancel; `BILLING_CYCLE_INTERVAL=0` disables.
-  - Verify: `go test ./internal/scheduler/ -run BillingCycle` incl. a
-    concurrency claim test; full suite green.
-  - Files: internal/scheduler/billing_cycle.go(+_test), cmd/api/main.go
+- [ ] T1: internal/demo package + forced-safe wiring (M)
+  - Acceptance: `demo.Enabled()` reads DEMO_MODE; when true, main.go
+    constructs mock gateways, console notifier, nil GSP/IRP, disables
+    webhook deliveries and CRM/S3/accounting egress regardless of env;
+    boot log announces demo mode. Flag off = byte-identical behavior.
+  - Verify: unit test on wiring decisions; full suite green.
+  - Files: internal/demo/demo.go(+_test), cmd/api/main.go,
+    internal/adapter/worker/webhook_worker.go
 
-- [x] A1b: Payment attempt on scheduler-generated invoices
-  - Acceptance: invoice charged via stored gateway method when present;
-    failure leaves invoice open for dunning (no crash, no retry storm).
-  - Verify: scheduler test with failing/succeeding fake gateway.
-  - Files: internal/scheduler/billing_cycle.go, internal/service (reuse
-    existing charge path)
+- [ ] T2: demo guard middleware (S)
+  - Acceptance: POST/PUT/DELETE on team, SSO settings, live-key rotation,
+    data-region, account-delete routes 403 `{code: demo_mode}`; everything
+    else untouched; wired on /v1 + /auth subsets only when enabled.
+  - Verify: httptest table over blocked + allowed routes.
+  - Files: internal/adapter/middleware/demo_guard.go(+_test), cmd/api/main.go
 
-- [x] A2: Metered lines on mandate-debit invoices
-  - Acceptance: mandate debit invoice includes rated usage lines; retry of
-    the same cycle produces no duplicate lines (cycle-key + rating claim).
-  - Verify: `go test ./internal/service/ -run Mandate` extended cases.
-  - Files: internal/service/mandate.go(+_test)
+### Checkpoint 1: safety proven (suite green, guards tested, off = identical)
 
-- [x] A3a: Node SDK metering methods (recurso@1.3.0)
-  - Acceptance: billableMetrics CRUD, plans.setCharges/getCharges,
-    subscriptions.usageAmount, usage.record properties — typed, tested.
-  - Verify: `npm run typecheck && npm test` in recurso-node.
-  - Files: ../recurso-node/src/*, test/*, package.json
+## Phase 2 — Experience
 
-- [x] A3b: Python SDK regen + release prep (recurso 1.2.0)
-  - Acceptance: regenerated from synced OpenAPI; new endpoint modules
-    importable; version bumped.
-  - Verify: pytest in recurso-python.
-  - Files: ../recurso-python/*
+- [ ] T3: seed extension for v0.6.0 showcase (M)
+  - Acceptance: demo seed also creates 2 billable metrics, graduated
+    charges on one plan, usage events, a funded wallet (+promo credit),
+    one usage alert, a commitment; seed is idempotent (re-run = no dupes).
+  - Verify: seed test against pg (skips without TEST_DATABASE_URL) or
+    fake-repo unit path; make demo output lists new objects.
+  - Files: cmd/demo_seed/*, seed helpers
 
-- [x] A3c: Go SDK metering methods (v1.1.0)
-  - Acceptance: same surface, stdlib-only, APIError semantics kept.
-  - Verify: `go test ./...` in recurso-go; tag prepared.
-  - Files: ../recurso-go/*
+- [ ] T4: /auth/demo + dashboard auto-login + banner (M)
+  - Acceptance: POST /auth/demo (only when enabled) creates a session for
+    the seeded demo user; dashboard ?demo=1 auto-calls it and lands
+    logged in; banner shows reset cadence + sk_test_12345; endpoint 404s
+    when disabled.
+  - Verify: handler test (enabled/disabled); frontend build + vitest.
+  - Files: internal/adapter/handler/auth demo bits, cmd/api/main.go,
+    frontend (App/banner)
 
-## Track B — commerce
+- [ ] T5: reset worker (M)
+  - Acceptance: every DEMO_RESET_INTERVAL (default 1h) tenant data is
+    truncated and reseeded via the same boot path; logs each reset; only
+    runs when enabled.
+  - Verify: worker test with injected clock/spy seeder; pg reset test
+    optional.
+  - Files: internal/adapter/worker/demo_reset_worker.go(+_test), main.go
 
-- [x] B1a: Wallet domain + migrations + repositories
-  - Acceptance: wallets (customer+currency unique) and wallet_transactions
-    (append-only, balance_after) tables + ports + pg repos.
-  - Verify: build + repo tests; migration up/down clean.
-  - Files: internal/core/domain/wallet.go, core/port, adapter/db(+migrations)
+### Checkpoint 2: fresh boot → seeded → auto-login → reset restores pristine
 
-- [x] B1b: WalletService — top-up, expiry, ledger postings
-  - Acceptance: top-up via offline payment or gateway produces receipt +
-    ledger legs (DR Cash / CR Customer Credit); promotional top-ups carry
-    expiry; expired balance excluded from available.
-  - Verify: service tests incl. expiry-ordering table tests.
-  - Files: internal/service/wallet.go(+_test), service/ledger.go
+## Phase 3 — Delivery
 
-- [x] B1c: Wallet drain on invoice generation (D3 ordering)
-  - Acceptance: after invoice commit: wallet → adjustment credits →
-    gateway; drains recorded as transactions + ledger legs; invariants
-    (`Total == Subtotal+Tax`, Σ lines) untouched; zero-balance no-op.
-  - Verify: invoice tests extended; payment-order test.
-  - Files: internal/service/invoice.go, wallet.go(+_test)
+- [ ] T6: docker-compose.demo.yml + docs (S)
+  - Acceptance: one command serves Postgres+API(DEMO_MODE)+dashboard on
+    :80 from a clean checkout; docs page documents self-hosting the demo;
+    CHANGELOG entry.
+  - Verify: compose config validates; local smoke if Docker available.
+  - Files: docker-compose.demo.yml, recurso-docs page, CHANGELOG.md
 
-- [x] B1d: Auto-recharge
-  - Acceptance: balance < threshold triggers top-up via stored method in
-    the billing-cycle sweep; no method → notify tenant+customer, no crash.
-  - Verify: scheduler test with fake gateway.
-  - Files: internal/scheduler/billing_cycle.go, service/wallet.go
+- [ ] T7: website "Open live demo" CTA behind flag (S)
+  - Acceptance: VITE_DEMO_URL set → primary hero CTA appears linking
+    ?demo=1; unset → current hero unchanged.
+  - Verify: website builds both ways.
+  - Files: recurso-website Hero.jsx (+ env plumbing)
 
-- [x] B1e: Wallet API + OpenAPI + docs
-  - Acceptance: POST/GET /v1/wallets, POST /v1/wallets/{id}/top-up,
-    GET /v1/wallets/{id}/transactions; docs page; spec synced.
-  - Verify: handler tests; YAML valid.
-  - Files: adapter/handler/wallet.go, cmd/api/{main.go,openapi.yaml},
-    ../recurso-docs
-
-- [x] B2a: Commitments + true-up line
-  - Acceptance: per-period minimum on subscription; shortfall line fills
-    gap at period close (taxed at plan HSN); exactly-at-commitment adds
-    nothing; preview shows projected true-up.
-  - Verify: boundary table tests; invariant tests.
-  - Files: domain/commitment.go, adapter/db(+migration), service/invoice.go,
-    service/metering.go, handler, openapi.yaml
-
-- [x] B3a: Usage alerts + sweep + webhook
-  - Acceptance: absolute/%-thresholds per subscription+metric; fires once
-    per threshold per period via webhook `usage.alert.triggered` + email/
-    in-app; dedup proven.
-  - Verify: evaluation table tests + dedup test.
-  - Files: domain/usage_alert.go, adapter/db(+migration), service,
-    scheduler, handler, openapi.yaml, ../recurso-docs
-
-## Track C — scale + trust
-
-- [x] C1: Batch ingestion + transaction_id idempotency + covering index
-  - Acceptance: POST /v1/usage/events/batch ≤500 items with per-item
-    results; duplicate (subscription, transaction_id) collapses to the
-    original; covering index on (subscription_id, dimension, timestamp).
-  - Verify: handler+repo tests incl. duplicate collapse.
-  - Files: adapter/handler/usage.go, service/usage.go, adapter/db
-    (+migration), openapi.yaml
-
-- [x] C2: Append-only audit log
-  - Acceptance: config-grade mutations (plans, charges, metrics, coupons,
-    entitlements, webhooks, team, wallets, commitments, alerts) write
-    audit rows; GET /v1/audit-logs filters by entity/actor/time; table
-    rejects UPDATE/DELETE.
-  - Verify: sweep test over mutating routes; handler tests.
-  - Files: domain/audit.go, adapter/db(+migration), service/audit.go,
-    handlers, cmd/api, frontend page (follow-up), openapi.yaml
-
-## Cross-cutting (per track close)
-
-- [ ] Docs + OpenAPI sync + CHANGELOG Unreleased entry per track
-- [ ] Dashboard UI: plan-charges editor, Wallets page, AuditLog page
-      (after B1e / C2; may batch)
-
-## Track D — integration parity with Lago (added 2026-07-18, founder directive)
-
-Reference surface: getlago.com integrations + doc.getlago.com. Recurso
-already has: Stripe, Razorpay (Lago lacks it), QuickBooks, Xero, Tally,
-TaxJar, VIES, SMTP/Twilio, webhooks. Gaps vs Lago, grouped:
-
-- [x] D1: Payments — Adyen + GoCardless adapters shipped EXPERIMENTAL
-      (httptest-verified; sandbox verification founder-gated)
-- [x] D2: Accounting — NetSuite SuiteTalk adapter shipped EXPERIMENTAL
-- [x] D3: Tax — Avalara AvaTax provider shipped EXPERIMENTAL; Anrok deferred (no customer signal)
-- [x] D4: CRM — HubSpot contact sync shipped EXPERIMENTAL; Salesforce
-      needs its own spec (JWT/OAuth design) — follow-up
-- [x] D5: S3 GL export sink shipped EXPERIMENTAL; Segment events + Airbyte/ClickHouse defer
-- [x] D6: Automation — Zapier/n8n docs shipped (rides signed webhooks)
-- [x] D7: Auth — Okta SAML recipe documented
-  - Note: all egress adapters must respect RESIDENCY_MODE guards.
-  - Sequencing after C2; each integration is its own spec + PR.
-
-## Cross-cutting sweep (docs / SDKs / website / dashboard) — founder directive
-
-- [x] S1: Docs — commitments, usage-alerts, batch/idempotency pages shipped
-- [x] S2: SDKs — Node 1.4.0, Go v1.2.0, Python 1.3.0 (publish gated on founder)
-- [x] S3: Website — features + announcement + honest Lago comparison column
-      config, AuditLog page (with C2)
+### Checkpoint 3: compose end-to-end; CTA dark until DNS (founder: point demo.recurso.dev)

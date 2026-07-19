@@ -1,6 +1,7 @@
 # Spec: Demo Mode & Hosted Sandbox (demo.recurso.dev)
 
-> **Status: DRAFT — awaiting founder decisions (D1–D6)**
+> **Status: APPROVED (2026-07-19) — recommendations D1–D6 accepted by
+> advancing to planning; override any decision before implementation.**
 
 ## Objective
 
