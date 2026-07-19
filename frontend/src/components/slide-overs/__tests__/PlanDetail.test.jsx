@@ -56,7 +56,7 @@ describe('PlanDetail entitlements editor', () => {
         renderPlanDetail();
         await waitFor(() => expect(screen.getByText('api.access')).toBeInTheDocument());
 
-        fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
         fireEvent.click(screen.getByRole('button', { name: /add entitlement/i }));
 
         // The new row is the third one
@@ -79,7 +79,7 @@ describe('PlanDetail entitlements editor', () => {
         renderPlanDetail();
         await waitFor(() => expect(screen.getByText('api.access')).toBeInTheDocument());
 
-        fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
         fireEvent.click(screen.getByLabelText('Remove entitlement 1'));
         fireEvent.click(screen.getByRole('button', { name: /save entitlements/i }));
 
@@ -94,7 +94,7 @@ describe('PlanDetail entitlements editor', () => {
         renderPlanDetail();
         await waitFor(() => expect(screen.getByText('api.access')).toBeInTheDocument());
 
-        fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
         fireEvent.click(screen.getByRole('button', { name: /add entitlement/i }));
         fireEvent.change(screen.getByLabelText('Feature key 3'), { target: { value: '!!bad key' } });
         fireEvent.click(screen.getByRole('button', { name: /save entitlements/i }));
@@ -107,7 +107,7 @@ describe('PlanDetail entitlements editor', () => {
         renderPlanDetail();
         await waitFor(() => expect(screen.getByText('api.access')).toBeInTheDocument());
 
-        fireEvent.click(screen.getByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
         fireEvent.click(screen.getByRole('button', { name: /add entitlement/i }));
         fireEvent.change(screen.getByLabelText('Feature key 3'), { target: { value: 'seats' } });
         fireEvent.click(screen.getByRole('button', { name: /save entitlements/i }));

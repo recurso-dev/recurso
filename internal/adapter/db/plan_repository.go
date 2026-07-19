@@ -97,6 +97,32 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 	return plan, nil
 }
 
+// Update persists mutable plan columns. Scoped by tenant_id so a caller can
+// never edit another tenant's plan. `code` is intentionally not updated — it
+// is the plan's stable external identifier.
+func (r *PlanRepository) Update(ctx context.Context, plan *domain.Plan) error {
+	query := `
+		UPDATE plans
+		SET name = $1, interval_unit = $2, interval_count = $3, active = $4, hsn_code = $5
+		WHERE id = $6 AND tenant_id = $7
+	`
+	res, err := r.db.ExecContext(ctx, query,
+		plan.Name, plan.IntervalUnit, plan.IntervalCount, plan.Active, plan.HSNCode,
+		plan.ID, plan.TenantID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update plan: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *PlanRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Plan, error) {
 	// Implementation similar to GetByID but using tenant_id + code index
 	// Skipping for brevity in P0 implementation

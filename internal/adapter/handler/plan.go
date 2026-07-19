@@ -63,6 +63,82 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 	c.JSON(http.StatusCreated, plan)
 }
 
+func (h *CatalogHandler) GetPlan(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	planID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid plan id")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	plan, err := h.service.GetPlan(ctx, tenantID, planID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	if plan == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "plan not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": plan})
+}
+
+// updatePlanRequest is a partial update: nil fields are left unchanged, so the
+// same endpoint edits plan metadata or archives it (active=false).
+type updatePlanRequest struct {
+	Name          *string `json:"name" binding:"omitempty,min=1"`
+	HSNCode       *string `json:"hsn_code"`
+	IntervalUnit  *string `json:"interval_unit" binding:"omitempty,oneof=day week month year"`
+	IntervalCount *int    `json:"interval_count" binding:"omitempty,min=1"`
+	Active        *bool   `json:"active"`
+}
+
+func (h *CatalogHandler) UpdatePlan(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	planID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid plan id")
+		return
+	}
+
+	var req updatePlanRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	plan, err := h.service.UpdatePlan(ctx, service.UpdatePlanInput{
+		TenantID:      tenantID,
+		PlanID:        planID,
+		Name:          req.Name,
+		HSNCode:       req.HSNCode,
+		IntervalUnit:  req.IntervalUnit,
+		IntervalCount: req.IntervalCount,
+		Active:        req.Active,
+	})
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	if plan == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "plan not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, plan)
+}
+
 func (h *CatalogHandler) ListPlans(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

@@ -119,6 +119,9 @@ export const endpoints = {
   
   createCustomer: (data) => api.post('/customers', data),
   createPlan: (data) => api.post('/plans', data),
+  getPlan: (id) => api.get(`/plans/${id}`),
+  // Partial update; set { active: false } to archive, { active: true } to restore.
+  updatePlan: (id, data) => api.put(`/plans/${id}`, data),
   getPlanEntitlements: (id) => api.get(`/plans/${id}/entitlements`),
   // PUT semantics: the body is the plan's full desired entitlement set;
   // entries absent from the array are removed server-side.

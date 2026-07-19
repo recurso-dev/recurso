@@ -50,6 +50,8 @@ func (m *mockPlanRepoForMRR) Create(ctx context.Context, p *domain.Plan) error {
 func (m *mockPlanRepoForMRR) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Plan, error) {
 	return nil, nil
 }
+func (m *mockPlanRepoForMRR) Update(ctx context.Context, plan *domain.Plan) error { return nil }
+
 func (m *mockPlanRepoForMRR) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
 	return nil, nil
 }

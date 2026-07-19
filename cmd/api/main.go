@@ -1339,6 +1339,8 @@ func main() {
 	{
 		v1.POST("/plans", catalogHandler.CreatePlan)
 		v1.GET("/plans", catalogHandler.ListPlans)
+		v1.GET("/plans/:id", catalogHandler.GetPlan)
+		v1.PUT("/plans/:id", catalogHandler.UpdatePlan)
 
 		// Entitlement Engine v1
 		v1.PUT("/plans/:id/entitlements", entitlementHandler.SetPlanEntitlements)
