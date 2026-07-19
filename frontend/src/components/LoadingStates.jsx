@@ -1,4 +1,3 @@
-import React from 'react';
 
 /**
  * Loading skeleton component that mimics content shape while loading.

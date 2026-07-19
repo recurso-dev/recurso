@@ -493,6 +493,8 @@ function SSOSection() {
 
   useEffect(() => {
     load();
+    // load only runs on mount; it reads no changing props/state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const save = async (e) => {
