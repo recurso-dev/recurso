@@ -188,6 +188,8 @@ func (m *acctSyncPlanRepo) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 	return nil, errors.New("not found")
 }
 
+func (m *acctSyncPlanRepo) Update(ctx context.Context, plan *domain.Plan) error { return nil }
+
 func (m *acctSyncPlanRepo) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
 	return nil, nil
 }

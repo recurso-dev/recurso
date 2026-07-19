@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { Pencil, Plus, Trash2, Check, X } from "lucide-react";
+import { Pencil, Plus, Trash2, Check, X, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { useToast } from "../Toast";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -75,7 +76,7 @@ const toEditorRows = (ents) =>
       ent.kind === "limit" && ent.limit_value != null ? String(ent.limit_value) : "",
   }));
 
-export default function PlanDetail({ plan, isOpen, onClose }) {
+export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
   const toast = useToast();
   const [entitlements, setEntitlements] = useState([]);
   const [entLoadError, setEntLoadError] = useState(false);
@@ -83,11 +84,18 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
   const [rows, setRows] = useState([]);
   const [validationError, setValidationError] = useState(null);
   const [saving, setSaving] = useState(false);
+  // Plan-fields editing (name / interval / HSN) and archive state.
+  const [isEditingPlan, setIsEditingPlan] = useState(false);
+  const [planForm, setPlanForm] = useState(null);
+  const [savingPlan, setSavingPlan] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   useEffect(() => {
     if (!isOpen || !plan?.id) return;
     let cancelled = false;
     setIsEditing(false);
+    setIsEditingPlan(false);
     setValidationError(null);
     setEntLoadError(false);
     endpoints
@@ -162,7 +170,51 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
     }
   };
 
+  const startPlanEdit = () => {
+    setPlanForm({
+      name: plan.name,
+      interval_unit: plan.interval_unit,
+      interval_count: String(plan.interval_count),
+      hsn_code: plan.hsn_code || "",
+    });
+    setIsEditingPlan(true);
+  };
+
+  const savePlan = async () => {
+    setSavingPlan(true);
+    try {
+      const res = await endpoints.updatePlan(plan.id, {
+        name: planForm.name,
+        interval_unit: planForm.interval_unit,
+        interval_count: Number(planForm.interval_count),
+        hsn_code: planForm.hsn_code,
+      });
+      setIsEditingPlan(false);
+      toast.success("Plan updated");
+      onChanged?.(res.data);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to update plan");
+    } finally {
+      setSavingPlan(false);
+    }
+  };
+
+  const toggleArchive = async () => {
+    setArchiving(true);
+    try {
+      const res = await endpoints.updatePlan(plan.id, { active: !plan.active });
+      setArchiveOpen(false);
+      toast.success(plan.active ? "Plan archived" : "Plan restored");
+      onChanged?.(res.data);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to update plan");
+    } finally {
+      setArchiving(false);
+    }
+  };
+
   return (
+    <>
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
@@ -177,26 +229,135 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
 
         <div className="flex-1 space-y-8 overflow-y-auto px-6 py-6">
           {/* Details */}
-          <div className="grid grid-cols-2 gap-x-4 gap-y-5">
-            <DetailRow
-              label="Price"
-              value={price ? formatCurrency(price.amount, price.currency) : "—"}
-            />
-            <DetailRow
-              label="Billing interval"
-              value={
-                <span className="capitalize">
-                  {plan.interval_count > 1 ? `${plan.interval_count} ` : ""}
-                  {plan.interval_unit}
-                </span>
-              }
-            />
-            <DetailRow label="Created" value={formatDate(plan.created_at)} />
-            <DetailRow label="Currency" value={currency} />
-            <DetailRow
-              label="Code"
-              value={<span className="font-mono text-foreground">{plan.code}</span>}
-            />
+          <div>
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Details</h3>
+              {!isEditingPlan && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={startPlanEdit}>
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit plan
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)}>
+                    {plan.active ? (
+                      <Archive className="h-3.5 w-3.5" />
+                    ) : (
+                      <ArchiveRestore className="h-3.5 w-3.5" />
+                    )}
+                    {plan.active ? "Archive" : "Restore"}
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {isEditingPlan ? (
+              <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Name</p>
+                  <Input
+                    value={planForm.name}
+                    onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
+                    aria-label="Plan name"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      Interval unit
+                    </p>
+                    <select
+                      value={planForm.interval_unit}
+                      onChange={(e) => setPlanForm({ ...planForm, interval_unit: e.target.value })}
+                      aria-label="Interval unit"
+                      className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                      <option value="day">day</option>
+                      <option value="week">week</option>
+                      <option value="month">month</option>
+                      <option value="year">year</option>
+                    </select>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                      Interval count
+                    </p>
+                    <Input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={planForm.interval_count}
+                      onChange={(e) => setPlanForm({ ...planForm, interval_count: e.target.value })}
+                      aria-label="Interval count"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    HSN/SAC code
+                  </p>
+                  <Input
+                    value={planForm.hsn_code}
+                    onChange={(e) => setPlanForm({ ...planForm, hsn_code: e.target.value })}
+                    placeholder="Empty = tenant default"
+                    aria-label="HSN code"
+                    className="font-mono"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Price and code are fixed once a plan is created — create a new plan for a
+                  different price point.
+                </p>
+                <div className="flex justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingPlan(false)}
+                    disabled={savingPlan}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={savePlan}
+                    disabled={savingPlan || !planForm.name.trim() || Number(planForm.interval_count) < 1}
+                  >
+                    {savingPlan ? "Saving…" : "Save plan"}
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-x-4 gap-y-5">
+                <DetailRow
+                  label="Price"
+                  value={price ? formatCurrency(price.amount, price.currency) : "—"}
+                />
+                <DetailRow
+                  label="Billing interval"
+                  value={
+                    <span className="capitalize">
+                      {plan.interval_count > 1 ? `${plan.interval_count} ` : ""}
+                      {plan.interval_unit}
+                    </span>
+                  }
+                />
+                <DetailRow label="Created" value={formatDate(plan.created_at)} />
+                <DetailRow label="Currency" value={currency} />
+                <DetailRow
+                  label="Code"
+                  value={<span className="font-mono text-foreground">{plan.code}</span>}
+                />
+                <DetailRow
+                  label="HSN/SAC"
+                  value={
+                    plan.hsn_code ? (
+                      <span className="font-mono text-foreground">{plan.hsn_code}</span>
+                    ) : (
+                      <span className="text-muted-foreground">tenant default</span>
+                    )
+                  }
+                />
+              </div>
+            )}
           </div>
 
           {/* Entitlements */}
@@ -348,5 +509,21 @@ export default function PlanDetail({ plan, isOpen, onClose }) {
         </div>
       </SheetContent>
     </Sheet>
+
+      <ConfirmDialog
+        open={archiveOpen}
+        onOpenChange={setArchiveOpen}
+        title={plan.active ? "Archive this plan?" : "Restore this plan?"}
+        description={
+          plan.active
+            ? "Archived plans can't be used for new subscriptions. Existing subscriptions keep billing normally, and you can restore the plan at any time."
+            : "The plan becomes available for new subscriptions again."
+        }
+        confirmLabel={plan.active ? "Archive plan" : "Restore plan"}
+        destructive={plan.active}
+        busy={archiving}
+        onConfirm={toggleArchive}
+      />
+    </>
   );
 }

@@ -86,6 +86,18 @@ export default function Plans() {
     setTimeout(() => setSelectedPlan(null), 300);
   };
 
+  // After an edit/archive in the detail sheet: show the server's version of the
+  // plan immediately and refresh the list behind it.
+  const handlePlanChanged = (updated) => {
+    if (updated?.id) {
+      // The PUT response has no prices array — keep the ones we already had.
+      setSelectedPlan((prev) =>
+        prev && prev.id === updated.id ? { ...prev, ...updated, prices: updated.prices || prev.prices } : prev
+      );
+    }
+    fetchPlans();
+  };
+
   const hasFilters = search || currencyFilter !== "all" || intervalFilter !== "all";
 
   const columns = [
@@ -215,7 +227,12 @@ export default function Plans() {
         }}
       />
 
-      <PlanDetail plan={selectedPlan} isOpen={isDetailOpen} onClose={closeDetail} />
+      <PlanDetail
+        plan={selectedPlan}
+        isOpen={isDetailOpen}
+        onClose={closeDetail}
+        onChanged={handlePlanChanged}
+      />
 
       <BuyGiftModal
         isOpen={isGiftModalOpen}

@@ -208,6 +208,35 @@ paths:
         '409':
           $ref: '#/components/responses/Conflict'
 
+  /auth/demo:
+    post:
+      operationId: startDemoSession
+      tags: [Auth]
+      summary: Start a demo sandbox session
+      description: >
+        Opens a session in the shared demo sandbox (sets the httpOnly
+        `recurso_session` cookie) and returns the demo user's email and API
+        key. Only available when the server runs with DEMO_MODE enabled;
+        returns 404 otherwise.
+      security: []
+      responses:
+        '200':
+          description: Demo session opened. Sets the recurso_session cookie.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      demo: { type: boolean }
+                      email: { type: string, format: email }
+                      api_key: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: Demo environment is still warming up — retry shortly.
   /auth/login:
     post:
       operationId: login
@@ -530,6 +559,65 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/Plan'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/plans/{id}:
+    get:
+      operationId: getPlan
+      tags: [Plans]
+      summary: Get a plan
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Plan'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updatePlan
+      tags: [Plans]
+      summary: Update or archive a plan
+      description: >
+        Partial update of mutable plan fields — omitted fields are left
+        unchanged. Set `active: false` to archive the plan (hides it from new
+        subscriptions without affecting existing ones) and `true` to restore
+        it. The plan's price/amount is a separate versioned entity and is not
+        editable here.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                hsn_code: { type: string }
+                interval_unit: { type: string, enum: [day, week, month, year] }
+                interval_count: { type: integer, minimum: 1 }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Updated plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Plan'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '401':
           $ref: '#/components/responses/Unauthorized'
 

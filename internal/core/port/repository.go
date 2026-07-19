@@ -13,6 +13,9 @@ type PlanRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Plan, error)
 	GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Plan, error)
 	List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error)
+	// Update persists mutable plan fields (name, interval, active, hsn_code).
+	// Code is immutable. Returns sql.ErrNoRows if no row matches id+tenant.
+	Update(ctx context.Context, plan *domain.Plan) error
 }
 
 type InvoiceRepository interface {
