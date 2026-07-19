@@ -20,6 +20,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   data every `DEMO_RESET_INTERVAL` (default 1h).
   `docker-compose.demo.yml` serves the whole sandbox with one command.
 
+### Fixed
+
+- **OpenAPI spec accuracy** — documented two request fields the handlers
+  already accept but the spec omitted: `CreateCreditNoteRequest.type`
+  (`adjustment`/`refund`, where `refund` triggers the gateway refund) and
+  `CreateSubscriptionRequest.trial_days`. Converted six OpenAPI 3.0
+  `nullable: true` usages (Entitlement, TaxNexus, entitlement responses)
+  to 3.1 `type: [x, "null"]` unions, so `redocly lint` passes with zero
+  errors. All three SDKs regenerated/updated to match (Node, Python, Go).
+
 ## [0.6.0] - 2026-07-19
 
 The usage-based billing release: everything between a usage event and the
