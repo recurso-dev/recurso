@@ -80,8 +80,10 @@ const AskAnalytics = () => {
       setResult({ question: text, data: res.data.data, query: res.data.query });
     } catch (err) {
       setError(
-        err?.response?.data?.error?.message ||
-          "Could not answer that — try rephrasing, or check that GenAI analytics is configured."
+        err?.response?.status === 503
+          ? "GenAI analytics isn't configured on this deployment — set OPENAI_API_KEY on the server to enable it."
+          : err?.response?.data?.error?.message ||
+              "Could not answer that — try rephrasing the question."
       );
     } finally {
       setAsking(false);

@@ -3,12 +3,17 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
+
+// ErrGenAINotConfigured is returned when no LLM provider is wired (e.g.
+// OPENAI_API_KEY unset). Callers map it to 503 rather than a 500.
+var ErrGenAINotConfigured = errors.New("genai analytics is not configured on this server")
 
 type GenAIService struct {
 	llm port.LLMProvider
@@ -94,6 +99,12 @@ CREATE TABLE prices (
 `
 
 func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question string) (interface{}, string, error) {
+	// No provider (OPENAI_API_KEY unset): fail explicitly instead of
+	// panicking on the nil interface below.
+	if s.llm == nil {
+		return nil, "", ErrGenAINotConfigured
+	}
+
 	// 1. Generate SQL. The prompt never sees the tenant id — isolation is
 	// enforced by the database below, not by the model.
 	sqlQuery, err := s.llm.GenerateCompletion(ctx, systemPrompt, question)
