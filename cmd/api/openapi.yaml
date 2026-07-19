@@ -621,6 +621,76 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [Customers]
+      summary: Get a customer
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Customer'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateCustomer
+      tags: [Customers]
+      summary: Update or archive a customer
+      description: >
+        Partial update — omitted fields are left unchanged. Set
+        `active: false` to archive the customer; archiving is refused while
+        the customer has active subscriptions (cancel or pause them first).
+        Archived customers keep full billing history and can be restored with
+        `active: true`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                phone: { type: string }
+                tax_id: { type: string }
+                gstin: { type: string }
+                tax_type: { type: string, enum: [business, consumer] }
+                place_of_supply: { type: string }
+                line1: { type: string }
+                city: { type: string }
+                state: { type: string }
+                zip: { type: string }
+                country: { type: string, minLength: 2, maxLength: 2 }
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Updated customer.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Customer'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/customers:
     post:
       operationId: createCustomer

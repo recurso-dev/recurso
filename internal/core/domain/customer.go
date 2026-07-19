@@ -27,7 +27,10 @@ type Customer struct {
 	CardExpYear     *int                   `json:"card_exp_year,omitempty" db:"card_exp_year"`
 	CardTokenID     *string                `json:"card_token_id,omitempty" db:"card_token_id"`
 	CardFingerprint *string                `json:"card_fingerprint,omitempty" db:"card_fingerprint"`
-	CreatedAt       time.Time              `json:"created_at"`
+	// Active is the soft-archive flag. Archiving is blocked while the customer
+	// has active subscriptions; archived customers keep full billing history.
+	Active    bool      `json:"active" db:"active"`
+	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is bumped by CustomerRepository.Update (the canonical edit
 	// path for the fields pushed to accounting providers). The accounting
 	// sync compares it against the entity's mapping to skip unchanged

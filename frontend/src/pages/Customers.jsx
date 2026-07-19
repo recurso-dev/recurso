@@ -86,6 +86,15 @@ export default function Customers() {
     setTimeout(() => setSelected(null), 300);
   };
 
+  // After an edit/archive in the detail sheet: show the server's version
+  // immediately and refresh the list behind it.
+  const handleCustomerChanged = (updated) => {
+    if (updated?.id) {
+      setSelected((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+    }
+    fetchCustomers();
+  };
+
   const copyPortalLink = useCallback(
     (e, customer) => {
       e.stopPropagation();
@@ -217,7 +226,12 @@ export default function Customers() {
         }}
       />
 
-      <CustomerDetail customer={selected} isOpen={detailOpen} onClose={closeDetail} />
+      <CustomerDetail
+        customer={selected}
+        isOpen={detailOpen}
+        onClose={closeDetail}
+        onChanged={handleCustomerChanged}
+      />
     </div>
   );
 }
