@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { AreaChart } from "@tremor/react";
-import { DollarSign, Users, TrendingDown, RotateCcw, BarChart3 } from "lucide-react";
+import {
+  DollarSign,
+  Users,
+  TrendingDown,
+  RotateCcw,
+  BarChart3,
+  Plus,
+  AlertTriangle,
+  FileQuestion,
+  CheckCircle2,
+} from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -12,6 +22,7 @@ import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleto
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -39,16 +50,21 @@ export default function Dashboard() {
   const [mrr, setMrr] = useState(null);
   const [recovered, setRecovered] = useState(null);
   const [recoveredCurrency, setRecoveredCurrency] = useState("USD");
+  const [openDisputes, setOpenDisputes] = useState(0);
+  const [churnAlerts, setChurnAlerts] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let active = true;
     (async () => {
-      const [subsRes, invRes, custRes, mrrRes, recRes] = await Promise.all([
+      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes] = await Promise.all([
         endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
         endpoints.getInvoices({ limit: 1000 }).catch(() => null),
         endpoints.getCustomers({ limit: 1000 }).catch(() => null),
         endpoints.getMRR().catch(() => null),
         endpoints.getDunningRecovered().catch(() => null),
+        endpoints.getDisputes("open").catch(() => null),
+        endpoints.getChurnAlerts().catch(() => null),
       ]);
       if (!active) return;
 
@@ -72,6 +88,9 @@ export default function Dashboard() {
       setRecovered(rec?.reporting_total ?? null);
       setRecoveredCurrency(rec?.reporting_currency || "USD");
 
+      setOpenDisputes((dispRes?.data?.data || []).length);
+      setChurnAlerts((churnRes?.data?.data || []).length);
+
       setLoading(false);
     })();
     return () => {
@@ -92,13 +111,33 @@ export default function Dashboard() {
     return (canceled / denom) * 100;
   }, [subscriptions, activeSubs]);
 
+  // Overdue receivables, per currency, from the already-fetched invoices.
+  const overdueByCur = useMemo(() => {
+    const sums = {};
+    invoices
+      .filter((inv) => inv.status === "past_due")
+      .forEach((inv) => {
+        const cur = (inv.currency || "USD").toUpperCase();
+        sums[cur] = (sums[cur] || 0) + (inv.amount_due ?? inv.total ?? 0);
+      });
+    return sums;
+  }, [invoices]);
+  const overdueCount = useMemo(
+    () => invoices.filter((inv) => inv.status === "past_due").length,
+    [invoices]
+  );
+  const attentionCount = overdueCount + openDisputes + churnAlerts;
+
   // Revenue-over-time, one series per currency: different currencies cannot be
   // summed into one line without FX, so each gets its own (₹ and $ don't add).
+  // Windowed to the trailing 90 days — a year of daily bars is unreadable.
   const { revenueSeries, revenueCurrencies } = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 90);
     const byDay = {};
     const currencies = new Set();
     invoices.forEach((inv) => {
-      if (!inv.created_at) return;
+      if (!inv.created_at || new Date(inv.created_at) < cutoff) return;
       const key = new Date(inv.created_at).toISOString().slice(0, 10);
       const cur = (inv.currency || "USD").toUpperCase();
       currencies.add(cur);
@@ -131,7 +170,88 @@ export default function Dashboard() {
       <PageHeader
         title="Home"
         description="A snapshot of your billing performance."
+        actions={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/customers/new">
+                <Plus className="h-4 w-4" />
+                Customer
+              </Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/subscriptions/new">
+                <Plus className="h-4 w-4" />
+                Subscription
+              </Link>
+            </Button>
+            <Button size="sm" asChild>
+              <Link to="/plans/new">
+                <Plus className="h-4 w-4" />
+                Plan
+              </Link>
+            </Button>
+          </div>
+        }
       />
+
+      {/* Needs attention: the "what should I fix today" strip */}
+      {!loading &&
+        (attentionCount > 0 ? (
+          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {overdueCount > 0 && (
+              <Link
+                to="/finance/invoice-aging"
+                className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 transition-colors hover:bg-red-100"
+              >
+                <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-red-800">
+                    {overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}
+                  </p>
+                  <p className="truncate text-xs text-red-700">
+                    {Object.entries(overdueByCur)
+                      .map(([c, v]) => formatCurrency(v, c))
+                      .join(" + ")}{" "}
+                    past due
+                  </p>
+                </div>
+              </Link>
+            )}
+            {openDisputes > 0 && (
+              <Link
+                to="/disputes"
+                className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100"
+              >
+                <FileQuestion className="h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    {openDisputes} open dispute{openDisputes === 1 ? "" : "s"}
+                  </p>
+                  <p className="text-xs text-amber-700">Customers are waiting on you</p>
+                </div>
+              </Link>
+            )}
+            {churnAlerts > 0 && (
+              <Link
+                to="/churn"
+                className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100"
+              >
+                <TrendingDown className="h-5 w-5 shrink-0 text-amber-600" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">
+                    {churnAlerts} churn alert{churnAlerts === 1 ? "" : "s"}
+                  </p>
+                  <p className="text-xs text-amber-700">Risk scores spiked — review them</p>
+                </div>
+              </Link>
+            )}
+          </div>
+        ) : (
+          <div className="mb-6 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            All clear — no overdue invoices, open disputes, or churn alerts.
+          </div>
+        ))}
 
       {/* KPI row */}
       {loading ? (
@@ -140,7 +260,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={mrr != null ? <Money amountMinor={mrr} /> : "—"}
+            value={mrr != null ? formatCurrency(mrr, "USD") : "—"}
             icon={DollarSign}
             hint="Monthly recurring revenue"
             to="/overview"
@@ -161,7 +281,7 @@ export default function Dashboard() {
           />
           <StatCard
             label="Recovered Revenue"
-            value={recovered != null ? <Money amountMinor={recovered} currency={recoveredCurrency} /> : "—"}
+            value={recovered != null ? formatCurrency(recovered, recoveredCurrency) : "—"}
             icon={RotateCcw}
             hint="Via smart dunning"
             to="/dunning"
@@ -230,7 +350,19 @@ export default function Dashboard() {
                 </TableHeader>
                 <TableBody>
                   {recentInvoices.map((inv) => (
-                    <TableRow key={inv.id} className="hover:bg-transparent">
+                    <TableRow
+                      key={inv.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate("/invoices", { state: { openInvoiceId: inv.id } })}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          navigate("/invoices", { state: { openInvoiceId: inv.id } });
+                        }
+                      }}
+                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
                       <TableCell className="pl-6">
                         <div className="truncate text-sm font-medium text-foreground">
                           {customerNames[inv.customer_id] || "Customer"}

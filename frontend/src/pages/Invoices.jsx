@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { FileText } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -44,6 +45,8 @@ const Invoices = () => {
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const toast = useToast();
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -64,6 +67,21 @@ const Invoices = () => {
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
+
+  // Deep-link from Home's recent-invoices rows: /invoices with
+  // { state: { openInvoiceId } } auto-opens that invoice's detail sheet once.
+  useEffect(() => {
+    const id = location.state?.openInvoiceId;
+    if (!id || loading) return;
+    const inv = invoices.find((i) => i.id === id);
+    if (inv) {
+      setSelectedInvoice(inv);
+      setIsDetailOpen(true);
+    }
+    // Consume the state so back/refresh doesn't reopen it.
+    navigate(location.pathname, { replace: true, state: null });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, invoices]);
 
   const filteredInvoices = invoices.filter((inv) => {
     if (!search) return true;
