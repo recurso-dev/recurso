@@ -115,6 +115,8 @@ export const endpoints = {
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),
   createKey: (data) => api.post('/developer/keys', data),
+  // Soft-deactivates the key; it stops authenticating immediately.
+  revokeKey: (id) => api.delete(`/developer/keys/${id}`),
   register: (data) => axios.post('/auth/register', data),
   
   createCustomer: (data) => api.post('/customers', data),
@@ -145,6 +147,8 @@ export const endpoints = {
   // Coupons
   getCoupons: () => api.get('/coupons'),
   createCoupon: (data) => api.post('/coupons', data),
+  // active:false blocks new redemptions; existing subscriptions keep the discount.
+  setCouponActive: (id, active) => api.put(`/coupons/${id}`, { active }),
 
   // Webhooks & Events (P24)
   getWebhooks: () => api.get('/webhooks'),

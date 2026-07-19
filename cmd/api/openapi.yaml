@@ -1249,6 +1249,42 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/coupons/{id}:
+    put:
+      operationId: updateCoupon
+      tags: [Coupons]
+      summary: Deactivate or reactivate a coupon
+      description: >
+        Flips the redemption gate. `active: false` stops new subscriptions
+        from redeeming the code; existing subscriptions keep their applied
+        discount. `active: true` restores redeemability.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Coupon updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [activated, deactivated] }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/coupons:
     post:
       operationId: createCoupon
@@ -3112,6 +3148,33 @@ paths:
                     description: The generated SQL that produced the rows.
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/developer/keys/{id}:
+    delete:
+      operationId: revokeAPIKey
+      tags: [Developer]
+      summary: Revoke an API key
+      description: >
+        Soft-deactivates the key. Authentication filters on the active flag,
+        so a revoked key stops working immediately and cannot be restored.
+        Owner/admin only for dashboard sessions.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Key revoked.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: revoked }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '403':
+          description: Requires owner or admin role.
         '401':
           $ref: '#/components/responses/Unauthorized'
 

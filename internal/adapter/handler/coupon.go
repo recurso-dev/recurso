@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"net/http"
 	"time"
 
@@ -47,6 +49,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		DiscountValue:  req.DiscountValue,
 		Duration:       domain.DurationType(req.Duration),
 		DurationMonths: req.DurationMonths,
+		Active:         true,
 		CreatedAt:      time.Now(),
 		UpdatedAt:      time.Now(),
 	}
@@ -58,6 +61,44 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, coupon)
+}
+
+type updateCouponRequest struct {
+	Active *bool `json:"active" binding:"required"`
+}
+
+// UpdateCoupon flips the redemption gate: PUT /v1/coupons/:id {"active": false}
+// deactivates (new subscriptions can no longer redeem the code), true restores.
+// Existing subscriptions keep their applied discount either way.
+func (h *CouponHandler) UpdateCoupon(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid coupon id")
+		return
+	}
+
+	var req updateCouponRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	if err := h.repo.SetActive(c.Request.Context(), tenantID, id, *req.Active); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "coupon not found")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to update coupon")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": map[bool]string{true: "activated", false: "deactivated"}[*req.Active]})
 }
 
 func (h *CouponHandler) ListCoupons(c *gin.Context) {

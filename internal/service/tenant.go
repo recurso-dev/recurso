@@ -60,6 +60,11 @@ func (s *TenantService) ListKeys(ctx context.Context, tenantID uuid.UUID) ([]*do
 	return s.repo.ListAPIKeys(ctx, tenantID)
 }
 
+// RevokeKey deactivates an API key; it stops authenticating immediately.
+func (s *TenantService) RevokeKey(ctx context.Context, tenantID, keyID uuid.UUID) error {
+	return s.repo.RevokeAPIKey(ctx, tenantID, keyID)
+}
+
 func (s *TenantService) GetAccount(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error) {
 	return s.repo.GetByID(ctx, tenantID)
 }

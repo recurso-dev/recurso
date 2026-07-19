@@ -188,6 +188,27 @@ func (r *TenantRepository) ListTenants(ctx context.Context) ([]*domain.Tenant, e
 	return tenants, nil
 }
 
+// RevokeAPIKey soft-deactivates a key. Auth lookups filter on
+// is_active = TRUE, so a revoked key stops authenticating immediately.
+// Scoped by tenant; sql.ErrNoRows when no active key matches.
+func (r *TenantRepository) RevokeAPIKey(ctx context.Context, tenantID, keyID uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE api_keys SET is_active = FALSE WHERE id = $1 AND tenant_id = $2 AND is_active = TRUE`,
+		keyID, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *TenantRepository) ListAPIKeys(ctx context.Context, tenantID uuid.UUID) ([]*domain.APIKey, error) {
 	query := `SELECT id, tenant_id, key_prefix, type, is_active, livemode, created_at FROM api_keys WHERE tenant_id = $1 ORDER BY created_at DESC`
 	rows, err := r.db.QueryContext(ctx, query, tenantID)

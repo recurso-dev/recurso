@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -111,6 +113,37 @@ func (h *TenantHandler) CreateKey(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, key)
+}
+
+// RevokeKey handles DELETE /v1/developer/keys/:id — soft-deactivates the key
+// (auth filters on is_active, so it stops working immediately). Manager-only,
+// like key creation.
+func (h *TenantHandler) RevokeKey(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if !h.requireManager(c) {
+		return
+	}
+
+	keyID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid key id")
+		return
+	}
+
+	if err := h.service.RevokeKey(c.Request.Context(), tenantID, keyID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			respondError(c, http.StatusNotFound, codeNotFound, "key not found or already revoked")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "revoked"})
 }
 
 func (h *TenantHandler) GetAccount(c *gin.Context) {
