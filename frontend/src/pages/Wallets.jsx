@@ -30,6 +30,8 @@ const Wallets = () => {
   const [createForm, setCreateForm] = useState({ customer_id: "", currency: "INR" });
   const [topUpWallet, setTopUpWallet] = useState(null);
   const [topUpForm, setTopUpForm] = useState({ amount: "", source: "manual" });
+  const [autoWallet, setAutoWallet] = useState(null);
+  const [autoForm, setAutoForm] = useState({ threshold: "", amount: "" });
   const [txWallet, setTxWallet] = useState(null);
   const [txs, setTxs] = useState([]);
   const [actionError, setActionError] = useState(null);
@@ -86,6 +88,33 @@ const Wallets = () => {
     }
   };
 
+  const openAutoRecharge = (wallet) => {
+    setActionError(null);
+    setAutoWallet(wallet);
+    setAutoForm({
+      threshold: wallet.auto_recharge_threshold ? String(wallet.auto_recharge_threshold / 100) : "",
+      amount: wallet.auto_recharge_amount ? String(wallet.auto_recharge_amount / 100) : "",
+    });
+  };
+
+  // Backend requires threshold+amount together (both positive) or both null to clear.
+  const submitAutoRecharge = async (disable = false) => {
+    setActionError(null);
+    try {
+      const body = disable
+        ? { auto_recharge_threshold: null, auto_recharge_amount: null }
+        : {
+            auto_recharge_threshold: Math.round(parseFloat(autoForm.threshold) * 100),
+            auto_recharge_amount: Math.round(parseFloat(autoForm.amount) * 100),
+          };
+      await api.setWalletAutoRecharge(autoWallet.id, body);
+      setAutoWallet(null);
+      fetchWallets();
+    } catch (err) {
+      setActionError(err?.response?.data?.error?.message || "Failed to update auto-recharge");
+    }
+  };
+
   const openTransactions = async (wallet) => {
     setTxWallet(wallet);
     setTxs([]);
@@ -128,17 +157,30 @@ const Wallets = () => {
     {
       key: "actions",
       header: "",
+      align: "right",
       cell: (w) => (
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={(e) => {
-            e.stopPropagation();
-            setTopUpWallet(w);
-          }}
-        >
-          Top up
-        </Button>
+        <div className="flex justify-end gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              openAutoRecharge(w);
+            }}
+          >
+            Auto-recharge
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              setTopUpWallet(w);
+            }}
+          >
+            Top up
+          </Button>
+        </div>
       ),
     },
   ];
@@ -244,6 +286,63 @@ const Wallets = () => {
           <DialogFooter>
             <Button onClick={submitTopUp} disabled={!topUpForm.amount}>
               Top up
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Auto-recharge */}
+      <Dialog open={!!autoWallet} onOpenChange={(open) => !open && setAutoWallet(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Auto-recharge</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">
+              When the balance falls below the threshold, the wallet is automatically
+              topped up by the recharge amount using the customer&apos;s saved payment method.
+            </p>
+            <div>
+              <Label>Threshold ({autoWallet?.currency})</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={autoForm.threshold}
+                onChange={(e) => setAutoForm({ ...autoForm, threshold: e.target.value })}
+                placeholder="1000.00"
+              />
+            </div>
+            <div>
+              <Label>Recharge amount ({autoWallet?.currency})</Label>
+              <Input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={autoForm.amount}
+                onChange={(e) => setAutoForm({ ...autoForm, amount: e.target.value })}
+                placeholder="5000.00"
+              />
+            </div>
+            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+          </div>
+          <DialogFooter className="sm:justify-between">
+            {autoWallet?.auto_recharge_threshold ? (
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-600"
+                onClick={() => submitAutoRecharge(true)}
+              >
+                Disable
+              </Button>
+            ) : (
+              <span />
+            )}
+            <Button
+              onClick={() => submitAutoRecharge(false)}
+              disabled={!autoForm.threshold || !autoForm.amount}
+            >
+              Save
             </Button>
           </DialogFooter>
         </DialogContent>

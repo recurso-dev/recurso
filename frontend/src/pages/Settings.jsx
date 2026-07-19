@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Save, ShieldCheck, ChevronRight } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -47,6 +47,27 @@ export default function Settings() {
     }
   };
 
+  const settingsLinks = [
+    {
+      to: "/security",
+      icon: ShieldCheck,
+      title: "Security",
+      description: "Two-factor authentication and active sessions.",
+    },
+    {
+      to: "/settings/gst",
+      icon: Receipt,
+      title: "GST configuration",
+      description: "GSTIN, business details, and tax rates for invoices.",
+    },
+    {
+      to: "/settings/irp",
+      icon: FileCheck2,
+      title: "E-invoicing (IRP)",
+      description: "Connect the Invoice Registration Portal for e-invoices.",
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -89,24 +110,25 @@ export default function Settings() {
         </Card>
 
         <Card className="mt-6">
-          <CardContent className="p-0">
-            <Link
-              to="/security"
-              className="flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-muted/50"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
-                  <ShieldCheck className="h-4 w-4" />
+          <CardContent className="divide-y divide-border p-0">
+            {settingsLinks.map(({ to, icon: Icon, title, description }) => (
+              <Link
+                key={to}
+                to={to}
+                className="flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-muted/50"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{title}</p>
+                    <p className="text-xs text-muted-foreground">{description}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Security</p>
-                  <p className="text-xs text-muted-foreground">
-                    Two-factor authentication and active sessions.
-                  </p>
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4 text-muted-foreground" />
-            </Link>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </Link>
+            ))}
           </CardContent>
         </Card>
       </div>
