@@ -1364,6 +1364,16 @@ paths:
                   type: string
                 reason:
                   type: string
+                type:
+                  type: string
+                  enum: [adjustment, refund]
+                  default: adjustment
+                  description: >-
+                    `adjustment` (default) issues account credit. `refund`
+                    calls the gateway's refund API against the paid invoice
+                    in `invoice_id` and posts a Refunds-vs-Cash ledger
+                    reversal; its progress is tracked by the credit note's
+                    `refund_status`.
       responses:
         '201':
           description: Credit note issued.
@@ -5950,8 +5960,8 @@ paths:
                       properties:
                         feature_key: { type: string }
                         kind: { type: string, enum: [boolean, limit] }
-                        bool_value: { type: boolean, nullable: true }
-                        limit_value: { type: integer, format: int64, nullable: true }
+                        bool_value: { type: [boolean, 'null'] }
+                        limit_value: { type: [integer, 'null'], format: int64 }
                         plan_ids:
                           type: array
                           items: { type: string, format: uuid }
@@ -5977,7 +5987,7 @@ paths:
                 properties:
                   feature_key: { type: string }
                   granted: { type: boolean }
-                  limit_value: { type: integer, format: int64, nullable: true }
+                  limit_value: { type: [integer, 'null'], format: int64 }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -6618,8 +6628,8 @@ components:
         plan_id: { type: string, format: uuid }
         feature_key: { type: string }
         kind: { type: string, enum: [boolean, limit] }
-        bool_value: { type: boolean, nullable: true }
-        limit_value: { type: integer, format: int64, nullable: true }
+        bool_value: { type: [boolean, 'null'] }
+        limit_value: { type: [integer, 'null'], format: int64 }
     EntitlementInput:
       type: object
       required: [feature_key, kind]
@@ -7119,6 +7129,13 @@ components:
         payment_terms:
           type: string
           enum: [net0, net15, net30, net60]
+        trial_days:
+          type: integer
+          minimum: 0
+          description: >-
+            When greater than zero, the subscription starts in `trialing`
+            and converts to `active` (generating its first invoice) when the
+            trial ends.
 
     Subscription:
       type: object
@@ -8032,7 +8049,7 @@ components:
       properties:
         state_code: { type: string, example: "CA" }
         nexus_type: { type: string, enum: [physical, voluntary, economic] }
-        established_at: { type: string, format: date-time, nullable: true }
+        established_at: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
     GSTConfig:
       type: object
