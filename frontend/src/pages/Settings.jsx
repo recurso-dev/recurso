@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2 } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -65,6 +65,12 @@ export default function Settings() {
       icon: FileCheck2,
       title: "E-invoicing (IRP)",
       description: "Connect the Invoice Registration Portal for e-invoices.",
+    },
+    {
+      to: "/settings/tax-nexus",
+      icon: MapPinned,
+      title: "US sales-tax nexus",
+      description: "Declare collection states and monitor economic thresholds.",
     },
   ];
 
