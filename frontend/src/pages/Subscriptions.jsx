@@ -5,7 +5,7 @@ import { Plus, Repeat, MoreHorizontal } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { useDebounce } from "../hooks/useDebounce";
 import SubscriptionDetail from "../components/slide-overs/SubscriptionDetail";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";

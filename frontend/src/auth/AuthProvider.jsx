@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState, useEffect } from 'react'
 import { endpoints } from '../lib/api'
 import { getApiKey, setApiKey as storeApiKey, clearApiKey } from '../lib/authToken'
 

@@ -80,7 +80,7 @@ const ConsentCheckbox = ({
                 </div>
             </label>
 
-            <style jsx>{`
+            <style>{`
                 .consent-checkbox {
                     margin: 16px 0;
                 }

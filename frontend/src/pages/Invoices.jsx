@@ -4,7 +4,7 @@ import { FileText } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { useToast } from "../components/Toast";
 import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";

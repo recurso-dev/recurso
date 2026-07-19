@@ -103,8 +103,7 @@ export default function CreateSubscription() {
           subscription_id: sub.razorpay_subscription_id,
           name: "Billify Recurso",
           description: `Subscription for ${selectedPlan?.name || "Plan"}`,
-          handler: function (response) {
-            console.log("Razorpay Signature:", response.razorpay_signature);
+          handler: function () {
             navigate("/subscriptions");
           },
           prefill: {
@@ -117,7 +116,6 @@ export default function CreateSubscription() {
           },
           modal: {
             ondismiss: function () {
-              console.log("Checkout form closed");
               navigate("/subscriptions");
             },
           },
