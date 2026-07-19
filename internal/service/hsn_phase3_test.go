@@ -124,7 +124,8 @@ func TestCreateSubscription_DiscountedLine_TaxableBase(t *testing.T) {
 	invRepo := &subMockInvoiceRepo{}
 	couponTenant := uuid.New()
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
-		ID: uuid.New(), TenantID: couponTenant, Code: "HALF", DiscountType: domain.DiscountTypePercent, DiscountValue: 50,
+		Active: true,
+		ID:     uuid.New(), TenantID: couponTenant, Code: "HALF", DiscountType: domain.DiscountTypePercent, DiscountValue: 50,
 	}}
 	svc := newTestSubscriptionService(&subMockSubRepo{}, invRepo, planRepo, custRepo, couponRepo, &subMockGateway{})
 

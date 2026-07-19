@@ -298,6 +298,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		if coupon == nil {
 			return nil, fmt.Errorf("invalid coupon code")
 		}
+		if !coupon.Active {
+			return nil, fmt.Errorf("coupon is no longer active")
+		}
 
 		couponID = &coupon.ID
 

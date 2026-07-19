@@ -635,6 +635,7 @@ func TestCreateSubscription_TaxOnZeroTotal(t *testing.T) {
 	}}
 	invRepo := &subMockInvoiceRepo{}
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
+		Active:        true,
 		ID:            couponID,
 		TenantID:      tenantID,
 		Code:          "FREE100",
@@ -690,6 +691,7 @@ func TestCreateSubscription_PartialDiscount(t *testing.T) {
 	}}
 	invRepo := &subMockInvoiceRepo{}
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
+		Active:        true,
 		ID:            couponID,
 		TenantID:      tenantID,
 		Code:          "HALF",
@@ -753,6 +755,7 @@ func TestCreateSubscription_CouponIsTenantScoped(t *testing.T) {
 	}}
 	invRepo := &subMockInvoiceRepo{}
 	couponRepo := &subMockCouponRepo{coupon: &domain.Coupon{
+		Active:        true,
 		ID:            uuid.New(),
 		TenantID:      ownerTenant, // coupon belongs to a DIFFERENT tenant
 		Code:          "SECRET50",

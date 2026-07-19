@@ -1422,10 +1422,12 @@ func main() {
 
 		v1.POST("/coupons", couponHandler.CreateCoupon) // P7
 		v1.GET("/coupons", couponHandler.ListCoupons)
+		v1.PUT("/coupons/:id", couponHandler.UpdateCoupon)
 
 		// Developer / Settings
 		v1.GET("/developer/keys", tenantHandler.ListKeys)
 		v1.POST("/developer/keys", tenantHandler.CreateKey)
+		v1.DELETE("/developer/keys/:id", tenantHandler.RevokeKey)
 
 		// Team management (dashboard users). Reads are open to any authed
 		// member; writes are gated to owner/admin inside the handler.

@@ -5,15 +5,17 @@ import { Plus, BadgePercent } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import CouponDetail from "../components/slide-overs/CouponDetail";
 import { cn } from "@/lib/utils";
+import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
-const STATUS_FILTERS = ["all", "active", "expired"];
+const STATUS_FILTERS = ["all", "active", "inactive"];
 
 const statusVariant = (status) =>
-  ({ active: "success", expired: "destructive" })[status] || "neutral";
+  ({ active: "success", inactive: "neutral" })[status] || "neutral";
 
 const Coupons = () => {
   const navigate = useNavigate();
@@ -25,6 +27,8 @@ const Coupons = () => {
 
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
+  const [deactivateTarget, setDeactivateTarget] = useState(null);
+  const [toggling, setToggling] = useState(false);
 
   const fetchCoupons = async () => {
     setLoading(true);
@@ -34,7 +38,7 @@ const Coupons = () => {
       // Map backend fields to frontend expectations (unchanged logic).
       const mappedCoupons = (response.data.data || []).map((c) => ({
         ...c,
-        status: "active", // Backend doesn't return status yet; default to active.
+        status: c.active ? "active" : "inactive",
         redemptions: 0,
         max_redemptions: null,
         discount:
@@ -57,6 +61,21 @@ const Coupons = () => {
   useEffect(() => {
     fetchCoupons();
   }, []);
+
+  // Reactivation is low-risk, so it skips the confirm; deactivation confirms.
+  const setActive = async (coupon, active) => {
+    setToggling(true);
+    try {
+      await api.setCouponActive(coupon.id, active);
+      toast.success(active ? "Coupon reactivated." : "Coupon deactivated.");
+      setDeactivateTarget(null);
+      fetchCoupons();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to update coupon");
+    } finally {
+      setToggling(false);
+    }
+  };
 
   const handleRowClick = (coupon) => {
     setSelectedCoupon(coupon);
@@ -113,6 +132,25 @@ const Coupons = () => {
         <Badge variant={statusVariant(c.status)} className="capitalize">
           {c.status}
         </Badge>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (c) => (
+        <Button
+          size="sm"
+          variant={c.active ? "outline" : "ghost"}
+          disabled={toggling}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (c.active) setDeactivateTarget(c);
+            else setActive(c, true);
+          }}
+        >
+          {c.active ? "Deactivate" : "Reactivate"}
+        </Button>
       ),
     },
   ];
@@ -179,6 +217,17 @@ const Coupons = () => {
       />
 
       <CouponDetail coupon={selectedCoupon} isOpen={isDetailOpen} onClose={closeDetail} />
+
+      <ConfirmDialog
+        open={!!deactivateTarget}
+        onOpenChange={(o) => !o && setDeactivateTarget(null)}
+        title={`Deactivate ${deactivateTarget?.code}?`}
+        description="New subscriptions can no longer redeem this code. Customers already using it keep their discount. You can reactivate it later."
+        confirmLabel="Deactivate coupon"
+        destructive
+        busy={toggling}
+        onConfirm={() => setActive(deactivateTarget, false)}
+      />
     </div>
   );
 };

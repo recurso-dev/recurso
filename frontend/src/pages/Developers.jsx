@@ -245,6 +245,23 @@ export default function Developers() {
   };
 
   const [deleteWebhookTarget, setDeleteWebhookTarget] = useState(null);
+  const [revokeKeyTarget, setRevokeKeyTarget] = useState(null);
+  const [revokingKey, setRevokingKey] = useState(false);
+
+  const handleRevokeKey = async () => {
+    if (!revokeKeyTarget) return;
+    setRevokingKey(true);
+    try {
+      await endpoints.revokeKey(revokeKeyTarget.id);
+      toast.success("API key revoked.");
+      setRevokeKeyTarget(null);
+      fetchKeys();
+    } catch (error) {
+      toast.error(error.response?.data?.error?.message || "Failed to revoke key");
+    } finally {
+      setRevokingKey(false);
+    }
+  };
 
   const handleDeleteWebhook = async () => {
     if (!deleteWebhookTarget) return;
@@ -407,6 +424,24 @@ export default function Developers() {
           {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
         </span>
       ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (k) =>
+        k.is_active && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation();
+              setRevokeKeyTarget(k);
+            }}
+          >
+            Revoke
+          </Button>
+        ),
     },
   ];
 
@@ -908,6 +943,16 @@ export default function Developers() {
         confirmLabel="Delete endpoint"
         destructive
         onConfirm={handleDeleteWebhook}
+      />
+      <ConfirmDialog
+        open={!!revokeKeyTarget}
+        onOpenChange={(open) => !open && setRevokeKeyTarget(null)}
+        title={`Revoke ${revokeKeyTarget?.key_prefix ? `${revokeKeyTarget.key_prefix}…` : "this key"}?`}
+        description="The key stops authenticating immediately and cannot be restored. Anything using it will start receiving 401s."
+        confirmLabel="Revoke key"
+        destructive
+        busy={revokingKey}
+        onConfirm={handleRevokeKey}
       />
     </div>
   );

@@ -19,8 +19,8 @@ func NewCouponRepository(db *sql.DB) *CouponRepository {
 
 func (r *CouponRepository) Create(ctx context.Context, coupon *domain.Coupon) error {
 	query := `
-		INSERT INTO coupons (id, tenant_id, code, discount_type, discount_value, duration, duration_months, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO coupons (id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		coupon.ID,
@@ -30,10 +30,31 @@ func (r *CouponRepository) Create(ctx context.Context, coupon *domain.Coupon) er
 		coupon.DiscountValue,
 		coupon.Duration,
 		coupon.DurationMonths,
+		coupon.Active,
 		coupon.CreatedAt,
 		coupon.UpdatedAt,
 	)
 	return err
+}
+
+// SetActive flips the redemption gate. Scoped by tenant; returns
+// sql.ErrNoRows when the coupon does not exist for the tenant.
+func (r *CouponRepository) SetActive(ctx context.Context, tenantID, id uuid.UUID, active bool) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE coupons SET active = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		active, id, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 // GetByCode looks up a coupon by code, always scoped to the tenant. Previously
@@ -43,7 +64,7 @@ func (r *CouponRepository) Create(ctx context.Context, coupon *domain.Coupon) er
 // explicitly, matching Plan/Referral/Gift GetByCode.
 func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, code string) (*domain.Coupon, error) {
 	query := `
-		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, created_at, updated_at
+		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at
 		FROM coupons
 		WHERE code = $1 AND tenant_id = $2
 	`
@@ -61,6 +82,7 @@ func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 		&c.DiscountValue,
 		&c.Duration,
 		&durationMonths,
+		&c.Active,
 		&c.CreatedAt,
 		&c.UpdatedAt,
 	)
@@ -81,7 +103,7 @@ func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 
 func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Coupon, error) {
 	query := `
-		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, created_at, updated_at
+		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at
 		FROM coupons
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC
@@ -104,6 +126,7 @@ func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*dom
 			&c.DiscountValue,
 			&c.Duration,
 			&durationMonths,
+			&c.Active,
 			&c.CreatedAt,
 			&c.UpdatedAt,
 		); err != nil {

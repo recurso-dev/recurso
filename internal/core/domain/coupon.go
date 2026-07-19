@@ -26,6 +26,9 @@ type Coupon struct {
 	DiscountValue  int64        `json:"discount_value"`
 	Duration       DurationType `json:"duration"`
 	DurationMonths *int         `json:"duration_months,omitempty"`
-	CreatedAt      time.Time    `json:"created_at"`
-	UpdatedAt      time.Time    `json:"updated_at"`
+	// Active gates redemption: deactivated coupons are rejected when creating
+	// a subscription, but existing subscriptions keep their applied discount.
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
