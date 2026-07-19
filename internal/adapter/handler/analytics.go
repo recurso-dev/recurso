@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -40,6 +41,10 @@ func (h *AnalyticsHandler) Ask(c *gin.Context) {
 
 	data, sqlQuery, err := h.genaiSvc.Ask(c.Request.Context(), tenantID, req.Question)
 	if err != nil {
+		if errors.Is(err, service.ErrGenAINotConfigured) {
+			respondError(c, http.StatusServiceUnavailable, codeInternalError, err.Error())
+			return
+		}
 		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
 		return
 	}
