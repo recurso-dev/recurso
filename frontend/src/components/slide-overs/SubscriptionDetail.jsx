@@ -7,6 +7,7 @@ import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -43,6 +44,11 @@ export default function SubscriptionDetail({
   const [addonBusy, setAddonBusy] = useState(false);
   // Which lifecycle action awaits confirmation: "pause" | "resume" | "cancel" | null.
   const [confirmAction, setConfirmAction] = useState(null);
+  // Advance-invoice / minimum-commitment mini-forms.
+  const [billingPanel, setBillingPanel] = useState(null); // 'advance' | 'commitment' | null
+  const [advPeriods, setAdvPeriods] = useState("1");
+  const [commitAmount, setCommitAmount] = useState("");
+  const [billingBusy, setBillingBusy] = useState(false);
 
   // Load plans + add-ons whenever the detail opens.
   useEffect(() => {
@@ -186,6 +192,13 @@ export default function SubscriptionDetail({
       run: () => endpoints.cancelSubscription(subscription.id),
       failure: "Failed to cancel subscription",
     },
+    reactivate: {
+      title: "Reactivate this subscription?",
+      description: "Billing restarts on the current plan from the next cycle.",
+      confirmLabel: "Reactivate subscription",
+      run: () => endpoints.reactivateSubscription(subscription.id),
+      failure: "Failed to reactivate subscription",
+    },
   };
 
   const runLifecycleAction = async () => {
@@ -284,7 +297,112 @@ export default function SubscriptionDetail({
                 Cancel
               </Button>
             )}
+            {subscription.status === "cancelled" && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmAction("reactivate")}
+                disabled={loading}
+                className="text-emerald-700 hover:text-emerald-800"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Reactivate
+              </Button>
+            )}
+            {isActive && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setBillingPanel((p) => (p === "advance" ? null : "advance"))}>
+                  Advance invoice
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setBillingPanel((p) => (p === "commitment" ? null : "commitment"))}>
+                  Commitment
+                </Button>
+              </>
+            )}
           </div>
+
+          {/* Advance-invoice / minimum-commitment mini-forms */}
+          {billingPanel === "advance" && (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-sm text-muted-foreground">
+                Generate one invoice now covering the next N billing periods.
+              </p>
+              <div className="flex items-end gap-2">
+                <div>
+                  <Label className="text-xs">Periods (1–60)</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={advPeriods}
+                    onChange={(e) => setAdvPeriods(e.target.value)}
+                    className="w-24"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={billingBusy || !advPeriods || Number(advPeriods) < 1}
+                  onClick={async () => {
+                    setBillingBusy(true);
+                    try {
+                      await endpoints.advanceSubscription(subscription.id, Number(advPeriods));
+                      toast.success("Advance invoice generated.");
+                      setBillingPanel(null);
+                      onRefresh?.();
+                    } catch (err) {
+                      toast.error(err?.response?.data?.error?.message || "Failed to generate advance invoice");
+                    } finally {
+                      setBillingBusy(false);
+                    }
+                  }}
+                >
+                  {billingBusy ? "Generating…" : "Generate"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {billingPanel === "commitment" && (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-sm text-muted-foreground">
+                Minimum billed per period regardless of usage ({currency}). Set 0 to clear.
+              </p>
+              <div className="flex items-end gap-2">
+                <div>
+                  <Label className="text-xs">Amount ({currency})</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={commitAmount}
+                    onChange={(e) => setCommitAmount(e.target.value)}
+                    className="w-32"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={billingBusy || commitAmount === ""}
+                  onClick={async () => {
+                    setBillingBusy(true);
+                    try {
+                      await endpoints.setSubscriptionCommitment(
+                        subscription.id,
+                        Math.round(parseFloat(commitAmount) * 100)
+                      );
+                      toast.success("Commitment updated.");
+                      setBillingPanel(null);
+                      onRefresh?.();
+                    } catch (err) {
+                      toast.error(err?.response?.data?.error?.message || "Failed to set commitment");
+                    } finally {
+                      setBillingBusy(false);
+                    }
+                  }}
+                >
+                  {billingBusy ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </div>
+          )}
 
           <ConfirmDialog
             open={!!confirmAction}

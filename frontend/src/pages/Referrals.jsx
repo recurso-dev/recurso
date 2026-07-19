@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Users, DollarSign, Clock, Share2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { toast } from "@/components/ui/sonner";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -32,6 +33,7 @@ const statusVariant = (status) =>
 function Referrals() {
   const [referrals, setReferrals] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [qualifying, setQualifying] = useState(null);
   const [error, setError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -131,6 +133,34 @@ function Referrals() {
       key: "created",
       header: "Created",
       cell: (r) => <span className="text-muted-foreground">{formatDate(r.created_at)}</span>,
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (r) =>
+        r.status === "pending" && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={qualifying === r.id}
+            onClick={async (e) => {
+              e.stopPropagation();
+              setQualifying(r.id);
+              try {
+                await endpoints.qualifyReferral(r.id);
+                toast.success("Referral qualified — reward is claimable.");
+                fetchReferrals();
+              } catch (err) {
+                toast.error(err?.response?.data?.error?.message || "Failed to qualify referral");
+              } finally {
+                setQualifying(null);
+              }
+            }}
+          >
+            {qualifying === r.id ? "Qualifying…" : "Qualify"}
+          </Button>
+        ),
     },
   ];
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Gauge, Trash2, BellRing } from "lucide-react";
+import { Plus, Gauge, Trash2, BellRing, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -26,6 +26,7 @@ const Metering = () => {
   const [actionError, setActionError] = useState(null);
 
   const [metricOpen, setMetricOpen] = useState(false);
+  const [editingMetric, setEditingMetric] = useState(null);
   const [metricForm, setMetricForm] = useState({
     name: "",
     code: "",
@@ -64,13 +65,33 @@ const Metering = () => {
     try {
       const body = { ...metricForm };
       if (body.aggregation_type !== "unique") delete body.field_name;
-      await api.createBillableMetric(body);
+      if (editingMetric) {
+        await api.updateBillableMetric(editingMetric.id, body);
+      } else {
+        await api.createBillableMetric(body);
+      }
       setMetricOpen(false);
+      setEditingMetric(null);
       setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "" });
       fetchAll();
     } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to create metric");
+      setActionError(
+        err?.response?.data?.error?.message ||
+          (editingMetric ? "Failed to update metric" : "Failed to create metric")
+      );
     }
+  };
+
+  const startEditMetric = (metric) => {
+    setEditingMetric(metric);
+    setMetricForm({
+      name: metric.name || "",
+      code: metric.code || "",
+      aggregation_type: metric.aggregation_type || "sum",
+      field_name: metric.field_name || "",
+    });
+    setActionError(null);
+    setMetricOpen(true);
   };
 
   const removeMetric = async (metric) => {
@@ -134,16 +155,28 @@ const Metering = () => {
       key: "actions",
       header: "",
       cell: (m) => (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={(e) => {
-            e.stopPropagation();
-            removeMetric(m);
-          }}
-        >
-          <Trash2 className="h-4 w-4 text-muted-foreground" />
-        </Button>
+        <div className="flex justify-end gap-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              startEditMetric(m);
+            }}
+          >
+            <Pencil className="h-4 w-4 text-muted-foreground" />
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeMetric(m);
+            }}
+          >
+            <Trash2 className="h-4 w-4 text-muted-foreground" />
+          </Button>
+        </div>
       ),
     },
   ];
@@ -221,11 +254,20 @@ const Metering = () => {
         ))}
       </div>
 
-      {/* New metric */}
-      <Dialog open={metricOpen} onOpenChange={setMetricOpen}>
+      {/* New / edit metric */}
+      <Dialog
+        open={metricOpen}
+        onOpenChange={(o) => {
+          setMetricOpen(o);
+          if (!o) {
+            setEditingMetric(null);
+            setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "" });
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New billable metric</DialogTitle>
+            <DialogTitle>{editingMetric ? "Edit billable metric" : "New billable metric"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>

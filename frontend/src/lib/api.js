@@ -143,6 +143,11 @@ export const endpoints = {
   cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),
   pauseSubscription: (id) => api.post(`/subscriptions/${id}/pause`),
   resumeSubscription: (id) => api.post(`/subscriptions/${id}/resume`),
+  reactivateSubscription: (id) => api.post(`/subscriptions/${id}/reactivate`),
+  // Generate an advance invoice covering the next N periods (1-60).
+  advanceSubscription: (id, periods) => api.post(`/subscriptions/${id}/advance`, { periods }),
+  // Minimum commitment per period, minor units; 0 clears it.
+  setSubscriptionCommitment: (id, amount) => api.put(`/subscriptions/${id}/commitment`, { amount }),
 
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
@@ -187,6 +192,8 @@ export const endpoints = {
   getReferrals: () => api.get('/referrals'),
   createReferral: (data) => api.post('/referrals', data),
   generateReferralCode: (data) => api.post('/referrals/generate-code', data),
+  // Marks the referral as qualified (reward becomes claimable).
+  qualifyReferral: (id) => api.post(`/referrals/${id}/qualify`),
 
   // Checkout (public, uses base URL without /v1)
   getCheckoutInvoice: (id) => axios.get(`${API_ROOT}/checkout/${id}`),
@@ -249,6 +256,8 @@ export const endpoints = {
   // Usage-based billing (metering)
   getBillableMetrics: () => api.get('/billable-metrics'),
   createBillableMetric: (data) => api.post('/billable-metrics', data),
+  // Same input shape as create.
+  updateBillableMetric: (id, data) => api.put(`/billable-metrics/${id}`, data),
   deleteBillableMetric: (id) => api.delete(`/billable-metrics/${id}`),
   getPlanCharges: (planId) => api.get(`/plans/${planId}/charges`),
   setPlanCharges: (planId, charges) => api.put(`/plans/${planId}/charges`, charges),
