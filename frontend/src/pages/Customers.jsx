@@ -123,7 +123,9 @@ export default function Customers() {
         key: "status",
         header: "Status",
         cell: (c) =>
-          c.active_subs > 0 ? (
+          c.active === false ? (
+            <Badge variant="warning">Archived</Badge>
+          ) : c.active_subs > 0 ? (
             <Badge variant="success">Active</Badge>
           ) : (
             <Badge variant="neutral">Inactive</Badge>

@@ -20,7 +20,6 @@ import {
 const TITLES = {
   "": "Home",
   customers: "Customers",
-  products: "Products",
   plans: "Plans",
   subscriptions: "Subscriptions",
   invoices: "Invoices",
@@ -31,25 +30,42 @@ const TITLES = {
   gifts: "Gifts",
   dunning: "Dunning",
   ledger: "Ledger",
-  finance: "Reconciliation",
+  finance: "Finance",
   usage: "Usage",
   developers: "Developers",
   settings: "Settings",
   notifications: "Notifications",
   profile: "Profile",
+  ask: "Ask AI",
+  metering: "Metering",
+  wallets: "Wallets",
+  "cancel-flows": "Cancel Flows",
+  churn: "Churn Risk",
+  mandates: "Mandates",
+  disputes: "Disputes",
+  integrations: "Integrations",
+  security: "Security",
+  team: "Team",
+  organizations: "Organizations",
+  "audit-log": "Audit Log",
+  overview: "Executive Summary",
 };
 
 // Full-path titles for nested routes where the first segment isn't enough
 // (e.g. both pages under /finance/*). Checked before the first-segment map.
 const PATH_TITLES = {
   "/finance/reconciliation": "Reconciliation",
+  "/finance/trial-balance": "Trial Balance",
   "/finance/revenue-recognition": "Revenue Recognition",
+  "/finance/revenue-waterfall": "Revenue Waterfall",
   "/finance/mrr-waterfall": "MRR Waterfall",
   "/finance/invoice-aging": "Invoice Aging",
   "/finance/unit-economics": "Unit Economics",
-  "/overview": "Executive Summary",
   "/finance/revenue-by-plan": "Revenue by Plan",
   "/finance/revenue-by-geography": "Revenue by Geography",
+  "/finance/gst-returns": "GST Returns",
+  "/dunning/campaigns": "Dunning Campaigns",
+  "/payments/offline": "Offline Payments",
 };
 
 function usePageTitle() {

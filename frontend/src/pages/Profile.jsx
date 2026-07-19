@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { KeyRound, Pencil } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
+import { useAuth } from "@/auth/AuthProvider";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +30,9 @@ function ReadOnlyField({ label, value, mono, children }) {
 
 export default function Profile() {
   const navigate = useNavigate();
+  // Session (cookie) login vs legacy API-key mode — the Security card below
+  // describes whichever one is actually in effect.
+  const { user } = useAuth();
   const [account, setAccount] = useState({ name: "", email: "", id: "" });
   const [loading, setLoading] = useState(true);
 
@@ -100,8 +104,9 @@ export default function Profile() {
           </CardHeader>
           <CardContent>
             <p className="mb-5 text-sm text-muted-foreground">
-              Your account uses API keys for authentication. You can manage your keys in
-              the Developers section.
+              {user
+                ? "You are signed in with your email and password. Manage two-factor authentication and active sessions in Security."
+                : "Your account uses API keys for authentication. You can manage your keys in the Developers section."}
             </p>
             <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/40 p-4">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-stone-500">
@@ -109,14 +114,20 @@ export default function Profile() {
               </div>
               <div className="flex-1">
                 <h3 className="text-sm font-medium text-foreground">
-                  API key authentication
+                  {user ? "Password & sessions" : "API key authentication"}
                 </h3>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  You are currently authenticated via a tenant API key.
+                  {user
+                    ? "Signed in via a secure session cookie."
+                    : "You are currently authenticated via a tenant API key."}
                 </p>
               </div>
-              <Button variant="link" className="h-auto p-0" onClick={() => navigate("/developers")}>
-                Manage keys
+              <Button
+                variant="link"
+                className="h-auto p-0"
+                onClick={() => navigate(user ? "/security" : "/developers")}
+              >
+                {user ? "Security settings" : "Manage keys"}
               </Button>
             </div>
           </CardContent>
