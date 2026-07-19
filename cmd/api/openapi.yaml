@@ -4703,7 +4703,13 @@ paths:
       operationId: accountingOAuthCallback
       tags: [Accounting]
       summary: OAuth callback for accounting providers
-      description: Redirect target for QuickBooks/Xero. Exchanges the authorization code for tokens and stores (or refreshes) the connection.
+      description: >
+        Redirect target for QuickBooks/Xero. Exchanges the authorization code
+        for tokens, stores (or refreshes) the connection, and 302-redirects the
+        browser back to the dashboard's Integrations page —
+        `{DASHBOARD_URL}/integrations?connected={provider}` on success, or
+        `?error={code}` (missing_code, invalid_state, unsupported_provider,
+        exchange_failed, org_lookup_failed, save_failed) on failure.
       parameters:
         - $ref: '#/components/parameters/AccountingProvider'
         - name: code
@@ -4724,21 +4730,14 @@ paths:
           schema:
             type: string
       responses:
-        '200':
-          description: Connection stored.
-          content:
-            application/json:
+        '302':
+          description: >
+            Redirect to the dashboard Integrations page carrying the outcome
+            as a query param (`connected` or `error`).
+          headers:
+            Location:
               schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    const: connected
-                  connection_id:
-                    type: string
-                    format: uuid
-        '400':
-          $ref: '#/components/responses/BadRequest'
+                type: string
         '401':
           $ref: '#/components/responses/Unauthorized'
 

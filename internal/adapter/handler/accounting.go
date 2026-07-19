@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -27,14 +28,28 @@ type AccountingHandler struct {
 	// per-boot random key. A hardcoded key would let anyone forge a state and
 	// bind an accounting connection to an arbitrary tenant.
 	oauthStateSecret []byte
+	// dashboardURL is the SPA base the OAuth callback redirects back to. The
+	// callback is a top-level browser navigation (the provider redirects the
+	// user here), so answering with JSON would strand the user on a raw JSON
+	// page — every outcome 302s to {dashboardURL}/integrations instead.
+	dashboardURL string
 }
 
-func NewAccountingHandler(connRepo port.AccountingConnectionRepository, accountingSvc *service.AccountingService, oauthStateSecret []byte) *AccountingHandler {
+func NewAccountingHandler(connRepo port.AccountingConnectionRepository, accountingSvc *service.AccountingService, oauthStateSecret []byte, dashboardURL string) *AccountingHandler {
 	return &AccountingHandler{
 		connRepo:          connRepo,
 		accountingService: accountingSvc,
 		oauthStateSecret:  oauthStateSecret,
+		dashboardURL:      strings.TrimRight(dashboardURL, "/"),
 	}
+}
+
+// redirectToIntegrations 302s the browser back to the dashboard's Integrations
+// page with a single outcome query param. Values are short stable codes (or a
+// provider name) — raw error text never goes into a URL.
+func (h *AccountingHandler) redirectToIntegrations(c *gin.Context, key, value string) {
+	c.Redirect(http.StatusFound,
+		h.dashboardURL+"/integrations?"+key+"="+url.QueryEscape(value))
 }
 
 func (h *AccountingHandler) ListConnections(c *gin.Context) {
@@ -104,14 +119,14 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	realmID := c.Query("realmId") // QuickBooks specific
 
 	if code == "" {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "missing authorization code")
+		h.redirectToIntegrations(c, "error", "missing_code")
 		return
 	}
 
 	// Verify and parse tenant ID from HMAC-signed state
 	tenantID, err := h.verifyOAuthState(state)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or tampered state")
+		h.redirectToIntegrations(c, "error", "invalid_state")
 		return
 	}
 
@@ -137,13 +152,13 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 			TokenURL:     "https://identity.xero.com/connect/token",
 		}
 	default:
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "unsupported provider")
+		h.redirectToIntegrations(c, "error", "unsupported_provider")
 		return
 	}
 
 	tokenResp, err := accounting.ExchangeCode(c.Request.Context(), config, code)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, "token exchange failed: "+err.Error())
+		h.redirectToIntegrations(c, "error", "exchange_failed")
 		return
 	}
 
@@ -157,7 +172,7 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	if provider == "xero" && realmID == "" {
 		realmID, err = accounting.FetchXeroTenantID(c.Request.Context(), tokenResp.AccessToken)
 		if err != nil {
-			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to resolve Xero organisation: "+err.Error())
+			h.redirectToIntegrations(c, "error", "org_lookup_failed")
 			return
 		}
 	}
@@ -176,11 +191,11 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 		existing.IsActive = true
 
 		if err := h.connRepo.Update(c.Request.Context(), existing); err != nil {
-			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to update connection: "+err.Error())
+			h.redirectToIntegrations(c, "error", "save_failed")
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "connected", "connection_id": existing.ID})
+		h.redirectToIntegrations(c, "connected", provider)
 		return
 	}
 
@@ -198,11 +213,11 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	}
 
 	if err := h.connRepo.Create(c.Request.Context(), conn); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save connection: "+err.Error())
+		h.redirectToIntegrations(c, "error", "save_failed")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "connected", "connection_id": conn.ID})
+	h.redirectToIntegrations(c, "connected", provider)
 }
 
 func (h *AccountingHandler) Disconnect(c *gin.Context) {
