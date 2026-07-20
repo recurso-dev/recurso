@@ -9,6 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **NetSuite & Tally connections** — the sync adapters finally have a
+  connection flow: `POST /v1/accounting/connect-token/{provider}` takes a
+  pasted SuiteTalk OAuth 2.0 token for NetSuite (EXPERIMENTAL) and no
+  credentials at all for Tally (local JSONL export, residency-safe). The
+  Integrations page offers all four providers.
+- **Webhook pause/resume** — `PUT /v1/webhooks/{id}/status`
+  (`active`/`inactive`); paused endpoints keep secret and config.
+- **Usage raw-event stream** — `GET /v1/usage/events` (customer/dimension
+  filters) plus a "Recent events" inspector on the Usage page: verify
+  ingestion is landing without opening the database.
+- **Ledger invariant harness** — randomized billing sequences (upgrades,
+  one-offs, recognition, cancels) must reconcile with zero discrepancies
+  after every step; runs in CI against Postgres. E2E suite additionally
+  gained coupon-math, usage round-trip, webhook lifecycle, and a
+  zero-discrepancy reconciliation gate.
+- **API monitoring** — Cloud Monitoring uptime check on `/health` plus
+  alert policies for downtime and 5xx spikes.
+- Organization rename UI; frontend lint/build/test CI job (previously CI
+  ran no frontend checks at all).
 - **Demo mode** — `DEMO_MODE=true` turns an instance into a safe public
   sandbox: every outward adapter (gateways, notifier, GSP, telemetry,
   webhook delivery, SaaS sync/export) is forced to its mock at the
@@ -22,6 +41,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Ledger completeness (audit-grade F1/F2/F3)** — mid-cycle upgrade
+  proration and mandate debits never posted their invoice leg (DR AR / CR
+  Deferred), drifting AR/Deferred permanently; the rev-rec worker could
+  mis-mark a recognized event `failed` under concurrency (events are now
+  claimed atomically, migration `000105`); one-off immediate recognition
+  drained a never-funded Deferred balance at gross — it now records net
+  of tax with no ledger posting. All three matched live reconciler
+  discrepancies. (F1 ported from archive PR #82, lost in the repo split.)
+- **Rate-limiter key collision** — the global limiter and the strict auth
+  limiter shared one Redis key, so ~20 requests of any kind per minute
+  locked users out of `/auth/*` ("Could not reach the API" on login).
+  Limiters are now scope-namespaced; session endpoints get their own
+  budget.
+- **Coupon percent/amount enum** — seeded "percentage" coupons were
+  billed as minor-unit discounts (20% → ₹0.20); normalized by migration
+  `000104` and guarded by a new E2E check.
+- `GET /v1/mandates` 500 on NULL gateway columns; login bounced on
+  transient `/auth/me` failures (now 401-only with retries); shared
+  plan/subscription lookups silently truncated at the API's limit=10
+  default; webhook Pause button called an undefined binding; per-row
+  customer hydration N+1s behind Credit Notes and Revenue-by-Geography;
+  demo reseeds stranded orphaned per-customer AR ledger accounts.
+- `google.golang.org/protobuf` → 1.33.0 (CVE-2024-24786).
 - **OpenAPI spec accuracy** — documented two request fields the handlers
   already accept but the spec omitted: `CreateCreditNoteRequest.type`
   (`adjustment`/`refund`, where `refund` triggers the gateway refund) and
@@ -29,6 +71,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `nullable: true` usages (Entitlement, TaxNexus, entitlement responses)
   to 3.1 `type: [x, "null"]` unions, so `redocly lint` passes with zero
   errors. All three SDKs regenerated/updated to match (Node, Python, Go).
+
+### Changed
+
+- **Dashboard consistency pass** — every page reviewed against
+  production: create/add flows are right-side sheets with customer/
+  subscription/invoice pickers (no more raw-UUID inputs); ledger AR
+  sub-accounts labeled per customer; complete top-bar title map; archived
+  customers badged; customer names resolved across Mandates, Wallets,
+  Churn, Offline Payments, and the ledger.
+- **Frontend performance** — route-level code splitting (entry chunk
+  1,660 kB → 149 kB) and react-query caching for reference data and the
+  big list pages (Invoices/Subscriptions/Customers).
+- **API performance** — heavy finance reports (trial balance, deferred
+  rollforward, rev-rec report/waterfall) share the 5-minute tenant-scoped
+  Redis cache; the cache middleware no longer falls back to IP-keyed
+  entries.
+- CI actions on Node 24 (checkout@v5, setup-go@v6, upload-artifact@v5);
+  SDKs (Go/Node/Python) refreshed to full API coverage in their repos.
 
 ## [0.6.0] - 2026-07-19
 
