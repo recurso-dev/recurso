@@ -71,6 +71,16 @@ func (f *fakeGatewayConnRepo) Deactivate(_ context.Context, tenantID uuid.UUID, 
 	return domain.ErrGatewayConnectionNotFound
 }
 
+func (f *fakeGatewayConnRepo) SetWebhookSecret(_ context.Context, tenantID uuid.UUID, provider domain.GatewayProvider, sealed string) error {
+	for _, c := range f.byID {
+		if c.TenantID == tenantID && c.Provider == provider && c.Active {
+			c.WebhookSecretEnc = sealed
+			return nil
+		}
+	}
+	return domain.ErrGatewayConnectionNotFound
+}
+
 func testVault(t *testing.T) *secretbox.Box {
 	t.Helper()
 	key := make([]byte, 32)
@@ -172,6 +182,36 @@ func TestConnectWithoutVaultFails(t *testing.T) {
 	_, err := svc.Connect(context.Background(), uuid.New(), ConnectInput{Provider: "stripe", SecretKey: "x"})
 	if !errors.Is(err, domain.ErrGatewayVaultUnavailable) {
 		t.Fatalf("want ErrGatewayVaultUnavailable, got %v", err)
+	}
+}
+
+func TestSetWebhookSecretInPlace(t *testing.T) {
+	repo := newFakeGatewayConnRepo()
+	svc := NewGatewayConnectionService(repo, testVault(t))
+	tenant := uuid.New()
+	ctx := context.Background()
+
+	conn, _ := svc.Connect(ctx, tenant, ConnectInput{Provider: "stripe", PublicKey: "pk", SecretKey: "s"})
+	id := conn.ID
+
+	if err := svc.SetWebhookSecret(ctx, tenant, "stripe", "whsec_later"); err != nil {
+		t.Fatalf("SetWebhookSecret: %v", err)
+	}
+	got, err := svc.GetActive(ctx, tenant, domain.GatewayStripe)
+	if err != nil {
+		t.Fatalf("GetActive: %v", err)
+	}
+	if got.ID != id {
+		t.Fatalf("connection id changed (%v -> %v): webhook URL would break", id, got.ID)
+	}
+	wh, err := svc.OpenWebhookSecret(got)
+	if err != nil || wh != "whsec_later" {
+		t.Fatalf("OpenWebhookSecret = %q, %v; want whsec_later", wh, err)
+	}
+
+	// No active connection for a provider -> not found.
+	if err := svc.SetWebhookSecret(ctx, tenant, "razorpay", "x"); !errors.Is(err, domain.ErrGatewayConnectionNotFound) {
+		t.Fatalf("want ErrGatewayConnectionNotFound, got %v", err)
 	}
 }
 

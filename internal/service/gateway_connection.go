@@ -119,6 +119,25 @@ func (s *GatewayConnectionService) Disconnect(ctx context.Context, tenantID uuid
 	return s.repo.Deactivate(ctx, tenantID, p)
 }
 
+// SetWebhookSecret seals and stores the webhook signing secret on the tenant's
+// active connection in place (two-step connect: the tenant creates the webhook
+// in their gateway console using the per-connection URL, then pastes back the
+// secret). An empty secret clears it.
+func (s *GatewayConnectionService) SetWebhookSecret(ctx context.Context, tenantID uuid.UUID, provider, secret string) error {
+	if s.vault == nil {
+		return domain.ErrGatewayVaultUnavailable
+	}
+	p := domain.GatewayProvider(strings.ToLower(strings.TrimSpace(provider)))
+	if !domain.ValidGatewayProvider(p) {
+		return GatewayConnectionValidationError("provider must be one of: stripe, razorpay")
+	}
+	sealed, err := s.vault.Seal(strings.TrimSpace(secret))
+	if err != nil {
+		return err
+	}
+	return s.repo.SetWebhookSecret(ctx, tenantID, p, sealed)
+}
+
 // OpenSecret decrypts a connection's gateway secret. Used by the resolver
 // (increment 2) to build a live gateway client for a tenant.
 func (s *GatewayConnectionService) OpenSecret(conn *domain.GatewayConnection) (string, error) {

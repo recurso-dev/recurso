@@ -317,6 +317,13 @@ export const endpoints = {
   disconnectAccounting: (id) => api.delete(`/accounting/connections/${id}`),
   triggerAccountingSync: () => api.post('/accounting/sync'),
   getAccountingSyncStatus: () => api.get('/accounting/sync/status'),
+
+  // BYO payment gateways (Stripe / Razorpay) — per-tenant credentials.
+  getGatewayConnections: () => api.get('/gateway-connections'),
+  connectGateway: (body) => api.post('/gateway-connections', body),
+  setGatewayWebhookSecret: (provider, webhook_secret) =>
+    api.put(`/gateway-connections/${provider}/webhook-secret`, { webhook_secret }),
+  disconnectGateway: (provider) => api.delete(`/gateway-connections/${provider}`),
 };
 
 

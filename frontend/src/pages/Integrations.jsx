@@ -16,6 +16,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { DataTable } from "@/components/patterns/DataTable";
+import PaymentGateways from "@/components/PaymentGateways";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -242,7 +243,7 @@ const Integrations = () => {
     <div>
       <PageHeader
         title="Integrations"
-        description="Connect an accounting system to sync customers, invoices, and payments."
+        description="Connect your payment gateways and accounting systems."
         actions={
           hasActiveConnection && (
             <Button onClick={handleSync} disabled={syncing}>
@@ -253,6 +254,11 @@ const Integrations = () => {
         }
       />
 
+      <div className="mb-8">
+        <PaymentGateways />
+      </div>
+
+      <h2 className="mb-3 text-sm font-semibold text-foreground">Accounting</h2>
       {error && (
         <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
       )}
