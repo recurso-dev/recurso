@@ -163,6 +163,8 @@ export const endpoints = {
   getWebhooks: () => api.get('/webhooks'),
   createWebhook: (data) => api.post('/webhooks', data),
   deleteWebhook: (id) => api.delete(`/webhooks/${id}`),
+  // Pause ("inactive") / resume ("active") deliveries for one endpoint.
+  setWebhookStatus: (id, status) => api.put(`/webhooks/${id}/status`, { status }),
   getEvents: (params) => api.get('/events', { params }),
   getEventTypes: () => api.get('/events/types'),
   // Per-endpoint delivery rows for a single event (derived status, attempts, retry).

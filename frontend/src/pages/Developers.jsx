@@ -338,6 +338,18 @@ export default function Developers() {
     setDeliveriesSheet(hook);
   };
 
+  // Pause/resume deliveries for an endpoint; config and secret are kept.
+  const toggleWebhookStatus = async (hook) => {
+    const next = hook.status === "active" ? "inactive" : "active";
+    try {
+      await api.setWebhookStatus(hook.id, next);
+      toast.success(next === "active" ? "Endpoint resumed." : "Endpoint paused.");
+      fetchWebhooks();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to update endpoint");
+    }
+  };
+
   const fetchEndpointDeliveries = async (id, status) => {
     setEndpointDeliveriesLoading(true);
     setEndpointDeliveriesError(null);
@@ -550,6 +562,13 @@ export default function Developers() {
                       >
                         <Inbox className="h-4 w-4" />
                         View deliveries
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleWebhookStatus(hook)}
+                      >
+                        {hook.status === "active" ? "Pause" : "Resume"}
                       </Button>
                       <Button
                         variant="ghost"

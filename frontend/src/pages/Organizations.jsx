@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Building2, Trash2 } from "lucide-react";
+import { Plus, Building2, Trash2, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -28,6 +28,9 @@ const Organizations = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", owner_email: "" });
   const [creating, setCreating] = useState(false);
 
@@ -156,6 +159,25 @@ const Organizations = () => {
     </Button>
   );
 
+  const submitRename = async () => {
+    if (!selected || !renameValue.trim()) return;
+    setSavingRename(true);
+    try {
+      await api.updateOrganization(selected.id, {
+        name: renameValue.trim(),
+        owner_email: selected.owner_email,
+      });
+      toast.success("Organization renamed.");
+      setSelected({ ...selected, name: renameValue.trim() });
+      setRenaming(false);
+      fetchOrgs();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to rename");
+    } finally {
+      setSavingRename(false);
+    }
+  };
+
   return (
     <div>
       <PageHeader
@@ -222,7 +244,38 @@ const Organizations = () => {
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
         <SheetContent side="right" className="w-full sm:max-w-lg">
           <SheetHeader>
-            <SheetTitle>{selected?.name}</SheetTitle>
+            {renaming ? (
+              <div className="flex items-center gap-2 pr-8">
+                <Input
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && submitRename()}
+                  autoFocus
+                />
+                <Button size="sm" onClick={submitRename} disabled={savingRename || !renameValue.trim()}>
+                  {savingRename ? "Saving…" : "Save"}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setRenaming(false)}>
+                  Cancel
+                </Button>
+              </div>
+            ) : (
+              <SheetTitle className="flex items-center gap-2">
+                {selected?.name}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 text-muted-foreground"
+                  title="Rename organization"
+                  onClick={() => {
+                    setRenameValue(selected?.name || "");
+                    setRenaming(true);
+                  }}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              </SheetTitle>
+            )}
             <SheetDescription>{selected?.owner_email}</SheetDescription>
           </SheetHeader>
 
