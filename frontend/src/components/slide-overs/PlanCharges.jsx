@@ -1,0 +1,493 @@
+import { useEffect, useMemo, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+
+import { endpoints } from "../../lib/api";
+import { useToast } from "../Toast";
+import { formatCurrency } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+// Usage-charge editor for a plan (roadmap: plan-charges visual editor). Mirrors
+// the backend charge models in internal/core/domain/metering.go and the
+// PUT-replace semantics of PlanCharges (whole set replaced per save, like
+// entitlements). Money entry follows the house convention: unit rates are
+// decimal strings in MAJOR units (sub-paise rates are first-class), while
+// package/flat amounts are entered in major units and stored as int64 minor
+// units (×100), matching CreatePlan's price handling.
+
+const MODELS = [
+  { value: "per_unit", label: "Per unit" },
+  { value: "graduated", label: "Graduated (tiered)" },
+  { value: "volume", label: "Volume (whole-qty tier)" },
+  { value: "package", label: "Package (bundles)" },
+];
+
+const MODEL_LABEL = Object.fromEntries(MODELS.map((m) => [m.value, m.label]));
+
+const blankTier = () => ({ up_to: "", unit_amount: "", flat_amount: "" });
+
+const newRow = (metricId = "") => ({
+  metric_id: metricId,
+  charge_model: "per_unit",
+  unit_amount: "",
+  package_amount: "",
+  package_size: "",
+  tiers: [blankTier()],
+  hsn_code: "",
+});
+
+// toEditorRows converts loaded charges (Amounts keyed by currency) into flat
+// editor rows for the plan's currency. Amounts for other currencies are not
+// shown in v1 — the plan has a single price currency.
+const toEditorRows = (charges, currency) =>
+  charges.map((ch) => {
+    const a = (ch.amounts && (ch.amounts[currency] || ch.amounts[currency?.toUpperCase()])) || {};
+    const row = newRow(ch.metric_id);
+    row.charge_model = ch.charge_model;
+    row.hsn_code = ch.hsn_code || "";
+    if (ch.charge_model === "per_unit") {
+      row.unit_amount = a.unit_amount || "";
+    } else if (ch.charge_model === "package") {
+      row.package_amount = a.package_amount != null ? String(a.package_amount / 100) : "";
+      row.package_size = a.package_size != null ? String(a.package_size) : "";
+    } else {
+      row.tiers = (a.tiers && a.tiers.length ? a.tiers : [blankTier()]).map((t) => ({
+        up_to: t.up_to != null ? String(t.up_to) : "",
+        unit_amount: t.unit_amount || "",
+        flat_amount: t.flat_amount ? String(t.flat_amount / 100) : "",
+      }));
+    }
+    return row;
+  });
+
+// isDecimal reports whether s is a non-negative decimal (rates may be sub-paise
+// like "0.0035"); mirrors the backend's parseRate acceptance loosely.
+const isDecimal = (s) => s !== "" && s != null && /^\d*\.?\d+$/.test(String(s).trim());
+const isNonNegMoney = (s) => s !== "" && s != null && Number(s) >= 0 && !Number.isNaN(Number(s));
+
+// validateRows returns an error string or null. Mirrors SetPlanCharges +
+// validateTiers so a config that passes here won't be rejected server-side.
+const validateRows = (rows) => {
+  const seen = new Set();
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const n = i + 1;
+    if (!r.metric_id) return `Charge ${n}: pick a metric.`;
+    if (seen.has(r.metric_id)) return `Charge ${n}: a metric can only be charged once per plan.`;
+    seen.add(r.metric_id);
+
+    if (r.charge_model === "per_unit") {
+      if (!isDecimal(r.unit_amount)) return `Charge ${n}: enter a valid per-unit rate.`;
+    } else if (r.charge_model === "package") {
+      if (!isNonNegMoney(r.package_amount)) return `Charge ${n}: enter a valid package price.`;
+      if (!(Number(r.package_size) >= 1 && Number.isInteger(Number(r.package_size))))
+        return `Charge ${n}: package size must be a whole number ≥ 1.`;
+    } else {
+      // graduated / volume tiers
+      const tiers = r.tiers;
+      if (!tiers.length) return `Charge ${n}: add at least one tier.`;
+      let prev = 0;
+      for (let t = 0; t < tiers.length; t++) {
+        const tier = tiers[t];
+        const isLast = t === tiers.length - 1;
+        if (isLast) {
+          if (tier.up_to !== "") return `Charge ${n}: the last tier must be unbounded (leave "up to" empty).`;
+        } else {
+          if (tier.up_to === "" || !Number.isInteger(Number(tier.up_to)))
+            return `Charge ${n}, tier ${t + 1}: "up to" must be a whole number.`;
+          if (Number(tier.up_to) <= prev)
+            return `Charge ${n}, tier ${t + 1}: "up to" must increase down the tiers.`;
+          prev = Number(tier.up_to);
+        }
+        if (!isDecimal(tier.unit_amount))
+          return `Charge ${n}, tier ${t + 1}: enter a valid rate.`;
+        if (tier.flat_amount !== "" && !isNonNegMoney(tier.flat_amount))
+          return `Charge ${n}, tier ${t + 1}: flat fee must be ≥ 0.`;
+      }
+    }
+  }
+  return null;
+};
+
+// rowsToPayload builds the PUT body: one ChargeInput per row with an Amounts
+// map keyed by the plan currency.
+const rowsToPayload = (rows, currency) =>
+  rows.map((r) => {
+    let amounts;
+    if (r.charge_model === "per_unit") {
+      amounts = { unit_amount: String(r.unit_amount).trim() };
+    } else if (r.charge_model === "package") {
+      amounts = {
+        package_amount: Math.round(Number(r.package_amount) * 100),
+        package_size: Number(r.package_size),
+      };
+    } else {
+      amounts = {
+        tiers: r.tiers.map((t, idx) => ({
+          up_to: idx === r.tiers.length - 1 || t.up_to === "" ? null : Number(t.up_to),
+          unit_amount: String(t.unit_amount).trim(),
+          flat_amount: t.flat_amount === "" ? 0 : Math.round(Number(t.flat_amount) * 100),
+        })),
+      };
+    }
+    return {
+      metric_id: r.metric_id,
+      charge_model: r.charge_model,
+      amounts: { [currency]: amounts },
+      hsn_code: r.hsn_code.trim(),
+    };
+  });
+
+// chargeSummary renders a compact read-only description of a charge's pricing.
+function chargeSummary(ch, currency) {
+  const a = (ch.amounts && (ch.amounts[currency] || ch.amounts[currency?.toUpperCase()])) || {};
+  if (ch.charge_model === "per_unit") {
+    return `${a.unit_amount ?? "—"} ${currency}/unit`;
+  }
+  if (ch.charge_model === "package") {
+    return `${formatCurrency(a.package_amount, currency)} per ${a.package_size} units`;
+  }
+  const count = (a.tiers || []).length;
+  return `${count} tier${count === 1 ? "" : "s"}`;
+}
+
+export default function PlanCharges({ planId, currency }) {
+  const toast = useToast();
+  const [charges, setCharges] = useState([]);
+  const [metrics, setMetrics] = useState([]);
+  const [loadError, setLoadError] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [validationError, setValidationError] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!planId) return;
+    let cancelled = false;
+    setIsEditing(false);
+    setLoadError(false);
+    Promise.all([endpoints.getPlanCharges(planId), endpoints.getBillableMetrics()])
+      .then(([chRes, mRes]) => {
+        if (cancelled) return;
+        setCharges(chRes.data?.data || []);
+        setMetrics(mRes.data?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCharges([]);
+          setLoadError(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [planId]);
+
+  const metricName = useMemo(() => {
+    const map = {};
+    metrics.forEach((m) => {
+      map[m.id] = m.name || m.code;
+    });
+    return map;
+  }, [metrics]);
+
+  const startEditing = () => {
+    setRows(toEditorRows(charges, currency));
+    setValidationError(null);
+    setIsEditing(true);
+  };
+
+  const updateRow = (i, patch) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  const addRow = () => setRows((prev) => [...prev, newRow()]);
+  const removeRow = (i) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+
+  const updateTier = (ri, ti, patch) =>
+    setRows((prev) =>
+      prev.map((r, idx) =>
+        idx === ri
+          ? { ...r, tiers: r.tiers.map((t, tIdx) => (tIdx === ti ? { ...t, ...patch } : t)) }
+          : r
+      )
+    );
+  const addTier = (ri) =>
+    setRows((prev) =>
+      prev.map((r, idx) =>
+        idx === ri
+          ? // new unbounded tier goes last; the previously-last tier gains a bound of ""
+            { ...r, tiers: [...r.tiers, blankTier()] }
+          : r
+      )
+    );
+  const removeTier = (ri, ti) =>
+    setRows((prev) =>
+      prev.map((r, idx) =>
+        idx === ri && r.tiers.length > 1
+          ? { ...r, tiers: r.tiers.filter((_, tIdx) => tIdx !== ti) }
+          : r
+      )
+    );
+
+  const handleSave = async () => {
+    const error = validateRows(rows);
+    if (error) {
+      setValidationError(error);
+      return;
+    }
+    setValidationError(null);
+    setSaving(true);
+    try {
+      const res = await endpoints.setPlanCharges(planId, rowsToPayload(rows, currency));
+      setCharges(res.data?.data || []);
+      setIsEditing(false);
+      toast.success("Usage charges saved");
+    } catch (err) {
+      setValidationError(
+        err?.response?.data?.error?.message || "Failed to save charges"
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectCls =
+    "h-8 rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+  return (
+    <div>
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-foreground">Usage charges</h3>
+        {!isEditing && (
+          <Button variant="outline" size="sm" onClick={startEditing} disabled={loadError}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit charges
+          </Button>
+        )}
+      </div>
+
+      {isEditing ? (
+        <div className="flex flex-col gap-4">
+          {metrics.length === 0 && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              No billable metrics yet. Create one on the Metering page before adding usage
+              charges.
+            </p>
+          )}
+          {rows.length === 0 && metrics.length > 0 && (
+            <p className="text-sm text-muted-foreground">
+              No usage charges. Add one below — saving an empty list removes all usage charges
+              from this plan.
+            </p>
+          )}
+
+          {rows.map((row, i) => (
+            <div
+              key={i}
+              data-testid={`charge-row-${i}`}
+              className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3"
+            >
+              <div className="flex items-center gap-2">
+                <select
+                  value={row.metric_id}
+                  onChange={(e) => updateRow(i, { metric_id: e.target.value })}
+                  aria-label={`Metric ${i + 1}`}
+                  className={selectCls + " min-w-0 flex-1"}
+                >
+                  <option value="">Select metric…</option>
+                  {metrics.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name || m.code}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={row.charge_model}
+                  onChange={(e) => updateRow(i, { charge_model: e.target.value })}
+                  aria-label={`Charge model ${i + 1}`}
+                  className={selectCls}
+                >
+                  {MODELS.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => removeRow(i)}
+                  aria-label={`Remove charge ${i + 1}`}
+                  className="flex-none text-stone-400 transition-colors hover:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+
+              {row.charge_model === "per_unit" && (
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground">Rate per unit ({currency})</label>
+                  <Input
+                    value={row.unit_amount}
+                    onChange={(e) => updateRow(i, { unit_amount: e.target.value })}
+                    placeholder="0.0035"
+                    inputMode="decimal"
+                    aria-label={`Per-unit rate ${i + 1}`}
+                    className="h-8 w-32 font-mono"
+                  />
+                </div>
+              )}
+
+              {row.charge_model === "package" && (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>Charge</span>
+                  <Input
+                    value={row.package_amount}
+                    onChange={(e) => updateRow(i, { package_amount: e.target.value })}
+                    placeholder="5.00"
+                    inputMode="decimal"
+                    aria-label={`Package price ${i + 1}`}
+                    className="h-8 w-24 font-mono"
+                  />
+                  <span>{currency} per</span>
+                  <Input
+                    value={row.package_size}
+                    onChange={(e) => updateRow(i, { package_size: e.target.value })}
+                    placeholder="1000"
+                    inputMode="numeric"
+                    aria-label={`Package size ${i + 1}`}
+                    className="h-8 w-24 font-mono"
+                  />
+                  <span>units</span>
+                </div>
+              )}
+
+              {(row.charge_model === "graduated" || row.charge_model === "volume") && (
+                <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                    <span>Up to (units)</span>
+                    <span>Rate/unit ({currency})</span>
+                    <span>Flat fee ({currency})</span>
+                    <span className="sr-only">Remove</span>
+                  </div>
+                  {row.tiers.map((tier, ti) => {
+                    const isLast = ti === row.tiers.length - 1;
+                    return (
+                      <div
+                        key={ti}
+                        className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2"
+                      >
+                        <Input
+                          value={isLast ? "" : tier.up_to}
+                          onChange={(e) => updateTier(i, ti, { up_to: e.target.value })}
+                          placeholder={isLast ? "∞" : "100"}
+                          disabled={isLast}
+                          inputMode="numeric"
+                          aria-label={`Charge ${i + 1} tier ${ti + 1} up to`}
+                          className="h-8 font-mono"
+                        />
+                        <Input
+                          value={tier.unit_amount}
+                          onChange={(e) => updateTier(i, ti, { unit_amount: e.target.value })}
+                          placeholder="1.00"
+                          inputMode="decimal"
+                          aria-label={`Charge ${i + 1} tier ${ti + 1} rate`}
+                          className="h-8 font-mono"
+                        />
+                        <Input
+                          value={tier.flat_amount}
+                          onChange={(e) => updateTier(i, ti, { flat_amount: e.target.value })}
+                          placeholder="0.00"
+                          inputMode="decimal"
+                          aria-label={`Charge ${i + 1} tier ${ti + 1} flat fee`}
+                          className="h-8 font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeTier(i, ti)}
+                          disabled={row.tiers.length === 1}
+                          aria-label={`Remove tier ${ti + 1}`}
+                          className="text-stone-400 transition-colors hover:text-red-500 disabled:opacity-30"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="self-start"
+                    onClick={() => addTier(i)}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add tier
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-muted-foreground">HSN/SAC</label>
+                <Input
+                  value={row.hsn_code}
+                  onChange={(e) => updateRow(i, { hsn_code: e.target.value })}
+                  placeholder="Empty = plan default"
+                  aria-label={`Charge ${i + 1} HSN code`}
+                  className="h-8 w-40 font-mono"
+                />
+              </div>
+            </div>
+          ))}
+
+          {validationError && (
+            <p role="alert" className="text-sm text-red-600">
+              {validationError}
+            </p>
+          )}
+
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={addRow} disabled={metrics.length === 0}>
+              <Plus className="h-4 w-4" />
+              Add charge
+            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsEditing(false)}
+                disabled={saving}
+              >
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave} disabled={saving}>
+                {saving ? "Saving…" : "Save charges"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : loadError ? (
+        <p className="text-sm text-red-600">Failed to load usage charges.</p>
+      ) : charges.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No usage charges configured. Add metered pricing to bill this plan on usage.
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {charges.map((ch) => (
+            <div
+              key={ch.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <p className="truncate text-sm text-foreground">
+                  {ch.metric?.name || metricName[ch.metric_id] || ch.metric_id}
+                </p>
+                <p className="text-xs text-muted-foreground">{chargeSummary(ch, currency)}</p>
+              </div>
+              <Badge variant="neutral">{MODEL_LABEL[ch.charge_model] || ch.charge_model}</Badge>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

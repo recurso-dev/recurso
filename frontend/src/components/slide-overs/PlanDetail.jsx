@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Pencil, Plus, Trash2, Check, X, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
+import PlanCharges from "./PlanCharges";
 import { useToast } from "../Toast";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -496,6 +497,9 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
               </div>
             )}
           </div>
+
+          {/* Usage charges */}
+          <PlanCharges planId={plan.id} currency={currency} />
 
           {/* Metadata */}
           <div>

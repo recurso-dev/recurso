@@ -9,6 +9,9 @@ vi.mock('../../../lib/api', () => ({
     endpoints: {
         getPlanEntitlements: vi.fn(),
         setPlanEntitlements: vi.fn(),
+        getPlanCharges: vi.fn(),
+        setPlanCharges: vi.fn(),
+        getBillableMetrics: vi.fn(),
     }
 }));
 
@@ -39,6 +42,9 @@ describe('PlanDetail entitlements editor', () => {
         vi.clearAllMocks();
         endpoints.getPlanEntitlements.mockResolvedValue({ data: { data: existingEntitlements } });
         endpoints.setPlanEntitlements.mockResolvedValue({ data: { data: existingEntitlements } });
+        endpoints.getPlanCharges.mockResolvedValue({ data: { data: [] } });
+        endpoints.getBillableMetrics.mockResolvedValue({ data: { data: [] } });
+        endpoints.setPlanCharges.mockResolvedValue({ data: { data: [] } });
     });
 
     it('renders the fetched entitlements read-only', async () => {

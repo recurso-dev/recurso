@@ -119,8 +119,11 @@ can sign off on the output.
       rating engine (big.Rat, half-up once per line), renewal scheduler,
       wallets, commitments, alerts, batch ingestion, audit log. Spec:
       `docs/spec_usage_billing.md`, `docs/spec_lago_parity.md`.
-- [ ] Plan-charges visual editor in the dashboard (tier builder for
-      graduated/volume pricing; today charges are JSON-configured).
+- [x] **Plan-charges visual editor in the dashboard** — usage-charge editor
+      on the plan detail sheet: pick a metric, choose a charge model, and
+      build per-unit / package / graduated / volume pricing (tier builder for
+      the tiered models) in the plan's currency, with client validation
+      mirroring the rating engine. PUT-replace semantics like entitlements.
 - [ ] End-to-end renewal test rig (compose-based clock-advance harness
       exercising renew → rate → invoice → wallet drain → gateway).
 - [ ] **Integration certification** 🔒 — GoCardless, Adyen, NetSuite,
