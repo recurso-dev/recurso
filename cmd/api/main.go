@@ -1490,6 +1490,7 @@ func main() {
 		// Webhooks & Events (P24)
 		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)
 		v1.GET("/webhooks", webhookMgmtHandler.ListEndpoints)
+		v1.PUT("/webhooks/:id/status", webhookMgmtHandler.UpdateEndpointStatus)
 		v1.DELETE("/webhooks/:id", webhookMgmtHandler.DeleteEndpoint)
 		v1.GET("/webhooks/:id/deliveries", webhookMgmtHandler.ListEndpointDeliveries)
 

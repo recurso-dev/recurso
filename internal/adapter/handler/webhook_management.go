@@ -102,6 +102,37 @@ func (h *WebhookManagementHandler) ListEndpoints(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": response})
 }
 
+// UpdateEndpointStatus pauses ("inactive") or resumes ("active") an endpoint.
+// Paused endpoints stop receiving deliveries but keep their secret and config.
+func (h *WebhookManagementHandler) UpdateEndpointStatus(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid id")
+		return
+	}
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || (req.Status != "active" && req.Status != "inactive") {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, `status must be "active" or "inactive"`)
+		return
+	}
+	if err := h.webhookService.UpdateEndpointStatus(c.Request.Context(), tenantID.(uuid.UUID), id, req.Status); err != nil {
+		if errors.Is(err, service.ErrEndpointNotFound) {
+			respondError(c, http.StatusNotFound, codeNotFound, "endpoint not found")
+			return
+		}
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": req.Status})
+}
+
 // DeleteEndpoint deletes a webhook endpoint
 func (h *WebhookManagementHandler) DeleteEndpoint(c *gin.Context) {
 	idStr := c.Param("id")

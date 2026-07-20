@@ -1875,6 +1875,40 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/webhooks/{id}/status:
+    put:
+      operationId: updateWebhookEndpointStatus
+      tags: [Webhooks]
+      summary: Pause or resume a webhook endpoint
+      description: Paused ("inactive") endpoints stop receiving deliveries but keep their secret and configuration.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [active, inactive]
+      responses:
+        '200':
+          description: Status updated.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/webhooks/{id}:
     delete:
       operationId: deleteWebhookEndpoint
