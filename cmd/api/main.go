@@ -42,6 +42,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/vault"
 	"github.com/recurso-dev/recurso/internal/adapter/worker"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	coretax "github.com/recurso-dev/recurso/internal/core/service/tax"
 	"github.com/recurso-dev/recurso/internal/demo"
 	"github.com/recurso-dev/recurso/internal/residency"
 	"github.com/recurso-dev/recurso/internal/scheduler"
@@ -353,6 +354,26 @@ func main() {
 		log.Println("US sales tax: 0% stub (external tax API disabled by RESIDENCY_MODE=self_hosted)")
 	} else {
 		log.Println("US sales tax: 0% stub (TAXJAR_API_KEY not set)")
+	}
+
+	// BYO integration credentials (docs/spec_byo_gateway.md increment 5): tenants
+	// connect their own tax/CRM/storage accounts from the dashboard, sealed in the
+	// same vault as gateways. Env config stays the fallback. Per-tenant sales-tax
+	// providers resolve at invoice time; the same residency guard as the env
+	// provider applies (a tenant's TaxJar is still SaaS egress).
+	integrationConnService := service.NewIntegrationConnectionService(db.NewIntegrationConnectionRepository(database), gatewayVault)
+	if !residency.SelfHosted() && !demo.Enabled() {
+		salesTaxResolver := service.NewSalesTaxProviderResolver(integrationConnService,
+			func(provider string, cfg map[string]string) coretax.SalesTaxProvider {
+				switch provider {
+				case "taxjar":
+					return taxprovider.NewTaxJarProvider(cfg["api_key"], cfg["api_url"])
+				case "avalara":
+					return taxprovider.NewAvalaraProvider(cfg["account_id"], cfg["license_key"], cfg["company_code"], cfg["api_url"])
+				}
+				return nil
+			})
+		taxResolver = taxResolver.WithPerTenantSalesTax(salesTaxResolver.For)
 	}
 	// EU VAT-number validation — VIES when enabled. With it wired, intra-EU
 	// cross-border B2B reverse charge is only granted when the buyer's VAT
@@ -1052,6 +1073,7 @@ func main() {
 	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, ssoReplayStore, spKey, spCert, oauthRedirectBase)
 	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
 	gatewayConnHandler := handler.NewGatewayConnectionHandler(gatewayConnService)                       // BYO increment 4
+	integrationConnHandler := handler.NewIntegrationConnectionHandler(integrationConnService)           // BYO increment 5 (tax/CRM/storage)
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
@@ -1496,6 +1518,10 @@ func main() {
 		// Stripe/Razorpay. Writes are owner/admin-gated in the handler.
 		v1.GET("/gateway-connections", gatewayConnHandler.List)
 		v1.POST("/gateway-connections", gatewayConnHandler.Connect)
+		// BYO integrations (increment 5): per-tenant tax/CRM/storage credentials.
+		v1.GET("/integration-connections", integrationConnHandler.List)
+		v1.POST("/integration-connections", integrationConnHandler.Connect)
+		v1.DELETE("/integration-connections/:category/:provider", integrationConnHandler.Disconnect)
 		v1.PUT("/gateway-connections/:provider/webhook-secret", gatewayConnHandler.SetWebhookSecret)
 		v1.DELETE("/gateway-connections/:provider", gatewayConnHandler.Disconnect)
 

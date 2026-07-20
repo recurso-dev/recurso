@@ -55,7 +55,10 @@ type TaxResolver struct {
 	salesTax       tax.SalesTaxProvider // optional; nil keeps the US engine a 0% stub
 	vatValidator   tax.VATValidator     // optional; nil keeps EU reverse charge presence-based
 	nexusRepo      NexusProvider        // optional; nil disables US nexus gating (today's behaviour)
-	logger         *slog.Logger
+	// salesTaxFor resolves a tenant's OWN sales-tax provider (BYO), returning
+	// nil to fall back to salesTax (the env provider). Optional.
+	salesTaxFor func(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider
+	logger      *slog.Logger
 }
 
 // NexusProvider tells the resolver which US states a tenant has declared
@@ -115,6 +118,26 @@ func (r *TaxResolver) WithNexusRepo(n NexusProvider) *TaxResolver {
 	return r
 }
 
+// WithPerTenantSalesTax wires a resolver that returns a tenant's own
+// (BYO-connected) US sales-tax provider, used in preference to the env provider
+// when present. The function must return an already-cache-wrapped provider (or
+// nil to fall back). Returns the resolver for chaining.
+func (r *TaxResolver) WithPerTenantSalesTax(fn func(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider) *TaxResolver {
+	r.salesTaxFor = fn
+	return r
+}
+
+// salesTaxProviderFor picks the tenant's own provider (BYO) when available,
+// else the env provider.
+func (r *TaxResolver) salesTaxProviderFor(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider {
+	if r.salesTaxFor != nil {
+		if p := r.salesTaxFor(ctx, tenantID); p != nil {
+			return p
+		}
+	}
+	return r.salesTax
+}
+
 // ResolveInvoiceTax computes the tax for one invoice line/amount (lowest
 // currency unit). It never returns an error: tax resolution problems degrade to
 // zero tax with a log line rather than blocking invoice generation.
@@ -126,7 +149,7 @@ func (r *TaxResolver) WithNexusRepo(n NexusProvider) *TaxResolver {
 func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64, hsn string) InvoiceTax {
 	sellerCountry, sellerState, cfg := r.sellerJurisdiction(ctx, tenantID)
 
-	engine := tax.NewTaxEngineWithSalesTaxProvider(sellerCountry, normalizeINState(sellerState), r.salesTax)
+	engine := tax.NewTaxEngineWithSalesTaxProvider(sellerCountry, normalizeINState(sellerState), r.salesTaxProviderFor(ctx, tenantID))
 
 	switch engine.(type) {
 	case *tax.USSalesTaxEngine:

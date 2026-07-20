@@ -123,10 +123,29 @@ webhook-secret field (create the webhook at the URL, paste the secret back).
 explanatory banner. OpenAPI + drift test cover all four routes; handler and
 service unit-tested; frontend lint/build/vitest green.
 
-### Increment 5 — Extend the vault to tax/CRM/storage keys (pending)
+### Increment 5 — Extend the vault to tax/CRM/storage keys
 
-Same `secretbox` + connection pattern for TaxJar/Avalara/HubSpot/S3 so those
-move from env-only to per-tenant dashboard config. Env stays the fallback.
+Same `secretbox` + connection pattern for the operator-only integrations, so
+they move from env-only to per-tenant dashboard config. Env stays the fallback.
+Founder decision (2026-07-20): do all three — tax, CRM, storage.
+
+**5a — backend + API + tax providers ✅.** A generic `integration_connections`
+table (migration 000108) stores a sealed JSON config blob per (tenant, category,
+provider); `IntegrationConnectionService` seals on write and `Resolve`s a
+decrypted config per tenant (env fallback on miss). `SalesTaxProviderResolver`
+builds a tenant's TaxJar/Avalara from their connection (injected factory, cached
+per tenant, invalidated on re-key) and `TaxResolver.WithPerTenantSalesTax` uses
+it at invoice time — same `RESIDENCY_MODE=self_hosted` guard as the env provider.
+`IntegrationConnectionHandler` exposes `GET/POST /v1/integration-connections` and
+`DELETE /v1/integration-connections/:category/:provider` (secret-free views,
+owner/admin writes). OpenAPI + drift green; service/resolver/handler unit-tested.
+
+**5b — dashboard UI (pending):** a Tax/CRM/Storage section on the Integrations
+page (cards + connect sheet driven by each provider's required fields).
+
+**5c — CRM (HubSpot) + storage (S3) resolvers (pending):** wire `Resolve` into
+the HubSpot sync and the S3 GL-export paths (the vault + API already support
+them; only the per-tenant resolution at those call sites remains).
 
 ## Founder decisions
 
