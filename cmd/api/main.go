@@ -1156,7 +1156,7 @@ func main() {
 	if rateLimit <= 0 {
 		rateLimit = 500
 	}
-	r.Use(middleware.RateLimitMiddleware(rdb, rateLimit, time.Minute))
+	r.Use(middleware.RateLimitMiddleware(rdb, "api", rateLimit, time.Minute))
 
 	// CORS Middleware — comma-separated allowlist. Multiple origins matter:
 	// the dashboard and the marketing site (whose waitlist form POSTs here)
@@ -1262,8 +1262,13 @@ func main() {
 		log.Fatalf("Failed to register OpenAPI routes: %v", err)
 	}
 
-	// Public Routes — stricter rate limit (20 req/min per IP)
-	publicLimit := middleware.RateLimitMiddleware(rdb, 20, time.Minute)
+	// Public Routes — stricter rate limit (20 req/min per IP) for endpoints
+	// worth brute-forcing (credentials, tokens, payment initiation).
+	publicLimit := middleware.RateLimitMiddleware(rdb, "public", 20, time.Minute)
+	// Session-state endpoints (/auth/me and friends) are hit on every page
+	// load — they get their own, roomier bucket so normal dashboard use can
+	// never lock a user out of their session.
+	sessionLimit := middleware.RateLimitMiddleware(rdb, "session", 120, time.Minute)
 
 	r.GET("/checkout/:id", publicLimit, checkoutHandler.ShowCheckout)
 	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
@@ -1283,8 +1288,8 @@ func main() {
 		r.POST("/auth/demo", publicLimit, demoHandler.StartSession) // sandbox entry (404 outside DEMO_MODE)
 	}
 	r.POST("/auth/login/mfa", publicLimit, authHandler.LoginMFA)
-	r.POST("/auth/logout", publicLimit, authHandler.Logout)
-	r.GET("/auth/me", publicLimit, authHandler.Me)
+	r.POST("/auth/logout", sessionLimit, authHandler.Logout)
+	r.GET("/auth/me", sessionLimit, authHandler.Me)
 	// Password reset (public): forgot-password always answers generically; the
 	// reset itself consumes a single-use emailed token.
 	r.POST("/auth/forgot-password", publicLimit, authHandler.ForgotPassword)
@@ -1294,7 +1299,7 @@ func main() {
 	// configured; /start issues the CSRF-state + PKCE cookie and redirects to
 	// the provider; /callback validates, find-or-creates a user, opens a session
 	// and redirects to the dashboard. Disabled/unknown providers 404.
-	r.GET("/auth/oauth/providers", publicLimit, oauthHandler.Providers)
+	r.GET("/auth/oauth/providers", sessionLimit, oauthHandler.Providers)
 	r.GET("/auth/oauth/:provider/start", publicLimit, oauthHandler.Start)
 	r.GET("/auth/oauth/:provider/callback", publicLimit, oauthHandler.Callback)
 
