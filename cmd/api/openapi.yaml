@@ -6976,6 +6976,105 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/integration-connections:
+    get:
+      tags: [Integration Connections]
+      summary: List the tenant's BYO tax/CRM/storage integrations
+      description: |
+        Returns the tenant's active tax (TaxJar/Avalara), CRM (HubSpot), and
+        storage (S3/MinIO) connections — secret-free (only non-secret config like
+        region/bucket, and whether secrets are set) — plus vault availability.
+      responses:
+        '200':
+          description: Connections and vault status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      connections:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/IntegrationConnectionView'
+                      vault_ready:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Integration Connections]
+      summary: Connect (or replace) a tax/CRM/storage integration
+      description: |
+        Stores the tenant's own integration credentials, sealed at rest. Secrets
+        are write-only. Replaces any existing active connection for the
+        (category, provider). Owner/admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [category, provider, config]
+              properties:
+                category:
+                  type: string
+                  enum: [tax, crm, storage]
+                provider:
+                  type: string
+                  description: taxjar / avalara / hubspot / s3.
+                config:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: Provider config (e.g. api_key; or bucket/region/keys for s3).
+      responses:
+        '201':
+          description: Connected.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/IntegrationConnectionView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Credential vault unavailable (GATEWAY_ENCRYPTION_KEY not set).
+
+  /v1/integration-connections/{category}/{provider}:
+    delete:
+      tags: [Integration Connections]
+      summary: Disconnect a tax/CRM/storage integration
+      description: Soft-disconnects the tenant's active connection. Owner/admin only.
+      parameters:
+        - name: category
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [tax, crm, storage]
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Disconnected.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/sso/connection:
     get:
       tags: [Auth]
@@ -7193,6 +7292,20 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    IntegrationConnectionView:
+      type: object
+      description: Secret-free projection of a BYO tax/CRM/storage connection.
+      properties:
+        id: { type: string, format: uuid }
+        category: { type: string, enum: [tax, crm, storage] }
+        provider: { type: string }
+        config:
+          type: object
+          additionalProperties: { type: string }
+          description: Non-secret config fields only (e.g. region, bucket, endpoints).
+        has_secrets: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     GatewayConnectionView:
       type: object
       description: Secret-free projection of a BYO gateway connection.
