@@ -1590,6 +1590,7 @@ func main() {
 		// Phase 2: Accounting / ERP Integrations
 		v1.GET("/accounting/connections", accountingHandler.ListConnections)
 		v1.POST("/accounting/connect/:provider", accountingHandler.InitiateOAuth)
+		v1.POST("/accounting/connect-token/:provider", accountingHandler.ConnectTokenBased)
 		v1.GET("/accounting/callback/:provider", accountingHandler.OAuthCallback)
 		v1.DELETE("/accounting/connections/:id", accountingHandler.Disconnect)
 		v1.POST("/accounting/sync", accountingHandler.TriggerSync)

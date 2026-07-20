@@ -4831,6 +4831,46 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/accounting/connect-token/{provider}:
+    post:
+      operationId: connectAccountingProviderToken
+      tags: [Accounting]
+      summary: Connect a token-based accounting provider (NetSuite, Tally)
+      description: >
+        Creates or refreshes a connection for providers outside the browser
+        OAuth flow. `netsuite` requires `account_id` and a SuiteTalk OAuth 2.0
+        `access_token` minted in NetSuite (EXPERIMENTAL). `tally` takes no
+        credentials — it enables the local JSONL export sync.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [netsuite, tally]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                account_id:
+                  type: string
+                  description: NetSuite account id (required for netsuite).
+                access_token:
+                  type: string
+                  description: SuiteTalk OAuth 2.0 access token (required for netsuite).
+      responses:
+        '200':
+          description: Existing connection refreshed.
+        '201':
+          description: Connection created.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/accounting/callback/{provider}:
     get:
       operationId: accountingOAuthCallback

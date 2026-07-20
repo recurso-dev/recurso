@@ -5,23 +5,48 @@ import { Landmark, RefreshCw, Check } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
-// The accounting backend only wires these two providers (main.go InitiateOAuth).
+// QuickBooks/Xero use the browser OAuth flow (main.go InitiateOAuth);
+// NetSuite takes a pasted SuiteTalk token, Tally is a local JSONL export.
 const PROVIDERS = [
   {
     id: "quickbooks",
     name: "QuickBooks Online",
     description: "Push customers, invoices, and payments to QuickBooks.",
+    mode: "oauth",
   },
   {
     id: "xero",
     name: "Xero",
     description: "Sync your billing data to Xero's accounting ledger.",
+    mode: "oauth",
+  },
+  {
+    id: "netsuite",
+    name: "NetSuite",
+    description: "Sync to NetSuite via the SuiteTalk REST API (experimental).",
+    mode: "token",
+  },
+  {
+    id: "tally",
+    name: "Tally",
+    description: "Export data as import files for Tally ERP — nothing leaves your server.",
+    mode: "local",
   },
 ];
 
@@ -53,6 +78,8 @@ const Integrations = () => {
   const [connecting, setConnecting] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
+  const [tokenProvider, setTokenProvider] = useState(null); // provider being connected via sheet
+  const [tokenForm, setTokenForm] = useState({ account_id: "", access_token: "" });
   const [disconnecting, setDisconnecting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -110,6 +137,13 @@ const Integrations = () => {
   const hasActiveConnection = connections.some((c) => c.is_active);
 
   const handleConnect = async (providerId) => {
+    const provider = PROVIDERS.find((p) => p.id === providerId);
+    // Token/local providers configure in a slide-over instead of OAuth handoff.
+    if (provider?.mode === "token" || provider?.mode === "local") {
+      setTokenForm({ account_id: "", access_token: "" });
+      setTokenProvider(provider);
+      return;
+    }
     setConnecting(providerId);
     try {
       const res = await api.connectAccounting(providerId);
@@ -122,6 +156,22 @@ const Integrations = () => {
       window.location.href = authUrl;
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Failed to start connection");
+      setConnecting(null);
+    }
+  };
+
+  const submitTokenConnect = async () => {
+    if (!tokenProvider) return;
+    setConnecting(tokenProvider.id);
+    try {
+      const body = tokenProvider.mode === "token" ? tokenForm : {};
+      await api.connectAccountingToken(tokenProvider.id, body);
+      toast.success(`${tokenProvider.name} connected.`);
+      setTokenProvider(null);
+      fetchConnections();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to connect");
+    } finally {
       setConnecting(null);
     }
   };
@@ -314,6 +364,62 @@ const Integrations = () => {
         busy={disconnecting}
         onConfirm={handleDisconnect}
       />
+
+      {/* Token/local provider connect (NetSuite, Tally) */}
+      <Sheet open={!!tokenProvider} onOpenChange={(o) => !o && setTokenProvider(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Connect {tokenProvider?.name}</SheetTitle>
+            <SheetDescription>
+              {tokenProvider?.mode === "token"
+                ? "Paste credentials from your NetSuite account — Setup → Integration → OAuth 2.0. Experimental: verify in a sandbox account first."
+                : "Tally sync writes JSONL export files on the server for Tally's import tooling. No credentials needed — no data leaves your infrastructure."}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+            {tokenProvider?.mode === "token" && (
+              <>
+                <div>
+                  <Label>Account ID</Label>
+                  <Input
+                    value={tokenForm.account_id}
+                    onChange={(e) => setTokenForm({ ...tokenForm, account_id: e.target.value })}
+                    placeholder="e.g. 1234567 or 1234567_SB1"
+                    className="font-mono"
+                  />
+                </div>
+                <div>
+                  <Label>Access token</Label>
+                  <Input
+                    type="password"
+                    value={tokenForm.access_token}
+                    onChange={(e) => setTokenForm({ ...tokenForm, access_token: e.target.value })}
+                    placeholder="SuiteTalk OAuth 2.0 access token"
+                    className="font-mono"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Stored server-side and never shown again.
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+          <SheetFooter>
+            <Button
+              onClick={submitTokenConnect}
+              disabled={
+                connecting === tokenProvider?.id ||
+                (tokenProvider?.mode === "token" &&
+                  (!tokenForm.account_id.trim() || !tokenForm.access_token.trim()))
+              }
+            >
+              {connecting === tokenProvider?.id
+                ? "Connecting…"
+                : `Connect ${tokenProvider?.name || ""}`}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
