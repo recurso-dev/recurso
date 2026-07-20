@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "../components/Toast";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
@@ -91,6 +92,8 @@ export default function CreateCustomer() {
       };
       await endpoints.createCustomer(payload);
       toast.success("Customer created");
+      // The list caches for 60s — without this the new customer is invisible.
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       navigate("/customers");
     } catch (error) {
       toast.error(
