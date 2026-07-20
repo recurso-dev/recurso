@@ -112,7 +112,7 @@ func (h *TenantHandler) CreateKey(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, key)
+	c.JSON(http.StatusCreated, gin.H{"data": key})
 }
 
 // RevokeKey handles DELETE /v1/developer/keys/:id — soft-deactivates the key

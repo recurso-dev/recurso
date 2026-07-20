@@ -191,7 +191,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
       });
       setIsEditingPlan(false);
       toast.success("Plan updated");
-      onChanged?.(res.data);
+      onChanged?.(res.data.data);
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Failed to update plan");
     } finally {
@@ -205,7 +205,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
       const res = await endpoints.updatePlan(plan.id, { active: !plan.active });
       setArchiveOpen(false);
       toast.success(plan.active ? "Plan archived" : "Plan restored");
-      onChanged?.(res.data);
+      onChanged?.(res.data.data);
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Failed to update plan");
     } finally {

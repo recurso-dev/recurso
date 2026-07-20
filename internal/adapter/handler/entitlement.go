@@ -120,7 +120,7 @@ func (h *EntitlementHandler) CheckEntitlement(c *gin.Context) {
 		respondEntitlementError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, check)
+	c.JSON(http.StatusOK, gin.H{"data": check})
 }
 
 // entitlementTenantCtx extracts the authenticated tenant and returns a

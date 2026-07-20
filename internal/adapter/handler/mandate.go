@@ -71,7 +71,7 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, result)
+	c.JSON(http.StatusCreated, gin.H{"data": result})
 }
 
 func (h *MandateHandler) ListMandates(c *gin.Context) {

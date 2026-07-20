@@ -219,7 +219,7 @@ export default function Developers() {
       const response = await endpoints.createKey({});
       // POST /developer/keys returns the APIKey object directly;
       // key_value is only present on creation.
-      setGeneratedKey(response.data.key_value || response.data.key);
+      setGeneratedKey(response.data.data.key_value || response.data.data.key);
       setIsModalOpen(true);
       fetchKeys();
     } catch (error) {

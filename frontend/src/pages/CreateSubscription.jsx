@@ -96,7 +96,7 @@ export default function CreateSubscription() {
         payment_terms: formData.payment_terms,
       };
       const res = await endpoints.createSubscription(payload);
-      const sub = res.data;
+      const sub = res.data.data;
 
       if (sub && sub.razorpay_subscription_id) {
         const options = {

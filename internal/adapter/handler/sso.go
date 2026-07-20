@@ -160,7 +160,7 @@ func (h *SSOHandler) DeleteConnection(c *gin.Context) {
 		respondInternalError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "sso connection removed"})
+	c.JSON(http.StatusOK, gin.H{"status": "removed"})
 }
 
 // --- public SP endpoints (per-tenant by UUID in the path) ---

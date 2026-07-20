@@ -64,7 +64,7 @@ func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, va)
+	c.JSON(http.StatusCreated, gin.H{"data": va})
 }
 
 func (h *OfflinePaymentHandler) ListVirtualAccounts(c *gin.Context) {
@@ -151,7 +151,7 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, payment)
+	c.JSON(http.StatusCreated, gin.H{"data": payment})
 }
 
 func (h *OfflinePaymentHandler) ListOfflinePayments(c *gin.Context) {

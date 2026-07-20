@@ -87,7 +87,7 @@ CUST_INR_RES=$(post_json "$API_URL/v1/customers" '{
     },
     "tax_id": "27DQBPS8356J1Z1"
   }' "$API_KEY")
-CUST_ID_INR=$(get_json_value "$CUST_INR_RES" "id")
+CUST_ID_INR=$(get_json_value "$CUST_INR_RES" "data.id")
 echo "  > Customer Created: $CUST_ID_INR"
 
 # Create INR Plan
@@ -99,7 +99,7 @@ PLAN_INR_RES=$(post_json "$API_URL/v1/plans" '{
     "amount": 50000,
     "currency": "INR"
   }' "$API_KEY")
-PLAN_ID_INR=$(get_json_value "$PLAN_INR_RES" "id")
+PLAN_ID_INR=$(get_json_value "$PLAN_INR_RES" "data.id")
 echo "  > Plan Created: $PLAN_ID_INR"
 
 # Create INR Subscription
@@ -108,8 +108,8 @@ SUB_INR_RES=$(post_json "$API_URL/v1/subscriptions" "$(jq -n \
   --arg plan_id "$PLAN_ID_INR" \
   '{customer_id: $customer_id, plan_id: $plan_id, start_date: "2025-01-01T00:00:00Z"}')" \
   "$API_KEY")
-SUB_ID_INR=$(get_json_value "$SUB_INR_RES" "id")
-RAZORPAY_ID=$(get_json_value "$SUB_INR_RES" "razorpay_subscription_id")
+SUB_ID_INR=$(get_json_value "$SUB_INR_RES" "data.id")
+RAZORPAY_ID=$(get_json_value "$SUB_INR_RES" "data.razorpay_subscription_id")
 
 if [[ "$RAZORPAY_ID" == sub_* ]]; then
     echo -e "${GREEN}  ✅ INR Subscription routing verified (Razorpay ID: $RAZORPAY_ID)${NC}"
@@ -133,7 +133,7 @@ CUST_USD_RES=$(post_json "$API_URL/v1/customers" '{
       "postal_code": "90210"
     }
   }' "$API_KEY")
-CUST_ID_USD=$(get_json_value "$CUST_USD_RES" "id")
+CUST_ID_USD=$(get_json_value "$CUST_USD_RES" "data.id")
 echo "  > Customer Created: $CUST_ID_USD"
 
 # Create USD Plan
@@ -145,7 +145,7 @@ PLAN_USD_RES=$(post_json "$API_URL/v1/plans" '{
     "amount": 2900,
     "currency": "USD"
   }' "$API_KEY")
-PLAN_ID_USD=$(get_json_value "$PLAN_USD_RES" "id")
+PLAN_ID_USD=$(get_json_value "$PLAN_USD_RES" "data.id")
 echo "  > Plan Created: $PLAN_ID_USD"
 
 # Create USD Subscription
@@ -154,8 +154,8 @@ SUB_USD_RES=$(post_json "$API_URL/v1/subscriptions" "$(jq -n \
   --arg plan_id "$PLAN_ID_USD" \
   '{customer_id: $customer_id, plan_id: $plan_id, start_date: "2025-01-01T00:00:00Z"}')" \
   "$API_KEY")
-SUB_ID_USD=$(get_json_value "$SUB_USD_RES" "id")
-STRIPE_ID=$(get_json_value "$SUB_USD_RES" "stripe_subscription_id")
+SUB_ID_USD=$(get_json_value "$SUB_USD_RES" "data.id")
+STRIPE_ID=$(get_json_value "$SUB_USD_RES" "data.stripe_subscription_id")
 
 if [[ "$STRIPE_ID" == sub_* ]]; then
     echo -e "${GREEN}  ✅ USD Subscription routing verified (Stripe ID: $STRIPE_ID)${NC}"
@@ -180,14 +180,14 @@ CUST_C_RES=$(post_json "$API_URL/v1/customers" '{
     "email": "carl@example.com",
     "billing_address": {"country": "US", "state": "CA", "postal_code": "90210"}
   }' "$API_KEY")
-CUST_ID_C=$(get_json_value "$CUST_C_RES" "id")
+CUST_ID_C=$(get_json_value "$CUST_C_RES" "data.id")
 
 SUB_C_RES=$(post_json "$API_URL/v1/subscriptions" "$(jq -n \
   --arg customer_id "$CUST_ID_C" \
   --arg plan_id "$PLAN_ID_USD" \
   '{customer_id: $customer_id, plan_id: $plan_id, coupon_code: "E2E-20OFF"}')" \
   "$API_KEY")
-SUB_ID_C=$(get_json_value "$SUB_C_RES" "id")
+SUB_ID_C=$(get_json_value "$SUB_C_RES" "data.id")
 
 # The USD plan is 2900; 20% off => 2320 on the first invoice.
 INVOICES_RES=$(get_json "$API_URL/v1/invoices" "$API_KEY")

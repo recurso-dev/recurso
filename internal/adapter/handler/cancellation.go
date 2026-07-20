@@ -134,7 +134,7 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 		message = "Subscription has been cancelled immediately"
 	}
 
-	c.JSON(http.StatusOK, CancelSubscriptionResponse{
+	c.JSON(http.StatusOK, gin.H{"data": CancelSubscriptionResponse{
 		ID:                subscriptionID.String(),
 		Status:            subscription.Status,
 		CancelAtPeriodEnd: req.CancelAtPeriodEnd,
@@ -142,7 +142,7 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 		CurrentPeriodEnd:  subscription.CurrentPeriodEnd,
 		Reason:            string(req.Reason),
 		Message:           message,
-	})
+	}})
 }
 
 // GetCancellationReasons handles GET /v1/cancellation-reasons

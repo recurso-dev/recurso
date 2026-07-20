@@ -112,7 +112,7 @@ export default function SubscriptionDetail({
     setPreview(null);
     endpoints
       .previewPlanChange(subscription.id, newPlanId)
-      .then((res) => setPreview(res.data))
+      .then((res) => setPreview(res.data.data))
       .catch((err) =>
         toast.error(
           err?.response?.data?.error?.message || "Failed to preview plan change"

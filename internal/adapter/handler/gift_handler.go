@@ -78,7 +78,7 @@ func (h *GiftHandler) RedeemGift(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, sub)
+	c.JSON(http.StatusOK, gin.H{"data": sub})
 }
 
 func (h *GiftHandler) ListGifts(c *gin.Context) {
