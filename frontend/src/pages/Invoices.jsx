@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FileText } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
-import { useToast } from "../components/Toast";
+import { useCustomers } from "@/lib/useCustomers";
 import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
 import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -38,44 +39,31 @@ function EInvoiceBadge({ status }) {
 }
 
 const Invoices = () => {
-  const [invoices, setInvoices] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [customerNames, setCustomerNames] = useState({});
-  const toast = useToast();
   const location = useLocation();
   const navigate = useNavigate();
 
-  const fetchInvoices = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [response, custRes] = await Promise.all([
-        endpoints.getInvoices(),
-        endpoints.getCustomers({ limit: 1000 }).catch(() => null),
-      ]);
-      setInvoices(response.data.data || []);
-      const names = {};
-      (custRes?.data?.data || []).forEach((c) => {
-        names[c.id] = c.name;
-      });
-      setCustomerNames(names);
-    } catch (err) {
-      const msg =
-        err?.response?.data?.error?.message || err?.message || "Failed to load invoices";
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    fetchInvoices();
-  }, [fetchInvoices]);
+  // Invoices come from the shared query cache (60s fresh — revisiting the
+  // page reuses the cached list); customer names from the shared hook.
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["invoices", "all"],
+    queryFn: async () => {
+      const res = await endpoints.getInvoices();
+      return res?.data?.data || [];
+    },
+  });
+  const invoices = data || [];
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load invoices"
+    : null;
+  const { names: customerNames } = useCustomers();
 
   // Deep-link from Home's recent-invoices rows: /invoices with
   // { state: { openInvoiceId } } auto-opens that invoice's detail sheet once.
@@ -170,7 +158,7 @@ const Invoices = () => {
         data={filteredInvoices}
         loading={loading}
         error={error}
-        onRetry={fetchInvoices}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: search,

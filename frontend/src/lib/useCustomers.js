@@ -34,7 +34,9 @@ export function usePlans() {
   const { data } = useQuery({
     queryKey: ["plans", "all"],
     queryFn: async () => {
-      const res = await endpoints.getPlans();
+      // The API defaults to limit=10 — ask for everything or name
+      // resolution silently truncates past the first page of plans.
+      const res = await endpoints.getPlans({ limit: 1000 });
       return res?.data?.data || [];
     },
   });
@@ -54,7 +56,8 @@ export function useSubscriptions() {
   const { data } = useQuery({
     queryKey: ["subscriptions", "all"],
     queryFn: async () => {
-      const res = await endpoints.getSubscriptions();
+      // Same limit=10 API default as plans — fetch the full set.
+      const res = await endpoints.getSubscriptions({ limit: 1000 });
       return res?.data?.data || [];
     },
   });

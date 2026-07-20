@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Users, Link2 } from "lucide-react";
 
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { endpoints } from "../lib/api";
 import { useToast } from "../components/Toast";
 import { useDebounce } from "../hooks/useDebounce";
@@ -38,9 +40,6 @@ export default function Customers() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
@@ -49,28 +48,38 @@ export default function Customers() {
   const [selected, setSelected] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
 
-  const fetchCustomers = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const queryClient = useQueryClient();
+  // Server-driven list: every (page, q, status) combination is its own cache
+  // entry; placeholderData keeps the previous page rendered while the next
+  // one loads (no skeleton flash when paging).
+  const {
+    data: customersData,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ["customers", { page, q: debouncedSearch, status }],
+    queryFn: async () => {
       const params = { page, limit: PAGE_SIZE };
       if (debouncedSearch) params.q = debouncedSearch;
       if (status !== "all") params.status = status;
       const res = await endpoints.getCustomers(params);
-      setCustomers(res.data.data || []);
-    } catch (err) {
-      const msg =
-        err?.response?.data?.error?.message || err?.message || "Failed to load customers";
-      setError(msg);
-      toast.error(msg);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, debouncedSearch, status, toast]);
+      return res.data.data || [];
+    },
+    placeholderData: (prev) => prev,
+  });
+  const customers = useMemo(() => customersData || [], [customersData]);
+  const error = queryError
+    ? queryError?.response?.data?.error?.message ||
+      queryError?.message ||
+      "Failed to load customers"
+    : null;
 
-  useEffect(() => {
-    fetchCustomers();
-  }, [fetchCustomers]);
+  // Mutations elsewhere (create page, detail sheet, pickers' shared cache)
+  // see fresh data by invalidating every customers-keyed query.
+  const fetchCustomers = useCallback(
+    () => queryClient.invalidateQueries({ queryKey: ["customers"] }),
+    [queryClient]
+  );
 
   // Reset to page 1 whenever the query changes.
   useEffect(() => {

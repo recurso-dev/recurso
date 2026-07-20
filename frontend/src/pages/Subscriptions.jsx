@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Repeat } from "lucide-react";
 
+import { useQuery } from "@tanstack/react-query";
+
 import { endpoints } from "../lib/api";
+import { useCustomers, usePlans } from "@/lib/useCustomers";
 import { useDebounce } from "../hooks/useDebounce";
 import SubscriptionDetail from "../components/slide-overs/SubscriptionDetail";
 import { formatDate } from "@/lib/utils";
@@ -34,12 +37,6 @@ const statusVariant = (status) =>
 export default function Subscriptions() {
   const navigate = useNavigate();
 
-  const [subs, setSubs] = useState([]);
-  const [customers, setCustomers] = useState({});
-  const [plans, setPlans] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
@@ -50,50 +47,50 @@ export default function Subscriptions() {
   const [selectedSub, setSelectedSub] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = {
+  // The subscription page itself is server-driven (q/page/status) — each
+  // param combination is its own cache entry; customers and plans come from
+  // the shared reference-data hooks.
+  const {
+    data: subsData,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["subscriptions", { q: debouncedSearch, page, status: statusFilter }],
+    queryFn: async () => {
+      const res = await endpoints.getSubscriptions({
         q: debouncedSearch,
         page,
         limit: PAGE_SIZE,
         status: statusFilter === "all" ? "" : statusFilter,
-      };
-
-      const [subRes, custRes, planRes] = await Promise.all([
-        endpoints.getSubscriptions(params),
-        endpoints.getCustomers({ limit: 1000 }).catch(() => ({ data: { data: [] } })),
-        endpoints.getPlans({ limit: 100 }).catch(() => ({ data: { data: [] } })),
-      ]);
-
-      const customerMap = {};
-      (custRes.data.data || []).forEach((c) => {
-        customerMap[c.id] = c;
       });
-      setCustomers(customerMap);
+      return res?.data?.data || [];
+    },
+    placeholderData: (prev) => prev,
+  });
+  const subs = useMemo(() => subsData || [], [subsData]);
+  const error = queryError
+    ? queryError?.response?.data?.error?.message ||
+      queryError?.message ||
+      "Failed to load subscriptions"
+    : null;
 
-      const planMap = {};
-      (planRes.data.data || []).forEach((p) => {
-        planMap[p.id] = p;
-      });
-      setPlans(planMap);
-
-      setSubs(subRes.data.data || []);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message ||
-          err?.message ||
-          "Failed to load subscriptions"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [debouncedSearch, page, statusFilter]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const { customers: customerList } = useCustomers();
+  const { plans: planList } = usePlans();
+  const customers = useMemo(() => {
+    const map = {};
+    customerList.forEach((c) => {
+      map[c.id] = c;
+    });
+    return map;
+  }, [customerList]);
+  const plans = useMemo(() => {
+    const map = {};
+    planList.forEach((p) => {
+      map[p.id] = p;
+    });
+    return map;
+  }, [planList]);
 
   // Reset to page 1 when the query/status change.
   useEffect(() => {
@@ -224,7 +221,7 @@ export default function Subscriptions() {
         data={filteredSubs}
         loading={loading}
         error={error}
-        onRetry={fetchData}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: search,
