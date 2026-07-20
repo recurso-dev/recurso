@@ -342,7 +342,7 @@ export default function Developers() {
   const toggleWebhookStatus = async (hook) => {
     const next = hook.status === "active" ? "inactive" : "active";
     try {
-      await api.setWebhookStatus(hook.id, next);
+      await endpoints.setWebhookStatus(hook.id, next);
       toast.success(next === "active" ? "Endpoint resumed." : "Endpoint paused.");
       fetchWebhooks();
     } catch (err) {
