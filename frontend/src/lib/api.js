@@ -324,6 +324,12 @@ export const endpoints = {
   setGatewayWebhookSecret: (provider, webhook_secret) =>
     api.put(`/gateway-connections/${provider}/webhook-secret`, { webhook_secret }),
   disconnectGateway: (provider) => api.delete(`/gateway-connections/${provider}`),
+
+  // BYO tax/CRM/storage integrations — per-tenant credentials.
+  getIntegrationConnections: () => api.get('/integration-connections'),
+  connectIntegration: (body) => api.post('/integration-connections', body),
+  disconnectIntegration: (category, provider) =>
+    api.delete(`/integration-connections/${category}/${provider}`),
 };
 
 
