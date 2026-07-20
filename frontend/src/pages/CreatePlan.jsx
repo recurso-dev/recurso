@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "../components/Toast";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
@@ -70,6 +71,8 @@ export default function CreatePlan() {
       };
       await endpoints.createPlan(payload);
       toast.success("Plan created");
+      // Pickers and lists share a 60s plans cache — surface the new plan now.
+      queryClient.invalidateQueries({ queryKey: ["plans"] });
       navigate("/plans");
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Failed to create plan");

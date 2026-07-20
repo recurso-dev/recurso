@@ -21,6 +21,7 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 const Churn = () => {
   const [alerts, setAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(true);
+  const [alertsError, setAlertsError] = useState(null);
   const [highRisk, setHighRisk] = useState([]);
   const [hrLoading, setHrLoading] = useState(true);
   const [hrError, setHrError] = useState(null);
@@ -29,11 +30,15 @@ const Churn = () => {
 
   const fetchAlerts = async () => {
     setAlertsLoading(true);
+    setAlertsError(null);
     try {
       const res = await api.getChurnAlerts();
       setAlerts(res.data.data || []);
-    } catch {
+    } catch (err) {
       setAlerts([]);
+      setAlertsError(
+        err?.response?.data?.error?.message || err?.message || "Failed to load churn alerts"
+      );
     } finally {
       setAlertsLoading(false);
     }
@@ -125,6 +130,13 @@ const Churn = () => {
       <h2 className="mb-3 text-sm font-semibold text-foreground">Open alerts</h2>
       {alertsLoading ? (
         <CardGridSkeleton count={2} />
+      ) : alertsError ? (
+        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          {alertsError}{" "}
+          <button className="underline" onClick={fetchAlerts}>
+            Retry
+          </button>
+        </p>
       ) : alerts.length === 0 ? (
         <EmptyState
           icon={AlertTriangle}

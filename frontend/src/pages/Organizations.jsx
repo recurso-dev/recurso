@@ -267,6 +267,7 @@ const Organizations = () => {
                   variant="ghost"
                   className="h-7 w-7 text-muted-foreground"
                   title="Rename organization"
+                  aria-label="Rename organization"
                   onClick={() => {
                     setRenameValue(selected?.name || "");
                     setRenaming(true);

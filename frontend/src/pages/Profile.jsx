@@ -35,6 +35,7 @@ export default function Profile() {
   const { user } = useAuth();
   const [account, setAccount] = useState({ name: "", email: "", id: "" });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     const fetchAccount = async () => {
@@ -49,6 +50,9 @@ export default function Profile() {
         }
       } catch (error) {
         console.error("Failed to fetch account:", error);
+        setLoadError(
+          error?.response?.data?.error?.message || error?.message || "Failed to load account"
+        );
       } finally {
         setLoading(false);
       }
@@ -64,6 +68,10 @@ export default function Profile() {
         actions={
           <Button variant="outline" onClick={() => navigate("/settings")}>
             <Pencil className="h-4 w-4" />
+
+      {loadError && (
+        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</p>
+      )}
             Edit profile
           </Button>
         }

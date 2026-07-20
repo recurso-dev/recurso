@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Plus, Gift, Package } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { queryClient } from "@/lib/queryClient";
 import { useDebounce } from "../hooks/useDebounce";
 import BuyGiftModal from "../components/BuyGiftModal";
 import PlanDetail from "../components/slide-overs/PlanDetail";
@@ -108,6 +109,9 @@ export default function Plans() {
         prev && prev.id === updated.id ? { ...prev, ...updated, prices: updated.prices || prev.prices } : prev
       );
     }
+    // Edits/archives must also reach the shared react-query plans cache
+    // (Subscriptions/Metering/Mandates pickers), not just this legacy list.
+    queryClient.invalidateQueries({ queryKey: ["plans"] });
     fetchPlans();
   };
 

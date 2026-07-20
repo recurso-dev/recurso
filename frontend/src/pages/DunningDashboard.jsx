@@ -53,6 +53,7 @@ const DunningDashboard = () => {
   const [history, setHistory] = useState([]);
   const [recovered, setRecovered] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -69,6 +70,9 @@ const DunningDashboard = () => {
         setRecovered(recoveredRes.data);
       } catch (err) {
         console.error("Failed to fetch dunning data:", err);
+        setLoadError(
+          err?.response?.data?.error?.message || err?.message || "Failed to load dunning data"
+        );
       } finally {
         setLoading(false);
       }
@@ -136,6 +140,12 @@ const DunningDashboard = () => {
           <Button variant="outline" asChild>
             <Link to="/dunning/campaigns">
               <Settings2 className="h-4 w-4" />
+
+      {loadError && (
+        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+          {loadError} — refresh to retry.
+        </p>
+      )}
               Manage campaigns
             </Link>
           </Button>
