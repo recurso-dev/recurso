@@ -52,6 +52,80 @@ func (h *AccountingHandler) redirectToIntegrations(c *gin.Context, key, value st
 		h.dashboardURL+"/integrations?"+key+"="+url.QueryEscape(value))
 }
 
+// ConnectTokenBased creates (or refreshes) a connection for providers that
+// don't fit the browser OAuth flow:
+//   - netsuite: the admin supplies their NetSuite account id and a SuiteTalk
+//     OAuth 2.0 access token minted in NetSuite's own UI (Track D2,
+//     EXPERIMENTAL — sandbox verification is founder-gated). RealmID carries
+//     the account id, mirroring QuickBooks.
+//   - tally: no credentials at all — the adapter writes local JSONL export
+//     files for Tally's import tooling, so "connecting" just enables the sync.
+//
+// Reconnecting an existing (e.g. deactivated) connection updates it in place,
+// same as the OAuth callback's reconnect path.
+func (h *AccountingHandler) ConnectTokenBased(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	provider := c.Param("provider")
+
+	var req struct {
+		AccountID   string `json:"account_id"`
+		AccessToken string `json:"access_token"`
+	}
+	// Tally legitimately sends no body; ignore bind errors and validate below.
+	_ = c.ShouldBindJSON(&req)
+
+	switch provider {
+	case "netsuite":
+		if strings.TrimSpace(req.AccountID) == "" || strings.TrimSpace(req.AccessToken) == "" {
+			respondError(c, http.StatusBadRequest, codeValidationFailed,
+				"account_id and access_token are required for NetSuite")
+			return
+		}
+	case "tally":
+		// nothing to validate
+	default:
+		respondError(c, http.StatusBadRequest, codeValidationFailed,
+			"provider does not support token-based connection")
+		return
+	}
+
+	if existing, err := h.connRepo.GetByTenantAndProvider(c.Request.Context(), tenantID, provider); err == nil && existing != nil {
+		existing.AccessToken = strings.TrimSpace(req.AccessToken)
+		if rid := strings.TrimSpace(req.AccountID); rid != "" {
+			existing.RealmID = rid
+		}
+		existing.SyncStatus = "idle"
+		existing.LastError = ""
+		existing.IsActive = true
+		if err := h.connRepo.Update(c.Request.Context(), existing); err != nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"data": existing})
+		return
+	}
+
+	conn := &domain.AccountingConnection{
+		ID:          uuid.New(),
+		TenantID:    tenantID,
+		Provider:    provider,
+		AccessToken: strings.TrimSpace(req.AccessToken),
+		RealmID:     strings.TrimSpace(req.AccountID),
+		SyncStatus:  "idle",
+		IsActive:    true,
+		CreatedAt:   time.Now(),
+	}
+	if err := h.connRepo.Create(c.Request.Context(), conn); err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": conn})
+}
+
 func (h *AccountingHandler) ListConnections(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

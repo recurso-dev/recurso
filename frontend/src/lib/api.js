@@ -308,6 +308,8 @@ export const endpoints = {
   getAccountingConnections: () => api.get('/accounting/connections'),
   // Returns { auth_url } — redirect the browser there to start OAuth.
   connectAccounting: (provider) => api.post(`/accounting/connect/${provider}`),
+  // NetSuite (account_id + access_token) and Tally (empty body) — no OAuth redirect.
+  connectAccountingToken: (provider, body) => api.post(`/accounting/connect-token/${provider}`, body),
   disconnectAccounting: (id) => api.delete(`/accounting/connections/${id}`),
   triggerAccountingSync: () => api.post('/accounting/sync'),
   getAccountingSyncStatus: () => api.get('/accounting/sync/status'),
