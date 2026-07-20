@@ -364,14 +364,19 @@ func main() {
 	// providers resolve at invoice time; the same residency guard as the env
 	// provider applies (a tenant's TaxJar is still SaaS egress).
 	integrationConnService := service.NewIntegrationConnectionService(db.NewIntegrationConnectionRepository(database), gatewayVault)
+	// Only self-hosted single-tenant may point integration endpoints at private
+	// hosts (e.g. an internal MinIO); multi-tenant blocks it (SSRF guard).
+	integrationConnService.SetAllowPrivateEgress(residency.SelfHosted())
 	if !residency.SelfHosted() && !demo.Enabled() {
 		salesTaxResolver := service.NewSalesTaxProviderResolver(integrationConnService,
 			func(provider string, cfg map[string]string) coretax.SalesTaxProvider {
+				// The tenant supplies only credentials — the provider host is the
+				// vendor default, never a tenant-controlled URL (SSRF guard).
 				switch provider {
 				case "taxjar":
-					return taxprovider.NewTaxJarProvider(cfg["api_key"], cfg["api_url"])
+					return taxprovider.NewTaxJarProvider(cfg["api_key"], "")
 				case "avalara":
-					return taxprovider.NewAvalaraProvider(cfg["account_id"], cfg["license_key"], cfg["company_code"], cfg["api_url"])
+					return taxprovider.NewAvalaraProvider(cfg["account_id"], cfg["license_key"], cfg["company_code"], "")
 				}
 				return nil
 			})

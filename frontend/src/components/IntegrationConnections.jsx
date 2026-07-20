@@ -30,10 +30,7 @@ const SECTIONS = [
       {
         id: "taxjar",
         name: "TaxJar",
-        fields: [
-          { key: "api_key", label: "API key", secret: true },
-          { key: "api_url", label: "API URL", optional: true },
-        ],
+        fields: [{ key: "api_key", label: "API key", secret: true }],
       },
       {
         id: "avalara",
@@ -42,7 +39,6 @@ const SECTIONS = [
           { key: "account_id", label: "Account ID" },
           { key: "license_key", label: "License key", secret: true },
           { key: "company_code", label: "Company code" },
-          { key: "api_url", label: "API URL", optional: true },
         ],
       },
     ],

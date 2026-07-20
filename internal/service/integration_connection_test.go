@@ -120,6 +120,52 @@ func TestIntegrationConnectValidation(t *testing.T) {
 	}
 }
 
+func TestIntegrationConnectBlocksSSRFEndpoint(t *testing.T) {
+	svc := NewIntegrationConnectionService(newFakeIntegrationRepo(), integrationVault(t))
+	tenant := uuid.New()
+	ctx := context.Background()
+	base := map[string]string{"bucket": "b", "region": "us", "access_key_id": "k", "secret_access_key": "s"}
+	with := func(endpoint string) map[string]string {
+		m := map[string]string{}
+		for k, v := range base {
+			m[k] = v
+		}
+		m["endpoint"] = endpoint
+		return m
+	}
+
+	// Multi-tenant (default): internal/reserved endpoints are rejected.
+	for _, bad := range []string{
+		"http://169.254.169.254/latest/meta-data/", // cloud metadata
+		"http://localhost:9000",
+		"http://127.0.0.1/",
+		"http://10.0.0.5:9000",
+		"http://minio:9000",       // resolves to nothing / not public
+		"https://192.168.1.10",    // private
+		"ftp://example.com",       // bad scheme
+		"http://s3.amazonaws.com", // http (must be https) on multi-tenant
+	} {
+		if _, err := svc.Connect(ctx, tenant, "storage", "s3", with(bad)); err == nil || !IsIntegrationConnectionValidationError(err) {
+			t.Fatalf("endpoint %q should be rejected, got %v", bad, err)
+		}
+	}
+
+	// A public https endpoint is allowed (IP literal keeps the test off DNS).
+	if _, err := svc.Connect(ctx, tenant, "storage", "s3", with("https://8.8.8.8")); err != nil {
+		t.Fatalf("public https endpoint should be allowed, got %v", err)
+	}
+}
+
+func TestIntegrationSelfHostedAllowsPrivateEndpoint(t *testing.T) {
+	svc := NewIntegrationConnectionService(newFakeIntegrationRepo(), integrationVault(t))
+	svc.SetAllowPrivateEgress(true) // self-hosted
+	tenant := uuid.New()
+	cfg := map[string]string{"bucket": "b", "region": "us", "access_key_id": "k", "secret_access_key": "s", "endpoint": "http://minio:9000"}
+	if _, err := svc.Connect(context.Background(), tenant, "storage", "s3", cfg); err != nil {
+		t.Fatalf("self-hosted should allow a private MinIO endpoint, got %v", err)
+	}
+}
+
 func TestIntegrationConnectWithoutVault(t *testing.T) {
 	svc := NewIntegrationConnectionService(newFakeIntegrationRepo(), nil)
 	if svc.VaultReady() {
