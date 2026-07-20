@@ -1,8 +1,9 @@
-# Spec: Beat Lago — Neutralize the core, win on the flank
+# Spec: Beat Lago — surpass, don't match
 
 > **Status: SPECIFY (Phase 1) — awaiting founder review before Plan → Tasks →
 > Implement.** Grounded in a code-level read of `getlago/lago-api` (2026-07-20)
-> and Recurso's current feature set.
+> and Recurso's current feature set. Every Track-A item is *parity + a leapfrog*
+> (see the leapfrog thesis); Track C is the post-quarter surpass roadmap.
 
 ## Objective
 
@@ -20,12 +21,26 @@ both the India-first buyer and the global usage-billing buyer.
 
 ### Strategy (founder-approved)
 
-- **Fight:** *parity on the core + win on the flank.*
+- **Fight:** *parity on the core + win on the flank* — and, per the leapfrog
+  thesis below, **surpass** rather than merely match on each item.
 - **Infra bets deferred:** the highest-value gaps are **pure Go/Postgres
   features**; the ClickHouse/Kafka high-volume pipeline and GraphQL are
   **volume-gated / later**, not in this program.
-- **Horizon:** a focused ~1-quarter push, ~8 increments, each an independently
-  shippable PR (the cadence proven by the BYO gateway series #44–#48).
+- **Horizon:** a focused ~1-quarter push (Track A + B, ~8 increments), each an
+  independently shippable PR (the cadence proven by the BYO gateway series
+  #44–#48). The bigger platform leapfrogs are captured as **Track C**, the
+  post-quarter surpass roadmap.
+
+### The leapfrog thesis (how we get *ahead*, not level)
+
+> **Don't out-Lago Lago feature-for-feature. Reimplement each Lago feature fused
+> with a moat Lago's architecture can't copy** — the double-entry ledger, all-Go
+> single-binary simplicity, per-tenant BYO, the India/tax engine, the
+> risk/churn ML, and residency. The *same* capability then ships **provably
+> correct, per-tenant, safer, or simpler to operate**. Lago (Rails + one-org-
+> per-instance + no ledger) can't follow without a rewrite.
+
+Every Track-A item below is therefore **parity + a leapfrog**, not parity alone.
 
 ## Where Lago leads today (the gap, from lago-api source)
 
@@ -53,62 +68,101 @@ prediction; NL→SQL Ask-AI.
 
 ---
 
-## The program — 8 increments
+## The program
 
-### Track A — NEUTRALIZE (billing-core parity; pure Go/Postgres)
+### Track A — parity + leapfrog on the billing core (pure Go/Postgres; this quarter)
 
-**A1. Charge models → 7.** Add `percentage`, `graduated_percentage`, and
-`dynamic` to `RateCharge` (`internal/service/rating.go`) + the domain
-`ChargeModel` enum + the plan-charges validator + the dashboard tier builder
-(`PlanCharges.jsx`) + the 3 SDKs. `dynamic` = a caller-supplied
-`precise_total_amount` per event (the AI/API-resale case Lago markets).
+**A1. Charge models → 7, + ledger-previewed pricing simulator.** Add
+`percentage`, `graduated_percentage`, `dynamic` to `RateCharge`
+(`internal/service/rating.go`) + the `ChargeModel` enum + the plan-charges
+validator + the tier builder (`PlanCharges.jsx`) + the 3 SDKs. `dynamic` = a
+caller-supplied precise per-event amount (the AI/API-resale case Lago markets).
+**Leapfrog:** a *simulate-pricing* endpoint that rates a proposed charge set
+against a tenant's **last-period real usage** and returns the exact invoices
+**and GL impact** — pricing experimentation Lago can't do (no double-entry
+preview). Optional India: GST-slab-aware model.
 
-**A2. Aggregations → 6.** Add `weighted_sum` and `latest` billable-metric
-aggregations (`internal/service/`, the aggregation query path). `custom` (user
-SQL) is a **Consider**, deferred (security surface).
+**A2. Aggregations → 6, + a safe custom DSL.** Add `weighted_sum` and `latest`.
+**Leapfrog:** add **p95/p99 percentile** aggregation (SLA/latency billing AI
+companies want, absent in Lago), and beat Lago's `custom_agg` (user Ruby/SQL, a
+security hole) with a **sandboxed expression DSL** — custom aggregation that's
+safe under `RESIDENCY_MODE=self_hosted`.
 
-**A3. Pay-in-advance charges.** A `pay_in_advance` flag on a charge: usage
-events for that charge bill **immediately** (create a one-off fee/invoice line at
-event time) instead of at renewal. Must post its ledger legs like every other
-money movement (ADR-002) and be idempotent per event (reuse the
-`transaction_id` guard).
+**A3. Pay-in-advance charges, + ledger-native deferred revenue.** A
+`pay_in_advance` flag: events bill **immediately** (a fee/invoice line at event
+time), idempotent per event (`transaction_id` guard). **Leapfrog:** the advance
+charge **auto-posts deferred revenue** (DR cash / CR deferred, recognized over
+the period) — rev-rec-correct out of the box; Lago charges in advance with no
+double-entry deferred-revenue engine. India: advance-collect via UPI mandate.
 
-**A4. Charge filters (dimensional pricing).** Price a metric differently by
-event **property** value — e.g. `region=eu` at one rate, `region=us` at
-another. New `charge_filter` + `charge_filter_value` (mirrors Lago), applied in
-the rating engine. Backward-compatible: a charge with no filters rates as today.
+**A4. Charge filters (dimensional pricing), + GL dimensions + tax-aware.** Price
+by event **property** value (`region=eu` vs `region=us`); `charge_filter` +
+`charge_filter_value`, applied in rating; filter-less charges unchanged.
+**Leapfrog:** post the dimension to the **GL** (revenue by region/SKU as ledger
+dimensions), and let a filter dimension drive **tax jurisdiction** (region →
+rate *and* GST/VAT) — unique to Recurso's tax engine.
 
-**A5. Progressive billing.** When a subscription's period usage crosses a
-**usage threshold**, generate an **interim invoice** for the usage so far
-(instead of only firing an alert). Recurso already has `usage_threshold` alerts
-(the health-alert scheduler) — this wires the threshold to
-`InvoiceService.GenerateInvoice` for a partial period, with the
-`usage_ratings` claim preventing double-billing the same window.
+**A5. Progressive billing, + risk-driven thresholds.** Crossing a usage
+threshold generates an **interim invoice** for usage-so-far (today only fires an
+alert), via `InvoiceService.GenerateInvoice` for a partial period, guarded by the
+`usage_ratings` claim. **Leapfrog:** make thresholds **churn/credit-ML-driven** —
+bill risky customers progressively **sooner** (Lago's thresholds are static),
+tying progressive billing to the risk moat.
 
-### Track B — WIN (extend the moats Lago can't follow)
+### Track B — finish the moats (this quarter)
 
 **B1. Finish per-tenant BYO (2b-2).** Saved-card off-session charging + portal
-SetupIntent resolved **per tenant** (autopay / card-on-file on the tenant's own
-Stripe). Completes the multi-tenant BYO story end-to-end — a structural moat
-(Lago = single org per instance). Needs the payment-method↔account data-model
-decision first.
+SetupIntent resolved **per tenant** (autopay on the tenant's own Stripe).
+Completes multi-tenant BYO end-to-end — Lago is one org per instance. Needs the
+payment-method↔connection data-model decision first (Open Q1).
 
-**B2. Ledger-grade correctness as a headline feature.** Surface what Lago has no
-answer for: every invoice **provably balanced**, revenue-recognition tie-out to
-the ledger, and a one-click **audit/close pack** (trial balance + GL export +
-reconciliation status). Mostly a UX + export layer over existing services;
-turns an engineering invariant into a sales differentiator.
+**B2. Ledger-as-a-feature: the close pack.** A one-click **audit/close pack** —
+trial balance + GL export + reconciliation status — proving **every invoice
+balances** and revenue-recognition ties out. UX + export over existing services;
+turns the engineering invariant into a sales weapon Lago has no answer to.
 
-**B3. (Consider) EU e-invoicing parity (Peppol / EN16931).** Close Lago's one
-compliance lead while keeping the India IRP lead — makes "compliance depth" an
-unambiguous Recurso win globally. Larger; gated on demand.
+### Track C — platform leapfrogs (post-quarter surpass roadmap)
+
+Bigger bets that turn parity gaps into *leads*; sequenced after Track A/B.
+
+**C1. MCP server — agent-operable billing (leapfrog GraphQL).** Rather than only
+add GraphQL (parity), expose billing as **Model-Context-Protocol tools** over
+the existing typed SDKs + per-instance OpenAPI, so **AI agents can operate the
+billing system** — beyond Lago's *conversational* assistant. REST + (optional)
+GraphQL remain; MCP is the differentiator.
+
+**C2. Ledger-backed pricing units.** Offer abstract credits, but every issue/burn
+is a **double-entry posting** against a credit-liability account — **auditable,
+rev-rec-correct credits** with GST-on-advance handled. Lago's credits are a bare
+balance.
+
+**C3. Multi-entity with per-entity double-entry books.** Beyond invoicing from
+multiple legal entities: each entity gets its own chart of accounts / trial
+balance, **consolidated with intercompany elimination**; **per-GSTIN** entities
+for India. Accounting-grade multi-entity Lago can't match.
+
+**C4. Finance-grade RBAC.** Custom roles/permissions **+ segregation-of-duties +
+every action in the append-only audit log** → SOC2-ready. Lago has RBAC but not
+immutable-audit + SoD.
+
+**C5. Correctness-at-scale (only when volume demands).** Push Postgres far
+(partitioned event tables, COPY batch, in-process streaming aggregation) as a
+**single Go binary**; add an optional columnar mirror later — but keep the
+**ledger as source of truth at every scale**. Positioning: *"metered billing
+provably balanced at 10k events/sec, in one binary + Postgres"* — scale **and**
+correctness, which Lago's split Rails/Kafka/ClickHouse stack can't guarantee.
+
+**C6. (Consider) EU e-invoicing (Peppol / EN16931)** + **vault-driven
+integration framework** (new integration = a config/vault entry, not a
+hand-written adapter; per-tenant, extending the BYO pattern) + **ledger-previewed
+quotes/CPQ** (a quote shows the exact invoices + rev-rec schedule it produces).
 
 ### Ordering & parallelism
 
-A1 → A2 → A4 build on the rating/metering layer (do A1 first; A2 and A4 can
-parallelize after). A3 and A5 depend on the charge/event + invoice paths (after
-A1). B1 is independent (gateway BYO already shipped). B2 is independent (UX over
-existing ledger). B3 last / optional.
+Track A: A1 first (rating layer); A2 + A4 parallelize after; A3 + A5 follow (need
+the charge/event + invoice paths). Track B: B1 independent (gateway BYO shipped);
+B2 independent (UX over the ledger). Track C is the post-quarter roadmap — C1
+(MCP) and C4 (RBAC) are the highest-leverage next; C5 is volume-gated.
 
 ## Tech Stack
 
@@ -188,25 +242,37 @@ narration; every list endpoint uses `ParsePagination`/`clampLimitOffset`.
 
 ## Success Criteria
 
-1. **Charge models:** all 7 of Lago's models supported and rated correctly,
-   configurable from the dashboard tier builder and all 3 SDKs. Table-tested.
+*Parity criteria (neutralize):*
+1. **Charge models:** all 7 of Lago's models rated correctly, configurable from
+   the tier builder + all 3 SDKs. Table-tested.
 2. **Aggregations:** weighted_sum + latest supported; a metric using each rates
    onto an invoice correctly.
 3. **Pay-in-advance:** an event on a pay-in-advance charge produces an immediate,
    ledger-balanced invoice line; a retried event does not double-bill.
-4. **Charge filters:** two events with different property values on the same
-   metric bill at their respective filtered rates; a filter-less charge is
-   unchanged.
-5. **Progressive billing:** crossing a usage threshold mid-period generates an
-   interim invoice for usage-so-far, once, ledger-balanced; the renewal invoice
-   doesn't re-bill it.
-6. **B1:** a BYO tenant runs autopay / card-on-file on **their own** Stripe
-   account end-to-end.
-7. **B2:** a one-click close pack (trial balance + GL export + reconciliation
-   status) proves every invoice balances.
-8. **Parity checklist:** the marketing comparison table can honestly flip every
-   Track-A row to Recurso ✅ vs Lago; no regressions (full suite + E2E +
-   invariant harness green at every commit).
+4. **Charge filters:** two events with different property values bill at their
+   respective filtered rates; a filter-less charge is unchanged.
+5. **Progressive billing:** crossing a threshold generates one interim invoice
+   for usage-so-far, ledger-balanced; the renewal doesn't re-bill it.
+
+*Leapfrog criteria (surpass — these are the "ahead of Lago" proofs):*
+6. **Pricing simulator:** simulating a charge set against last-period real usage
+   returns the exact invoices **and** GL impact (A1).
+7. **Rev-rec-correct advance billing:** a pay-in-advance charge auto-posts
+   deferred revenue and recognizes it over the period, provable on the ledger (A3).
+8. **Dimensional GL:** filtered revenue posts by dimension to the ledger and a
+   filter can drive tax jurisdiction (A4).
+9. **Risk-driven progressive billing:** a high-risk customer is billed
+   progressively sooner than a low-risk one on the same threshold config (A5).
+10. **Safe custom aggregation:** the sandboxed DSL evaluates without arbitrary
+    SQL/code execution (A2) — passes a security review.
+11. **B1:** a BYO tenant runs autopay on **their own** Stripe end-to-end.
+12. **B2 close pack:** one click proves every invoice balances + rev-rec ties out.
+
+*Program-level:*
+13. **Comparison flip:** every Track-A row in the marketing table honestly flips
+    to Recurso ✅ vs Lago — and at least 5 rows read as a Recurso *lead*, not
+    parity (the leapfrogs). No regressions; full suite + E2E + invariant harness
+    green at every commit.
 
 ## Open Questions
 
