@@ -1,0 +1,97 @@
+# Spec: Bring-Your-Own Gateway & Integration Credentials
+
+> **Status: IN PROGRESS — Increment 1 (credential vault) shipped; increments
+> 2–5 pending founder decisions D1–D5 below.**
+>
+> Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
+> Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
+> instance, shared across all tenants**. The entire app is `tenant_id`-scoped
+> except the payment gateway — the one integration that most needs to be. For a
+> multi-tenant hosted offering each tenant must connect **their own** merchant
+> account from the dashboard.
+
+## Objective
+
+Every tenant configures their own payment keys (and, later, tax/CRM/storage
+keys) from the dashboard. Credentials are encrypted at rest. The env-configured
+"platform gateway" remains the fallback so self-hosted single-merchant and
+existing deployments keep working unchanged.
+
+## Current architecture (what we're changing)
+
+- Gateways are built once at boot in `cmd/api/main.go` from env keys into a
+  singleton `gateway.SmartRouter` (INR→Razorpay, else→Stripe, plus currency
+  overrides), injected into ~a dozen services.
+- Webhooks (`POST /webhooks/stripe`, `/webhooks/razorpay`) verify with a single
+  env signing secret, then resolve the tenant *after* verification from the
+  invoice id in the payload metadata.
+
+## Increments
+
+### Increment 1 — Encrypted credential vault ✅ (this PR)
+
+- `internal/adapter/secretbox` — AES-256-GCM seal/open under a 32-byte master
+  key (`GATEWAY_ENCRYPTION_KEY`, base64 or hex). Go stdlib only. Nonce-random,
+  authenticated; wrong-key/tampered ciphertext fails closed.
+- `domain.GatewayConnection` + migration `000107_gateway_connections` — per
+  (tenant, provider) with a **partial unique index** on `active`, so a
+  disconnected row survives for the audit trail. Secret columns hold ciphertext
+  (`secret_key_enc`, `webhook_secret_enc`); `public_key` (Razorpay key_id /
+  Stripe publishable key) is plaintext because it ships to the browser anyway.
+  Secrets carry `json:"-"` — never serialized to API clients.
+- Repository + `GatewayConnectionService` (seals on write, opens for the
+  resolver/webhook router). **A nil vault (no key) makes every write fail with
+  `ErrGatewayVaultUnavailable`** — plaintext secrets can never be persisted.
+- Fully unit-tested (round-trip, nonce randomness, wrong-key, tamper, replace-
+  active, validation, disconnect, vault-absent). **Nothing wired to charge
+  flows yet — zero money-path risk.**
+
+### Increment 2 — Resolver + charge-path rewire (pending)
+
+`GatewayResolver.For(ctx, tenantID) port.PaymentGateway`: builds a per-tenant
+`SmartRouter` from the tenant's decrypted connections, **falling back to the env
+router** when a tenant has no active connection. Services that hold a singleton
+`paymentGateway` take the resolver instead and resolve at charge time
+(CreateOrder, RetryPayment, Refund, mandate debit, checkout, portal). A small
+per-tenant cache keyed by (tenant, provider, updated_at) avoids re-decrypting on
+every charge.
+
+### Increment 3 — Per-connection webhooks (pending — the hard part)
+
+Each tenant's gateway account has its **own** signing secret, and the signature
+must be verified *before* the payload is trusted. New per-connection URLs
+`POST /webhooks/stripe/:connID` and `/webhooks/razorpay/:connID`: resolve the
+connection by id → decrypt its webhook secret → verify → proceed with the
+existing invoice-metadata tenant resolution. The legacy env routes stay for the
+platform gateway. The dashboard shows each connection's webhook URL + secret to
+paste into the gateway console.
+
+### Increment 4 — Dashboard: Integrations → Payments (pending)
+
+Stripe/Razorpay cards on the Integrations page: connect (enter keys + mode),
+show status/mode badge + webhook URL, test, disconnect. Mirrors the accounting-
+connection UX (right-side sheet).
+
+### Increment 5 — Extend the vault to tax/CRM/storage keys (pending)
+
+Same `secretbox` + connection pattern for TaxJar/Avalara/HubSpot/S3 so those
+move from env-only to per-tenant dashboard config. Env stays the fallback.
+
+## Founder decisions
+
+| # | Question | Proposed default |
+| --- | --- | --- |
+| D1 | Fallback when a tenant has no connection | **Use the env/platform gateway** (keeps self-hosted + existing tenants working). Alternative: hard-fail with "connect a gateway first". |
+| D2 | `GATEWAY_ENCRYPTION_KEY` absent on a multi-tenant deploy | **BYO disabled, dashboard shows "unavailable", env gateway still works.** Never store plaintext. |
+| D3 | Key rotation | v1: single key, document rotation as decrypt-all/reseal migration. Envelope keys (per-connection DEK) deferred. |
+| D4 | Mandate/UPI (Razorpay-only) under BYO | Mandate debit resolves the tenant's Razorpay connection; tenants without one fall back to env (D1). |
+| D5 | Live-key validation at connect time | v1: **format-check only** (no test API call), to avoid egress under `RESIDENCY_MODE=self_hosted`. Optional "Test connection" button in increment 4. |
+
+## Boundaries
+
+- **Never** persist a gateway secret in plaintext; **never** serialize `*Enc`
+  fields or opened secrets to API clients; **never** log decrypted secrets.
+- **Always** keep the env gateway path working (fallback); route every charge
+  through the resolver once increment 2 lands.
+- **Ask first:** anything that changes charge routing semantics or webhook
+  verification (increments 2–3) before merge.
