@@ -95,6 +95,20 @@ func (r *GatewayConnectionRepository) ListByTenant(ctx context.Context, tenantID
 	return conns, rows.Err()
 }
 
+func (r *GatewayConnectionRepository) SetWebhookSecret(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider, sealedSecret string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE gateway_connections SET webhook_secret_enc = $1, updated_at = now()
+		 WHERE tenant_id = $2 AND provider = $3 AND active`, sealedSecret, tenantID, provider)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrGatewayConnectionNotFound
+	}
+	return nil
+}
+
 func (r *GatewayConnectionRepository) Deactivate(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE gateway_connections SET active = FALSE, updated_at = now()

@@ -1051,6 +1051,7 @@ func main() {
 	}
 	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, ssoReplayStore, spKey, spCert, oauthRedirectBase)
 	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
+	gatewayConnHandler := handler.NewGatewayConnectionHandler(gatewayConnService)                       // BYO increment 4
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
@@ -1491,6 +1492,13 @@ func main() {
 
 		// SAML SSO connection config (tenant-scoped; writes gated to owner/admin
 		// inside the handler). The public SP endpoints live under /auth/saml.
+		// BYO gateway connections (increment 4): tenants connect their own
+		// Stripe/Razorpay. Writes are owner/admin-gated in the handler.
+		v1.GET("/gateway-connections", gatewayConnHandler.List)
+		v1.POST("/gateway-connections", gatewayConnHandler.Connect)
+		v1.PUT("/gateway-connections/:provider/webhook-secret", gatewayConnHandler.SetWebhookSecret)
+		v1.DELETE("/gateway-connections/:provider", gatewayConnHandler.Disconnect)
+
 		v1.GET("/sso/connection", ssoHandler.GetConnection)
 		v1.PUT("/sso/connection", ssoHandler.UpsertConnection)
 		v1.DELETE("/sso/connection", ssoHandler.DeleteConnection)

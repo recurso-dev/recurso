@@ -1,8 +1,10 @@
 # Spec: Bring-Your-Own Gateway & Integration Credentials
 
 > **Status: IN PROGRESS — Increments 1 (vault), 2 (resolver/charge-path),
-> 2b-1 (checkout verify), and 3 (per-connection webhooks) shipped under the
-> D1–D5 defaults; 2b-2 + 4–5 pending.**
+> 2b-1 (checkout verify), 3 (per-connection webhooks), and 4 (dashboard UI)
+> shipped under the D1–D5 defaults. BYO is now usable end-to-end for the
+> interactive pay-link flow; 2b-2 (saved-card/autopay) + 5 (tax/CRM/storage
+> keys) remain.**
 >
 > Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
 > Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
@@ -106,11 +108,20 @@ invalid id, not-found, wrong-provider, no-secret-fail-closed, and
 resolved-secret-reaches-verification. The dashboard (increment 4) will surface
 each connection's webhook URL + secret to paste into the gateway console.
 
-### Increment 4 — Dashboard: Integrations → Payments (pending)
+### Increment 4 — Dashboard: Integrations → Payments ✅
 
-Stripe/Razorpay cards on the Integrations page: connect (enter keys + mode),
-show status/mode badge + webhook URL, test, disconnect. Mirrors the accounting-
-connection UX (right-side sheet).
+`GatewayConnectionHandler` exposes `GET/POST /v1/gateway-connections`,
+`DELETE /v1/gateway-connections/:provider`, and
+`PUT /v1/gateway-connections/:provider/webhook-secret` (writes owner/admin-
+gated). Secrets are **write-only** — the API returns only a secret-free
+`GatewayConnectionView` (public key, mode, `has_webhook_secret`,
+`webhook_path`). A `PaymentGateways` component on the Integrations page shows
+Stripe/Razorpay cards with a connect sheet (mode + keys), a mode badge, the
+per-connection **webhook URL** to copy into the gateway console, and a two-step
+webhook-secret field (create the webhook at the URL, paste the secret back).
+`vault_ready:false` (no `GATEWAY_ENCRYPTION_KEY`) disables connecting with an
+explanatory banner. OpenAPI + drift test cover all four routes; handler and
+service unit-tested; frontend lint/build/vitest green.
 
 ### Increment 5 — Extend the vault to tax/CRM/storage keys (pending)
 

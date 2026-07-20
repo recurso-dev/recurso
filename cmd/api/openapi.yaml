@@ -6842,6 +6842,140 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
 
   # --- Phase 3 auth: SAML SSO (per-tenant admin config + SP endpoints) ---
+  /v1/gateway-connections:
+    get:
+      tags: [Gateway Connections]
+      summary: List the tenant's BYO payment-gateway connections
+      description: |
+        Returns the tenant's active Stripe/Razorpay connections (secret-free —
+        only the public key, mode, and whether a webhook secret is set) and
+        whether the credential vault is available.
+      responses:
+        '200':
+          description: Connections and vault status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      connections:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/GatewayConnectionView'
+                      vault_ready:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Gateway Connections]
+      summary: Connect (or replace) a payment gateway
+      description: |
+        Stores the tenant's own gateway credentials, sealed at rest. Secrets are
+        write-only and never returned. Replaces any existing active connection
+        for the provider. Owner/admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, secret_key]
+              properties:
+                provider:
+                  type: string
+                  enum: [stripe, razorpay]
+                mode:
+                  type: string
+                  enum: [test, live]
+                public_key:
+                  type: string
+                  description: Razorpay key_id / Stripe publishable key (not secret).
+                secret_key:
+                  type: string
+                webhook_secret:
+                  type: string
+                  description: Optional; can be set later once the webhook URL is known.
+      responses:
+        '201':
+          description: Connected.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/GatewayConnectionView'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          description: Credential vault unavailable (GATEWAY_ENCRYPTION_KEY not set).
+
+  /v1/gateway-connections/{provider}:
+    delete:
+      tags: [Gateway Connections]
+      summary: Disconnect a payment gateway
+      description: Soft-disconnects the tenant's active connection for a provider. Owner/admin only.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [stripe, razorpay]
+      responses:
+        '200':
+          description: Disconnected.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/gateway-connections/{provider}/webhook-secret:
+    put:
+      tags: [Gateway Connections]
+      summary: Set the webhook signing secret on the active connection
+      description: |
+        Updates the webhook secret in place (id unchanged, so the per-connection
+        webhook URL stays stable). Two-step connect: create the webhook in the
+        gateway console using the per-connection URL, then paste the secret here.
+        Owner/admin only.
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [stripe, razorpay]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                webhook_secret:
+                  type: string
+      responses:
+        '200':
+          description: Updated.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/sso/connection:
     get:
       tags: [Auth]
@@ -7059,6 +7193,20 @@ components:
             $ref: '#/components/schemas/Error'
 
   schemas:
+    GatewayConnectionView:
+      type: object
+      description: Secret-free projection of a BYO gateway connection.
+      properties:
+        id: { type: string, format: uuid }
+        provider: { type: string, enum: [stripe, razorpay] }
+        mode: { type: string, enum: [test, live] }
+        public_key: { type: string }
+        has_webhook_secret: { type: boolean }
+        webhook_path:
+          type: string
+          description: Append to the API origin for the gateway console (e.g. /webhooks/stripe/{id}).
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     Entitlement:
       type: object
       properties:

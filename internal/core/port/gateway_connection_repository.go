@@ -26,4 +26,8 @@ type GatewayConnectionRepository interface {
 	// inactive (soft disconnect). Returns domain.ErrGatewayConnectionNotFound
 	// if there is no active connection.
 	Deactivate(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider) error
+	// SetWebhookSecret updates the sealed webhook secret on the tenant's active
+	// connection in place (id unchanged, so the per-connection webhook URL is
+	// stable). Returns domain.ErrGatewayConnectionNotFound if none is active.
+	SetWebhookSecret(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider, sealedSecret string) error
 }
