@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/sheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import PaymentGateways from "@/components/PaymentGateways";
+import IntegrationConnections from "@/components/IntegrationConnections";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -256,6 +257,11 @@ const Integrations = () => {
 
       <div className="mb-8">
         <PaymentGateways />
+      </div>
+
+      <div className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold text-foreground">Tax, CRM &amp; storage</h2>
+        <IntegrationConnections />
       </div>
 
       <h2 className="mb-3 text-sm font-semibold text-foreground">Accounting</h2>
