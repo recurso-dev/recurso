@@ -267,7 +267,6 @@ func main() {
 	// env fallback. The concrete paymentGateway is kept only for the env-level
 	// RegisterGateway/SetCurrencyOverrides calls above.
 	tenantGateway := gateway.NewTenantGateway(gatewayResolver, paymentGateway)
-	_ = gatewayConnService // handlers wired in increment 4
 
 	// Card Vault — uses Stripe if key exists, else Mock for dev
 	var cardVault port.CardVault
@@ -970,6 +969,10 @@ func main() {
 		SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
 	})
 	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
+	// BYO increment 2b: verify, buyer, and browser public keys resolve against
+	// the invoice's tenant (env fallback), so a seller who connected their own
+	// gateway gets order creation AND verification on that account.
+	checkoutHandler.SetTenantGateways(gatewayResolver, gatewayConnService)
 	usageHandler := handler.NewUsageHandler(usageService)
 	meteringHandler := handler.NewMeteringHandler(meteringService)       // Usage-based billing v1
 	walletHandler := handler.NewWalletHandler(walletService)             // Prepaid wallets (B1)

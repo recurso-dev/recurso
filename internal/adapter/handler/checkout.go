@@ -50,6 +50,22 @@ type checkoutBuyerSetter interface {
 	SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
 }
 
+// checkoutGatewayResolver returns a tenant's concrete Stripe/Razorpay gateway
+// (BYO) or the env gateway, so verify/buyer flows that need Stripe-SDK methods
+// resolve per-tenant. Satisfied by *gateway.GatewayResolver.
+type checkoutGatewayResolver interface {
+	StripeFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
+	RazorpayFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
+}
+
+// checkoutConnLookup resolves a tenant's active connection so the browser gets
+// the tenant's own public key (Stripe publishable / Razorpay key_id) to mount
+// the right account's payment widget. Satisfied by
+// *service.GatewayConnectionService.
+type checkoutConnLookup interface {
+	GetActive(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider) (*domain.GatewayConnection, error)
+}
+
 type CheckoutHandler struct {
 	invoiceRepo    port.InvoiceRepository
 	paymentGateway port.PaymentGateway
@@ -60,6 +76,62 @@ type CheckoutHandler struct {
 	razorpayKeyID  string
 	customers      checkoutCustomerReader
 	buyerSetter    checkoutBuyerSetter
+	// Per-tenant (BYO) resolution; nil => env values above (backward compat).
+	gwResolver checkoutGatewayResolver
+	connLookup checkoutConnLookup
+}
+
+// SetTenantGateways wires per-tenant (BYO) resolution for the checkout verify,
+// buyer, and public-key paths. When unset, the env-wired inspector/razorpay/
+// keys are used unchanged.
+func (h *CheckoutHandler) SetTenantGateways(resolver checkoutGatewayResolver, connLookup checkoutConnLookup) {
+	h.gwResolver = resolver
+	h.connLookup = connLookup
+}
+
+// inspectorFor resolves the Stripe payment inspector for a tenant (BYO), or the
+// env inspector. Returns nil if the resolved gateway can't inspect (e.g. mock).
+func (h *CheckoutHandler) inspectorFor(ctx context.Context, tenantID uuid.UUID) paymentInspector {
+	if h.gwResolver != nil {
+		if insp, ok := h.gwResolver.StripeFor(ctx, tenantID).(paymentInspector); ok {
+			return insp
+		}
+		return nil
+	}
+	return h.inspector
+}
+
+// razorpayFor resolves the Razorpay verifier for a tenant (BYO), or env.
+func (h *CheckoutHandler) razorpayFor(ctx context.Context, tenantID uuid.UUID) razorpayVerifier {
+	if h.gwResolver != nil {
+		if v, ok := h.gwResolver.RazorpayFor(ctx, tenantID).(razorpayVerifier); ok {
+			return v
+		}
+		return nil
+	}
+	return h.razorpay
+}
+
+// buyerFor resolves the Stripe buyer setter for a tenant (BYO), or env.
+func (h *CheckoutHandler) buyerFor(ctx context.Context, tenantID uuid.UUID) checkoutBuyerSetter {
+	if h.gwResolver != nil {
+		if b, ok := h.gwResolver.StripeFor(ctx, tenantID).(checkoutBuyerSetter); ok {
+			return b
+		}
+		return nil
+	}
+	return h.buyerSetter
+}
+
+// publicKeyFor returns the tenant's public key for a provider (BYO), falling
+// back to the env key (envKey) when the tenant has no connection.
+func (h *CheckoutHandler) publicKeyFor(ctx context.Context, tenantID uuid.UUID, provider domain.GatewayProvider, envKey string) string {
+	if h.connLookup != nil {
+		if conn, err := h.connLookup.GetActive(ctx, tenantID, provider); err == nil && conn != nil && conn.PublicKey != "" {
+			return conn.PublicKey
+		}
+	}
+	return envKey
 }
 
 // SetBuyerDetails wires buyer name/address propagation onto Stripe orders.
@@ -178,14 +250,20 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		}
 	}
 
+	// Browser-side keys are the seller's own when they've connected a gateway
+	// (BYO), else the platform env keys — so the widget mounts on the account
+	// that actually created the order above.
+	stripePubKey := h.publicKeyFor(payCtx, invoice.TenantID, domain.GatewayStripe, h.publishableKey)
+	razorpayKeyID := h.publicKeyFor(payCtx, invoice.TenantID, domain.GatewayRazorpay, h.razorpayKeyID)
+
 	// A gateway the frontend would drive with a missing browser-side key is a
 	// dead end (silent PaymentIntent churn on Stripe, a throwing Razorpay
 	// modal) — fail loudly so the misconfiguration is fixable, not invisible.
-	if gatewayName == "stripe" && h.publishableKey == "" {
+	if gatewayName == "stripe" && stripePubKey == "" {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Stripe publishable key)")
 		return
 	}
-	if gatewayName == "razorpay" && h.razorpayKeyID == "" {
+	if gatewayName == "razorpay" && razorpayKeyID == "" {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Razorpay key id)")
 		return
 	}
@@ -194,10 +272,10 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 	// the intent carries the buyer's name and address (india-exports rules) —
 	// attach them from the invoice's customer. Best-effort: a failure here
 	// must not block checkout on accounts that don't require it.
-	if gatewayName == "stripe" && h.buyerSetter != nil && h.customers != nil {
+	if buyer := h.buyerFor(payCtx, invoice.TenantID); gatewayName == "stripe" && buyer != nil && h.customers != nil {
 		if cust, cerr := h.customers.GetByIDPublic(c.Request.Context(), invoice.CustomerID); cerr == nil && cust != nil && cust.Name != nil && *cust.Name != "" {
 			ba := cust.BillingAddress
-			_ = h.buyerSetter.SetOrderBuyer(c.Request.Context(), order.ID, *cust.Name, ba.Line1, ba.City, ba.State, ba.Zip, ba.Country)
+			_ = buyer.SetOrderBuyer(payCtx, order.ID, *cust.Name, ba.Line1, ba.City, ba.State, ba.Zip, ba.Country)
 		}
 	}
 
@@ -210,8 +288,8 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 			"invoice_number":  invoice.InvoiceNumber,
 			"gateway":         gatewayName,
 			"client_secret":   order.ClientSecret,
-			"publishable_key": h.publishableKey,
-			"razorpay_key_id": h.razorpayKeyID,
+			"publishable_key": stripePubKey,
+			"razorpay_key_id": razorpayKeyID,
 		},
 	})
 }
@@ -254,15 +332,19 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 
 	paymentIntentID := c.Query("payment_intent")
 
+	// Resolve the inspector against the invoice's tenant so a BYO order is
+	// verified on the seller's own Stripe account (env fallback otherwise).
+	inspector := h.inspectorFor(ctx, invoice.TenantID)
+
 	// Without a gateway inspector or a payment id we cannot verify anything, so
 	// we do NOT mark the invoice paid — we just report its current status. The
 	// gateway webhook remains the settlement path in that case.
-	if h.inspector == nil || paymentIntentID == "" {
+	if inspector == nil || paymentIntentID == "" {
 		respondCheckoutStatus(c, invoice, string(invoice.Status))
 		return
 	}
 
-	st, err := h.inspector.GetPaymentStatus(ctx, paymentIntentID)
+	st, err := inspector.GetPaymentStatus(ctx, paymentIntentID)
 	if err != nil {
 		// Couldn't reach/verify the intent — never settle on failure to verify.
 		respondCheckoutStatus(c, invoice, "processing")
@@ -354,7 +436,10 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 		respondCheckoutStatus(c, invoice, "paid")
 		return
 	}
-	if h.razorpay == nil {
+	// Resolve the verifier against the invoice's tenant so a BYO order is
+	// verified with the seller's own Razorpay secret (env fallback otherwise).
+	razorpay := h.razorpayFor(ctx, invoice.TenantID)
+	if razorpay == nil {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "razorpay checkout isn't available on this deployment")
 		return
 	}
@@ -370,14 +455,14 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 	}
 
 	// 1. Signature — proves this is a genuine Razorpay payment for the order.
-	if err := h.razorpay.VerifyPayment(ctx, req.OrderID, req.PaymentID, req.Signature); err != nil {
+	if err := razorpay.VerifyPayment(ctx, req.OrderID, req.PaymentID, req.Signature); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "payment verification failed")
 		return
 	}
 
 	// 2. Bind — the order must have been created for THIS invoice, so a genuine
 	// payment for a different invoice can't be replayed here.
-	orderInvoiceID, err := h.razorpay.GetOrderInvoiceID(ctx, req.OrderID)
+	orderInvoiceID, err := razorpay.GetOrderInvoiceID(ctx, req.OrderID)
 	if err != nil {
 		respondError(c, http.StatusBadGateway, codeInternalError, "could not confirm the payment")
 		return

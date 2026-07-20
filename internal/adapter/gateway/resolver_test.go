@@ -146,6 +146,30 @@ func TestResolverCachesAndInvalidatesOnChange(t *testing.T) {
 	}
 }
 
+func TestStripeForAndRazorpayFor(t *testing.T) {
+	tenant := uuid.New()
+	other := uuid.New()
+	vault := &fakeVault{conns: map[uuid.UUID][]*domain.GatewayConnection{
+		tenant: {
+			{ID: uuid.New(), Provider: domain.GatewayStripe, SecretKeyEnc: "sk", Active: true, UpdatedAt: time.Unix(1, 0)},
+		},
+	}}
+	resolver := newTestResolver(vault)
+	ctx := context.Background()
+
+	// Connected tenant -> their own Stripe; un-connected Razorpay slot -> env.
+	if got := resolver.StripeFor(ctx, tenant).(*stubGateway).name; got != "byo-stripe:sk" {
+		t.Fatalf("StripeFor(connected): got %q", got)
+	}
+	if got := resolver.RazorpayFor(ctx, tenant).(*stubGateway).name; got != "env-razorpay" {
+		t.Fatalf("RazorpayFor(un-connected slot): got %q want env-razorpay", got)
+	}
+	// Tenant with no connections at all -> env for both.
+	if got := resolver.StripeFor(ctx, other).(*stubGateway).name; got != "env-stripe" {
+		t.Fatalf("StripeFor(no conn): got %q want env-stripe", got)
+	}
+}
+
 func TestNilResolverAlwaysEnv(t *testing.T) {
 	tg := NewTenantGateway(nil, &stubGateway{name: "env-direct"})
 	ctx := context.WithValue(context.Background(), domain.TenantIDKey, uuid.New())

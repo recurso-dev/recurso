@@ -1,7 +1,7 @@
 # Spec: Bring-Your-Own Gateway & Integration Credentials
 
-> **Status: IN PROGRESS — Increments 1 (vault) + 2 (resolver/charge-path)
-> shipped under the D1–D5 defaults; increment 2b + 3–5 pending.**
+> **Status: IN PROGRESS — Increments 1 (vault), 2 (resolver/charge-path), and
+> 2b-1 (checkout verify) shipped under the D1–D5 defaults; 2b-2 + 3–5 pending.**
 >
 > Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
 > Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
@@ -63,25 +63,32 @@ into `ctx` before charging. Unit-tested: routes to tenant gateway when
 connected, env fallback for un-connected slot / no connection / no tenant / nil
 resolver, and cache reuse + invalidation on re-key.
 
-### Increment 2b — Concrete Stripe-SDK sub-flows (pending, required before BYO checkout is end-to-end)
+### Increment 2b-1 — Per-tenant checkout verification ✅
 
-Increment 2 routes everything expressed through the `port.PaymentGateway`
-interface. Four charge-adjacent flows bypass that interface via concrete type
-assertions on the **env** Stripe/Razorpay gateways and so still use platform
-credentials:
+The interactive checkout flow (customer clicks a pay link) is now end-to-end
+per-tenant. `GatewayResolver.StripeFor/RazorpayFor(ctx, tenantID)` return the
+tenant's concrete gateway (env fallback), and the checkout handler resolves
+against the invoice's tenant for:
 
-- checkout **Stripe status inspector** (`h.inspector.GetPaymentStatus`) — verify
-  path; a BYO order created on the tenant's Stripe would be verified against the
-  env account and fail.
-- checkout **Razorpay verifier** (`h.razorpay.VerifyPayment`).
-- retry **saved-card off-session charger** (`retryStripeCharger`) + customer
-  lookup — saved PMs live on the env Stripe customer.
-- portal **SetupIntent** (`portalStripeSetup`) — saving a card must happen on the
-  tenant's Stripe account.
+- the **Stripe status inspector** (`CheckoutSuccess` verify) — a BYO order is now
+  verified on the seller's own Stripe account;
+- the **Razorpay verifier** (`RazorpayVerify`) — verified with the seller's own
+  secret;
+- the **buyer-details** setter (India export intents);
+- the **browser public keys** (Stripe publishable / Razorpay key_id) returned by
+  `InitiatePayment`, so the widget mounts on the account that created the order.
 
-These need per-tenant resolution too before BYO checkout works end-to-end. Not
-reachable today: no dashboard exists to create a connection until increment 4,
-so every tenant still falls through to env. Tracked, not shipped in increment 2.
+`SetTenantGateways(resolver, connLookup)` wires it; unset ⇒ env values unchanged
+(backward compat). Unit-tested (StripeFor/RazorpayFor connected vs env fallback).
+
+### Increment 2b-2 — Per-tenant saved-card & SetupIntent (pending)
+
+The remaining concrete sub-flows are card-on-file / autopay, not the interactive
+pay-link path, so deferred: retry + renewal + wallet **saved-card off-session
+charger** (`ChargeSavedPaymentMethod` — saved PMs live on the tenant's Stripe
+customer) and portal **SetupIntent** (`EnsureStripeCustomer`/`CreateSetupIntent`/
+`FinalizeSetupIntent`). Needed before a BYO tenant can store cards / run autopay
+on their own account.
 
 ### Increment 3 — Per-connection webhooks (pending — the hard part)
 
