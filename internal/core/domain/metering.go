@@ -77,13 +77,18 @@ const (
 	// the percentage analogue of graduated. Like percentage, its quantity is a
 	// money amount in minor units, and the tier UpTo bounds band that base.
 	ChargeGraduatedPercentage ChargeModel = "graduated_percentage"
+	// ChargeDynamic bills the sum of the per-event UsageEvent.DynamicAmount for
+	// the period — the caller supplies the exact price with each event, so the
+	// line is that sum with no rate applied. Its quantity is the aggregated
+	// dynamic amount in minor units.
+	ChargeDynamic ChargeModel = "dynamic"
 )
 
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
 	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage,
-		ChargePercentage, ChargeGraduatedPercentage:
+		ChargePercentage, ChargeGraduatedPercentage, ChargeDynamic:
 		return true
 	}
 	return false

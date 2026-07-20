@@ -202,6 +202,33 @@ func TestRateChargeUnsupportedModel(t *testing.T) {
 	}
 }
 
+// TestRateChargeDynamic: the line is the pre-summed dynamic amount (identity),
+// with no pricing config and no rate applied.
+func TestRateChargeDynamic(t *testing.T) {
+	cases := []struct {
+		qty  int64 // Σ per-event dynamic_amount, minor units
+		want int64
+	}{
+		{0, 0},       // no usage
+		{4200, 4200}, // bills the sum exactly
+		{1, 1},       //
+		{999999, 999999},
+	}
+	for _, tc := range cases {
+		got, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, tc.qty)
+		if err != nil {
+			t.Fatalf("qty %d: %v", tc.qty, err)
+		}
+		if got != tc.want {
+			t.Fatalf("dynamic qty %d = %d, want %d", tc.qty, got, tc.want)
+		}
+	}
+	// Negative aggregate is rejected by the shared quantity guard.
+	if _, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, -1); err == nil {
+		t.Fatal("expected error for negative dynamic quantity")
+	}
+}
+
 func TestRateChargePercentage(t *testing.T) {
 	cases := []struct {
 		name    string

@@ -119,6 +119,12 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 
 	case domain.ChargeGraduatedPercentage:
 		return rateGraduatedPercentage(amounts.Tiers, quantity)
+
+	case domain.ChargeDynamic:
+		// The price was supplied per event and already summed into quantity
+		// (minor units); the line is that sum with no rate applied. quantity
+		// is guaranteed >= 0 above, and 0 short-circuits earlier.
+		return quantity, nil
 	}
 	return 0, RatingError(fmt.Sprintf("unsupported charge model %q", model))
 }

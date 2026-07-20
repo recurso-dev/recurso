@@ -1497,6 +1497,13 @@ paths:
                     Optional idempotency key: a retried event with the same
                     (subscription, transaction_id) collapses to the original
                     (200 with status "duplicate" and the original event_id).
+                dynamic_amount:
+                  type: integer
+                  format: int64
+                  description: >-
+                    Optional per-event exact price in minor units (non-negative).
+                    A `dynamic` charge bills the sum of these over the period;
+                    other charge models ignore it.
       responses:
         '201':
           description: Event recorded.
@@ -1550,6 +1557,7 @@ paths:
                         type: object
                         additionalProperties: { type: string }
                       transaction_id: { type: string, maxLength: 255 }
+                      dynamic_amount: { type: integer, format: int64 }
       responses:
         '200':
           description: Per-item outcomes, index-aligned with the request.
@@ -7431,7 +7439,7 @@ components:
         id: { type: string, format: uuid }
         plan_id: { type: string, format: uuid }
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
@@ -7443,7 +7451,7 @@ components:
       required: [metric_id, charge_model, amounts]
       properties:
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }

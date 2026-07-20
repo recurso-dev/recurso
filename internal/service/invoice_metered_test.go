@@ -26,6 +26,7 @@ func (m *mockChargeRepoForMeter) ListByPlan(ctx context.Context, tenantID, planI
 type mockUsageRepoForMeter struct {
 	port.UsageRepository
 	qtyByMetricCode map[string]int64
+	dynByDimension  map[string]int64
 	gotStart        time.Time
 	gotEnd          time.Time
 }
@@ -33,6 +34,11 @@ type mockUsageRepoForMeter struct {
 func (m *mockUsageRepoForMeter) AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error) {
 	m.gotStart, m.gotEnd = start, end
 	return m.qtyByMetricCode[metric.Code], nil
+}
+
+func (m *mockUsageRepoForMeter) SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error) {
+	m.gotStart, m.gotEnd = start, end
+	return m.dynByDimension[dimension], nil
 }
 
 type mockRatingRepoForMeter struct {
@@ -91,6 +97,53 @@ func meteredFixture(qty int64) (*InvoiceService, *mockInvoiceRepoForInvAmt, *moc
 		CurrentPeriodEnd:   time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC),
 	}
 	return svc, invRepo, ratingRepo, sub, chargeID
+}
+
+// TestGenerateInvoice_DynamicCharge asserts a dynamic charge bills the summed
+// per-event dynamic_amount (via SumDynamicAmount), not the metric aggregation.
+func TestGenerateInvoice_DynamicCharge(t *testing.T) {
+	svc, invRepo, ratingRepo, sub, _ := meteredFixture(0)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{
+		ID: metricID, Name: "Payments", Code: "payments",
+		AggregationType: domain.AggregationSum,
+	}
+	dynChargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:          dynChargeID,
+		PlanID:      sub.PlanID,
+		MetricID:    metricID,
+		ChargeModel: domain.ChargeDynamic,
+		Amounts:     map[string]domain.ChargeAmounts{"INR": {}},
+		Metric:      &metric,
+	}}}
+	// Aggregation would return 0 (empty qtyByMetricCode); the dynamic sum is 4200p.
+	svc.UsageRepo = &mockUsageRepoForMeter{dynByDimension: map[string]int64{"payments": 4200}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 100000p base + 4200p dynamic usage.
+	if inv.Subtotal != 104200 {
+		t.Fatalf("Subtotal = %d, want 104200", inv.Subtotal)
+	}
+	if len(inv.LineItems) != 2 {
+		t.Fatalf("line count = %d, want 2 (base + dynamic)", len(inv.LineItems))
+	}
+	metered := inv.LineItems[1]
+	if metered.Amount != 4200 {
+		t.Fatalf("dynamic line = %d, want 4200 (the dynamic_amount sum)", metered.Amount)
+	}
+	// The rating claim records the dynamic sum as the billed quantity and amount.
+	if len(ratingRepo.created) != 1 || ratingRepo.created[0].Quantity != 4200 || ratingRepo.created[0].Amount != 4200 {
+		t.Fatalf("claim = %+v, want qty 4200 amount 4200", ratingRepo.created)
+	}
+	if invRepo.created == nil {
+		t.Fatal("invoice was not persisted")
+	}
 }
 
 func TestGenerateInvoice_MeteredLineAddedWithInvariants(t *testing.T) {

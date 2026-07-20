@@ -531,7 +531,7 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 			continue
 		}
 
-		qty, err := s.UsageRepo.AggregateForMetric(ctx, sub.ID, *ch.Metric, periodStart, periodEnd)
+		qty, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, periodEnd)
 		if err != nil {
 			slog.Warn("skipping metered charge: aggregation failed", "error", err, "metric", ch.Metric.Code)
 			continue
