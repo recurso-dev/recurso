@@ -572,6 +572,7 @@ func main() {
 	// Apply account credit against off-session mandate debits (ENG-153) and book
 	// the settlement in the ledger (ENG-154) via creditNoteService.
 	mandateService.SetCreditApplier(creditNoteService)
+	mandateService.SetLedgerService(ledgerService) // post the debit invoice's ledger leg (F1)
 	// Charge the subscription's real recurring amount (plan price + tax) on each
 	// mandate cycle instead of the authorization ceiling (ENG-165).
 	mandateService.SetBillingResolver(subscriptionRepo, planRepo, taxResolver)

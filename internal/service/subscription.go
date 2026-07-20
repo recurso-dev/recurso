@@ -1229,6 +1229,20 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		s.generateEInvoiceAfterCommit(ctx, chargeInvoice, customer)
 	}
 
+	// Post the upgrade charge's invoice leg (DR AR / CR Deferred/Revenue) to the
+	// ledger, symmetric to the downgrade-credit posting below and to the initial
+	// invoice in CreateSubscription. Without it the charge invoice would only ever
+	// get its cash leg on payment, leaving AR/Deferred permanently imbalanced —
+	// the reconciler flags it as missing_invoice_transaction (F1). Best-effort,
+	// after commit: a post failure is logged for reconciliation, never fails the
+	// plan change.
+	if chargeInvoice != nil && s.ledger != nil {
+		if err := s.ledger.RecordInvoice(ctx, chargeInvoice); err != nil {
+			s.logger.Error("upgrade proration ledger invoice post failed — reconciliation needed",
+				"invoice_id", chargeInvoice.ID, "amount", chargeInvoice.Total, "error", err)
+		}
+	}
+
 	// Apply account credit to the upgrade charge invoice (ENG-154).
 	if chargeInvoice != nil {
 		s.applyCreditToInvoice(ctx, chargeInvoice)
