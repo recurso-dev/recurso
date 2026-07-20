@@ -1,10 +1,10 @@
 # Spec: Bring-Your-Own Gateway & Integration Credentials
 
-> **Status: IN PROGRESS — Increments 1 (vault), 2 (resolver/charge-path),
-> 2b-1 (checkout verify), 3 (per-connection webhooks), and 4 (dashboard UI)
-> shipped under the D1–D5 defaults. BYO is now usable end-to-end for the
-> interactive pay-link flow; 2b-2 (saved-card/autopay) + 5 (tax/CRM/storage
-> keys) remain.**
+> **Status — shipped under the D1–D5 defaults: gateways (1, 2, 2b-1, 3, 4) and
+> the tax/CRM/storage vault (5a, 5b, 5c). BYO is usable end-to-end for the
+> interactive pay-link flow, and tenants configure their own tax/CRM/storage
+> from the dashboard. Only 2b-2 (saved-card/autopay on the tenant's own Stripe)
+> remains.**
 >
 > Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
 > Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
@@ -140,8 +140,11 @@ it at invoice time — same `RESIDENCY_MODE=self_hosted` guard as the env provid
 `DELETE /v1/integration-connections/:category/:provider` (secret-free views,
 owner/admin writes). OpenAPI + drift green; service/resolver/handler unit-tested.
 
-**5b — dashboard UI (pending):** a Tax/CRM/Storage section on the Integrations
-page (cards + connect sheet driven by each provider's required fields).
+**5b — dashboard UI ✅.** An `IntegrationConnections` component (field-catalog
+driven: Tax = TaxJar/Avalara, CRM = HubSpot, Storage = S3/MinIO) on the
+Integrations page — cards show connected state + non-secret config, the connect
+sheet renders each provider's required/optional fields (secrets masked),
+`vault_ready:false` disables connecting with a banner.
 
 **5c — CRM (HubSpot) + storage (S3) resolvers ✅.** The daily CRM-sync and
 S3-export workers now resolve a client **per tenant** (their own connection,
@@ -152,8 +155,8 @@ the `RESIDENCY_MODE=self_hosted` block; S3 stays unblocked (tenant/operator-owne
 destination). The export counter now counts only real uploads. Unit-tested
 (per-tenant vs env fallback, skip-when-none).
 
-**5b — dashboard UI (pending):** the Tax/CRM/Storage section on the Integrations
-page is the last piece.
+**Increment 5 is complete** — tax, CRM, and storage are all per-tenant and
+dashboard-configurable, env as the fallback throughout.
 
 ## Founder decisions
 
