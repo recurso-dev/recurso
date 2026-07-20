@@ -99,6 +99,13 @@ type mockCNCustomerRepo struct {
 	err      error
 }
 
+func (m *mockCNCustomerRepo) List(context.Context, uuid.UUID, domain.CustomerFilter) ([]*domain.Customer, error) {
+	if m.customer != nil {
+		return []*domain.Customer{m.customer}, nil
+	}
+	return nil, m.err
+}
+
 func (m *mockCNCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error) {
 	if m.err != nil {
 		return nil, m.err
