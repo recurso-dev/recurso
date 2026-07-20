@@ -196,6 +196,7 @@ const Metering = () => {
           <Button
             size="sm"
             variant="ghost"
+            aria-label={`Edit metric ${m.name}`}
             onClick={(e) => {
               e.stopPropagation();
               startEditMetric(m);
@@ -206,6 +207,7 @@ const Metering = () => {
           <Button
             size="sm"
             variant="ghost"
+            aria-label={`Delete metric ${m.name}`}
             onClick={(e) => {
               e.stopPropagation();
               setDeleteTarget(m);
@@ -286,7 +288,7 @@ const Metering = () => {
             </div>
             <div className="flex items-center gap-2">
               {a.last_fired_period_start && <Badge variant="success">fired this period</Badge>}
-              <Button size="sm" variant="ghost" onClick={() => removeAlert(a)}>
+              <Button size="sm" variant="ghost" aria-label="Delete alert" onClick={() => removeAlert(a)}>
                 <Trash2 className="h-4 w-4 text-muted-foreground" />
               </Button>
             </div>

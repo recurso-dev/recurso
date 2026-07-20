@@ -31,18 +31,23 @@ export default function Usage() {
   const { names: customerNames } = useCustomers();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventsError, setEventsError] = useState(null);
   const [eventDimension, setEventDimension] = useState("all");
 
   // Raw ingestion stream — answers "did my usage events actually land?".
   const fetchEvents = useCallback(async () => {
     setEventsLoading(true);
+    setEventsError(null);
     try {
       const params = { limit: 50 };
       if (eventDimension !== "all") params.dimension = eventDimension;
       const res = await api.getUsageEvents(params);
       setEvents(res?.data?.data || []);
-    } catch {
+    } catch (err) {
       setEvents([]);
+      setEventsError(
+        err?.response?.data?.error?.message || err?.message || "Failed to load events"
+      );
     } finally {
       setEventsLoading(false);
     }
@@ -371,6 +376,8 @@ export default function Usage() {
           columns={eventColumns}
           data={events}
           loading={eventsLoading}
+          error={eventsError}
+          onRetry={fetchEvents}
           getRowId={(e) => e.id}
           empty={{
             icon: Activity,

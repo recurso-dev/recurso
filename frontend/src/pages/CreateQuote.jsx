@@ -292,6 +292,7 @@ const CreateQuote = () => {
                       type="button"
                       onClick={() => removeLineItem(index)}
                       disabled={formData.line_items.length === 1}
+                      aria-label="Remove line item"
                       className="rounded-md p-2 text-red-500 transition-colors hover:bg-red-50 disabled:opacity-50"
                     >
                       <Trash2 className="h-4 w-4" />
