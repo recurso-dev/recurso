@@ -51,13 +51,25 @@ func (r *RevRecRepository) CreateEvents(ctx context.Context, events []*domain.Re
 	return err
 }
 
-func (r *RevRecRepository) GetDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error) {
+// ClaimDueEvents atomically claims every due pending event (status ->
+// 'processing') and returns the claimed rows. The single UPDATE ... RETURNING
+// is race-free: concurrent workers serialize on the row locks and the loser
+// re-evaluates the WHERE against the already-flipped status, so two runners
+// always get disjoint sets (F2 — same idiom as MandateRepository.
+// ClaimDueForDebit). Claims older than an hour are requeued first, so a
+// worker that crashed mid-claim can't strand its events in 'processing'.
+func (r *RevRecRepository) ClaimDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error) {
+	if _, err := r.db.ExecContext(ctx,
+		`UPDATE recognition_events SET status = 'pending', claimed_at = NULL
+		 WHERE status = 'processing' AND claimed_at < NOW() - INTERVAL '1 hour'`); err != nil {
+		return nil, fmt.Errorf("requeue stale recognition claims: %w", err)
+	}
 	query := `
-		SELECT id, revenue_schedule_id, tenant_id, amount, recognition_date, status, ledger_tx_id, created_at
-		FROM recognition_events
+		UPDATE recognition_events SET status = 'processing', claimed_at = NOW()
 		WHERE recognition_date <= $1 AND status = 'pending'
+		RETURNING id, revenue_schedule_id, tenant_id, amount, recognition_date, status, ledger_tx_id, created_at
 	`
-	log.Printf("RevRec Repository: Querying for events <= %v", date)
+	log.Printf("RevRec Repository: Claiming events <= %v", date)
 	rows, err := r.db.QueryContext(ctx, query, date)
 	if err != nil {
 		return nil, err
@@ -83,14 +95,21 @@ func (r *RevRecRepository) GetDueEvents(ctx context.Context, date time.Time) ([]
 	return events, nil
 }
 
+// MarkEventRecognized / MarkEventFailed only transition events THIS worker
+// claimed ('processing'). The guard is what makes F2 safe end-to-end: a
+// duplicate posting error in a losing worker can no longer demote an event
+// the winner already recognized.
 func (r *RevRecRepository) MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error {
-	query := `UPDATE recognition_events SET status = 'recognized', ledger_tx_id = $1 WHERE id = $2`
+	query := `UPDATE recognition_events SET status = 'recognized', ledger_tx_id = $1, claimed_at = NULL
+		WHERE id = $2 AND status = 'processing'`
 	_, err := r.db.ExecContext(ctx, query, ledgerTxID, eventID)
 	return err
 }
 
-func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error {
-	query := `UPDATE recognition_events SET status = 'failed' WHERE id = $1`
+// The reason is logged by the caller; the table has no failure-reason column.
+func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUID, _ string) error {
+	query := `UPDATE recognition_events SET status = 'failed', claimed_at = NULL
+		WHERE id = $1 AND status = 'processing'`
 	_, err := r.db.ExecContext(ctx, query, eventID)
 	return err
 }

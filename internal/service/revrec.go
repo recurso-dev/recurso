@@ -14,7 +14,7 @@ import (
 type RevRecRepository interface {
 	CreateSchedule(ctx context.Context, schedule *domain.RevenueSchedule) error
 	CreateEvents(ctx context.Context, events []*domain.RecognitionEvent) error
-	GetDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error)
+	ClaimDueEvents(ctx context.Context, date time.Time) ([]*domain.RecognitionEvent, error)
 	MarkEventRecognized(ctx context.Context, eventID uuid.UUID, ledgerTxID uuid.UUID) error
 	MarkEventFailed(ctx context.Context, eventID uuid.UUID, reason string) error
 	GetReport(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.DeferredRevenueReport, error)
@@ -46,9 +46,12 @@ func NewRevRecService(repo RevRecRepository, ledger *LedgerService, subRepo port
 	}
 }
 
-// ProcessDueEvents executes recognition for events whose date has passed
+// ProcessDueEvents executes recognition for events whose date has passed.
+// Events are CLAIMED (pending -> processing) before posting, so concurrent
+// workers process disjoint sets and a duplicate-post error can never demote
+// an event another worker already recognized (F2).
 func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
-	events, err := s.repo.GetDueEvents(ctx, time.Now())
+	events, err := s.repo.ClaimDueEvents(ctx, time.Now())
 	if err != nil {
 		return err
 	}
@@ -304,12 +307,24 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 	return s.repo.CreateEvents(ctx, events)
 }
 
+// createImmediateRecognition records a one-off invoice's revenue as earned at
+// invoice time — for REPORTING only. The ledger already credited Revenue
+// directly for one-off invoices (nothing was deferred), so the event is
+// created pre-recognized with no ledger posting: a pending event here made
+// the worker post DR Deferred / CR Recognized against a Deferred balance
+// that never existed, driving Deferred negative by the invoice amount (the
+// reconciler's abnormal_account_balance). Amount is NET of tax, mirroring
+// the subscription path (ENG-191): GST is Tax Payable, not revenue (F3).
 func (s *RevRecService) createImmediateRecognition(ctx context.Context, invoice *domain.Invoice) error {
+	netRevenue := invoice.Total - invoice.TaxAmount
+	if netRevenue < 0 {
+		netRevenue = 0
+	}
 	schedule := &domain.RevenueSchedule{
 		ID:          uuid.New(),
 		TenantID:    invoice.TenantID,
 		InvoiceID:   invoice.ID,
-		TotalAmount: invoice.Total,
+		TotalAmount: netRevenue,
 		Currency:    invoice.Currency,
 		StartDate:   invoice.CreatedAt,
 		EndDate:     invoice.CreatedAt,
@@ -328,7 +343,7 @@ func (s *RevRecService) createImmediateRecognition(ctx context.Context, invoice 
 		TenantID:          schedule.TenantID,
 		Amount:            schedule.TotalAmount,
 		RecognitionDate:   schedule.StartDate,
-		Status:            domain.RecognitionStatusPending,
+		Status:            domain.RecognitionStatusRecognized,
 		CreatedAt:         time.Now(),
 	}
 
