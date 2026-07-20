@@ -114,6 +114,25 @@ func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter 
 	return router
 }
 
+// StripeFor returns the concrete Stripe gateway for a tenant (BYO), or the env
+// Stripe gateway. Used by checkout verify / saved-card flows that call
+// Stripe-SDK methods beyond the port.PaymentGateway interface; callers type-
+// assert the returned value to the sub-interface they need.
+func (r *GatewayResolver) StripeFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+	if router := r.For(ctx, tenantID); router != nil && router.Stripe != nil {
+		return router.Stripe
+	}
+	return r.env.Stripe
+}
+
+// RazorpayFor mirrors StripeFor for the Razorpay slot.
+func (r *GatewayResolver) RazorpayFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+	if router := r.For(ctx, tenantID); router != nil && router.Razorpay != nil {
+		return router.Razorpay
+	}
+	return r.env.Razorpay
+}
+
 // connectionsSignature is a stable fingerprint of a tenant's connection set;
 // any change (new connection, re-key → new updated_at) busts the cache.
 func connectionsSignature(conns []*domain.GatewayConnection) string {
