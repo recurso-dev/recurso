@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart } from "@tremor/react";
-import { Activity, Download, Gauge, Layers, Users } from "lucide-react";
+import { Activity, Download, Gauge, Layers, RefreshCw, Users } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { CustomerName } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -26,6 +28,69 @@ export default function Usage() {
   const [loading, setLoading] = useState(true);
   const [customerFilter, setCustomerFilter] = useState("all");
   const [planFilter, setPlanFilter] = useState("all");
+  const { names: customerNames } = useCustomers();
+  const [events, setEvents] = useState([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [eventDimension, setEventDimension] = useState("all");
+
+  // Raw ingestion stream — answers "did my usage events actually land?".
+  const fetchEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const params = { limit: 50 };
+      if (eventDimension !== "all") params.dimension = eventDimension;
+      const res = await api.getUsageEvents(params);
+      setEvents(res?.data?.data || []);
+    } catch {
+      setEvents([]);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [eventDimension]);
+
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
+
+  const eventDimensions = useMemo(
+    () => [...new Set(events.map((e) => e.dimension))].sort(),
+    [events]
+  );
+
+  const eventColumns = [
+    {
+      key: "timestamp",
+      header: "When",
+      cell: (e) => (
+        <span className="text-sm text-muted-foreground">
+          {new Date(e.timestamp).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      key: "customer",
+      header: "Customer",
+      cell: (e) => <CustomerName id={e.customer_id} names={customerNames} />,
+    },
+    {
+      key: "dimension",
+      header: "Dimension",
+      cell: (e) => <Badge variant="neutral" className="font-mono">{e.dimension}</Badge>,
+    },
+    {
+      key: "quantity",
+      header: "Quantity",
+      align: "right",
+      cell: (e) => <span className="tabular-nums font-medium">{e.quantity.toLocaleString()}</span>,
+    },
+    {
+      key: "txn",
+      header: "Idempotency key",
+      cell: (e) => (
+        <span className="font-mono text-xs text-muted-foreground">{e.transaction_id || "—"}</span>
+      ),
+    },
+  ];
 
   useEffect(() => {
     const fetchUsage = async () => {
@@ -268,6 +333,50 @@ export default function Usage() {
             icon: Activity,
             title: "No events found",
             description: "No metered usage events have been recorded yet.",
+          }}
+        />
+      </div>
+
+      {/* Raw event stream (ingestion debugging) */}
+      <div className="mt-8">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Recent events</h2>
+            <p className="text-xs text-muted-foreground">
+              The raw ingestion stream, newest first — verify events are landing before
+              they aggregate into metrics.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Select value={eventDimension} onValueChange={setEventDimension}>
+              <SelectTrigger className="w-[180px]" aria-label="Filter by dimension">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All dimensions</SelectItem>
+                {eventDimensions.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button variant="outline" size="sm" onClick={fetchEvents} disabled={eventsLoading}>
+              <RefreshCw className={`h-4 w-4 ${eventsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          </div>
+        </div>
+        <DataTable
+          columns={eventColumns}
+          data={events}
+          loading={eventsLoading}
+          getRowId={(e) => e.id}
+          empty={{
+            icon: Activity,
+            title: "No raw events",
+            description:
+              "POST /v1/usage/events (or the batch endpoint) to ingest usage; events appear here immediately.",
           }}
         />
       </div>

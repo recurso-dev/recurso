@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -257,6 +258,36 @@ func (h *UsageHandler) ListDimensions(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": dims})
+}
+
+// ListRecentEvents returns the newest raw usage events for the tenant —
+// the Usage page's ingestion inspector. Filters: customer_id, dimension;
+// paging: limit (<=200, default 50), offset.
+func (h *UsageHandler) ListRecentEvents(c *gin.Context) {
+	tenantID, ctx, ok := usageTenantCtx(c)
+	if !ok {
+		return
+	}
+	var customerID *uuid.UUID
+	if v := c.Query("customer_id"); v != "" {
+		id, err := uuid.Parse(v)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
+			return
+		}
+		customerID = &id
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
+	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
+	if offset < 0 {
+		offset = 0
+	}
+	events, err := h.svc.ListRecentEvents(ctx, tenantID, customerID, c.Query("dimension"), limit, offset)
+	if err != nil {
+		respondUsageError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": events})
 }
 
 // usageTenantCtx extracts the authenticated tenant and returns a request

@@ -219,6 +219,12 @@ type ResolvedUsageQuery struct {
 // QueryUsage validates/defaults the window and returns time-bucketed
 // usage. Defaults: to=now, from=to-30d, granularity=day. At least one of
 // subscription_id or customer_id is required.
+// ListRecentEvents surfaces the raw ingestion stream, newest first — the
+// debugging view for "did my usage events actually land?".
+func (s *UsageService) ListRecentEvents(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID, dimension string, limit, offset int) ([]domain.UsageEvent, error) {
+	return s.usage.ListRecentEvents(ctx, tenantID, customerID, dimension, limit, offset)
+}
+
 func (s *UsageService) QueryUsage(ctx context.Context, tenantID uuid.UUID, params UsageQueryParams) ([]domain.UsageBucket, *ResolvedUsageQuery, error) {
 	if params.SubscriptionID == nil && params.CustomerID == nil {
 		return nil, nil, UsageValidationError("at least one of subscription_id or customer_id is required")

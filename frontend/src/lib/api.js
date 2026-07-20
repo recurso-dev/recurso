@@ -274,6 +274,8 @@ export const endpoints = {
   setWalletAutoRecharge: (id, data) => api.put(`/wallets/${id}/auto-recharge`, data),
 
   // Usage alerts
+  // Raw ingestion stream, newest first (debugging: did my events land?).
+  getUsageEvents: (params) => api.get('/usage/events', { params }),
   getUsageAlerts: (params) => api.get('/usage-alerts', { params }),
   createUsageAlert: (data) => api.post('/usage-alerts', data),
   deleteUsageAlert: (id) => api.delete(`/usage-alerts/${id}`),

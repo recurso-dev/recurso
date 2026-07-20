@@ -22,6 +22,10 @@ type UsageRepository interface {
 	// the caller (see service.UsageService.QueryUsage).
 	QueryUsage(ctx context.Context, tenantID uuid.UUID, filter domain.UsageQueryFilter) ([]domain.UsageBucket, error)
 
+	// ListRecentEvents returns the tenant's newest raw events (stream
+	// debugging), optionally filtered by customer and dimension.
+	ListRecentEvents(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID, dimension string, limit, offset int) ([]domain.UsageEvent, error)
+
 	// GetSubscriptionUsageByDimension returns, per dimension, the total
 	// quantity inside [periodStart, periodEnd) alongside the lifetime total.
 	GetSubscriptionUsageByDimension(ctx context.Context, tenantID, subscriptionID uuid.UUID, periodStart, periodEnd time.Time) ([]domain.SubscriptionDimensionUsage, error)
