@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { AuthProvider } from "../../auth/AuthProvider";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "../../components/Toast";
 
 // jsdom in this config doesn't expose localStorage; AuthProvider reads it on init.
@@ -65,9 +66,11 @@ const PAGES = import.meta.glob("../*.jsx");
 
 const wrap = (ui) => (
   <MemoryRouter>
-    <AuthProvider>
-      <ToastProvider>{ui}</ToastProvider>
-    </AuthProvider>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+      <AuthProvider>
+        <ToastProvider>{ui}</ToastProvider>
+      </AuthProvider>
+    </QueryClientProvider>
   </MemoryRouter>
 );
 

@@ -3,7 +3,7 @@ import { Plus, Repeat2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
-import { useCustomers } from "@/lib/useCustomers";
+import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -52,27 +52,10 @@ const Mandates = () => {
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
   const { customers, names } = useCustomers();
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [planNames, setPlanNames] = useState({});
-
   // Subscriptions back the optional link picker in the create dialog; plans
-  // give those options a human label.
-  useEffect(() => {
-    api
-      .getSubscriptions()
-      .then((res) => setSubscriptions(res?.data?.data || []))
-      .catch(() => {});
-    api
-      .getPlans()
-      .then((res) => {
-        const map = {};
-        (res?.data?.data || []).forEach((p) => {
-          map[p.id] = p.name;
-        });
-        setPlanNames(map);
-      })
-      .catch(() => {});
-  }, []);
+  // give those options a human label. Both come from the shared query cache.
+  const subscriptions = useSubscriptions();
+  const { names: planNames } = usePlans();
 
   // Only the chosen customer's non-canceled subscriptions are linkable.
   const linkableSubs = subscriptions.filter(

@@ -1,25 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "./api";
 
 // useCustomers centralizes the "resolve customer ids to names" pattern used
-// across list pages and create dialogs. Best-effort: on failure the caller
+// across list pages and create dialogs. Backed by react-query: every page in
+// a session shares ONE cached fetch instead of refiring
+// getCustomers({limit:1000}) per mount. Best-effort: on failure the caller
 // keeps working with raw ids.
 export function useCustomers() {
-  const [customers, setCustomers] = useState([]);
-
-  useEffect(() => {
-    let active = true;
-    endpoints
-      .getCustomers({ limit: 1000 })
-      .then((res) => {
-        if (active) setCustomers(res?.data?.data || []);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, []);
+  const { data } = useQuery({
+    queryKey: ["customers", "all"],
+    queryFn: async () => {
+      const res = await endpoints.getCustomers({ limit: 1000 });
+      return res?.data?.data || [];
+    },
+  });
+  const customers = useMemo(() => data || [], [data]);
 
   const names = useMemo(() => {
     const map = {};
@@ -30,4 +27,36 @@ export function useCustomers() {
   }, [customers]);
 
   return { customers, names };
+}
+
+// usePlans returns {plans, names} with the same shared-cache semantics.
+export function usePlans() {
+  const { data } = useQuery({
+    queryKey: ["plans", "all"],
+    queryFn: async () => {
+      const res = await endpoints.getPlans();
+      return res?.data?.data || [];
+    },
+  });
+  const plans = useMemo(() => data || [], [data]);
+  const names = useMemo(() => {
+    const map = {};
+    plans.forEach((p) => {
+      map[p.id] = p.name;
+    });
+    return map;
+  }, [plans]);
+  return { plans, names };
+}
+
+// useSubscriptions returns the tenant's subscriptions from the shared cache.
+export function useSubscriptions() {
+  const { data } = useQuery({
+    queryKey: ["subscriptions", "all"],
+    queryFn: async () => {
+      const res = await endpoints.getSubscriptions();
+      return res?.data?.data || [];
+    },
+  });
+  return useMemo(() => data || [], [data]);
 }

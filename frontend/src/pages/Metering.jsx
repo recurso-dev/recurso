@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Gauge, Trash2, BellRing, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
-import { useCustomers } from "@/lib/useCustomers";
+import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -56,27 +56,10 @@ const Metering = () => {
   const [deleting, setDeleting] = useState(false);
 
   // Subscriptions + names label the alert dialog's picker (replaces the old
-  // paste-a-UUID input).
+  // paste-a-UUID input); all three lists come from the shared query cache.
   const { names: customerNames } = useCustomers();
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [planNames, setPlanNames] = useState({});
-
-  useEffect(() => {
-    api
-      .getSubscriptions()
-      .then((res) => setSubscriptions(res?.data?.data || []))
-      .catch(() => {});
-    api
-      .getPlans()
-      .then((res) => {
-        const map = {};
-        (res?.data?.data || []).forEach((p) => {
-          map[p.id] = p.name;
-        });
-        setPlanNames(map);
-      })
-      .catch(() => {});
-  }, []);
+  const subscriptions = useSubscriptions();
+  const { names: planNames } = usePlans();
 
   const subLabel = (s) => {
     const cust = customerNames[s.customer_id] || `${String(s.customer_id).slice(0, 8)}…`;
