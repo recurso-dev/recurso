@@ -7400,6 +7400,25 @@ components:
           type: array
           items: { $ref: "#/components/schemas/ChargeTier" }
           description: (graduated/volume) price bands.
+        rate:
+          type: string
+          description: (percentage) percent applied to the base, decimal string e.g. "2.5".
+        fixed_amount:
+          type: integer
+          format: int64
+          description: (percentage) flat fee in minor units added after the percentage.
+        free_units:
+          type: integer
+          format: int64
+          description: (percentage) base units exempt from the percentage, deducted first.
+        min_amount:
+          type: integer
+          format: int64
+          description: (percentage) floor on the line in minor units; 0 = no floor.
+        max_amount:
+          type: integer
+          format: int64
+          description: (percentage) cap on the line in minor units; 0 = no cap.
     Charge:
       type: object
       description: >-
@@ -7409,7 +7428,7 @@ components:
         id: { type: string, format: uuid }
         plan_id: { type: string, format: uuid }
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
@@ -7421,7 +7440,7 @@ components:
       required: [metric_id, charge_model, amounts]
       properties:
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }

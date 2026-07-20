@@ -66,12 +66,18 @@ const (
 	ChargeVolume ChargeModel = "volume"
 	// ChargePackage prices ceil(quantity/PackageSize) bundles at PackageAmount.
 	ChargePackage ChargeModel = "package"
+	// ChargePercentage prices a percentage of the aggregated monetary base
+	// (a sum in minor units — e.g. payment volume), plus an optional flat fee,
+	// with an optional free-units allowance deducted before the rate applies
+	// and optional min/max clamps on the line. Unlike the other models, its
+	// quantity is a money amount in minor units, not a unit count.
+	ChargePercentage ChargeModel = "percentage"
 )
 
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
-	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage:
+	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage, ChargePercentage:
 		return true
 	}
 	return false
@@ -100,6 +106,21 @@ type ChargeAmounts struct {
 	PackageSize int64 `json:"package_size,omitempty"`
 	// Tiers (graduated/volume).
 	Tiers []ChargeTier `json:"tiers,omitempty"`
+
+	// Rate (percentage): the percentage applied to the base, as a decimal
+	// string of PERCENT, e.g. "2.5" = 2.5%. Exact big.Rat path like UnitAmount.
+	Rate string `json:"rate,omitempty"`
+	// FixedAmount (percentage): a flat fee in minor units added to the line
+	// after the percentage — e.g. a per-invoice processing fee.
+	FixedAmount int64 `json:"fixed_amount,omitempty"`
+	// FreeUnits (percentage): units of the base exempt from the percentage,
+	// deducted from the base before the rate applies.
+	FreeUnits int64 `json:"free_units,omitempty"`
+	// MinAmount (percentage): a floor on the line in minor units, applied only
+	// when there is usage. 0 means no floor.
+	MinAmount int64 `json:"min_amount,omitempty"`
+	// MaxAmount (percentage): a cap on the line in minor units. 0 means no cap.
+	MaxAmount int64 `json:"max_amount,omitempty"`
 }
 
 // Charge attaches usage pricing for a metric to a plan. Amounts is keyed by
