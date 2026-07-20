@@ -263,8 +263,17 @@ func (s *seeder) purge() {
 	for _, q := range stmts {
 		s.exec(q, t)
 	}
-	// ledger_accounts are generic (AR/Cash/Revenue/Tax) and reused via
-	// lookup-or-create on re-seed, so they are intentionally left in place.
+	// Tenant-level ledger accounts (Cash/Revenue/Tax/Deferred) are reused via
+	// lookup-or-create on re-seed and stay in place. Per-CUSTOMER AR accounts
+	// (id == customer id) must go with their purged demo customers, or every
+	// reseed strands another batch of identical unlabeled "Accounts Receivable
+	// (1100)" rows in the Ledger picker. Only unreferenced ones are deleted —
+	// an AR account still carrying non-demo transactions is history, not junk.
+	s.exec(`DELETE FROM ledger_accounts a
+		WHERE a.tenant_id = $1 AND a.code = 1100
+		AND NOT EXISTS (SELECT 1 FROM customers c WHERE c.id = a.id)
+		AND NOT EXISTS (SELECT 1 FROM ledger_transactions x
+			WHERE a.id IN (x.debit_account_id, x.credit_account_id))`, t)
 }
 
 func (s *seeder) run() {
