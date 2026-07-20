@@ -3678,6 +3678,48 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/finance/close-pack:
+    get:
+      operationId: getClosePack
+      tags: [Finance]
+      summary: Month-end close pack
+      description: |
+        One read-only artifact for a calendar month: the trial balance, an
+        on-demand reconciliation report, the Deferred Revenue rollforward (with
+        the schedule-sourced recognition view when rev-rec is wired), a pointer
+        to the GL CSV export, and a `ready_to_close` verdict. The period is
+        ready to close when the trial balance is in balance and reconciliation
+        finds zero discrepancies; otherwise `blockers` lists why. Nothing is
+        persisted — closing the period stays a human decision.
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - name: year
+          in: query
+          required: true
+          schema:
+            type: integer
+            minimum: 2000
+      responses:
+        '200':
+          description: Month-end close pack for the period.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/finance/revrec/report:
     get:
       operationId: getRevRecReport

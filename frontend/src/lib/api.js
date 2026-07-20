@@ -115,6 +115,10 @@ export const endpoints = {
   getRevenueWaterfall: () => api.get('/finance/revrec/waterfall'),
   getDeferredRollforward: (month, year) =>
     api.get('/ledger/deferred-rollforward', { params: { month, year } }),
+  // Month-end close pack (B2): trial balance + reconciliation + deferred
+  // rollforward + GL export pointer + a ready-to-close verdict, in one call.
+  getClosePack: (month, year) =>
+    api.get('/finance/close-pack', { params: { month, year } }),
 
   // Developer
   getAPIKeys: () => api.get('/developer/keys'),

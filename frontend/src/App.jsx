@@ -67,6 +67,7 @@ const Mandates = lazy(() => import('./pages/Mandates'))
 const Disputes = lazy(() => import('./pages/Disputes'))
 const OfflinePayments = lazy(() => import('./pages/OfflinePayments'))
 const FinanceReconciliation = lazy(() => import('./pages/FinanceReconciliation'))
+const MonthEndClose = lazy(() => import('./pages/MonthEndClose'))
 const RevenueRecognition = lazy(() => import('./pages/RevenueRecognition'))
 const RevenueWaterfall = lazy(() => import('./pages/RevenueWaterfall'))
 const TrialBalance = lazy(() => import('./pages/TrialBalance'))
@@ -148,6 +149,7 @@ function App() {
                             <Route path="/wallets" element={<Wallets />} />
                             <Route path="/audit-log" element={<AuditLog />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
+                            <Route path="/finance/close" element={<MonthEndClose />} />
                             <Route path="/finance/trial-balance" element={<TrialBalance />} />
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />
                             <Route path="/finance/revenue-waterfall" element={<RevenueWaterfall />} />
