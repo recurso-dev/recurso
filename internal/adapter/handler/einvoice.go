@@ -67,7 +67,7 @@ func (h *EInvoiceHandler) RetryEInvoice(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	resp, err := h.einvoiceService.RetryFailedEInvoice(ctx, invoiceID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *EInvoiceHandler) CancelEInvoice(c *gin.Context) {
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	if err := h.einvoiceService.CancelEInvoice(ctx, invoiceID, req.CancelCode, req.Reason); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -122,7 +122,7 @@ func (h *EInvoiceHandler) GetIRPConfig(c *gin.Context) {
 	// Try production first, then sandbox
 	config, err := h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if config == nil {
@@ -171,7 +171,7 @@ func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 	}
 
 	if err := h.irpConfigRepo.Upsert(c.Request.Context(), &config); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

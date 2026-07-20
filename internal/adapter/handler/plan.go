@@ -56,7 +56,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	plan, err := h.service.CreatePlan(ctx, input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -78,7 +78,7 @@ func (h *CatalogHandler) GetPlan(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	plan, err := h.service.GetPlan(ctx, tenantID, planID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if plan == nil {
@@ -128,7 +128,7 @@ func (h *CatalogHandler) UpdatePlan(c *gin.Context) {
 		Active:        req.Active,
 	})
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if plan == nil {
@@ -173,7 +173,7 @@ func (h *CatalogHandler) ListPlans(c *gin.Context) {
 
 	plans, err := h.service.ListPlans(ctx, tenantID, filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

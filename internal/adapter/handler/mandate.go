@@ -67,7 +67,7 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	result, err := h.service.CreateMandate(ctx, input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -83,7 +83,7 @@ func (h *MandateHandler) ListMandates(c *gin.Context) {
 
 	mandates, err := h.service.List(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -134,7 +134,7 @@ func (h *MandateHandler) RevokeMandate(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "mandate not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

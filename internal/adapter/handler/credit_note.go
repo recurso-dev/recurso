@@ -57,7 +57,7 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	cns, err := h.service.List(ctx, tenantID, filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

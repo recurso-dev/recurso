@@ -70,7 +70,7 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	customer, err := h.service.CreateCustomer(ctx, input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -118,7 +118,7 @@ func (h *CustomerHandler) UpdatePaymentMethod(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "customer not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -141,7 +141,7 @@ func (h *CustomerHandler) GetCustomer(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	customer, err := h.service.GetCustomer(ctx, tenantID, customerID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if customer == nil {
@@ -260,7 +260,7 @@ func (h *CustomerHandler) ListCustomers(c *gin.Context) {
 
 	customers, err := h.service.ListCustomers(ctx, tenantID, filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if customers == nil {

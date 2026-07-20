@@ -65,7 +65,7 @@ func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -86,7 +86,7 @@ func (h *AdvancedBillingHandler) ListUnbilledCharges(c *gin.Context) {
 	}
 	charges, err := h.Service.ListUnbilledCharges(ctx, subID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -117,7 +117,7 @@ func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {
 	}
 	inv, err := h.InvoiceService.GenerateAdvanceInvoice(ctx, subID, req.Periods)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

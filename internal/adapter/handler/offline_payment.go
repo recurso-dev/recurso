@@ -60,7 +60,7 @@ func (h *OfflinePaymentHandler) CreateVirtualAccount(c *gin.Context) {
 
 	va, err := h.service.CreateVirtualAccount(c.Request.Context(), input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *OfflinePaymentHandler) ListVirtualAccounts(c *gin.Context) {
 
 	accounts, err := h.service.ListVirtualAccounts(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -147,7 +147,7 @@ func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	payment, err := h.service.RecordOfflinePayment(ctx, input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -163,7 +163,7 @@ func (h *OfflinePaymentHandler) ListOfflinePayments(c *gin.Context) {
 
 	payments, err := h.service.ListOfflinePayments(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

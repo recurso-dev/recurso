@@ -20,7 +20,7 @@ func respondStepError(c *gin.Context, err error) {
 		respondError(c, http.StatusNotFound, codeNotFound, "campaign or step not found")
 		return
 	}
-	respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+	respondInternalError(c, err)
 }
 
 type DunningCampaignHandler struct {
@@ -41,7 +41,7 @@ func (h *DunningCampaignHandler) ListCampaigns(c *gin.Context) {
 
 	campaigns, err := h.service.ListCampaigns(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -79,7 +79,7 @@ func (h *DunningCampaignHandler) CreateCampaign(c *gin.Context) {
 	}
 
 	if err := h.service.CreateCampaign(c.Request.Context(), campaign); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -102,7 +102,7 @@ func (h *DunningCampaignHandler) GetCampaign(c *gin.Context) {
 
 	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id, tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if campaign == nil {
@@ -141,7 +141,7 @@ func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 
 	campaign, err := h.service.GetCampaignByID(c.Request.Context(), id, tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if campaign == nil {
@@ -161,7 +161,7 @@ func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 	campaign.UpdatedAt = time.Now().UTC()
 
 	if err := h.service.UpdateCampaign(c.Request.Context(), campaign); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -309,7 +309,7 @@ func (h *DunningCampaignHandler) GetPaymentWallStatus(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	active, err := h.service.GetPaymentWallStatus(ctx, invoiceID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

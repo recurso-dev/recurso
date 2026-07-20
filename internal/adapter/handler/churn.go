@@ -41,7 +41,7 @@ func (h *ChurnHandler) GetCustomerChurn(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	result, err := h.churnService.GetCustomerScore(ctx, customerID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *ChurnHandler) GetHighRiskCustomers(c *gin.Context) {
 
 	results, err := h.churnService.GetHighRiskCustomers(c.Request.Context(), tenantID, threshold)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 
 	rows, err := h.db.QueryContext(c.Request.Context(), query, tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	defer func() { _ = rows.Close() }()
@@ -109,13 +109,13 @@ func (h *ChurnHandler) GetAlerts(c *gin.Context) {
 		var a churnAlert
 		if err := rows.Scan(&a.ID, &a.TenantID, &a.CustomerID, &a.PreviousScore, &a.NewScore,
 			&a.Threshold, &a.AlertType, &a.Acknowledged, &a.CreatedAt); err != nil {
-			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		alerts = append(alerts, a)
 	}
 	if err := rows.Err(); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -142,7 +142,7 @@ func (h *ChurnHandler) AcknowledgeAlert(c *gin.Context) {
 	query := `UPDATE churn_alerts SET acknowledged = TRUE WHERE id = $1 AND tenant_id = $2`
 	result, err := h.db.ExecContext(c.Request.Context(), query, alertID, tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

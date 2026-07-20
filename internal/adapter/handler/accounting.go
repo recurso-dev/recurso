@@ -102,7 +102,7 @@ func (h *AccountingHandler) ConnectTokenBased(c *gin.Context) {
 		existing.LastError = ""
 		existing.IsActive = true
 		if err := h.connRepo.Update(c.Request.Context(), existing); err != nil {
-			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+			respondInternalError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"data": existing})
@@ -120,7 +120,7 @@ func (h *AccountingHandler) ConnectTokenBased(c *gin.Context) {
 		CreatedAt:   time.Now(),
 	}
 	if err := h.connRepo.Create(c.Request.Context(), conn); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"data": conn})
@@ -135,7 +135,7 @@ func (h *AccountingHandler) ListConnections(c *gin.Context) {
 
 	conns, err := h.connRepo.ListByTenant(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -319,7 +319,7 @@ func (h *AccountingHandler) Disconnect(c *gin.Context) {
 	}
 
 	if err := h.connRepo.Delete(c.Request.Context(), id); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -337,7 +337,7 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 	// for everything to be reconciled, so the dirty-tracking skip is bypassed.
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	if err := h.accountingService.SyncAllForTenant(ctx, tenantID, true); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -353,7 +353,7 @@ func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 
 	logs, err := h.connRepo.ListSyncLogs(c.Request.Context(), tenantID, 50)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

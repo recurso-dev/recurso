@@ -101,7 +101,7 @@ func (h *SSOHandler) GetConnection(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "no SSO connection configured")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": h.toView(conn)})
@@ -157,7 +157,7 @@ func (h *SSOHandler) DeleteConnection(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "no SSO connection configured")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "sso connection removed"})

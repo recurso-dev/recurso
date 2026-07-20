@@ -51,7 +51,7 @@ func (h *TenantHandler) Register(c *gin.Context) {
 
 	tenant, apiKey, err := h.service.Register(c.Request.Context(), req.Name, req.Email)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -73,7 +73,7 @@ func (h *TenantHandler) ListKeys(c *gin.Context) {
 
 	keys, err := h.service.ListKeys(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if keys == nil {
@@ -108,7 +108,7 @@ func (h *TenantHandler) CreateKey(c *gin.Context) {
 
 	key, err := h.service.GenerateKey(c.Request.Context(), tenantID, name, livemode)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -139,7 +139,7 @@ func (h *TenantHandler) RevokeKey(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "key not found or already revoked")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *TenantHandler) GetAccount(c *gin.Context) {
 
 	account, err := h.service.GetAccount(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -182,7 +182,7 @@ func (h *TenantHandler) UpdateAccount(c *gin.Context) {
 
 	account, err := h.service.UpdateAccount(c.Request.Context(), tenantID, req.Name, req.Email)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

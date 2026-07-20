@@ -46,7 +46,7 @@ func (h *GiftHandler) PurchaseGift(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -92,7 +92,7 @@ func (h *GiftHandler) ListGifts(c *gin.Context) {
 
 	gifts, err := h.giftService.ListGifts(c.Request.Context(), tenantID.(uuid.UUID), pagination.Limit, pagination.Offset)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

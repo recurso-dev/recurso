@@ -90,7 +90,7 @@ func (h *WebhookManagementHandler) ListEndpoints(c *gin.Context) {
 
 	endpoints, err := h.webhookService.ListEndpoints(c.Request.Context(), tenantID.(uuid.UUID))
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -127,7 +127,7 @@ func (h *WebhookManagementHandler) UpdateEndpointStatus(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "endpoint not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": req.Status})
@@ -153,7 +153,7 @@ func (h *WebhookManagementHandler) DeleteEndpoint(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "endpoint not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -204,7 +204,7 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 
 	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -270,7 +270,7 @@ func respondWebhookServiceError(c *gin.Context, err error) {
 	case service.ErrInvalidDeliveryStatus:
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 

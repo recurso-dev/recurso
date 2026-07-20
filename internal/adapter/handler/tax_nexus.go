@@ -61,12 +61,12 @@ func (h *TaxNexusHandler) GetNexusStatus(c *gin.Context) {
 	ctx := c.Request.Context()
 	states, err := h.status.Status(ctx, tenantID, year)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	certified, err := h.status.DatasetCertified(ctx)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if states == nil {
@@ -110,7 +110,7 @@ func (h *TaxNexusHandler) GetNexus(c *gin.Context) {
 	}
 	list, err := h.repo.ListByTenant(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if list == nil {
@@ -158,13 +158,13 @@ func (h *TaxNexusHandler) SetNexus(c *gin.Context) {
 	}
 
 	if err := h.repo.SetStates(c.Request.Context(), tenantID, states); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
 	list, err := h.repo.ListByTenant(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if list == nil {

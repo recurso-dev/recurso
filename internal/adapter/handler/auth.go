@@ -87,7 +87,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		case errors.Is(err, domain.ErrWeakPassword):
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		default:
-			respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+			respondInternalError(c, err)
 		}
 		return
 	}
@@ -230,7 +230,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	case errors.Is(err, domain.ErrInvalidResetToken):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or expired reset token")
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 

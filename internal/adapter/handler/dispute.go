@@ -34,7 +34,7 @@ func (h *DisputeHandler) ListDisputes(c *gin.Context) {
 
 	disputes, err := h.service.List(c.Request.Context(), tenantID, status)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -67,7 +67,7 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "dispute not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

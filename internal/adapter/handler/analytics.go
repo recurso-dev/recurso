@@ -45,7 +45,7 @@ func (h *AnalyticsHandler) Ask(c *gin.Context) {
 			respondError(c, http.StatusServiceUnavailable, codeInternalError, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

@@ -144,6 +144,6 @@ func respondEntitlementError(c *gin.Context, err error) {
 	case errors.As(err, &valErr):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, valErr.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }

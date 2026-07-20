@@ -33,7 +33,7 @@ type IRPConfig struct {
 type APIKey struct {
 	ID        uuid.UUID `json:"id"`
 	TenantID  uuid.UUID `json:"tenant_id"`
-	KeyValue  string    `json:"key_value"`            // Original key (only shown once at creation)
+	KeyValue  string    `json:"key_value,omitempty"`  // Original key: populated ONLY at creation; reads leave it empty (hash is stored)
 	KeyHash   string    `json:"-"`                    // bcrypt hash (stored in DB)
 	KeyPrefix string    `json:"key_prefix,omitempty"` // First 8 chars (for lookup + display)
 	Type      string    `json:"type"`                 // "secret"

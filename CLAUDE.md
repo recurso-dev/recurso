@@ -33,8 +33,11 @@ swallows the failure (this exact mistake shipped a broken button once).
 
 - Money is **minor units** (`int64`); subscription status is `"canceled"`
   (one L); coupon `discount_type` is `"percent"`/`"amount"`.
-- List endpoints default to `limit=10` — always pass an explicit limit when
-  you need the full set (silent truncation has bitten twice).
+- List endpoints are inconsistent about pagination: a few default to
+  `limit=10` (subscriptions, customers, plans), some to 50/100/200, and many
+  are unbounded. Always pass an explicit limit when you need the full set
+  (silent truncation has bitten twice), and use `ParsePagination`/
+  `clampLimitOffset` for new list endpoints.
 - Nullable text columns scan through `sql.NullString`, never bare `string`.
 - Optional service dependencies use nil-safe `Set*` wiring
   (`SetLedgerService`, `SetCreditApplier`, …) — follow that idiom.
