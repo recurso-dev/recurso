@@ -11,17 +11,25 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// RateLimitMiddleware implements a fixed-window rate limiter using Redis
-func RateLimitMiddleware(rdb *redis.Client, limit int, window time.Duration) gin.HandlerFunc {
+// RateLimitMiddleware implements a fixed-window rate limiter using Redis.
+//
+// scope namespaces the counter key. Limiters with different limits MUST use
+// different scopes: with a shared key, every request drains one bucket, and
+// the strictest limiter judges the combined total — the global 500/min
+// middleware plus the 20/min auth limiter once shared "ratelimit:<ip>", so
+// ~20 requests of ANY kind per minute made /auth/me and /auth/login return
+// 429 (surfacing in the dashboard as login bounces and "Could not reach the
+// API" on the login screen).
+func RateLimitMiddleware(rdb *redis.Client, scope string, limit int, window time.Duration) gin.HandlerFunc {
 	// In-memory fallback when Redis is not available
 	var mu sync.Mutex
 	counters := make(map[string]*rateLimitEntry)
 
 	return func(c *gin.Context) {
 		// Key based on IP or Tenant if available
-		key := fmt.Sprintf("ratelimit:%s", c.ClientIP())
+		key := fmt.Sprintf("ratelimit:%s:%s", scope, c.ClientIP())
 		if tenantID, exists := c.Get("tenant_id"); exists {
-			key = fmt.Sprintf("ratelimit:tenant:%v", tenantID)
+			key = fmt.Sprintf("ratelimit:%s:tenant:%v", scope, tenantID)
 		}
 
 		var count int64
