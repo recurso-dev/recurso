@@ -14,12 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -210,12 +211,15 @@ const Mandates = () => {
         }}
       />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New UPI mandate</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New UPI mandate</SheetTitle>
+            <SheetDescription>
+              A standing authorization to debit the customer up to a cap per cycle.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Customer</Label>
               <CustomerSelect
@@ -289,16 +293,16 @@ const Mandates = () => {
               </Select>
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitCreate}
               disabled={creating || !form.customer_id.trim() || !form.vpa.trim() || !form.max_amount}
             >
               {creating ? "Creating…" : "Create mandate"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         open={!!revokeTarget}

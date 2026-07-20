@@ -11,12 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -311,7 +312,7 @@ const Metering = () => {
       </div>
 
       {/* New / edit metric */}
-      <Dialog
+      <Sheet
         open={metricOpen}
         onOpenChange={(o) => {
           setMetricOpen(o);
@@ -321,11 +322,14 @@ const Metering = () => {
           }
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingMetric ? "Edit billable metric" : "New billable metric"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>{editingMetric ? "Edit billable metric" : "New billable metric"}</SheetTitle>
+            <SheetDescription>
+              A metric&apos;s code doubles as the usage-event dimension it aggregates.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Name</Label>
               <Input
@@ -371,24 +375,27 @@ const Metering = () => {
             )}
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitMetric}
               disabled={saving || !metricForm.name || !metricForm.code}
             >
               {saving ? "Saving…" : editingMetric ? "Save changes" : "Create metric"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* New alert */}
-      <Dialog open={alertOpen} onOpenChange={setAlertOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New usage alert</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={alertOpen} onOpenChange={setAlertOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New usage alert</SheetTitle>
+            <SheetDescription>
+              Fires once per billing period via webhook and email when the threshold is crossed.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Subscription</Label>
               <Select
@@ -459,7 +466,7 @@ const Metering = () => {
             </div>
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitAlert}
               disabled={
@@ -468,9 +475,9 @@ const Metering = () => {
             >
               {saving ? "Creating…" : "Create alert"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <ConfirmDialog
         open={!!deleteTarget}
