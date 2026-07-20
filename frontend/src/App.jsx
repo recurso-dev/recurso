@@ -1,82 +1,93 @@
 import ErrorBoundary from './components/ErrorBoundary'
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
-import Dashboard from './pages/Dashboard'
-import Customers from './pages/Customers'
-import CreateCustomer from './pages/CreateCustomer'
-import Plans from './pages/Plans'
-import CreatePlan from './pages/CreatePlan'
+import { lazy, Suspense } from 'react'
 import Login from './pages/Login'
-import Register from './pages/Register'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
-import AcceptInvite from './pages/AcceptInvite'
-import Security from './pages/Security'
-import Subscriptions from './pages/Subscriptions'
-import CreateSubscription from './pages/CreateSubscription'
-import Invoices from './pages/Invoices'
-import Coupons from './pages/Coupons'
-import Metering from './pages/Metering'
-import Wallets from './pages/Wallets'
-import AuditLog from './pages/AuditLog'
-import CreateCoupon from './pages/CreateCoupon'
-import Usage from './pages/Usage'
-import Developers from './pages/Developers'
-import Integrations from './pages/Integrations'
-import Ledger from './pages/Ledger'
-import CreditNotes from './pages/CreditNotes'
-import CreateCreditNote from './pages/CreateCreditNote'
-import Settings from './pages/Settings'
-import Team from './pages/Team'
-import Notifications from './pages/Notifications'
-import Profile from './pages/Profile'
-import Referrals from './pages/Referrals'
-import Gifts from './pages/Gifts'
 import DashboardLayout from "./components/layout/DashboardLayout"
 import { useAuth } from './auth/AuthProvider'
 
 // Customer Portal Pages
-import PortalLogin from './pages/portal/PortalLogin'
-import PortalDashboard from './pages/portal/PortalDashboard'
-import PortalVerify from './pages/portal/PortalVerify'
-import PortalRedeem from './pages/portal/PortalRedeem'
 
 // Quotes
-import Quotes from './pages/Quotes'
-import CreateQuote from './pages/CreateQuote'
 
 // Checkout (public)
-import Checkout from './pages/Checkout'
 
 // Smart Dunning
-import DunningDashboard from './pages/DunningDashboard'
-import DunningCampaigns from './pages/DunningCampaigns'
-import CancelFlows from './pages/CancelFlows'
-import Churn from './pages/Churn'
-import Mandates from './pages/Mandates'
-import Disputes from './pages/Disputes'
-import OfflinePayments from './pages/OfflinePayments'
 
 // Finance
-import FinanceReconciliation from './pages/FinanceReconciliation'
-import RevenueRecognition from './pages/RevenueRecognition'
-import RevenueWaterfall from './pages/RevenueWaterfall'
-import TrialBalance from './pages/TrialBalance'
-import MRRWaterfall from './pages/MRRWaterfall'
-import InvoiceAging from './pages/InvoiceAging'
-import UnitEconomics from './pages/UnitEconomics'
-import ExecutiveSummary from './pages/ExecutiveSummary'
-import RevenueByPlan from './pages/RevenueByPlan'
-import RevenueByGeography from './pages/RevenueByGeography'
 
 // Settings
-import IRPSettings from './pages/settings/IRPSettings'
-import GSTSettings from './pages/settings/GSTSettings'
-import TaxNexusSettings from './pages/settings/TaxNexusSettings'
 
 // Multi-tenant + tax + GenAI
-import Organizations from './pages/Organizations'
-import GSTReturns from './pages/GSTReturns'
-import AskAnalytics from './pages/AskAnalytics'
+
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+// Route-level code splitting: every page beyond the login/home critical path
+// loads on demand, so the entry chunk stays small and Tremor/recharts land in
+// route chunks. All pages are default exports, which lazy() consumes directly.
+const Customers = lazy(() => import('./pages/Customers'))
+const CreateCustomer = lazy(() => import('./pages/CreateCustomer'))
+const Plans = lazy(() => import('./pages/Plans'))
+const CreatePlan = lazy(() => import('./pages/CreatePlan'))
+const Register = lazy(() => import('./pages/Register'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
+const Security = lazy(() => import('./pages/Security'))
+const Subscriptions = lazy(() => import('./pages/Subscriptions'))
+const CreateSubscription = lazy(() => import('./pages/CreateSubscription'))
+const Invoices = lazy(() => import('./pages/Invoices'))
+const Coupons = lazy(() => import('./pages/Coupons'))
+const Metering = lazy(() => import('./pages/Metering'))
+const Wallets = lazy(() => import('./pages/Wallets'))
+const AuditLog = lazy(() => import('./pages/AuditLog'))
+const CreateCoupon = lazy(() => import('./pages/CreateCoupon'))
+const Usage = lazy(() => import('./pages/Usage'))
+const Developers = lazy(() => import('./pages/Developers'))
+const Integrations = lazy(() => import('./pages/Integrations'))
+const Ledger = lazy(() => import('./pages/Ledger'))
+const CreditNotes = lazy(() => import('./pages/CreditNotes'))
+const CreateCreditNote = lazy(() => import('./pages/CreateCreditNote'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Team = lazy(() => import('./pages/Team'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const Profile = lazy(() => import('./pages/Profile'))
+const Referrals = lazy(() => import('./pages/Referrals'))
+const Gifts = lazy(() => import('./pages/Gifts'))
+const PortalLogin = lazy(() => import('./pages/portal/PortalLogin'))
+const PortalDashboard = lazy(() => import('./pages/portal/PortalDashboard'))
+const PortalVerify = lazy(() => import('./pages/portal/PortalVerify'))
+const PortalRedeem = lazy(() => import('./pages/portal/PortalRedeem'))
+const Quotes = lazy(() => import('./pages/Quotes'))
+const CreateQuote = lazy(() => import('./pages/CreateQuote'))
+const Checkout = lazy(() => import('./pages/Checkout'))
+const DunningDashboard = lazy(() => import('./pages/DunningDashboard'))
+const DunningCampaigns = lazy(() => import('./pages/DunningCampaigns'))
+const CancelFlows = lazy(() => import('./pages/CancelFlows'))
+const Churn = lazy(() => import('./pages/Churn'))
+const Mandates = lazy(() => import('./pages/Mandates'))
+const Disputes = lazy(() => import('./pages/Disputes'))
+const OfflinePayments = lazy(() => import('./pages/OfflinePayments'))
+const FinanceReconciliation = lazy(() => import('./pages/FinanceReconciliation'))
+const RevenueRecognition = lazy(() => import('./pages/RevenueRecognition'))
+const RevenueWaterfall = lazy(() => import('./pages/RevenueWaterfall'))
+const TrialBalance = lazy(() => import('./pages/TrialBalance'))
+const MRRWaterfall = lazy(() => import('./pages/MRRWaterfall'))
+const InvoiceAging = lazy(() => import('./pages/InvoiceAging'))
+const UnitEconomics = lazy(() => import('./pages/UnitEconomics'))
+const ExecutiveSummary = lazy(() => import('./pages/ExecutiveSummary'))
+const RevenueByPlan = lazy(() => import('./pages/RevenueByPlan'))
+const RevenueByGeography = lazy(() => import('./pages/RevenueByGeography'))
+const IRPSettings = lazy(() => import('./pages/settings/IRPSettings'))
+const GSTSettings = lazy(() => import('./pages/settings/GSTSettings'))
+const TaxNexusSettings = lazy(() => import('./pages/settings/TaxNexusSettings'))
+const Organizations = lazy(() => import('./pages/Organizations'))
+const GSTReturns = lazy(() => import('./pages/GSTReturns'))
+const AskAnalytics = lazy(() => import('./pages/AskAnalytics'))
+
+const PageFallback = () => (
+    <div className="flex h-full min-h-[40vh] w-full items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+    </div>
+)
 
 const PrivateRoute = () => {
     const { isAuthenticated, loading } = useAuth();
@@ -98,6 +109,7 @@ function App() {
     return (
         <div className="bg-background-dark min-h-screen">
             <ErrorBoundary>
+                <Suspense fallback={<PageFallback />}>
                 <Routes>
                     <Route path="/login" element={!isAuthenticated ? <Login /> : <Navigate to="/" />} />
                     <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/" />} /> {/* Added Register Route */}
@@ -175,6 +187,7 @@ function App() {
                     {/* Fallback */}
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
+                </Suspense>
             </ErrorBoundary>
         </div>
     );
