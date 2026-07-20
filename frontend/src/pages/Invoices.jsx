@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FileText } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
@@ -44,6 +44,7 @@ const Invoices = () => {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   // Invoices come from the shared query cache (60s fresh — revisiting the
   // page reuses the cached list); customer names from the shared hook.
@@ -176,6 +177,7 @@ const Invoices = () => {
         invoice={selectedInvoice}
         isOpen={isDetailOpen}
         onClose={closeDetail}
+        onChanged={() => queryClient.invalidateQueries({ queryKey: ["invoices"] })}
       />
     </div>
   );

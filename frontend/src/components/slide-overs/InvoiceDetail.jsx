@@ -75,7 +75,7 @@ function Row({ label, value, strong, danger, border }) {
   );
 }
 
-const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
+const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -91,6 +91,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
     try {
       await endpoints.retryEInvoice(invoice.id);
       setActionMessage({ type: "success", text: "E-invoice retry initiated successfully." });
+      if (onChanged) onChanged();
     } catch (err) {
       setActionMessage({
         type: "error",
@@ -110,6 +111,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose }) => {
         reason: cancelReason,
       });
       setActionMessage({ type: "success", text: "E-invoice cancelled successfully." });
+      if (onChanged) onChanged();
       setShowCancelModal(false);
     } catch (err) {
       setActionMessage({

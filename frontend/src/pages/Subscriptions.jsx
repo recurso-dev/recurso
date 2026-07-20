@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Plus, Repeat } from "lucide-react";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers, usePlans } from "@/lib/useCustomers";
@@ -47,6 +47,7 @@ export default function Subscriptions() {
   const [selectedSub, setSelectedSub] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+  const queryClient = useQueryClient();
   // The subscription page itself is server-driven (q/page/status) — each
   // param combination is its own cache entry; customers and plans come from
   // the shared reference-data hooks.
@@ -297,6 +298,7 @@ export default function Subscriptions() {
         plan={selectedSub ? plans[selectedSub.plan_id] : null}
         isOpen={isDetailOpen}
         onClose={closeDetail}
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ["subscriptions"] })}
       />
     </div>
   );

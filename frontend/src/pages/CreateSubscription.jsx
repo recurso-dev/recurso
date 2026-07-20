@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
+import { queryClient } from "@/lib/queryClient";
 import { useToast } from "../components/Toast";
 import ConsentCheckbox from "../components/ui/ConsentCheckbox";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -104,6 +105,7 @@ export default function CreateSubscription() {
           name: "Billify Recurso",
           description: `Subscription for ${selectedPlan?.name || "Plan"}`,
           handler: function () {
+            queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
             navigate("/subscriptions");
           },
           prefill: {
@@ -116,6 +118,7 @@ export default function CreateSubscription() {
           },
           modal: {
             ondismiss: function () {
+              queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
               navigate("/subscriptions");
             },
           },
@@ -124,6 +127,7 @@ export default function CreateSubscription() {
         const rzp = new window.Razorpay(options);
         rzp.open();
       } else {
+        queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
         navigate("/subscriptions");
       }
     } catch (error) {
