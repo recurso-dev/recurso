@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Repeat2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -33,7 +35,6 @@ const statusVariant = (status) =>
     status
   ] || "neutral";
 
-const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString() : "—");
 
 const emptyForm = { customer_id: "", vpa: "", max_amount: "", frequency: "monthly", subscription_id: "" };
@@ -49,6 +50,33 @@ const Mandates = () => {
   const [creating, setCreating] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState(null);
   const [revoking, setRevoking] = useState(false);
+  const { customers, names } = useCustomers();
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [planNames, setPlanNames] = useState({});
+
+  // Subscriptions back the optional link picker in the create dialog; plans
+  // give those options a human label.
+  useEffect(() => {
+    api
+      .getSubscriptions()
+      .then((res) => setSubscriptions(res?.data?.data || []))
+      .catch(() => {});
+    api
+      .getPlans()
+      .then((res) => {
+        const map = {};
+        (res?.data?.data || []).forEach((p) => {
+          map[p.id] = p.name;
+        });
+        setPlanNames(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  // Only the chosen customer's non-canceled subscriptions are linkable.
+  const linkableSubs = subscriptions.filter(
+    (s) => s.customer_id === form.customer_id && s.status !== "canceled"
+  );
 
   const fetchMandates = async () => {
     setLoading(true);
@@ -108,7 +136,7 @@ const Mandates = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (m) => <span className="font-mono text-xs text-muted-foreground">{shortId(m.customer_id)}</span>,
+      cell: (m) => <CustomerName id={m.customer_id} names={names} />,
     },
     {
       key: "vpa",
@@ -189,12 +217,11 @@ const Mandates = () => {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Customer ID</Label>
-              <Input
+              <Label>Customer</Label>
+              <CustomerSelect
                 value={form.customer_id}
-                onChange={(e) => setForm({ ...form, customer_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
+                onChange={(v) => setForm({ ...form, customer_id: v, subscription_id: "" })}
+                customers={customers}
               />
             </div>
             <div>
@@ -234,13 +261,32 @@ const Mandates = () => {
               </div>
             </div>
             <div>
-              <Label>Subscription ID (optional)</Label>
-              <Input
+              <Label>Subscription (optional)</Label>
+              <Select
                 value={form.subscription_id}
-                onChange={(e) => setForm({ ...form, subscription_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
-              />
+                onValueChange={(v) => setForm({ ...form, subscription_id: v === "none" ? "" : v })}
+                disabled={!form.customer_id}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !form.customer_id
+                        ? "Select a customer first"
+                        : linkableSubs.length === 0
+                          ? "No active subscriptions"
+                          : "Link a subscription"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not linked</SelectItem>
+                  {linkableSubs.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      {planNames[s.plan_id] || `${String(s.id).slice(0, 8)}…`} · {s.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BookOpen } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useCustomers } from "@/lib/useCustomers";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -22,6 +23,21 @@ export default function Ledger() {
   const [entriesLoading, setEntriesLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+  // Every customer has their own AR sub-account (same name + code 1100, id ==
+  // customer id) — label them with the customer so the picker isn't a wall of
+  // identical "Accounts Receivable (1100)" rows.
+  const { names: customerNames } = useCustomers();
+
+  const accountLabel = (acc) =>
+    customerNames[acc.id]
+      ? `${acc.name} — ${customerNames[acc.id]} (${acc.code})`
+      : `${acc.name} (${acc.code})`;
+
+  const accountLabelById = (id) => {
+    const acc = accounts.find((a) => a.id === id);
+    if (acc) return accountLabel(acc);
+    return null;
+  };
 
   // Fetch accounts on mount.
   useEffect(() => {
@@ -88,20 +104,22 @@ export default function Ledger() {
     {
       key: "debit",
       header: "Debit",
-      cell: (e) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {e.debit_account_id}
-        </span>
-      ),
+      cell: (e) =>
+        accountLabelById(e.debit_account_id) ? (
+          <span className="text-sm text-foreground">{accountLabelById(e.debit_account_id)}</span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">{e.debit_account_id}</span>
+        ),
     },
     {
       key: "credit",
       header: "Credit",
-      cell: (e) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {e.credit_account_id}
-        </span>
-      ),
+      cell: (e) =>
+        accountLabelById(e.credit_account_id) ? (
+          <span className="text-sm text-foreground">{accountLabelById(e.credit_account_id)}</span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">{e.credit_account_id}</span>
+        ),
     },
     {
       key: "amount",
@@ -152,7 +170,7 @@ export default function Ledger() {
             <SelectContent>
               {accounts.map((acc) => (
                 <SelectItem key={acc.id} value={acc.id}>
-                  {acc.name} ({acc.code})
+                  {accountLabel(acc)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -165,7 +183,7 @@ export default function Ledger() {
             label="Current Balance"
             value={formatCurrency(selectedAccount.balance || 0, selectedAccount.currency)}
             icon={BookOpen}
-            hint={`${selectedAccount.name} (${selectedAccount.code})`}
+            hint={accountLabel(selectedAccount)}
           />
         )}
       </div>

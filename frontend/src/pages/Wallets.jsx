@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Plus, Wallet2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,13 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const fmtMoney = (minor, currency) =>
   `${(minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}`;
@@ -35,6 +44,8 @@ const Wallets = () => {
   const [txWallet, setTxWallet] = useState(null);
   const [txs, setTxs] = useState([]);
   const [actionError, setActionError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const { customers, names } = useCustomers();
 
   const fetchWallets = async () => {
     setLoading(true);
@@ -57,12 +68,16 @@ const Wallets = () => {
     const q = search.trim().toLowerCase();
     if (!q) return wallets;
     return wallets.filter(
-      (w) => w.customer_id.toLowerCase().includes(q) || w.currency.toLowerCase().includes(q)
+      (w) =>
+        w.customer_id.toLowerCase().includes(q) ||
+        (names[w.customer_id] || "").toLowerCase().includes(q) ||
+        w.currency.toLowerCase().includes(q)
     );
-  }, [wallets, search]);
+  }, [wallets, search, names]);
 
   const submitCreate = async () => {
     setActionError(null);
+    setCreating(true);
     try {
       await api.createWallet(createForm);
       setCreateOpen(false);
@@ -70,6 +85,8 @@ const Wallets = () => {
       fetchWallets();
     } catch (err) {
       setActionError(err?.response?.data?.error?.message || "Failed to create wallet");
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -130,7 +147,7 @@ const Wallets = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (w) => <span className="font-mono text-xs text-muted-foreground">{w.customer_id}</span>,
+      cell: (w) => <CustomerName id={w.customer_id} names={names} />,
     },
     {
       key: "balance",
@@ -227,11 +244,11 @@ const Wallets = () => {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Customer ID</Label>
-              <Input
+              <Label>Customer</Label>
+              <CustomerSelect
                 value={createForm.customer_id}
-                onChange={(e) => setCreateForm({ ...createForm, customer_id: e.target.value })}
-                placeholder="uuid"
+                onChange={(v) => setCreateForm({ ...createForm, customer_id: v })}
+                customers={customers}
               />
             </div>
             <div>
@@ -247,7 +264,9 @@ const Wallets = () => {
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
           <DialogFooter>
-            <Button onClick={submitCreate}>Create</Button>
+            <Button onClick={submitCreate} disabled={creating || !createForm.customer_id}>
+              {creating ? "Creating…" : "Create wallet"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -272,14 +291,18 @@ const Wallets = () => {
             </div>
             <div>
               <Label>Source</Label>
-              <select
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+              <Select
                 value={topUpForm.source}
-                onChange={(e) => setTopUpForm({ ...topUpForm, source: e.target.value })}
+                onValueChange={(v) => setTopUpForm({ ...topUpForm, source: v })}
               >
-                <option value="manual">Manual (money received)</option>
-                <option value="promotional">Promotional credit</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual (money received)</SelectItem>
+                  <SelectItem value="promotional">Promotional credit</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
