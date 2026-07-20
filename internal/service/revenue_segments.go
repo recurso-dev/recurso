@@ -11,6 +11,10 @@ import (
 // CustomerLookup resolves a customer (for the customer's billing country).
 type CustomerLookup interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+	// List enables one bulk load instead of a per-subscription GetByID — the
+	// N+1 that made revenue-by-geography's first (uncached) hit take seconds
+	// against a remote database.
+	List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error)
 }
 
 // SetCustomerLookup wires customer resolution, enabling revenue-by-geography.
@@ -53,7 +57,16 @@ func (s *AnalyticsService) GetRevenueByGeography(ctx context.Context, tenantID u
 		count int
 	}
 	planCache := make(map[uuid.UUID]*domain.Plan)
-	custCountry := make(map[uuid.UUID]string) // customerID -> country code (cache)
+	// Bulk-load every customer's country up front: one query instead of one
+	// GetByID round-trip per subscription (the page's slow first paint).
+	custCountry := make(map[uuid.UUID]string) // customerID -> country code
+	if s.customers != nil {
+		if all, err := s.customers.List(ctx, tenantID, domain.CustomerFilter{Limit: 10000}); err == nil {
+			for _, c := range all {
+				custCountry[c.ID] = c.BillingAddress.Country
+			}
+		}
+	}
 	byCountry := make(map[string]*agg)
 	var total int64
 
@@ -81,11 +94,10 @@ func (s *AnalyticsService) GetRevenueByGeography(ctx context.Context, tenantID u
 		}
 
 		country, seen := custCountry[sub.CustomerID]
-		if !seen {
-			if s.customers != nil {
-				if cust, err := s.customers.GetByID(ctx, sub.CustomerID); err == nil && cust != nil {
-					country = cust.BillingAddress.Country
-				}
+		if !seen && s.customers != nil {
+			// Fallback for customers past the bulk-load window.
+			if cust, err := s.customers.GetByID(ctx, sub.CustomerID); err == nil && cust != nil {
+				country = cust.BillingAddress.Country
 			}
 			custCountry[sub.CustomerID] = country
 		}

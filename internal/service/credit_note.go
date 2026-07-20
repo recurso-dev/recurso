@@ -64,6 +64,9 @@ type CreditNoteRepository interface {
 // creditNoteCustomerReader is the slice of the customer repository we use.
 type creditNoteCustomerReader interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+	// List enables one bulk hydration query for the credit-note list page
+	// instead of a GetByID round-trip per note.
+	List(ctx context.Context, tenantID uuid.UUID, filter domain.CustomerFilter) ([]*domain.Customer, error)
 }
 
 // creditNoteInvoiceReader is the slice of the invoice repository we use.
@@ -418,16 +421,29 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 		return nil, err
 	}
 
-	// Hydrate Customers
-	// Optimization: Fetch all needed customers in one go if this becomes slow.
-	// For now, simple loop is fine for MVP.
-	for _, cn := range cns {
-		customer, err := s.customerRepo.GetByID(ctx, cn.CustomerID)
-		if err != nil {
-			s.logger.Warn("credit note list: customer hydration failed",
-				"credit_note_id", cn.ID, "customer_id", cn.CustomerID, "error", err)
-		} else if customer != nil {
-			cn.Customer = customer
+	// Hydrate customers with ONE bulk load instead of a GetByID round-trip per
+	// note — the per-note loop made the Credit Notes page's first paint scale
+	// with row count against a remote database.
+	if len(cns) > 0 {
+		byID := make(map[uuid.UUID]*domain.Customer)
+		if all, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: 10000}); err == nil {
+			for _, c := range all {
+				byID[c.ID] = c
+			}
+		}
+		for _, cn := range cns {
+			if c, ok := byID[cn.CustomerID]; ok {
+				cn.Customer = c
+				continue
+			}
+			// Fallback (archived or past the window): single fetch, best-effort.
+			customer, err := s.customerRepo.GetByID(ctx, cn.CustomerID)
+			if err != nil {
+				s.logger.Warn("credit note list: customer hydration failed",
+					"credit_note_id", cn.ID, "customer_id", cn.CustomerID, "error", err)
+			} else if customer != nil {
+				cn.Customer = customer
+			}
 		}
 	}
 

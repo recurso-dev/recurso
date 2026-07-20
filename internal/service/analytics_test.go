@@ -784,6 +784,14 @@ func (f *fakeCustomerLookup) GetByID(_ context.Context, id uuid.UUID) (*domain.C
 	return &domain.Customer{ID: id, BillingAddress: domain.BillingAddress{Country: f.byID[id]}}, nil
 }
 
+func (f *fakeCustomerLookup) List(_ context.Context, _ uuid.UUID, _ domain.CustomerFilter) ([]*domain.Customer, error) {
+	out := make([]*domain.Customer, 0, len(f.byID))
+	for id, country := range f.byID {
+		out = append(out, &domain.Customer{ID: id, BillingAddress: domain.BillingAddress{Country: country}})
+	}
+	return out, nil
+}
+
 // TestGetRevenueByGeography: 2 IN customers ($1000 + $2000) + 1 US ($3000) →
 // India 3000, United States 3000, ISO codes mapped to names, 50/50 split.
 func TestGetRevenueByGeography(t *testing.T) {
