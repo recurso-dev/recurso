@@ -9,6 +9,12 @@ import (
 )
 
 // CustomerLookup resolves a customer (for the customer's billing country).
+// bulkLookupLimit bounds one-shot reference loads (customer hydration maps,
+// country resolution). It exists so nobody "fixes" a truncation bug by
+// picking a new magic number: the API defaults list endpoints to limit=10,
+// so bulk consumers MUST pass an explicit generous bound (see ADR-005).
+const bulkLookupLimit = 10000
+
 type CustomerLookup interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
 	// List enables one bulk load instead of a per-subscription GetByID — the
@@ -61,7 +67,7 @@ func (s *AnalyticsService) GetRevenueByGeography(ctx context.Context, tenantID u
 	// GetByID round-trip per subscription (the page's slow first paint).
 	custCountry := make(map[uuid.UUID]string) // customerID -> country code
 	if s.customers != nil {
-		if all, err := s.customers.List(ctx, tenantID, domain.CustomerFilter{Limit: 10000}); err == nil {
+		if all, err := s.customers.List(ctx, tenantID, domain.CustomerFilter{Limit: bulkLookupLimit}); err == nil {
 			for _, c := range all {
 				custCountry[c.ID] = c.BillingAddress.Country
 			}

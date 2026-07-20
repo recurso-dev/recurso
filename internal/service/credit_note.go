@@ -426,7 +426,7 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 	// with row count against a remote database.
 	if len(cns) > 0 {
 		byID := make(map[uuid.UUID]*domain.Customer)
-		if all, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: 10000}); err == nil {
+		if all, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: bulkLookupLimit}); err == nil {
 			for _, c := range all {
 				byID[c.ID] = c
 			}
