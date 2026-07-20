@@ -2,12 +2,14 @@ import { useEffect, useState } from "react";
 import { Plus, Gauge, Trash2, BellRing, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { useCustomers } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Dialog,
   DialogContent,
@@ -15,6 +17,13 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Usage-based billing configuration: billable metrics and usage alerts.
 // Plan charges are edited per plan from this page's charge editor.
@@ -41,6 +50,38 @@ const Metering = () => {
     threshold_type: "quantity",
     threshold: "",
   });
+  const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+
+  // Subscriptions + names label the alert dialog's picker (replaces the old
+  // paste-a-UUID input).
+  const { names: customerNames } = useCustomers();
+  const [subscriptions, setSubscriptions] = useState([]);
+  const [planNames, setPlanNames] = useState({});
+
+  useEffect(() => {
+    api
+      .getSubscriptions()
+      .then((res) => setSubscriptions(res?.data?.data || []))
+      .catch(() => {});
+    api
+      .getPlans()
+      .then((res) => {
+        const map = {};
+        (res?.data?.data || []).forEach((p) => {
+          map[p.id] = p.name;
+        });
+        setPlanNames(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  const subLabel = (s) => {
+    const cust = customerNames[s.customer_id] || `${String(s.customer_id).slice(0, 8)}…`;
+    const plan = planNames[s.plan_id] || `${String(s.id).slice(0, 8)}…`;
+    return `${cust} — ${plan}`;
+  };
 
   const fetchAll = async () => {
     setLoading(true);
@@ -62,6 +103,7 @@ const Metering = () => {
 
   const submitMetric = async () => {
     setActionError(null);
+    setSaving(true);
     try {
       const body = { ...metricForm };
       if (body.aggregation_type !== "unique") delete body.field_name;
@@ -79,6 +121,8 @@ const Metering = () => {
         err?.response?.data?.error?.message ||
           (editingMetric ? "Failed to update metric" : "Failed to create metric")
       );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -94,20 +138,27 @@ const Metering = () => {
     setMetricOpen(true);
   };
 
-  const removeMetric = async (metric) => {
+  const removeMetric = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
     try {
-      await api.deleteBillableMetric(metric.id);
+      await api.deleteBillableMetric(deleteTarget.id);
+      setDeleteTarget(null);
       fetchAll();
     } catch (err) {
+      setDeleteTarget(null);
       setError(
         err?.response?.data?.error?.message ||
           "Delete failed — the metric may be referenced by a plan charge."
       );
+    } finally {
+      setDeleting(false);
     }
   };
 
   const submitAlert = async () => {
     setActionError(null);
+    setSaving(true);
     try {
       await api.createUsageAlert({
         ...alertForm,
@@ -118,6 +169,8 @@ const Metering = () => {
       fetchAll();
     } catch (err) {
       setActionError(err?.response?.data?.error?.message || "Failed to create alert");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -171,7 +224,7 @@ const Metering = () => {
             variant="ghost"
             onClick={(e) => {
               e.stopPropagation();
-              removeMetric(m);
+              setDeleteTarget(m);
             }}
           >
             <Trash2 className="h-4 w-4 text-muted-foreground" />
@@ -240,8 +293,11 @@ const Metering = () => {
                   ? `≥ ${a.threshold.toLocaleString()}`
                   : `≥ ${a.threshold}% of limit`}
               </span>
-              <span className="ml-2 font-mono text-xs text-muted-foreground">
-                sub {a.subscription_id.slice(0, 8)}…
+              <span className="ml-2 text-xs text-muted-foreground">
+                {(() => {
+                  const s = subscriptions.find((x) => x.id === a.subscription_id);
+                  return s ? subLabel(s) : `sub ${a.subscription_id.slice(0, 8)}…`;
+                })()}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -288,16 +344,20 @@ const Metering = () => {
             </div>
             <div>
               <Label>Aggregation</Label>
-              <select
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+              <Select
                 value={metricForm.aggregation_type}
-                onChange={(e) => setMetricForm({ ...metricForm, aggregation_type: e.target.value })}
+                onValueChange={(v) => setMetricForm({ ...metricForm, aggregation_type: v })}
               >
-                <option value="sum">sum — total quantity</option>
-                <option value="count">count — number of events</option>
-                <option value="max">max — largest event</option>
-                <option value="unique">unique — distinct property values</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sum">sum — total quantity</SelectItem>
+                  <SelectItem value="count">count — number of events</SelectItem>
+                  <SelectItem value="max">max — largest event</SelectItem>
+                  <SelectItem value="unique">unique — distinct property values</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             {metricForm.aggregation_type === "unique" && (
               <div>
@@ -312,8 +372,11 @@ const Metering = () => {
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
           <DialogFooter>
-            <Button onClick={submitMetric} disabled={!metricForm.name || !metricForm.code}>
-              Create metric
+            <Button
+              onClick={submitMetric}
+              disabled={saving || !metricForm.name || !metricForm.code}
+            >
+              {saving ? "Saving…" : editingMetric ? "Save changes" : "Create metric"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -327,38 +390,61 @@ const Metering = () => {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Subscription ID</Label>
-              <Input
+              <Label>Subscription</Label>
+              <Select
                 value={alertForm.subscription_id}
-                onChange={(e) => setAlertForm({ ...alertForm, subscription_id: e.target.value })}
-                placeholder="uuid"
-              />
+                onValueChange={(v) => setAlertForm({ ...alertForm, subscription_id: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      subscriptions.length === 0 ? "No subscriptions" : "Select a subscription"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {subscriptions
+                    .filter((s) => s.status !== "canceled")
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {subLabel(s)}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Metric</Label>
-              <select
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+              <Select
                 value={alertForm.metric_code}
-                onChange={(e) => setAlertForm({ ...alertForm, metric_code: e.target.value })}
+                onValueChange={(v) => setAlertForm({ ...alertForm, metric_code: v })}
               >
-                <option value="">Select a metric…</option>
-                {metrics.map((m) => (
-                  <option key={m.id} value={m.code}>
-                    {m.name} ({m.code})
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a metric" />
+                </SelectTrigger>
+                <SelectContent>
+                  {metrics.map((m) => (
+                    <SelectItem key={m.id} value={m.code}>
+                      {m.name} ({m.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Threshold type</Label>
-              <select
-                className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
+              <Select
                 value={alertForm.threshold_type}
-                onChange={(e) => setAlertForm({ ...alertForm, threshold_type: e.target.value })}
+                onValueChange={(v) => setAlertForm({ ...alertForm, threshold_type: v })}
               >
-                <option value="quantity">Absolute quantity</option>
-                <option value="percent_of_limit">Percent of entitlement limit</option>
-              </select>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="quantity">Absolute quantity</SelectItem>
+                  <SelectItem value="percent_of_limit">Percent of entitlement limit</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>
@@ -376,13 +462,26 @@ const Metering = () => {
           <DialogFooter>
             <Button
               onClick={submitAlert}
-              disabled={!alertForm.subscription_id || !alertForm.metric_code || !alertForm.threshold}
+              disabled={
+                saving || !alertForm.subscription_id || !alertForm.metric_code || !alertForm.threshold
+              }
             >
-              Create alert
+              {saving ? "Creating…" : "Create alert"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && setDeleteTarget(null)}
+        title={`Delete metric ${deleteTarget?.name}?`}
+        description="Usage already recorded is kept, but plans charging this metric will stop rating new events. This cannot be undone."
+        confirmLabel="Delete metric"
+        destructive
+        busy={deleting}
+        onConfirm={removeMetric}
+      />
     </div>
   );
 };
