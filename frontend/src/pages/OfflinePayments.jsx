@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Plus, Banknote, Landmark } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -12,12 +14,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -63,6 +66,29 @@ const OfflinePayments = () => {
   const [vaForm, setVAForm] = useState(emptyVA);
   const [creatingVA, setCreatingVA] = useState(false);
   const [tab, setTab] = useState("payments");
+  const { customers, names } = useCustomers();
+  const [invoices, setInvoices] = useState([]);
+
+  // Invoices back the "settle this invoice" pickers; unpaid ones are offered.
+  useEffect(() => {
+    api
+      .getInvoices()
+      .then((res) => setInvoices(res?.data?.data || []))
+      .catch(() => {});
+  }, []);
+
+  const openInvoicesFor = (customerId) =>
+    invoices.filter(
+      (i) => i.customer_id === customerId && ["open", "overdue", "past_due"].includes(i.status)
+    );
+
+  const invoiceLabel = (i) =>
+    `${i.invoice_number || String(i.id).slice(0, 8)} · ${formatCurrency(i.total, i.currency)}`;
+
+  const invoiceNumberById = (id) => {
+    const inv = invoices.find((i) => i.id === id);
+    return inv ? inv.invoice_number || String(id).slice(0, 8) : null;
+  };
 
   const fetchPayments = async () => {
     setPaymentsLoading(true);
@@ -144,7 +170,7 @@ const OfflinePayments = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (p) => <span className="font-mono text-xs text-muted-foreground">{shortId(p.customer_id)}</span>,
+      cell: (p) => <CustomerName id={p.customer_id} names={names} />,
     },
     {
       key: "type",
@@ -173,7 +199,12 @@ const OfflinePayments = () => {
     {
       key: "invoice",
       header: "Invoice",
-      cell: (p) => <span className="font-mono text-xs text-muted-foreground">{shortId(p.invoice_id)}</span>,
+      cell: (p) =>
+        invoiceNumberById(p.invoice_id) ? (
+          <span className="text-sm text-foreground">{invoiceNumberById(p.invoice_id)}</span>
+        ) : (
+          <span className="font-mono text-xs text-muted-foreground">{shortId(p.invoice_id)}</span>
+        ),
     },
     {
       key: "recorded",
@@ -204,7 +235,7 @@ const OfflinePayments = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (v) => <span className="font-mono text-xs text-muted-foreground">{shortId(v.customer_id)}</span>,
+      cell: (v) => <CustomerName id={v.customer_id} names={names} />,
     },
     {
       key: "expected",
@@ -286,29 +317,60 @@ const OfflinePayments = () => {
       </Tabs>
 
       {/* Record offline payment */}
-      <Dialog open={recordOpen} onOpenChange={setRecordOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Record offline payment</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={recordOpen} onOpenChange={setRecordOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Record offline payment</SheetTitle>
+            <SheetDescription>
+              Money received outside the gateway — NEFT, cash, or cheque.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
-              <Label>Customer ID</Label>
-              <Input
+              <Label>Customer</Label>
+              <CustomerSelect
                 value={payForm.customer_id}
-                onChange={(e) => setPayForm({ ...payForm, customer_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
+                onChange={(v) => setPayForm({ ...payForm, customer_id: v, invoice_id: "" })}
+                customers={customers}
               />
             </div>
             <div>
-              <Label>Invoice ID (optional — settles the invoice)</Label>
-              <Input
+              <Label>Invoice (optional — settles the invoice)</Label>
+              <Select
                 value={payForm.invoice_id}
-                onChange={(e) => setPayForm({ ...payForm, invoice_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
-              />
+                onValueChange={(v) => {
+                  const inv = invoices.find((i) => i.id === v);
+                  setPayForm((f) => ({
+                    ...f,
+                    invoice_id: v === "none" ? "" : v,
+                    // Prefill the open amount when none was typed yet.
+                    amount:
+                      v !== "none" && inv && !f.amount ? String(inv.total / 100) : f.amount,
+                    currency: v !== "none" && inv ? inv.currency : f.currency,
+                  }));
+                }}
+                disabled={!payForm.customer_id}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !payForm.customer_id
+                        ? "Select a customer first"
+                        : openInvoicesFor(payForm.customer_id).length === 0
+                          ? "No unpaid invoices"
+                          : "Settle an invoice"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not linked</SelectItem>
+                  {openInvoicesFor(payForm.customer_id).map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {invoiceLabel(i)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -371,41 +433,69 @@ const OfflinePayments = () => {
               />
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitRecord}
               disabled={recording || !payForm.customer_id.trim() || !payForm.amount}
             >
               {recording ? "Recording…" : "Record payment"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* New virtual account */}
-      <Dialog open={vaOpen} onOpenChange={setVAOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New virtual account</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={vaOpen} onOpenChange={setVAOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New virtual account</SheetTitle>
+            <SheetDescription>
+              A dedicated account number the customer can transfer into.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
-              <Label>Customer ID</Label>
-              <Input
+              <Label>Customer</Label>
+              <CustomerSelect
                 value={vaForm.customer_id}
-                onChange={(e) => setVAForm({ ...vaForm, customer_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
+                onChange={(v) => setVAForm({ ...vaForm, customer_id: v, invoice_id: "" })}
+                customers={customers}
               />
             </div>
             <div>
-              <Label>Invoice ID (optional)</Label>
-              <Input
+              <Label>Invoice (optional)</Label>
+              <Select
                 value={vaForm.invoice_id}
-                onChange={(e) => setVAForm({ ...vaForm, invoice_id: e.target.value })}
-                placeholder="uuid"
-                className="font-mono"
-              />
+                onValueChange={(v) => {
+                  const inv = invoices.find((i) => i.id === v);
+                  setVAForm((f) => ({
+                    ...f,
+                    invoice_id: v === "none" ? "" : v,
+                    amount: v !== "none" && inv && !f.amount ? String(inv.total / 100) : f.amount,
+                  }));
+                }}
+                disabled={!vaForm.customer_id}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      !vaForm.customer_id
+                        ? "Select a customer first"
+                        : openInvoicesFor(vaForm.customer_id).length === 0
+                          ? "No unpaid invoices"
+                          : "Link an invoice"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Not linked</SelectItem>
+                  {openInvoicesFor(vaForm.customer_id).map((i) => (
+                    <SelectItem key={i.id} value={i.id}>
+                      {invoiceLabel(i)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <Label>Expected amount (INR)</Label>
@@ -419,16 +509,16 @@ const OfflinePayments = () => {
               />
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitVA}
               disabled={creatingVA || !vaForm.customer_id.trim() || !vaForm.amount}
             >
               {creatingVA ? "Creating…" : "Create account"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };

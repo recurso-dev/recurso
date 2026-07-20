@@ -11,18 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  SheetFooter,
 } from "@/components/ui/sheet";
 
 const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
@@ -186,12 +180,15 @@ const Organizations = () => {
       />
 
       {/* Create */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New organization</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New organization</SheetTitle>
+            <SheetDescription>
+              Group related tenants under one umbrella with consolidated MRR.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Name</Label>
               <Input
@@ -210,16 +207,16 @@ const Organizations = () => {
               />
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button
               onClick={submitCreate}
               disabled={creating || !createForm.name.trim() || !createForm.owner_email.trim()}
             >
               {creating ? "Creating…" : "Create organization"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* Detail */}
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>
