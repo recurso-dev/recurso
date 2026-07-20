@@ -74,7 +74,7 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, customer)
+	c.JSON(http.StatusCreated, gin.H{"data": customer})
 }
 
 type updatePaymentMethodRequest struct {

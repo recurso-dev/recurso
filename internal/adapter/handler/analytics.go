@@ -70,7 +70,7 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to calculate MRR")
 		return
 	}
-	c.JSON(http.StatusOK, mrr)
+	c.JSON(http.StatusOK, gin.H{"data": mrr})
 }
 
 // GetMRRWaterfall returns the MRR movement breakdown between two dates

@@ -201,5 +201,5 @@ func (h *TeamHandler) DeleteUser(c *gin.Context) {
 		mapTeamError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "user removed"})
+	c.JSON(http.StatusOK, gin.H{"status": "removed"})
 }

@@ -65,7 +65,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, sub)
+	c.JSON(http.StatusCreated, gin.H{"data": sub})
 }
 
 func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
@@ -164,7 +164,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, sub)
+	c.JSON(http.StatusOK, gin.H{"data": sub})
 }
 
 // PreviewPlanChange handles GET /subscriptions/:id/preview-change?plan_id=<uuid>.
@@ -205,7 +205,7 @@ func (h *SubscriptionHandler) PreviewPlanChange(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, preview)
+	c.JSON(http.StatusOK, gin.H{"data": preview})
 }
 
 type addAddonRequest struct {
@@ -242,7 +242,7 @@ func (h *SubscriptionHandler) AddAddon(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, addon)
+	c.JSON(http.StatusCreated, gin.H{"data": addon})
 }
 
 // ListAddons handles GET /subscriptions/:id/addons.

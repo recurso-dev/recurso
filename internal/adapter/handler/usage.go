@@ -241,7 +241,7 @@ func (h *UsageHandler) GetSubscriptionUsage(c *gin.Context) {
 		respondUsageError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, usage)
+	c.JSON(http.StatusOK, gin.H{"data": usage})
 }
 
 // ListDimensions handles GET /v1/usage/dimensions — the tenant's distinct

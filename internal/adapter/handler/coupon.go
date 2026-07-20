@@ -60,7 +60,7 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, coupon)
+	c.JSON(http.StatusCreated, gin.H{"data": coupon})
 }
 
 type updateCouponRequest struct {

@@ -30,7 +30,7 @@ func (h *DunningHandler) GetOverview(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning overview")
 		return
 	}
-	c.JSON(http.StatusOK, overview)
+	c.JSON(http.StatusOK, gin.H{"data": overview})
 }
 
 func (h *DunningHandler) GetWeights(c *gin.Context) {
@@ -83,5 +83,5 @@ func (h *DunningHandler) GetRecovered(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch recovered revenue")
 		return
 	}
-	c.JSON(http.StatusOK, summary)
+	c.JSON(http.StatusOK, gin.H{"data": summary})
 }

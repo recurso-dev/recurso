@@ -60,7 +60,7 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, plan)
+	c.JSON(http.StatusCreated, gin.H{"data": plan})
 }
 
 func (h *CatalogHandler) GetPlan(c *gin.Context) {
@@ -136,7 +136,7 @@ func (h *CatalogHandler) UpdatePlan(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, plan)
+	c.JSON(http.StatusOK, gin.H{"data": plan})
 }
 
 func (h *CatalogHandler) ListPlans(c *gin.Context) {

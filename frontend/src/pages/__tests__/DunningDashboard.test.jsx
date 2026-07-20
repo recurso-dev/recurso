@@ -31,12 +31,12 @@ describe('DunningDashboard Component', () => {
         vi.clearAllMocks();
 
         endpoints.getDunningOverview.mockResolvedValue({
-            data: { total_retries: 10, total_successes: 4, success_rate: 0.4 }
+            data: { data: { total_retries: 10, total_successes: 4, success_rate: 0.4 } }
         });
         endpoints.getDunningWeights.mockResolvedValue({ data: { data: [] } });
         endpoints.getDunningHistory.mockResolvedValue({ data: { data: [] } });
         endpoints.getDunningRecovered.mockResolvedValue({
-            data: {
+            data: { data: {
                 recovered_amount_total: { INR: 236000 },
                 reporting_currency: 'INR',
                 reporting_total: 236000,
@@ -46,7 +46,7 @@ describe('DunningDashboard Component', () => {
                 monthly: [
                     { month: currentMonth(), currency: 'INR', amount: 236000, count: 2 },
                 ],
-            }
+            } }
         });
     });
 
@@ -76,13 +76,13 @@ describe('DunningDashboard Component', () => {
 
     it('shows an empty state when nothing has been recovered', async () => {
         endpoints.getDunningRecovered.mockResolvedValue({
-            data: {
+            data: { data: {
                 recovered_amount_total: {},
                 recovered_count: 0,
                 avg_attempts: 0,
                 avg_days_to_recover: 0,
                 monthly: [],
-            }
+            } }
         });
 
         render(<MemoryRouter><DunningDashboard /></MemoryRouter>);

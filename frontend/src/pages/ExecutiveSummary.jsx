@@ -43,12 +43,11 @@ export default function ExecutiveSummary() {
       endpoints.getRevenueRecognition(now.getMonth() + 1, now.getFullYear()),
     ]);
 
-    // getMRR returns the object directly; the rest wrap it in { data }.
-    const ok = (r) => (r.status === "fulfilled" ? r.value?.data : null);
+    // All five now wrap the payload in { data } (contract standardization).
     const inner = (r) => (r.status === "fulfilled" ? r.value?.data?.data : null);
 
     const next = {
-      mrr: ok(mrr),
+      mrr: inner(mrr),
       wf: inner(wf),
       ue: inner(ue),
       aging: inner(aging),

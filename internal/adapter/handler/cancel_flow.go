@@ -35,7 +35,7 @@ func (h *CancelFlowHandler) ListFlows(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, flows)
+	c.JSON(http.StatusOK, gin.H{"data": flows})
 }
 
 type createFlowRequest struct {
@@ -80,7 +80,7 @@ func (h *CancelFlowHandler) CreateFlow(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, flow)
+	c.JSON(http.StatusCreated, gin.H{"data": flow})
 }
 
 // GetFlow returns a cancel flow with its steps
@@ -107,7 +107,7 @@ func (h *CancelFlowHandler) GetFlow(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, flow)
+	c.JSON(http.StatusOK, gin.H{"data": flow})
 }
 
 type updateFlowRequest struct {
@@ -166,7 +166,7 @@ func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, flow)
+	c.JSON(http.StatusOK, gin.H{"data": flow})
 }
 
 type createStepRequest struct {
@@ -226,7 +226,7 @@ func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, step)
+	c.JSON(http.StatusCreated, gin.H{"data": step})
 }
 
 type updateStepRequest struct {
@@ -275,7 +275,7 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, step)
+	c.JSON(http.StatusOK, gin.H{"data": step})
 }
 
 // DeleteStep removes a step from a cancel flow
@@ -333,7 +333,7 @@ func (h *CancelFlowHandler) StartSession(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, result)
+	c.JSON(http.StatusCreated, gin.H{"data": result})
 }
 
 type submitStepRequest struct {
@@ -372,7 +372,7 @@ func (h *CancelFlowHandler) SubmitStep(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 // GetSession returns a cancel flow session
@@ -399,7 +399,7 @@ func (h *CancelFlowHandler) GetSession(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, session)
+	c.JSON(http.StatusOK, gin.H{"data": session})
 }
 
 // GetStats returns cancel flow analytics
@@ -428,5 +428,5 @@ func (h *CancelFlowHandler) GetStats(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, stats)
+	c.JSON(http.StatusOK, gin.H{"data": stats})
 }

@@ -64,10 +64,10 @@ const DunningDashboard = () => {
           endpoints.getDunningHistory({ limit: 50 }),
           endpoints.getDunningRecovered(),
         ]);
-        setOverview(overviewRes.data);
+        setOverview(overviewRes.data?.data);
         setWeights(weightsRes.data?.data || []);
         setHistory(historyRes.data?.data || []);
-        setRecovered(recoveredRes.data);
+        setRecovered(recoveredRes.data?.data);
       } catch (err) {
         console.error("Failed to fetch dunning data:", err);
         setLoadError(

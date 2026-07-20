@@ -45,7 +45,7 @@ func (h *DunningCampaignHandler) ListCampaigns(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, campaigns)
+	c.JSON(http.StatusOK, gin.H{"data": campaigns})
 }
 
 type createCampaignRequest struct {
@@ -83,7 +83,7 @@ func (h *DunningCampaignHandler) CreateCampaign(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, campaign)
+	c.JSON(http.StatusCreated, gin.H{"data": campaign})
 }
 
 // GetCampaign returns a dunning campaign with its steps
@@ -110,7 +110,7 @@ func (h *DunningCampaignHandler) GetCampaign(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, campaign)
+	c.JSON(http.StatusOK, gin.H{"data": campaign})
 }
 
 type updateCampaignRequest struct {
@@ -165,7 +165,7 @@ func (h *DunningCampaignHandler) UpdateCampaign(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, campaign)
+	c.JSON(http.StatusOK, gin.H{"data": campaign})
 }
 
 type createCampaignStepRequest struct {
@@ -215,7 +215,7 @@ func (h *DunningCampaignHandler) CreateStep(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, step)
+	c.JSON(http.StatusCreated, gin.H{"data": step})
 }
 
 type updateCampaignStepRequest struct {
@@ -269,7 +269,7 @@ func (h *DunningCampaignHandler) UpdateStep(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, step)
+	c.JSON(http.StatusOK, gin.H{"data": step})
 }
 
 // DeleteStep removes a step from a dunning campaign
@@ -313,5 +313,5 @@ func (h *DunningCampaignHandler) GetPaymentWallStatus(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"invoice_id": invoiceID, "payment_wall_active": active})
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invoiceID, "payment_wall_active": active}})
 }

@@ -69,7 +69,7 @@ func (h *AdvancedBillingHandler) AddUnbilledCharge(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, charge)
+	c.JSON(http.StatusCreated, gin.H{"data": charge})
 }
 
 func (h *AdvancedBillingHandler) ListUnbilledCharges(c *gin.Context) {
@@ -121,5 +121,5 @@ func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, inv)
+	c.JSON(http.StatusCreated, gin.H{"data": inv})
 }

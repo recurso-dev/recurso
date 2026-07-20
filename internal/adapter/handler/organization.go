@@ -61,7 +61,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, org)
+	c.JSON(http.StatusCreated, gin.H{"data": org})
 }
 
 func (h *OrganizationHandler) GetOrganization(c *gin.Context) {
@@ -118,7 +118,7 @@ func (h *OrganizationHandler) AddTenant(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "added"})
+	c.JSON(http.StatusCreated, gin.H{"status": "added"})
 }
 
 func (h *OrganizationHandler) ListTenants(c *gin.Context) {

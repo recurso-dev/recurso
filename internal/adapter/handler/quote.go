@@ -133,7 +133,7 @@ func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "quote deleted"})
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 // SendQuote handles POST /quotes/:id/send

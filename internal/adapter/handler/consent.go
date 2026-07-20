@@ -99,7 +99,7 @@ func (h *ConsentHandler) RecordConsent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusCreated, consent)
+	c.JSON(http.StatusCreated, gin.H{"data": consent})
 }
 
 // GetCustomerConsents handles GET /v1/customers/:id/consents
@@ -186,5 +186,5 @@ func (h *ConsentHandler) GetSubscriptionConsent(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, consent)
+	c.JSON(http.StatusOK, gin.H{"data": consent})
 }

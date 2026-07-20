@@ -157,7 +157,7 @@ func (h *WebhookManagementHandler) DeleteEndpoint(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "deleted"})
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 }
 
 // EventResponse is the API response for an event
