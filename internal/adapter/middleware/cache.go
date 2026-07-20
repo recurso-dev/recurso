@@ -28,11 +28,16 @@ func CacheMiddleware(rdb *redis.Client, ttl time.Duration) gin.HandlerFunc {
 			return
 		}
 
-		// Generate Cache Key (URL + Auth Context)
-		key := fmt.Sprintf("cache:%s:%s", c.Request.URL.String(), c.ClientIP())
-		if tenantID, exists := c.Get("tenant_id"); exists {
-			key = fmt.Sprintf("cache:%s:%v", c.Request.URL.String(), tenantID)
+		// Tenant-scoped key only. Without a resolved tenant there is no safe
+		// cache identity — the old ClientIP fallback could serve one user's
+		// payload to another behind a shared NAT/proxy if this middleware were
+		// ever mounted before auth. Skip caching instead.
+		tenantID, exists := c.Get("tenant_id")
+		if !exists {
+			c.Next()
+			return
 		}
+		key := fmt.Sprintf("cache:%s:%v", c.Request.URL.String(), tenantID)
 
 		// Check Cache
 		val, err := rdb.Get(c.Request.Context(), key).Result()
