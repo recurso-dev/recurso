@@ -21,11 +21,19 @@ const MODELS = [
   { value: "graduated", label: "Graduated (tiered)" },
   { value: "volume", label: "Volume (whole-qty tier)" },
   { value: "package", label: "Package (bundles)" },
+  { value: "percentage", label: "Percentage (of value)" },
+  { value: "graduated_percentage", label: "Graduated percentage" },
+  { value: "dynamic", label: "Dynamic (per-event price)" },
 ];
 
 const MODEL_LABEL = Object.fromEntries(MODELS.map((m) => [m.value, m.label]));
 
-const blankTier = () => ({ up_to: "", unit_amount: "", flat_amount: "" });
+// Tier shape covers both per-unit tiers (graduated/volume: unit_amount) and
+// percentage tiers (graduated_percentage: rate). Only the relevant field is
+// shown/sent per model.
+const blankTier = () => ({ up_to: "", unit_amount: "", rate: "", flat_amount: "" });
+
+const isTierModel = (m) => m === "graduated" || m === "volume" || m === "graduated_percentage";
 
 const newRow = (metricId = "") => ({
   metric_id: metricId,
@@ -34,6 +42,12 @@ const newRow = (metricId = "") => ({
   package_amount: "",
   package_size: "",
   tiers: [blankTier()],
+  // percentage fields (money fields entered in major units, stored ×100)
+  rate: "",
+  fixed_amount: "",
+  free_amount: "",
+  min_amount: "",
+  max_amount: "",
   hsn_code: "",
 });
 
@@ -51,10 +65,23 @@ const toEditorRows = (charges, currency) =>
     } else if (ch.charge_model === "package") {
       row.package_amount = a.package_amount != null ? String(a.package_amount / 100) : "";
       row.package_size = a.package_size != null ? String(a.package_size) : "";
+    } else if (ch.charge_model === "percentage") {
+      row.rate = a.rate || "";
+      row.fixed_amount = a.fixed_amount ? String(a.fixed_amount / 100) : "";
+      row.free_amount = a.free_units ? String(a.free_units / 100) : "";
+      row.min_amount = a.min_amount ? String(a.min_amount / 100) : "";
+      row.max_amount = a.max_amount ? String(a.max_amount / 100) : "";
+    } else if (ch.charge_model === "dynamic") {
+      // No pricing config: the price arrives per event.
     } else {
+      // graduated / volume (unit_amount) or graduated_percentage (rate).
+      // graduated_percentage bands the monetary base, so its up_to is money
+      // (stored minor units); per-unit tiers band unit counts.
+      const isPct = ch.charge_model === "graduated_percentage";
       row.tiers = (a.tiers && a.tiers.length ? a.tiers : [blankTier()]).map((t) => ({
-        up_to: t.up_to != null ? String(t.up_to) : "",
+        up_to: t.up_to != null ? String(isPct ? t.up_to / 100 : t.up_to) : "",
         unit_amount: t.unit_amount || "",
+        rate: t.rate || "",
         flat_amount: t.flat_amount ? String(t.flat_amount / 100) : "",
       }));
     }
@@ -83,8 +110,24 @@ const validateRows = (rows) => {
       if (!isNonNegMoney(r.package_amount)) return `Charge ${n}: enter a valid package price.`;
       if (!(Number(r.package_size) >= 1 && Number.isInteger(Number(r.package_size))))
         return `Charge ${n}: package size must be a whole number ≥ 1.`;
+    } else if (r.charge_model === "percentage") {
+      if (!isDecimal(r.rate)) return `Charge ${n}: enter a valid percentage rate.`;
+      for (const [field, label] of [
+        ["fixed_amount", "fixed fee"],
+        ["free_amount", "free amount"],
+        ["min_amount", "minimum"],
+        ["max_amount", "maximum"],
+      ]) {
+        if (r[field] !== "" && !isNonNegMoney(r[field]))
+          return `Charge ${n}: ${label} must be ≥ 0.`;
+      }
+      if (r.min_amount !== "" && r.max_amount !== "" && Number(r.max_amount) < Number(r.min_amount))
+        return `Charge ${n}: maximum must be ≥ minimum.`;
+    } else if (r.charge_model === "dynamic") {
+      // No pricing config to validate — the price is supplied per event.
     } else {
-      // graduated / volume tiers
+      // graduated / volume (unit_amount) or graduated_percentage (rate).
+      const isPct = r.charge_model === "graduated_percentage";
       const tiers = r.tiers;
       if (!tiers.length) return `Charge ${n}: add at least one tier.`;
       let prev = 0;
@@ -94,14 +137,16 @@ const validateRows = (rows) => {
         if (isLast) {
           if (tier.up_to !== "") return `Charge ${n}: the last tier must be unbounded (leave "up to" empty).`;
         } else {
-          if (tier.up_to === "" || !Number.isInteger(Number(tier.up_to)))
-            return `Charge ${n}, tier ${t + 1}: "up to" must be a whole number.`;
+          // per-unit tiers band whole unit counts; percentage tiers band a
+          // money value (major units, decimal ok).
+          const bad = isPct ? !isNonNegMoney(tier.up_to) : !Number.isInteger(Number(tier.up_to)) || tier.up_to === "";
+          if (bad) return `Charge ${n}, tier ${t + 1}: "up to" must be a ${isPct ? "valid amount" : "whole number"}.`;
           if (Number(tier.up_to) <= prev)
             return `Charge ${n}, tier ${t + 1}: "up to" must increase down the tiers.`;
           prev = Number(tier.up_to);
         }
-        if (!isDecimal(tier.unit_amount))
-          return `Charge ${n}, tier ${t + 1}: enter a valid rate.`;
+        if (!isDecimal(isPct ? tier.rate : tier.unit_amount))
+          return `Charge ${n}, tier ${t + 1}: enter a valid ${isPct ? "percentage" : "rate"}.`;
         if (tier.flat_amount !== "" && !isNonNegMoney(tier.flat_amount))
           return `Charge ${n}, tier ${t + 1}: flat fee must be ≥ 0.`;
       }
@@ -114,21 +159,41 @@ const validateRows = (rows) => {
 // map keyed by the plan currency.
 const rowsToPayload = (rows, currency) =>
   rows.map((r) => {
+    const money = (s) => (s === "" ? 0 : Math.round(Number(s) * 100));
     let amounts;
     if (r.charge_model === "per_unit") {
       amounts = { unit_amount: String(r.unit_amount).trim() };
     } else if (r.charge_model === "package") {
       amounts = {
-        package_amount: Math.round(Number(r.package_amount) * 100),
+        package_amount: money(r.package_amount),
         package_size: Number(r.package_size),
       };
-    } else {
+    } else if (r.charge_model === "percentage") {
       amounts = {
-        tiers: r.tiers.map((t, idx) => ({
-          up_to: idx === r.tiers.length - 1 || t.up_to === "" ? null : Number(t.up_to),
-          unit_amount: String(t.unit_amount).trim(),
-          flat_amount: t.flat_amount === "" ? 0 : Math.round(Number(t.flat_amount) * 100),
-        })),
+        rate: String(r.rate).trim(),
+        fixed_amount: money(r.fixed_amount),
+        free_units: money(r.free_amount),
+        min_amount: money(r.min_amount),
+        max_amount: money(r.max_amount),
+      };
+    } else if (r.charge_model === "dynamic") {
+      // The price is supplied per event; the charge carries no pricing config.
+      // Still keyed by currency so the plan's currency selects this entry.
+      amounts = {};
+    } else {
+      const isPct = r.charge_model === "graduated_percentage";
+      amounts = {
+        tiers: r.tiers.map((t, idx) => {
+          const last = idx === r.tiers.length - 1 || t.up_to === "";
+          const tier = {
+            // per-unit tiers band unit counts; percentage tiers band money (×100).
+            up_to: last ? null : isPct ? money(t.up_to) : Number(t.up_to),
+            flat_amount: money(t.flat_amount),
+          };
+          if (isPct) tier.rate = String(t.rate).trim();
+          else tier.unit_amount = String(t.unit_amount).trim();
+          return tier;
+        }),
       };
     }
     return {
@@ -147,6 +212,13 @@ function chargeSummary(ch, currency) {
   }
   if (ch.charge_model === "package") {
     return `${formatCurrency(a.package_amount, currency)} per ${a.package_size} units`;
+  }
+  if (ch.charge_model === "percentage") {
+    const fee = a.fixed_amount ? ` + ${formatCurrency(a.fixed_amount, currency)} fee` : "";
+    return `${a.rate ?? "—"}% of value${fee}`;
+  }
+  if (ch.charge_model === "dynamic") {
+    return "priced per event";
   }
   const count = (a.tiers || []).length;
   return `${count} tier${count === 1 ? "" : "s"}`;
@@ -361,11 +433,13 @@ export default function PlanCharges({ planId, currency }) {
                 </div>
               )}
 
-              {(row.charge_model === "graduated" || row.charge_model === "volume") && (
+              {isTierModel(row.charge_model) && (() => {
+                const isPct = row.charge_model === "graduated_percentage";
+                return (
                 <div className="flex flex-col gap-2">
                   <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                    <span>Up to (units)</span>
-                    <span>Rate/unit ({currency})</span>
+                    <span>{isPct ? `Up to (${currency})` : "Up to (units)"}</span>
+                    <span>{isPct ? "Rate (%)" : `Rate/unit (${currency})`}</span>
                     <span>Flat fee ({currency})</span>
                     <span className="sr-only">Remove</span>
                   </div>
@@ -379,16 +453,16 @@ export default function PlanCharges({ planId, currency }) {
                         <Input
                           value={isLast ? "" : tier.up_to}
                           onChange={(e) => updateTier(i, ti, { up_to: e.target.value })}
-                          placeholder={isLast ? "∞" : "100"}
+                          placeholder={isLast ? "∞" : isPct ? "10000" : "100"}
                           disabled={isLast}
-                          inputMode="numeric"
+                          inputMode={isPct ? "decimal" : "numeric"}
                           aria-label={`Charge ${i + 1} tier ${ti + 1} up to`}
                           className="h-8 font-mono"
                         />
                         <Input
-                          value={tier.unit_amount}
-                          onChange={(e) => updateTier(i, ti, { unit_amount: e.target.value })}
-                          placeholder="1.00"
+                          value={isPct ? tier.rate : tier.unit_amount}
+                          onChange={(e) => updateTier(i, ti, isPct ? { rate: e.target.value } : { unit_amount: e.target.value })}
+                          placeholder={isPct ? "2.5" : "1.00"}
                           inputMode="decimal"
                           aria-label={`Charge ${i + 1} tier ${ti + 1} rate`}
                           className="h-8 font-mono"
@@ -423,6 +497,57 @@ export default function PlanCharges({ planId, currency }) {
                     Add tier
                   </Button>
                 </div>
+                );
+              })()}
+
+              {row.charge_model === "percentage" && (
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <label htmlFor={`pct-rate-${i}`}>Rate</label>
+                    <Input
+                      id={`pct-rate-${i}`}
+                      value={row.rate}
+                      onChange={(e) => updateRow(i, { rate: e.target.value })}
+                      placeholder="2.5"
+                      inputMode="decimal"
+                      aria-label={`Percentage rate ${i + 1}`}
+                      className="h-8 w-20 font-mono"
+                    />
+                    <span>% of the metered value, in {currency}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {[
+                      ["fixed_amount", "Fixed fee", "0.30"],
+                      ["free_amount", "Free amount", "0.00"],
+                      ["min_amount", "Minimum", "0.00"],
+                      ["max_amount", "Maximum", "0.00"],
+                    ].map(([field, label, ph]) => (
+                      <label key={field} className="flex flex-col gap-1 text-xs text-muted-foreground">
+                        {label} ({currency})
+                        <Input
+                          value={row[field]}
+                          onChange={(e) => updateRow(i, { [field]: e.target.value })}
+                          placeholder={ph}
+                          inputMode="decimal"
+                          aria-label={`Charge ${i + 1} ${label}`}
+                          className="h-8 font-mono"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Free amount is deducted before the rate; the line is clamped to
+                    min/max (0 = none).
+                  </p>
+                </div>
+              )}
+
+              {row.charge_model === "dynamic" && (
+                <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  No pricing to configure — send the exact price on each usage event
+                  as <code className="font-mono">dynamic_amount</code> (minor units).
+                  The charge bills the sum for the period.
+                </p>
               )}
 
               <div className="flex items-center gap-2">
