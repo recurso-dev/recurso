@@ -1,7 +1,7 @@
 # Spec: Bring-Your-Own Gateway & Integration Credentials
 
-> **Status: IN PROGRESS — Increment 1 (credential vault) shipped; increments
-> 2–5 pending founder decisions D1–D5 below.**
+> **Status: IN PROGRESS — Increments 1 (vault) + 2 (resolver/charge-path)
+> shipped under the D1–D5 defaults; increment 2b + 3–5 pending.**
 >
 > Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
 > Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
@@ -46,15 +46,42 @@ existing deployments keep working unchanged.
   active, validation, disconnect, vault-absent). **Nothing wired to charge
   flows yet — zero money-path risk.**
 
-### Increment 2 — Resolver + charge-path rewire (pending)
+### Increment 2 — Resolver + charge-path rewire ✅
 
-`GatewayResolver.For(ctx, tenantID) port.PaymentGateway`: builds a per-tenant
-`SmartRouter` from the tenant's decrypted connections, **falling back to the env
-router** when a tenant has no active connection. Services that hold a singleton
-`paymentGateway` take the resolver instead and resolve at charge time
-(CreateOrder, RetryPayment, Refund, mandate debit, checkout, portal). A small
-per-tenant cache keyed by (tenant, provider, updated_at) avoids re-decrypting on
-every charge.
+`gateway.GatewayResolver.For(ctx, tenantID) *SmartRouter` builds a per-tenant
+`SmartRouter` from the tenant's decrypted connections, reusing the env gateway
+for any un-connected provider slot; a per-tenant cache keyed by an
+id+updated_at signature avoids re-decrypting on every charge. `gateway.
+TenantGateway` wraps it as a drop-in `port.PaymentGateway`: it reads the tenant
+from `ctx` (`domain.TenantIDKey`) and **falls back to the env gateway** when
+there's no tenant / no connection / no vault (D1). Wiring in `main.go` swaps the
+injected `paymentGateway` for this wrapper across all 8 consumers, so **no
+service/handler call site changed** and with no vault the behavior is
+byte-for-byte the env gateway (zero regression). Public charge-origination sites
+(checkout `InitiatePayment`, `payment.CreateOrder`) inject the invoice's tenant
+into `ctx` before charging. Unit-tested: routes to tenant gateway when
+connected, env fallback for un-connected slot / no connection / no tenant / nil
+resolver, and cache reuse + invalidation on re-key.
+
+### Increment 2b — Concrete Stripe-SDK sub-flows (pending, required before BYO checkout is end-to-end)
+
+Increment 2 routes everything expressed through the `port.PaymentGateway`
+interface. Four charge-adjacent flows bypass that interface via concrete type
+assertions on the **env** Stripe/Razorpay gateways and so still use platform
+credentials:
+
+- checkout **Stripe status inspector** (`h.inspector.GetPaymentStatus`) — verify
+  path; a BYO order created on the tenant's Stripe would be verified against the
+  env account and fail.
+- checkout **Razorpay verifier** (`h.razorpay.VerifyPayment`).
+- retry **saved-card off-session charger** (`retryStripeCharger`) + customer
+  lookup — saved PMs live on the env Stripe customer.
+- portal **SetupIntent** (`portalStripeSetup`) — saving a card must happen on the
+  tenant's Stripe account.
+
+These need per-tenant resolution too before BYO checkout works end-to-end. Not
+reachable today: no dashboard exists to create a connection until increment 4,
+so every tenant still falls through to env. Tracked, not shipped in increment 2.
 
 ### Increment 3 — Per-connection webhooks (pending — the hard part)
 

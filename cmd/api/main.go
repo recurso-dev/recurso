@@ -33,6 +33,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/adapter/notification"
 	redisAdapter "github.com/recurso-dev/recurso/internal/adapter/redis"
+	"github.com/recurso-dev/recurso/internal/adapter/secretbox"
 	"github.com/recurso-dev/recurso/internal/adapter/sms"
 	"github.com/recurso-dev/recurso/internal/adapter/taxprovider"
 	"github.com/recurso-dev/recurso/internal/adapter/telemetry"
@@ -245,6 +246,29 @@ func main() {
 		log.Fatalf("Invalid GATEWAY_CURRENCY_OVERRIDES: %v", err)
 	}
 
+	// BYO gateway (docs/spec_byo_gateway.md): per-tenant credentials sealed in
+	// the vault resolve to the tenant's own gateway at charge time; tenants with
+	// no connection fall back to the env router above (D1). Without
+	// GATEWAY_ENCRYPTION_KEY the vault is unavailable and only env gateways are
+	// used — behavior is identical to before this feature.
+	gatewayVault, vaultErr := secretbox.NewFromEnvValue(os.Getenv("GATEWAY_ENCRYPTION_KEY"))
+	if vaultErr != nil {
+		if !errors.Is(vaultErr, secretbox.ErrNoKey) {
+			log.Fatalf("Invalid GATEWAY_ENCRYPTION_KEY: %v", vaultErr)
+		}
+		log.Println("GATEWAY_ENCRYPTION_KEY not set — BYO gateway disabled, using env gateways only")
+	} else {
+		log.Println("BYO gateway vault enabled")
+	}
+	gatewayConnService := service.NewGatewayConnectionService(db.NewGatewayConnectionRepository(database), gatewayVault)
+	gatewayResolver := gateway.NewGatewayResolver(gatewayConnService, paymentGateway)
+	// tenantGateway is a drop-in port.PaymentGateway: every consumer below that
+	// took paymentGateway now takes this wrapper, which routes per-tenant with
+	// env fallback. The concrete paymentGateway is kept only for the env-level
+	// RegisterGateway/SetCurrencyOverrides calls above.
+	tenantGateway := gateway.NewTenantGateway(gatewayResolver, paymentGateway)
+	_ = gatewayConnService // handlers wired in increment 4
+
 	// Card Vault — uses Stripe if key exists, else Mock for dev
 	var cardVault port.CardVault
 	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
@@ -381,7 +405,7 @@ func main() {
 	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)
 	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, dashboardURL)
 	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
-	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, paymentGateway) // P23 + refunds
+	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
 	txManager := db.NewTxManager(database)
 
@@ -399,7 +423,7 @@ func main() {
 		couponRepo,
 		notifier,
 		ledgerService,
-		paymentGateway,
+		tenantGateway,
 		gspAdapter,
 		txManager,
 		revrecService,
@@ -568,7 +592,7 @@ func main() {
 	accountingService.SetOAuthConfigs(oauthConfigs)
 
 	// Phase 2: Mandate Service
-	mandateService := service.NewMandateService(mandateRepo, paymentGateway, customerRepo, invoiceRepo)
+	mandateService := service.NewMandateService(mandateRepo, tenantGateway, customerRepo, invoiceRepo)
 	// Apply account credit against off-session mandate debits (ENG-153) and book
 	// the settlement in the ledger (ENG-154) via creditNoteService.
 	mandateService.SetCreditApplier(creditNoteService)
@@ -581,7 +605,7 @@ func main() {
 	mandateService.SetInvoiceService(invoiceService)
 
 	// Phase 2: Offline Payment Service
-	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, paymentGateway, invoiceRepo, subscriptionService)
+	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, tenantGateway, invoiceRepo, subscriptionService)
 
 	// Phase 2: Organization Service
 	orgService := service.NewOrganizationService(orgRepo, subscriptionRepo, planRepo)
@@ -598,7 +622,7 @@ func main() {
 	giftHandler := handler.NewGiftHandler(giftService)
 
 	// 6. Initialize Workers
-	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, paymentGateway, notifier)
+	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, tenantGateway, notifier)
 	// ENG-5 Phase 2: charge the customer's saved card off-session on retries.
 	// The mock gateway doesn't implement it, so this stays disabled (interactive
 	// fallback) until real Stripe keys are set.
@@ -932,7 +956,7 @@ func main() {
 	checkoutInspector, _ := stripeGateway.(interface {
 		GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error)
 	})
-	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, paymentGateway, checkoutInspector, subscriptionService, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, tenantGateway, checkoutInspector, subscriptionService, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
 	// INR/Razorpay checkout verification (ENG-4 parity). The mock gateway lacks
 	// GetOrderInvoiceID, so this stays disabled until real Razorpay keys are set.
 	razorpayVerifier, _ := razorpayGateway.(interface {
@@ -1104,8 +1128,8 @@ func main() {
 	churnHandler := handler.NewChurnHandler(churnService, database)
 
 	// Payment Handlers
-	paymentHandler := handler.NewPaymentHandler(paymentGateway, invoiceRepo)
-	webhookHandler := handler.NewWebhookHandler(subscriptionService, paymentGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	paymentHandler := handler.NewPaymentHandler(tenantGateway, invoiceRepo)
+	webhookHandler := handler.NewWebhookHandler(subscriptionService, tenantGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
 	webhookHandler.SetMandateService(mandateService)
 	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
 	webhookHandler.SetDunningCampaignService(dunningCampaignService)

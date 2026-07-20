@@ -148,8 +148,11 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
+	// Public endpoint: carry the invoice's tenant so BYO routing picks the
+	// seller's own gateway (falls back to the env gateway when unset).
+	payCtx := context.WithValue(c.Request.Context(), domain.TenantIDKey, invoice.TenantID)
 	order, err := h.paymentGateway.CreateOrder(
-		c.Request.Context(),
+		payCtx,
 		invoice.Total,
 		invoice.Currency,
 		invoice.InvoiceNumber,
