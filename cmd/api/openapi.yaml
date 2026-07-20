@@ -5877,7 +5877,9 @@ paths:
         A metric is a tenant-defined meter over usage events; its `code`
         doubles as the event `dimension` it aggregates. Aggregations:
         `count`, `sum`, `max`, `unique` (distinct values of the event
-        property named by `field_name`).
+        property named by `field_name`), `latest` (most recent event's
+        quantity), and `percentile` (the p-th percentile of quantities, with
+        `field_name` carrying the percentile 1-99, e.g. "95").
       operationId: createBillableMetric
       requestBody:
         required: true
@@ -7347,7 +7349,7 @@ components:
         tenant_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        aggregation_type: { type: string, enum: [count, sum, max, unique] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile] }
         field_name:
           type: string
           description: Event property counted by the `unique` aggregation.
@@ -7362,7 +7364,7 @@ components:
           type: string
           maxLength: 50
           description: Doubles as the usage event dimension; immutable after create.
-        aggregation_type: { type: string, enum: [count, sum, max, unique] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile] }
         field_name:
           type: string
           description: Required for `unique`, forbidden otherwise.

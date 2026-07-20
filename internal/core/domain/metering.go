@@ -27,12 +27,20 @@ const (
 	AggregationMax AggregationType = "max"
 	// AggregationUnique counts distinct values of properties[FieldName].
 	AggregationUnique AggregationType = "unique"
+	// AggregationLatest takes the most recent event's quantity in the period
+	// (last by timestamp). Uses Quantity; FieldName is not used.
+	AggregationLatest AggregationType = "latest"
+	// AggregationPercentile takes the p-th percentile of event quantities in
+	// the period (e.g. p95/p99 latency SLO billing). FieldName carries the
+	// percentile as an integer 1-99 (e.g. "95").
+	AggregationPercentile AggregationType = "percentile"
 )
 
 // ValidAggregationType reports whether t is a supported aggregation.
 func ValidAggregationType(t AggregationType) bool {
 	switch t {
-	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique:
+	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique,
+		AggregationLatest, AggregationPercentile:
 		return true
 	}
 	return false
