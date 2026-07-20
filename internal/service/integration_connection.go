@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net"
+	"net/url"
 	"strings"
 	"time"
 
@@ -48,10 +50,59 @@ type IntegrationConnectionService struct {
 	repo  port.IntegrationConnectionRepository
 	vault *secretbox.Box
 	now   func() time.Time
+	// allowPrivateEgress permits tenant-supplied endpoints that resolve to
+	// private/reserved IPs. False (the default) on multi-tenant deployments so a
+	// tenant can't SSRF the host into internal services / cloud metadata; set
+	// true on single-tenant self-hosted where a private MinIO endpoint is legit.
+	allowPrivateEgress bool
 }
 
 func NewIntegrationConnectionService(repo port.IntegrationConnectionRepository, vault *secretbox.Box) *IntegrationConnectionService {
 	return &IntegrationConnectionService{repo: repo, vault: vault, now: time.Now}
+}
+
+// SetAllowPrivateEgress permits private/reserved endpoint hosts (self-hosted).
+func (s *IntegrationConnectionService) SetAllowPrivateEgress(v bool) { s.allowPrivateEgress = v }
+
+// urlConfigFields are tenant-supplied config values the server later fetches —
+// the SSRF surface. Validated at connect time.
+var urlConfigFields = map[string]bool{"endpoint": true, "api_url": true, "base_url": true}
+
+// validateEndpointURL rejects a tenant-supplied URL that would let the server
+// reach an internal/reserved address (SSRF). Requires http(s); on multi-tenant
+// deployments every resolved IP must be a global unicast address, blocking
+// loopback, link-local (169.254.169.254 cloud metadata), private, and
+// unique-local ranges. NOTE: this is a connect-time check; a short-TTL DNS
+// record could still rebind at fetch time (TOCTOU) — acceptable as a first
+// mitigation for an authenticated owner/admin actor.
+func (s *IntegrationConnectionService) validateEndpointURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return IntegrationConnectionValidationError("endpoint must be an http(s) URL")
+	}
+	if s.allowPrivateEgress {
+		return nil
+	}
+	if u.Scheme != "https" {
+		return IntegrationConnectionValidationError("endpoint must use https")
+	}
+	host := u.Hostname()
+	var ips []net.IP
+	if ip := net.ParseIP(host); ip != nil {
+		ips = []net.IP{ip}
+	} else {
+		resolved, err := net.LookupIP(host)
+		if err != nil || len(resolved) == 0 {
+			return IntegrationConnectionValidationError("endpoint host could not be resolved")
+		}
+		ips = resolved
+	}
+	for _, ip := range ips {
+		if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {
+			return IntegrationConnectionValidationError("endpoint resolves to a private or reserved address")
+		}
+	}
+	return nil
 }
 
 func (s *IntegrationConnectionService) VaultReady() bool { return s.vault != nil }
@@ -75,6 +126,15 @@ func (s *IntegrationConnectionService) Connect(ctx context.Context, tenantID uui
 	for _, f := range integrationRequiredFields[prov] {
 		if clean[f] == "" {
 			return nil, IntegrationConnectionValidationError(prov + ": " + f + " is required")
+		}
+	}
+	// SSRF guard: any tenant-supplied URL the server will later fetch must not
+	// point at an internal/reserved address.
+	for field, val := range clean {
+		if urlConfigFields[field] && val != "" {
+			if err := s.validateEndpointURL(val); err != nil {
+				return nil, err
+			}
 		}
 	}
 
