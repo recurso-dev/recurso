@@ -1415,6 +1415,46 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /v1/usage/events:
+    get:
+      operationId: listUsageEvents
+      tags: [Usage]
+      summary: List recent raw usage events
+      description: >
+        Newest-first raw ingestion stream for debugging metering — "did my
+        events actually land?". Optional customer_id and dimension filters;
+        limit (max 200, default 50) and offset paging.
+      parameters:
+        - name: customer_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: dimension
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Raw usage events, newest first.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
     post:
       operationId: recordUsageEvent
       tags: [Usage]

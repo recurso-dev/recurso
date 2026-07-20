@@ -173,6 +173,56 @@ func (r *UsageRepository) QueryUsage(ctx context.Context, tenantID uuid.UUID, fi
 	return buckets, rows.Err()
 }
 
+// ListRecentEvents returns the tenant's newest raw usage events for stream
+// debugging (the Usage page's event inspector). Tenant-scoped via the
+// subscriptions join (usage_events has no tenant_id). Optional filters by
+// customer and dimension; newest first.
+func (r *UsageRepository) ListRecentEvents(ctx context.Context, tenantID uuid.UUID, customerID *uuid.UUID, dimension string, limit, offset int) ([]domain.UsageEvent, error) {
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	query := `
+		SELECT ue.id, ue.subscription_id, ue.customer_id, ue.dimension, ue.quantity, ue.timestamp,
+		       COALESCE(ue.properties, '{}'::jsonb), COALESCE(ue.transaction_id, '')
+		FROM usage_events ue
+		JOIN subscriptions s ON s.id = ue.subscription_id
+		WHERE s.tenant_id = $1
+	`
+	args := []interface{}{tenantID}
+	if customerID != nil {
+		args = append(args, *customerID)
+		query += fmt.Sprintf(" AND ue.customer_id = $%d", len(args))
+	}
+	if dimension != "" {
+		args = append(args, dimension)
+		query += fmt.Sprintf(" AND ue.dimension = $%d", len(args))
+	}
+	args = append(args, limit)
+	query += fmt.Sprintf(" ORDER BY ue.timestamp DESC LIMIT $%d", len(args))
+	args = append(args, offset)
+	query += fmt.Sprintf(" OFFSET $%d", len(args))
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list usage events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	events := []domain.UsageEvent{}
+	for rows.Next() {
+		var e domain.UsageEvent
+		var props []byte
+		if err := rows.Scan(&e.ID, &e.SubscriptionID, &e.CustomerID, &e.Dimension, &e.Quantity, &e.Timestamp, &props, &e.TransactionID); err != nil {
+			return nil, err
+		}
+		if len(props) > 0 {
+			_ = json.Unmarshal(props, &e.Properties)
+		}
+		events = append(events, e)
+	}
+	return events, rows.Err()
+}
+
 // GetSubscriptionUsageByDimension returns, per dimension, the quantity
 // inside [periodStart, periodEnd) plus the lifetime total, in one
 // set-based pass (FILTER clause). Tenant-scoped via the subscriptions join
