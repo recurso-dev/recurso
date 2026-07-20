@@ -61,7 +61,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.CreateSubscription(ctx, input)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -104,7 +104,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 
 	subs, err := h.service.ListSubscriptions(ctx, tenantID, filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if subs == nil {
@@ -123,7 +123,7 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	invs, err := h.service.ListInvoices(ctx, tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if invs == nil {
@@ -160,7 +160,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.UpdateSubscription(ctx, tenantID, subscriptionID, newPlanID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -201,7 +201,7 @@ func (h *SubscriptionHandler) PreviewPlanChange(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -310,7 +310,7 @@ func (h *SubscriptionHandler) respondAddonError(c *gin.Context, err error) {
 		errors.Is(err, service.ErrInvalidQuantity):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 

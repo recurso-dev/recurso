@@ -47,7 +47,7 @@ func respondWalletError(c *gin.Context, err error) {
 	case errors.As(err, &valErr):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, valErr.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 
@@ -75,6 +75,7 @@ func (h *WalletHandler) List(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
+	limit, _ = clampLimitOffset(limit, 0, 200, 500)
 	wallets, err := h.svc.ListWallets(ctx, tenantID, limit)
 	if err != nil {
 		respondWalletError(c, err)
@@ -153,6 +154,7 @@ func (h *WalletHandler) ListTransactions(c *gin.Context) {
 		return
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
+	limit, _ = clampLimitOffset(limit, 0, 100, 500)
 	txs, err := h.svc.ListTransactions(ctx, tenantID, id, limit)
 	if err != nil {
 		respondWalletError(c, err)

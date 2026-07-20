@@ -103,7 +103,7 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "If this email exists, a login link has been sent"})
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *PortalAPIHandler) GetInvoices(c *gin.Context) {
 
 	invoices, err := h.portalService.GetCustomerInvoices(c.Request.Context(), customerID.(uuid.UUID))
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -172,7 +172,7 @@ func (h *PortalAPIHandler) GetProfile(c *gin.Context) {
 
 	customer, err := h.portalService.GetCustomer(c.Request.Context(), customerID.(uuid.UUID))
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -208,7 +208,7 @@ func (h *PortalAPIHandler) UpdatePaymentMethod(c *gin.Context) {
 		c.Request.Context(), customerID.(uuid.UUID),
 		req.CardBrand, req.CardLast4, req.ExpMonth, req.ExpYear,
 	); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -443,7 +443,7 @@ func (h *PortalAPIHandler) RaiseDispute(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -460,7 +460,7 @@ func (h *PortalAPIHandler) GetDisputes(c *gin.Context) {
 
 	disputes, err := h.portalService.GetCustomerDisputes(c.Request.Context(), customerID.(uuid.UUID))
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

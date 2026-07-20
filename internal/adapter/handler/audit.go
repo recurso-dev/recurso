@@ -55,6 +55,7 @@ func (h *AuditHandler) List(c *gin.Context) {
 	}
 	filter.Limit, _ = strconv.Atoi(c.DefaultQuery("limit", "100"))
 	filter.Offset, _ = strconv.Atoi(c.DefaultQuery("offset", "0"))
+	filter.Limit, filter.Offset = clampLimitOffset(filter.Limit, filter.Offset, 100, 250)
 
 	logs, err := h.repo.List(ctx, tenantID, filter)
 	if err != nil {

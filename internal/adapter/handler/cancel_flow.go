@@ -31,7 +31,7 @@ func (h *CancelFlowHandler) ListFlows(c *gin.Context) {
 
 	flows, err := h.service.ListFlows(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -76,7 +76,7 @@ func (h *CancelFlowHandler) CreateFlow(c *gin.Context) {
 	}
 
 	if err := h.service.CreateFlow(c.Request.Context(), flow); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -99,7 +99,7 @@ func (h *CancelFlowHandler) GetFlow(c *gin.Context) {
 
 	flow, err := h.service.GetFlowByID(c.Request.Context(), id)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if flow == nil || flow.TenantID != tenantID {
@@ -139,7 +139,7 @@ func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 
 	flow, err := h.service.GetFlowByID(c.Request.Context(), id)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if flow == nil || flow.TenantID != tenantID {
@@ -162,7 +162,7 @@ func (h *CancelFlowHandler) UpdateFlow(c *gin.Context) {
 	flow.UpdatedAt = time.Now().UTC()
 
 	if err := h.service.UpdateFlow(c.Request.Context(), flow); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -193,7 +193,7 @@ func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 	// (ENG-160): without this any tenant could add steps to another's flow.
 	flow, err := h.service.GetFlowByID(c.Request.Context(), flowID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if flow == nil || flow.TenantID != tenantID {
@@ -222,7 +222,7 @@ func (h *CancelFlowHandler) CreateStep(c *gin.Context) {
 	}
 
 	if err := h.service.CreateStep(c.Request.Context(), step); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -271,7 +271,7 @@ func (h *CancelFlowHandler) UpdateStep(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "step not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -297,7 +297,7 @@ func (h *CancelFlowHandler) DeleteStep(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "step not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -391,7 +391,7 @@ func (h *CancelFlowHandler) GetSession(c *gin.Context) {
 
 	session, err := h.service.GetSession(c.Request.Context(), id)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	if session == nil || session.TenantID != tenantID {
@@ -424,7 +424,7 @@ func (h *CancelFlowHandler) GetStats(c *gin.Context) {
 
 	stats, err := h.service.GetFlowStats(c.Request.Context(), tenantID, flowID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

@@ -295,7 +295,7 @@ func (h *WebhookHandler) handleRazorpayPaymentCaptured(c *gin.Context, event Raz
 	transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
 	if err != nil {
 		h.logger.Error("failed to mark invoice paid", "invoice_id", invoiceID, "error", err)
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -376,7 +376,7 @@ func (h *WebhookHandler) handleRazorpayRefundEvent(c *gin.Context, body []byte, 
 			return
 		}
 		h.logger.Error("failed to process razorpay refund event", "refund_id", refundID, "error", err)
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -447,7 +447,7 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	}
 
 	if handlerErr != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, handlerErr.Error())
+		respondInternalError(c, handlerErr)
 		return
 	}
 
@@ -876,7 +876,7 @@ func (h *WebhookHandler) handleTokenConfirmed(c *gin.Context, body []byte) {
 	customerID := payload.Payload.Token.Entity.CustomerID
 	if err := h.mandateService.HandleAuthorization(c.Request.Context(), tokenID, customerID); err != nil {
 		h.logger.Error("failed to handle mandate authorization", "token_id", tokenID, "error", err)
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -925,7 +925,7 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 
 	if err := h.offlinePaymentSvc.ReconcileVirtualAccount(c.Request.Context(), vaID, amount, paymentID); err != nil {
 		h.logger.Error("failed to reconcile virtual account", "va_id", vaID, "error", err)
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

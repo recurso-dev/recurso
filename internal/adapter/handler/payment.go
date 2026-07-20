@@ -64,7 +64,7 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		invoice.ID.String(),
 	)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, "Gateway error: "+err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

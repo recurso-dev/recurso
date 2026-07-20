@@ -1,6 +1,9 @@
 package handler
 
 import (
+	"log/slog"
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 )
@@ -37,4 +40,14 @@ func respondError(c *gin.Context, status int, code, message string) {
 // code from the (runtime-computed) HTTP status.
 func respondErrorStatus(c *gin.Context, status int, message string) {
 	httperr.Respond(c, status, httperr.CodeForStatus(status), message)
+}
+
+// respondInternalError is the ONLY correct way to answer a 500: the real
+// error goes to the log (with method+path for correlation), the client gets
+// a fixed message. Echoing err.Error() to clients leaked SQL/driver detail
+// from 116 call sites before this existed — never reintroduce that.
+func respondInternalError(c *gin.Context, err error) {
+	slog.Error("internal error",
+		"method", c.Request.Method, "path", c.FullPath(), "error", err)
+	httperr.Respond(c, http.StatusInternalServerError, httperr.CodeInternalError, "internal error")
 }

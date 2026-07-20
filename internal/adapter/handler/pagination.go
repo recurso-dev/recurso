@@ -59,3 +59,17 @@ func ParsePagination(c *gin.Context) PaginationParams {
 		Offset:  offset,
 	}
 }
+
+// clampLimitOffset bounds ad-hoc limit/offset query params that predate
+// ParsePagination: limit falls back to def when non-positive and is capped
+// at max; offset is floored at 0. Negative values otherwise reach Postgres
+// as invalid LIMIT/OFFSET (or force unbounded scans).
+func clampLimitOffset(limit, offset, def, max int) (int, int) {
+	if limit <= 0 || limit > max {
+		limit = def
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return limit, offset
+}

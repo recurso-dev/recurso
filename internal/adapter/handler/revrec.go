@@ -28,7 +28,7 @@ func (h *RevRecHandler) GetWaterfall(c *gin.Context) {
 
 	waterfall, err := h.revrecService.GetWaterfall(c.Request.Context(), tid)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *RevRecHandler) GetReport(c *gin.Context) {
 
 	report, err := h.revrecService.GetReport(c.Request.Context(), tid, month, year)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

@@ -34,7 +34,7 @@ func mapOrgError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrCrossTenantAttach):
 		respondError(c, http.StatusForbidden, codeForbidden, err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 
@@ -57,7 +57,7 @@ func (h *OrganizationHandler) CreateOrganization(c *gin.Context) {
 
 	org, err := h.service.Create(c.Request.Context(), tenantID, req.Name, req.OwnerEmail)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -232,7 +232,7 @@ func (h *OrganizationHandler) ListOrganizations(c *gin.Context) {
 	}
 	orgs, err := h.service.List(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

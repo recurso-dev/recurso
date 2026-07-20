@@ -55,7 +55,7 @@ func respondMeteringError(c *gin.Context, err error) {
 	case errors.As(err, &ratingErr):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, ratingErr.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 

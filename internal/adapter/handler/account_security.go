@@ -38,7 +38,7 @@ func mapMFAError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrUserNotFound):
 		respondError(c, http.StatusNotFound, codeNotFound, "user not found")
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 
@@ -130,7 +130,7 @@ func (h *AuthHandler) ListSessions(c *gin.Context) {
 	current, _ := c.Cookie(domain.SessionCookieName)
 	sessions, err := h.auth.ListActiveSessions(c.Request.Context(), userID, current)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	views := make([]sessionView, 0, len(sessions))
@@ -162,7 +162,7 @@ func (h *AuthHandler) RevokeSession(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "session not found")
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "session revoked"})
@@ -181,7 +181,7 @@ func (h *AuthHandler) RevokeOtherSessions(c *gin.Context) {
 		return
 	}
 	if err := h.auth.RevokeOtherSessions(c.Request.Context(), userID, current); err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "other sessions revoked"})

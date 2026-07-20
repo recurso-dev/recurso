@@ -66,7 +66,7 @@ func mapTeamError(c *gin.Context, err error) {
 	case errors.Is(err, domain.ErrWeakPassword), errors.Is(err, domain.ErrInvalidRole):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }
 
@@ -79,7 +79,7 @@ func (h *TeamHandler) ListUsers(c *gin.Context) {
 	}
 	users, err := h.auth.ListUsers(c.Request.Context(), tenantID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	views := make([]userView, 0, len(users))

@@ -279,9 +279,7 @@ func (h *UsageHandler) ListRecentEvents(c *gin.Context) {
 	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	if offset < 0 {
-		offset = 0
-	}
+	limit, offset = clampLimitOffset(limit, offset, 50, 200)
 	events, err := h.svc.ListRecentEvents(ctx, tenantID, customerID, c.Query("dimension"), limit, offset)
 	if err != nil {
 		respondUsageError(c, err)
@@ -310,6 +308,6 @@ func respondUsageError(c *gin.Context, err error) {
 	case errors.As(err, &valErr):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, valErr.Error())
 	default:
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 	}
 }

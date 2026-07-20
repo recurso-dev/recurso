@@ -32,7 +32,7 @@ func (h *QuoteHandler) CreateQuote(c *gin.Context) {
 
 	quote, err := h.quoteService.CreateQuote(c.Request.Context(), tenantID, req)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -70,7 +70,7 @@ func (h *QuoteHandler) ListQuotes(c *gin.Context) {
 
 	quotes, err := h.quoteService.ListQuotes(c.Request.Context(), tenantID, filter)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -103,7 +103,7 @@ func (h *QuoteHandler) UpdateQuote(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -129,7 +129,7 @@ func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

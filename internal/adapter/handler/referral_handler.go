@@ -29,7 +29,7 @@ func (h *ReferralHandler) ListReferrals(c *gin.Context) {
 
 	referrals, err := h.referralService.ListReferrals(c.Request.Context(), tenantID.(uuid.UUID), pagination.Limit, pagination.Offset)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -128,7 +128,7 @@ func (h *ReferralHandler) GenerateCode(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
 	code, err := h.referralService.GenerateCode(ctx, tenantID.(uuid.UUID), req.CustomerID)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
