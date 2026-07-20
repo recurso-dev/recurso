@@ -7368,7 +7368,7 @@ components:
           description: Required for `unique`, forbidden otherwise.
     ChargeTier:
       type: object
-      required: [up_to, unit_amount]
+      required: [up_to]
       properties:
         up_to:
           type: [integer, 'null']
@@ -7376,7 +7376,10 @@ components:
           description: Inclusive upper unit bound; null = unbounded (last tier only).
         unit_amount:
           type: string
-          description: Per-unit rate as a decimal string in MAJOR currency units (e.g. "0.0035").
+          description: (graduated/volume) per-unit rate as a decimal string in MAJOR currency units (e.g. "0.0035").
+        rate:
+          type: string
+          description: (graduated_percentage) percent applied to this band of the base, decimal string e.g. "2.5".
         flat_amount:
           type: integer
           format: int64
@@ -7428,7 +7431,7 @@ components:
         id: { type: string, format: uuid }
         plan_id: { type: string, format: uuid }
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
@@ -7440,7 +7443,7 @@ components:
       required: [metric_id, charge_model, amounts]
       properties:
         metric_id: { type: string, format: uuid }
-        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage] }
+        charge_model: { type: string, enum: [per_unit, graduated, volume, package, percentage, graduated_percentage] }
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }

@@ -116,14 +116,17 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 
 	case domain.ChargePercentage:
 		return ratePercentage(amounts, quantity)
+
+	case domain.ChargeGraduatedPercentage:
+		return rateGraduatedPercentage(amounts.Tiers, quantity)
 	}
 	return 0, RatingError(fmt.Sprintf("unsupported charge model %q", model))
 }
 
-// validateTiers checks the shared tier invariants: at least one tier,
-// strictly ascending positive bounds, only the last tier unbounded
-// (up_to null), all rates valid decimals, flat amounts non-negative.
-func validateTiers(tiers []domain.ChargeTier) error {
+// validateTierBounds checks the shared band structure independent of the
+// rate field: at least one tier, strictly ascending positive up_to bounds,
+// and only the last tier unbounded (up_to null).
+func validateTierBounds(tiers []domain.ChargeTier) error {
 	if len(tiers) == 0 {
 		return RatingError("at least one tier is required")
 	}
@@ -139,15 +142,40 @@ func validateTiers(tiers []domain.ChargeTier) error {
 			}
 			prev = *t.UpTo
 		}
-		if _, err := parseRate(t.UnitAmount); err != nil {
-			return err
-		}
 		if t.FlatAmount < 0 {
 			return RatingError("tier flat_amount must not be negative")
 		}
 	}
 	if tiers[len(tiers)-1].UpTo != nil {
 		return RatingError("the last tier must leave up_to unset (unbounded)")
+	}
+	return nil
+}
+
+// validateTiers checks per-unit tiers (graduated/volume): the shared band
+// structure plus a valid decimal UnitAmount on every tier.
+func validateTiers(tiers []domain.ChargeTier) error {
+	if err := validateTierBounds(tiers); err != nil {
+		return err
+	}
+	for _, t := range tiers {
+		if _, err := parseRate(t.UnitAmount); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validatePercentageTiers checks percentage tiers (graduated_percentage): the
+// shared band structure plus a valid decimal Rate on every tier.
+func validatePercentageTiers(tiers []domain.ChargeTier) error {
+	if err := validateTierBounds(tiers); err != nil {
+		return err
+	}
+	for _, t := range tiers {
+		if _, err := parseDecimalRate(t.Rate, "rate"); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -247,4 +275,40 @@ func ratePercentage(a domain.ChargeAmounts, quantity int64) (int64, error) {
 		line = a.MaxAmount
 	}
 	return line, nil
+}
+
+// rateGraduatedPercentage prices each band of the monetary base at that band's
+// percentage rate: with bands 0-1,000,000 @ 3% and 1,000,000+ @ 2%, a base of
+// 1,500,000 minor units = 3%×1,000,000 + 2%×500,000. A band's FlatAmount is
+// added once when at least one unit of the base lands in it. quantity is the
+// base in minor units. The exact percentage total is rounded half-up once at
+// the end (matching rateGraduated), so the Σ-line invariant is preserved.
+func rateGraduatedPercentage(tiers []domain.ChargeTier, base int64) (int64, error) {
+	if err := validatePercentageTiers(tiers); err != nil {
+		return 0, err
+	}
+
+	pctTotal := new(big.Rat)
+	var flatTotal int64
+	remaining := base
+	var lower int64 // base consumed by previous bands
+	for _, t := range tiers {
+		if remaining <= 0 {
+			break
+		}
+		inBand := remaining
+		if t.UpTo != nil {
+			width := *t.UpTo - lower
+			if inBand > width {
+				inBand = width
+			}
+			lower = *t.UpTo
+		}
+		rate, _ := parseDecimalRate(t.Rate, "rate") // validated above
+		pct := new(big.Rat).Quo(rate, big.NewRat(100, 1))
+		pctTotal.Add(pctTotal, new(big.Rat).Mul(new(big.Rat).SetInt64(inBand), pct))
+		flatTotal += t.FlatAmount
+		remaining -= inBand
+	}
+	return roundRatHalfUp(pctTotal) + flatTotal, nil
 }

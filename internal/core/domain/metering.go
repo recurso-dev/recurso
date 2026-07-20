@@ -72,12 +72,18 @@ const (
 	// and optional min/max clamps on the line. Unlike the other models, its
 	// quantity is a money amount in minor units, not a unit count.
 	ChargePercentage ChargeModel = "percentage"
+	// ChargeGraduatedPercentage prices each band of the monetary base at that
+	// band's percentage rate (Tiers[i].Rate) plus that band's flat amount —
+	// the percentage analogue of graduated. Like percentage, its quantity is a
+	// money amount in minor units, and the tier UpTo bounds band that base.
+	ChargeGraduatedPercentage ChargeModel = "graduated_percentage"
 )
 
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
-	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage, ChargePercentage:
+	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage,
+		ChargePercentage, ChargeGraduatedPercentage:
 		return true
 	}
 	return false
@@ -90,7 +96,11 @@ type ChargeTier struct {
 	UpTo *int64 `json:"up_to"`
 	// UnitAmount is the per-unit rate as a decimal string in MAJOR currency
 	// units (e.g. "0.0035") — D1: sub-minor-unit rates are first-class.
+	// Used by graduated/volume.
 	UnitAmount string `json:"unit_amount"`
+	// Rate is the percentage applied to this band of the monetary base, a
+	// decimal string of PERCENT (e.g. "2.5"). Used by graduated_percentage.
+	Rate string `json:"rate,omitempty"`
 	// FlatAmount (minor units) is added once when any unit lands in the tier.
 	FlatAmount int64 `json:"flat_amount,omitempty"`
 }
