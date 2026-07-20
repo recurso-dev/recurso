@@ -16,8 +16,9 @@ import (
 // customer id and whether they hold an active subscription. Property
 // writes are idempotent, so re-runs are safe.
 
-// crmContactUpserter is the CRM client slice; *crm.HubSpotClient.
-type crmContactUpserter interface {
+// CRMContactUpserter is the CRM client slice; *crm.HubSpotClient. Exported so
+// the per-tenant resolver (wired in main) can return one.
+type CRMContactUpserter interface {
 	UpsertContact(ctx context.Context, email string, properties map[string]string) (string, error)
 }
 
@@ -36,14 +37,17 @@ type CRMSyncWorker struct {
 	tenants   exportTenantLister
 	customers crmCustomerSource
 	subs      crmSubscriptionCounter
-	crm       crmContactUpserter
-	interval  time.Duration
-	ticker    *time.Ticker
-	done      chan bool
-	stopOnce  sync.Once
+	crm       CRMContactUpserter // env/default client; may be nil when only BYO tenants exist
+	// crmFor resolves a tenant's OWN CRM client (BYO), returning nil to fall
+	// back to crm. Optional.
+	crmFor   func(ctx context.Context, tenantID uuid.UUID) CRMContactUpserter
+	interval time.Duration
+	ticker   *time.Ticker
+	done     chan bool
+	stopOnce sync.Once
 }
 
-func NewCRMSyncWorker(tenants exportTenantLister, customers crmCustomerSource, subs crmSubscriptionCounter, crm crmContactUpserter) *CRMSyncWorker {
+func NewCRMSyncWorker(tenants exportTenantLister, customers crmCustomerSource, subs crmSubscriptionCounter, crm CRMContactUpserter) *CRMSyncWorker {
 	return &CRMSyncWorker{
 		tenants:   tenants,
 		customers: customers,
@@ -52,6 +56,23 @@ func NewCRMSyncWorker(tenants exportTenantLister, customers crmCustomerSource, s
 		interval:  24 * time.Hour,
 		done:      make(chan bool),
 	}
+}
+
+// SetPerTenantCRM wires a resolver returning a tenant's own (BYO) CRM client,
+// used in preference to the env client. Returning nil falls back to the env
+// client; a tenant with neither is skipped.
+func (w *CRMSyncWorker) SetPerTenantCRM(fn func(ctx context.Context, tenantID uuid.UUID) CRMContactUpserter) {
+	w.crmFor = fn
+}
+
+// crmForTenant picks the tenant's own client (BYO) when available, else env.
+func (w *CRMSyncWorker) crmForTenant(ctx context.Context, tenantID uuid.UUID) CRMContactUpserter {
+	if w.crmFor != nil {
+		if c := w.crmFor(ctx, tenantID); c != nil {
+			return c
+		}
+	}
+	return w.crm
 }
 
 func (w *CRMSyncWorker) Start() {
@@ -91,6 +112,12 @@ func (w *CRMSyncWorker) RunOnce(ctx context.Context) (int, error) {
 	synced := 0
 	for _, tenant := range tenants {
 		tctx := context.WithValue(ctx, domain.TenantIDKey, tenant.ID)
+		// Resolve this tenant's CRM client (their own BYO account, else env).
+		// A tenant with neither configured is skipped.
+		crmClient := w.crmForTenant(tctx, tenant.ID)
+		if crmClient == nil {
+			continue
+		}
 		customers, err := w.customers.List(tctx, tenant.ID, domain.CustomerFilter{Limit: 10000})
 		if err != nil {
 			slog.Error("crm sync: customer list failed", "tenant_id", tenant.ID, "error", err)
@@ -109,7 +136,7 @@ func (w *CRMSyncWorker) RunOnce(ctx context.Context) (int, error) {
 			if active[customer.ID] > 0 {
 				status = "active"
 			}
-			_, err := w.crm.UpsertContact(tctx, customer.Email, map[string]string{
+			_, err := crmClient.UpsertContact(tctx, customer.Email, map[string]string{
 				"recurso_customer_id":        customer.ID.String(),
 				"recurso_subscription_state": status,
 			})
