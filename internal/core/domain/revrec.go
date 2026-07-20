@@ -40,6 +40,11 @@ const (
 	RecognitionStatusPending    = "pending"
 	RecognitionStatusRecognized = "recognized"
 	RecognitionStatusFailed     = "failed"
+	// RecognitionStatusProcessing is the worker's claim (F2): flipping
+	// pending -> processing atomically hands each due event to exactly one
+	// worker, so a concurrent runner can never re-post it — or mis-mark an
+	// already-recognized event as failed when its duplicate posting errors.
+	RecognitionStatusProcessing = "processing"
 	// RecognitionStatusCanceled marks a future event voided by an unwind
 	// (cancel/refund mid-period, ENG-147) so the worker never recognizes it.
 	RecognitionStatusCanceled = "canceled"
