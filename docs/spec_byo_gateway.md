@@ -1,7 +1,8 @@
 # Spec: Bring-Your-Own Gateway & Integration Credentials
 
-> **Status: IN PROGRESS — Increments 1 (vault), 2 (resolver/charge-path), and
-> 2b-1 (checkout verify) shipped under the D1–D5 defaults; 2b-2 + 3–5 pending.**
+> **Status: IN PROGRESS — Increments 1 (vault), 2 (resolver/charge-path),
+> 2b-1 (checkout verify), and 3 (per-connection webhooks) shipped under the
+> D1–D5 defaults; 2b-2 + 4–5 pending.**
 >
 > Motivation: today every third-party credential (Stripe, Razorpay, TaxJar,
 > Avalara, HubSpot, S3) is a boot-time environment variable, **one set per API
@@ -90,15 +91,20 @@ customer) and portal **SetupIntent** (`EnsureStripeCustomer`/`CreateSetupIntent`
 `FinalizeSetupIntent`). Needed before a BYO tenant can store cards / run autopay
 on their own account.
 
-### Increment 3 — Per-connection webhooks (pending — the hard part)
+### Increment 3 — Per-connection webhooks ✅
 
 Each tenant's gateway account has its **own** signing secret, and the signature
-must be verified *before* the payload is trusted. New per-connection URLs
-`POST /webhooks/stripe/:connID` and `/webhooks/razorpay/:connID`: resolve the
-connection by id → decrypt its webhook secret → verify → proceed with the
-existing invoice-metadata tenant resolution. The legacy env routes stay for the
-platform gateway. The dashboard shows each connection's webhook URL + secret to
-paste into the gateway console.
+must be verified *before* the payload is trusted. New per-connection routes
+`POST /webhooks/stripe/:connID` and `/webhooks/razorpay/:connID` share the
+existing handlers: `webhookSecretFor` resolves the `:connID` connection →
+decrypts its webhook secret → the same signature check + processing runs with
+that secret; the legacy env routes (no `:connID`) are unchanged. **Fail closed**
+throughout — unknown/mismatched-provider/inactive connection → 404 (no id
+enumeration), a connection with no webhook secret → 503, bad signature → 401.
+OpenAPI spec + drift test cover both new paths. Unit-tested: no-resolver,
+invalid id, not-found, wrong-provider, no-secret-fail-closed, and
+resolved-secret-reaches-verification. The dashboard (increment 4) will surface
+each connection's webhook URL + secret to paste into the gateway console.
 
 ### Increment 4 — Dashboard: Integrations → Payments (pending)
 

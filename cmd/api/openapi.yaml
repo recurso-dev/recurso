@@ -2614,6 +2614,110 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /webhooks/razorpay/{connID}:
+    post:
+      operationId: handleRazorpayWebhookForConnection
+      tags: [Inbound Webhooks]
+      summary: Razorpay webhook receiver (per-connection, BYO)
+      description: |
+        Per-connection variant of the Razorpay webhook receiver for tenants who
+        connected their own Razorpay account. The event is verified with THAT
+        connection's own signing secret (resolved from `connID`) before the
+        payload is trusted. Called by Razorpay, not by API consumers.
+      security: []
+      parameters:
+        - name: connID
+          in: path
+          required: true
+          description: The tenant's Razorpay gateway-connection id.
+          schema:
+            type: string
+            format: uuid
+        - name: X-Razorpay-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 signature of the raw request body.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Razorpay event payload.
+      responses:
+        '200':
+          description: Event processed (or deliberately ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  reason:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /webhooks/stripe/{connID}:
+    post:
+      operationId: handleStripeWebhookForConnection
+      tags: [Inbound Webhooks]
+      summary: Stripe webhook receiver (per-connection, BYO)
+      description: |
+        Per-connection variant of the Stripe webhook receiver for tenants who
+        connected their own Stripe account. The event is verified with THAT
+        connection's own signing secret (resolved from `connID`) before the
+        payload is trusted. Called by Stripe, not by API consumers.
+      security: []
+      parameters:
+        - name: connID
+          in: path
+          required: true
+          description: The tenant's Stripe gateway-connection id.
+          schema:
+            type: string
+            format: uuid
+        - name: Stripe-Signature
+          in: header
+          required: true
+          description: Stripe webhook signature header.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw Stripe event payload.
+      responses:
+        '200':
+          description: Event processed (or deliberately ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  reason:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/invoices/{id}/preview:
     get:
       operationId: previewInvoiceHTML
