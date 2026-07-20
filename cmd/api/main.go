@@ -506,6 +506,7 @@ func main() {
 
 	// Phase 2: Accounting Connection Repository
 	acctConnRepo := db.NewAccountingConnectionRepository(database)
+	acctConnRepo.SetVault(gatewayVault) // encrypt OAuth tokens at rest (opportunistic; legacy plaintext still reads)
 
 	// Accounting entity mappings (internal ID -> provider ID per connection)
 	acctMappingRepo := db.NewAccountingMappingRepository(database)
