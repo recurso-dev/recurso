@@ -38,7 +38,56 @@ type WebhookHandler struct {
 	creditNoteService      *service.CreditNoteService
 	inboundDedup           InboundWebhookDedup // nil-safe; when unset, dedup is skipped
 	stripeWebhookSecret    string
+	gatewayConns           gatewayConnResolver // nil-safe; per-connection (BYO) webhook secrets
 	logger                 *slog.Logger
+}
+
+// gatewayConnResolver resolves a BYO connection by id and decrypts its webhook
+// signing secret. Satisfied by *service.GatewayConnectionService. Used only by
+// the per-connection webhook routes (/webhooks/{stripe,razorpay}/:connID); the
+// legacy env routes never touch it.
+type gatewayConnResolver interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.GatewayConnection, error)
+	OpenWebhookSecret(conn *domain.GatewayConnection) (string, error)
+}
+
+// SetGatewayConnections wires per-connection webhook secret resolution (BYO
+// increment 3). Nil-safe: unset, only the env webhook routes work.
+func (h *WebhookHandler) SetGatewayConnections(r gatewayConnResolver) { h.gatewayConns = r }
+
+// webhookSecretFor resolves the signing secret to verify an inbound webhook.
+// With a :connID path param it looks up that BYO connection and decrypts its
+// webhook secret (fail closed on any problem); without one it returns the env
+// secret. The bool is false when it has already written an error response.
+func (h *WebhookHandler) webhookSecretFor(c *gin.Context, provider domain.GatewayProvider, envSecret string) (string, bool) {
+	connID := c.Param("connID")
+	if connID == "" {
+		return envSecret, true // legacy platform-gateway route
+	}
+	if h.gatewayConns == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "per-connection webhooks not configured")
+		return "", false
+	}
+	id, err := uuid.Parse(connID)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid connection id")
+		return "", false
+	}
+	conn, err := h.gatewayConns.GetByID(c.Request.Context(), id)
+	// Do not leak which ids exist: any resolution failure is a flat 404.
+	if err != nil || conn == nil || conn.Provider != provider || !conn.Active {
+		respondError(c, http.StatusNotFound, codeNotFound, "connection not found")
+		return "", false
+	}
+	secret, err := h.gatewayConns.OpenWebhookSecret(conn)
+	if err != nil || secret == "" {
+		// Fail closed: a connection without a webhook secret cannot be verified.
+		h.logger.Error("BYO connection has no webhook secret — rejecting (fail closed)",
+			"connection_id", id, "provider", provider, "ip", c.ClientIP())
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "webhook verification not configured for this connection")
+		return "", false
+	}
+	return secret, true
 }
 
 // InboundWebhookDedup records processed gateway webhook events so redeliveries
@@ -181,17 +230,20 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 		return
 	}
 
-	// 1. Verify Signature
+	// 1. Verify Signature. Per-connection route (:connID) verifies with that
+	// tenant's own webhook secret; the legacy route uses the env secret. Fail
+	// CLOSED either way: an unconfigured secret must reject the webhook, not
+	// process it. Otherwise a forged payment.captured with a known invoice_id
+	// would mark an invoice paid on a misconfigured deploy (ENG-145).
 	signature := c.GetHeader("X-Razorpay-Signature")
-	webhookSecret := os.Getenv("RAZORPAY_WEBHOOK_SECRET")
-
-	// Fail CLOSED: an unconfigured secret must reject the webhook, not process
-	// it. Otherwise a forged payment.captured with a known invoice_id would mark
-	// an invoice paid on a misconfigured deploy (ENG-145). Stripe already always
-	// verifies.
-	if webhookSecret == "" {
+	envSecret := os.Getenv("RAZORPAY_WEBHOOK_SECRET")
+	if envSecret == "" && c.Param("connID") == "" {
 		h.logger.Error("RAZORPAY_WEBHOOK_SECRET not set — rejecting webhook (fail closed)", "ip", c.ClientIP())
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "webhook verification not configured")
+		return
+	}
+	webhookSecret, ok := h.webhookSecretFor(c, domain.GatewayRazorpay, envSecret)
+	if !ok {
 		return
 	}
 	if !verifyRazorpaySignature(body, signature, webhookSecret) {
@@ -398,16 +450,22 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	// invoice_id would settle an invoice with no real payment on a misconfigured
 	// deploy. (Razorpay fails closed the same way; this path previously fell open,
 	// only logging a warning — ENG-175.)
-	if h.stripeWebhookSecret == "" {
+	if h.stripeWebhookSecret == "" && c.Param("connID") == "" {
 		h.logger.Error("STRIPE_WEBHOOK_SECRET not set — rejecting webhook (fail closed)", "ip", c.ClientIP())
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "webhook verification not configured")
+		return
+	}
+	// Per-connection route (:connID) verifies with that tenant's own webhook
+	// secret; the legacy route uses the env secret.
+	stripeSecret, ok := h.webhookSecretFor(c, domain.GatewayStripe, h.stripeWebhookSecret)
+	if !ok {
 		return
 	}
 	// IgnoreAPIVersionMismatch keeps HMAC verification but tolerates events
 	// stamped with a different Stripe API version than the pinned stripe-go
 	// release (accounts commonly emit an older default version) — Stripe's
 	// recommended handling; without it every delivery 401s.
-	event, err := webhook.ConstructEventWithOptions(body, c.GetHeader("Stripe-Signature"), h.stripeWebhookSecret,
+	event, err := webhook.ConstructEventWithOptions(body, c.GetHeader("Stripe-Signature"), stripeSecret,
 		webhook.ConstructEventOptions{IgnoreAPIVersionMismatch: true})
 	if err != nil {
 		h.logger.Warn("stripe webhook signature verification failed",

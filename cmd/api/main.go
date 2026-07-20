@@ -1138,6 +1138,7 @@ func main() {
 	webhookHandler.SetDunningCampaignService(dunningCampaignService)
 	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
 	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
+	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)
@@ -1307,6 +1308,11 @@ func main() {
 	r.POST("/waitlist", publicLimit, handler.NewWaitlistHandler(db.NewWaitlistRepository(database)).Join)
 	r.POST("/webhooks/razorpay", webhookHandler.HandleRazorpay) // Webhooks need higher limits
 	r.POST("/webhooks/stripe", webhookHandler.HandleStripe)
+	// BYO increment 3: per-connection webhook endpoints. Each tenant's gateway
+	// account posts to its own URL, so we verify with that connection's own
+	// signing secret (looked up by :connID) before trusting the payload.
+	r.POST("/webhooks/razorpay/:connID", webhookHandler.HandleRazorpay)
+	r.POST("/webhooks/stripe/:connID", webhookHandler.HandleStripe)
 	// Dashboard auth (public): register creates tenant + owner user + session;
 	// login/logout/me operate purely on the recurso_session cookie.
 	r.POST("/auth/register", publicLimit, authHandler.Register)
