@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/recurso-dev/recurso/internal/adapter/accounting"
 	"github.com/recurso-dev/recurso/internal/adapter/ai"
@@ -41,6 +42,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/vatprovider"
 	"github.com/recurso-dev/recurso/internal/adapter/vault"
 	"github.com/recurso-dev/recurso/internal/adapter/worker"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	coretax "github.com/recurso-dev/recurso/internal/core/service/tax"
 	"github.com/recurso-dev/recurso/internal/demo"
@@ -664,15 +666,29 @@ func main() {
 	// Track D4 (EXPERIMENTAL): daily CRM contact sync. HubSpot private-app
 	// token; SaaS egress, so blocked under RESIDENCY_MODE=self_hosted like
 	// the accounting SaaS adapters.
+	// BYO increment 5c: run the sync when EITHER an env token OR the vault is
+	// available (so a tenant can bring their own HubSpot with no operator token),
+	// resolving a client per tenant with the env token as fallback.
 	var crmWorker *worker.CRMSyncWorker
-	if hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN"); hsToken != "" && !demo.Enabled() {
+	hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN")
+	if (hsToken != "" || integrationConnService.VaultReady()) && !demo.Enabled() {
 		if residency.SelfHosted() {
 			log.Println("HubSpot CRM sync blocked by RESIDENCY_MODE=self_hosted")
 		} else {
-			crmWorker = worker.NewCRMSyncWorker(tenantRepo, customerRepo, subscriptionRepo.(*db.SubscriptionRepository), crm.NewHubSpotClient(hsToken))
+			var envCRM worker.CRMContactUpserter
+			if hsToken != "" {
+				envCRM = crm.NewHubSpotClient(hsToken)
+			}
+			crmWorker = worker.NewCRMSyncWorker(tenantRepo, customerRepo, subscriptionRepo.(*db.SubscriptionRepository), envCRM)
+			crmWorker.SetPerTenantCRM(func(ctx context.Context, tid uuid.UUID) worker.CRMContactUpserter {
+				if cfg, ok := integrationConnService.Resolve(ctx, tid, domain.IntegrationCRM, "hubspot"); ok {
+					return crm.NewHubSpotClient(cfg["access_token"])
+				}
+				return nil
+			})
 			crmWorker.Start()
 			defer crmWorker.Stop()
-			log.Println("HubSpot CRM sync configured (EXPERIMENTAL, daily)")
+			log.Println("HubSpot CRM sync configured (EXPERIMENTAL, daily; per-tenant + env)")
 		}
 	}
 
@@ -680,21 +696,36 @@ func main() {
 	// storage. Enabled only when S3_EXPORT_BUCKET (+region/keys) is set;
 	// the destination is the operator's own bucket, so it is not
 	// residency-blocked (same egress class as SMTP/webhooks).
+	// BYO increment 5c: run when EITHER the env bucket OR the vault is available;
+	// each tenant's GL exports to their own bucket when connected, else the env
+	// bucket. Not residency-blocked (the destination is operator/tenant-owned).
 	var exportWorker *worker.ExportWorker
-	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" && !demo.Enabled() {
-		s3Client := export.NewS3Client(bucket,
+	var envS3 *export.S3Client
+	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" {
+		envS3 = export.NewS3Client(bucket,
 			os.Getenv("S3_EXPORT_REGION"),
 			os.Getenv("AWS_ACCESS_KEY_ID"),
 			os.Getenv("AWS_SECRET_ACCESS_KEY"),
 			os.Getenv("S3_EXPORT_ENDPOINT"))
-		if s3Client.Configured() {
-			exportWorker = worker.NewExportWorker(tenantRepo, ledgerService, s3Client, os.Getenv("S3_EXPORT_PREFIX"))
-			exportWorker.Start()
-			defer exportWorker.Stop()
-			log.Println("S3 finance export configured (EXPERIMENTAL, daily)")
-		} else {
-			log.Println("S3_EXPORT_BUCKET set but region/credentials missing; export disabled")
+		if !envS3.Configured() {
+			log.Println("S3_EXPORT_BUCKET set but region/credentials missing; env export disabled")
+			envS3 = nil
 		}
+	}
+	if (envS3 != nil || integrationConnService.VaultReady()) && !demo.Enabled() {
+		exportWorker = worker.NewExportWorker(tenantRepo, ledgerService, envS3, os.Getenv("S3_EXPORT_PREFIX"))
+		exportWorker.SetPerTenantStorage(func(ctx context.Context, tid uuid.UUID) worker.ExportUploader {
+			if cfg, ok := integrationConnService.Resolve(ctx, tid, domain.IntegrationStorage, "s3"); ok {
+				c := export.NewS3Client(cfg["bucket"], cfg["region"], cfg["access_key_id"], cfg["secret_access_key"], cfg["endpoint"])
+				if c.Configured() {
+					return c
+				}
+			}
+			return nil
+		})
+		exportWorker.Start()
+		defer exportWorker.Stop()
+		log.Println("S3 finance export configured (EXPERIMENTAL, daily; per-tenant + env)")
 	}
 
 	// P25: E-Invoice Retry Worker

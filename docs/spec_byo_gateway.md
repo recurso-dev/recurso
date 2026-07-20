@@ -143,9 +143,17 @@ owner/admin writes). OpenAPI + drift green; service/resolver/handler unit-tested
 **5b — dashboard UI (pending):** a Tax/CRM/Storage section on the Integrations
 page (cards + connect sheet driven by each provider's required fields).
 
-**5c — CRM (HubSpot) + storage (S3) resolvers (pending):** wire `Resolve` into
-the HubSpot sync and the S3 GL-export paths (the vault + API already support
-them; only the per-tenant resolution at those call sites remains).
+**5c — CRM (HubSpot) + storage (S3) resolvers ✅.** The daily CRM-sync and
+S3-export workers now resolve a client **per tenant** (their own connection,
+env as fallback) inside their sweep loops, and — crucially — **run whenever the
+vault OR the env credential is set**, so a tenant can bring their own HubSpot/S3
+with no operator config. A tenant with neither is skipped (nil-safe). CRM keeps
+the `RESIDENCY_MODE=self_hosted` block; S3 stays unblocked (tenant/operator-owned
+destination). The export counter now counts only real uploads. Unit-tested
+(per-tenant vs env fallback, skip-when-none).
+
+**5b — dashboard UI (pending):** the Tax/CRM/Storage section on the Integrations
+page is the last piece.
 
 ## Founder decisions
 

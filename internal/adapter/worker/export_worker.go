@@ -30,10 +30,19 @@ type exportLedgerSource interface {
 	GeneralLedger(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error)
 }
 
+// ExportUploader is the object-storage slice the worker needs; *export.S3Client.
+// Exported so the per-tenant resolver (wired in main) can return one.
+type ExportUploader interface {
+	PutObject(ctx context.Context, key string, body []byte, contentType string) error
+}
+
 type ExportWorker struct {
-	tenants  exportTenantLister
-	ledger   exportLedgerSource
-	s3       *export.S3Client
+	tenants exportTenantLister
+	ledger  exportLedgerSource
+	s3      *export.S3Client // env/default destination; may be nil when only BYO tenants export
+	// s3For resolves a tenant's OWN storage (BYO), returning nil to fall back to
+	// s3. Optional.
+	s3For    func(ctx context.Context, tenantID uuid.UUID) ExportUploader
 	prefix   string
 	interval time.Duration
 	ticker   *time.Ticker
@@ -68,7 +77,32 @@ func (w *ExportWorker) Start() {
 			}
 		}
 	}()
-	slog.Info("s3 export worker started (daily)", "bucket", w.s3.Bucket, "prefix", w.prefix)
+	bucket := "(per-tenant)"
+	if w.s3 != nil {
+		bucket = w.s3.Bucket
+	}
+	slog.Info("s3 export worker started (daily)", "bucket", bucket, "prefix", w.prefix)
+}
+
+// SetPerTenantStorage wires a resolver returning a tenant's own (BYO) storage,
+// used in preference to the env destination. Returning nil falls back to env; a
+// tenant with neither is skipped.
+func (w *ExportWorker) SetPerTenantStorage(fn func(ctx context.Context, tenantID uuid.UUID) ExportUploader) {
+	w.s3For = fn
+}
+
+// uploaderForTenant picks the tenant's own storage (BYO) when available, else
+// the env destination (only when it's configured). nil means skip the tenant.
+func (w *ExportWorker) uploaderForTenant(ctx context.Context, tenantID uuid.UUID) ExportUploader {
+	if w.s3For != nil {
+		if u := w.s3For(ctx, tenantID); u != nil {
+			return u
+		}
+	}
+	if w.s3 != nil && w.s3.Configured() {
+		return w.s3
+	}
+	return nil
 }
 
 func (w *ExportWorker) Stop() {
@@ -91,11 +125,14 @@ func (w *ExportWorker) RunOnce(ctx context.Context) (int, error) {
 	date := w.now().Format("2006-01-02")
 	exported := 0
 	for _, tenant := range tenants {
-		if err := w.exportTenant(ctx, tenant.ID, date); err != nil {
+		uploaded, err := w.exportTenant(ctx, tenant.ID, date)
+		if err != nil {
 			slog.Error("s3 export failed for tenant", "tenant_id", tenant.ID, "error", err)
 			continue
 		}
-		exported++
+		if uploaded {
+			exported++
+		}
 	}
 	if exported > 0 {
 		slog.Info("s3 export sweep complete", "tenants", exported, "date", date)
@@ -103,14 +140,22 @@ func (w *ExportWorker) RunOnce(ctx context.Context) (int, error) {
 	return exported, nil
 }
 
-func (w *ExportWorker) exportTenant(ctx context.Context, tenantID uuid.UUID, date string) error {
+// exportTenant returns whether it actually uploaded (false when the tenant has
+// no destination or an empty ledger — both non-errors).
+func (w *ExportWorker) exportTenant(ctx context.Context, tenantID uuid.UUID, date string) (bool, error) {
 	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	// Resolve this tenant's destination (their own BYO bucket, else the env
+	// bucket). A tenant with neither is skipped.
+	uploader := w.uploaderForTenant(tctx, tenantID)
+	if uploader == nil {
+		return false, nil
+	}
 	rows, err := w.ledger.GeneralLedger(tctx, tenantID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if len(rows) == 0 {
-		return nil // nothing posted yet; skip the empty file
+		return false, nil // nothing posted yet; skip the empty file
 	}
 
 	var buf bytes.Buffer
@@ -135,9 +180,12 @@ func (w *ExportWorker) exportTenant(ctx context.Context, tenantID uuid.UUID, dat
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		return err
+		return false, err
 	}
 
 	key := fmt.Sprintf("%s%s/general-ledger-%s.csv", w.prefix, tenantID, date)
-	return w.s3.PutObject(ctx, key, buf.Bytes(), "text/csv")
+	if err := uploader.PutObject(ctx, key, buf.Bytes(), "text/csv"); err != nil {
+		return false, err
+	}
+	return true, nil
 }
