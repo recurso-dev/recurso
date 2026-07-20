@@ -16,6 +16,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -237,12 +245,15 @@ const Wallets = () => {
       />
 
       {/* Create wallet */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create wallet</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Create wallet</SheetTitle>
+            <SheetDescription>
+              A prepaid balance drained before credit notes and the payment gateway.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Customer</Label>
               <CustomerSelect
@@ -263,13 +274,13 @@ const Wallets = () => {
             </div>
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button onClick={submitCreate} disabled={creating || !createForm.customer_id}>
               {creating ? "Creating…" : "Create wallet"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       {/* Top up */}
       <Dialog open={!!topUpWallet} onOpenChange={(open) => !open && setTopUpWallet(null)}>
