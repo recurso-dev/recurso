@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -55,9 +56,11 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	// Create Order on Gateway
+	// Create Order on Gateway. Public endpoint: carry the invoice's tenant so
+	// BYO routing picks the seller's own gateway (env fallback when unset).
+	payCtx := context.WithValue(c.Request.Context(), domain.TenantIDKey, invoice.TenantID)
 	order, err := h.gateway.CreateOrder(
-		c.Request.Context(),
+		payCtx,
 		invoice.Total,
 		invoice.Currency,
 		invoice.InvoiceNumber,
