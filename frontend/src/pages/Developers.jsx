@@ -55,6 +55,7 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
+  SheetFooter,
 } from "@/components/ui/sheet";
 
 // Map a derived delivery status to a Badge variant + label.
@@ -745,20 +746,25 @@ export default function Developers() {
         </DialogContent>
       </Dialog>
 
-      {/* Add Webhook Dialog */}
-      <Dialog
+      {/* Add Webhook slide-over */}
+      <Sheet
         open={isWebhookModalOpen}
         onOpenChange={(open) => (!open ? closeWebhookModal() : setIsWebhookModalOpen(true))}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>
               {createdWebhookSecret ? "Webhook created" : "Add webhook endpoint"}
-            </DialogTitle>
-          </DialogHeader>
+            </SheetTitle>
+            <SheetDescription>
+              {createdWebhookSecret
+                ? "Store the signing secret before closing."
+                : "We POST the selected events to this URL, signed with a per-endpoint secret."}
+            </SheetDescription>
+          </SheetHeader>
 
           {createdWebhookSecret ? (
-            <div className="space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto px-6">
               <div className="flex items-start gap-2 rounded-lg bg-emerald-50 p-4 text-emerald-800 ring-1 ring-inset ring-emerald-200">
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <p className="text-sm font-medium">
@@ -783,12 +789,12 @@ export default function Developers() {
                   </Button>
                 </div>
               </div>
-              <DialogFooter>
+              <SheetFooter className="px-0">
                 <Button onClick={closeWebhookModal}>Done</Button>
-              </DialogFooter>
+              </SheetFooter>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="flex-1 space-y-4 overflow-y-auto px-6">
               <div className="space-y-1.5">
                 <Label htmlFor="webhook-url">Endpoint URL</Label>
                 <Input
@@ -820,16 +826,16 @@ export default function Developers() {
                   ))}
                 </div>
               </div>
-              <DialogFooter>
+              <SheetFooter className="px-0">
                 <Button variant="outline" onClick={() => setIsWebhookModalOpen(false)}>
                   Cancel
                 </Button>
                 <Button onClick={handleCreateWebhook}>Create endpoint</Button>
-              </DialogFooter>
+              </SheetFooter>
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       {/* Endpoint deliveries slide-over */}
       <Sheet

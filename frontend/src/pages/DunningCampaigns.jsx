@@ -13,12 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -133,12 +134,15 @@ const DunningCampaigns = () => {
         </div>
       )}
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New dunning campaign</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New dunning campaign</SheetTitle>
+            <SheetDescription>
+              Steps run in order after the trigger until payment is recovered.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Name</Label>
               <Input
@@ -166,13 +170,13 @@ const DunningCampaigns = () => {
               </Select>
             </div>
           </div>
-          <DialogFooter>
+          <SheetFooter>
             <Button onClick={submitCreate} disabled={creating || !createForm.name.trim()}>
               {creating ? "Creating…" : "Create campaign"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
 
       <DunningCampaignDetail
         campaignId={detailId}
