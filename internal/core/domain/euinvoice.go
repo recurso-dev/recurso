@@ -1,5 +1,11 @@
 package domain
 
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
+
 // EU e-invoicing (Track C). The EU model is structurally different from India's
 // IRN clearance: an invoice is expressed in the EN 16931 semantic model, carried
 // in a syntax (UBL 2.1 here) and delivered over a network (Peppol) or a national
@@ -55,4 +61,46 @@ type EUInvoiceTransmission struct {
 	MessageID string
 	// Status is the transport-reported status after the hand-off.
 	Status EUInvoiceStatus
+}
+
+// TenantEUConfig is a tenant's EU e-invoicing configuration — kept isolated from
+// the India GST config and the tenant row so regional compliance boundaries stay
+// clean. It carries the EN 16931 seller party plus the opt-in flag that gates
+// generation (the EU mandate landscape is fragmented, so it is off by default).
+type TenantEUConfig struct {
+	TenantID    uuid.UUID `json:"tenant_id"`
+	Enabled     bool      `json:"enabled"`
+	LegalName   string    `json:"legal_name"`
+	VATNumber   string    `json:"vat_number"`
+	CountryCode string    `json:"country_code"`
+	Street      string    `json:"street"`
+	City        string    `json:"city"`
+	PostalZone  string    `json:"postal_zone"`
+}
+
+// SellerParty projects the config into the EN 16931 supplier party.
+func (c *TenantEUConfig) SellerParty() EUParty {
+	return EUParty{
+		Name:        c.LegalName,
+		VATID:       c.VATNumber,
+		CountryCode: c.CountryCode,
+		Street:      c.Street,
+		City:        c.City,
+		PostalZone:  c.PostalZone,
+	}
+}
+
+// EUInvoice is the persisted record of an invoice's generated EN 16931 document
+// and its delivery status. One per invoice (idempotent upsert).
+type EUInvoice struct {
+	ID           uuid.UUID       `json:"id"`
+	TenantID     uuid.UUID       `json:"tenant_id"`
+	InvoiceID    uuid.UUID       `json:"invoice_id"`
+	Syntax       EUInvoiceSyntax `json:"syntax"`
+	Status       EUInvoiceStatus `json:"status"`
+	Document     string          `json:"document"`
+	MessageID    string          `json:"message_id"`
+	ErrorMessage string          `json:"error_message"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
 }

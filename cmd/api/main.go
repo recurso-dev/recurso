@@ -24,6 +24,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/alerting"
 	"github.com/recurso-dev/recurso/internal/adapter/crm"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/adapter/einvoice_eu"
 	"github.com/recurso-dev/recurso/internal/adapter/email"
 	"github.com/recurso-dev/recurso/internal/adapter/export"
 	"github.com/recurso-dev/recurso/internal/adapter/fx"
@@ -468,6 +469,16 @@ func main() {
 	// P25: E-Invoice Service
 	einvoiceService := service.NewEInvoiceService(gspAdapter, invoiceRepo, customerRepo, irpConfigRepo, gstConfigRepo)
 	invoiceService.EInvoiceService = einvoiceService
+
+	// EU e-invoicing (Track C): EN 16931 / UBL 2.1 generation behind a pluggable
+	// transport. Opt-in per tenant (tenant_eu_config.enabled); a mock transport
+	// stands in until a real Peppol Access Point is wired. Nil-safe end to end —
+	// tenants without config are untouched.
+	invoiceService.EUEInvoiceService = service.NewEUEInvoiceService(
+		db.NewTenantEUConfigRepository(database),
+		db.NewEUInvoiceRepository(database),
+		einvoice_eu.NewMockTransport(),
+	)
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
 	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel

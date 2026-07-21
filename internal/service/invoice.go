@@ -20,7 +20,8 @@ type InvoiceService struct {
 	UnbilledChargeRepo port.UnbilledChargeRepository // P15
 	SubscriptionRepo   port.SubscriptionRepository   // P15
 	GSPAdapter         port.GSPAdapter               // P25
-	EInvoiceService    *EInvoiceService              // P25: E-invoice service
+	EInvoiceService    *EInvoiceService              // P25: E-invoice service (India IRN)
+	EUEInvoiceService  *EUEInvoiceService            // Track C: EU e-invoicing (EN 16931/UBL); nil-safe, opt-in
 	TaxResolver        *TaxResolver                  // Jurisdiction-aware tax
 	// AddonRepo enables multi-product add-on lines on recurring invoices
 	// (Multi-product catalog v1). nil-safe: when unset, GenerateInvoice
@@ -97,6 +98,20 @@ func NewInvoiceService(
 		SubscriptionRepo:   subRepo,
 		GSPAdapter:         gspAdapter,
 		TaxResolver:        taxResolver,
+	}
+}
+
+// generateEUEInvoiceAfterCommit generates the EN 16931 (UBL) e-invoice for a
+// COMMITTED invoice when the tenant has opted into EU e-invoicing. Best-effort
+// and fully nil-safe: unset service or a tenant that hasn't opted in is a no-op,
+// so behaviour is byte-identical for everyone else. Separate from the India IRN
+// path — the two regional regimes never interact.
+func (s *InvoiceService) generateEUEInvoiceAfterCommit(ctx context.Context, inv *domain.Invoice, customer *domain.Customer) {
+	if s.EUEInvoiceService == nil {
+		return
+	}
+	if _, err := s.EUEInvoiceService.GenerateForInvoice(ctx, inv, customer); err != nil {
+		slog.Warn("eu e-invoice generation failed (stored for retry)", "error", err, "invoice_id", inv.ID)
 	}
 }
 
@@ -333,6 +348,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 
 	// P25 e-invoicing on the now-committed invoice.
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
+	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
 
 	// 6a. Drain the customer's prepaid wallet FIRST (Lago-parity B1, D3
 	// ordering: wallet → adjustment credit notes → gateway). The drain is a
@@ -484,6 +500,7 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 	}
 
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
+	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
 
 	if s.RatingRepo != nil {
 		for _, rating := range ratings {
