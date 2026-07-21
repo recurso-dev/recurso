@@ -583,21 +583,24 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 			continue
 		}
 
-		qty, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, periodEnd)
+		qtyRat, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, periodEnd)
 		if err != nil {
 			slog.Warn("skipping metered charge: aggregation failed", "error", err, "metric", ch.Metric.Code)
 			continue
 		}
-		if qty == 0 {
+		if qtyRat.Sign() == 0 {
 			continue
 		}
 
-		amount, err := RateCharge(ch.ChargeModel, amounts, qty)
+		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat)
 		if err != nil {
 			slog.Warn("skipping metered charge: rating failed", "error", err, "metric", ch.Metric.Code)
 			continue
 		}
 
+		// Persisted/displayed quantity is the exact aggregate rounded to a whole
+		// unit; the amount above is priced from the exact rational, not this.
+		qty := roundRatHalfUp(qtyRat)
 		hsn := ch.HSNCode
 		if hsn == "" {
 			hsn = plan.HSNCode

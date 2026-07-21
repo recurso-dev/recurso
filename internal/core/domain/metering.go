@@ -34,16 +34,31 @@ const (
 	// the period (e.g. p95/p99 latency SLO billing). FieldName carries the
 	// percentile as an integer 1-99 (e.g. "95").
 	AggregationPercentile AggregationType = "percentile"
+	// AggregationCustom evaluates the metric's Expression against each event and
+	// SUMS the results into the period quantity (which may be fractional). The
+	// expression is authored per metric and reads `quantity` and `properties`;
+	// it is sandboxed (see service.CompileCustomExpression). Expression is
+	// required for this type and empty for all others.
+	AggregationCustom AggregationType = "custom"
 )
 
 // ValidAggregationType reports whether t is a supported aggregation.
 func ValidAggregationType(t AggregationType) bool {
 	switch t {
 	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique,
-		AggregationLatest, AggregationPercentile:
+		AggregationLatest, AggregationPercentile, AggregationCustom:
 		return true
 	}
 	return false
+}
+
+// FractionalAggregation reports whether an aggregation can produce a
+// non-integer period quantity, so billing must rate it through the exact-
+// rational path (RateChargeRat) rather than pre-rounding. `custom` sums
+// arbitrary per-event expression results; `weighted_sum` is a time-weighted
+// average. Every other aggregation yields a whole count/sum/percentile.
+func FractionalAggregation(t AggregationType) bool {
+	return t == AggregationCustom
 }
 
 // BillableMetric is a tenant-defined meter. Code is unique per tenant and
@@ -55,10 +70,16 @@ type BillableMetric struct {
 	Code            string          `json:"code"`
 	AggregationType AggregationType `json:"aggregation_type"`
 	// FieldName is the event property whose distinct values are counted for
-	// the unique aggregation. Empty for count/sum/max (they use Quantity).
-	FieldName string    `json:"field_name,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	// the unique aggregation, or the percentile 1-99 for the percentile
+	// aggregation. Empty for count/sum/max/latest/custom.
+	FieldName string `json:"field_name,omitempty"`
+	// Expression is the sandboxed per-event formula for the custom aggregation
+	// (e.g. "quantity * properties.multiplier"). Required for AggregationCustom,
+	// empty for every other type. It reads `quantity` (the event quantity) and
+	// `properties` (its numeric properties); results are summed over the period.
+	Expression string    `json:"expression,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // ChargeModel is how an aggregated quantity is priced.

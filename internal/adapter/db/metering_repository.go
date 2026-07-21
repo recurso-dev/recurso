@@ -24,11 +24,11 @@ func NewBillableMetricRepository(db *sql.DB) port.BillableMetricRepository {
 	return &BillableMetricRepository{db: db}
 }
 
-const metricColumns = `id, tenant_id, name, code, aggregation_type, field_name, created_at, updated_at`
+const metricColumns = `id, tenant_id, name, code, aggregation_type, field_name, expression, created_at, updated_at`
 
 func scanMetric(row interface{ Scan(...any) error }) (*domain.BillableMetric, error) {
 	var m domain.BillableMetric
-	if err := row.Scan(&m.ID, &m.TenantID, &m.Name, &m.Code, &m.AggregationType, &m.FieldName, &m.CreatedAt, &m.UpdatedAt); err != nil {
+	if err := row.Scan(&m.ID, &m.TenantID, &m.Name, &m.Code, &m.AggregationType, &m.FieldName, &m.Expression, &m.CreatedAt, &m.UpdatedAt); err != nil {
 		return nil, err
 	}
 	return &m, nil
@@ -36,9 +36,9 @@ func scanMetric(row interface{ Scan(...any) error }) (*domain.BillableMetric, er
 
 func (r *BillableMetricRepository) Create(ctx context.Context, m *domain.BillableMetric) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO billable_metrics (id, tenant_id, name, code, aggregation_type, field_name, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		m.ID, m.TenantID, m.Name, m.Code, m.AggregationType, m.FieldName, m.CreatedAt, m.UpdatedAt,
+		INSERT INTO billable_metrics (id, tenant_id, name, code, aggregation_type, field_name, expression, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		m.ID, m.TenantID, m.Name, m.Code, m.AggregationType, m.FieldName, m.Expression, m.CreatedAt, m.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert billable metric: %w", err)
@@ -100,9 +100,9 @@ func (r *BillableMetricRepository) ListByTenant(ctx context.Context, tenantID uu
 func (r *BillableMetricRepository) Update(ctx context.Context, m *domain.BillableMetric) error {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE billable_metrics
-		SET name = $3, aggregation_type = $4, field_name = $5, updated_at = $6
+		SET name = $3, aggregation_type = $4, field_name = $5, expression = $6, updated_at = $7
 		WHERE tenant_id = $1 AND id = $2`,
-		m.TenantID, m.ID, m.Name, m.AggregationType, m.FieldName, m.UpdatedAt,
+		m.TenantID, m.ID, m.Name, m.AggregationType, m.FieldName, m.Expression, m.UpdatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update billable metric: %w", err)

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 	"time"
@@ -71,7 +72,14 @@ type MetricInput struct {
 	Code            string `json:"code" binding:"required"`
 	AggregationType string `json:"aggregation_type" binding:"required"`
 	FieldName       string `json:"field_name"`
+	// Expression is the per-event formula for the custom aggregation (required
+	// for it, rejected for every other type).
+	Expression string `json:"expression"`
 }
+
+// maxExpressionLen bounds a custom-aggregation expression. Generous for real
+// formulas, tight enough to reject a pasted program.
+const maxExpressionLen = 1000
 
 func (s *MeteringService) validateMetricInput(in MetricInput) error {
 	if strings.TrimSpace(in.Name) == "" {
@@ -83,11 +91,17 @@ func (s *MeteringService) validateMetricInput(in MetricInput) error {
 	}
 	agg := domain.AggregationType(in.AggregationType)
 	if !domain.ValidAggregationType(agg) {
-		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique, latest, percentile")
+		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique, latest, percentile, custom")
 	}
 	field := strings.TrimSpace(in.FieldName)
 	if len(field) > maxMetricFieldLen {
 		return MeteringValidationError("field_name is too long")
+	}
+	expr := strings.TrimSpace(in.Expression)
+	// expression is only for custom; reject it everywhere else so the DB
+	// field_check constraint can never be violated (and config stays clean).
+	if agg != domain.AggregationCustom && expr != "" {
+		return MeteringValidationError("expression is only valid for the custom aggregation")
 	}
 	switch agg {
 	case domain.AggregationUnique:
@@ -100,6 +114,22 @@ func (s *MeteringService) validateMetricInput(in MetricInput) error {
 		p, err := strconv.Atoi(field)
 		if err != nil || p < 1 || p > 99 {
 			return MeteringValidationError(`field_name must be the percentile 1-99 for the percentile aggregation (e.g. "95")`)
+		}
+	case domain.AggregationCustom:
+		// expression is the sandboxed per-event formula; field_name is unused.
+		if field != "" {
+			return MeteringValidationError("field_name is not used by the custom aggregation; put the formula in expression")
+		}
+		if expr == "" {
+			return MeteringValidationError("expression is required for the custom aggregation")
+		}
+		if len(expr) > maxExpressionLen {
+			return MeteringValidationError(fmt.Sprintf("expression is too long (max %d chars)", maxExpressionLen))
+		}
+		// Compile now so an invalid or unsafe expression is a 400 at config time,
+		// not a failed invoice later.
+		if _, err := CompileCustomExpression(expr); err != nil {
+			return MeteringValidationError(err.Error())
 		}
 	default:
 		// count / sum / max / latest take no field_name.
@@ -122,6 +152,7 @@ func (s *MeteringService) CreateMetric(ctx context.Context, tenantID uuid.UUID, 
 		Code:            in.Code,
 		AggregationType: domain.AggregationType(in.AggregationType),
 		FieldName:       strings.TrimSpace(in.FieldName),
+		Expression:      strings.TrimSpace(in.Expression),
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -155,6 +186,7 @@ func (s *MeteringService) UpdateMetric(ctx context.Context, tenantID, id uuid.UU
 	existing.Name = strings.TrimSpace(in.Name)
 	existing.AggregationType = domain.AggregationType(in.AggregationType)
 	existing.FieldName = strings.TrimSpace(in.FieldName)
+	existing.Expression = strings.TrimSpace(in.Expression)
 	existing.UpdatedAt = s.now()
 	if err := s.metrics.Update(ctx, existing); err != nil {
 		return nil, err
@@ -295,6 +327,21 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
 			"charges[%d]: pay_in_advance requires a non-cumulative model (per_unit, percentage, or dynamic), not %q", idx, model))
 	}
+	// The custom aggregation computes quantity by evaluating a per-event
+	// expression in Go, so it is incompatible with two features that compute the
+	// quantity a different way: dimensional filters (which aggregate subsets in
+	// SQL) and the dynamic charge model (which sums per-event dynamic_amount and
+	// ignores the aggregation). Reject both here rather than fail at invoice time.
+	if metric.AggregationType == domain.AggregationCustom {
+		if strings.TrimSpace(in.FilterKey) != "" {
+			return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+				"charges[%d]: charge filters are not supported with the custom aggregation", idx))
+		}
+		if model == domain.ChargeDynamic {
+			return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+				"charges[%d]: the dynamic charge model is incompatible with the custom aggregation", idx))
+		}
+	}
 	normalized, err := normalizeChargeAmounts(model, in.Amounts, idx, "amounts")
 	if err != nil {
 		return nil, "", nil, err
@@ -358,16 +405,37 @@ func resolveChargeFilters(model domain.ChargeModel, idx int, in ChargeInput) (st
 	return filterKey, filters, nil
 }
 
-// meteredQuantity picks the aggregate a charge model prices for [start, end):
-// a `dynamic` charge bills the Σ per-event dynamic_amount, every other model
-// uses the metric's configured aggregation. Both the live usage preview and
-// invoice generation route through this so they agree. The caller guarantees
-// ch.Metric is non-nil.
-func meteredQuantity(ctx context.Context, repo port.UsageRepository, subID uuid.UUID, ch domain.Charge, start, end time.Time) (int64, error) {
-	if ch.ChargeModel == domain.ChargeDynamic {
-		return repo.SumDynamicAmount(ctx, subID, ch.Metric.Code, start, end)
+// meteredQuantity picks the aggregate a charge prices for [start, end), as an
+// exact rational so a fractional aggregation is priced without pre-rounding:
+//   - a `custom` metric evaluates its expression per event and sums the results
+//     (may be fractional);
+//   - a `dynamic` charge bills the Σ per-event dynamic_amount;
+//   - every other charge uses the metric's configured integer aggregation.
+//
+// The integer paths return a whole-number rational (SetInt64), so callers can
+// treat every case uniformly and rate via RateChargeRat. Both the live usage
+// preview and invoice generation route through this so they agree. The caller
+// guarantees ch.Metric is non-nil.
+func meteredQuantity(ctx context.Context, repo port.UsageRepository, subID uuid.UUID, ch domain.Charge, start, end time.Time) (*big.Rat, error) {
+	if ch.Metric.AggregationType == domain.AggregationCustom {
+		ev, err := CompileCustomExpression(ch.Metric.Expression)
+		if err != nil {
+			return nil, err
+		}
+		return AggregateCustom(ctx, repo, ev, subID, ch.Metric.Code, start, end)
 	}
-	return repo.AggregateForMetric(ctx, subID, *ch.Metric, start, end)
+	if ch.ChargeModel == domain.ChargeDynamic {
+		n, err := repo.SumDynamicAmount(ctx, subID, ch.Metric.Code, start, end)
+		if err != nil {
+			return nil, err
+		}
+		return new(big.Rat).SetInt64(n), nil
+	}
+	n, err := repo.AggregateForMetric(ctx, subID, *ch.Metric, start, end)
+	if err != nil {
+		return nil, err
+	}
+	return new(big.Rat).SetInt64(n), nil
 }
 
 func (s *MeteringService) GetPlanCharges(ctx context.Context, tenantID, planID uuid.UUID) ([]domain.Charge, error) {
@@ -451,11 +519,11 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 		if !ok {
 			continue
 		}
-		qty, err := meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, asOf)
+		qtyRat, err := meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, asOf)
 		if err != nil {
 			return nil, err
 		}
-		amount, err := RateCharge(ch.ChargeModel, amounts, qty)
+		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat)
 		if err != nil {
 			return nil, err
 		}
@@ -464,7 +532,7 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 			MetricName:      ch.Metric.Name,
 			AggregationType: string(ch.Metric.AggregationType),
 			ChargeModel:     string(ch.ChargeModel),
-			Quantity:        qty,
+			Quantity:        roundRatHalfUp(qtyRat),
 			Amount:          amount,
 		})
 		out.TotalAmount += amount

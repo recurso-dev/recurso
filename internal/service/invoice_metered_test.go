@@ -28,8 +28,23 @@ type mockUsageRepoForMeter struct {
 	qtyByMetricCode map[string]int64
 	dynByDimension  map[string]int64
 	filteredByValue map[string]int64
-	gotStart        time.Time
-	gotEnd          time.Time
+	// eventsByDimension feeds StreamEventsForMetric for custom-aggregation tests.
+	eventsByDimension map[string][]struct {
+		Qty   int64
+		Props map[string]string
+	}
+	gotStart time.Time
+	gotEnd   time.Time
+}
+
+func (m *mockUsageRepoForMeter) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(int64, map[string]string) error) error {
+	m.gotStart, m.gotEnd = start, end
+	for _, e := range m.eventsByDimension[dimension] {
+		if err := fn(e.Qty, e.Props); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (m *mockUsageRepoForMeter) AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error) {
@@ -154,6 +169,62 @@ func TestGenerateInvoice_DynamicCharge(t *testing.T) {
 	}
 	if invRepo.created == nil {
 		t.Fatal("invoice was not persisted")
+	}
+}
+
+// TestGenerateInvoice_CustomAggregation asserts a custom-aggregation metric
+// evaluates its expression per event, SUMS the (fractional) results, and prices
+// the exact total once — no pre-rounding of the quantity. Events contribute
+// 2.5 + 3.0 + 2.0 = 7.5 (GB, via bytes/1e6); at ₹10.00/GB the metered line is
+// exactly ₹75.00 (7500p), and the claim records the rounded display quantity 8.
+func TestGenerateInvoice_CustomAggregation(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(0)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{
+		ID: metricID, Name: "Storage", Code: "storage",
+		AggregationType: domain.AggregationCustom,
+		Expression:      "properties.bytes / 1000000",
+	}
+	chargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:          chargeID,
+		PlanID:      sub.PlanID,
+		MetricID:    metricID,
+		ChargeModel: domain.ChargePerUnit,
+		Amounts:     map[string]domain.ChargeAmounts{"INR": {UnitAmount: "10"}},
+		Metric:      &metric,
+	}}}
+	svc.UsageRepo = &mockUsageRepoForMeter{eventsByDimension: map[string][]struct {
+		Qty   int64
+		Props map[string]string
+	}{
+		"storage": {
+			{Qty: 1, Props: map[string]string{"bytes": "2500000"}},
+			{Qty: 1, Props: map[string]string{"bytes": "3000000"}},
+			{Qty: 1, Props: map[string]string{"bytes": "2000000"}},
+		},
+	}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 100000p base + 7500p custom usage (7.5 GB × ₹10).
+	if inv.Subtotal != 107500 {
+		t.Fatalf("Subtotal = %d, want 107500", inv.Subtotal)
+	}
+	if len(inv.LineItems) != 2 {
+		t.Fatalf("line count = %d, want 2 (base + custom)", len(inv.LineItems))
+	}
+	if inv.LineItems[1].Amount != 7500 {
+		t.Fatalf("custom line = %d, want 7500 (7.5 GB × ₹10, money rounded once)", inv.LineItems[1].Amount)
+	}
+	// The claim's amount is the exact-priced 7500; the displayed quantity is the
+	// fractional total rounded to a whole unit (7.5 -> 8).
+	if len(ratingRepo.created) != 1 || ratingRepo.created[0].Amount != 7500 || ratingRepo.created[0].Quantity != 8 {
+		t.Fatalf("claim = %+v, want amount 7500 quantity 8", ratingRepo.created)
 	}
 }
 
