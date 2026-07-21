@@ -1835,7 +1835,17 @@ func main() {
 	}
 
 	serverAddr := fmt.Sprintf(":%s", port)
-	srv := &http.Server{Addr: serverAddr, Handler: r}
+	// ReadHeaderTimeout bounds how long a client may take to send request headers,
+	// closing slow-header (Slowloris) connections. Deliberately no ReadTimeout/
+	// WriteTimeout: they'd cap whole-request duration and could truncate large
+	// usage-event ingests or streamed exports (invoice PDFs, GL CSV). IdleTimeout
+	// reaps idle keep-alive connections.
+	srv := &http.Server{
+		Addr:              serverAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	go func() {
 		sigChan := make(chan os.Signal, 1)
