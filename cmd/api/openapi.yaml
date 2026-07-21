@@ -4046,6 +4046,65 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/settings/tax/liability:
+    get:
+      operationId: getTaxLiabilityReport
+      tags: [Settings]
+      summary: Per-state US sales-tax liability report
+      description: >
+        Per-state US sales-tax liability for a filing period: gross sales, the
+        taxable/non-taxable split (by whether tax was collected), tax collected,
+        invoice count, and whether the tenant has nexus in each state. Period is
+        from+to (to exclusive) or year (defaults to the current calendar year).
+        Scoped to US buyers, USD, non-void/draft invoices — ties to the nexus
+        figures. Non-taxable sales lump exempt, no-nexus, and below-threshold
+        together; the stored invoice does not distinguish them.
+      parameters:
+        - name: year
+          in: query
+          required: false
+          schema: { type: integer, minimum: 2018 }
+        - name: from
+          in: query
+          required: false
+          description: Inclusive start date (YYYY-MM-DD, UTC). Requires 'to'.
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          required: false
+          description: Exclusive end date (YYYY-MM-DD, UTC). Requires 'from'.
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Per-state US sales-tax liability.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      from_date: { type: string, format: date }
+                      to_date: { type: string, format: date }
+                      currency: { type: string }
+                      total_gross_sales: { type: integer, format: int64 }
+                      total_tax_collected: { type: integer, format: int64 }
+                      states:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            state_code: { type: string }
+                            gross_sales: { type: integer, format: int64 }
+                            taxable_sales: { type: integer, format: int64 }
+                            non_taxable_sales: { type: integer, format: int64 }
+                            tax_collected: { type: integer, format: int64 }
+                            invoice_count: { type: integer }
+                            has_nexus: { type: boolean }
+                            nexus_type: { type: string, enum: [physical, voluntary, economic] }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/settings/tax/nexus/status:
     get:
       operationId: getTaxNexusStatus

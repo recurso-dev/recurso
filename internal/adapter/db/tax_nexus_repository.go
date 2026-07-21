@@ -170,6 +170,45 @@ func (r *TaxNexusRepository) EstablishEconomic(ctx context.Context, tenantID uui
 	return n > 0, nil
 }
 
+// LiabilityByState aggregates US sales-tax liability per buyer state over
+// [from, to) (Track D · D3): gross sales, the taxable/non-taxable split (by
+// whether tax was collected), tax collected, and invoice count. Same scoping as
+// SalesByState — US buyers, USD, real (non-void/draft) invoices — so the report
+// ties to the nexus figures. Ordered by tax collected then state.
+func (r *TaxNexusRepository) LiabilityByState(ctx context.Context, tenantID uuid.UUID, from, to time.Time) ([]domain.USLiabilityStateLine, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT UPPER(TRIM(c.state)) AS state,
+		       COALESCE(SUM(i.subtotal), 0) AS gross,
+		       COALESCE(SUM(CASE WHEN i.tax_amount > 0 THEN i.subtotal ELSE 0 END), 0) AS taxable,
+		       COALESCE(SUM(CASE WHEN i.tax_amount = 0 THEN i.subtotal ELSE 0 END), 0) AS nontaxable,
+		       COALESCE(SUM(i.tax_amount), 0) AS tax_collected,
+		       COUNT(i.id) AS cnt
+		FROM invoices i
+		JOIN customers c ON c.id = i.customer_id
+		WHERE i.tenant_id = $1
+		  AND i.currency = 'USD'
+		  AND UPPER(TRIM(c.country)) IN ('US', 'USA', 'UNITED STATES')
+		  AND LENGTH(TRIM(c.state)) = 2
+		  AND i.status NOT IN ('void', 'draft')
+		  AND i.created_at >= $2 AND i.created_at < $3
+		GROUP BY UPPER(TRIM(c.state))
+		ORDER BY tax_collected DESC, state`, tenantID, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query liability by state: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.USLiabilityStateLine
+	for rows.Next() {
+		var l domain.USLiabilityStateLine
+		if err := rows.Scan(&l.StateCode, &l.GrossSales, &l.TaxableSales, &l.NonTaxableSales, &l.TaxCollected, &l.InvoiceCount); err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // ClaimNexusAlert atomically records that a (tenant, state, year, level) alert is
 // being sent, returning true only the first time. The INSERT ... ON CONFLICT DO
 // NOTHING is the dedup primitive — robust even when the scheduler lock is a no-op

@@ -77,3 +77,35 @@ type NexusStateStatus struct {
 	ProximityPct int  `json:"proximity_pct"`
 	Crossed      bool `json:"crossed"`
 }
+
+// USLiabilityStateLine is one state's US sales-tax liability for a period
+// (Track D · D3): what was sold and how much tax was collected, so the tenant
+// can file. All money is USD cents.
+type USLiabilityStateLine struct {
+	StateCode string `json:"state_code"`
+	// GrossSales is the sum of invoice subtotals into the state.
+	GrossSales int64 `json:"gross_sales"`
+	// TaxableSales is the subtotal of invoices that actually collected tax
+	// (tax_amount > 0); NonTaxableSales is the rest (exempt, no-nexus, or
+	// below-threshold — the stored invoice doesn't distinguish which).
+	TaxableSales    int64 `json:"taxable_sales"`
+	NonTaxableSales int64 `json:"non_taxable_sales"`
+	// TaxCollected is the sum of invoice tax amounts into the state.
+	TaxCollected int64 `json:"tax_collected"`
+	InvoiceCount int   `json:"invoice_count"`
+	// HasNexus reflects whether the tenant has declared or economic nexus in
+	// this state — a state with tax collected but no nexus (or vice-versa) is
+	// worth the tenant's attention.
+	HasNexus  bool      `json:"has_nexus"`
+	NexusType NexusType `json:"nexus_type,omitempty"`
+}
+
+// USLiabilityReport is the per-state US sales-tax liability for a filing period.
+type USLiabilityReport struct {
+	FromDate          string                 `json:"from_date"` // inclusive, YYYY-MM-DD (UTC)
+	ToDate            string                 `json:"to_date"`   // exclusive, YYYY-MM-DD (UTC)
+	Currency          string                 `json:"currency"`  // always "USD"
+	States            []USLiabilityStateLine `json:"states"`
+	TotalGrossSales   int64                  `json:"total_gross_sales"`
+	TotalTaxCollected int64                  `json:"total_tax_collected"`
+}

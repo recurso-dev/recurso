@@ -151,6 +151,41 @@ func (s *NexusStatusService) EvaluateEconomicNexus(ctx context.Context, tenantID
 	return established, nil
 }
 
+// LiabilityReport builds the per-state US sales-tax liability for [from, to)
+// (Track D · D3), annotating each state with whether the tenant has nexus there
+// and rolling up the totals — the figures a tenant files from.
+func (s *NexusStatusService) LiabilityReport(ctx context.Context, tenantID uuid.UUID, from, to time.Time) (*domain.USLiabilityReport, error) {
+	lines, err := s.repo.LiabilityByState(ctx, tenantID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	nexus, err := s.repo.ListByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	nexusByState := make(map[string]domain.NexusType, len(nexus))
+	for _, n := range nexus {
+		nexusByState[n.StateCode] = n.NexusType
+	}
+
+	report := &domain.USLiabilityReport{
+		FromDate: from.UTC().Format("2006-01-02"),
+		ToDate:   to.UTC().Format("2006-01-02"),
+		Currency: "USD",
+		States:   make([]domain.USLiabilityStateLine, 0, len(lines)),
+	}
+	for _, l := range lines {
+		if nt, ok := nexusByState[l.StateCode]; ok {
+			l.HasNexus = true
+			l.NexusType = nt
+		}
+		report.States = append(report.States, l)
+		report.TotalGrossSales += l.GrossSales
+		report.TotalTaxCollected += l.TaxCollected
+	}
+	return report, nil
+}
+
 // proximity computes how close activity is to a threshold (percent, capped at
 // 999) and whether it is crossed. "or" states cross on either limb, so
 // proximity is the max ratio; "and" states need both, so it's the min.
