@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -77,6 +78,70 @@ func (h *TaxNexusHandler) GetNexusStatus(c *gin.Context) {
 		"dataset_certified": certified,
 		"states":            states,
 	}})
+}
+
+// GetLiabilityReport returns per-state US sales-tax liability for a filing
+// period (Track D · D3): gross sales, the taxable/non-taxable split, tax
+// collected, and whether the tenant has nexus in each state. Period is
+// ?from=YYYY-MM-DD&to=YYYY-MM-DD (to exclusive), or ?year=YYYY (defaults to the
+// current calendar year).
+func (h *TaxNexusHandler) GetLiabilityReport(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if h.status == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "liability report isn't available on this deployment")
+		return
+	}
+
+	from, to, err := parseLiabilityPeriod(c)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	report, err := h.status.LiabilityReport(c.Request.Context(), tenantID, from, to)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": report})
+}
+
+// parseLiabilityPeriod resolves the report window from ?from/?to (both required
+// together, to exclusive) or ?year (defaults to the current calendar year).
+func parseLiabilityPeriod(c *gin.Context) (time.Time, time.Time, error) {
+	fromStr, toStr := c.Query("from"), c.Query("to")
+	if fromStr != "" || toStr != "" {
+		if fromStr == "" || toStr == "" {
+			return time.Time{}, time.Time{}, errors.New("both 'from' and 'to' are required when either is given")
+		}
+		from, err := time.Parse("2006-01-02", fromStr)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.New("invalid 'from' date (want YYYY-MM-DD)")
+		}
+		to, err := time.Parse("2006-01-02", toStr)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.New("invalid 'to' date (want YYYY-MM-DD)")
+		}
+		if !to.After(from) {
+			return time.Time{}, time.Time{}, errors.New("'to' must be after 'from'")
+		}
+		return from.UTC(), to.UTC(), nil
+	}
+
+	year := time.Now().UTC().Year()
+	if y := c.Query("year"); y != "" {
+		parsed, err := strconv.Atoi(y)
+		if err != nil || parsed < 2018 || parsed > time.Now().UTC().Year()+1 {
+			return time.Time{}, time.Time{}, errors.New("invalid year")
+		}
+		year = parsed
+	}
+	return time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC),
+		time.Date(year+1, 1, 1, 0, 0, 0, 0, time.UTC), nil
 }
 
 // requireManager gates writes to owner/admin; API-key (machine) callers pass.
