@@ -11,7 +11,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
-// Pay-in-advance billing (Beat Lago A3): a charge marked pay_in_advance is
+// Pay-in-advance billing: a charge marked pay_in_advance is
 // rated PER usage event at ingestion time and captured immediately as a pending
 // unbilled charge. GenerateInvoice already folds pending unbilled charges onto
 // the subscription's next invoice as tax-resolved lines and posts the ledger

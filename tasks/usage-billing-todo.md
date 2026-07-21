@@ -1,6 +1,6 @@
-# Tasks: Beat Lago — Track A + B
+# Tasks: Usage-billing roadmap — Track A + B
 
-> Phase 3 (Tasks) for `docs/spec_beat_lago.md` / `tasks/beat-lago-plan.md`.
+> Phase 3 (Tasks) for `docs/usage_billing_roadmap.md` / `tasks/usage-billing-plan.md`.
 > Ordered by dependency. Each increment ships as its own PR. Standing gates:
 > full Go suite + E2E + invariant harness (`TestLedgerInvariants`) + OpenAPI
 > drift (`TestOpenAPISpecCoversRegisteredRoutes`) green before merge; frontend
@@ -29,7 +29,7 @@
   - Acceptance: Go/TS/Python SDK charge-model enums include the 3 new values. (Merge only — no publish/tag; founder-gated.)
   - Verify: SDK builds/tests in each SDK repo.
   - Files: SDK enum/type files (three repos).
-- [ ] **A1.6 — Pricing simulator (leapfrog)**
+- [ ] **A1.6 — Pricing simulator**
   - Acceptance: `POST /v1/plans/:id/simulate-charges` rates a proposed charge set against the tenant's last-period usage; returns invoice preview + GL preview; **read-only** (no DB write, no ledger post).
   - Verify: handler test asserts zero persistence + balanced preview; OpenAPI drift green.
   - Files: new `internal/service/pricing_simulator.go`, `internal/adapter/handler/plan.go`, `api/openapi.yaml`.
@@ -44,7 +44,7 @@
   - Acceptance: returns the last event value in the window.
   - Verify: table test incl. out-of-order arrival.
   - Files: aggregation query path, domain enum.
-- [ ] **A2.3 — `percentile` (p95/p99) aggregation (leapfrog)**
+- [ ] **A2.3 — `percentile` (p95/p99) aggregation**
   - Acceptance: p95/p99 over the window; query bounded (no unbounded scan).
   - Verify: table test vs known distribution; large-window query stays bounded.
   - Files: aggregation query path, domain enum.
@@ -67,11 +67,11 @@
   - Acceptance: events select amounts by matching property; precedence deterministic; **filter-less charges byte-identical to today** (regression guard).
   - Verify: two-value table test + golden test proving no-filter output unchanged.
   - Files: `internal/service/rating.go`.
-- [ ] **A4.3 — GL dimension on posted revenue (leapfrog)**
+- [ ] **A4.3 — GL dimension on posted revenue**
   - Acceptance: revenue legs carry the filter dimension; ledger stays balanced.
   - Verify: ledger test asserts dimension present + balanced; invariant harness green.
   - Files: `internal/service/ledger*.go`, rating→invoice path.
-- [ ] **A4.4 — Filter-resolved tax jurisdiction (leapfrog)**
+- [ ] **A4.4 — Filter-resolved tax jurisdiction**
   - Acceptance: a filter dimension can drive `TaxResolver` jurisdiction selection.
   - Verify: test resolves jurisdiction from filter value.
   - Files: `internal/service/tax_resolver.go` hook, rating path.
@@ -90,7 +90,7 @@
   - Acceptance: a pay-in-advance event produces an immediate line; retried event (same `transaction_id`) no-ops (Q3/usage_ratings claim).
   - Verify: event→line test; retry idempotency test.
   - Files: `internal/service/rating.go`, event path, invoice service.
-- [ ] **A3.3 — Deferred-revenue ledger legs (leapfrog)**
+- [ ] **A3.3 — Deferred-revenue ledger legs**
   - Acceptance: posts **DR cash / CR deferred revenue**, balanced, idempotent by `transaction_id`.
   - Verify: ledger balanced test; **invariant harness green**.
   - Files: `internal/service/ledger*.go`, rev-rec service.
@@ -109,7 +109,7 @@
   - Acceptance: interim invoice attempts payment via stored method when `attempt_payment` on; togglable.
   - Verify: paid-path + toggle-off (invoice only, no charge) tests.
   - Files: threshold evaluator, payment/collection service.
-- [ ] **A5.3 — Risk-driven threshold evaluation (leapfrog)**
+- [ ] **A5.3 — Risk-driven threshold evaluation**
   - Acceptance: threshold consults churn/credit score; high-risk billed sooner than low-risk on identical config; degrades to static threshold when signal absent.
   - Verify: two-customer test (same config, different risk → different timing); signal-absent fallback test.
   - Files: threshold evaluator, risk-score source.
@@ -150,4 +150,4 @@
 
 ## Suggested execution order
 `A1 → (A2 ∥ A4) → A3 → A5`, with **B2** shipped early and **B1** after Q1 is
-confirmed. Hold at each checkpoint in `beat-lago-plan.md`.
+confirmed. Hold at each checkpoint in `usage-billing-plan.md`.
