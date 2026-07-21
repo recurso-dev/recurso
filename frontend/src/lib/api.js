@@ -152,6 +152,9 @@ export const endpoints = {
   advanceSubscription: (id, periods) => api.post(`/subscriptions/${id}/advance`, { periods }),
   // Minimum commitment per period, minor units; 0 clears it.
   setSubscriptionCommitment: (id, amount) => api.put(`/subscriptions/${id}/commitment`, { amount }),
+  // Ad-hoc one-off charge folded onto the subscription's next invoice.
+  addSubscriptionCharge: (id, body) => api.post(`/subscriptions/${id}/charges`, body),
+  getSubscriptionCharges: (id) => api.get(`/subscriptions/${id}/charges`),
 
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
