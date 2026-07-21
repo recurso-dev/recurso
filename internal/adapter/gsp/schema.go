@@ -2,10 +2,27 @@ package gsp
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
+
+// parsePin extracts the numeric PIN code NIC's INV-01 schema requires (a 6-digit
+// integer) from a free-form postal-code string (which may carry spaces). Returns
+// 0 only when no digits are present — an empty/invalid PIN then surfaces as an
+// IRP validation failure (and a retry) rather than being silently sent as 0 for
+// every invoice.
+func parsePin(pinCode string) int {
+	digits := make([]rune, 0, len(pinCode))
+	for _, r := range pinCode {
+		if r >= '0' && r <= '9' {
+			digits = append(digits, r)
+		}
+	}
+	n, _ := strconv.Atoi(string(digits))
+	return n
+}
 
 // GST INV-01 JSON schema structs for NIC e-invoice API
 
@@ -115,7 +132,7 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 			TrdNm: req.Seller.TradeName,
 			Addr1: req.Seller.Address,
 			Loc:   req.Seller.Location,
-			Pin:   0, // Will be parsed from PinCode
+			Pin:   parsePin(req.Seller.PinCode),
 			Stcd:  req.Seller.StateCode,
 		},
 		BuyerDtls: BuyerDtls{
@@ -124,7 +141,7 @@ func BuildInvoiceSchema(req *port.EInvoiceRequest) *GSTInvoiceSchema {
 			TrdNm: req.Buyer.TradeName,
 			Addr1: req.Buyer.Address,
 			Loc:   req.Buyer.Location,
-			Pin:   0,
+			Pin:   parsePin(req.Buyer.PinCode),
 			Pos:   req.Buyer.Place,
 			Stcd:  req.Buyer.StateCode,
 		},
