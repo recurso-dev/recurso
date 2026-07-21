@@ -211,6 +211,44 @@ func percentileFraction(field string) (float64, error) {
 	return float64(p) / 100.0, nil
 }
 
+// StreamEventsForMetric invokes fn for each event of the subscription's
+// dimension inside [start, end), passing the event quantity and its raw string
+// properties (nil when the event has none). It streams rows rather than
+// materializing them, so the custom aggregation can fold a large period without
+// loading every event into memory. fn returning an error stops iteration and is
+// returned. Ordering is by (timestamp, id) so time-dependent folds (e.g. a
+// future time-weighted aggregation) see events in occurrence order.
+func (r *UsageRepository) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, props map[string]string) error) error {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT quantity, properties
+		FROM usage_events
+		WHERE subscription_id = $1 AND dimension = $2 AND timestamp >= $3 AND timestamp < $4
+		ORDER BY timestamp ASC, id ASC`,
+		subscriptionID, dimension, start, end,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to stream usage events for metric %q: %w", dimension, err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var quantity int64
+		var propsRaw []byte
+		if err := rows.Scan(&quantity, &propsRaw); err != nil {
+			return fmt.Errorf("failed to scan usage event: %w", err)
+		}
+		var props map[string]string
+		if len(propsRaw) > 0 {
+			if err := json.Unmarshal(propsRaw, &props); err != nil {
+				return fmt.Errorf("failed to decode event properties: %w", err)
+			}
+		}
+		if err := fn(quantity, props); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
 // SumDynamicAmount sums the per-event dynamic_amount (minor units) for the
 // dimension inside [start, end) — the quantity a `dynamic` charge bills. Zero
 // events sum to 0.

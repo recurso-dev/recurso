@@ -7,6 +7,7 @@ toolchain go1.25.12
 require (
 	github.com/bsm/redislock v0.9.4
 	github.com/crewjam/saml v0.4.14
+	github.com/expr-lang/expr v1.17.8
 	github.com/gin-gonic/gin v1.9.1
 	github.com/golang-migrate/migrate/v4 v4.16.2
 	github.com/google/uuid v1.4.0
