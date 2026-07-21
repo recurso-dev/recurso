@@ -206,6 +206,43 @@ describe('PlanCharges editor', () => {
         expect(await screen.findByText('2.5% of value + $0.30 fee')).toBeInTheDocument();
     });
 
+    it('saves per-value filter pricing for a per_unit charge (A4)', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Per-unit rate 1'), { target: { value: '0.01' } });
+        fireEvent.change(screen.getByLabelText('Charge 1 filter property'), { target: { value: 'region' } });
+        fireEvent.click(screen.getByRole('button', { name: /add value/i }));
+        fireEvent.change(screen.getByLabelText('Charge 1 filter 1 value'), { target: { value: 'us' } });
+        fireEvent.change(screen.getByLabelText('Charge 1 filter 1 rate'), { target: { value: '0.02' } });
+        fireEvent.click(screen.getByRole('button', { name: /save charges/i }));
+
+        await waitFor(() =>
+            expect(endpoints.setPlanCharges).toHaveBeenCalledWith('plan-123', [
+                {
+                    metric_id: 'metric-1',
+                    charge_model: 'per_unit',
+                    amounts: { USD: { unit_amount: '0.01' } },
+                    hsn_code: '',
+                    filter_key: 'region',
+                    filters: [{ value: 'us', amounts: { USD: { unit_amount: '0.02' } } }],
+                },
+            ])
+        );
+    });
+
+    it('hides the filter builder for tier/dynamic models', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Charge model 1'), { target: { value: 'graduated' } });
+
+        expect(screen.queryByLabelText('Charge 1 filter property')).not.toBeInTheDocument();
+    });
+
     it('blocks saving when a tier bound does not increase', async () => {
         renderCharges();
         fireEvent.click(await screen.findByRole('button', { name: /edit/i }));

@@ -48,8 +48,18 @@ const newRow = (metricId = "") => ({
   free_amount: "",
   min_amount: "",
   max_amount: "",
+  // A4 dimensional pricing (per_unit/percentage only in the editor): a property
+  // key + per-value rates. Each filter: { value, amount } (amount is the
+  // per-value unit_amount for per_unit, or rate for percentage).
+  filter_key: "",
+  filters: [],
   hsn_code: "",
 });
+
+// filterEligible: the editor supports dimensional pricing for the single-field
+// models. Tier/dynamic filters are API-only in v1.
+const filterEligible = (m) => m === "per_unit" || m === "percentage";
+const blankFilter = () => ({ value: "", amount: "" });
 
 // toEditorRows converts loaded charges (Amounts keyed by currency) into flat
 // editor rows for the plan's currency. Amounts for other currencies are not
@@ -60,6 +70,13 @@ const toEditorRows = (charges, currency) =>
     const row = newRow(ch.metric_id);
     row.charge_model = ch.charge_model;
     row.hsn_code = ch.hsn_code || "";
+    if (ch.filter_key && filterEligible(ch.charge_model)) {
+      row.filter_key = ch.filter_key;
+      row.filters = (ch.filters || []).map((f) => {
+        const fa = (f.amounts && (f.amounts[currency] || f.amounts[currency?.toUpperCase()])) || {};
+        return { value: f.value || "", amount: (ch.charge_model === "percentage" ? fa.rate : fa.unit_amount) || "" };
+      });
+    }
     if (ch.charge_model === "per_unit") {
       row.unit_amount = a.unit_amount || "";
     } else if (ch.charge_model === "package") {
@@ -151,6 +168,19 @@ const validateRows = (rows) => {
           return `Charge ${n}, tier ${t + 1}: flat fee must be ≥ 0.`;
       }
     }
+
+    // A4 dimensional pricing (per_unit/percentage): validate filter values + rates.
+    if (filterEligible(r.charge_model) && r.filter_key.trim()) {
+      if (!r.filters.length) return `Charge ${n}: add at least one filter value, or clear the filter property.`;
+      const seenVals = new Set();
+      for (let f = 0; f < r.filters.length; f++) {
+        const fv = r.filters[f];
+        if (!fv.value.trim()) return `Charge ${n}, filter ${f + 1}: enter a property value.`;
+        if (seenVals.has(fv.value.trim())) return `Charge ${n}, filter ${f + 1}: duplicate value.`;
+        seenVals.add(fv.value.trim());
+        if (!isDecimal(fv.amount)) return `Charge ${n}, filter ${f + 1}: enter a valid rate.`;
+      }
+    }
   }
   return null;
 };
@@ -196,12 +226,22 @@ const rowsToPayload = (rows, currency) =>
         }),
       };
     }
-    return {
+    const payload = {
       metric_id: r.metric_id,
       charge_model: r.charge_model,
       amounts: { [currency]: amounts },
       hsn_code: r.hsn_code.trim(),
     };
+    // A4: dimensional pricing — one amounts entry per filter value.
+    if (filterEligible(r.charge_model) && r.filter_key.trim() && r.filters.length) {
+      const field = r.charge_model === "percentage" ? "rate" : "unit_amount";
+      payload.filter_key = r.filter_key.trim();
+      payload.filters = r.filters.map((f) => ({
+        value: f.value.trim(),
+        amounts: { [currency]: { [field]: String(f.amount).trim() } },
+      }));
+    }
+    return payload;
   });
 
 // chargeSummary renders a compact read-only description of a charge's pricing.
@@ -299,6 +339,20 @@ export default function PlanCharges({ planId, currency }) {
           ? { ...r, tiers: r.tiers.filter((_, tIdx) => tIdx !== ti) }
           : r
       )
+    );
+
+  // A4 dimensional-pricing filter helpers.
+  const updateFilter = (ri, fi, patch) =>
+    setRows((prev) =>
+      prev.map((r, idx) =>
+        idx === ri ? { ...r, filters: r.filters.map((f, fIdx) => (fIdx === fi ? { ...f, ...patch } : f)) } : r
+      )
+    );
+  const addFilter = (ri) =>
+    setRows((prev) => prev.map((r, idx) => (idx === ri ? { ...r, filters: [...r.filters, blankFilter()] } : r)));
+  const removeFilter = (ri, fi) =>
+    setRows((prev) =>
+      prev.map((r, idx) => (idx === ri ? { ...r, filters: r.filters.filter((_, fIdx) => fIdx !== fi) } : r))
     );
 
   const handleSave = async () => {
@@ -548,6 +602,59 @@ export default function PlanCharges({ planId, currency }) {
                   as <code className="font-mono">dynamic_amount</code> (minor units).
                   The charge bills the sum for the period.
                 </p>
+              )}
+
+              {filterEligible(row.charge_model) && (
+                <div className="flex flex-col gap-2 rounded-md border border-dashed border-border p-2.5">
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground">Price by property</label>
+                    <Input
+                      value={row.filter_key}
+                      onChange={(e) => updateRow(i, { filter_key: e.target.value })}
+                      placeholder="e.g. region (optional)"
+                      aria-label={`Charge ${i + 1} filter property`}
+                      className="h-8 w-40 font-mono"
+                    />
+                  </div>
+                  {row.filter_key.trim() && (
+                    <>
+                      {row.filters.map((f, fi) => (
+                        <div key={fi} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
+                          <Input
+                            value={f.value}
+                            onChange={(e) => updateFilter(i, fi, { value: e.target.value })}
+                            placeholder="value (e.g. us)"
+                            aria-label={`Charge ${i + 1} filter ${fi + 1} value`}
+                            className="h-8 font-mono"
+                          />
+                          <Input
+                            value={f.amount}
+                            onChange={(e) => updateFilter(i, fi, { amount: e.target.value })}
+                            placeholder={row.charge_model === "percentage" ? "rate %" : `rate/unit`}
+                            inputMode="decimal"
+                            aria-label={`Charge ${i + 1} filter ${fi + 1} rate`}
+                            className="h-8 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeFilter(i, fi)}
+                            aria-label={`Remove filter ${fi + 1}`}
+                            className="text-stone-400 transition-colors hover:text-red-500"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                      <Button variant="ghost" size="sm" className="self-start" onClick={() => addFilter(i)}>
+                        <Plus className="h-3.5 w-3.5" />
+                        Add value
+                      </Button>
+                      <p className="text-xs text-muted-foreground">
+                        Events matching no value use the rate above (the default).
+                      </p>
+                    </>
+                  )}
+                </div>
               )}
 
               <div className="flex items-center gap-2">
