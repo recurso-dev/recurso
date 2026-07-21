@@ -49,7 +49,13 @@ type Invoice struct {
 	Currency  string `json:"currency" db:"currency"`
 	Subtotal  int64  `json:"subtotal" db:"subtotal"`
 	TaxAmount int64  `json:"tax_amount" db:"tax_amount"` // Renamed from Tax
-	Total     int64  `json:"total" db:"total"`
+	// TaxType is the resolved tax evaluation reason (e.g. "sales_tax",
+	// "sales_tax_exempt", "no_nexus", "gst_intra", "vat"). Set once at invoice
+	// creation and read by the liability report via a direct column query; it is
+	// NOT hydrated when an invoice is scanned back (reads leave it empty). See
+	// Track D · D3c.
+	TaxType string `json:"tax_type" db:"tax_type"`
+	Total   int64  `json:"total" db:"total"`
 
 	// Compliance P24
 	IGSTAmount           int64      `json:"igst_amount" db:"igst_amount"`

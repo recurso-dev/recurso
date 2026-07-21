@@ -268,6 +268,7 @@ export default function TaxNexusSettings() {
                     <TableHead>Nexus</TableHead>
                     <TableHead className="text-right">Gross sales</TableHead>
                     <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">Exempt</TableHead>
                     <TableHead className="text-right">Non-taxable</TableHead>
                     <TableHead className="text-right">Tax collected</TableHead>
                   </TableRow>
@@ -292,6 +293,9 @@ export default function TaxNexusSettings() {
                         {formatCurrency(s.taxable_sales, "USD")}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
+                        {formatCurrency(s.exempt_sales, "USD")}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
                         {formatCurrency(s.non_taxable_sales, "USD")}
                       </TableCell>
                       <TableCell className="text-right font-medium tabular-nums">
@@ -306,6 +310,7 @@ export default function TaxNexusSettings() {
                     </TableCell>
                     <TableCell />
                     <TableCell />
+                    <TableCell />
                     <TableCell className="text-right tabular-nums">
                       {formatCurrency(liability.total_tax_collected, "USD")}
                     </TableCell>
@@ -313,9 +318,10 @@ export default function TaxNexusSettings() {
                 </TableBody>
               </Table>
               <p className="px-6 py-3 text-xs text-muted-foreground">
-                A state collecting tax without declared nexus is flagged. Non-taxable
-                combines exempt, no-nexus, and below-threshold sales. Confirm figures
-                with a tax professional before filing.
+                A state collecting tax without declared nexus is flagged. Exempt is
+                sales under a customer exemption certificate; non-taxable is
+                no-nexus or below-threshold. Confirm figures with a tax professional
+                before filing.
               </p>
             </>
           )}

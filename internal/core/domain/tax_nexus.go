@@ -85,10 +85,12 @@ type USLiabilityStateLine struct {
 	StateCode string `json:"state_code"`
 	// GrossSales is the sum of invoice subtotals into the state.
 	GrossSales int64 `json:"gross_sales"`
-	// TaxableSales is the subtotal of invoices that actually collected tax
-	// (tax_amount > 0); NonTaxableSales is the rest (exempt, no-nexus, or
-	// below-threshold — the stored invoice doesn't distinguish which).
+	// TaxableSales is the subtotal of invoices that collected tax (tax_amount > 0).
+	// ExemptSales is the subtotal invoiced under a customer exemption
+	// (tax_type "sales_tax_exempt"). NonTaxableSales is the remaining zero-tax
+	// sales — no-nexus or below-threshold. The three partition GrossSales.
 	TaxableSales    int64 `json:"taxable_sales"`
+	ExemptSales     int64 `json:"exempt_sales"`
 	NonTaxableSales int64 `json:"non_taxable_sales"`
 	// TaxCollected is the sum of invoice tax amounts into the state.
 	TaxCollected int64 `json:"tax_collected"`

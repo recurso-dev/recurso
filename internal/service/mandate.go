@@ -325,6 +325,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 		Currency:        currency,
 		Subtotal:        subtotal,
 		TaxAmount:       taxTotal,
+		TaxType:         tax.TaxType, // D3c: persist for the liability report
 		Total:           total,
 		IGSTAmount:      igst,
 		CGSTAmount:      cgst,

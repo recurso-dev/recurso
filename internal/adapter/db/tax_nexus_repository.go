@@ -180,7 +180,8 @@ func (r *TaxNexusRepository) LiabilityByState(ctx context.Context, tenantID uuid
 		SELECT UPPER(TRIM(c.state)) AS state,
 		       COALESCE(SUM(i.subtotal), 0) AS gross,
 		       COALESCE(SUM(CASE WHEN i.tax_amount > 0 THEN i.subtotal ELSE 0 END), 0) AS taxable,
-		       COALESCE(SUM(CASE WHEN i.tax_amount = 0 THEN i.subtotal ELSE 0 END), 0) AS nontaxable,
+		       COALESCE(SUM(CASE WHEN i.tax_type = 'sales_tax_exempt' THEN i.subtotal ELSE 0 END), 0) AS exempt,
+		       COALESCE(SUM(CASE WHEN i.tax_amount = 0 AND i.tax_type <> 'sales_tax_exempt' THEN i.subtotal ELSE 0 END), 0) AS nontaxable,
 		       COALESCE(SUM(i.tax_amount), 0) AS tax_collected,
 		       COUNT(i.id) AS cnt
 		FROM invoices i
@@ -201,7 +202,7 @@ func (r *TaxNexusRepository) LiabilityByState(ctx context.Context, tenantID uuid
 	var out []domain.USLiabilityStateLine
 	for rows.Next() {
 		var l domain.USLiabilityStateLine
-		if err := rows.Scan(&l.StateCode, &l.GrossSales, &l.TaxableSales, &l.NonTaxableSales, &l.TaxCollected, &l.InvoiceCount); err != nil {
+		if err := rows.Scan(&l.StateCode, &l.GrossSales, &l.TaxableSales, &l.ExemptSales, &l.NonTaxableSales, &l.TaxCollected, &l.InvoiceCount); err != nil {
 			return nil, err
 		}
 		out = append(out, l)
