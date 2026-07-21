@@ -56,6 +56,9 @@ export default function CreateCustomer() {
     country: "United States",
     state: "California",
     tax_id: "",
+    tax_exempt: false,
+    tax_exemption_number: "",
+    tax_exemption_code: "",
   });
 
   const isIndia = form.country === "India";
@@ -89,6 +92,10 @@ export default function CreateCustomer() {
         line1: form.address,
         country: isoCountry,
         state: form.state,
+        // US sales-tax exemption (D2) — only meaningful outside India.
+        tax_exempt: isIndia ? false : form.tax_exempt,
+        tax_exemption_number: isIndia ? "" : form.tax_exemption_number,
+        tax_exemption_code: isIndia ? "" : form.tax_exemption_code,
       };
       await endpoints.createCustomer(payload);
       toast.success("Customer created");
@@ -229,6 +236,57 @@ export default function CreateCustomer() {
                 onChange={(e) => setField("tax_id", e.target.value)}
               />
             </FormField>
+
+            {!isIndia && (
+              <div className="rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium">Tax exempt (US)</p>
+                    <p className="text-sm text-muted-foreground">
+                      Pass this customer's exemption to the tax provider so no US
+                      sales tax is collected and the sale is recorded exempt.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.tax_exempt}
+                    onClick={() => setField("tax_exempt", !form.tax_exempt)}
+                    className={cn(
+                      "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                      form.tax_exempt ? "bg-primary" : "bg-stone-200",
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                        form.tax_exempt ? "translate-x-5" : "translate-x-0",
+                      )}
+                    />
+                  </button>
+                </div>
+                {form.tax_exempt && (
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <FormField label="Exemption / certificate number" htmlFor="tax_exemption_number">
+                      <Input
+                        id="tax_exemption_number"
+                        placeholder="e.g. RESALE-0001"
+                        value={form.tax_exemption_number}
+                        onChange={(e) => setField("tax_exemption_number", e.target.value)}
+                      />
+                    </FormField>
+                    <FormField label="Entity-use code" htmlFor="tax_exemption_code">
+                      <Input
+                        id="tax_exemption_code"
+                        placeholder="e.g. A (federal govt)"
+                        value={form.tax_exemption_code}
+                        onChange={(e) => setField("tax_exemption_code", e.target.value.toUpperCase())}
+                      />
+                    </FormField>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
         </form>
 

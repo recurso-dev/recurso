@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Pencil, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,7 +93,11 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
     customer.active_subs ?? customer.activeSubs ?? customer.active_subscriptions ?? 0;
   const address = formatAddress(customer.billing_address);
   const hasBilling =
-    address || customer.tax_type || customer.gstin || customer.place_of_supply;
+    address ||
+    customer.tax_type ||
+    customer.gstin ||
+    customer.place_of_supply ||
+    customer.tax_exempt;
   // active may be absent on stale list rows; treat missing as active.
   const isArchived = customer.active === false;
 
@@ -109,6 +113,9 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
       state: customer.billing_address?.state || "",
       zip: customer.billing_address?.zip || "",
       country: customer.billing_address?.country || "",
+      tax_exempt: customer.tax_exempt || false,
+      tax_exemption_number: customer.tax_exemption_number || "",
+      tax_exemption_code: customer.tax_exemption_code || "",
     });
     setIsEditing(true);
   };
@@ -215,6 +222,43 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   placeholder="IN"
                 />
               </div>
+              <div className="flex items-center justify-between rounded-md border border-border bg-background px-3 py-2">
+                <span className="text-sm">Tax exempt (US)</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={form.tax_exempt}
+                  onClick={() => set("tax_exempt")(!form.tax_exempt)}
+                  className={cn(
+                    "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    form.tax_exempt ? "bg-primary" : "bg-stone-200",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
+                      form.tax_exempt ? "translate-x-4" : "translate-x-0",
+                    )}
+                  />
+                </button>
+              </div>
+              {form.tax_exempt && (
+                <div className="grid grid-cols-2 gap-3">
+                  <EditField
+                    label="Exemption number"
+                    value={form.tax_exemption_number}
+                    onChange={set("tax_exemption_number")}
+                    placeholder="RESALE-0001"
+                  />
+                  <EditField
+                    label="Entity-use code"
+                    mono
+                    value={form.tax_exemption_code}
+                    onChange={(v) => set("tax_exemption_code")(v.toUpperCase())}
+                    placeholder="A"
+                  />
+                </div>
+              )}
               <div className="flex justify-end gap-2">
                 <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={saving}>
                   Cancel
@@ -250,6 +294,17 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                     )}
                     {customer.place_of_supply && (
                       <Field label="Place of supply">{customer.place_of_supply}</Field>
+                    )}
+                    {customer.tax_exempt && (
+                      <Field label="Tax exempt">
+                        Yes
+                        {customer.tax_exemption_number
+                          ? ` · ${customer.tax_exemption_number}`
+                          : ""}
+                        {customer.tax_exemption_code
+                          ? ` (${customer.tax_exemption_code})`
+                          : ""}
+                      </Field>
                     )}
                   </Section>
                 </>
