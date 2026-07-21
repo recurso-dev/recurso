@@ -90,7 +90,10 @@ const Metering = () => {
     setSaving(true);
     try {
       const body = { ...metricForm };
-      if (body.aggregation_type !== "unique") delete body.field_name;
+      // field_name carries the counted property (unique) or the percentile
+      // 1-99 (percentile); every other aggregation takes no field_name.
+      if (body.aggregation_type !== "unique" && body.aggregation_type !== "percentile")
+        delete body.field_name;
       if (editingMetric) {
         await api.updateBillableMetric(editingMetric.id, body);
       } else {
@@ -249,7 +252,7 @@ const Metering = () => {
           icon: Gauge,
           title: "No billable metrics yet",
           description:
-            "A metric's code doubles as the usage event dimension it aggregates (count, sum, max, unique).",
+            "A metric's code doubles as the usage event dimension it aggregates (count, sum, max, unique, latest, percentile).",
           action: (
             <Button onClick={() => setMetricOpen(true)}>
               <Plus className="h-4 w-4" />
@@ -345,6 +348,8 @@ const Metering = () => {
                   <SelectItem value="count">count — number of events</SelectItem>
                   <SelectItem value="max">max — largest event</SelectItem>
                   <SelectItem value="unique">unique — distinct property values</SelectItem>
+                  <SelectItem value="latest">latest — most recent event</SelectItem>
+                  <SelectItem value="percentile">percentile — p-th percentile (e.g. p95)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -356,6 +361,20 @@ const Metering = () => {
                   onChange={(e) => setMetricForm({ ...metricForm, field_name: e.target.value })}
                   placeholder="user_id"
                 />
+              </div>
+            )}
+            {metricForm.aggregation_type === "percentile" && (
+              <div>
+                <Label>Percentile (1–99)</Label>
+                <Input
+                  value={metricForm.field_name}
+                  onChange={(e) => setMetricForm({ ...metricForm, field_name: e.target.value })}
+                  inputMode="numeric"
+                  placeholder="95"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  The percentile of event quantities to bill (e.g. 95 for p95).
+                </p>
               </div>
             )}
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
