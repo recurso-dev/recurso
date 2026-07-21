@@ -29,6 +29,10 @@ export default function TaxNexusSettings() {
   const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(null);
+  const currentYear = new Date().getFullYear();
+  const [liabYear, setLiabYear] = useState(currentYear);
+  const [liability, setLiability] = useState(null);
+  const [liabLoading, setLiabLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
@@ -64,6 +68,19 @@ export default function TaxNexusSettings() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLiabLoading(true);
+    api
+      .getTaxLiability({ year: liabYear })
+      .then((res) => !cancelled && setLiability(res.data.data))
+      .catch(() => !cancelled && setLiability(null))
+      .finally(() => !cancelled && setLiabLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [liabYear]);
 
   const save = async () => {
     setSaving(true);
@@ -213,6 +230,93 @@ export default function TaxNexusSettings() {
                   ))}
                 </TableBody>
               </Table>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Sales-tax liability</CardTitle>
+          <select
+            value={liabYear}
+            onChange={(e) => setLiabYear(Number(e.target.value))}
+            aria-label="Liability report year"
+            className="h-9 rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {[0, 1, 2, 3].map((n) => currentYear - n).map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </CardHeader>
+        <CardContent className="p-0">
+          {liabLoading ? (
+            <p className="px-6 pb-6 text-sm text-muted-foreground">Loading…</p>
+          ) : !liability?.states?.length ? (
+            <div className="px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
+              <MapPinned className="mx-auto mb-2 h-6 w-6 text-stone-300" />
+              No US sales recorded for {liabYear}.
+            </div>
+          ) : (
+            <>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>State</TableHead>
+                    <TableHead>Nexus</TableHead>
+                    <TableHead className="text-right">Gross sales</TableHead>
+                    <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">Non-taxable</TableHead>
+                    <TableHead className="text-right">Tax collected</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {liability.states.map((s) => (
+                    <TableRow key={s.state_code}>
+                      <TableCell className="font-mono">{s.state_code}</TableCell>
+                      <TableCell>
+                        {s.has_nexus ? (
+                          <Badge variant="success">{s.nexus_type || "established"}</Badge>
+                        ) : s.tax_collected > 0 ? (
+                          <Badge variant="destructive">no nexus</Badge>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(s.gross_sales, "USD")}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(s.taxable_sales, "USD")}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {formatCurrency(s.non_taxable_sales, "USD")}
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums">
+                        {formatCurrency(s.tax_collected, "USD")}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="border-t-2 font-medium">
+                    <TableCell colSpan={2}>Total</TableCell>
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(liability.total_gross_sales, "USD")}
+                    </TableCell>
+                    <TableCell />
+                    <TableCell />
+                    <TableCell className="text-right tabular-nums">
+                      {formatCurrency(liability.total_tax_collected, "USD")}
+                    </TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+              <p className="px-6 py-3 text-xs text-muted-foreground">
+                A state collecting tax without declared nexus is flagged. Non-taxable
+                combines exempt, no-nexus, and below-threshold sales. Confirm figures
+                with a tax professional before filing.
+              </p>
             </>
           )}
         </CardContent>

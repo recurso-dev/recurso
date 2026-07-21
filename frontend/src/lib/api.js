@@ -313,6 +313,9 @@ export const endpoints = {
   setTaxNexus: (states) => api.put('/settings/tax/nexus', { states }),
   getTaxNexusStatus: (year) =>
     api.get('/settings/tax/nexus/status', { params: year ? { year } : {} }),
+  // Per-state US sales-tax liability for a filing period (D3).
+  getTaxLiability: (params) =>
+    api.get('/settings/tax/liability', { params: params || {} }),
 
   // India GST returns (readable sections + GSTN upload JSON)
   getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
