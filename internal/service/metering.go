@@ -206,9 +206,10 @@ type ChargeInput struct {
 	Amounts     map[string]domain.ChargeAmounts `json:"amounts" binding:"required"`
 	// FilterKey/Filters (A4) price distinct values of one event property
 	// differently. Empty FilterKey = an ordinary (unfiltered) charge.
-	FilterKey string              `json:"filter_key"`
-	Filters   []ChargeFilterInput `json:"filters"`
-	HSNCode   string              `json:"hsn_code"`
+	FilterKey    string              `json:"filter_key"`
+	Filters      []ChargeFilterInput `json:"filters"`
+	PayInAdvance bool                `json:"pay_in_advance"`
+	HSNCode      string              `json:"hsn_code"`
 }
 
 // ChargeFilterInput is one dimensional-pricing band: events whose FilterKey
@@ -244,18 +245,19 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 		}
 
 		charges = append(charges, domain.Charge{
-			ID:          uuid.New(),
-			TenantID:    tenantID,
-			PlanID:      planID,
-			MetricID:    metric.ID,
-			ChargeModel: model,
-			Amounts:     normalized,
-			FilterKey:   filterKey,
-			Filters:     filters,
-			HSNCode:     strings.TrimSpace(in.HSNCode),
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			Metric:      metric,
+			ID:           uuid.New(),
+			TenantID:     tenantID,
+			PlanID:       planID,
+			MetricID:     metric.ID,
+			ChargeModel:  model,
+			Amounts:      normalized,
+			FilterKey:    filterKey,
+			Filters:      filters,
+			PayInAdvance: in.PayInAdvance,
+			HSNCode:      strings.TrimSpace(in.HSNCode),
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			Metric:       metric,
 		})
 	}
 
@@ -288,6 +290,10 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 	model := domain.ChargeModel(in.ChargeModel)
 	if !domain.ValidChargeModel(model) {
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic", idx))
+	}
+	if in.PayInAdvance && !domain.PayInAdvanceEligible(model) {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+			"charges[%d]: pay_in_advance requires a non-cumulative model (per_unit, percentage, or dynamic), not %q", idx, model))
 	}
 	normalized, err := normalizeChargeAmounts(model, in.Amounts, idx, "amounts")
 	if err != nil {

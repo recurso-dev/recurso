@@ -204,6 +204,39 @@ func TestGenerateInvoice_FilteredCharge(t *testing.T) {
 	}
 }
 
+// TestGenerateInvoice_PayInAdvanceSkippedAtArrears: a pay_in_advance charge is
+// captured per event (as an unbilled charge), so period-close meteredLines must
+// NOT re-bill it — no metered line, no rating claim.
+func TestGenerateInvoice_PayInAdvanceSkippedAtArrears(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(1500)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{ID: metricID, Code: "api_calls", Name: "API calls", AggregationType: domain.AggregationSum}
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:           uuid.New(),
+		PlanID:       sub.PlanID,
+		MetricID:     metricID,
+		ChargeModel:  domain.ChargePerUnit,
+		PayInAdvance: true,
+		Amounts:      map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.0035"}},
+		Metric:       &metric,
+	}}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if inv.Subtotal != 100000 {
+		t.Fatalf("Subtotal = %d, want 100000 (pay-in-advance charge excluded at arrears)", inv.Subtotal)
+	}
+	if len(inv.LineItems) != 1 {
+		t.Fatalf("line count = %d, want 1 (base only)", len(inv.LineItems))
+	}
+	if len(ratingRepo.created) != 0 {
+		t.Fatalf("rating claims = %d, want 0 (pay-in-advance not claimed at close)", len(ratingRepo.created))
+	}
+}
+
 func TestGenerateInvoice_MeteredLineAddedWithInvariants(t *testing.T) {
 	svc, invRepo, ratingRepo, sub, chargeID := meteredFixture(1500)
 

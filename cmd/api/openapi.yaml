@@ -7544,6 +7544,12 @@ components:
         filters:
           type: array
           items: { $ref: "#/components/schemas/ChargeFilterValue" }
+        pay_in_advance:
+          type: boolean
+          description: >-
+            Rate this charge per usage event at ingestion time (captured as an
+            unbilled charge, folded onto the next invoice) instead of at period
+            close. Only per_unit/percentage/dynamic may set it.
         hsn_code: { type: string }
         metric: { $ref: "#/components/schemas/BillableMetric" }
     ChargeFilterValue:
@@ -7567,6 +7573,9 @@ components:
         filters:
           type: array
           items: { $ref: "#/components/schemas/ChargeFilterValue" }
+        pay_in_advance:
+          type: boolean
+          description: Non-cumulative models only (per_unit/percentage/dynamic).
         hsn_code: { type: string }
     AuditLog:
       type: object
