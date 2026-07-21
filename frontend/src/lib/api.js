@@ -267,7 +267,13 @@ export const endpoints = {
   deleteBillableMetric: (id) => api.delete(`/billable-metrics/${id}`),
   getPlanCharges: (planId) => api.get(`/plans/${planId}/charges`),
   setPlanCharges: (planId, charges) => api.put(`/plans/${planId}/charges`, charges),
+  // Read-only pricing simulator: rate a proposed charge set against sample
+  // usage, no persistence. Body: { currency?, subscription_id?, charges[], usage[] }.
+  simulateCharges: (planId, body) => api.post(`/plans/${planId}/simulate-charges`, body),
   getUsageAmount: (subId) => api.get(`/subscriptions/${subId}/usage-amount`),
+  // Progressive billing: generate an interim invoice now for accrued usage past
+  // the threshold (A5). No-op (204) when nothing is due.
+  billUsageNow: (subId) => api.post(`/subscriptions/${subId}/bill-usage`),
 
   // Prepaid wallets
   getWallets: (params) => api.get('/wallets', { params }),
