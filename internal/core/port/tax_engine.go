@@ -16,6 +16,12 @@ type TaxRequest struct {
 	IsSEZ         bool   // Special Economic Zone (India)
 	IsExport      bool   // Export transaction
 	IsRCM         bool   // Reverse Charge Mechanism
+	// US sales-tax exemption (Track D · D2). When TaxExempt is set, the number
+	// and entity-use code are passed to the provider so it returns zero tax and
+	// records an exempt sale (rather than the engine short-circuiting).
+	TaxExempt          bool
+	TaxExemptionNumber string
+	TaxExemptionCode   string
 	// FallbackRate is the GST rate (as a fraction, e.g. 0.18) to use when the
 	// HSNCode isn't in the engine's rate map — the tenant's configured
 	// gst_rate. Zero means "use the engine's built-in default".

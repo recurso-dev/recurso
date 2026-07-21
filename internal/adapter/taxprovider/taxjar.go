@@ -87,6 +87,28 @@ type taxJarOrderRequest struct {
 	ToZip       string  `json:"to_zip,omitempty"`
 	Amount      float64 `json:"amount"`
 	Shipping    float64 `json:"shipping"`
+	// ExemptionType, when set, tells TaxJar the order is exempt and it returns
+	// amount_to_collect 0 (Track D · D2). One of TaxJar's categories:
+	// wholesale, government, marketplace, other, non_exempt.
+	ExemptionType string `json:"exemption_type,omitempty"`
+}
+
+// taxJarExemptionType maps a provider-agnostic entity-use code to TaxJar's
+// exemption_type category. TaxJar's set is coarse, so an unrecognized code
+// falls back to "other" — still exempt, just uncategorized.
+func taxJarExemptionType(entityUseCode string) string {
+	switch strings.ToLower(strings.TrimSpace(entityUseCode)) {
+	case "wholesale", "resale":
+		return "wholesale"
+	case "government", "federal", "state_govt", "a", "b", "c":
+		return "government"
+	case "marketplace":
+		return "marketplace"
+	case "", "non_exempt":
+		return "other"
+	default:
+		return "other"
+	}
 }
 
 // taxJarOrderResponse is the subset of the /v2/taxes response we consume.
@@ -113,7 +135,7 @@ type taxJarErrorResponse struct {
 // LookupSalesTax implements tax.SalesTaxProvider via POST /v2/taxes.
 // Transport errors and 5xx responses are retried exactly once; 4xx never.
 func (p *TaxJarProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQuery) (*tax.SalesTaxResult, error) {
-	body, err := json.Marshal(taxJarOrderRequest{
+	reqBody := taxJarOrderRequest{
 		FromCountry: q.FromCountry,
 		FromState:   q.FromState,
 		FromZip:     q.FromZip,
@@ -122,7 +144,11 @@ func (p *TaxJarProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQuer
 		ToZip:       q.ToZip,
 		Amount:      centsToDollars(q.Amount),
 		Shipping:    0,
-	})
+	}
+	if q.IsExempt() {
+		reqBody.ExemptionType = taxJarExemptionType(q.EntityUseCode)
+	}
+	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, &TaxJarError{Kind: ErrTaxJarBadRequest, Detail: err.Error()}
 	}

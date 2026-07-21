@@ -30,7 +30,19 @@ type SalesTaxQuery struct {
 	ToZip       string // Buyer ZIP
 	Amount      int64  // Sale amount in the lowest currency unit (cents)
 	Currency    string // ISO 3-letter code (US sales tax providers assume USD)
+
+	// Exemption (Track D · D2). When Exempt is set, the number and entity-use
+	// code are passed to the provider so it returns zero tax and records an
+	// exempt sale. Exempt queries bypass the rate cache (see IsExempt) — an
+	// exemption is buyer-specific, not jurisdiction-specific, so it must never
+	// read or write the shared (state, zip) rate.
+	Exempt        bool   // buyer is tax-exempt for this sale
+	ExemptionNo   string // exemption / resale certificate number (optional)
+	EntityUseCode string // provider entity-use / customer-usage code (optional)
 }
+
+// IsExempt reports whether this query carries a buyer exemption.
+func (q *SalesTaxQuery) IsExempt() bool { return q != nil && q.Exempt }
 
 // SalesTaxResult is a provider's answer for one query.
 type SalesTaxResult struct {
@@ -92,6 +104,13 @@ func (c *CachedSalesTaxProvider) Name() string { return c.inner.Name() }
 // otherwise delegates to the inner provider and caches the returned rate.
 // Only successful lookups are cached; errors always pass through.
 func (c *CachedSalesTaxProvider) LookupSalesTax(ctx context.Context, q *SalesTaxQuery) (*SalesTaxResult, error) {
+	// An exempt sale is buyer-specific: it must not be served from — nor written
+	// to — the shared (state, zip) rate cache, or an exempt 0-rate would leak to
+	// other buyers in the jurisdiction (and vice versa). Always hit the provider.
+	if q.IsExempt() {
+		return c.inner.LookupSalesTax(ctx, q)
+	}
+
 	key := salesTaxCacheKey(q)
 
 	c.mu.Lock()

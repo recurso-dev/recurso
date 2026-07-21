@@ -36,6 +36,10 @@ type createCustomerRequest struct {
 	State         string `json:"state"`
 	Zip           string `json:"zip"`
 	Country       string `json:"country" binding:"omitempty,len=2"` // Allow empty or iso code
+	// US sales-tax exemption (D2)
+	TaxExempt          bool   `json:"tax_exempt"`
+	TaxExemptionNumber string `json:"tax_exemption_number"`
+	TaxExemptionCode   string `json:"tax_exemption_code"`
 }
 
 func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
@@ -65,6 +69,10 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 		State:         req.State,
 		Zip:           req.Zip,
 		Country:       req.Country,
+
+		TaxExempt:          req.TaxExempt,
+		TaxExemptionNumber: req.TaxExemptionNumber,
+		TaxExemptionCode:   req.TaxExemptionCode,
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
@@ -168,6 +176,10 @@ type updateCustomerRequest struct {
 	Zip           *string `json:"zip"`
 	Country       *string `json:"country" binding:"omitempty,len=2"`
 	Active        *bool   `json:"active"`
+	// US sales-tax exemption (D2)
+	TaxExempt          *bool   `json:"tax_exempt"`
+	TaxExemptionNumber *string `json:"tax_exemption_number"`
+	TaxExemptionCode   *string `json:"tax_exemption_code"`
 }
 
 // UpdateCustomer handles PUT /v1/customers/:id. Archiving (active=false) is
@@ -207,6 +219,10 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 		Zip:           req.Zip,
 		Country:       req.Country,
 		Active:        req.Active,
+
+		TaxExempt:          req.TaxExempt,
+		TaxExemptionNumber: req.TaxExemptionNumber,
+		TaxExemptionCode:   req.TaxExemptionCode,
 	})
 	if err != nil {
 		// The archive gate ("active subscriptions") and field validation are
