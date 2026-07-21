@@ -474,11 +474,13 @@ func main() {
 	// transport. Opt-in per tenant (tenant_eu_config.enabled); a mock transport
 	// stands in until a real Peppol Access Point is wired. Nil-safe end to end —
 	// tenants without config are untouched.
-	invoiceService.EUEInvoiceService = service.NewEUEInvoiceService(
+	euInvoiceRepo := db.NewEUInvoiceRepository(database)
+	euEInvoiceService := service.NewEUEInvoiceService(
 		db.NewTenantEUConfigRepository(database),
-		db.NewEUInvoiceRepository(database),
+		euInvoiceRepo,
 		einvoice_eu.NewMockTransport(),
 	)
+	invoiceService.EUEInvoiceService = euEInvoiceService
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
 	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
@@ -756,6 +758,10 @@ func main() {
 	// P25: E-Invoice Retry Worker
 	einvoiceWorker := worker.NewEInvoiceRetryWorker(invoiceRepo, einvoiceService)
 
+	// EU e-invoice delivery retry worker (Track C, inc 2b): redrives documents
+	// that failed to transmit to the Access Point, on an exponential backoff.
+	euEInvoiceWorker := worker.NewEUEInvoiceRetryWorker(euInvoiceRepo, euEInvoiceService)
+
 	// Dunning Campaign Worker
 	dunningCampaignWorker := worker.NewDunningCampaignWorker(dunningCampaignService)
 
@@ -784,6 +790,7 @@ func main() {
 	startWorker(churnWorker.Start)
 	startWorker(revrecWorker.Start)
 	startWorker(einvoiceWorker.Start)
+	startWorker(euEInvoiceWorker.Start)
 	startWorker(dunningCampaignWorker.Start)
 	if !demo.Enabled() {
 		startWorker(acctSyncWorker.Start) // parked in DEMO_MODE: no SaaS egress

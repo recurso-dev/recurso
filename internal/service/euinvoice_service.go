@@ -2,14 +2,32 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
+
+// EU e-invoice delivery retry schedule. A transmission to the Access Point can
+// fail transiently; the background worker redrives on this exponential backoff
+// and gives up after MaxEUEInvoiceRetries. Kept here (not in the worker package)
+// so GenerateForInvoice can schedule the first attempt from the same source.
+var EUEInvoiceBackoff = []time.Duration{
+	5 * time.Minute,
+	15 * time.Minute,
+	1 * time.Hour,
+	6 * time.Hour,
+	24 * time.Hour,
+}
+
+// MaxEUEInvoiceRetries is the number of failed delivery attempts after which a
+// record is left permanently failed (next_retry_at cleared) for manual attention.
+const MaxEUEInvoiceRetries = 5
 
 // EUEInvoiceService orchestrates EU e-invoice generation for an invoice: it gates
 // on the tenant's opt-in, projects the seller from the tenant EU config and the
@@ -58,16 +76,20 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 		return nil, nil // not opted in — silent no-op
 	}
 
-	rec := &domain.EUInvoice{
-		TenantID:  inv.TenantID,
-		InvoiceID: inv.ID,
-		Syntax:    domain.EUInvoiceSyntaxUBL,
-	}
-
 	seller := cfg.SellerParty()
 	buyer := buildEUBuyer(customer)
+	rec := &domain.EUInvoice{
+		TenantID:       inv.TenantID,
+		InvoiceID:      inv.ID,
+		Syntax:         domain.EUInvoiceSyntaxUBL,
+		RecipientVATID: buyer.VATID,
+	}
+
 	doc, err := BuildUBLInvoice(inv, seller, buyer)
 	if err != nil {
+		// Generation failure is a data problem (missing VAT id, invalid country)
+		// that won't fix itself: mark failed but leave next_retry_at nil so the
+		// worker never redrives it — it surfaces for manual correction.
 		rec.Status = domain.EUInvoiceStatusFailed
 		rec.ErrorMessage = err.Error()
 		_ = s.invoices.Upsert(ctx, rec)
@@ -79,11 +101,17 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 
 	res, terr := s.transport.Transmit(ctx, domain.EUInvoiceSyntaxUBL, buyer.VATID, doc)
 	if terr != nil || res == nil {
+		// Transmission failure is the retriable case: the document is built and
+		// stored, so mark it failed and schedule the first redrive. The worker
+		// re-transmits (never regenerates) on the backoff schedule.
+		rec.Status = domain.EUInvoiceStatusFailed
 		rec.ErrorMessage = fmt.Sprintf("transmit failed: %v", terr)
+		next := time.Now().UTC().Add(EUEInvoiceBackoff[0])
+		rec.NextRetryAt = &next
 		if err := s.invoices.Upsert(ctx, rec); err != nil {
 			s.logger.Error("eu e-invoice: persist after transmit failure", "invoice_id", inv.ID, "error", err)
 		}
-		s.logger.Warn("eu e-invoice transmit failed; document generated and stored for retry", "invoice_id", inv.ID, "error", terr)
+		s.logger.Warn("eu e-invoice transmit failed; document stored and scheduled for retry", "invoice_id", inv.ID, "error", terr, "next_retry_at", next)
 		return rec, terr
 	}
 	rec.Status = res.Status
@@ -93,6 +121,31 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 	}
 	s.logger.Info("eu e-invoice generated and sent", "invoice_id", inv.ID, "message_id", rec.MessageID)
 	return rec, nil
+}
+
+// RetryTransmission re-hands a stored document to the transport. The document is
+// generated once and immutable, so a delivery redrive only needs to re-transmit
+// it — no regeneration, hence no dependency on the invoice/customer. Returns the
+// transport outcome; the caller (retry worker) owns the backoff/count bookkeeping.
+func (s *EUEInvoiceService) RetryTransmission(ctx context.Context, rec *domain.EUInvoice) (*domain.EUInvoiceTransmission, error) {
+	if s == nil || s.transport == nil {
+		return nil, errors.New("eu e-invoice: no transport configured")
+	}
+	if rec == nil || rec.Document == "" {
+		return nil, errors.New("eu e-invoice: no stored document to re-transmit")
+	}
+	syntax := rec.Syntax
+	if syntax == "" {
+		syntax = domain.EUInvoiceSyntaxUBL
+	}
+	res, err := s.transport.Transmit(ctx, syntax, rec.RecipientVATID, []byte(rec.Document))
+	if err != nil {
+		return nil, err
+	}
+	if res == nil {
+		return nil, errors.New("eu e-invoice: transport returned no result")
+	}
+	return res, nil
 }
 
 // buildEUBuyer projects a customer into the EN 16931 buyer party. The VAT id is
