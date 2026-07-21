@@ -32,6 +32,10 @@ type InvoiceRepository interface {
 	// side-effects on the winner. amount_paid is set to the invoice total.
 	MarkPaid(ctx context.Context, tenantID, invoiceID uuid.UUID, paidAt time.Time) (bool, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
+	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
+	// the calling worker instance, advancing next_retry_at by `lease` so a
+	// second instance can't claim the same rows in the same cycle (ADR-003).
+	ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
 	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
