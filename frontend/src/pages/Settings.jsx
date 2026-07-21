@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -65,6 +65,12 @@ export default function Settings() {
       icon: FileCheck2,
       title: "E-invoicing (IRP)",
       description: "Connect the Invoice Registration Portal for e-invoices.",
+    },
+    {
+      to: "/settings/eu-einvoice",
+      icon: Globe,
+      title: "EU e-invoicing",
+      description: "EN 16931 (UBL) structured invoices and your seller identity.",
     },
     {
       to: "/settings/tax-nexus",
