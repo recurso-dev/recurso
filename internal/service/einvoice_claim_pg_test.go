@@ -44,7 +44,7 @@ func TestClaimFailedEInvoices_ExclusiveAndLeased_Postgres(t *testing.T) {
 		invID := uuid.New()
 		mustExec(t, conn, `INSERT INTO invoices
 			(id, tenant_id, customer_id, currency, subtotal, tax_amount, total, amount_paid, credit_applied, status, invoice_number, created_at, due_date, e_invoice_status, e_invoice_next_retry_at)
-			VALUES ($1,$2,$3,'INR',10000,1800,11800,11800,0,'paid',$4, NOW(), NOW(), 'FAILED', NOW() - INTERVAL '1 minute')`,
+			VALUES ($1,$2,$3,'INR',10000,1800,11800,11800,0,'paid',$4, NOW(), NOW(), 'FAILED', (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 minute')`,
 			invID, tenantID, customerID, "INV-EI-"+invID.String()[:8])
 	}
 
