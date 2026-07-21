@@ -305,6 +305,12 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 		BuyerCountry:  buyerCountry,
 		SellerCountry: "US",
 		IsBusiness:    isBusinessBuyer(customer),
+		// D2: an exempt customer is passed through to the provider (exemption
+		// number + entity-use code) so it returns zero tax and records an exempt
+		// sale, rather than the engine short-circuiting.
+		TaxExempt:          customer.TaxExempt,
+		TaxExemptionNumber: customer.TaxExemptionNumber,
+		TaxExemptionCode:   customer.TaxExemptionCode,
 	})
 	if err != nil || calc == nil {
 		// Only the provider-backed engine can error (the stub never does).

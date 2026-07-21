@@ -668,6 +668,9 @@ paths:
                 gstin: { type: string }
                 tax_type: { type: string, enum: [business, consumer] }
                 place_of_supply: { type: string }
+                tax_exempt: { type: boolean, description: "US sales-tax exemption status (D2)." }
+                tax_exemption_number: { type: string, description: "Exemption/resale certificate number." }
+                tax_exemption_code: { type: string, description: "Provider entity-use / usage code (also the reason)." }
                 line1: { type: string }
                 city: { type: string }
                 state: { type: string }
@@ -7960,6 +7963,15 @@ components:
         place_of_supply:
           type: string
           description: Indian state code for GST place of supply.
+        tax_exempt:
+          type: boolean
+          description: US sales-tax exemption status (D2). When true, the number and code are passed to the tax provider.
+        tax_exemption_number:
+          type: string
+          description: Exemption/resale certificate number on file.
+        tax_exemption_code:
+          type: string
+          description: Provider entity-use / customer-usage code (e.g. Avalara "A"); also the exemption reason.
         line1:
           type: string
         city:
@@ -8017,6 +8029,12 @@ components:
           type: string
         place_of_supply:
           type: [string, 'null']
+        tax_exempt:
+          type: boolean
+        tax_exemption_number:
+          type: string
+        tax_exemption_code:
+          type: string
         referral_code:
           type: [string, 'null']
         risk_score:

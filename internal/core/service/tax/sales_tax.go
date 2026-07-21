@@ -72,7 +72,19 @@ func (e *USSalesTaxEngine) CalculateTax(ctx context.Context, req *port.TaxReques
 	if res.Jurisdiction != "" {
 		note += " (" + res.Jurisdiction + ")"
 	}
-	if !res.HasNexus {
+	if req.TaxExempt {
+		// The provider was told the buyer is exempt and returned zero tax while
+		// recording an exempt sale on its side. Keep TaxType "sales_tax" so the
+		// sale still counts toward US reporting/nexus; the note records the
+		// exemption for the tenant's liability review.
+		note += "; exempt sale"
+		if req.TaxExemptionCode != "" {
+			note += " (code " + req.TaxExemptionCode + ")"
+		}
+		if req.TaxExemptionNumber != "" {
+			note += " — cert " + req.TaxExemptionNumber
+		}
+	} else if !res.HasNexus {
 		note += "; no nexus in buyer state per provider — nothing to collect"
 	}
 	return &port.TaxCalculation{
@@ -110,12 +122,15 @@ func (e *USSalesTaxEngine) queryFor(req *port.TaxRequest, amount int64) *SalesTa
 		toCountry = "US"
 	}
 	return &SalesTaxQuery{
-		FromCountry: "US",
-		FromState:   e.State,
-		ToCountry:   toCountry,
-		ToState:     strings.ToUpper(strings.TrimSpace(req.BuyerState)),
-		ToZip:       strings.TrimSpace(req.BuyerZip),
-		Amount:      amount,
-		Currency:    req.Currency,
+		FromCountry:   "US",
+		FromState:     e.State,
+		ToCountry:     toCountry,
+		ToState:       strings.ToUpper(strings.TrimSpace(req.BuyerState)),
+		ToZip:         strings.TrimSpace(req.BuyerZip),
+		Amount:        amount,
+		Currency:      req.Currency,
+		Exempt:        req.TaxExempt,
+		ExemptionNo:   strings.TrimSpace(req.TaxExemptionNumber),
+		EntityUseCode: strings.TrimSpace(req.TaxExemptionCode),
 	}
 }

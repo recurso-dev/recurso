@@ -93,6 +93,9 @@ type avalaraTxRequest struct {
 	CurrencyCode string             `json:"currencyCode"`
 	Addresses    map[string]avaAddr `json:"addresses"`
 	Lines        []avaLine          `json:"lines"`
+	// ExemptionNo, when set, records the buyer's exemption/resale certificate
+	// number on the transaction (Track D · D2).
+	ExemptionNo string `json:"exemptionNo,omitempty"`
 }
 
 type avaAddr struct {
@@ -103,6 +106,10 @@ type avaAddr struct {
 
 type avaLine struct {
 	Amount float64 `json:"amount"` // major units
+	// EntityUseCode, when set, tells AvaTax the buyer's exempt usage (e.g. "A" =
+	// federal govt, "E" = charitable) so the line computes zero tax and is
+	// recorded as exempt (Track D · D2).
+	EntityUseCode string `json:"entityUseCode,omitempty"`
 }
 
 type avalaraTxResponse struct {
@@ -127,6 +134,12 @@ func (p *AvalaraProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQue
 			"shipTo":   {Country: q.ToCountry, Region: q.ToState, PostalCode: q.ToZip},
 		},
 		Lines: []avaLine{{Amount: float64(q.Amount) / 100.0}},
+	}
+	if q.IsExempt() {
+		// exemptionNo documents the certificate; entityUseCode is what makes
+		// AvaTax actually zero-rate the line and log it exempt.
+		reqBody.ExemptionNo = q.ExemptionNo
+		reqBody.Lines[0].EntityUseCode = q.EntityUseCode
 	}
 	raw, err := json.Marshal(reqBody)
 	if err != nil {

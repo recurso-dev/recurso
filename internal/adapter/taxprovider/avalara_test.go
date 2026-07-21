@@ -114,3 +114,35 @@ func TestAvalaraZeroTaxNoNexus(t *testing.T) {
 		t.Fatalf("res = %+v, want zero tax without nexus", res)
 	}
 }
+
+// An exempt query sends Avalara a document exemptionNo and a line entityUseCode
+// so AvaTax zero-rates the line and records it exempt (Track D · D2).
+func TestAvalara_ExemptQuery_SendsExemptionFields(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"totalTax": 0, "summary": []}`))
+	}))
+	defer srv.Close()
+
+	p := NewAvalaraProvider("acct1", "lic1", "", srv.URL)
+	q := avalaraQuery()
+	q.Exempt = true
+	q.ExemptionNo = "RESALE-123"
+	q.EntityUseCode = "A"
+	if _, err := p.LookupSalesTax(context.Background(), q); err != nil {
+		t.Fatalf("LookupSalesTax: %v", err)
+	}
+
+	if body["exemptionNo"] != "RESALE-123" {
+		t.Errorf("exemptionNo = %v, want RESALE-123", body["exemptionNo"])
+	}
+	lines, ok := body["lines"].([]any)
+	if !ok || len(lines) == 0 {
+		t.Fatalf("lines missing: %v", body["lines"])
+	}
+	if lines[0].(map[string]any)["entityUseCode"] != "A" {
+		t.Errorf("line entityUseCode = %v, want A", lines[0].(map[string]any)["entityUseCode"])
+	}
+}

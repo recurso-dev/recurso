@@ -42,6 +42,10 @@ type CreateCustomerInput struct {
 	State         string
 	Zip           string
 	Country       string
+
+	TaxExempt          bool
+	TaxExemptionNumber string
+	TaxExemptionCode   string
 }
 
 func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustomerInput) (*domain.Customer, error) {
@@ -79,9 +83,12 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustom
 			Zip:     input.Zip,
 			Country: input.Country,
 		},
-		LedgerAccountID: ledgerID,
-		Active:          true,
-		CreatedAt:       time.Now().UTC(),
+		LedgerAccountID:    ledgerID,
+		TaxExempt:          input.TaxExempt,
+		TaxExemptionNumber: input.TaxExemptionNumber,
+		TaxExemptionCode:   input.TaxExemptionCode,
+		Active:             true,
+		CreatedAt:          time.Now().UTC(),
 	}
 
 	if err := s.repo.Create(ctx, customer); err != nil {
@@ -129,6 +136,10 @@ type UpdateCustomerInput struct {
 	Zip           *string
 	Country       *string
 	Active        *bool
+
+	TaxExempt          *bool
+	TaxExemptionNumber *string
+	TaxExemptionCode   *string
 }
 
 // UpdateCustomer applies a partial update. Returns (nil, nil) when the
@@ -186,6 +197,15 @@ func (s *CustomerService) UpdateCustomer(ctx context.Context, input UpdateCustom
 	}
 	if input.Country != nil {
 		customer.BillingAddress.Country = *input.Country
+	}
+	if input.TaxExempt != nil {
+		customer.TaxExempt = *input.TaxExempt
+	}
+	if input.TaxExemptionNumber != nil {
+		customer.TaxExemptionNumber = *input.TaxExemptionNumber
+	}
+	if input.TaxExemptionCode != nil {
+		customer.TaxExemptionCode = *input.TaxExemptionCode
 	}
 
 	if input.Active != nil {

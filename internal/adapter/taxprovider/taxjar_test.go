@@ -197,3 +197,45 @@ func TestTaxJar_DefaultBaseURL(t *testing.T) {
 		t.Errorf("Name() = %q, want 'taxjar'", p.Name())
 	}
 }
+
+// An exempt query sends TaxJar an exemption_type so the order returns zero tax
+// (Track D · D2); the entity-use code is mapped to TaxJar's category.
+func TestTaxJar_ExemptQuery_SendsExemptionType(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(caResponse))
+	}))
+	defer srv.Close()
+
+	p := NewTaxJarProvider("test-key", srv.URL)
+	q := caQuery()
+	q.Exempt = true
+	q.EntityUseCode = "resale"
+	if _, err := p.LookupSalesTax(context.Background(), q); err != nil {
+		t.Fatalf("LookupSalesTax: %v", err)
+	}
+	if gotBody["exemption_type"] != "wholesale" {
+		t.Errorf("exemption_type = %v, want 'wholesale' (mapped from resale)", gotBody["exemption_type"])
+	}
+}
+
+// A non-exempt query must NOT send exemption_type (omitempty).
+func TestTaxJar_NonExempt_OmitsExemptionType(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(caResponse))
+	}))
+	defer srv.Close()
+
+	p := NewTaxJarProvider("test-key", srv.URL)
+	if _, err := p.LookupSalesTax(context.Background(), caQuery()); err != nil {
+		t.Fatalf("LookupSalesTax: %v", err)
+	}
+	if _, present := gotBody["exemption_type"]; present {
+		t.Errorf("non-exempt request must omit exemption_type, got %v", gotBody["exemption_type"])
+	}
+}

@@ -261,3 +261,78 @@ func TestFactory_USWithProvider_WiresEngine(t *testing.T) {
 }
 
 func contains(s, sub string) bool { return strings.Contains(s, sub) }
+
+// TestUSSalesTax_ExemptPassedThroughAndNoted proves D2's core: an exempt request
+// is passed THROUGH to the provider (not short-circuited), the provider's zero
+// tax is used, the type stays "sales_tax" (so the sale still counts for
+// reporting/nexus), and the note records the exemption.
+func TestUSSalesTax_ExemptPassedThroughAndNoted(t *testing.T) {
+	fake := &fakeSalesTaxProvider{result: &SalesTaxResult{Rate: 0, TaxAmount: 0, Jurisdiction: "US/CA", HasNexus: true}}
+	e := NewUSSalesTaxEngineWithProvider("CA", fake)
+
+	req := usRequest(10000)
+	req.TaxExempt = true
+	req.TaxExemptionNumber = "RESALE-123"
+	req.TaxExemptionCode = "A"
+
+	calc, err := e.CalculateTax(context.Background(), req)
+	if err != nil {
+		t.Fatalf("CalculateTax: %v", err)
+	}
+	if fake.calls != 1 {
+		t.Fatalf("provider calls = %d, want 1 (must call through, not short-circuit)", fake.calls)
+	}
+	if fake.lastQ == nil || !fake.lastQ.Exempt || fake.lastQ.ExemptionNo != "RESALE-123" || fake.lastQ.EntityUseCode != "A" {
+		t.Fatalf("exemption not passed to provider query: %+v", fake.lastQ)
+	}
+	if calc.TotalTax != 0 {
+		t.Errorf("exempt tax = %d, want 0", calc.TotalTax)
+	}
+	if calc.TaxType != "sales_tax" {
+		t.Errorf("TaxType = %q, want sales_tax (exempt sale still counts)", calc.TaxType)
+	}
+	if !strings.Contains(calc.Note, "exempt sale") || !strings.Contains(calc.Note, "RESALE-123") || !strings.Contains(calc.Note, "code A") {
+		t.Errorf("note missing exemption detail: %q", calc.Note)
+	}
+}
+
+// TestCachedSalesTaxProvider_ExemptBypassesCache proves an exempt (buyer-specific)
+// lookup never reads from nor writes to the shared (state, zip) rate cache — so an
+// exempt 0-rate can't leak to other buyers, and a cached jurisdiction rate is
+// never applied to an exempt buyer.
+func TestCachedSalesTaxProvider_ExemptBypassesCache(t *testing.T) {
+	fake := &fakeSalesTaxProvider{result: &SalesTaxResult{Rate: 0.10, TaxAmount: 1000, Jurisdiction: "US/CA", HasNexus: true}}
+	cached := NewCachedSalesTaxProvider(fake, DefaultSalesTaxRateTTL)
+	ctx := context.Background()
+	ex := func() *SalesTaxQuery {
+		return &SalesTaxQuery{ToState: "CA", ToZip: "90002", Amount: 10000, ToCountry: "US", Exempt: true, EntityUseCode: "A"}
+	}
+	nonex := func() *SalesTaxQuery {
+		return &SalesTaxQuery{ToState: "CA", ToZip: "90002", Amount: 10000, ToCountry: "US"}
+	}
+
+	// Two exempt lookups both hit the provider (never cached).
+	_, _ = cached.LookupSalesTax(ctx, ex())
+	_, _ = cached.LookupSalesTax(ctx, ex())
+	if fake.calls != 2 {
+		t.Fatalf("exempt lookups were cached: calls=%d, want 2", fake.calls)
+	}
+
+	// The exempt lookups did not populate the cache: a non-exempt lookup at the
+	// same (state, zip) still calls the provider...
+	_, _ = cached.LookupSalesTax(ctx, nonex())
+	if fake.calls != 3 {
+		t.Fatalf("non-exempt after exempt should miss cache: calls=%d, want 3", fake.calls)
+	}
+	// ...and now caches, so a repeat non-exempt is served from cache.
+	_, _ = cached.LookupSalesTax(ctx, nonex())
+	if fake.calls != 3 {
+		t.Fatalf("non-exempt should be cached: calls=%d, want 3", fake.calls)
+	}
+
+	// But an exempt lookup is never served from that cached rate.
+	_, _ = cached.LookupSalesTax(ctx, ex())
+	if fake.calls != 4 {
+		t.Fatalf("exempt served from cache: calls=%d, want 4", fake.calls)
+	}
+}
