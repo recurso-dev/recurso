@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { useToast } from "../Toast";
+import PricingSimulator from "./PricingSimulator";
 import { formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -281,6 +282,7 @@ export default function PlanCharges({ planId, currency }) {
   const [rows, setRows] = useState([]);
   const [validationError, setValidationError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showSimulator, setShowSimulator] = useState(false);
 
   useEffect(() => {
     if (!planId) return;
@@ -311,6 +313,13 @@ export default function PlanCharges({ planId, currency }) {
     });
     return map;
   }, [metrics]);
+
+  // The saved charge set as a ChargeInput[] the simulator can rate (round-trips
+  // through the same editor mapping a save would use).
+  const savedChargesPayload = useMemo(
+    () => rowsToPayload(toEditorRows(charges, currency), currency),
+    [charges, currency],
+  );
 
   const startEditing = () => {
     setRows(toEditorRows(charges, currency));
@@ -393,10 +402,23 @@ export default function PlanCharges({ planId, currency }) {
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Usage charges</h3>
         {!isEditing && (
-          <Button variant="outline" size="sm" onClick={startEditing} disabled={loadError}>
-            <Pencil className="h-3.5 w-3.5" />
-            Edit charges
-          </Button>
+          <div className="flex gap-2">
+            {charges.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSimulator((v) => !v)}
+                disabled={loadError}
+              >
+                <Calculator className="h-3.5 w-3.5" />
+                {showSimulator ? "Hide simulator" : "Simulate"}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={startEditing} disabled={loadError}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit charges
+            </Button>
+          </div>
         )}
       </div>
 
@@ -741,6 +763,14 @@ export default function PlanCharges({ planId, currency }) {
               <Badge variant="neutral">{MODEL_LABEL[ch.charge_model] || ch.charge_model}</Badge>
             </div>
           ))}
+          {showSimulator && (
+            <PricingSimulator
+              planId={planId}
+              currency={currency}
+              chargesPayload={savedChargesPayload}
+              metricName={metricName}
+            />
+          )}
         </div>
       )}
     </div>

@@ -49,6 +49,9 @@ export default function SubscriptionDetail({
   const [advPeriods, setAdvPeriods] = useState("1");
   const [commitAmount, setCommitAmount] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  // Live usage-amount preview (accrued metered charges for the running period).
+  const [usageAmount, setUsageAmount] = useState(null);
+  const [billingUsage, setBillingUsage] = useState(false);
 
   // Load plans + add-ons whenever the detail opens.
   useEffect(() => {
@@ -63,12 +66,23 @@ export default function SubscriptionDetail({
       .getSubscriptionAddons(subscription.id)
       .then((res) => setAddons(res.data?.data || []))
       .catch(() => {});
+    setUsageAmount(null);
+    endpoints
+      .getUsageAmount(subscription.id)
+      .then((res) => setUsageAmount(res.data?.data || null))
+      .catch(() => {}); // no metered charges / not applicable — section just hides
   }, [isOpen, subscription, plans.length]);
 
   const refreshAddons = () =>
     endpoints
       .getSubscriptionAddons(subscription.id)
       .then((res) => setAddons(res.data?.data || []))
+      .catch(() => {});
+
+  const refreshUsageAmount = () =>
+    endpoints
+      .getUsageAmount(subscription.id)
+      .then((res) => setUsageAmount(res.data?.data || null))
       .catch(() => {});
 
   const addAddon = async () => {
@@ -317,6 +331,32 @@ export default function SubscriptionDetail({
                 <Button variant="outline" size="sm" onClick={() => setBillingPanel((p) => (p === "commitment" ? null : "commitment"))}>
                   Commitment
                 </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={billingUsage}
+                  onClick={async () => {
+                    setBillingUsage(true);
+                    try {
+                      const res = await endpoints.billUsageNow(subscription.id);
+                      // 200 => interim invoice generated; 204/empty => nothing due yet.
+                      if (res?.data?.data?.id) {
+                        toast.success("Interim usage invoice generated");
+                      } else {
+                        toast.info("No usage past the threshold to bill yet");
+                      }
+                      refreshUsageAmount();
+                    } catch (err) {
+                      toast.error(
+                        err?.response?.data?.error?.message || "Failed to bill usage",
+                      );
+                    } finally {
+                      setBillingUsage(false);
+                    }
+                  }}
+                >
+                  {billingUsage ? "Billing…" : "Bill usage now"}
+                </Button>
               </>
             )}
           </div>
@@ -400,6 +440,39 @@ export default function SubscriptionDetail({
                 >
                   {billingBusy ? "Saving…" : "Save"}
                 </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Live usage preview — accrued metered charges for the running period */}
+          {isActive && usageAmount?.charges?.length > 0 && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Usage this period</h3>
+                <span className="text-xs text-muted-foreground">
+                  accrued, pre-tax · if invoiced now
+                </span>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                {usageAmount.charges.map((c) => (
+                  <div key={c.metric_code} className="flex items-center justify-between gap-3 text-sm">
+                    <span className="min-w-0 truncate text-foreground">
+                      {c.metric_name || c.metric_code}
+                      <span className="ml-1.5 font-mono text-xs text-muted-foreground">
+                        {c.quantity} × {c.charge_model}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-foreground">
+                      {formatCurrency(c.amount, usageAmount.currency)}
+                    </span>
+                  </div>
+                ))}
+                <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5 text-sm font-medium">
+                  <span className="text-foreground">Total accrued</span>
+                  <span className="tabular-nums text-foreground">
+                    {formatCurrency(usageAmount.total_amount, usageAmount.currency)}
+                  </span>
+                </div>
               </div>
             </div>
           )}
