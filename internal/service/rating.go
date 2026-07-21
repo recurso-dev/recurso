@@ -39,23 +39,28 @@ type RatingError string
 
 func (e RatingError) Error() string { return string(e) }
 
-// parseRate parses a decimal-string rate into an exact rational.
-func parseRate(s string) (*big.Rat, error) {
+// parseDecimalRate parses a decimal-string rate into an exact rational,
+// attributing errors to the named field. The regex rejects fractions and
+// exponents so stored pricing config stays plain decimals.
+func parseDecimalRate(s, field string) (*big.Rat, error) {
 	if s == "" {
-		return nil, RatingError("unit_amount is required")
+		return nil, RatingError(field + " is required")
 	}
 	if len(s) > maxRateLen {
-		return nil, RatingError("unit_amount is too long")
+		return nil, RatingError(field + " is too long")
 	}
 	if !rateRe.MatchString(s) {
-		return nil, RatingError(fmt.Sprintf("unit_amount %q is not a plain non-negative decimal", s))
+		return nil, RatingError(fmt.Sprintf("%s %q is not a plain non-negative decimal", field, s))
 	}
 	r, ok := new(big.Rat).SetString(s)
 	if !ok {
-		return nil, RatingError(fmt.Sprintf("unit_amount %q is not a valid decimal", s))
+		return nil, RatingError(fmt.Sprintf("%s %q is not a valid decimal", field, s))
 	}
 	return r, nil
 }
+
+// parseRate parses a per-unit rate (per_unit / tiers).
+func parseRate(s string) (*big.Rat, error) { return parseDecimalRate(s, "unit_amount") }
 
 // roundRatHalfUp rounds a non-negative exact amount (already scaled to
 // minor units) half-up to int64.
@@ -108,6 +113,9 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 
 	case domain.ChargeVolume:
 		return rateVolume(amounts.Tiers, quantity)
+
+	case domain.ChargePercentage:
+		return ratePercentage(amounts, quantity)
 	}
 	return 0, RatingError(fmt.Sprintf("unsupported charge model %q", model))
 }
@@ -194,4 +202,49 @@ func rateVolume(tiers []domain.ChargeTier, quantity int64) (int64, error) {
 	}
 	// Unreachable: validateTiers guarantees an unbounded last tier.
 	return 0, RatingError("quantity exceeds tier coverage")
+}
+
+// ratePercentage prices a percentage of the aggregated monetary base. Here
+// quantity is the base in minor units (e.g. a sum of transaction amounts), not
+// a unit count. FreeUnits are deducted from the base first; Rate (a percent
+// decimal) is applied to the remainder exactly and rounded half-up once;
+// FixedAmount (minor units) is added; and the line is clamped to
+// [MinAmount, MaxAmount] (MaxAmount 0 = uncapped, MinAmount 0 = no floor).
+// RateCharge already short-circuits quantity 0 to 0, so MinAmount floors only
+// when there is usage.
+func ratePercentage(a domain.ChargeAmounts, quantity int64) (int64, error) {
+	rate, err := parseDecimalRate(a.Rate, "rate")
+	if err != nil {
+		return 0, err
+	}
+	if a.FreeUnits < 0 {
+		return 0, RatingError("free_units must not be negative")
+	}
+	if a.FixedAmount < 0 {
+		return 0, RatingError("fixed_amount must not be negative")
+	}
+	if a.MinAmount < 0 || a.MaxAmount < 0 {
+		return 0, RatingError("min_amount and max_amount must not be negative")
+	}
+	if a.MaxAmount > 0 && a.MaxAmount < a.MinAmount {
+		return 0, RatingError("max_amount must be greater than or equal to min_amount")
+	}
+
+	base := quantity - a.FreeUnits
+	if base < 0 {
+		base = 0
+	}
+
+	// line = base × (rate / 100), exact, rounded half-up once.
+	pct := new(big.Rat).Quo(rate, big.NewRat(100, 1))
+	lineRat := new(big.Rat).Mul(new(big.Rat).SetInt64(base), pct)
+	line := roundRatHalfUp(lineRat) + a.FixedAmount
+
+	if line < a.MinAmount {
+		line = a.MinAmount
+	}
+	if a.MaxAmount > 0 && line > a.MaxAmount {
+		line = a.MaxAmount
+	}
+	return line, nil
 }

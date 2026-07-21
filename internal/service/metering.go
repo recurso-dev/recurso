@@ -221,7 +221,7 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 
 		model := domain.ChargeModel(in.ChargeModel)
 		if !domain.ValidChargeModel(model) {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package", i))
+			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage", i))
 		}
 		if len(in.Amounts) == 0 {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", i))
