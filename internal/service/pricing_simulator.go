@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/google/uuid"
@@ -126,18 +127,23 @@ func (s *MeteringService) SimulateCharges(ctx context.Context, tenantID, planID 
 		}
 
 		qty, explicit := usageByMetric[metric.ID.String()]
-		if !explicit && sub != nil {
+		var qtyRat *big.Rat
+		if explicit {
+			qtyRat = new(big.Rat).SetInt64(qty)
+		} else if sub != nil {
 			ch := domain.Charge{ChargeModel: model, Metric: metric}
-			qty, err = meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, s.now())
+			qtyRat, err = meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, s.now())
 			if err != nil {
 				return nil, err
 			}
+		} else {
+			qtyRat = new(big.Rat)
 		}
-		if qty < 0 {
-			qty = 0
+		if qtyRat.Sign() < 0 {
+			qtyRat = new(big.Rat)
 		}
 
-		amount, err := RateCharge(model, amounts, qty)
+		amount, err := RateChargeRat(model, amounts, qtyRat)
 		if err != nil {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %v", i, err))
 		}
@@ -147,7 +153,7 @@ func (s *MeteringService) SimulateCharges(ctx context.Context, tenantID, planID 
 			MetricCode:  metric.Code,
 			MetricName:  metric.Name,
 			ChargeModel: string(model),
-			Quantity:    qty,
+			Quantity:    roundRatHalfUp(qtyRat),
 			Amount:      amount,
 		})
 		out.Subtotal += amount
