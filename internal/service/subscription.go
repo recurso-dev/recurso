@@ -531,6 +531,15 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		return false, nil // Already paid
 	}
 
+	// Amount already settled by a non-cash channel before this payment — today
+	// only a prepaid wallet drain at invoice generation writes amount_paid ahead
+	// of settlement (partial offline payments leave the invoice open without
+	// touching it). That drain already relieved AR and was booked as cash at
+	// top-up, so the ledger cash leg below must EXCLUDE it; otherwise the wallet
+	// portion double-books as cash and drives AR negative. Captured from the
+	// freshly-loaded invoice, before MarkPaid / the AmountPaid overwrite below.
+	walletSettled := inv.AmountPaid
+
 	now := time.Now().UTC()
 	// Atomically claim the paid transition. Only the settler whose conditional
 	// UPDATE actually flips the row runs the side-effects below; concurrent
@@ -555,9 +564,10 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 		s.recoveryRecorder.RecordIfRecovered(ctx, inv)
 	}
 
-	// Record payment in ledger
+	// Record payment in ledger — cash leg net of the wallet portion already
+	// settled at generation (see walletSettled above).
 	if s.ledger != nil {
-		if err := s.ledger.RecordPayment(ctx, inv); err != nil {
+		if err := s.ledger.RecordPaymentWithSettled(ctx, inv, walletSettled); err != nil {
 			s.logger.Error("ledger payment write failed", "error", err, "invoice_id", inv.ID)
 		}
 	}

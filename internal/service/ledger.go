@@ -201,16 +201,31 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	return nil
 }
 
-// RecordPayment posts a payment to the ledger when an invoice is marked paid.
-// Debit: Cash (Asset) — the net amount actually received
-// Debit: TDS Receivable (Asset) — any portion the customer withheld at source
-// Credit: Customer AR (Asset) — reduced by both legs
+// RecordPayment posts a payment to the ledger when an invoice is marked paid,
+// with no prior non-cash settlement. See RecordPaymentWithSettled.
 func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoice) error {
+	return s.RecordPaymentWithSettled(ctx, invoice, 0)
+}
+
+// RecordPaymentWithSettled posts a payment to the ledger, booking the cash leg
+// for the NET cash actually collected: Total − CreditApplied − TDS − alreadySettled.
+//
+// alreadySettled is the portion already relieved from AR by a non-cash channel
+// that is NOT CreditApplied — today that is a prepaid wallet drain applied at
+// invoice generation. That drain already credited AR (DR Customer-Credit / CR AR)
+// and the money was booked as Cash back at wallet top-up (DR Cash / CR
+// Customer-Credit); counting it again in this cash leg would double-book it as
+// Cash and over-credit (drive negative) the customer's AR.
+//
+// Debit: Cash (Asset) — the net cash actually received
+// Debit: TDS Receivable (Asset) — any portion the customer withheld at source
+// Credit: Customer AR (Asset) — reduced by every leg
+func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *domain.Invoice, alreadySettled int64) error {
 	// Reject invalid amounts up front (a negative total is a caller bug, not a
 	// zero-cash settlement) before the collected-amount short-circuit below.
-	if invoice.Total < 0 || invoice.CreditApplied < 0 || invoice.TDSAmount < 0 {
-		return fmt.Errorf("invoice %s: invalid amounts (total=%d credit_applied=%d tds=%d)",
-			invoice.ID, invoice.Total, invoice.CreditApplied, invoice.TDSAmount)
+	if invoice.Total < 0 || invoice.CreditApplied < 0 || invoice.TDSAmount < 0 || alreadySettled < 0 {
+		return fmt.Errorf("invoice %s: invalid amounts (total=%d credit_applied=%d tds=%d already_settled=%d)",
+			invoice.ID, invoice.Total, invoice.CreditApplied, invoice.TDSAmount, alreadySettled)
 	}
 
 	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
@@ -246,7 +261,7 @@ func (s *LedgerService) RecordPayment(ctx context.Context, invoice *domain.Invoi
 	// was already relieved from AR by the credit-application posting (ENG-185),
 	// and the TDS portion never arrives as cash — posting either here would
 	// over-credit AR (drive it negative) and overstate Cash.
-	collected := invoice.Total - invoice.CreditApplied - invoice.TDSAmount
+	collected := invoice.Total - invoice.CreditApplied - invoice.TDSAmount - alreadySettled
 	if collected > 0 {
 		amount, err := ledgerAmount(collected)
 		if err != nil {
