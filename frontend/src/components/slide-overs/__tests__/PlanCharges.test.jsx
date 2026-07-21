@@ -264,6 +264,7 @@ describe('PlanCharges editor', () => {
                     charge_model: 'per_unit',
                     amounts: { USD: { unit_amount: '0.01' } },
                     hsn_code: '',
+                    pay_in_advance: false,
                     filter_key: 'region',
                     filters: [{ value: 'us', amounts: { USD: { unit_amount: '0.02' } } }],
                 },
