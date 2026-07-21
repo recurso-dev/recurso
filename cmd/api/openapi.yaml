@@ -1066,6 +1066,33 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/subscriptions/{id}/bill-usage:
+    post:
+      operationId: billUsageNow
+      tags: [Subscriptions]
+      summary: Generate an interim progressive-usage invoice
+      description: >-
+        For a subscription with progressive billing enabled, bill the usage
+        accrued since the last bill when it has reached the threshold (A5). The
+        watermark guarantees no usage is billed twice. Returns the interim
+        invoice, or 200 with data:null when nothing is due (not progressive, or
+        below the threshold).
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '201':
+          description: Interim invoice created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invoice'
+        '200':
+          description: Nothing due (data is null).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/subscriptions/{id}/advance:
     post:
       operationId: generateAdvanceInvoice

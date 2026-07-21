@@ -406,6 +406,9 @@ func main() {
 	invoiceService.ChargeRepo = chargeRepo
 	invoiceService.UsageRepo = usageRepo
 	invoiceService.RatingRepo = usageRatingRepo
+	// A5 progressive billing: the watermark repo + the ledger poster interim
+	// invoices use (billProgressive posts DR AR / CR Revenue itself).
+	invoiceService.SetProgressiveBilling(db.NewProgressiveBillingRepository(database), ledgerService)
 
 	catalogService := service.NewCatalogService(planRepo)
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
@@ -1577,6 +1580,7 @@ func main() {
 		v1.POST("/subscriptions/:id/charges", advancedBillingHandler.AddUnbilledCharge)
 		v1.GET("/subscriptions/:id/charges", advancedBillingHandler.ListUnbilledCharges)
 		v1.POST("/subscriptions/:id/advance", advancedBillingHandler.GenerateAdvanceInvoice)
+		v1.POST("/subscriptions/:id/bill-usage", advancedBillingHandler.BillUsageNow) // A5 interim progressive bill
 
 		// Heavy read-only finance reports get the same 5-minute Redis cache as
 		// /analytics/*: they re-aggregate the whole ledger per request and are
