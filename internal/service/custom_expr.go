@@ -110,9 +110,11 @@ func (e *CustomEvaluator) Eval(ctx context.Context, quantity float64, props map[
 }
 
 // eventStreamer is the subset of the usage repository the custom aggregation
-// needs: it streams a period's events in occurrence order.
+// needs: it streams a period's events in occurrence order. (The callback's
+// timestamp is unused here — the custom sum is order-independent — but part of
+// the shared streaming primitive weighted_sum also uses.)
 type eventStreamer interface {
-	StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, props map[string]string) error) error
+	StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, ts time.Time, props map[string]string) error) error
 }
 
 // AggregateCustom evaluates a compiled custom expression against every event of
@@ -129,7 +131,7 @@ type eventStreamer interface {
 // closed) rather than silently dropping an event.
 func AggregateCustom(ctx context.Context, repo eventStreamer, ev *CustomEvaluator, subID uuid.UUID, dimension string, start, end time.Time) (*big.Rat, error) {
 	sum := new(big.Rat)
-	err := repo.StreamEventsForMetric(ctx, subID, dimension, start, end, func(quantity int64, props map[string]string) error {
+	err := repo.StreamEventsForMetric(ctx, subID, dimension, start, end, func(quantity int64, _ time.Time, props map[string]string) error {
 		numeric := numericProps(props)
 		f, err := ev.Eval(ctx, float64(quantity), numeric)
 		if err != nil {

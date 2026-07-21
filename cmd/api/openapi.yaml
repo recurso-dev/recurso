@@ -7473,7 +7473,7 @@ components:
         tenant_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom, weighted_sum] }
         field_name:
           type: string
           description: Event property counted by `unique`, or the percentile 1-99 for `percentile`.
@@ -7494,7 +7494,7 @@ components:
           type: string
           maxLength: 50
           description: Doubles as the usage event dimension; immutable after create.
-        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom, weighted_sum] }
         field_name:
           type: string
           description: Required for `unique` (property name) and `percentile` (1-99); forbidden otherwise.

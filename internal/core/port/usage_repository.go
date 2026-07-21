@@ -51,9 +51,17 @@ type UsageRepository interface {
 	AggregateForMetricFiltered(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, propKey string, propValues []string, exclude bool, start, end time.Time) (int64, error)
 
 	// StreamEventsForMetric invokes fn for each event of the dimension inside
-	// [start, end), in occurrence order, passing the event quantity and its raw
-	// string properties (nil when none). It streams rather than materializing, so
-	// the custom aggregation folds a large period without loading every event.
-	// fn returning an error stops iteration and is returned.
-	StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, props map[string]string) error) error
+	// [start, end), in occurrence order, passing the event quantity, its
+	// timestamp, and its raw string properties (nil when none). It streams rather
+	// than materializing, so an aggregation folds a large period without loading
+	// every event. The timestamp lets time-dependent folds (weighted_sum) weight
+	// each interval; the custom aggregation ignores it. fn returning an error
+	// stops iteration and is returned.
+	StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, ts time.Time, props map[string]string) error) error
+
+	// SumQuantityBefore returns Σ quantity of the dimension's events strictly
+	// before `before` — the carry-forward starting level for weighted_sum (a
+	// resource provisioned in an earlier period is still active at this period's
+	// start). Zero events sum to 0.
+	SumQuantityBefore(ctx context.Context, subscriptionID uuid.UUID, dimension string, before time.Time) (int64, error)
 }

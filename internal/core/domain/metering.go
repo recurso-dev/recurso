@@ -40,13 +40,21 @@ const (
 	// it is sandboxed (see service.CompileCustomExpression). Expression is
 	// required for this type and empty for all others.
 	AggregationCustom AggregationType = "custom"
+	// AggregationWeightedSum treats each event quantity as a signed DELTA to a
+	// running level (e.g. seats provisioned/deprovisioned) and returns the
+	// TIME-WEIGHTED AVERAGE of that level over the period: Σ(level_i · Δt_i) /
+	// (period end − start). The starting level carries forward the net of all
+	// events before the period, so a resource active at period start counts from
+	// t0. Used for per-time resources; the average is generally fractional.
+	AggregationWeightedSum AggregationType = "weighted_sum"
 )
 
 // ValidAggregationType reports whether t is a supported aggregation.
 func ValidAggregationType(t AggregationType) bool {
 	switch t {
 	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique,
-		AggregationLatest, AggregationPercentile, AggregationCustom:
+		AggregationLatest, AggregationPercentile, AggregationCustom,
+		AggregationWeightedSum:
 		return true
 	}
 	return false
@@ -58,7 +66,7 @@ func ValidAggregationType(t AggregationType) bool {
 // arbitrary per-event expression results; `weighted_sum` is a time-weighted
 // average. Every other aggregation yields a whole count/sum/percentile.
 func FractionalAggregation(t AggregationType) bool {
-	return t == AggregationCustom
+	return t == AggregationCustom || t == AggregationWeightedSum
 }
 
 // BillableMetric is a tenant-defined meter. Code is unique per tenant and

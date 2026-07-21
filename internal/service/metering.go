@@ -91,7 +91,7 @@ func (s *MeteringService) validateMetricInput(in MetricInput) error {
 	}
 	agg := domain.AggregationType(in.AggregationType)
 	if !domain.ValidAggregationType(agg) {
-		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique, latest, percentile, custom")
+		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique, latest, percentile, custom, weighted_sum")
 	}
 	field := strings.TrimSpace(in.FieldName)
 	if len(field) > maxMetricFieldLen {
@@ -327,20 +327,28 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
 			"charges[%d]: pay_in_advance requires a non-cumulative model (per_unit, percentage, or dynamic), not %q", idx, model))
 	}
-	// The custom aggregation computes quantity by evaluating a per-event
-	// expression in Go, so it is incompatible with two features that compute the
-	// quantity a different way: dimensional filters (which aggregate subsets in
-	// SQL) and the dynamic charge model (which sums per-event dynamic_amount and
-	// ignores the aggregation). Reject both here rather than fail at invoice time.
-	if metric.AggregationType == domain.AggregationCustom {
+	// The custom and weighted_sum aggregations compute the quantity in Go (a
+	// per-event expression sum, a time-weighted average), so they are
+	// incompatible with two features that compute the quantity a different way:
+	// dimensional filters (which aggregate subsets in SQL) and the dynamic charge
+	// model (which sums per-event dynamic_amount and ignores the aggregation).
+	// Reject here rather than fail at invoice time.
+	if domain.FractionalAggregation(metric.AggregationType) {
 		if strings.TrimSpace(in.FilterKey) != "" {
 			return nil, "", nil, MeteringValidationError(fmt.Sprintf(
-				"charges[%d]: charge filters are not supported with the custom aggregation", idx))
+				"charges[%d]: charge filters are not supported with the %s aggregation", idx, metric.AggregationType))
 		}
 		if model == domain.ChargeDynamic {
 			return nil, "", nil, MeteringValidationError(fmt.Sprintf(
-				"charges[%d]: the dynamic charge model is incompatible with the custom aggregation", idx))
+				"charges[%d]: the dynamic charge model is incompatible with the %s aggregation", idx, metric.AggregationType))
 		}
+	}
+	// weighted_sum is a time-weighted average over the whole period, so it can
+	// only be rated at period close — pay-in-advance (per-event capture) is
+	// meaningless for it.
+	if metric.AggregationType == domain.AggregationWeightedSum && in.PayInAdvance {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+			"charges[%d]: pay_in_advance is not supported with the weighted_sum aggregation (period-close only)", idx))
 	}
 	normalized, err := normalizeChargeAmounts(model, in.Amounts, idx, "amounts")
 	if err != nil {
@@ -423,6 +431,9 @@ func meteredQuantity(ctx context.Context, repo port.UsageRepository, subID uuid.
 			return nil, err
 		}
 		return AggregateCustom(ctx, repo, ev, subID, ch.Metric.Code, start, end)
+	}
+	if ch.Metric.AggregationType == domain.AggregationWeightedSum {
+		return AggregateWeightedSum(ctx, repo, subID, ch.Metric.Code, start, end)
 	}
 	if ch.ChargeModel == domain.ChargeDynamic {
 		n, err := repo.SumDynamicAmount(ctx, subID, ch.Metric.Code, start, end)
