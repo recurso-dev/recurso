@@ -29,7 +29,8 @@
 Most billing platforms charge a percentage of your revenue and lock you into their ecosystem. Recurso is different.
 
 - **Immutable Financial Ledger** — Double-entry accounting in PostgreSQL (the authoritative ledger), with an optional TigerBeetle mirror for high-throughput deployments. Every transaction is audit-ready from day one.
-- **India-First Compliance** — Native GST, Place of Supply rules, HSN codes, TDS tracking, and e-invoicing readiness built in, not bolted on.
+- **A real usage-based billing engine** — 8 aggregations (including a time-weighted average and a sandboxed custom expression), 7 charge models, and billing in arrears, in advance, or progressively past a threshold — all priced with exact rational math (no float drift), reconciled onto the ledger. Built for AI and API companies that bill by the call.
+- **Multi-region tax compliance** — India GST (Place of Supply, HSN, TDS, e-invoicing via GSP) built in, not bolted on, plus EU VAT (reverse charge + VIES) and US sales tax with economic-nexus tracking.
 - **AI-Powered Dunning** — Smart retry engine analyzes failure patterns and schedules retries with exponential backoff to maximize recovery.
 - **No Success Tax** — Flat infrastructure cost. You don't pay more as your revenue grows.
 - **Truly Open Source** — MIT licensed. Self-host, fork, extend. Full control over your billing data.
@@ -37,15 +38,16 @@ Most billing platforms charge a percentage of your revenue and lock you into the
 ## Features
 
 - Subscription lifecycle — trials (with expiry reminders and auto-conversion), plan changes with proration preview, pause/resume, add-ons, cancellation
+- **Usage-based billing** — idempotent event ingestion; **8 aggregations** (count, sum, max, unique, latest, percentile, time-weighted average, and a sandboxed custom expression); **7 charge models** (per-unit, graduated, volume, package, percentage, graduated-percentage, dynamic); billed in arrears, in advance per event, or **progressively** past a threshold; dimensional (per-property) pricing; a pricing **simulator**; exact `big.Rat` math rounded once per line
 - Automatic and one-off invoicing with jurisdiction-aware tax and printable/e-invoice-ready PDFs
 - Hosted checkout — real card + ACH collection via the Stripe Payment Element, and UPI/cards/netbanking via Razorpay, with server-verified settlement
-- Customer self-service portal — magic-link login, card update (Stripe SetupIntent), UPI mandate re-authorization, invoice history
-- Multi-currency payment routing (INR → Razorpay, others → Stripe) with saved-card off-session retries
+- Customer self-service portal — magic-link login (httpOnly-cookie session), card update (Stripe SetupIntent), UPI mandate re-authorization, invoice history
+- Payments — multi-currency routing (INR → Razorpay, others → Stripe), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay so recurring autopay (renewal, dunning, wallet) settles in *your* account
 - Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution
-- Tax — India GST (Place of Supply, HSN, e-invoicing via GSP), EU VAT (VIES), US sales tax (TaxJar) with economic-nexus threshold tracking
-- Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes
-- Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation and ASC 606 revenue recognition
-- Usage metering, real-time FX-normalized MRR, churn scoring, webhook delivery tracking, QuickBooks/Xero sync
+- Tax — India GST (Place of Supply, HSN, TDS, e-invoicing via GSP), EU VAT (reverse charge + VIES), US sales tax (TaxJar) with economic-nexus threshold tracking
+- Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes (CPQ)
+- Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation, ASC 606 revenue recognition, and a month-end close pack
+- Real-time FX-normalized MRR, churn scoring, entitlements, commitments, webhook delivery tracking, QuickBooks/Xero/NetSuite/Tally sync
 - Platform — native auth (sessions, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy
 
 ## Project status
@@ -73,9 +75,11 @@ with [Going to Production](https://docs.recurso.dev/going-to-production).
 |---|---|---|---|
 | **Pricing** | Free (self-hosted) | From $599/mo | 0.5%–0.8% of revenue |
 | **Source Code** | Open (MIT) | Closed | Closed |
-| **India Compliance** | Native GST + e-invoicing | Partial | Limited |
+| **Usage-Based Billing** | 8 aggregations · 7 charge models · progressive/advance · exact math | Add-on | Metered (basic) |
+| **Tax Compliance** | India GST + e-invoicing, EU VAT, US nexus | Partial | Limited |
 | **Financial Ledger** | Double-entry (Postgres; optional TigerBeetle mirror) | None | None |
 | **Smart Dunning** | Built-in AI retries | Add-on | Basic |
+| **Bring Your Own Gateway** | Yes (Stripe + Razorpay, autopay to your account) | No | N/A |
 | **Data Ownership** | Full (your infrastructure) | Vendor-hosted | Vendor-hosted |
 
 ## Architecture
