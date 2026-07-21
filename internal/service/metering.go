@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,15 +83,29 @@ func (s *MeteringService) validateMetricInput(in MetricInput) error {
 	}
 	agg := domain.AggregationType(in.AggregationType)
 	if !domain.ValidAggregationType(agg) {
-		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique")
+		return MeteringValidationError("aggregation_type must be one of: count, sum, max, unique, latest, percentile")
 	}
-	switch {
-	case agg == domain.AggregationUnique && strings.TrimSpace(in.FieldName) == "":
-		return MeteringValidationError("field_name is required for the unique aggregation")
-	case agg != domain.AggregationUnique && in.FieldName != "":
-		return MeteringValidationError("field_name is only valid for the unique aggregation")
-	case len(in.FieldName) > maxMetricFieldLen:
+	field := strings.TrimSpace(in.FieldName)
+	if len(field) > maxMetricFieldLen {
 		return MeteringValidationError("field_name is too long")
+	}
+	switch agg {
+	case domain.AggregationUnique:
+		// field_name is the event property whose distinct values are counted.
+		if field == "" {
+			return MeteringValidationError("field_name is required for the unique aggregation")
+		}
+	case domain.AggregationPercentile:
+		// field_name carries the percentile as an integer 1-99 (e.g. "95").
+		p, err := strconv.Atoi(field)
+		if err != nil || p < 1 || p > 99 {
+			return MeteringValidationError(`field_name must be the percentile 1-99 for the percentile aggregation (e.g. "95")`)
+		}
+	default:
+		// count / sum / max / latest take no field_name.
+		if field != "" {
+			return MeteringValidationError("field_name is only valid for the unique and percentile aggregations")
+		}
 	}
 	return nil
 }
