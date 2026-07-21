@@ -82,6 +82,9 @@ export const endpoints = {
   // Partial update; { active: false } archives (blocked while subscriptions
   // are active), { active: true } restores.
   updateCustomer: (id, data) => api.put(`/customers/${id}`, data),
+  // Consent audit trail (GDPR): list a customer's recorded consents and revoke one.
+  getCustomerConsents: (id) => api.get(`/customers/${id}/consents`),
+  revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   getInvoices: (params) => api.get('/invoices', { params }),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
