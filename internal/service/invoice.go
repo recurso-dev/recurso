@@ -243,7 +243,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 			cgst += ml.tax.CGST
 			sgst += ml.tax.SGST
 			lines = append(lines, ml.item)
-			ratings = append(ratings, ml.rating)
+			if ml.rating != nil { // filtered charges carry one claim across several lines
+				ratings = append(ratings, ml.rating)
+			}
 		}
 	}
 
@@ -426,7 +428,9 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 		cgst += ml.tax.CGST
 		sgst += ml.tax.SGST
 		lines = append(lines, ml.item)
-		ratings = append(ratings, ml.rating)
+		if ml.rating != nil { // filtered charges carry one claim across several lines
+			ratings = append(ratings, ml.rating)
+		}
 	}
 
 	now := time.Now()
@@ -530,6 +534,14 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 			}
 		}
 
+		// A4: a filtered charge prices distinct values of one event property
+		// separately — one line per value plus a default line, under a single
+		// per-charge rating claim (the double-billing guard is unchanged).
+		if ch.FilterKey != "" {
+			out = append(out, s.filteredMeteredLines(ctx, sub, customer, plan, currency, cur, invID, ch, periodStart, periodEnd, now)...)
+			continue
+		}
+
 		amounts, ok := ch.Amounts[cur]
 		if !ok {
 			slog.Warn("skipping metered charge without pricing for invoice currency",
@@ -578,6 +590,77 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 		})
 	}
 	return out
+}
+
+// filteredMeteredLines rates a dimensional-pricing charge (A4): one line per
+// configured filter value (events whose FilterKey property equals the value,
+// at the value's amounts) plus a default line for events matching no value (at
+// the charge's base amounts). Each line aggregates its own event subset. The
+// whole charge carries ONE rating claim (attached to the first line) with the
+// summed quantity/amount, so the per-(subscription, charge, period)
+// double-billing guard is unchanged.
+func (s *InvoiceService) filteredMeteredLines(ctx context.Context, sub *domain.Subscription, customer *domain.Customer, plan *domain.Plan, currency, cur string, invID uuid.UUID, ch domain.Charge, periodStart, periodEnd, now time.Time) []meteredLine {
+	hsn := ch.HSNCode
+	if hsn == "" {
+		hsn = plan.HSNCode
+	}
+
+	var lines []meteredLine
+	var totalQty, totalAmount int64
+
+	rateSubset := func(amounts domain.ChargeAmounts, values []string, exclude bool, label string) {
+		qty, err := s.UsageRepo.AggregateForMetricFiltered(ctx, sub.ID, *ch.Metric, ch.FilterKey, values, exclude, periodStart, periodEnd)
+		if err != nil {
+			slog.Warn("skipping filtered charge subset: aggregation failed", "error", err, "charge_id", ch.ID, "filter", label)
+			return
+		}
+		if qty == 0 {
+			return
+		}
+		amount, err := RateCharge(ch.ChargeModel, amounts, qty)
+		if err != nil {
+			slog.Warn("skipping filtered charge subset: rating failed", "error", err, "charge_id", ch.ID, "filter", label)
+			return
+		}
+		tax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, currency, amount, hsn)
+		desc := fmt.Sprintf("%s [%s] — %d × usage (%s to %s)",
+			ch.Metric.Name, label, qty, periodStart.Format("2 Jan 2006"), periodEnd.Format("2 Jan 2006"))
+		lines = append(lines, meteredLine{
+			item: newInvoiceLine(invID, desc, tax.HSN, 1, amount, amount, tax, time.Time{}),
+			tax:  tax,
+		})
+		totalQty += qty
+		totalAmount += amount
+	}
+
+	values := make([]string, 0, len(ch.Filters))
+	for _, f := range ch.Filters {
+		values = append(values, f.Value)
+		if amounts, ok := f.Amounts[cur]; ok {
+			rateSubset(amounts, []string{f.Value}, false, ch.FilterKey+"="+f.Value)
+		}
+	}
+	// default subset: events whose property matches none of the filter values.
+	if baseAmounts, ok := ch.Amounts[cur]; ok {
+		rateSubset(baseAmounts, values, true, ch.FilterKey+": other")
+	}
+
+	// One claim per charge per period, attached to the first line.
+	if len(lines) > 0 {
+		lines[0].rating = &domain.UsageRating{
+			ID:             uuid.New(),
+			TenantID:       sub.TenantID,
+			SubscriptionID: sub.ID,
+			ChargeID:       ch.ID,
+			PeriodStart:    periodStart,
+			PeriodEnd:      periodEnd,
+			InvoiceID:      invID,
+			Quantity:       totalQty,
+			Amount:         totalAmount,
+			CreatedAt:      now,
+		}
+	}
+	return lines
 }
 
 // GenerateAdvanceInvoice generates an invoice for N future periods immediately.

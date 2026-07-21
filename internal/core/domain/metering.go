@@ -159,6 +159,13 @@ type ChargeAmounts struct {
 	MaxAmount int64 `json:"max_amount,omitempty"`
 }
 
+// ChargeFilterValue is one dimensional-pricing band: events whose FilterKey
+// property equals Value are priced by these per-currency Amounts (A4).
+type ChargeFilterValue struct {
+	Value   string                   `json:"value"`
+	Amounts map[string]ChargeAmounts `json:"amounts"`
+}
+
 // Charge attaches usage pricing for a metric to a plan. Amounts is keyed by
 // ISO currency code (mirroring per-currency Price rows); the invoice
 // currency selects the entry at rating time.
@@ -169,6 +176,11 @@ type Charge struct {
 	MetricID    uuid.UUID                `json:"metric_id"`
 	ChargeModel ChargeModel              `json:"charge_model"`
 	Amounts     map[string]ChargeAmounts `json:"amounts"`
+	// FilterKey (A4) is the event property this charge prices dimensionally;
+	// empty means the charge is not filtered (rated the classic way). Filters
+	// lists each priced value; events matching none use Amounts (the default).
+	FilterKey string              `json:"filter_key,omitempty"`
+	Filters   []ChargeFilterValue `json:"filters,omitempty"`
 	// PayInAdvance rates this charge per usage event at ingestion time
 	// (captured as an unbilled charge) instead of aggregating at period close.
 	// Only non-cumulative models may set it (see PayInAdvanceEligible).

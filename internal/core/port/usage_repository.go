@@ -44,4 +44,9 @@ type UsageRepository interface {
 	// dimension inside [start, end) — the quantity a `dynamic` charge bills.
 	// Zero events sum to 0.
 	SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error)
+
+	// AggregateForMetricFiltered aggregates like AggregateForMetric but only
+	// over events whose property propKey is IN propValues (exclude=false) or is
+	// NULL / NOT IN propValues (exclude=true) — dimensional pricing (A4).
+	AggregateForMetricFiltered(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, propKey string, propValues []string, exclude bool, start, end time.Time) (int64, error)
 }

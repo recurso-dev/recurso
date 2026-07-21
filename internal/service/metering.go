@@ -201,11 +201,22 @@ func (s *MeteringService) DeleteMetric(ctx context.Context, tenantID, id uuid.UU
 // ChargeInput is the caller-facing shape for one plan charge (PUT replace
 // semantics over the full set, like entitlements).
 type ChargeInput struct {
-	MetricID     string                          `json:"metric_id" binding:"required"`
-	ChargeModel  string                          `json:"charge_model" binding:"required"`
-	Amounts      map[string]domain.ChargeAmounts `json:"amounts" binding:"required"`
-	PayInAdvance bool                            `json:"pay_in_advance"`
-	HSNCode      string                          `json:"hsn_code"`
+	MetricID    string                          `json:"metric_id" binding:"required"`
+	ChargeModel string                          `json:"charge_model" binding:"required"`
+	Amounts     map[string]domain.ChargeAmounts `json:"amounts" binding:"required"`
+	// FilterKey/Filters (A4) price distinct values of one event property
+	// differently. Empty FilterKey = an ordinary (unfiltered) charge.
+	FilterKey    string              `json:"filter_key"`
+	Filters      []ChargeFilterInput `json:"filters"`
+	PayInAdvance bool                `json:"pay_in_advance"`
+	HSNCode      string              `json:"hsn_code"`
+}
+
+// ChargeFilterInput is one dimensional-pricing band: events whose FilterKey
+// property equals Value bill at these per-currency amounts.
+type ChargeFilterInput struct {
+	Value   string                          `json:"value"`
+	Amounts map[string]domain.ChargeAmounts `json:"amounts"`
 }
 
 // SetPlanCharges validates and fully replaces a plan's charge set.
@@ -228,6 +239,11 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 		}
 		seen[metric.ID] = true
 
+		filterKey, filters, err := resolveChargeFilters(model, i, in)
+		if err != nil {
+			return nil, err
+		}
+
 		charges = append(charges, domain.Charge{
 			ID:           uuid.New(),
 			TenantID:     tenantID,
@@ -235,6 +251,8 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 			MetricID:     metric.ID,
 			ChargeModel:  model,
 			Amounts:      normalized,
+			FilterKey:    filterKey,
+			Filters:      filters,
 			PayInAdvance: in.PayInAdvance,
 			HSNCode:      strings.TrimSpace(in.HSNCode),
 			CreatedAt:    now,
@@ -277,21 +295,67 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
 			"charges[%d]: pay_in_advance requires a non-cumulative model (per_unit, percentage, or dynamic), not %q", idx, model))
 	}
-	if len(in.Amounts) == 0 {
-		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", idx))
-	}
-	normalized := make(map[string]domain.ChargeAmounts, len(in.Amounts))
-	for currency, amounts := range in.Amounts {
-		cur := strings.ToUpper(strings.TrimSpace(currency))
-		if len(cur) != 3 {
-			return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %q is not an ISO currency code", idx, currency))
-		}
-		if _, err := RateCharge(model, amounts, 1); err != nil {
-			return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d].amounts[%s]: %v", idx, cur, err))
-		}
-		normalized[cur] = amounts
+	normalized, err := normalizeChargeAmounts(model, in.Amounts, idx, "amounts")
+	if err != nil {
+		return nil, "", nil, err
 	}
 	return metric, model, normalized, nil
+}
+
+// normalizeChargeAmounts upper-cases each currency, checks it is a 3-letter ISO
+// code, and validates the pricing by rating a probe quantity (the same path
+// invoice generation uses). label names the field for error messages.
+func normalizeChargeAmounts(model domain.ChargeModel, amounts map[string]domain.ChargeAmounts, idx int, label string) (map[string]domain.ChargeAmounts, error) {
+	if len(amounts) == 0 {
+		return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %s must define at least one currency", idx, label))
+	}
+	normalized := make(map[string]domain.ChargeAmounts, len(amounts))
+	for currency, a := range amounts {
+		cur := strings.ToUpper(strings.TrimSpace(currency))
+		if len(cur) != 3 {
+			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %q is not an ISO currency code", idx, currency))
+		}
+		if _, err := RateCharge(model, a, 1); err != nil {
+			return nil, MeteringValidationError(fmt.Sprintf("charges[%d].%s[%s]: %v", idx, label, cur, err))
+		}
+		normalized[cur] = a
+	}
+	return normalized, nil
+}
+
+// resolveChargeFilters validates a charge's dimensional-pricing filters (A4):
+// filters require a filter_key, each value must be unique and non-empty, and
+// each value's amounts must rate cleanly for the model. Returns the trimmed
+// key and normalized filters (empty when the charge is unfiltered).
+func resolveChargeFilters(model domain.ChargeModel, idx int, in ChargeInput) (string, []domain.ChargeFilterValue, error) {
+	filterKey := strings.TrimSpace(in.FilterKey)
+	if filterKey == "" {
+		if len(in.Filters) > 0 {
+			return "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: filters require a filter_key", idx))
+		}
+		return "", nil, nil
+	}
+	if len(in.Filters) == 0 {
+		return "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: filter_key %q set but no filters given", idx, filterKey))
+	}
+	seen := map[string]bool{}
+	filters := make([]domain.ChargeFilterValue, 0, len(in.Filters))
+	for _, f := range in.Filters {
+		v := strings.TrimSpace(f.Value)
+		if v == "" {
+			return "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: a filter value must not be empty", idx))
+		}
+		if seen[v] {
+			return "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: duplicate filter value %q", idx, v))
+		}
+		seen[v] = true
+		norm, err := normalizeChargeAmounts(model, f.Amounts, idx, fmt.Sprintf("filters[%s].amounts", v))
+		if err != nil {
+			return "", nil, err
+		}
+		filters = append(filters, domain.ChargeFilterValue{Value: v, Amounts: norm})
+	}
+	return filterKey, filters, nil
 }
 
 // meteredQuantity picks the aggregate a charge model prices for [start, end):
