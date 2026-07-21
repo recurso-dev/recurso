@@ -5,7 +5,7 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -127,13 +127,13 @@ const OfflinePayments = () => {
       const body = {
         customer_id: payForm.customer_id.trim(),
         payment_type: payForm.payment_type,
-        amount: Math.round(parseFloat(payForm.amount) * 100),
+        amount: toMinorUnits(payForm.amount, payForm.currency),
         currency: payForm.currency,
         reference_number: payForm.reference_number.trim(),
         notes: payForm.notes.trim(),
       };
       if (payForm.invoice_id.trim()) body.invoice_id = payForm.invoice_id.trim();
-      if (payForm.tds_amount) body.tds_amount = Math.round(parseFloat(payForm.tds_amount) * 100);
+      if (payForm.tds_amount) body.tds_amount = toMinorUnits(payForm.tds_amount, payForm.currency);
       await api.recordOfflinePayment(body);
       toast.success("Payment recorded.");
       setRecordOpen(false);
@@ -151,7 +151,7 @@ const OfflinePayments = () => {
     try {
       const body = {
         customer_id: vaForm.customer_id.trim(),
-        amount: Math.round(parseFloat(vaForm.amount) * 100),
+        amount: toMinorUnits(vaForm.amount, vaForm.currency),
       };
       if (vaForm.invoice_id.trim()) body.invoice_id = vaForm.invoice_id.trim();
       await api.createVirtualAccount(body);
@@ -345,7 +345,7 @@ const OfflinePayments = () => {
                     invoice_id: v === "none" ? "" : v,
                     // Prefill the open amount when none was typed yet.
                     amount:
-                      v !== "none" && inv && !f.amount ? String(inv.total / 100) : f.amount,
+                      v !== "none" && inv && !f.amount ? String(fromMinorUnits(inv.total, inv.currency)) : f.amount,
                     currency: v !== "none" && inv ? inv.currency : f.currency,
                   }));
                 }}
@@ -471,7 +471,7 @@ const OfflinePayments = () => {
                   setVAForm((f) => ({
                     ...f,
                     invoice_id: v === "none" ? "" : v,
-                    amount: v !== "none" && inv && !f.amount ? String(inv.total / 100) : f.amount,
+                    amount: v !== "none" && inv && !f.amount ? String(fromMinorUnits(inv.total, inv.currency)) : f.amount,
                   }));
                 }}
                 disabled={!vaForm.customer_id}

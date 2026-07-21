@@ -32,9 +32,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { toMinorUnits, fromMinorUnits, currencyDecimals } from "@/lib/utils";
 
-const fmtMoney = (minor, currency) =>
-  `${(minor / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${currency}`;
+const fmtMoney = (minor, currency) => {
+  const d = currencyDecimals(currency);
+  return `${fromMinorUnits(minor, currency).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })} ${currency}`;
+};
 
 // Prepaid wallets (Lago-parity B1): balances, top-ups, and movement history.
 const Wallets = () => {
@@ -102,7 +105,7 @@ const Wallets = () => {
     setActionError(null);
     try {
       await api.topUpWallet(topUpWallet.id, {
-        amount: Math.round(parseFloat(topUpForm.amount) * 100),
+        amount: toMinorUnits(topUpForm.amount, topUpWallet.currency),
         source: topUpForm.source,
       });
       setTopUpWallet(null);
@@ -117,8 +120,8 @@ const Wallets = () => {
     setActionError(null);
     setAutoWallet(wallet);
     setAutoForm({
-      threshold: wallet.auto_recharge_threshold ? String(wallet.auto_recharge_threshold / 100) : "",
-      amount: wallet.auto_recharge_amount ? String(wallet.auto_recharge_amount / 100) : "",
+      threshold: wallet.auto_recharge_threshold ? String(fromMinorUnits(wallet.auto_recharge_threshold, wallet.currency)) : "",
+      amount: wallet.auto_recharge_amount ? String(fromMinorUnits(wallet.auto_recharge_amount, wallet.currency)) : "",
     });
   };
 
@@ -129,8 +132,8 @@ const Wallets = () => {
       const body = disable
         ? { auto_recharge_threshold: null, auto_recharge_amount: null }
         : {
-            auto_recharge_threshold: Math.round(parseFloat(autoForm.threshold) * 100),
-            auto_recharge_amount: Math.round(parseFloat(autoForm.amount) * 100),
+            auto_recharge_threshold: toMinorUnits(autoForm.threshold, autoWallet.currency),
+            auto_recharge_amount: toMinorUnits(autoForm.amount, autoWallet.currency),
           };
       await api.setWalletAutoRecharge(autoWallet.id, body);
       setAutoWallet(null);

@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn } from "@/lib/utils";
+import { cn, toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ const CreateCoupon = () => {
       // coupon (ENG-152). Percent stays a plain integer.
       discount_value: isPercent
         ? parseInt(formData.discount_value)
-        : Math.round(parseFloat(formData.discount_value) * 100),
+        : toMinorUnits(formData.discount_value),
       duration: formData.duration.toLowerCase(),
       duration_months:
         formData.duration === "repeating" && formData.duration_months

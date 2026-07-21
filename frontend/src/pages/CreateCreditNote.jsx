@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
+import { toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,7 +75,7 @@ const CreateCreditNote = () => {
       // Convert amount to cents
       const payload = {
         ...formData,
-        amount: Math.round(parseFloat(formData.amount) * 100),
+        amount: toMinorUnits(formData.amount, formData.currency),
         invoice_id: formData.invoice_id ? formData.invoice_id : null,
       };
       if (!payload.invoice_id) delete payload.invoice_id;
