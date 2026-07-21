@@ -27,6 +27,7 @@ type mockUsageRepoForMeter struct {
 	port.UsageRepository
 	qtyByMetricCode map[string]int64
 	dynByDimension  map[string]int64
+	filteredByValue map[string]int64
 	gotStart        time.Time
 	gotEnd          time.Time
 }
@@ -39,6 +40,16 @@ func (m *mockUsageRepoForMeter) AggregateForMetric(ctx context.Context, subscrip
 func (m *mockUsageRepoForMeter) SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error) {
 	m.gotStart, m.gotEnd = start, end
 	return m.dynByDimension[dimension], nil
+}
+
+// filteredByValue: key "<value>" for a filter line, or "__default__" for the
+// exclude-subset (events matching no configured value).
+func (m *mockUsageRepoForMeter) AggregateForMetricFiltered(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, propKey string, propValues []string, exclude bool, start, end time.Time) (int64, error) {
+	m.gotStart, m.gotEnd = start, end
+	if exclude {
+		return m.filteredByValue["__default__"], nil
+	}
+	return m.filteredByValue[propValues[0]], nil
 }
 
 type mockRatingRepoForMeter struct {
@@ -143,6 +154,86 @@ func TestGenerateInvoice_DynamicCharge(t *testing.T) {
 	}
 	if invRepo.created == nil {
 		t.Fatal("invoice was not persisted")
+	}
+}
+
+// TestGenerateInvoice_FilteredCharge asserts dimensional pricing (A4): one line
+// per filter value + a default line, all under a SINGLE per-charge rating claim.
+func TestGenerateInvoice_FilteredCharge(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(0)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{ID: metricID, Code: "api_calls", Name: "API calls", AggregationType: domain.AggregationSum}
+	chargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:          chargeID,
+		PlanID:      sub.PlanID,
+		MetricID:    metricID,
+		ChargeModel: domain.ChargePerUnit,
+		Amounts:     map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.01"}}, // default rate
+		FilterKey:   "region",
+		Filters: []domain.ChargeFilterValue{
+			{Value: "us", Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.02"}}},
+			{Value: "eu", Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.03"}}},
+		},
+		Metric: &metric,
+	}}}
+	// us=100 (×0.02=200p), eu=50 (×0.03=150p), default/other=30 (×0.01=30p).
+	svc.UsageRepo = &mockUsageRepoForMeter{filteredByValue: map[string]int64{"us": 100, "eu": 50, "__default__": 30}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// base 100000 + 200 + 150 + 30 = 100380.
+	if inv.Subtotal != 100380 {
+		t.Fatalf("Subtotal = %d, want 100380", inv.Subtotal)
+	}
+	// base line + 3 filtered lines (us, eu, default).
+	if len(inv.LineItems) != 4 {
+		t.Fatalf("line count = %d, want 4 (base + us + eu + default)", len(inv.LineItems))
+	}
+	// Exactly ONE rating claim for the whole charge, summing all subsets.
+	if len(ratingRepo.created) != 1 {
+		t.Fatalf("rating claims = %d, want 1 (one per filtered charge)", len(ratingRepo.created))
+	}
+	claim := ratingRepo.created[0]
+	if claim.ChargeID != chargeID || claim.Quantity != 180 || claim.Amount != 380 {
+		t.Fatalf("claim = %+v, want charge %s qty 180 amount 380", claim, chargeID)
+	}
+}
+
+// TestGenerateInvoice_PayInAdvanceSkippedAtArrears: a pay_in_advance charge is
+// captured per event (as an unbilled charge), so period-close meteredLines must
+// NOT re-bill it — no metered line, no rating claim.
+func TestGenerateInvoice_PayInAdvanceSkippedAtArrears(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(1500)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{ID: metricID, Code: "api_calls", Name: "API calls", AggregationType: domain.AggregationSum}
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:           uuid.New(),
+		PlanID:       sub.PlanID,
+		MetricID:     metricID,
+		ChargeModel:  domain.ChargePerUnit,
+		PayInAdvance: true,
+		Amounts:      map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.0035"}},
+		Metric:       &metric,
+	}}}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if inv.Subtotal != 100000 {
+		t.Fatalf("Subtotal = %d, want 100000 (pay-in-advance charge excluded at arrears)", inv.Subtotal)
+	}
+	if len(inv.LineItems) != 1 {
+		t.Fatalf("line count = %d, want 1 (base only)", len(inv.LineItems))
+	}
+	if len(ratingRepo.created) != 0 {
+		t.Fatalf("rating claims = %d, want 0 (pay-in-advance not claimed at close)", len(ratingRepo.created))
 	}
 }
 

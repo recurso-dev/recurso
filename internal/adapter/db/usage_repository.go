@@ -131,6 +131,75 @@ func (r *UsageRepository) AggregateForMetric(ctx context.Context, subscriptionID
 	return total, nil
 }
 
+// AggregateForMetricFiltered aggregates like AggregateForMetric but only over
+// events whose property `propKey` is IN propValues (exclude=false — one filter
+// line) or is NULL / NOT IN propValues (exclude=true — the default subset,
+// A4). The property key and values are bound parameters (never interpolated).
+// Each filter line is an independent aggregation over its own event subset, so
+// it is exact for every aggregation type.
+func (r *UsageRepository) AggregateForMetricFiltered(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, propKey string, propValues []string, exclude bool, start, end time.Time) (int64, error) {
+	args := []interface{}{subscriptionID, metric.Code, start, end}
+
+	var agg string
+	switch metric.AggregationType {
+	case domain.AggregationCount:
+		agg = `COUNT(*)`
+	case domain.AggregationSum:
+		agg = `COALESCE(SUM(quantity), 0)`
+	case domain.AggregationMax:
+		agg = `COALESCE(MAX(quantity), 0)`
+	case domain.AggregationUnique:
+		agg = fmt.Sprintf(`COUNT(DISTINCT properties->>$%d)`, len(args)+1)
+		args = append(args, metric.FieldName)
+	case domain.AggregationPercentile:
+		frac, err := percentileFraction(metric.FieldName)
+		if err != nil {
+			return 0, err
+		}
+		agg = fmt.Sprintf(`COALESCE(CAST(percentile_cont($%d) WITHIN GROUP (ORDER BY quantity) AS BIGINT), 0)`, len(args)+1)
+		args = append(args, frac)
+	case domain.AggregationLatest:
+		// handled via the subquery template below
+	default:
+		return 0, fmt.Errorf("unsupported aggregation type %q", metric.AggregationType)
+	}
+
+	propClause, propArgs := buildPropClause(len(args)+1, propKey, propValues, exclude)
+	args = append(args, propArgs...)
+	where := `subscription_id = $1 AND dimension = $2 AND timestamp >= $3 AND timestamp < $4` + propClause
+
+	var query string
+	if metric.AggregationType == domain.AggregationLatest {
+		query = `SELECT COALESCE((SELECT quantity FROM usage_events WHERE ` + where + ` ORDER BY timestamp DESC, id DESC LIMIT 1), 0)`
+	} else {
+		query = `SELECT ` + agg + ` FROM usage_events WHERE ` + where
+	}
+
+	var total int64
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to aggregate filtered usage for metric %q: %w", metric.Code, err)
+	}
+	return total, nil
+}
+
+// buildPropClause builds a parameterized `AND properties->>$k (NOT) IN (...)`
+// fragment starting at parameter index start. The property key is $start; the
+// values follow. exclude=true also admits rows with a NULL property (the
+// "matches no filter" default subset).
+func buildPropClause(start int, key string, values []string, exclude bool) (string, []interface{}) {
+	args := []interface{}{key}
+	placeholders := make([]string, len(values))
+	for j, v := range values {
+		args = append(args, v)
+		placeholders[j] = fmt.Sprintf("$%d", start+1+j)
+	}
+	inList := strings.Join(placeholders, ", ")
+	if exclude {
+		return fmt.Sprintf(" AND (properties->>$%d IS NULL OR properties->>$%d NOT IN (%s))", start, start, inList), args
+	}
+	return fmt.Sprintf(" AND properties->>$%d IN (%s)", start, inList), args
+}
+
 // percentileFraction converts a stored percentile (integer 1-99, e.g. "95")
 // into the 0-1 fraction percentile_cont expects (0.95). Defense-in-depth: the
 // service validates the range before storage.

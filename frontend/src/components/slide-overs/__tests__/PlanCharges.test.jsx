@@ -66,10 +66,44 @@ describe('PlanCharges editor', () => {
                     metric_id: 'metric-1',
                     charge_model: 'per_unit',
                     amounts: { USD: { unit_amount: '0.0035' } },
+                    pay_in_advance: false,
                     hsn_code: '',
                 },
             ])
         );
+    });
+
+    it('sends pay_in_advance when checked for an eligible model', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Per-unit rate 1'), { target: { value: '0.0035' } });
+        fireEvent.click(screen.getByLabelText('Charge 1 bill in advance'));
+        fireEvent.click(screen.getByRole('button', { name: /save charges/i }));
+
+        await waitFor(() =>
+            expect(endpoints.setPlanCharges).toHaveBeenCalledWith('plan-123', [
+                {
+                    metric_id: 'metric-1',
+                    charge_model: 'per_unit',
+                    amounts: { USD: { unit_amount: '0.0035' } },
+                    pay_in_advance: true,
+                    hsn_code: '',
+                },
+            ])
+        );
+    });
+
+    it('hides the bill-in-advance checkbox for cumulative models', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Charge model 1'), { target: { value: 'graduated' } });
+
+        expect(screen.queryByLabelText('Charge 1 bill in advance')).not.toBeInTheDocument();
     });
 
     it('converts graduated tiers to minor-unit flat fees and a null last bound', async () => {
@@ -102,6 +136,7 @@ describe('PlanCharges editor', () => {
                             ],
                         },
                     },
+                    pay_in_advance: false,
                     hsn_code: '',
                 },
             ])
@@ -128,6 +163,7 @@ describe('PlanCharges editor', () => {
                     amounts: {
                         USD: { rate: '2.5', fixed_amount: 30, free_units: 0, min_amount: 0, max_amount: 5000 },
                     },
+                    pay_in_advance: false,
                     hsn_code: '',
                 },
             ])
@@ -161,6 +197,7 @@ describe('PlanCharges editor', () => {
                             ],
                         },
                     },
+                    pay_in_advance: false,
                     hsn_code: '',
                 },
             ])
@@ -182,6 +219,7 @@ describe('PlanCharges editor', () => {
                     metric_id: 'metric-2',
                     charge_model: 'dynamic',
                     amounts: { USD: {} },
+                    pay_in_advance: false,
                     hsn_code: '',
                 },
             ])

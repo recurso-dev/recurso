@@ -77,6 +77,64 @@ func seedAggEvent(t *testing.T, conn *sql.DB, subID, custID uuid.UUID, dimension
 	}
 }
 
+// seedAggEventProps inserts a usage event carrying one property.
+func seedAggEventProps(t *testing.T, conn *sql.DB, subID, custID uuid.UUID, dimension string, quantity int64, ts time.Time, propKey, propVal string) {
+	t.Helper()
+	props := `{"` + propKey + `":"` + propVal + `"}`
+	if _, err := conn.ExecContext(context.Background(),
+		`INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+		uuid.New(), subID, custID, dimension, quantity, ts, props); err != nil {
+		t.Fatalf("seed event with props: %v", err)
+	}
+}
+
+func TestAggregateForMetricFiltered_ByProperty(t *testing.T) {
+	repo, conn := openUsageAggTestDB(t)
+	ctx := context.Background()
+
+	subID, custID := seedAggSubscription(t, conn)
+	dim := "api_calls_" + uuid.NewString()[:8]
+	start := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	end := start.AddDate(0, 1, 0)
+
+	// region=us: 100+200; region=eu: 50; no region: 30.
+	seedAggEventProps(t, conn, subID, custID, dim, 100, start.Add(time.Minute), "region", "us")
+	seedAggEventProps(t, conn, subID, custID, dim, 200, start.Add(2*time.Minute), "region", "us")
+	seedAggEventProps(t, conn, subID, custID, dim, 50, start.Add(3*time.Minute), "region", "eu")
+	seedAggEvent(t, conn, subID, custID, dim, 30, start.Add(4*time.Minute)) // no property
+
+	metric := domain.BillableMetric{Code: dim, AggregationType: domain.AggregationSum}
+
+	// filter line: region=us -> 300.
+	got, err := repo.AggregateForMetricFiltered(ctx, subID, metric, "region", []string{"us"}, false, start, end)
+	if err != nil {
+		t.Fatalf("us: %v", err)
+	}
+	if got != 300 {
+		t.Fatalf("region=us sum = %d, want 300", got)
+	}
+
+	// filter line: region=eu -> 50.
+	if got, _ := repo.AggregateForMetricFiltered(ctx, subID, metric, "region", []string{"eu"}, false, start, end); got != 50 {
+		t.Fatalf("region=eu sum = %d, want 50", got)
+	}
+
+	// default subset: NOT IN (us, eu) OR NULL -> just the no-property event, 30.
+	got, err = repo.AggregateForMetricFiltered(ctx, subID, metric, "region", []string{"us", "eu"}, true, start, end)
+	if err != nil {
+		t.Fatalf("default: %v", err)
+	}
+	if got != 30 {
+		t.Fatalf("default (unmatched) sum = %d, want 30", got)
+	}
+
+	// The three subsets partition the total (300+50+30 = 380).
+	if full, _ := repo.AggregateForMetric(ctx, subID, metric, start, end); full != 380 {
+		t.Fatalf("unfiltered total = %d, want 380 (partition check)", full)
+	}
+}
+
 func TestAggregateForMetric_LatestAndPercentile(t *testing.T) {
 	repo, conn := openUsageAggTestDB(t)
 	ctx := context.Background()

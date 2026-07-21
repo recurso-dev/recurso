@@ -53,6 +53,7 @@ const newRow = (metricId = "") => ({
   // per-value unit_amount for per_unit, or rate for percentage).
   filter_key: "",
   filters: [],
+  pay_in_advance: false,
   hsn_code: "",
 });
 
@@ -60,6 +61,11 @@ const newRow = (metricId = "") => ({
 // models. Tier/dynamic filters are API-only in v1.
 const filterEligible = (m) => m === "per_unit" || m === "percentage";
 const blankFilter = () => ({ value: "", amount: "" });
+
+// payInAdvanceEligible mirrors the backend: only non-cumulative models can be
+// billed per event (per_unit, percentage, dynamic).
+const payInAdvanceEligible = (m) => m === "per_unit" || m === "percentage" || m === "dynamic";
+>>>>>>> origin/main
 
 // toEditorRows converts loaded charges (Amounts keyed by currency) into flat
 // editor rows for the plan's currency. Amounts for other currencies are not
@@ -70,6 +76,7 @@ const toEditorRows = (charges, currency) =>
     const row = newRow(ch.metric_id);
     row.charge_model = ch.charge_model;
     row.hsn_code = ch.hsn_code || "";
+    row.pay_in_advance = !!ch.pay_in_advance;
     if (ch.filter_key && filterEligible(ch.charge_model)) {
       row.filter_key = ch.filter_key;
       row.filters = (ch.filters || []).map((f) => {
@@ -230,6 +237,8 @@ const rowsToPayload = (rows, currency) =>
       metric_id: r.metric_id,
       charge_model: r.charge_model,
       amounts: { [currency]: amounts },
+      // only send pay_in_advance for eligible models (backend rejects the rest)
+      pay_in_advance: payInAdvanceEligible(r.charge_model) ? !!r.pay_in_advance : false,
       hsn_code: r.hsn_code.trim(),
     };
     // A4: dimensional pricing — one amounts entry per filter value.
@@ -655,6 +664,21 @@ export default function PlanCharges({ planId, currency }) {
                     </>
                   )}
                 </div>
+              )}
+              {payInAdvanceEligible(row.charge_model) && (
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={row.pay_in_advance}
+                    onChange={(e) => updateRow(i, { pay_in_advance: e.target.checked })}
+                    aria-label={`Charge ${i + 1} bill in advance`}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Bill in advance — rate each usage event as it arrives and add it to
+                    the next invoice, instead of aggregating at period close.
+                  </span>
+                </label>
               )}
 
               <div className="flex items-center gap-2">
