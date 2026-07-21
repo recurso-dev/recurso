@@ -23,13 +23,14 @@ const PortalVerify = () => {
 
     const verifyToken = async () => {
       try {
+        // credentials: "include" lets the browser store the httpOnly session
+        // cookie the server sets on success — the session is never exposed to JS.
         const response = await fetch(
-          `${API_BASE}/portal/auth/verify?token=${token}`
+          `${API_BASE}/portal/auth/verify?token=${token}`,
+          { credentials: "include" }
         );
-        const data = await response.json();
 
-        if (response.ok && data.session_token) {
-          localStorage.setItem("portal_session", data.session_token);
+        if (response.ok) {
           navigate("/portal/dashboard");
         } else {
           navigate("/portal/login?error=invalid");
