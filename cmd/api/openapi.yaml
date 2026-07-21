@@ -7535,8 +7535,25 @@ components:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
           description: Pricing per ISO currency code.
+        filter_key:
+          type: string
+          description: >-
+            (A4) An event property this charge prices dimensionally; empty =
+            unfiltered. Each `filters` entry prices one value of this property;
+            events matching none use `amounts` (the default).
+        filters:
+          type: array
+          items: { $ref: "#/components/schemas/ChargeFilterValue" }
         hsn_code: { type: string }
         metric: { $ref: "#/components/schemas/BillableMetric" }
+    ChargeFilterValue:
+      type: object
+      required: [value, amounts]
+      properties:
+        value: { type: string, description: The property value this band prices. }
+        amounts:
+          type: object
+          additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
     ChargeInput:
       type: object
       required: [metric_id, charge_model, amounts]
@@ -7546,6 +7563,10 @@ components:
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
+        filter_key: { type: string, description: "(A4) event property for dimensional pricing." }
+        filters:
+          type: array
+          items: { $ref: "#/components/schemas/ChargeFilterValue" }
         hsn_code: { type: string }
     AuditLog:
       type: object
