@@ -252,7 +252,9 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 				LegalName: gstConfig.LegalName,
 				TradeName: gstConfig.TradeName,
 				Address:   gstConfig.Address,
-				StateCode: gstConfig.StateCode,
+				// NIC requires the numeric GST state code; normalize in case the
+				// config stored an abbreviation or full name.
+				StateCode: normalizeINStateNumeric(gstConfig.StateCode),
 			}
 		}
 	}
@@ -265,6 +267,10 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 	if customer.PlaceOfSupply != nil {
 		buyerStateCode = *customer.PlaceOfSupply
 	}
+	// PlaceOfSupply is commonly stored as a two-letter abbreviation ("TN") or a
+	// full name, but the NIC INV-01 schema requires the numeric state code
+	// ("33") for both Stcd and Pos — send that, not the raw value.
+	buyerStateCode = normalizeINStateNumeric(buyerStateCode)
 
 	buyer := port.EInvoiceBuyer{
 		GSTIN:     domain.PtrToString(customer.GSTIN),
