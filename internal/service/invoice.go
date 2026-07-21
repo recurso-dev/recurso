@@ -41,6 +41,26 @@ type InvoiceService struct {
 	// BEFORE adjustment credit notes and the gateway (Lago-parity B1, D3).
 	// nil-safe. Satisfied by *WalletService.
 	WalletDrainer walletDrainer
+	// Progressive billing (A5). Both nil-safe: when ProgressiveRepo is unset, no
+	// subscription is progressive and every path is byte-identical to before.
+	// LedgerPoster lets billProgressive post its interim invoice's ledger legs
+	// itself (DR AR / CR Revenue) — satisfied by *LedgerService.
+	ProgressiveRepo port.ProgressiveBillingRepository
+	LedgerPoster    invoiceLedgerPoster
+}
+
+// invoiceLedgerPoster is the slice of *LedgerService that billProgressive needs
+// to post an interim invoice's legs. Kept narrow so the metering/invoice layer
+// does not depend on the concrete ledger service.
+type invoiceLedgerPoster interface {
+	RecordInvoice(ctx context.Context, invoice *domain.Invoice) error
+}
+
+// SetProgressiveBilling wires progressive billing (A5): the watermark repo and
+// the ledger poster interim invoices use. nil-safe / optional.
+func (s *InvoiceService) SetProgressiveBilling(repo port.ProgressiveBillingRepository, ledger invoiceLedgerPoster) {
+	s.ProgressiveRepo = repo
+	s.LedgerPoster = ledger
 }
 
 // walletDrainer consumes prepaid balance against a committed invoice.
@@ -512,6 +532,12 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 	cur := strings.ToUpper(currency)
 	now := time.Now()
 
+	// A5: on a progressive subscription, eligible charges bill incrementally via
+	// the watermark; at period close their FINAL delta (rate(period_end) minus
+	// what interims already billed) settles here as a line on the renewal
+	// invoice — the double-billing guard is the watermark CAS, not usage_ratings.
+	progressive := s.isProgressive(ctx, sub.ID)
+
 	var out []meteredLine
 	for _, ch := range charges {
 		if ch.Metric == nil {
@@ -521,6 +547,14 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 		// captured as unbilled charges (folded onto this invoice above); never
 		// re-bill them at period close (A3).
 		if ch.PayInAdvance {
+			continue
+		}
+		// Progressive settle for eligible charges (A5). Non-eligible (volume)
+		// charges on a progressive subscription fall through to the classic path.
+		if progressive && domain.ProgressiveBillingEligible(ch.ChargeModel) {
+			if ml, ok := s.progressiveCloseLine(ctx, sub, customer, plan, currency, cur, invID, ch, periodStart, periodEnd, now); ok {
+				out = append(out, ml)
+			}
 			continue
 		}
 		if s.RatingRepo != nil {

@@ -29,6 +29,7 @@ const (
 	BillingReasonMandateDebit       = "mandate_debit"       // UPI-mandate auto-debit
 	BillingReasonGiftPurchase       = "gift_purchase"       // prepaid gift
 	BillingReasonManual             = "manual"              // one-off / quote conversion
+	BillingReasonProgressiveUsage   = "progressive_usage"   // interim usage bill when accrued usage crosses a threshold (A5)
 )
 
 type Invoice struct {

@@ -123,3 +123,30 @@ func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{"data": inv})
 }
+
+// BillUsageNow handles POST /v1/subscriptions/:id/bill-usage — for a
+// progressive subscription, generate an interim invoice for the usage accrued
+// since the last bill when it has reached the threshold (A5). Returns the
+// interim invoice, or 200 with data:null when nothing is due (not progressive,
+// or below the threshold).
+func (h *AdvancedBillingHandler) BillUsageNow(c *gin.Context) {
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid subscription ID")
+		return
+	}
+	ctx, ok := h.tenantCtx(c)
+	if !ok {
+		return
+	}
+	inv, err := h.InvoiceService.GenerateProgressiveInvoiceForSub(ctx, subID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if inv == nil {
+		c.JSON(http.StatusOK, gin.H{"data": nil})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"data": inv})
+}
