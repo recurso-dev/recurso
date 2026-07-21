@@ -6030,6 +6030,53 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/plans/{id}/simulate-charges:
+    post:
+      tags: [Metering]
+      summary: Simulate a proposed charge set (read-only)
+      description: >-
+        Rates a PROPOSED charge set against sample usage and returns the rated
+        lines, the subtotal, and a balanced general-ledger preview
+        (DR Accounts Receivable / CR Revenue). Pre-tax — GST/tax is resolved at
+        invoice time. Nothing is persisted and no ledger legs are posted. Sample
+        usage comes from `usage` (per metric_id); metrics without an explicit
+        entry fall back to `subscription_id`'s current-period usage when given.
+      operationId: simulateCharges
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currency: { type: string, description: "ISO code; defaults to the plan's first price currency." }
+                subscription_id: { type: string, format: uuid, description: "Optional: fills usage for metrics without an explicit entry." }
+                charges:
+                  type: array
+                  items: { $ref: "#/components/schemas/ChargeInput" }
+                usage:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      metric_id: { type: string, format: uuid }
+                      quantity: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: The pre-tax pricing simulation with a balanced GL preview.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/subscriptions/{id}/usage-amount:
     get:
       tags: [Metering]

@@ -179,6 +179,32 @@ func (h *MeteringHandler) SetPlanCharges(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": charges})
 }
 
+// SimulateCharges handles POST /v1/plans/:id/simulate-charges — a read-only
+// preview of what a proposed charge set would bill against sample usage, plus a
+// balanced GL projection. Nothing is persisted.
+func (h *MeteringHandler) SimulateCharges(c *gin.Context) {
+	tenantID, ctx, ok := meteringTenantCtx(c)
+	if !ok {
+		return
+	}
+	planID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid plan id")
+		return
+	}
+	var req service.SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	sim, err := h.svc.SimulateCharges(ctx, tenantID, planID, req)
+	if err != nil {
+		respondMeteringError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": sim})
+}
+
 // GetPlanCharges handles GET /v1/plans/:id/charges.
 func (h *MeteringHandler) GetPlanCharges(c *gin.Context) {
 	tenantID, ctx, ok := meteringTenantCtx(c)
