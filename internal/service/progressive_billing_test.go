@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -50,7 +51,7 @@ func TestProgressiveDelta_NeverDoubleOrUnderBills(t *testing.T) {
 			var billed int64 // the watermark
 			var totalDeltas int64
 			for i, cum := range tc.cumulative {
-				delta, newWM, err := progressiveDelta(tc.model, tc.amounts, cum, billed)
+				delta, newWM, err := progressiveDelta(tc.model, tc.amounts, new(big.Rat).SetInt64(cum), billed)
 				if err != nil {
 					t.Fatalf("step %d (cum=%d): %v", i, cum, err)
 				}
@@ -103,12 +104,12 @@ func TestProgressiveBillingEligibility(t *testing.T) {
 // double-billing on a re-swept period.
 func TestProgressiveDelta_RepeatedSnapshotBillsNothing(t *testing.T) {
 	amounts := domain.ChargeAmounts{UnitAmount: "1"}
-	delta1, wm1, _ := progressiveDelta(domain.ChargePerUnit, amounts, 100, 0)
+	delta1, wm1, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), 0)
 	if delta1 != 10000 {
 		t.Fatalf("first bill = %d, want 10000", delta1)
 	}
 	// Same cumulative, watermark already advanced -> bill 0.
-	delta2, wm2, _ := progressiveDelta(domain.ChargePerUnit, amounts, 100, wm1)
+	delta2, wm2, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), wm1)
 	if delta2 != 0 || wm2 != wm1 {
 		t.Fatalf("retry bill = %d (wm %d), want 0 (wm %d)", delta2, wm2, wm1)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"strings"
 	"time"
 
@@ -24,12 +25,13 @@ import (
 // same total classic arrears would produce.
 
 // progressiveDelta computes what to bill for one charge given the cumulative
-// quantity so far and the amount already billed this period (the watermark).
-// Returns the non-negative delta to bill now and the new watermark
-// (= max(fee-at-cumulative, prior watermark)). Pure — the safety proof lives in
-// TestProgressiveDelta_NeverDoubleOrUnderBills.
-func progressiveDelta(model domain.ChargeModel, amounts domain.ChargeAmounts, cumulativeQty, billedAmount int64) (delta int64, newWatermark int64, err error) {
-	feeNow, err := RateCharge(model, amounts, cumulativeQty)
+// quantity so far (an exact rational, so a fractional aggregation like custom or
+// weighted_sum is priced without pre-rounding) and the amount already billed
+// this period (the watermark, in minor units). Returns the non-negative delta to
+// bill now and the new watermark (= max(fee-at-cumulative, prior watermark)).
+// Pure — the safety proof lives in TestProgressiveDelta_NeverDoubleOrUnderBills.
+func progressiveDelta(model domain.ChargeModel, amounts domain.ChargeAmounts, cumulativeQty *big.Rat, billedAmount int64) (delta int64, newWatermark int64, err error) {
+	feeNow, err := RateChargeRat(model, amounts, cumulativeQty)
 	if err != nil {
 		return 0, billedAmount, err
 	}
