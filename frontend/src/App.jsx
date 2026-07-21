@@ -80,6 +80,7 @@ const RevenueByGeography = lazy(() => import('./pages/RevenueByGeography'))
 const IRPSettings = lazy(() => import('./pages/settings/IRPSettings'))
 const GSTSettings = lazy(() => import('./pages/settings/GSTSettings'))
 const TaxNexusSettings = lazy(() => import('./pages/settings/TaxNexusSettings'))
+const EUEInvoiceSettings = lazy(() => import('./pages/settings/EUEInvoiceSettings'))
 const Organizations = lazy(() => import('./pages/Organizations'))
 const GSTReturns = lazy(() => import('./pages/GSTReturns'))
 const AskAnalytics = lazy(() => import('./pages/AskAnalytics'))
@@ -178,6 +179,7 @@ function App() {
                             <Route path="/disputes" element={<Disputes />} />
                             <Route path="/payments/offline" element={<OfflinePayments />} />
                             <Route path="/settings/irp" element={<IRPSettings />} />
+                            <Route path="/settings/eu-einvoice" element={<EUEInvoiceSettings />} />
                             <Route path="/settings/gst" element={<GSTSettings />} />
                             <Route path="/settings/tax-nexus" element={<TaxNexusSettings />} />
                             <Route path="/organizations" element={<Organizations />} />

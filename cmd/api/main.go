@@ -1240,6 +1240,7 @@ func main() {
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
+	euConfigHandler := handler.NewEUConfigHandler(db.NewTenantEUConfigRepository(database))
 
 	// Consent Service & Handler (P30 - RBI compliance)
 	consentRepo := db.NewConsentRepository(database)
@@ -1718,6 +1719,9 @@ func main() {
 		v1.GET("/settings/irp", einvoiceHandler.GetIRPConfig)
 		v1.PUT("/settings/irp", einvoiceHandler.UpdateIRPConfig)
 		v1.POST("/settings/irp/test", einvoiceHandler.TestIRPConnection)
+		// EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
+		v1.GET("/settings/eu-einvoice", euConfigHandler.GetEUConfig)
+		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
 
 		// Consent API (P30 - RBI compliance)
 		v1.POST("/consents", consentHandler.RecordConsent)

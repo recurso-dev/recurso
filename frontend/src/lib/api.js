@@ -258,6 +258,9 @@ export const endpoints = {
   getIRPConfig: () => api.get('/settings/irp'),
   updateIRPConfig: (data) => api.put('/settings/irp', data),
   testIRPConfig: () => api.post('/settings/irp/test'),
+  // EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
+  getEUEInvoiceConfig: () => api.get('/settings/eu-einvoice'),
+  updateEUEInvoiceConfig: (data) => api.put('/settings/eu-einvoice', data),
 
   // Usage-based billing (metering)
   getBillableMetrics: () => api.get('/billable-metrics'),

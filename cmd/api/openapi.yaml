@@ -4194,6 +4194,54 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/settings/eu-einvoice:
+    get:
+      operationId: getEUEInvoiceConfig
+      tags: [Settings]
+      summary: Get EU e-invoicing configuration
+      description: Returns the tenant's EU e-invoicing config (opt-in flag + EN 16931 seller identity), or an empty disabled default when none is set.
+      responses:
+        '200':
+          description: EU e-invoicing configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EUEInvoiceConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateEUEInvoiceConfig
+      tags: [Settings]
+      summary: Create or update EU e-invoicing config
+      description: >
+        Upserts the tenant's EU e-invoicing config. Setting `enabled` true
+        requires a complete seller identity (`legal_name`, `vat_number`,
+        2-letter `country_code`) — the fields every generated EN 16931 document
+        needs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EUEInvoiceConfig'
+      responses:
+        '200':
+          description: Configuration saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/EUEInvoiceConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/consents:
     post:
       operationId: recordConsent
@@ -8969,6 +9017,31 @@ components:
         has_lut:
           type: boolean
           description: Letter of Undertaking on file (zero-rated exports).
+
+    EUEInvoiceConfig:
+      type: object
+      description: A tenant's EU e-invoicing configuration — the opt-in flag plus the EN 16931 seller party.
+      properties:
+        enabled:
+          type: boolean
+          description: When true, invoices generate an EN 16931 (UBL 2.1) e-invoice. Off by default.
+        legal_name:
+          type: string
+          description: Seller registered/legal name (BT-27). Required to enable.
+        vat_number:
+          type: string
+          description: Seller VAT identifier incl. country prefix, e.g. "DE123456789" (BT-31). Required to enable.
+        country_code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          description: Seller country as an ISO 3166-1 alpha-2 code (BT-40). Required to enable.
+        street:
+          type: string
+        city:
+          type: string
+        postal_zone:
+          type: string
 
     IRPConfig:
       type: object
