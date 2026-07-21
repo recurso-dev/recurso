@@ -201,10 +201,11 @@ func (s *MeteringService) DeleteMetric(ctx context.Context, tenantID, id uuid.UU
 // ChargeInput is the caller-facing shape for one plan charge (PUT replace
 // semantics over the full set, like entitlements).
 type ChargeInput struct {
-	MetricID    string                          `json:"metric_id" binding:"required"`
-	ChargeModel string                          `json:"charge_model" binding:"required"`
-	Amounts     map[string]domain.ChargeAmounts `json:"amounts" binding:"required"`
-	HSNCode     string                          `json:"hsn_code"`
+	MetricID     string                          `json:"metric_id" binding:"required"`
+	ChargeModel  string                          `json:"charge_model" binding:"required"`
+	Amounts      map[string]domain.ChargeAmounts `json:"amounts" binding:"required"`
+	PayInAdvance bool                            `json:"pay_in_advance"`
+	HSNCode      string                          `json:"hsn_code"`
 }
 
 // SetPlanCharges validates and fully replaces a plan's charge set.
@@ -228,16 +229,17 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 		seen[metric.ID] = true
 
 		charges = append(charges, domain.Charge{
-			ID:          uuid.New(),
-			TenantID:    tenantID,
-			PlanID:      planID,
-			MetricID:    metric.ID,
-			ChargeModel: model,
-			Amounts:     normalized,
-			HSNCode:     strings.TrimSpace(in.HSNCode),
-			CreatedAt:   now,
-			UpdatedAt:   now,
-			Metric:      metric,
+			ID:           uuid.New(),
+			TenantID:     tenantID,
+			PlanID:       planID,
+			MetricID:     metric.ID,
+			ChargeModel:  model,
+			Amounts:      normalized,
+			PayInAdvance: in.PayInAdvance,
+			HSNCode:      strings.TrimSpace(in.HSNCode),
+			CreatedAt:    now,
+			UpdatedAt:    now,
+			Metric:       metric,
 		})
 	}
 
@@ -270,6 +272,10 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 	model := domain.ChargeModel(in.ChargeModel)
 	if !domain.ValidChargeModel(model) {
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic", idx))
+	}
+	if in.PayInAdvance && !domain.PayInAdvanceEligible(model) {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+			"charges[%d]: pay_in_advance requires a non-cumulative model (per_unit, percentage, or dynamic), not %q", idx, model))
 	}
 	if len(in.Amounts) == 0 {
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", idx))

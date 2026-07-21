@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -61,7 +62,26 @@ type UsageService struct {
 	usage         port.UsageRepository
 	subscriptions port.SubscriptionRepository
 	entitlements  usageEntitlementChecker
-	now           func() time.Time // injectable for tests
+	payInAdvance  *PayInAdvanceBiller // optional (A3); nil = disabled
+	now           func() time.Time    // injectable for tests
+}
+
+// SetPayInAdvanceBiller wires per-event pay-in-advance billing (A3). Optional,
+// nil-safe: unset leaves the event path unchanged.
+func (s *UsageService) SetPayInAdvanceBiller(b *PayInAdvanceBiller) { s.payInAdvance = b }
+
+// billPayInAdvance captures pay-in-advance charges for a freshly-recorded
+// (non-duplicate) event. Best-effort: a failure is logged for reconciliation
+// and never fails the event write (the event is already durably recorded), so
+// a retried event — which collapses to a duplicate — would not re-capture it.
+func (s *UsageService) billPayInAdvance(ctx context.Context, sub *domain.Subscription, event *domain.UsageEvent) {
+	if s.payInAdvance == nil {
+		return
+	}
+	if _, err := s.payInAdvance.BillEvent(ctx, sub, event); err != nil {
+		slog.Error("pay-in-advance billing failed — reconciliation needed",
+			"event_id", event.ID, "subscription_id", sub.ID, "error", err)
+	}
 }
 
 func NewUsageService(
@@ -104,7 +124,11 @@ func (s *UsageService) RecordEventIdempotent(ctx context.Context, tenantID uuid.
 	if sub.CustomerID != event.CustomerID {
 		return false, ErrUsageCustomerMismatch
 	}
-	return s.usage.RecordEventIdempotent(ctx, event)
+	duplicate, err := s.usage.RecordEventIdempotent(ctx, event)
+	if err == nil && !duplicate {
+		s.billPayInAdvance(ctx, sub, event)
+	}
+	return duplicate, err
 }
 
 // validateUsageEvent enforces the per-event input bounds.
@@ -198,6 +222,7 @@ func (s *UsageService) RecordEvents(ctx context.Context, tenantID uuid.UUID, eve
 			results[i].Status, results[i].EventID = "duplicate", event.ID.String()
 		default:
 			results[i].Status, results[i].EventID = "recorded", event.ID.String()
+			s.billPayInAdvance(ctx, sub, event)
 		}
 	}
 	return results, nil

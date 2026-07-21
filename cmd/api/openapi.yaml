@@ -7535,6 +7535,12 @@ components:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
           description: Pricing per ISO currency code.
+        pay_in_advance:
+          type: boolean
+          description: >-
+            Rate this charge per usage event at ingestion time (captured as an
+            unbilled charge, folded onto the next invoice) instead of at period
+            close. Only per_unit/percentage/dynamic may set it.
         hsn_code: { type: string }
         metric: { $ref: "#/components/schemas/BillableMetric" }
     ChargeInput:
@@ -7546,6 +7552,9 @@ components:
         amounts:
           type: object
           additionalProperties: { $ref: "#/components/schemas/ChargeAmounts" }
+        pay_in_advance:
+          type: boolean
+          description: Non-cumulative models only (per_unit/percentage/dynamic).
         hsn_code: { type: string }
     AuditLog:
       type: object

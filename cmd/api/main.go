@@ -410,6 +410,9 @@ func main() {
 	catalogService := service.NewCatalogService(planRepo)
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
 	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
+	// A3: pay-in-advance charges are rated per event and captured as unbilled
+	// charges, folded onto the next invoice by GenerateInvoice.
+	usageService.SetPayInAdvanceBiller(service.NewPayInAdvanceBiller(chargeRepo, planRepo, unbilledChargeRepo))
 	meteringService := service.NewMeteringService(billableMetricRepo, chargeRepo, planRepo, subscriptionRepo, usageRepo)
 	customerService := service.NewCustomerService(customerRepo)
 	customerService.SetSubscriptionRepo(subscriptionRepo) // archive gate: refuse archiving with active subs

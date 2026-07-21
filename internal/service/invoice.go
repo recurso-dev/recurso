@@ -513,6 +513,12 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 		if ch.Metric == nil {
 			continue
 		}
+		// Pay-in-advance charges are rated per event at ingestion time and
+		// captured as unbilled charges (folded onto this invoice above); never
+		// re-bill them at period close (A3).
+		if ch.PayInAdvance {
+			continue
+		}
 		if s.RatingRepo != nil {
 			rated, err := s.RatingRepo.Exists(ctx, sub.ID, ch.ID, periodStart)
 			if err != nil {
