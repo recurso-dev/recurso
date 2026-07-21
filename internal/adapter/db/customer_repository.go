@@ -359,23 +359,27 @@ func (r *CustomerRepository) SetStripeCustomerID(ctx context.Context, customerID
 
 // SetDefaultPaymentMethod records the reusable PaymentMethod (pm_*) to charge
 // for future invoices, and refreshes the card display fields in one write.
-func (r *CustomerRepository) SetDefaultPaymentMethod(ctx context.Context, customerID uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int) error {
+// gatewayConnectionID records which gateway connection the card was saved on
+// (B1 autopay): nil means the platform gateway; a value means that BYO
+// connection, so off-session charges route to the same gateway.
+func (r *CustomerRepository) SetDefaultPaymentMethod(ctx context.Context, customerID uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int, gatewayConnectionID *uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE customers
 		    SET default_payment_method = $1, card_brand = $2, card_last4 = $3,
-		        card_exp_month = $4, card_exp_year = $5
-		  WHERE id = $6`,
-		paymentMethodID, brand, last4, expMonth, expYear, customerID)
+		        card_exp_month = $4, card_exp_year = $5, pm_gateway_connection_id = $6
+		  WHERE id = $7`,
+		paymentMethodID, brand, last4, expMonth, expYear, gatewayConnectionID, customerID)
 	return err
 }
 
-// GetSavedPaymentMethod returns the customer's Stripe customer id and default
-// PaymentMethod id for off-session charging. Either may be "" if not set, in
-// which case the caller must fall back to the interactive payment path.
-func (r *CustomerRepository) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error) {
+// GetSavedPaymentMethod returns the customer's Stripe customer id, default
+// PaymentMethod id, and the gateway connection the card was saved on (nil =
+// platform gateway) for off-session charging. Either string may be "" if not
+// set, in which case the caller must fall back to the interactive payment path.
+func (r *CustomerRepository) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, gatewayConnectionID *uuid.UUID, err error) {
 	err = r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(stripe_customer_id, ''), COALESCE(default_payment_method, '')
-		   FROM customers WHERE id = $1`, customerID).Scan(&stripeCustomerID, &paymentMethodID)
+		`SELECT COALESCE(stripe_customer_id, ''), COALESCE(default_payment_method, ''), pm_gateway_connection_id
+		   FROM customers WHERE id = $1`, customerID).Scan(&stripeCustomerID, &paymentMethodID, &gatewayConnectionID)
 	return
 }
 

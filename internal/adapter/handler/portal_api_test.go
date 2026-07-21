@@ -78,7 +78,7 @@ func (m *mandateTestCustomerStore) GetStripeCustomerID(ctx context.Context, id u
 func (m *mandateTestCustomerStore) SetStripeCustomerID(ctx context.Context, id uuid.UUID, s string) error {
 	return nil
 }
-func (m *mandateTestCustomerStore) SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, pm, brand, last4 string, em, ey int) error {
+func (m *mandateTestCustomerStore) SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, pm, brand, last4 string, em, ey int, gatewayConnectionID *uuid.UUID) error {
 	return nil
 }
 

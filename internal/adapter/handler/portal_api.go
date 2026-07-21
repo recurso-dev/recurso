@@ -22,7 +22,19 @@ type customerPaymentStore interface {
 	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
 	GetStripeCustomerID(ctx context.Context, id uuid.UUID) (string, error)
 	SetStripeCustomerID(ctx context.Context, id uuid.UUID, stripeCustomerID string) error
-	SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int) error
+	SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int, gatewayConnectionID *uuid.UUID) error
+}
+
+// paymentSetupResolver picks the Stripe gateway a card is saved on for a tenant
+// (B1 autopay): the tenant's BYO connection when they have one (so recurring
+// charges land in their own account), else the platform gateway. connID is the
+// BYO connection's id (nil for platform) and is recorded with the saved card so
+// off-session charges route to the same gateway. publishableKey is the account's
+// Stripe publishable key the browser needs to confirm the SetupIntent (the BYO
+// account's key, or the platform key). Satisfied by a main.go wrapper over the
+// gateway resolver + connection service.
+type paymentSetupResolver interface {
+	SetupForTenant(ctx context.Context, tenantID uuid.UUID) (setup paymentMethodSetup, connID *uuid.UUID, publishableKey string)
 }
 
 // paymentMethodSetup is the Stripe capability for saving a reusable card via a
@@ -54,9 +66,60 @@ type PortalAPIHandler struct {
 	portalService  *service.PortalService
 	customerStore  customerPaymentStore
 	paymentSetup   paymentMethodSetup
+	setupResolver  paymentSetupResolver // B1: BYO-gateway routing for card save (nil-safe)
 	publishableKey string
 	mandateSvc     mandateReauth
 	invoiceReader  portalInvoiceReader
+}
+
+// SetPaymentSetupResolver wires BYO-gateway routing for card save (B1 autopay).
+// nil-safe: without it, cards save on the platform gateway (h.paymentSetup) and
+// record a nil connection.
+func (h *PortalAPIHandler) SetPaymentSetupResolver(r paymentSetupResolver) {
+	h.setupResolver = r
+}
+
+// byoSetupResolver routes card save to a tenant's BYO Stripe gateway when they
+// have an active connection with a secret, else the platform gateway (B1).
+type byoSetupResolver struct {
+	stripeFor      func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
+	activeConn     func(ctx context.Context, tenantID uuid.UUID) *domain.GatewayConnection
+	platform       paymentMethodSetup
+	platformPubKey string
+}
+
+// NewBYOSetupResolver builds the resolver. stripeFor returns the tenant's Stripe
+// gateway (BYO or env); activeConn returns the tenant's active Stripe connection
+// (nil = none); platform/platformPubKey are the env fallbacks.
+func NewBYOSetupResolver(
+	stripeFor func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway,
+	activeConn func(ctx context.Context, tenantID uuid.UUID) *domain.GatewayConnection,
+	platform paymentMethodSetup,
+	platformPubKey string,
+) *byoSetupResolver {
+	return &byoSetupResolver{stripeFor: stripeFor, activeConn: activeConn, platform: platform, platformPubKey: platformPubKey}
+}
+
+func (r *byoSetupResolver) SetupForTenant(ctx context.Context, tenantID uuid.UUID) (paymentMethodSetup, *uuid.UUID, string) {
+	if conn := r.activeConn(ctx, tenantID); conn != nil && conn.HasSecret() {
+		if setup, ok := r.stripeFor(ctx, tenantID).(paymentMethodSetup); ok {
+			return setup, &conn.ID, conn.PublicKey
+		}
+	}
+	return r.platform, nil, r.platformPubKey
+}
+
+// resolveSetup returns the Stripe gateway a card should be saved on for the
+// customer's tenant, the connection id to record (nil = platform), and the
+// publishable key the browser needs. Falls back to the platform gateway when no
+// resolver is wired.
+func (h *PortalAPIHandler) resolveSetup(ctx context.Context, cust *domain.Customer) (paymentMethodSetup, *uuid.UUID, string) {
+	if h.setupResolver != nil {
+		if setup, connID, pubKey := h.setupResolver.SetupForTenant(ctx, cust.TenantID); setup != nil {
+			return setup, connID, pubKey
+		}
+	}
+	return h.paymentSetup, nil, h.publishableKey
 }
 
 func NewPortalAPIHandler(portalService *service.PortalService) *PortalAPIHandler {
@@ -249,7 +312,11 @@ func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
 		name = *cust.Name
 	}
 
-	stripeCustomerID, err := h.paymentSetup.EnsureStripeCustomer(ctx, existing, cust.Email, name)
+	// B1: create the SetupIntent on the tenant's gateway (BYO or platform).
+	// ConfirmPaymentMethod resolves the same gateway (GetActive is deterministic).
+	setup, _, pubKey := h.resolveSetup(ctx, cust)
+
+	stripeCustomerID, err := setup.EnsureStripeCustomer(ctx, existing, cust.Email, name)
 	if err != nil {
 		respondError(c, http.StatusBadGateway, codeInternalError, "failed to prepare payment setup")
 		return
@@ -261,7 +328,7 @@ func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
 		}
 	}
 
-	clientSecret, err := h.paymentSetup.CreateSetupIntent(ctx, stripeCustomerID, map[string]string{"customer_id": id.String()})
+	clientSecret, err := setup.CreateSetupIntent(ctx, stripeCustomerID, map[string]string{"customer_id": id.String()})
 	if err != nil {
 		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start payment setup")
 		return
@@ -269,7 +336,7 @@ func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{
 		"client_secret":   clientSecret,
-		"publishable_key": h.publishableKey,
+		"publishable_key": pubKey,
 	}})
 }
 
@@ -297,7 +364,16 @@ func (h *PortalAPIHandler) ConfirmPaymentMethod(c *gin.Context) {
 	id := customerID.(uuid.UUID)
 	ctx := c.Request.Context()
 
-	saved, err := h.paymentSetup.FinalizeSetupIntent(ctx, req.SetupIntentID)
+	// Resolve the same gateway the SetupIntent was created on (B1) so finalize
+	// hits the right account, and record which connection saved the card.
+	cust, err := h.customerStore.GetByIDPublic(ctx, id)
+	if err != nil || cust == nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+	setup, connID, _ := h.resolveSetup(ctx, cust)
+
+	saved, err := setup.FinalizeSetupIntent(ctx, req.SetupIntentID)
 	if err != nil {
 		respondError(c, http.StatusBadGateway, codeInternalError, "failed to verify payment method")
 		return
@@ -313,7 +389,7 @@ func (h *PortalAPIHandler) ConfirmPaymentMethod(c *gin.Context) {
 		return
 	}
 
-	if err := h.customerStore.SetDefaultPaymentMethod(ctx, id, saved.PaymentMethodID, saved.Brand, saved.Last4, saved.ExpMonth, saved.ExpYear); err != nil {
+	if err := h.customerStore.SetDefaultPaymentMethod(ctx, id, saved.PaymentMethodID, saved.Brand, saved.Last4, saved.ExpMonth, saved.ExpYear, connID); err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save payment method")
 		return
 	}

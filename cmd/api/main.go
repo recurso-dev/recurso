@@ -897,6 +897,15 @@ func main() {
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
 	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
+	// B1 autopay: route each renewal charge to the gateway the card was saved on
+	// (BYO connection or platform). renewalCharger is the platform fallback.
+	if renewalCharger != nil {
+		renewalService.SetChargerRouter(service.NewSavedCardGatewayRouter(
+			gatewayConnService,
+			func(secret string) service.SavedCardCharger { return gateway.NewStripeGateway(secret, "") },
+			renewalCharger,
+		))
+	}
 	var billingCycleScheduler *scheduler.BillingCycleScheduler
 	billingCycleInterval := 5 * time.Minute
 	if raw := os.Getenv("BILLING_CYCLE_INTERVAL"); raw != "" {
@@ -1161,6 +1170,21 @@ func main() {
 		FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
 	})
 	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// B1 autopay: save cards on the tenant's BYO Stripe gateway when connected,
+	// recording the connection so renewal charges the same account.
+	if portalStripeSetup != nil {
+		portalAPIHandler.SetPaymentSetupResolver(handler.NewBYOSetupResolver(
+			func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+				return gatewayResolver.StripeFor(ctx, tenantID)
+			},
+			func(ctx context.Context, tenantID uuid.UUID) *domain.GatewayConnection {
+				conn, _ := gatewayConnService.GetActive(ctx, tenantID, domain.GatewayStripe)
+				return conn
+			},
+			portalStripeSetup,
+			os.Getenv("STRIPE_PUBLISHABLE_KEY"),
+		))
+	}
 	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
 	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
 	// fake authorization page.

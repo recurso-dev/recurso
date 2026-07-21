@@ -43,7 +43,15 @@ type renewalSavedCharger interface {
 
 // renewalPaymentLookup resolves the saved method; *db.CustomerRepository.
 type renewalPaymentLookup interface {
-	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error)
+	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, gatewayConnectionID *uuid.UUID, err error)
+}
+
+// renewalChargerRouter picks the off-session charger for a saved card's gateway
+// connection (B1 autopay). nil-safe: when unset, renewal charges every card on
+// the single wired platform charger (pre-B1 behavior). Satisfied by
+// *SavedCardGatewayRouter.
+type renewalChargerRouter interface {
+	ChargerFor(ctx context.Context, gatewayConnectionID *uuid.UUID) (SavedCardCharger, error)
 }
 
 // renewalSettler settles a paid invoice through the ledger path;
@@ -62,6 +70,10 @@ type RenewalService struct {
 	charger renewalSavedCharger
 	lookup  renewalPaymentLookup
 	settler renewalSettler
+	// chargerRouter routes each charge to the gateway the card was saved on
+	// (B1 autopay). nil-safe: when unset, `charger` (the platform gateway) is
+	// used for every card, preserving pre-B1 behavior.
+	chargerRouter renewalChargerRouter
 
 	now func() time.Time // injectable for tests
 }
@@ -80,6 +92,13 @@ func (s *RenewalService) SetSavedMethodCharging(charger renewalSavedCharger, loo
 	s.charger = charger
 	s.lookup = lookup
 	s.settler = settler
+}
+
+// SetChargerRouter wires BYO-gateway routing (B1 autopay): each saved card is
+// charged on the gateway connection it was saved with. nil-safe — without it,
+// every card charges on the platform `charger`.
+func (s *RenewalService) SetChargerRouter(router renewalChargerRouter) {
+	s.chargerRouter = router
 }
 
 // renewalClaimLease mirrors the mandate debitClaimWindow: shorter than the
@@ -182,7 +201,7 @@ func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice
 	if inv == nil || inv.Status != domain.InvoiceStatusOpen || inv.Total <= 0 {
 		return
 	}
-	stripeCustomerID, paymentMethodID, err := s.lookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
+	stripeCustomerID, paymentMethodID, gatewayConnID, err := s.lookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
 	if err != nil || stripeCustomerID == "" || paymentMethodID == "" {
 		return // nothing saved; invoice stays open
 	}
@@ -191,10 +210,24 @@ func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice
 	if amountDue <= 0 {
 		return
 	}
+
+	// B1 autopay: charge on the gateway the card was saved on. Without a router
+	// (pre-B1), every card charges on the single platform charger.
+	charger := s.charger
+	if s.chargerRouter != nil {
+		c, rerr := s.chargerRouter.ChargerFor(ctx, gatewayConnID)
+		if rerr != nil || c == nil {
+			slog.Warn("renewal: could not resolve saved-card gateway; invoice left open for dunning",
+				"invoice_id", inv.ID, "error", rerr)
+			return
+		}
+		charger = c
+	}
+
 	// Idempotency key ties the charge to this invoice's renewal attempt, so
 	// a re-run after a crash cannot double-charge at the gateway.
 	idemKey := fmt.Sprintf("renewal-%s", inv.ID)
-	result, err := s.charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amountDue, inv.Currency, inv.ID.String(), idemKey)
+	result, err := charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amountDue, inv.Currency, inv.ID.String(), idemKey)
 	if err != nil || result == nil || !result.Success {
 		slog.Warn("renewal payment attempt failed; invoice left open for dunning",
 			"invoice_id", inv.ID, "error", err)

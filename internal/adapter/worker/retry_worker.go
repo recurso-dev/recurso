@@ -28,7 +28,7 @@ type savedMethodCharger interface {
 // customerPaymentLookup resolves a customer's saved payment method. Implemented
 // by *db.CustomerRepository.
 type customerPaymentLookup interface {
-	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, err error)
+	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, gatewayConnectionID *uuid.UUID, err error)
 }
 
 // invoiceSettler marks an invoice paid through the ledger path (amount_paid,
@@ -94,7 +94,9 @@ func (w *RetryWorker) SetSavedMethodCharging(charger savedMethodCharger, lookup 
 // interactive gateway retry otherwise.
 func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*port.PaymentResult, error) {
 	if w.savedCharger != nil && w.customerLookup != nil {
-		stripeCustomerID, paymentMethodID, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
+		// B1: dunning retry stays on the platform gateway for now (PR2 will route
+		// it by the saved card's gateway connection like renewal).
+		stripeCustomerID, paymentMethodID, _, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
 		if err == nil && stripeCustomerID != "" && paymentMethodID != "" {
 			// Idempotent per attempt: a worker re-run for the same attempt won't
 			// double-charge.
