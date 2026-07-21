@@ -1,4 +1,4 @@
--- Beat Lago A1.1: add the `percentage` charge model (charge models 4 -> 7).
+-- A1.1: add the `percentage` charge model (charge models 4 -> 7).
 --
 -- plan_charges.charge_model is guarded by a CHECK constraint enumerating the
 -- supported models. Widen it to admit 'percentage'. The percentage model

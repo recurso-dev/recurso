@@ -1,4 +1,4 @@
--- Beat Lago A3: pay-in-advance charges.
+-- A3: pay-in-advance charges.
 --
 -- A pay_in_advance charge is rated per usage event at ingestion time and
 -- captured immediately as a pending unbilled_charge (which GenerateInvoice

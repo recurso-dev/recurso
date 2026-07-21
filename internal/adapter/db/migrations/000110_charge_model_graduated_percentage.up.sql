@@ -1,4 +1,4 @@
--- Beat Lago A1.2: add the `graduated_percentage` charge model.
+-- A1.2: add the `graduated_percentage` charge model.
 --
 -- Widen the plan_charges.charge_model CHECK to admit 'graduated_percentage'.
 -- Its per-band percentage rates live in the existing JSONB `amounts` column

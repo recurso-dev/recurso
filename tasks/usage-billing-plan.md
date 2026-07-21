@@ -1,7 +1,7 @@
-# Plan: Beat Lago — Track A + B (this quarter)
+# Plan: Usage-billing roadmap — Track A + B (this quarter)
 
-> Phase 2 (Plan) for `docs/spec_beat_lago.md`. Task list:
-> `tasks/beat-lago-todo.md`. Track C is out of scope this quarter. Each
+> Phase 2 (Plan) for `docs/usage_billing_roadmap.md`. Task list:
+> `tasks/usage-billing-todo.md`. Track C is out of scope this quarter. Each
 > increment ships as its own PR (BYO-series cadence). Awaiting Plan review
 > before Implement.
 
@@ -10,7 +10,7 @@
 | # | Question | Assumed default (this plan) |
 | --- | --- | --- |
 | Q1 | Saved PM ↔ gateway connection (B1) | Add `gateway_connection_id` to the stored payment method; the BYO resolver charges via that connection. **Confirm before B1.** |
-| Q2 | `dynamic` charge field shape | Recurso-native `dynamic_amount` (int64 minor units) supplied per event; matches Lago's precise-total semantics. |
+| Q2 | `dynamic` charge field shape | `dynamic_amount` (int64 minor units) supplied per event; the charge bills the exact per-event total. |
 | Q3 | Progressive-billing semantics | Opt-in **per usage_threshold**; interim invoice generated **and** payment attempted via the stored method (like a renewal); `attempt_payment` togglable. |
 | Q4 | `custom` aggregation | **Yes** — sandboxed expression DSL (arithmetic over event fields), never raw SQL/code. |
 | Q5 | EU e-invoicing | Track C (post-quarter). |

@@ -9,7 +9,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
-// Pricing simulator (Beat Lago A1.6): a read-only "what would this pricing
+// Pricing simulator: a read-only "what would this pricing
 // bill?" calculator. It validates a PROPOSED charge set the same way
 // SetPlanCharges does, rates it against sample usage (explicit quantities, or a
 // subscription's current-period usage), and returns the rated lines plus a

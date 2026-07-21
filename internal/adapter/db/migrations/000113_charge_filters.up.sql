@@ -1,4 +1,4 @@
--- Beat Lago A4: dimensional pricing via charge filters.
+-- A4: dimensional pricing via charge filters.
 --
 -- A charge may key on ONE event property (filter_key) and price distinct values
 -- of that property differently: filters is a JSON array of {value, amounts}.

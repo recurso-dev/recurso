@@ -1,4 +1,4 @@
--- Beat Lago A1.3: add the `dynamic` charge model + per-event dynamic amount.
+-- A1.3: add the `dynamic` charge model + per-event dynamic amount.
 --
 -- dynamic pricing lets the caller supply the exact price with each usage
 -- event; a dynamic charge bills the sum of those amounts for the period.
