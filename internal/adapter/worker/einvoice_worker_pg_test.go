@@ -72,7 +72,7 @@ func TestEInvoiceRetryWorker_CountAdvancesOnFailure_Postgres(t *testing.T) {
 	invID := uuid.New()
 	exec(`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied,
 			status, invoice_number, e_invoice_status, e_invoice_retry_count, e_invoice_next_retry_at, created_at, due_date)
-		VALUES ($1,$2,$3,'INR',10000,10000,0,0,'open',$4,'FAILED',2, NOW() - INTERVAL '1 minute', NOW(), NOW())`,
+		VALUES ($1,$2,$3,'INR',10000,10000,0,0,'open',$4,'FAILED',2, (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 minute', NOW(), NOW())`,
 		invID, tenantID, customerID, "INV-EI2-"+invID.String()[:8])
 
 	invoiceRepo := db.NewInvoiceRepository(conn)
@@ -134,7 +134,7 @@ func TestEInvoiceRetryWorker_MaxRetries_Postgres(t *testing.T) {
 	invID := uuid.New()
 	exec(`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied,
 			status, invoice_number, e_invoice_status, e_invoice_retry_count, e_invoice_next_retry_at, created_at, due_date)
-		VALUES ($1,$2,$3,'INR',10000,10000,0,0,'open',$4,'FAILED',5, NOW() - INTERVAL '1 minute', NOW(), NOW())`,
+		VALUES ($1,$2,$3,'INR',10000,10000,0,0,'open',$4,'FAILED',5, (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 minute', NOW(), NOW())`,
 		invID, tenantID, customerID, "INV-EI-"+invID.String()[:8])
 
 	invoiceRepo := db.NewInvoiceRepository(conn)

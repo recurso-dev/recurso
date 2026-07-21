@@ -85,7 +85,10 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 		s.logger.Error("failed to build e-invoice request", "error", err, "invoice_id", invoice.ID)
 		invoice.EInvoiceStatus = "FAILED"
 		invoice.EInvoiceErrorMessage = fmt.Sprintf("build request failed: %v", err)
-		now := time.Now().Add(5 * time.Minute)
+		// UTC: the claim query reads e_invoice_next_retry_at in UTC, and the
+		// column is timezone-naive, so the write must be UTC too (see the retry
+		// worker) — a local-time write skews the due comparison by the UTC offset.
+		now := time.Now().UTC().Add(5 * time.Minute)
 		invoice.EInvoiceNextRetryAt = &now
 		return nil, err
 	}
@@ -97,7 +100,7 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 		invoice.EInvoiceStatus = "FAILED"
 		invoice.EInvoiceErrorMessage = err.Error()
 		// Schedule first retry
-		now := time.Now().Add(5 * time.Minute)
+		now := time.Now().UTC().Add(5 * time.Minute)
 		invoice.EInvoiceNextRetryAt = &now
 		if resp != nil {
 			invoice.EInvoiceErrorMessage = resp.ErrorMessage

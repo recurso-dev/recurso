@@ -112,7 +112,11 @@ func (w *EInvoiceRetryWorker) processRetries(ctx context.Context) {
 			if backoffIdx >= len(einvoiceBackoffDurations) {
 				backoffIdx = len(einvoiceBackoffDurations) - 1
 			}
-			nextRetry := time.Now().Add(einvoiceBackoffDurations[backoffIdx])
+			// e_invoice_next_retry_at is a timezone-naive TIMESTAMP and the claim
+			// query reads it in UTC (now := time.Now().UTC()), so it MUST be
+			// written in UTC too — a local-time write skews the due comparison by
+			// the server's UTC offset (correct only by luck on a UTC host).
+			nextRetry := time.Now().UTC().Add(einvoiceBackoffDurations[backoffIdx])
 			fresh.EInvoiceNextRetryAt = &nextRetry
 
 			slog.Warn("e-invoice retry worker: retry failed, rescheduled", "invoice_number", fresh.InvoiceNumber, "attempt", fresh.EInvoiceRetryCount, "next_retry_at", nextRetry)
