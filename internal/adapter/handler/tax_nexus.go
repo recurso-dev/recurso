@@ -80,6 +80,94 @@ func (h *TaxNexusHandler) GetNexusStatus(c *gin.Context) {
 	}})
 }
 
+type registrationItem struct {
+	StateCode          string `json:"state_code" binding:"required"`
+	RegistrationNumber string `json:"registration_number"`
+	Status             string `json:"status"`
+	RegisteredAt       string `json:"registered_at"` // optional YYYY-MM-DD
+}
+
+type setRegistrationsRequest struct {
+	Registrations []registrationItem `json:"registrations"`
+}
+
+// GetRegistrations lists the tenant's US sales-tax registrations (Track D · D4).
+func (h *TaxNexusHandler) GetRegistrations(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	list, err := h.repo.ListRegistrations(c.Request.Context(), tenantID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if list == nil {
+		list = []domain.TaxRegistration{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": list})
+}
+
+// SetRegistrations replaces the tenant's entire registration set (owner/admin only).
+func (h *TaxNexusHandler) SetRegistrations(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if !h.requireManager(c) {
+		return
+	}
+
+	var req setRegistrationsRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	regs := make([]domain.TaxRegistration, 0, len(req.Registrations))
+	for _, item := range req.Registrations {
+		code := strings.ToUpper(strings.TrimSpace(item.StateCode))
+		if len(code) != 2 {
+			respondError(c, http.StatusBadRequest, codeValidationFailed,
+				"state_code must be a two-letter US state code: "+item.StateCode)
+			return
+		}
+		status := domain.TaxRegistrationStatus(strings.ToLower(strings.TrimSpace(item.Status)))
+		switch status {
+		case domain.RegistrationRegistered, domain.RegistrationPending, domain.RegistrationNone:
+		case "":
+			status = domain.RegistrationRegistered
+		default:
+			respondError(c, http.StatusBadRequest, codeValidationFailed,
+				"status must be registered, pending, or not_registered")
+			return
+		}
+		reg := domain.TaxRegistration{
+			StateCode:          code,
+			RegistrationNumber: strings.TrimSpace(item.RegistrationNumber),
+			Status:             status,
+		}
+		if d := strings.TrimSpace(item.RegisteredAt); d != "" {
+			parsed, err := time.Parse("2006-01-02", d)
+			if err != nil {
+				respondError(c, http.StatusBadRequest, codeValidationFailed,
+					"registered_at must be YYYY-MM-DD: "+item.RegisteredAt)
+				return
+			}
+			reg.RegisteredAt = &parsed
+		}
+		regs = append(regs, reg)
+	}
+
+	if err := h.repo.SetRegistrations(c.Request.Context(), tenantID, regs); err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": regs})
+}
+
 // GetLiabilityReport returns per-state US sales-tax liability for a filing
 // period (Track D · D3): gross sales, the taxable/non-taxable split, tax
 // collected, and whether the tenant has nexus in each state. Period is

@@ -18,6 +18,24 @@ const (
 	NexusEconomic NexusType = "economic"
 )
 
+// TaxRegistrationStatus is where a tenant stands on registering to collect sales
+// tax in a US state (Track D · D4).
+type TaxRegistrationStatus string
+
+const (
+	RegistrationRegistered TaxRegistrationStatus = "registered"     // permit in hand
+	RegistrationPending    TaxRegistrationStatus = "pending"        // applied, awaiting
+	RegistrationNone       TaxRegistrationStatus = "not_registered" // tracked, not yet registered
+)
+
+// TaxRegistration is a tenant's sales-tax registration in one US state.
+type TaxRegistration struct {
+	StateCode          string                `json:"state_code"`
+	RegistrationNumber string                `json:"registration_number"`
+	Status             TaxRegistrationStatus `json:"status"`
+	RegisteredAt       *time.Time            `json:"registered_at,omitempty"`
+}
+
 // NexusAlertLevel is the stage of an economic-nexus threshold alert (Track D · D1).
 type NexusAlertLevel string
 

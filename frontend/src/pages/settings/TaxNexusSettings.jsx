@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 
 const NEXUS_TYPES = ["physical", "voluntary", "economic"];
+const REGISTRATION_STATUSES = ["registered", "pending", "not_registered"];
 
 // US sales-tax nexus: declare where you must collect, and watch economic
 // thresholds per state (crossings auto-establish nexus server-side).
@@ -33,6 +34,8 @@ export default function TaxNexusSettings() {
   const [liabYear, setLiabYear] = useState(currentYear);
   const [liability, setLiability] = useState(null);
   const [liabLoading, setLiabLoading] = useState(true);
+  const [regs, setRegs] = useState([]);
+  const [regSaving, setRegSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -63,7 +66,35 @@ export default function TaxNexusSettings() {
     } finally {
       setStatusLoading(false);
     }
+    try {
+      const res = await api.getTaxRegistrations();
+      setRegs(
+        (res.data.data || []).map((r) => ({
+          state_code: r.state_code,
+          registration_number: r.registration_number || "",
+          status: r.status || "registered",
+        }))
+      );
+    } catch {
+      setRegs([]);
+    }
   };
+
+  const saveRegs = async () => {
+    setRegSaving(true);
+    try {
+      await api.setTaxRegistrations(regs.filter((r) => r.state_code.trim()));
+      toast.success("Registrations saved.");
+      load();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to save registrations");
+    } finally {
+      setRegSaving(false);
+    }
+  };
+
+  const setRegRow = (i, patch) =>
+    setRegs((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
   useEffect(() => {
     load();
@@ -97,6 +128,17 @@ export default function TaxNexusSettings() {
 
   const setRow = (i, patch) =>
     setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+
+  // Registration gaps: states where the tenant has nexus but no active
+  // registration on file — the compliance dots to connect.
+  const registeredStates = new Set(
+    regs
+      .filter((r) => r.status !== "not_registered" && r.state_code.trim())
+      .map((r) => r.state_code.toUpperCase())
+  );
+  const nexusGaps = (status?.states || [])
+    .filter((s) => (s.has_nexus || s.nexus_type) && !registeredStates.has(s.state_code))
+    .map((s) => s.state_code);
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -325,6 +367,80 @@ export default function TaxNexusSettings() {
               </p>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      <Card className="mt-6">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Sales-tax registrations</CardTitle>
+          <Button size="sm" onClick={saveRegs} disabled={regSaving}>
+            <Save className="h-4 w-4" />
+            {regSaving ? "Saving…" : "Save"}
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {nexusGaps.length > 0 && (
+            <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              You have nexus but no registration on file in{" "}
+              <span className="font-mono font-medium">{nexusGaps.join(", ")}</span>. Register with
+              each state to collect sales tax compliantly.
+            </p>
+          )}
+          {regs.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No registrations recorded. Add the states where you hold — or have applied for — a
+              sales-tax permit.
+            </p>
+          )}
+          {regs.map((r, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={r.state_code}
+                onChange={(e) => setRegRow(i, { state_code: e.target.value.toUpperCase() })}
+                placeholder="CA"
+                maxLength={2}
+                className="w-20 font-mono uppercase"
+                aria-label={`Registration state ${i + 1}`}
+              />
+              <Input
+                value={r.registration_number}
+                onChange={(e) => setRegRow(i, { registration_number: e.target.value })}
+                placeholder="Registration number"
+                className="flex-1"
+                aria-label={`Registration number ${i + 1}`}
+              />
+              <select
+                value={r.status}
+                onChange={(e) => setRegRow(i, { status: e.target.value })}
+                aria-label={`Registration status ${i + 1}`}
+                className="h-9 rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {REGISTRATION_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace("_", " ")}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => setRegs((prev) => prev.filter((_, idx) => idx !== i))}
+                aria-label={`Remove registration ${i + 1}`}
+                className="text-stone-400 transition-colors hover:text-red-500"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              setRegs((prev) => [...prev, { state_code: "", registration_number: "", status: "registered" }])
+            }
+          >
+            <Plus className="h-4 w-4" />
+            Add registration
+          </Button>
         </CardContent>
       </Card>
     </div>

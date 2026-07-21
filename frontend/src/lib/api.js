@@ -316,6 +316,10 @@ export const endpoints = {
   // Per-state US sales-tax liability for a filing period (D3).
   getTaxLiability: (params) =>
     api.get('/settings/tax/liability', { params: params || {} }),
+  // US sales-tax registrations (D4).
+  getTaxRegistrations: () => api.get('/settings/tax/registrations'),
+  setTaxRegistrations: (registrations) =>
+    api.put('/settings/tax/registrations', { registrations }),
 
   // India GST returns (readable sections + GSTN upload JSON)
   getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
