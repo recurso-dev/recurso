@@ -17,6 +17,12 @@ type ProgressiveBillingRepository interface {
 	// minor units, or nil when progressive billing is off for it.
 	GetThreshold(ctx context.Context, subscriptionID uuid.UUID) (*int64, error)
 
+	// ListActiveProgressiveSubscriptionIDs returns the IDs of active
+	// subscriptions that have a progressive_billing_threshold set — the set the
+	// interim-billing sweep considers each tick. Non-progressive and
+	// non-active subscriptions are excluded.
+	ListActiveProgressiveSubscriptionIDs(ctx context.Context) ([]uuid.UUID, error)
+
 	// GetWatermark returns the amount already invoiced for (subscription,
 	// charge, period); 0 when no watermark row exists yet.
 	GetWatermark(ctx context.Context, subscriptionID, chargeID uuid.UUID, periodStart time.Time) (int64, error)

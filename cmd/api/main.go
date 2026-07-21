@@ -407,8 +407,10 @@ func main() {
 	invoiceService.UsageRepo = usageRepo
 	invoiceService.RatingRepo = usageRatingRepo
 	// A5 progressive billing: the watermark repo + the ledger poster interim
-	// invoices use (billProgressive posts DR AR / CR Revenue itself).
-	invoiceService.SetProgressiveBilling(db.NewProgressiveBillingRepository(database), ledgerService)
+	// invoices use (billProgressive posts DR AR / CR Revenue itself). The repo is
+	// also the sweep scheduler's candidate source (wired below).
+	progressiveBillingRepo := db.NewProgressiveBillingRepository(database)
+	invoiceService.SetProgressiveBilling(progressiveBillingRepo, ledgerService)
 
 	catalogService := service.NewCatalogService(planRepo)
 	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
@@ -928,6 +930,23 @@ func main() {
 	reconciliationScheduler.Start()
 	defer reconciliationScheduler.Stop()
 
+	// Progressive-billing sweep (A5) — auto-triggers interim billing for
+	// progressive subscriptions whose accrued usage has crossed the threshold.
+	// PROGRESSIVE_SWEEP_INTERVAL overrides the hourly default (e.g. "15m").
+	progressiveSweepInterval := scheduler.DefaultProgressiveSweepInterval
+	if raw := os.Getenv("PROGRESSIVE_SWEEP_INTERVAL"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			progressiveSweepInterval = d
+		} else {
+			log.Printf("Invalid PROGRESSIVE_SWEEP_INTERVAL %q; using default %s", raw, scheduler.DefaultProgressiveSweepInterval)
+		}
+	}
+	progressiveBillingScheduler := scheduler.NewProgressiveBillingScheduler(
+		progressiveBillingRepo, invoiceService, locker, progressiveSweepInterval,
+	)
+	progressiveBillingScheduler.Start()
+	defer progressiveBillingScheduler.Stop()
+
 	// MRR Snapshot Scheduler (daily) — captures per-subscription MRR history so
 	// the MRR waterfall (new/expansion/contraction/churned) has movement to diff.
 	mrrSnapshotScheduler := scheduler.NewMRRSnapshotScheduler(tenantRepo, analyticsService, locker)
@@ -990,6 +1009,7 @@ func main() {
 			mandateDebitScheduler.Stop,
 			nexusScheduler.Stop,
 			reconciliationScheduler.Stop,
+			progressiveBillingScheduler.Stop,
 			mrrSnapshotScheduler.Stop,
 			healthAlertScheduler.Stop,
 		}
