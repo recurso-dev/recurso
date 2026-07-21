@@ -71,22 +71,44 @@ func roundRatHalfUp(r *big.Rat) int64 {
 	return new(big.Int).Div(sum.Num(), sum.Denom()).Int64()
 }
 
-// ratePerUnit computes quantity × rate (major units) → exact minor units.
-func ratePerUnit(rate *big.Rat, quantity int64) *big.Rat {
-	q := new(big.Rat).SetInt64(quantity)
+// ratePerUnit computes quantity × rate (major units) → exact minor units. The
+// quantity is an exact rational, so a fractional aggregate (a time-weighted
+// average or a summed custom expression) is priced without pre-rounding.
+func ratePerUnit(rate, quantity *big.Rat) *big.Rat {
 	minor := new(big.Rat).SetInt64(minorUnitsPerMajor)
-	return new(big.Rat).Mul(new(big.Rat).Mul(rate, q), minor)
+	return new(big.Rat).Mul(new(big.Rat).Mul(rate, quantity), minor)
 }
 
-// RateCharge prices an aggregated quantity per the charge model, returning
-// the line amount in int64 minor units. Quantity 0 always rates to 0 (no
-// usage ⇒ nothing billed, tier flat amounts included). The amounts must
-// already be the single-currency entry selected for the invoice currency.
+// RateCharge prices an integer aggregated quantity per the charge model,
+// returning the line amount in int64 minor units. This is the common path for
+// the count/sum/max/unique/latest/percentile/dynamic aggregations, whose period
+// value is a whole number of units (or minor-unit money). It is a thin wrapper
+// over RateChargeRat — see there for the model semantics.
 func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity int64) (int64, error) {
-	if quantity < 0 {
+	return RateChargeRat(model, amounts, new(big.Rat).SetInt64(quantity))
+}
+
+// RateChargeRat prices an EXACT-RATIONAL aggregated quantity per the charge
+// model, returning the line amount in int64 minor units. It exists so a
+// fractional aggregate — a `weighted_sum` time-weighted average (e.g. 7.5 seats)
+// or a summed `custom` expression (e.g. 7.5 GB from bytes/1e6) — flows through
+// pricing WITHOUT being rounded to an integer quantity first. Rounding happens
+// exactly once, on the final money amount (7.5 × $10 → exactly $75.00), which is
+// the ledger-correct discipline: never round until the monetary value is
+// computed. RateCharge(int64) is the integer wrapper over this.
+//
+// Quantity 0 always rates to 0 (no usage ⇒ nothing billed, tier flat amounts
+// included). A negative quantity is an error. The amounts must already be the
+// single-currency entry selected for the invoice currency. quantity must not be
+// nil.
+func RateChargeRat(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity *big.Rat) (int64, error) {
+	if quantity == nil {
+		return 0, RatingError("quantity must not be nil")
+	}
+	if quantity.Sign() < 0 {
 		return 0, RatingError("quantity must not be negative")
 	}
-	if quantity == 0 {
+	if quantity.Sign() == 0 {
 		return 0, nil
 	}
 
@@ -105,7 +127,10 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 		if amounts.PackageAmount < 0 {
 			return 0, RatingError("package_amount must not be negative")
 		}
-		bundles := (quantity + amounts.PackageSize - 1) / amounts.PackageSize // ceil
+		// ceil(quantity / package_size) exactly, then × amount. A fractional
+		// quantity rounds UP to the next whole bundle (0.1 units still needs a
+		// bundle), matching how integer quantities already ceil.
+		bundles := ratCeilDiv(quantity, amounts.PackageSize)
 		return bundles * amounts.PackageAmount, nil
 
 	case domain.ChargeGraduated:
@@ -122,11 +147,27 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 
 	case domain.ChargeDynamic:
 		// The price was supplied per event and already summed into quantity
-		// (minor units); the line is that sum with no rate applied. quantity
-		// is guaranteed >= 0 above, and 0 short-circuits earlier.
-		return quantity, nil
+		// (minor units); the line is that sum with no rate applied. A dynamic
+		// quantity is always an integer minor-unit amount, so round-half-up is a
+		// no-op that also guards against a non-integral value being passed.
+		return roundRatHalfUp(quantity), nil
 	}
 	return 0, RatingError(fmt.Sprintf("unsupported charge model %q", model))
+}
+
+// ratCeilDiv returns ceil(quantity / divisor) as an int64. divisor is a positive
+// integer count (package/tier size). Used to count whole bundles a possibly-
+// fractional quantity fills.
+func ratCeilDiv(quantity *big.Rat, divisor int64) int64 {
+	q := new(big.Rat).Quo(quantity, new(big.Rat).SetInt64(divisor))
+	// ceil of a non-negative rational: -floor(-q); use Num/Denom directly.
+	num, den := q.Num(), q.Denom()
+	quo := new(big.Int).Quo(num, den) // truncates toward zero; q >= 0 so == floor
+	rem := new(big.Int).Rem(num, den)
+	if rem.Sign() != 0 {
+		quo.Add(quo, big.NewInt(1))
+	}
+	return quo.Int64()
 }
 
 // validateTierBounds checks the shared band structure independent of the
@@ -188,47 +229,49 @@ func validatePercentageTiers(tiers []domain.ChargeTier) error {
 
 // rateGraduated prices each tier's units at that tier's rate: with tiers
 // 0-100 @ 1.00 and 101+ @ 0.50, 150 units = 100×1.00 + 50×0.50. A tier's
-// FlatAmount is added once when at least one unit lands in it. The exact
+// FlatAmount is added once when at least one unit lands in it. Quantity may be
+// fractional (a 150.5-unit quantity puts 0.5 units in the top tier); the exact
 // unit-priced total is rounded once at the end.
-func rateGraduated(tiers []domain.ChargeTier, quantity int64) (int64, error) {
+func rateGraduated(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) {
 	if err := validateTiers(tiers); err != nil {
 		return 0, err
 	}
 
 	unitTotal := new(big.Rat)
 	var flatTotal int64
-	remaining := quantity
+	remaining := new(big.Rat).Set(quantity)
 	var lower int64 // units consumed by previous tiers
 	for _, t := range tiers {
-		if remaining <= 0 {
+		if remaining.Sign() <= 0 {
 			break
 		}
-		inTier := remaining
+		inTier := new(big.Rat).Set(remaining)
 		if t.UpTo != nil {
-			width := *t.UpTo - lower
-			if inTier > width {
-				inTier = width
+			width := new(big.Rat).SetInt64(*t.UpTo - lower)
+			if inTier.Cmp(width) > 0 {
+				inTier.Set(width)
 			}
 			lower = *t.UpTo
 		}
 		rate, _ := parseRate(t.UnitAmount) // validated above
 		unitTotal.Add(unitTotal, ratePerUnit(rate, inTier))
 		flatTotal += t.FlatAmount
-		remaining -= inTier
+		remaining.Sub(remaining, inTier)
 	}
 	return roundRatHalfUp(unitTotal) + flatTotal, nil
 }
 
 // rateVolume prices the WHOLE quantity at the single tier it reaches
 // (the first tier whose up_to ≥ quantity; the unbounded last tier catches
-// the rest), plus that tier's flat amount.
-func rateVolume(tiers []domain.ChargeTier, quantity int64) (int64, error) {
+// the rest), plus that tier's flat amount. A fractional quantity is compared
+// against the integer up_to bounds exactly.
+func rateVolume(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) {
 	if err := validateTiers(tiers); err != nil {
 		return 0, err
 	}
 
 	for _, t := range tiers {
-		if t.UpTo != nil && quantity > *t.UpTo {
+		if t.UpTo != nil && quantity.Cmp(new(big.Rat).SetInt64(*t.UpTo)) > 0 {
 			continue
 		}
 		rate, _ := parseRate(t.UnitAmount) // validated above
@@ -246,7 +289,7 @@ func rateVolume(tiers []domain.ChargeTier, quantity int64) (int64, error) {
 // [MinAmount, MaxAmount] (MaxAmount 0 = uncapped, MinAmount 0 = no floor).
 // RateCharge already short-circuits quantity 0 to 0, so MinAmount floors only
 // when there is usage.
-func ratePercentage(a domain.ChargeAmounts, quantity int64) (int64, error) {
+func ratePercentage(a domain.ChargeAmounts, quantity *big.Rat) (int64, error) {
 	rate, err := parseDecimalRate(a.Rate, "rate")
 	if err != nil {
 		return 0, err
@@ -264,14 +307,14 @@ func ratePercentage(a domain.ChargeAmounts, quantity int64) (int64, error) {
 		return 0, RatingError("max_amount must be greater than or equal to min_amount")
 	}
 
-	base := quantity - a.FreeUnits
-	if base < 0 {
-		base = 0
+	base := new(big.Rat).Sub(quantity, new(big.Rat).SetInt64(a.FreeUnits))
+	if base.Sign() < 0 {
+		base.SetInt64(0)
 	}
 
 	// line = base × (rate / 100), exact, rounded half-up once.
 	pct := new(big.Rat).Quo(rate, big.NewRat(100, 1))
-	lineRat := new(big.Rat).Mul(new(big.Rat).SetInt64(base), pct)
+	lineRat := new(big.Rat).Mul(base, pct)
 	line := roundRatHalfUp(lineRat) + a.FixedAmount
 
 	if line < a.MinAmount {
@@ -289,32 +332,32 @@ func ratePercentage(a domain.ChargeAmounts, quantity int64) (int64, error) {
 // added once when at least one unit of the base lands in it. quantity is the
 // base in minor units. The exact percentage total is rounded half-up once at
 // the end (matching rateGraduated), so the Σ-line invariant is preserved.
-func rateGraduatedPercentage(tiers []domain.ChargeTier, base int64) (int64, error) {
+func rateGraduatedPercentage(tiers []domain.ChargeTier, base *big.Rat) (int64, error) {
 	if err := validatePercentageTiers(tiers); err != nil {
 		return 0, err
 	}
 
 	pctTotal := new(big.Rat)
 	var flatTotal int64
-	remaining := base
+	remaining := new(big.Rat).Set(base)
 	var lower int64 // base consumed by previous bands
 	for _, t := range tiers {
-		if remaining <= 0 {
+		if remaining.Sign() <= 0 {
 			break
 		}
-		inBand := remaining
+		inBand := new(big.Rat).Set(remaining)
 		if t.UpTo != nil {
-			width := *t.UpTo - lower
-			if inBand > width {
-				inBand = width
+			width := new(big.Rat).SetInt64(*t.UpTo - lower)
+			if inBand.Cmp(width) > 0 {
+				inBand.Set(width)
 			}
 			lower = *t.UpTo
 		}
 		rate, _ := parseDecimalRate(t.Rate, "rate") // validated above
 		pct := new(big.Rat).Quo(rate, big.NewRat(100, 1))
-		pctTotal.Add(pctTotal, new(big.Rat).Mul(new(big.Rat).SetInt64(inBand), pct))
+		pctTotal.Add(pctTotal, new(big.Rat).Mul(inBand, pct))
 		flatTotal += t.FlatAmount
-		remaining -= inBand
+		remaining.Sub(remaining, inBand)
 	}
 	return roundRatHalfUp(pctTotal) + flatTotal, nil
 }
