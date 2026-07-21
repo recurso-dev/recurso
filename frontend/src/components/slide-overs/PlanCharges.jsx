@@ -48,8 +48,13 @@ const newRow = (metricId = "") => ({
   free_amount: "",
   min_amount: "",
   max_amount: "",
+  pay_in_advance: false,
   hsn_code: "",
 });
+
+// payInAdvanceEligible mirrors the backend: only non-cumulative models can be
+// billed per event (per_unit, percentage, dynamic).
+const payInAdvanceEligible = (m) => m === "per_unit" || m === "percentage" || m === "dynamic";
 
 // toEditorRows converts loaded charges (Amounts keyed by currency) into flat
 // editor rows for the plan's currency. Amounts for other currencies are not
@@ -60,6 +65,7 @@ const toEditorRows = (charges, currency) =>
     const row = newRow(ch.metric_id);
     row.charge_model = ch.charge_model;
     row.hsn_code = ch.hsn_code || "";
+    row.pay_in_advance = !!ch.pay_in_advance;
     if (ch.charge_model === "per_unit") {
       row.unit_amount = a.unit_amount || "";
     } else if (ch.charge_model === "package") {
@@ -200,6 +206,8 @@ const rowsToPayload = (rows, currency) =>
       metric_id: r.metric_id,
       charge_model: r.charge_model,
       amounts: { [currency]: amounts },
+      // only send pay_in_advance for eligible models (backend rejects the rest)
+      pay_in_advance: payInAdvanceEligible(r.charge_model) ? !!r.pay_in_advance : false,
       hsn_code: r.hsn_code.trim(),
     };
   });
@@ -548,6 +556,22 @@ export default function PlanCharges({ planId, currency }) {
                   as <code className="font-mono">dynamic_amount</code> (minor units).
                   The charge bills the sum for the period.
                 </p>
+              )}
+
+              {payInAdvanceEligible(row.charge_model) && (
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={row.pay_in_advance}
+                    onChange={(e) => updateRow(i, { pay_in_advance: e.target.checked })}
+                    aria-label={`Charge ${i + 1} bill in advance`}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    Bill in advance — rate each usage event as it arrives and add it to
+                    the next invoice, instead of aggregating at period close.
+                  </span>
+                </label>
               )}
 
               <div className="flex items-center gap-2">
