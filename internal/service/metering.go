@@ -218,50 +218,20 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 	seen := map[uuid.UUID]bool{}
 	charges := make([]domain.Charge, 0, len(inputs))
 	for i, in := range inputs {
-		metricID, err := uuid.Parse(in.MetricID)
-		if err != nil {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: invalid metric_id", i))
-		}
-		metric, err := s.metrics.GetByID(ctx, tenantID, metricID)
+		metric, model, normalized, err := s.resolveChargeInput(ctx, tenantID, i, in)
 		if err != nil {
 			return nil, err
 		}
-		if metric == nil {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: metric not found", i))
-		}
-		if seen[metricID] {
+		if seen[metric.ID] {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: duplicate charge for metric %s", i, metric.Code))
 		}
-		seen[metricID] = true
-
-		model := domain.ChargeModel(in.ChargeModel)
-		if !domain.ValidChargeModel(model) {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package", i))
-		}
-		if len(in.Amounts) == 0 {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", i))
-		}
-
-		// Validate every currency's pricing by rating a probe quantity —
-		// the same code path invoice generation uses, so a config that
-		// passes here cannot fail at rating time.
-		normalized := make(map[string]domain.ChargeAmounts, len(in.Amounts))
-		for currency, amounts := range in.Amounts {
-			cur := strings.ToUpper(strings.TrimSpace(currency))
-			if len(cur) != 3 {
-				return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %q is not an ISO currency code", i, currency))
-			}
-			if _, err := RateCharge(model, amounts, 1); err != nil {
-				return nil, MeteringValidationError(fmt.Sprintf("charges[%d].amounts[%s]: %v", i, cur, err))
-			}
-			normalized[cur] = amounts
-		}
+		seen[metric.ID] = true
 
 		charges = append(charges, domain.Charge{
 			ID:          uuid.New(),
 			TenantID:    tenantID,
 			PlanID:      planID,
-			MetricID:    metricID,
+			MetricID:    metric.ID,
 			ChargeModel: model,
 			Amounts:     normalized,
 			HSNCode:     strings.TrimSpace(in.HSNCode),
@@ -275,6 +245,59 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 		return nil, err
 	}
 	return charges, nil
+}
+
+// resolveChargeInput validates one proposed charge — metric exists for the
+// tenant, charge model is supported, and every currency's amounts rate cleanly
+// against a probe quantity (the same path invoice generation uses, so a config
+// that validates here cannot fail at rating time). It returns the loaded
+// metric, parsed model, and normalized (upper-cased currency) amounts. It does
+// NOT check for duplicate metrics — the caller owns that. Shared by
+// SetPlanCharges and SimulateCharges so a config that simulates cleanly also
+// saves cleanly. idx is only for error messages.
+func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.UUID, idx int, in ChargeInput) (*domain.BillableMetric, domain.ChargeModel, map[string]domain.ChargeAmounts, error) {
+	metricID, err := uuid.Parse(in.MetricID)
+	if err != nil {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: invalid metric_id", idx))
+	}
+	metric, err := s.metrics.GetByID(ctx, tenantID, metricID)
+	if err != nil {
+		return nil, "", nil, err
+	}
+	if metric == nil {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: metric not found", idx))
+	}
+	model := domain.ChargeModel(in.ChargeModel)
+	if !domain.ValidChargeModel(model) {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic", idx))
+	}
+	if len(in.Amounts) == 0 {
+		return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", idx))
+	}
+	normalized := make(map[string]domain.ChargeAmounts, len(in.Amounts))
+	for currency, amounts := range in.Amounts {
+		cur := strings.ToUpper(strings.TrimSpace(currency))
+		if len(cur) != 3 {
+			return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %q is not an ISO currency code", idx, currency))
+		}
+		if _, err := RateCharge(model, amounts, 1); err != nil {
+			return nil, "", nil, MeteringValidationError(fmt.Sprintf("charges[%d].amounts[%s]: %v", idx, cur, err))
+		}
+		normalized[cur] = amounts
+	}
+	return metric, model, normalized, nil
+}
+
+// meteredQuantity picks the aggregate a charge model prices for [start, end):
+// a `dynamic` charge bills the Σ per-event dynamic_amount, every other model
+// uses the metric's configured aggregation. Both the live usage preview and
+// invoice generation route through this so they agree. The caller guarantees
+// ch.Metric is non-nil.
+func meteredQuantity(ctx context.Context, repo port.UsageRepository, subID uuid.UUID, ch domain.Charge, start, end time.Time) (int64, error) {
+	if ch.ChargeModel == domain.ChargeDynamic {
+		return repo.SumDynamicAmount(ctx, subID, ch.Metric.Code, start, end)
+	}
+	return repo.AggregateForMetric(ctx, subID, *ch.Metric, start, end)
 }
 
 func (s *MeteringService) GetPlanCharges(ctx context.Context, tenantID, planID uuid.UUID) ([]domain.Charge, error) {
@@ -358,7 +381,7 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 		if !ok {
 			continue
 		}
-		qty, err := s.usage.AggregateForMetric(ctx, sub.ID, *ch.Metric, sub.CurrentPeriodStart, asOf)
+		qty, err := meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, asOf)
 		if err != nil {
 			return nil, err
 		}

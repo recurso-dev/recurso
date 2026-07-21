@@ -1484,6 +1484,7 @@ func main() {
 		v1.DELETE("/billable-metrics/:id", meteringHandler.DeleteMetric)
 		v1.PUT("/plans/:id/charges", meteringHandler.SetPlanCharges)
 		v1.GET("/plans/:id/charges", meteringHandler.GetPlanCharges)
+		v1.POST("/plans/:id/simulate-charges", meteringHandler.SimulateCharges)   // A1.6 read-only pricing simulator
 		v1.GET("/subscriptions/:id/usage-amount", meteringHandler.GetUsageAmount) // live pre-invoice preview
 
 		v1.PUT("/subscriptions/:id/commitment", subscriptionHandler.SetCommitment) // minimum commitment (B2)

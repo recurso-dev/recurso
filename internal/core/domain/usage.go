@@ -21,6 +21,10 @@ type UsageEvent struct {
 	// (subscription_id, transaction_id) collapses to the original event
 	// (Lago-parity C1). Empty = no idempotency guarantee.
 	TransactionID string `json:"transaction_id,omitempty"`
+	// DynamicAmount is the caller-supplied exact price for this event in minor
+	// units (must be non-negative). A `dynamic` charge bills the sum of these
+	// over the period; other charge models ignore it. 0 for non-dynamic events.
+	DynamicAmount int64 `json:"dynamic_amount,omitempty"`
 }
 
 // Usage query granularities for time-windowed aggregation.

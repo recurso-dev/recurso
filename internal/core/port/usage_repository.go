@@ -39,4 +39,9 @@ type UsageRepository interface {
 	// aggregation type (count | sum | max | unique on properties->>field_name).
 	// Zero events aggregate to 0 (usage-based billing v1).
 	AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error)
+
+	// SumDynamicAmount sums the per-event dynamic_amount (minor units) for the
+	// dimension inside [start, end) — the quantity a `dynamic` charge bills.
+	// Zero events sum to 0.
+	SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error)
 }

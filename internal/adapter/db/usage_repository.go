@@ -46,10 +46,10 @@ func (r *UsageRepository) RecordEventIdempotent(ctx context.Context, event *doma
 		txID = event.TransactionID
 	}
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties, transaction_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties, transaction_id, dynamic_amount)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (subscription_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING`,
-		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props, txID,
+		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props, txID, event.DynamicAmount,
 	)
 	if err != nil {
 		return false, fmt.Errorf("failed to insert usage event: %w", err)
@@ -140,6 +140,25 @@ func percentileFraction(field string) (float64, error) {
 		return 0, fmt.Errorf("invalid percentile %q (want integer 1-99)", field)
 	}
 	return float64(p) / 100.0, nil
+}
+
+// SumDynamicAmount sums the per-event dynamic_amount (minor units) for the
+// dimension inside [start, end) — the quantity a `dynamic` charge bills. Zero
+// events sum to 0.
+func (r *UsageRepository) SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error) {
+	query := `
+		SELECT COALESCE(SUM(dynamic_amount), 0)
+		FROM usage_events
+		WHERE subscription_id = $1
+		AND dimension = $2
+		AND timestamp >= $3
+		AND timestamp < $4
+	`
+	var total int64
+	if err := r.db.QueryRowContext(ctx, query, subscriptionID, dimension, start, end).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to sum dynamic amount for dimension %q: %w", dimension, err)
+	}
+	return total, nil
 }
 
 // GetUsageForPeriod aggregates usage (SUM) for billing.
