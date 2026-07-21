@@ -93,14 +93,24 @@ func (c *TenantEUConfig) SellerParty() EUParty {
 // EUInvoice is the persisted record of an invoice's generated EN 16931 document
 // and its delivery status. One per invoice (idempotent upsert).
 type EUInvoice struct {
-	ID           uuid.UUID       `json:"id"`
-	TenantID     uuid.UUID       `json:"tenant_id"`
-	InvoiceID    uuid.UUID       `json:"invoice_id"`
-	Syntax       EUInvoiceSyntax `json:"syntax"`
-	Status       EUInvoiceStatus `json:"status"`
-	Document     string          `json:"document"`
-	MessageID    string          `json:"message_id"`
-	ErrorMessage string          `json:"error_message"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
+	ID        uuid.UUID       `json:"id"`
+	TenantID  uuid.UUID       `json:"tenant_id"`
+	InvoiceID uuid.UUID       `json:"invoice_id"`
+	Syntax    EUInvoiceSyntax `json:"syntax"`
+	Status    EUInvoiceStatus `json:"status"`
+	Document  string          `json:"document"`
+	// RecipientVATID is the buyer's participant identifier, captured at
+	// generation so a delivery redrive can re-transmit the stored document
+	// without re-deriving it from the customer.
+	RecipientVATID string `json:"recipient_vat_id"`
+	MessageID      string `json:"message_id"`
+	ErrorMessage   string `json:"error_message"`
+	// RetryCount is the number of delivery attempts that have failed. NextRetryAt
+	// is when the background worker should attempt delivery again; nil means the
+	// record is not scheduled for retry (delivered, or a non-retriable generation
+	// failure).
+	RetryCount  int        `json:"retry_count"`
+	NextRetryAt *time.Time `json:"next_retry_at,omitempty"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
