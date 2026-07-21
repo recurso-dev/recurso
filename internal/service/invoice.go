@@ -64,6 +64,28 @@ func (s *InvoiceService) SetProgressiveBilling(repo port.ProgressiveBillingRepos
 	s.LedgerPoster = ledger
 }
 
+// recordInvoiceLeg posts the invoice's base AR→Revenue/Deferred ledger leg (the
+// Code-1 the reconciler expects, one per non-draft invoice) via the optional
+// ledger poster — BEFORE any reducing legs (wallet drain, credit application)
+// relieve AR. Every other invoice-creating flow posts this same leg
+// (subscription create/proration/trial, mandate debits, progressive interim);
+// the renewal/final-usage/advance generators did NOT, so those invoices carried
+// no Code-1 and their deferred revenue was never funded — rev-rec then drained
+// Deferred that was never credited, pushing the liability negative.
+//
+// nil-safe: without a wired ledger it is a no-op. A write failure is logged and
+// left for reconciliation rather than failing invoice generation, matching the
+// create/proration/mandate paths.
+func (s *InvoiceService) recordInvoiceLeg(ctx context.Context, inv *domain.Invoice) {
+	if s.LedgerPoster == nil || inv == nil {
+		return
+	}
+	if err := s.LedgerPoster.RecordInvoice(ctx, inv); err != nil {
+		slog.Error("ledger write failed on invoice generation — needs reconciliation",
+			"invoice_id", inv.ID, "error", err)
+	}
+}
+
 // walletDrainer consumes prepaid balance against a committed invoice.
 type walletDrainer interface {
 	DrainForInvoice(ctx context.Context, inv *domain.Invoice) (int64, error)
@@ -349,6 +371,10 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		return nil, fmt.Errorf("failed to create invoice: %w", err)
 	}
 
+	// Post the base AR→Deferred ledger leg on the just-committed invoice, before
+	// the wallet/credit reducing legs below relieve AR (see recordInvoiceLeg).
+	s.recordInvoiceLeg(ctx, inv)
+
 	// P25 e-invoicing on the now-committed invoice.
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
@@ -511,6 +537,9 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
 		return nil, fmt.Errorf("failed to create final usage invoice: %w", err)
 	}
+
+	// Base AR→Deferred ledger leg for the final-usage invoice (see recordInvoiceLeg).
+	s.recordInvoiceLeg(ctx, inv)
 
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
@@ -814,6 +843,9 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	if err := s.InvoiceRepo.Create(ctx, inv); err != nil {
 		return nil, err
 	}
+
+	// Base AR→Deferred ledger leg for the advance invoice (see recordInvoiceLeg).
+	s.recordInvoiceLeg(ctx, inv)
 
 	s.Telemetry.MilestoneFirstInvoice() // opt-in anonymous milestone; no-op when disabled
 
