@@ -49,6 +49,7 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
     if (setupIntent?.status === "succeeded") {
       const res = await fetch(`${apiBase}/portal/api/payment-method/confirm`, {
         method: "POST",
+        credentials: "include",
         headers: { ...authHeaders, "Content-Type": "application/json" },
         body: JSON.stringify({ setup_intent_id: setupIntent.id }),
       });
@@ -119,6 +120,7 @@ export default function PortalPaymentMethod({
     try {
       const res = await fetch(`${apiBase}/portal/api/payment-method/mandate`, {
         method: "POST",
+        credentials: "include",
         headers: authHeaders,
       });
       const body = await res.json().catch(() => ({}));
@@ -152,6 +154,7 @@ export default function PortalPaymentMethod({
     setLoading(true);
     fetch(`${apiBase}/portal/api/payment-method/setup-intent`, {
       method: "POST",
+      credentials: "include",
       headers: authHeaders,
     })
       .then(async (res) => {

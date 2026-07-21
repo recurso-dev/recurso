@@ -139,9 +139,11 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("portal_session", session.Token, 60*60*24*7, "/", "", secureCookie, true)
 
+	// The session is delivered ONLY via the httpOnly cookie above — never in the
+	// JSON body, so it is never readable by page JavaScript (XSS-safe). The
+	// client authenticates by sending the cookie (credentials: "include").
 	c.JSON(http.StatusOK, gin.H{
-		"message":       "Logged in successfully",
-		"session_token": session.Token,
+		"message": "Logged in successfully",
 	})
 }
 

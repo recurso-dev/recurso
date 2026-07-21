@@ -52,11 +52,13 @@ const PortalLogin = () => {
     if (!devLink) return;
 
     try {
-      const response = await fetch(`${API_BASE}${devLink}`);
-      const data = await response.json();
+      // credentials: "include" stores the httpOnly session cookie the server
+      // sets on success; the token is never held in JS storage.
+      const response = await fetch(`${API_BASE}${devLink}`, {
+        credentials: "include",
+      });
 
-      if (response.ok && data.session_token) {
-        localStorage.setItem("portal_session", data.session_token);
+      if (response.ok) {
         navigate("/portal/dashboard");
       } else {
         setError("Failed to verify link");

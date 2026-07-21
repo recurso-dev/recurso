@@ -67,20 +67,19 @@ const PortalDashboard = () => {
   const [disputeSaving, setDisputeSaving] = useState(false);
   const [disputeError, setDisputeError] = useState(null);
 
-  const sessionToken = localStorage.getItem("portal_session");
+  // The portal session lives in an httpOnly cookie the server set at login, so
+  // it is invisible to JS (immune to XSS) — every request authenticates by
+  // sending that cookie (credentials: "include"), never a token read from JS
+  // storage. authHeaders now carries only the content type.
+  const authHeaders = { "Content-Type": "application/json" };
 
-  const authHeaders = {
-    "X-Portal-Session": sessionToken,
-    "Content-Type": "application/json",
-  };
-
-  // Open the invoice PDF (ENG-152). Fetches the token-authed portal endpoint and
+  // Open the invoice PDF (ENG-152). Fetches the cookie-authed portal endpoint and
   // opens the rendered invoice in a new tab.
   const handleDownloadPdf = async (invoice) => {
     try {
       const res = await fetch(
         `${API_BASE}/portal/api/invoices/${invoice.id}/pdf`,
-        { headers: { "X-Portal-Session": sessionToken } }
+        { credentials: "include" }
       );
       if (!res.ok) throw new Error("Couldn't open the invoice. Please try again.");
       const html = await res.text();
@@ -93,13 +92,11 @@ const PortalDashboard = () => {
   };
 
   useEffect(() => {
-    if (!sessionToken) {
-      navigate("/portal/login");
-      return;
-    }
+    // The httpOnly session cookie can't be read from JS to pre-check login, so
+    // we just load data; fetchData() redirects to /portal/login on a 401.
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionToken, navigate]);
+  }, [navigate]);
 
   // Returning from a 3DS/bank redirect during card setup: Stripe appends
   // ?setup_intent=... to the return_url. Finalize server-side so the saved
@@ -110,10 +107,11 @@ const PortalDashboard = () => {
     const setupIntentId = new URLSearchParams(window.location.search).get(
       "setup_intent",
     );
-    if (!setupIntentId || !sessionToken) return;
+    if (!setupIntentId) return;
     window.history.replaceState(null, "", window.location.pathname);
     fetch(`${API_BASE}/portal/api/payment-method/confirm`, {
       method: "POST",
+      credentials: "include",
       headers: authHeaders,
       body: JSON.stringify({ setup_intent_id: setupIntentId }),
     })
@@ -139,6 +137,7 @@ const PortalDashboard = () => {
 
   const fetchDisputes = async () => {
     const res = await fetch(`${API_BASE}/portal/api/disputes`, {
+      credentials: "include",
       headers: authHeaders,
     });
     if (!res.ok) return;
@@ -155,11 +154,11 @@ const PortalDashboard = () => {
     try {
       // Fetch profile
       const profileRes = await fetch(`${API_BASE}/portal/api/profile`, {
+        credentials: "include",
         headers: authHeaders,
       });
       if (!profileRes.ok) {
         if (profileRes.status === 401) {
-          localStorage.removeItem("portal_session");
           navigate("/portal/login");
           return;
         }
@@ -170,6 +169,7 @@ const PortalDashboard = () => {
 
       // Fetch invoices
       const invoicesRes = await fetch(`${API_BASE}/portal/api/invoices`, {
+        credentials: "include",
         headers: authHeaders,
       });
       if (invoicesRes.ok) {
@@ -187,14 +187,14 @@ const PortalDashboard = () => {
 
   const handleLogout = async () => {
     try {
+      // The server clears the httpOnly session cookie on this call.
       await fetch(`${API_BASE}/portal/api/logout`, {
         method: "POST",
-        headers: { "X-Portal-Session": sessionToken },
+        credentials: "include",
       });
     } catch (err) {
       // Ignore errors
     }
-    localStorage.removeItem("portal_session");
     navigate("/portal/login");
   };
 
@@ -215,6 +215,7 @@ const PortalDashboard = () => {
         `${API_BASE}/portal/api/invoices/${disputeInvoice.id}/dispute`,
         {
           method: "POST",
+          credentials: "include",
           headers: authHeaders,
           body: JSON.stringify({ reason: disputeReason.trim() }),
         },

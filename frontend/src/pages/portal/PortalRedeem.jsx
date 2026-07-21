@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Gift, Loader2 } from "lucide-react";
 
@@ -14,25 +14,18 @@ const PortalRedeem = () => {
   const [status, setStatus] = useState({ type: "", message: "" }); // type: 'success' | 'error'
   const navigate = useNavigate();
 
-  const sessionToken = localStorage.getItem("portal_session");
-
-  useEffect(() => {
-    if (!sessionToken) {
-      navigate("/portal/login");
-      return;
-    }
-  }, [sessionToken, navigate]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setStatus({ type: "", message: "" });
 
     try {
+      // Authenticates via the httpOnly session cookie (credentials: "include");
+      // a 401 means not logged in and redirects to login.
       const response = await fetch(`${API_BASE}/portal/api/redeem`, {
         method: "POST",
+        credentials: "include",
         headers: {
-          "X-Portal-Session": sessionToken,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ code }),
@@ -42,7 +35,6 @@ const PortalRedeem = () => {
 
       if (!response.ok) {
         if (response.status === 401) {
-          localStorage.removeItem("portal_session");
           navigate("/portal/login");
           return;
         }
