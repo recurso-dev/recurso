@@ -45,10 +45,12 @@ export default function SubscriptionDetail({
   // Which lifecycle action awaits confirmation: "pause" | "resume" | "cancel" | null.
   const [confirmAction, setConfirmAction] = useState(null);
   // Advance-invoice / minimum-commitment mini-forms.
-  const [billingPanel, setBillingPanel] = useState(null); // 'advance' | 'commitment' | null
+  const [billingPanel, setBillingPanel] = useState(null); // 'advance' | 'commitment' | 'charge' | null
   const [advPeriods, setAdvPeriods] = useState("1");
   const [commitAmount, setCommitAmount] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState("");
+  const [chargeDesc, setChargeDesc] = useState("");
   // Live usage-amount preview (accrued metered charges for the running period).
   const [usageAmount, setUsageAmount] = useState(null);
   const [billingUsage, setBillingUsage] = useState(false);
@@ -331,6 +333,9 @@ export default function SubscriptionDetail({
                 <Button variant="outline" size="sm" onClick={() => setBillingPanel((p) => (p === "commitment" ? null : "commitment"))}>
                   Commitment
                 </Button>
+                <Button variant="outline" size="sm" onClick={() => setBillingPanel((p) => (p === "charge" ? null : "charge"))}>
+                  One-off charge
+                </Button>
                 <Button
                   variant="outline"
                   size="sm"
@@ -439,6 +444,66 @@ export default function SubscriptionDetail({
                   }}
                 >
                   {billingBusy ? "Saving…" : "Save"}
+                </Button>
+              </div>
+            </div>
+          )}
+          {billingPanel === "charge" && (
+            <div className="space-y-3 rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-sm text-muted-foreground">
+                Add a one-off charge (e.g. a manual adjustment or professional
+                services) to this subscription's next invoice.
+              </p>
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <Label className="text-xs">Amount ({currency})</Label>
+                  <Input
+                    type="number"
+                    min="0.01"
+                    step="0.01"
+                    value={chargeAmount}
+                    onChange={(e) => setChargeAmount(e.target.value)}
+                    className="w-32"
+                  />
+                </div>
+                <div className="flex-1 min-w-[10rem]">
+                  <Label className="text-xs">Description</Label>
+                  <Input
+                    value={chargeDesc}
+                    onChange={(e) => setChargeDesc(e.target.value)}
+                    placeholder="e.g. Onboarding services"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  disabled={
+                    billingBusy ||
+                    !chargeDesc.trim() ||
+                    !(parseFloat(chargeAmount) > 0)
+                  }
+                  onClick={async () => {
+                    setBillingBusy(true);
+                    try {
+                      await endpoints.addSubscriptionCharge(subscription.id, {
+                        amount: Math.round(parseFloat(chargeAmount) * 100),
+                        currency,
+                        description: chargeDesc.trim(),
+                      });
+                      toast.success("One-off charge added to the next invoice.");
+                      setBillingPanel(null);
+                      setChargeAmount("");
+                      setChargeDesc("");
+                      onRefresh?.();
+                    } catch (err) {
+                      toast.error(
+                        err?.response?.data?.error?.message || "Failed to add charge",
+                      );
+                    } finally {
+                      setBillingBusy(false);
+                    }
+                  }}
+                >
+                  {billingBusy ? "Adding…" : "Add charge"}
                 </Button>
               </div>
             </div>
