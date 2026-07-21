@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
@@ -83,6 +83,38 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
   const [saving, setSaving] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [consents, setConsents] = useState([]);
+  const [consentsLoading, setConsentsLoading] = useState(false);
+  const [revokingId, setRevokingId] = useState(null);
+
+  const custId = customer?.id;
+  useEffect(() => {
+    if (!isOpen || !custId) return;
+    let cancelled = false;
+    setConsentsLoading(true);
+    endpoints
+      .getCustomerConsents(custId)
+      .then((res) => !cancelled && setConsents(res.data?.data || []))
+      .catch(() => !cancelled && setConsents([]))
+      .finally(() => !cancelled && setConsentsLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, custId]);
+
+  const revokeConsent = async (id) => {
+    setRevokingId(id);
+    try {
+      await endpoints.revokeConsent(id);
+      toast.success("Consent revoked.");
+      const res = await endpoints.getCustomerConsents(custId);
+      setConsents(res.data?.data || []);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to revoke consent");
+    } finally {
+      setRevokingId(null);
+    }
+  };
 
   if (!customer) return null;
 
@@ -334,6 +366,57 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   </Field>
                 )}
               </Section>
+
+              {/* Consent audit trail (GDPR) — view and revoke */}
+              {(consentsLoading || consents.length > 0) && (
+                <>
+                  <Separator />
+                  <Section title="Consent">
+                    {consentsLoading ? (
+                      <p className="text-sm text-muted-foreground">Loading…</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {consents.map((c) => {
+                          const active = c.granted && !c.revoked_at;
+                          return (
+                            <div
+                              key={c.id}
+                              className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="truncate text-sm font-medium text-foreground">
+                                    {String(c.consent_type || "consent").replace(/_/g, " ")}
+                                  </span>
+                                  <Badge variant={active ? "success" : "neutral"}>
+                                    {active ? "granted" : "revoked"}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  {active
+                                    ? `Granted ${c.granted_at ? formatDate(c.granted_at) : "—"}`
+                                    : `Revoked ${c.revoked_at ? formatDate(c.revoked_at) : "—"}`}
+                                  {c.version ? ` · v${c.version}` : ""}
+                                </p>
+                              </div>
+                              {active && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={revokingId === c.id}
+                                  onClick={() => revokeConsent(c.id)}
+                                >
+                                  {revokingId === c.id ? "Revoking…" : "Revoke"}
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </Section>
+                </>
+              )}
             </>
           )}
         </div>
