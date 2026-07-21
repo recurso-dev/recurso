@@ -18,10 +18,19 @@ import (
 type NexusScheduler struct {
 	tenantRepo *db.TenantRepository
 	status     *service.NexusStatusService
+	alerts     *service.NexusAlertService // optional (Track D · D1): proactive threshold alerts
 	locker     port.Locker
 	ticker     *time.Ticker
 	done       chan bool
 	stopOnce   sync.Once
+}
+
+// SetAlertService enables proactive economic-nexus threshold alerting: when set,
+// the daily run notifies each tenant as they near or cross a state threshold
+// (and still establishes economic nexus, since alerting computes full status).
+// Nil-safe optional-dependency wiring — without it the scheduler only establishes.
+func (s *NexusScheduler) SetAlertService(a *service.NexusAlertService) {
+	s.alerts = a
 }
 
 func NewNexusScheduler(tenantRepo *db.TenantRepository, status *service.NexusStatusService, locker port.Locker) *NexusScheduler {
@@ -87,6 +96,16 @@ func (s *NexusScheduler) run() {
 
 	year := time.Now().UTC().Year()
 	for _, t := range tenants {
+		// When alerting is wired, EvaluateAndAlert computes full per-state status
+		// (which establishes new economic nexus) and notifies on newly reached
+		// approaching/crossed thresholds. Otherwise, just establish.
+		if s.alerts != nil {
+			if err := s.alerts.EvaluateAndAlert(ctx, t.ID, year); err != nil {
+				slog.Error("nexus scheduler: evaluate+alert failed for tenant", "tenant_id", t.ID, "error", err)
+			}
+			continue
+		}
+
 		established, err := s.status.EvaluateEconomicNexus(ctx, t.ID, year)
 		if err != nil {
 			slog.Error("nexus scheduler: evaluation failed for tenant", "tenant_id", t.ID, "error", err)

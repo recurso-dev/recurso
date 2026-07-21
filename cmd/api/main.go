@@ -955,6 +955,11 @@ func main() {
 	// state threshold is crossed (ENG-16 Phase 2).
 	nexusStatusService := service.NewNexusStatusService(taxNexusRepo)
 	nexusScheduler := scheduler.NewNexusScheduler(tenantRepo, nexusStatusService, locker)
+	// Track D · D1: proactively email the tenant when they near or cross a state's
+	// economic-nexus threshold, so a registration obligation is never missed.
+	nexusScheduler.SetAlertService(service.NewNexusAlertService(
+		nexusStatusService, taxNexusRepo, userRepo, notificationService, baseURL,
+	))
 	nexusScheduler.Start()
 	defer nexusScheduler.Stop()
 

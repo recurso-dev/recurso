@@ -169,3 +169,21 @@ func (r *TaxNexusRepository) EstablishEconomic(ctx context.Context, tenantID uui
 	n, _ := res.RowsAffected()
 	return n > 0, nil
 }
+
+// ClaimNexusAlert atomically records that a (tenant, state, year, level) alert is
+// being sent, returning true only the first time. The INSERT ... ON CONFLICT DO
+// NOTHING is the dedup primitive — robust even when the scheduler lock is a no-op
+// without Redis — so a threshold that stays crossed is alerted at most once per
+// calendar year, per level.
+func (r *TaxNexusRepository) ClaimNexusAlert(ctx context.Context, tenantID uuid.UUID, stateCode string, year int, level string, proximityPct int) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		INSERT INTO nexus_alerts (id, tenant_id, state_code, year, level, proximity_pct, sent_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (tenant_id, state_code, year, level) DO NOTHING`,
+		uuid.New(), tenantID, strings.ToUpper(stateCode), year, level, proximityPct)
+	if err != nil {
+		return false, fmt.Errorf("failed to claim nexus alert: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n == 1, nil
+}

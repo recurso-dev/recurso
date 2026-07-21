@@ -18,6 +18,17 @@ const (
 	NexusEconomic NexusType = "economic"
 )
 
+// NexusAlertLevel is the stage of an economic-nexus threshold alert (Track D · D1).
+type NexusAlertLevel string
+
+const (
+	// NexusAlertApproaching — activity reached the approaching band (default 80%)
+	// of a state's economic-nexus threshold but has not crossed it.
+	NexusAlertApproaching NexusAlertLevel = "approaching"
+	// NexusAlertCrossed — the threshold was crossed and economic nexus established.
+	NexusAlertCrossed NexusAlertLevel = "crossed"
+)
+
 // TaxNexus is one US state where a tenant has declared sales-tax nexus. In
 // Phase 1 these are tenant-declared (physical/voluntary); Phase 2 will add
 // economic-nexus rows automatically when a state threshold is crossed.
