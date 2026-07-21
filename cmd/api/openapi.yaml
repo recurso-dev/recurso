@@ -7473,10 +7473,16 @@ components:
         tenant_id: { type: string, format: uuid }
         name: { type: string }
         code: { type: string }
-        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom] }
         field_name:
           type: string
-          description: Event property counted by the `unique` aggregation.
+          description: Event property counted by `unique`, or the percentile 1-99 for `percentile`.
+        expression:
+          type: string
+          description: >
+            Sandboxed per-event formula for the `custom` aggregation (e.g.
+            `quantity * properties.multiplier`); its results are summed over the
+            period. Empty for every other aggregation.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
     BillableMetricInput:
@@ -7488,10 +7494,16 @@ components:
           type: string
           maxLength: 50
           description: Doubles as the usage event dimension; immutable after create.
-        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile] }
+        aggregation_type: { type: string, enum: [count, sum, max, unique, latest, percentile, custom] }
         field_name:
           type: string
-          description: Required for `unique`, forbidden otherwise.
+          description: Required for `unique` (property name) and `percentile` (1-99); forbidden otherwise.
+        expression:
+          type: string
+          description: >
+            Required for the `custom` aggregation, forbidden otherwise. A
+            sandboxed per-event formula reading `quantity` and `properties`
+            (e.g. `quantity * properties.multiplier`); results are summed.
     ChargeTier:
       type: object
       required: [up_to]

@@ -31,13 +31,15 @@ func TestCreateMetric_AllAggregations_Postgres(t *testing.T) {
 	cases := []struct {
 		agg   domain.AggregationType
 		field string
+		expr  string
 	}{
-		{domain.AggregationCount, ""},
-		{domain.AggregationSum, ""},
-		{domain.AggregationMax, ""},
-		{domain.AggregationUnique, "region"},
-		{domain.AggregationLatest, ""},
-		{domain.AggregationPercentile, "95"},
+		{domain.AggregationCount, "", ""},
+		{domain.AggregationSum, "", ""},
+		{domain.AggregationMax, "", ""},
+		{domain.AggregationUnique, "region", ""},
+		{domain.AggregationLatest, "", ""},
+		{domain.AggregationPercentile, "95", ""},
+		{domain.AggregationCustom, "", "quantity * properties.multiplier"},
 	}
 	for _, c := range cases {
 		m := &domain.BillableMetric{
@@ -47,11 +49,20 @@ func TestCreateMetric_AllAggregations_Postgres(t *testing.T) {
 			Code:            string(c.agg) + "_" + run,
 			AggregationType: c.agg,
 			FieldName:       c.field,
+			Expression:      c.expr,
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
 		}
 		if err := repo.Create(ctx, m); err != nil {
 			t.Fatalf("create %s metric rejected by DB (constraint out of date?): %v", c.agg, err)
+		}
+		// Round-trip: the expression must persist and read back.
+		got, err := repo.GetByID(ctx, tenantID, m.ID)
+		if err != nil || got == nil {
+			t.Fatalf("get %s metric: %v", c.agg, err)
+		}
+		if got.Expression != c.expr {
+			t.Fatalf("%s expression round-trip: want %q, got %q", c.agg, c.expr, got.Expression)
 		}
 	}
 }
