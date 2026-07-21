@@ -288,8 +288,8 @@ func TestUSSalesTax_ExemptPassedThroughAndNoted(t *testing.T) {
 	if calc.TotalTax != 0 {
 		t.Errorf("exempt tax = %d, want 0", calc.TotalTax)
 	}
-	if calc.TaxType != "sales_tax" {
-		t.Errorf("TaxType = %q, want sales_tax (exempt sale still counts)", calc.TaxType)
+	if calc.TaxType != "sales_tax_exempt" {
+		t.Errorf("TaxType = %q, want sales_tax_exempt (distinct, for audit)", calc.TaxType)
 	}
 	if !strings.Contains(calc.Note, "exempt sale") || !strings.Contains(calc.Note, "RESALE-123") || !strings.Contains(calc.Note, "code A") {
 		t.Errorf("note missing exemption detail: %q", calc.Note)

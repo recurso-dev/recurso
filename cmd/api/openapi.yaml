@@ -4057,8 +4057,8 @@ paths:
         invoice count, and whether the tenant has nexus in each state. Period is
         from+to (to exclusive) or year (defaults to the current calendar year).
         Scoped to US buyers, USD, non-void/draft invoices — ties to the nexus
-        figures. Non-taxable sales lump exempt, no-nexus, and below-threshold
-        together; the stored invoice does not distinguish them.
+        figures. Sales split into taxable (tax collected), exempt (a customer
+        exemption applied), and non-taxable (no-nexus / below-threshold).
       parameters:
         - name: year
           in: query
@@ -4098,6 +4098,7 @@ paths:
                             state_code: { type: string }
                             gross_sales: { type: integer, format: int64 }
                             taxable_sales: { type: integer, format: int64 }
+                            exempt_sales: { type: integer, format: int64 }
                             non_taxable_sales: { type: integer, format: int64 }
                             tax_collected: { type: integer, format: int64 }
                             invoice_count: { type: integer }

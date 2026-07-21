@@ -72,11 +72,13 @@ func (e *USSalesTaxEngine) CalculateTax(ctx context.Context, req *port.TaxReques
 	if res.Jurisdiction != "" {
 		note += " (" + res.Jurisdiction + ")"
 	}
+	// Record the exact evaluation reason as the tax type, so a $0 line is
+	// unambiguous for liability reporting: "sales_tax_exempt" (a certificate
+	// applied) is distinct from provider-reported no-nexus (below). The exempt
+	// type still counts toward nexus — SalesByState does not filter on tax type.
+	taxType := "sales_tax"
 	if req.TaxExempt {
-		// The provider was told the buyer is exempt and returned zero tax while
-		// recording an exempt sale on its side. Keep TaxType "sales_tax" so the
-		// sale still counts toward US reporting/nexus; the note records the
-		// exemption for the tenant's liability review.
+		taxType = "sales_tax_exempt"
 		note += "; exempt sale"
 		if req.TaxExemptionCode != "" {
 			note += " (code " + req.TaxExemptionCode + ")"
@@ -90,7 +92,7 @@ func (e *USSalesTaxEngine) CalculateTax(ctx context.Context, req *port.TaxReques
 	return &port.TaxCalculation{
 		TotalTax: res.TaxAmount,
 		TaxRate:  res.Rate,
-		TaxType:  "sales_tax",
+		TaxType:  taxType,
 		Note:     note,
 	}, nil
 }

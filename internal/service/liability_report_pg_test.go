@@ -56,13 +56,13 @@ func TestLiabilityReport_Postgres(t *testing.T) {
 
 	year := time.Now().UTC().Year()
 	inPeriod := time.Date(year, 6, 15, 0, 0, 0, 0, time.UTC)
-	mkInvoice := func(custID uuid.UUID, subtotal, tax int64, status string, at time.Time) {
+	mkInvoice := func(custID uuid.UUID, subtotal, tax int64, taxType, status string, at time.Time) {
 		id := uuid.New()
 		if _, err := conn.ExecContext(ctx, `
 			INSERT INTO invoices (id, tenant_id, customer_id, invoice_number, status, currency,
-				subtotal, tax_amount, total, created_at, due_date)
-			VALUES ($1,$2,$3,$4,$5,'USD',$6,$7,$8,$9,NOW())`,
-			id, tenantID, custID, "INV-LB-"+id.String()[:8], status, subtotal, tax, subtotal+tax, at); err != nil {
+				subtotal, tax_amount, tax_type, total, created_at, due_date)
+			VALUES ($1,$2,$3,$4,$5,'USD',$6,$7,$8,$9,$10,NOW())`,
+			id, tenantID, custID, "INV-LB-"+id.String()[:8], status, subtotal, tax, taxType, subtotal+tax, at); err != nil {
 			t.Fatalf("insert invoice: %v", err)
 		}
 	}
@@ -71,16 +71,17 @@ func TestLiabilityReport_Postgres(t *testing.T) {
 	nyCust := mkCustomer("NY", "US")
 	deCust := mkCustomer("BE", "Germany") // non-US: must be excluded
 
-	// CA: one taxable ($1000 + $80 tax) + one exempt/non-taxable ($500, 0 tax).
-	mkInvoice(caCust, 100000, 8000, "paid", inPeriod)
-	mkInvoice(caCust, 50000, 0, "open", inPeriod)
+	// CA: taxable ($1000 + $80) + exempt ($500, cert) + non-taxable ($300, no-nexus).
+	mkInvoice(caCust, 100000, 8000, "sales_tax", "paid", inPeriod)
+	mkInvoice(caCust, 50000, 0, "sales_tax_exempt", "open", inPeriod)
+	mkInvoice(caCust, 30000, 0, "no_nexus", "open", inPeriod)
 	// CA: a void invoice must NOT count, and an out-of-period one must NOT count.
-	mkInvoice(caCust, 90000000, 0, "void", inPeriod)
-	mkInvoice(caCust, 70000, 5600, "paid", time.Date(year-1, 6, 15, 0, 0, 0, 0, time.UTC))
+	mkInvoice(caCust, 90000000, 0, "sales_tax", "void", inPeriod)
+	mkInvoice(caCust, 70000, 5600, "sales_tax", "paid", time.Date(year-1, 6, 15, 0, 0, 0, 0, time.UTC))
 	// NY: one taxable ($2000 + $170 tax).
-	mkInvoice(nyCust, 200000, 17000, "paid", inPeriod)
+	mkInvoice(nyCust, 200000, 17000, "sales_tax", "paid", inPeriod)
 	// Non-US buyer: excluded regardless.
-	mkInvoice(deCust, 300000, 0, "paid", inPeriod)
+	mkInvoice(deCust, 300000, 0, "sales_tax", "paid", inPeriod)
 
 	// Declare physical nexus in CA (NY left undeclared to prove has_nexus=false).
 	if err := db.NewTaxNexusRepository(conn).SetStates(ctx, tenantID,
@@ -105,20 +106,27 @@ func TestLiabilityReport_Postgres(t *testing.T) {
 	}
 
 	ca := byState["CA"]
-	if ca.GrossSales != 150000 { // 100000 + 50000 (void + last-year excluded)
-		t.Errorf("CA gross = %d, want 150000", ca.GrossSales)
+	if ca.GrossSales != 180000 { // 100000 + 50000 + 30000 (void + last-year excluded)
+		t.Errorf("CA gross = %d, want 180000", ca.GrossSales)
 	}
 	if ca.TaxableSales != 100000 {
 		t.Errorf("CA taxable = %d, want 100000 (only the taxed invoice)", ca.TaxableSales)
 	}
-	if ca.NonTaxableSales != 50000 {
-		t.Errorf("CA non-taxable = %d, want 50000 (the 0-tax invoice)", ca.NonTaxableSales)
+	if ca.ExemptSales != 50000 {
+		t.Errorf("CA exempt = %d, want 50000 (the sales_tax_exempt invoice only)", ca.ExemptSales)
+	}
+	if ca.NonTaxableSales != 30000 {
+		t.Errorf("CA non-taxable = %d, want 30000 (no-nexus; exempt excluded)", ca.NonTaxableSales)
+	}
+	if ca.GrossSales != ca.TaxableSales+ca.ExemptSales+ca.NonTaxableSales {
+		t.Errorf("CA buckets must partition gross: %d != %d+%d+%d",
+			ca.GrossSales, ca.TaxableSales, ca.ExemptSales, ca.NonTaxableSales)
 	}
 	if ca.TaxCollected != 8000 {
 		t.Errorf("CA tax = %d, want 8000", ca.TaxCollected)
 	}
-	if ca.InvoiceCount != 2 {
-		t.Errorf("CA invoice count = %d, want 2 (void + last-year excluded)", ca.InvoiceCount)
+	if ca.InvoiceCount != 3 {
+		t.Errorf("CA invoice count = %d, want 3 (void + last-year excluded)", ca.InvoiceCount)
 	}
 	if !ca.HasNexus || ca.NexusType != domain.NexusPhysical {
 		t.Errorf("CA nexus = (%v, %q), want (true, physical)", ca.HasNexus, ca.NexusType)
@@ -133,8 +141,8 @@ func TestLiabilityReport_Postgres(t *testing.T) {
 	}
 
 	// Totals exclude void, out-of-period, and non-US.
-	if report.TotalGrossSales != 350000 {
-		t.Errorf("total gross = %d, want 350000 (CA 150000 + NY 200000)", report.TotalGrossSales)
+	if report.TotalGrossSales != 380000 {
+		t.Errorf("total gross = %d, want 380000 (CA 180000 + NY 200000)", report.TotalGrossSales)
 	}
 	if report.TotalTaxCollected != 25000 {
 		t.Errorf("total tax = %d, want 25000 (8000 + 17000)", report.TotalTaxCollected)

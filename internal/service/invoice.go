@@ -325,7 +325,10 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxTotal,
-		Total:          total,
+		// Invoice-level tax type from the base charge — all lines for a customer
+		// share the resolved treatment (D3c). Persisted for the liability report.
+		TaxType: baseTax.TaxType,
+		Total:   total,
 
 		IGSTAmount: igst,
 		CGSTAmount: cgst,
@@ -474,6 +477,15 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 	if terms == "" {
 		terms = "net0"
 	}
+	// Invoice-level tax type from the metered lines — all share the resolved
+	// treatment (D3c). Persisted for the liability report.
+	usageTaxType := ""
+	for _, ml := range metered {
+		if ml.tax.TaxType != "" {
+			usageTaxType = ml.tax.TaxType
+			break
+		}
+	}
 	inv := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
@@ -485,6 +497,7 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxTotal,
+		TaxType:        usageTaxType,
 		Total:          subtotal + taxTotal,
 		IGSTAmount:     igst,
 		CGSTAmount:     cgst,
@@ -785,6 +798,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxRes.Total,
+		TaxType:        taxRes.TaxType, // D3c: persist for the liability report
 		Total:          total,
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,

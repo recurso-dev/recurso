@@ -374,6 +374,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxTotal,
+		TaxType:        taxRes.TaxType, // D3c: persist for the liability report
 		Total:          total,
 		IGSTAmount:     taxIGST,
 		CGSTAmount:     taxCGST,
@@ -1180,6 +1181,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			Currency:       pcp.Currency,
 			Subtotal:       proration.NetAmount,
 			TaxAmount:      taxRes.Total,
+			TaxType:        taxRes.TaxType, // D3c: persist for the liability report
 			IGSTAmount:     taxRes.IGST,
 			CGSTAmount:     taxRes.CGST,
 			SGSTAmount:     taxRes.SGST,
@@ -1369,6 +1371,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		Currency:       price.Currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxRes.Total,
+		TaxType:        taxRes.TaxType, // D3c: persist for the liability report
 		Total:          total,
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,

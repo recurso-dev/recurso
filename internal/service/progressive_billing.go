@@ -225,6 +225,7 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 	now := time.Now()
 	var lines []domain.InvoiceItem
 	var subtotal, taxTotal, igst, cgst, sgst int64
+	var invTaxType string // D3c: resolved tax type for the liability report
 	for _, ch := range charges {
 		if ch.Metric == nil || !domain.ProgressiveBillingEligible(ch.ChargeModel) {
 			continue
@@ -242,6 +243,9 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 			hsn = plan.HSNCode
 		}
 		tax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, currency, delta, hsn)
+		if invTaxType == "" && tax.TaxType != "" {
+			invTaxType = tax.TaxType
+		}
 		desc := fmt.Sprintf("%s — usage (progressive, to %s)", ch.Metric.Name, upTo.Format("2 Jan 2006"))
 		lines = append(lines, newInvoiceLine(invID, desc, tax.HSN, 1, delta, delta, tax, time.Time{}))
 		subtotal += delta
@@ -265,6 +269,7 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 		Currency:       currency,
 		Subtotal:       subtotal,
 		TaxAmount:      taxTotal,
+		TaxType:        invTaxType,
 		Total:          subtotal + taxTotal,
 		IGSTAmount:     igst,
 		CGSTAmount:     cgst,
