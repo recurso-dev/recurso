@@ -65,7 +65,6 @@ const blankFilter = () => ({ value: "", amount: "" });
 // payInAdvanceEligible mirrors the backend: only non-cumulative models can be
 // billed per event (per_unit, percentage, dynamic).
 const payInAdvanceEligible = (m) => m === "per_unit" || m === "percentage" || m === "dynamic";
->>>>>>> origin/main
 
 // toEditorRows converts loaded charges (Amounts keyed by currency) into flat
 // editor rows for the plan's currency. Amounts for other currencies are not
