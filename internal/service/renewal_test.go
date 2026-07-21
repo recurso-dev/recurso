@@ -71,10 +71,11 @@ func (f *fakeRenewalCharger) ChargeSavedPaymentMethod(ctx context.Context, strip
 
 type fakeRenewalLookup struct {
 	stripeID, methodID string
+	connID             *uuid.UUID
 }
 
-func (f *fakeRenewalLookup) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (string, string, error) {
-	return f.stripeID, f.methodID, nil
+func (f *fakeRenewalLookup) GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (string, string, *uuid.UUID, error) {
+	return f.stripeID, f.methodID, f.connID, nil
 }
 
 type fakeRenewalSettler struct{ settled []uuid.UUID }
@@ -207,6 +208,66 @@ func TestRenewSubscription_PaymentSuccessSettles(t *testing.T) {
 	}
 	if len(settler.settled) != 1 || settler.settled[0] != invoicer.invoice.ID {
 		t.Fatalf("settled = %v, want [%v]", settler.settled, invoicer.invoice.ID)
+	}
+}
+
+type fakeChargerRouter struct {
+	charger   SavedCardCharger
+	gotConnID *uuid.UUID
+	sawCall   bool
+	err       error
+}
+
+func (f *fakeChargerRouter) ChargerFor(_ context.Context, connID *uuid.UUID) (SavedCardCharger, error) {
+	f.sawCall = true
+	f.gotConnID = connID
+	return f.charger, f.err
+}
+
+// TestRenewSubscription_ChargesOnRecordedGateway proves B1 routing: when a
+// charger router is wired, the renewal charges on the gateway the card was saved
+// on (resolved from the saved-card connection id), NOT the platform charger.
+func TestRenewSubscription_ChargesOnRecordedGateway(t *testing.T) {
+	svc, _, _, sub := renewalFixture()
+	platform := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	byo := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	connID := uuid.New()
+	svc.SetSavedMethodCharging(platform, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1", connID: &connID}, &fakeRenewalSettler{})
+	router := &fakeChargerRouter{charger: byo}
+	svc.SetChargerRouter(router)
+
+	if err := svc.RenewSubscription(context.Background(), sub); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !router.sawCall || router.gotConnID == nil || *router.gotConnID != connID {
+		t.Fatalf("router should be consulted with the saved connection id %v, got %v", connID, router.gotConnID)
+	}
+	if byo.charges != 1 {
+		t.Fatalf("BYO gateway should have been charged once, got %d", byo.charges)
+	}
+	if platform.charges != 0 {
+		t.Fatalf("platform gateway must NOT be charged when a BYO connection is recorded, got %d", platform.charges)
+	}
+}
+
+// TestRenewSubscription_UnresolvableGatewayLeavesInvoiceOpen: a router error
+// (e.g. the connection is gone) leaves the invoice open for dunning, no charge.
+func TestRenewSubscription_UnresolvableGatewayLeavesInvoiceOpen(t *testing.T) {
+	svc, _, _, sub := renewalFixture()
+	platform := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	settler := &fakeRenewalSettler{}
+	connID := uuid.New()
+	svc.SetSavedMethodCharging(platform, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1", connID: &connID}, settler)
+	svc.SetChargerRouter(&fakeChargerRouter{err: errors.New("connection gone")})
+
+	if err := svc.RenewSubscription(context.Background(), sub); err != nil {
+		t.Fatalf("an unresolvable gateway must not fail the renewal: %v", err)
+	}
+	if platform.charges != 0 {
+		t.Fatal("must not fall back to the platform charger for a BYO-saved card")
+	}
+	if len(settler.settled) != 0 {
+		t.Fatal("no settlement when the gateway couldn't be resolved")
 	}
 }
 

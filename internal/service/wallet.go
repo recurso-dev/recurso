@@ -316,7 +316,9 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	if s.charger == nil || s.lookup == nil || w.AutoRechargeAmount == nil {
 		return false
 	}
-	stripeCustomerID, paymentMethodID, err := s.lookup.GetSavedPaymentMethod(ctx, w.CustomerID)
+	// B1: wallet auto-recharge stays on the platform gateway for now (PR2 will
+	// route it by the saved card's gateway connection like renewal).
+	stripeCustomerID, paymentMethodID, _, err := s.lookup.GetSavedPaymentMethod(ctx, w.CustomerID)
 	if err != nil || stripeCustomerID == "" || paymentMethodID == "" {
 		s.notifyRechargeFailure(ctx, w, "no saved payment method")
 		return false
