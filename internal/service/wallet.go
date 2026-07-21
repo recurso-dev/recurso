@@ -52,6 +52,9 @@ type WalletService struct {
 
 	charger walletCharger        // nil-safe: without it auto-recharge only notifies
 	lookup  renewalPaymentLookup // saved-method resolution (shared slice)
+	// chargerRouter routes the recharge to the gateway the card was saved on
+	// (B1 autopay). nil-safe: without it, `charger` (platform) is used.
+	chargerRouter renewalChargerRouter
 
 	now func() time.Time
 }
@@ -72,6 +75,13 @@ func (s *WalletService) SetNotifier(n port.Notifier) { s.notifier = n }
 func (s *WalletService) SetSavedMethodCharging(charger walletCharger, lookup renewalPaymentLookup) {
 	s.charger = charger
 	s.lookup = lookup
+}
+
+// SetChargerRouter wires BYO-gateway routing (B1 autopay): the recharge charges
+// on the gateway the card was saved with. nil-safe — without it, the platform
+// `charger` is used.
+func (s *WalletService) SetChargerRouter(router renewalChargerRouter) {
+	s.chargerRouter = router
 }
 
 // CreateWalletInput creates a wallet, optionally with auto-recharge.
@@ -316,12 +326,23 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	if s.charger == nil || s.lookup == nil || w.AutoRechargeAmount == nil {
 		return false
 	}
-	// B1: wallet auto-recharge stays on the platform gateway for now (PR2 will
-	// route it by the saved card's gateway connection like renewal).
-	stripeCustomerID, paymentMethodID, _, err := s.lookup.GetSavedPaymentMethod(ctx, w.CustomerID)
+	stripeCustomerID, paymentMethodID, connID, err := s.lookup.GetSavedPaymentMethod(ctx, w.CustomerID)
 	if err != nil || stripeCustomerID == "" || paymentMethodID == "" {
 		s.notifyRechargeFailure(ctx, w, "no saved payment method")
 		return false
+	}
+
+	// B1: charge on the gateway the card was saved on (BYO or platform). Without
+	// a router, every card charges on the platform `charger`.
+	charger := walletCharger(s.charger)
+	if s.chargerRouter != nil {
+		c, rerr := s.chargerRouter.ChargerFor(ctx, connID)
+		if rerr != nil || c == nil {
+			slog.Warn("wallet auto-recharge: could not resolve saved-card gateway", "wallet_id", w.ID, "error", rerr)
+			s.notifyRechargeFailure(ctx, w, "payment gateway unavailable")
+			return false
+		}
+		charger = c
 	}
 
 	amount := *w.AutoRechargeAmount
@@ -329,7 +350,7 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	// same balance state cannot double-charge, while a later legitimate
 	// recharge (post-drain, different balance) gets a fresh key.
 	idemKey := fmt.Sprintf("wallet-recharge-%s-%d", w.ID, w.Balance)
-	result, err := s.charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amount, w.Currency, w.ID.String(), idemKey)
+	result, err := charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amount, w.Currency, w.ID.String(), idemKey)
 	if err != nil || result == nil || !result.Success {
 		slog.Warn("wallet auto-recharge charge failed", "wallet_id", w.ID, "error", err)
 		s.notifyRechargeFailure(ctx, w, "payment failed")

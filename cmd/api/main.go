@@ -897,14 +897,20 @@ func main() {
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
 	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
-	// B1 autopay: route each renewal charge to the gateway the card was saved on
-	// (BYO connection or platform). renewalCharger is the platform fallback.
+	// B1 autopay: route every off-session charge to the gateway the card was
+	// saved on (BYO connection or platform). One shared router across the
+	// renewal, wallet auto-recharge, and dunning-retry paths so a BYO tenant's
+	// recurring charges all land in their own account. renewalCharger is the
+	// platform fallback for cards saved with no connection (pre-B1).
 	if renewalCharger != nil {
-		renewalService.SetChargerRouter(service.NewSavedCardGatewayRouter(
+		savedCardRouter := service.NewSavedCardGatewayRouter(
 			gatewayConnService,
 			func(secret string) service.SavedCardCharger { return gateway.NewStripeGateway(secret, "") },
 			renewalCharger,
-		))
+		)
+		renewalService.SetChargerRouter(savedCardRouter)
+		walletService.SetChargerRouter(savedCardRouter)
+		retryWorker.SetChargerRouter(savedCardRouter)
 	}
 	var billingCycleScheduler *scheduler.BillingCycleScheduler
 	billingCycleInterval := 5 * time.Minute
