@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Save, Check, AlertCircle } from "lucide-react";
 
-import api from "@/lib/api";
+import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ export default function GSTSettings() {
     has_lut: false,
   });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState(null);
@@ -33,13 +35,15 @@ export default function GSTSettings() {
   }, []);
 
   const fetchConfig = async () => {
+    setLoading(true);
+    setLoadError(false);
     try {
-      const response = await api.get("/settings/gst");
+      const response = await endpoints.getGSTConfig();
       if (response.data.data) {
         setConfig(response.data.data);
       }
     } catch (error) {
-      console.error("Failed to fetch GST config:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -53,9 +57,7 @@ export default function GSTSettings() {
 
     setValidating(true);
     try {
-      const response = await api.post("/settings/gst/validate", {
-        gstin: config.gstin,
-      });
+      const response = await endpoints.validateGSTIN(config.gstin);
       setValidation(response.data);
       if (response.data.valid) {
         setConfig((prev) => ({
@@ -75,7 +77,7 @@ export default function GSTSettings() {
   const saveConfig = async () => {
     setSaving(true);
     try {
-      await api.put("/settings/gst", config);
+      await endpoints.updateGSTConfig(config);
       toast.success("GST configuration saved successfully");
     } catch (error) {
       toast.error("Failed to save configuration");
@@ -105,6 +107,12 @@ export default function GSTSettings() {
           <Skeleton className="h-40 w-full rounded-xl" />
           <Skeleton className="h-40 w-full rounded-xl" />
         </div>
+      ) : loadError ? (
+        <ErrorState
+          title="Couldn't load GST configuration"
+          message="We couldn't reach the settings service. Please try again."
+          onRetry={fetchConfig}
+        />
       ) : (
         <div className="space-y-6">
           {/* GSTIN Details */}

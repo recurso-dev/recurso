@@ -327,6 +327,10 @@ export const endpoints = {
   setTaxRegistrations: (registrations) =>
     api.put('/settings/tax/registrations', { registrations }),
 
+  // India GST config
+  getGSTConfig: () => api.get('/settings/gst'),
+  validateGSTIN: (gstin) => api.post('/settings/gst/validate', { gstin }),
+  updateGSTConfig: (config) => api.put('/settings/gst', config),
   // India GST returns (readable sections + GSTN upload JSON)
   getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
   getGSTR3B: (month, year) => api.get('/india/gstr3b', { params: { month, year } }),

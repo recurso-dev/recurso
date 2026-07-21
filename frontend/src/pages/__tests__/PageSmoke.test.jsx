@@ -61,8 +61,10 @@ vi.mock("@tremor/react", () => {
   };
 });
 
-// Dashboard pages under App's routes (portal pages have their own auth shell).
-const PAGES = import.meta.glob("../*.jsx");
+// Dashboard pages under App's routes, plus the settings/* pages (same auth
+// shell). Portal pages are intentionally excluded — they mount under their own
+// auth shell and are covered separately.
+const PAGES = import.meta.glob(["../*.jsx", "../settings/*.jsx"]);
 
 const wrap = (ui) => (
   <MemoryRouter>
