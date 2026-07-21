@@ -53,10 +53,12 @@ type parsedUBL struct {
 	TaxTotal struct {
 		TaxAmount string `xml:"TaxAmount"`
 		Subtotal  []struct {
-			Taxable string `xml:"TaxableAmount"`
-			Tax     string `xml:"TaxAmount"`
-			Percent string `xml:"TaxCategory>Percent"`
-			CatID   string `xml:"TaxCategory>ID"`
+			Taxable        string `xml:"TaxableAmount"`
+			Tax            string `xml:"TaxAmount"`
+			Percent        string `xml:"TaxCategory>Percent"`
+			CatID          string `xml:"TaxCategory>ID"`
+			ExemptReasonCd string `xml:"TaxCategory>TaxExemptionReasonCode"`
+			ExemptReason   string `xml:"TaxCategory>TaxExemptionReason"`
 		} `xml:"TaxSubtotal"`
 	} `xml:"TaxTotal"`
 	Monetary struct {
@@ -183,6 +185,61 @@ func TestBuildUBLInvoice_MixedRatesReconcile(t *testing.T) {
 	}
 	if p.TaxTotal.TaxAmount != "47.00" {
 		t.Errorf("header tax = %q, want 47.00", p.TaxTotal.TaxAmount)
+	}
+}
+
+// TestBuildUBLInvoice_ReverseChargeExemptionReason locks EN 16931 BR-AE-10: a
+// reverse-charge ("AE") VAT breakdown MUST carry a VAT exemption reason
+// (BT-121 code and/or BT-120 text). A 0%-rated line to a VAT-registered buyer
+// is treated as an intra-EU reverse charge; the breakdown category is "AE" and
+// must name the exemption reason, or the document is rejected by validators.
+func TestBuildUBLInvoice_ReverseChargeExemptionReason(t *testing.T) {
+	inv := &domain.Invoice{
+		InvoiceNumber: "INV-RC", Currency: "EUR",
+		Subtotal: 100000, TaxAmount: 0, Total: 100000, // reverse charge: no VAT charged
+		CreatedAt: time.Now().UTC(),
+		LineItems: []domain.InvoiceItem{
+			{Description: "Cross-border SaaS", Quantity: 1, UnitAmount: 100000, Amount: 100000, TaxRate: 0},
+		},
+	}
+	out, err := BuildUBLInvoice(inv, euSeller, euBuyer) // euBuyer has a VAT id -> AE
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	var p parsedUBL
+	if err := xml.Unmarshal(out, &p); err != nil {
+		t.Fatalf("xml: %v", err)
+	}
+	if len(p.TaxTotal.Subtotal) != 1 {
+		t.Fatalf("want 1 subtotal, got %d", len(p.TaxTotal.Subtotal))
+	}
+	st := p.TaxTotal.Subtotal[0]
+	if st.CatID != "AE" {
+		t.Fatalf("category = %q, want AE (reverse charge for a VAT-registered buyer)", st.CatID)
+	}
+	if st.ExemptReasonCd == "" && st.ExemptReason == "" {
+		t.Error("BR-AE-10 violated: reverse-charge breakdown has no TaxExemptionReasonCode/Reason")
+	}
+	if st.ExemptReasonCd != "VATEX-EU-AE" {
+		t.Errorf("exemption reason code = %q, want VATEX-EU-AE", st.ExemptReasonCd)
+	}
+}
+
+// A standard-rated breakdown must NOT emit an exemption reason (it would be
+// invalid for category S).
+func TestBuildUBLInvoice_StandardRatedHasNoExemptionReason(t *testing.T) {
+	out, err := BuildUBLInvoice(sampleEUInvoice(), euSeller, euBuyer)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	var p parsedUBL
+	if err := xml.Unmarshal(out, &p); err != nil {
+		t.Fatalf("xml: %v", err)
+	}
+	for _, st := range p.TaxTotal.Subtotal {
+		if st.CatID == "S" && (st.ExemptReasonCd != "" || st.ExemptReason != "") {
+			t.Errorf("standard-rated breakdown must carry no exemption reason, got code=%q reason=%q", st.ExemptReasonCd, st.ExemptReason)
+		}
 	}
 }
 
