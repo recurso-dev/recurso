@@ -1114,8 +1114,11 @@ func main() {
 	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
 	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
-	creditNoteHandler := handler.NewCreditNoteHandler(creditNoteService)                                // P23
-	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService)                           // P24
+	closePackService := service.NewClosePackService(ledgerService, reconciliationService)               // B2: month-end close pack
+	closePackService.SetRevRecService(revrecService)                                                    // optional schedule-sourced deferred view
+	closePackHandler := handler.NewClosePackHandler(closePackService)
+	creditNoteHandler := handler.NewCreditNoteHandler(creditNoteService)      // P23
+	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService) // P24
 
 	// Portal (P25)
 	// PORTAL_URL is where the customer-facing portal SPA is served; magic
@@ -1588,6 +1591,11 @@ func main() {
 
 		// Ledger Reconciliation — on-demand drift report for the caller's tenant
 		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
+
+		// Month-end close pack (B2) — trial balance + reconciliation + deferred
+		// rollforward + GL export pointer + a ready-to-close verdict. Uncached
+		// like reconciliation: the close verdict must reflect the ledger now.
+		v1.GET("/finance/close-pack", closePackHandler.GetClosePack)
 
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)

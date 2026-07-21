@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet } from "lucide-react";
+import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -49,6 +49,7 @@ const NAV_GROUPS = [
       { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
       { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },
       { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
+      { to: "/finance/close", label: "Month-End Close", icon: ClipboardCheck },
       { to: "/finance/revenue-recognition", label: "Revenue Recognition", icon: CalendarClock },
       { to: "/finance/revenue-waterfall", label: "Revenue Waterfall", icon: Waves },
       { to: "/finance/mrr-waterfall", label: "MRR Waterfall", icon: TrendingUp },
