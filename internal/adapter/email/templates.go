@@ -638,3 +638,81 @@ const DunningCampaignEmailTemplate = `
 
 <p>Please take action to avoid service interruption.</p>
 `
+
+// NexusApproachingTemplate warns that activity is nearing a US state's
+// economic-nexus threshold (Track D · D1).
+const NexusApproachingTemplate = `
+<h1>You're nearing the sales-tax threshold in {{.State}}</h1>
+<p>Hello {{.RecipientName}},</p>
+<p>Your year-to-date sales into <strong>{{.State}}</strong> have reached <strong>{{.ProximityPct}}%</strong> of the state's economic-nexus threshold. Once you cross it, you'll likely need to register and start collecting sales tax there.</p>
+
+<div class="info-box" style="border-left: 4px solid #f59e0b;">
+    <div class="info-row">
+        <span class="info-label">State</span>
+        <span class="info-value">{{.State}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Progress to threshold</span>
+        <span class="info-value" style="color: #f59e0b;">{{.ProximityPct}}%</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Taxable sales (YTD)</span>
+        <span class="info-value">{{.TaxableSales}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Transactions (YTD)</span>
+        <span class="info-value">{{.TxnCount}}</span>
+    </div>
+    {{if .ThresholdText}}<div class="info-row">
+        <span class="info-label">Threshold</span>
+        <span class="info-value">{{.ThresholdText}}</span>
+    </div>{{end}}
+</div>
+
+<p>Review your per-state nexus status and get ahead of any registration you may need.</p>
+
+<p style="text-align: center;">
+    <a href="{{.SettingsURL}}" class="btn" style="background: #f59e0b;">View nexus status</a>
+</p>
+
+<p style="font-size: 12px; color: #64748b;">
+    This is a monitoring aid based on commonly-cited thresholds, not filing advice — confirm the current rule for {{.State}} with a tax professional.
+</p>
+`
+
+// NexusCrossedTemplate alerts that a US state's economic-nexus threshold has been
+// crossed and economic nexus was established (Track D · D1).
+const NexusCrossedTemplate = `
+<h1>Action needed: you've crossed the sales-tax threshold in {{.State}}</h1>
+<p>Hello {{.RecipientName}},</p>
+<p>Your year-to-date sales into <strong>{{.State}}</strong> have crossed the state's economic-nexus threshold. You most likely now have an obligation to register for a sales-tax permit and begin collecting tax on sales into {{.State}}.</p>
+
+<div class="info-box" style="border-left: 4px solid #dc2626;">
+    <div class="info-row">
+        <span class="info-label">State</span>
+        <span class="info-value">{{.State}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Taxable sales (YTD)</span>
+        <span class="info-value">{{.TaxableSales}}</span>
+    </div>
+    <div class="info-row">
+        <span class="info-label">Transactions (YTD)</span>
+        <span class="info-value">{{.TxnCount}}</span>
+    </div>
+    {{if .ThresholdText}}<div class="info-row">
+        <span class="info-label">Threshold</span>
+        <span class="info-value">{{.ThresholdText}}</span>
+    </div>{{end}}
+</div>
+
+<p>Recurso has recorded economic nexus for {{.State}} and will collect tax there where a rate is available. Register with the state to stay compliant.</p>
+
+<p style="text-align: center;">
+    <a href="{{.SettingsURL}}" class="btn" style="background: #dc2626;">View nexus status</a>
+</p>
+
+<p style="font-size: 12px; color: #64748b;">
+    This is a monitoring aid based on commonly-cited thresholds, not filing advice — confirm the current rule and your registration duty for {{.State}} with a tax professional.
+</p>
+`

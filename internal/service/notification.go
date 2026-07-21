@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/email"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
@@ -351,6 +352,33 @@ func (s *NotificationService) SendTrialEndingReminder(ctx context.Context, data 
 		To:       data.CustomerEmail,
 		ToName:   data.CustomerName,
 		Subject:  fmt.Sprintf("Your %s trial ends on %s", data.PlanName, data.TrialEndDate),
+		HTMLBody: html,
+	})
+}
+
+// SendNexusThresholdAlert emails the tenant that they're approaching or have
+// crossed a US state's economic-nexus threshold (Track D · D1). `level` is
+// "approaching" or "crossed".
+func (s *NotificationService) SendNexusThresholdAlert(ctx context.Context, level string, data email.NexusAlertData) error {
+	tmpl := email.NexusApproachingTemplate
+	subject := fmt.Sprintf("Heads up: nearing the sales-tax threshold in %s", data.State)
+	if level == string(domain.NexusAlertCrossed) {
+		tmpl = email.NexusCrossedTemplate
+		subject = fmt.Sprintf("Action needed: sales-tax threshold crossed in %s", data.State)
+	}
+
+	content, err := s.renderTemplate(tmpl, data)
+	if err != nil {
+		return err
+	}
+	html, err := s.wrapInBaseTemplate(subject, content)
+	if err != nil {
+		return err
+	}
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.RecipientEmail,
+		ToName:   data.RecipientName,
+		Subject:  subject,
 		HTMLBody: html,
 	})
 }
