@@ -41,6 +41,31 @@ func (r *ProgressiveBillingRepository) GetThreshold(ctx context.Context, subscri
 	return &v, nil
 }
 
+// ListActiveProgressiveSubscriptionIDs returns active subscriptions with a
+// progressive_billing_threshold set — the sweep's candidate set. The threshold
+// gate and watermark CAS inside billing decide whether each actually bills, so
+// this query only needs to narrow the scan, not be exact.
+func (r *ProgressiveBillingRepository) ListActiveProgressiveSubscriptionIDs(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id FROM subscriptions
+		 WHERE progressive_billing_threshold IS NOT NULL AND status = 'active'
+		 ORDER BY id`,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list progressive subscriptions: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("failed to scan progressive subscription id: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
 func (r *ProgressiveBillingRepository) GetWatermark(ctx context.Context, subscriptionID, chargeID uuid.UUID, periodStart time.Time) (int64, error) {
 	var billed int64
 	err := r.db.QueryRowContext(ctx,
