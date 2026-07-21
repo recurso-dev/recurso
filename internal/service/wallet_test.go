@@ -317,6 +317,33 @@ func TestWalletAutoRecharge(t *testing.T) {
 	}
 }
 
+// TestWalletAutoRecharge_ChargesOnRecordedGateway proves B1 PR2 routing: the
+// recharge charges on the gateway the card was saved on (via the router), not
+// the platform charger.
+func TestWalletAutoRecharge_ChargesOnRecordedGateway(t *testing.T) {
+	svc, repo, _, w := walletFixture(500)
+	th, amt := int64(10000), int64(50000)
+	w.AutoRechargeThreshold, w.AutoRechargeAmount = &th, &amt
+	repo.dueList = []domain.Wallet{*w}
+
+	platform := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	byo := &fakeRenewalCharger{result: &port.PaymentResult{Success: true, PaymentID: "pay_byo"}}
+	connID := uuid.New()
+	svc.SetSavedMethodCharging(platform, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1", connID: &connID})
+	router := &fakeChargerRouter{charger: byo}
+	svc.SetChargerRouter(router)
+
+	if _, err := svc.ProcessAutoRecharges(context.Background()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !router.sawCall || router.gotConnID == nil || *router.gotConnID != connID {
+		t.Fatalf("router should be consulted with the saved connection %v, got %v", connID, router.gotConnID)
+	}
+	if byo.charges != 1 || platform.charges != 0 {
+		t.Fatalf("BYO gateway should be charged, not platform: byo=%d platform=%d", byo.charges, platform.charges)
+	}
+}
+
 func TestWalletAutoRechargeNoSavedMethodOnlyNotifies(t *testing.T) {
 	svc, repo, _, w := walletFixture(500)
 	th, amt := int64(10000), int64(50000)

@@ -71,9 +71,11 @@ type mockGateway struct {
 	port.PaymentGateway
 	result *port.PaymentResult
 	err    error
+	calls  int
 }
 
 func (m *mockGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
+	m.calls++
 	return m.result, m.err
 }
 
@@ -208,6 +210,71 @@ func TestRetryWorker_PaymentSuccess(t *testing.T) {
 	}
 	if dunningRepo.history[0].Reward != 1.0 {
 		t.Errorf("expected reward=1.0, got %f", dunningRepo.history[0].Reward)
+	}
+}
+
+// --- B1 PR2: saved-card BYO routing fakes ---
+
+type fakeSavedCharger struct {
+	name    string
+	charges int
+}
+
+func (f *fakeSavedCharger) ChargeSavedPaymentMethod(_ context.Context, _, _ string, _ int64, _, _, _ string) (*port.PaymentResult, error) {
+	f.charges++
+	return &port.PaymentResult{Success: true, PaymentID: "pay_" + f.name}, nil
+}
+
+type fakeCustomerLookup struct{ connID *uuid.UUID }
+
+func (f *fakeCustomerLookup) GetSavedPaymentMethod(_ context.Context, _ uuid.UUID) (string, string, *uuid.UUID, error) {
+	return "cus_1", "pm_1", f.connID, nil
+}
+
+type fakeCardRouter struct {
+	charger   service.SavedCardCharger
+	gotConnID *uuid.UUID
+	saw       bool
+}
+
+func (f *fakeCardRouter) ChargerFor(_ context.Context, connID *uuid.UUID) (service.SavedCardCharger, error) {
+	f.saw = true
+	f.gotConnID = connID
+	return f.charger, nil
+}
+
+// TestRetryWorker_ChargesOnRecordedGateway proves B1 PR2: a dunning retry charges
+// the saved card on its recorded gateway (via the router), not the platform
+// saved-charger.
+func TestRetryWorker_ChargesOnRecordedGateway(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-R", Total: 10000, Currency: "USD",
+		Status: domain.InvoiceStatusPastDue, RetryCount: 1, DunningActionID: "24h",
+		DunningContextKey: "USD:insufficient_funds", DunningManagedBy: "worker", NextRetryAt: &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: true, PaymentID: "interactive"}}
+	retrySvc := service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)})
+	w := NewRetryWorker(repo, retrySvc, gw, &mockNotifier{})
+
+	platform := &fakeSavedCharger{name: "platform"}
+	byo := &fakeSavedCharger{name: "byo"}
+	connID := uuid.New()
+	w.SetSavedMethodCharging(platform, &fakeCustomerLookup{connID: &connID})
+	router := &fakeCardRouter{charger: byo}
+	w.SetChargerRouter(router)
+
+	w.processRetries(context.Background())
+
+	if !router.saw || router.gotConnID == nil || *router.gotConnID != connID {
+		t.Fatalf("router should be consulted with the saved connection %v, got %v", connID, router.gotConnID)
+	}
+	if byo.charges != 1 {
+		t.Fatalf("BYO gateway should be charged once, got %d", byo.charges)
+	}
+	if platform.charges != 0 || gw.calls != 0 {
+		t.Fatalf("must not charge platform (%d) or interactive gateway (%d) when a BYO card is recorded", platform.charges, gw.calls)
 	}
 }
 

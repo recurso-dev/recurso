@@ -39,6 +39,12 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
+// savedCardChargerRouter routes an off-session charge to the gateway a card was
+// saved on (B1 autopay). Implemented by *service.SavedCardGatewayRouter.
+type savedCardChargerRouter interface {
+	ChargerFor(ctx context.Context, gatewayConnectionID *uuid.UUID) (service.SavedCardCharger, error)
+}
+
 type RetryWorker struct {
 	invoiceRepo            port.InvoiceRepository
 	retryService           *service.SmartRetryService
@@ -48,6 +54,7 @@ type RetryWorker struct {
 	recoveryRecorder       RecoveryRecorder
 	savedCharger           savedMethodCharger
 	customerLookup         customerPaymentLookup
+	chargerRouter          savedCardChargerRouter
 	settler                invoiceSettler
 }
 
@@ -89,19 +96,36 @@ func (w *RetryWorker) SetSavedMethodCharging(charger savedMethodCharger, lookup 
 	w.customerLookup = lookup
 }
 
+// SetChargerRouter wires BYO-gateway routing (B1 autopay): the retry charges on
+// the gateway the card was saved with. nil-safe — without it, the platform
+// `savedCharger` is used.
+func (w *RetryWorker) SetChargerRouter(router savedCardChargerRouter) {
+	w.chargerRouter = router
+}
+
 // chargeInvoice attempts collection, preferring the customer's saved payment
 // method (charged off-session) when one exists, and falling back to the
 // interactive gateway retry otherwise.
 func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*port.PaymentResult, error) {
 	if w.savedCharger != nil && w.customerLookup != nil {
-		// B1: dunning retry stays on the platform gateway for now (PR2 will route
-		// it by the saved card's gateway connection like renewal).
-		stripeCustomerID, paymentMethodID, _, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
+		stripeCustomerID, paymentMethodID, connID, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
 		if err == nil && stripeCustomerID != "" && paymentMethodID != "" {
+			// B1: charge on the gateway the card was saved on (BYO or platform).
+			charger := w.savedCharger
+			if w.chargerRouter != nil {
+				c, rerr := w.chargerRouter.ChargerFor(ctx, connID)
+				if rerr != nil || c == nil {
+					// Can't reach the saved card's gateway; fall through to the
+					// interactive retry path rather than charge the wrong account.
+					slog.Warn("retry: could not resolve saved-card gateway; using interactive retry", "invoice_id", inv.ID, "error", rerr)
+					return w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
+				}
+				charger = c
+			}
 			// Idempotent per attempt: a worker re-run for the same attempt won't
 			// double-charge.
 			key := fmt.Sprintf("retry-%s-%d", inv.ID, inv.RetryCount)
-			return w.savedCharger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, inv.Total, inv.Currency, inv.ID.String(), key)
+			return charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, inv.Total, inv.Currency, inv.ID.String(), key)
 		}
 	}
 	return w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
