@@ -70,6 +70,59 @@ func (r *TaxNexusRepository) SetStates(ctx context.Context, tenantID uuid.UUID, 
 	return tx.Commit()
 }
 
+// ListRegistrations returns the tenant's US sales-tax registrations (Track D · D4).
+func (r *TaxNexusRepository) ListRegistrations(ctx context.Context, tenantID uuid.UUID) ([]domain.TaxRegistration, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT state_code, registration_number, status, registered_at
+		FROM tax_registrations WHERE tenant_id = $1 ORDER BY state_code`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("list registrations: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.TaxRegistration
+	for rows.Next() {
+		var reg domain.TaxRegistration
+		var status string
+		if err := rows.Scan(&reg.StateCode, &reg.RegistrationNumber, &status, &reg.RegisteredAt); err != nil {
+			return nil, fmt.Errorf("scan registration: %w", err)
+		}
+		reg.Status = domain.TaxRegistrationStatus(status)
+		out = append(out, reg)
+	}
+	return out, rows.Err()
+}
+
+// SetRegistrations replaces the tenant's entire registration set atomically —
+// same full-replacement contract as SetStates.
+func (r *TaxNexusRepository) SetRegistrations(ctx context.Context, tenantID uuid.UUID, regs []domain.TaxRegistration) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tax_registrations WHERE tenant_id = $1`, tenantID); err != nil {
+		return fmt.Errorf("clear registrations: %w", err)
+	}
+	const ins = `
+		INSERT INTO tax_registrations (id, tenant_id, state_code, registration_number, status, registered_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (tenant_id, state_code) DO NOTHING`
+	for _, reg := range regs {
+		status := reg.Status
+		if status == "" {
+			status = domain.RegistrationRegistered
+		}
+		if _, err := tx.ExecContext(ctx, ins, uuid.New(), tenantID,
+			strings.ToUpper(strings.TrimSpace(reg.StateCode)), strings.TrimSpace(reg.RegistrationNumber),
+			string(status), reg.RegisteredAt); err != nil {
+			return fmt.Errorf("insert registration: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
 func (r *TaxNexusRepository) Delete(ctx context.Context, tenantID uuid.UUID, stateCode string) error {
 	_, err := r.db.ExecContext(ctx,
 		`DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND state_code = $2`,

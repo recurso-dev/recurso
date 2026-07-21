@@ -3992,6 +3992,66 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/settings/tax/registrations:
+    get:
+      operationId: getTaxRegistrations
+      tags: [Settings]
+      summary: List US sales-tax registrations
+      description: Returns the tenant's US sales-tax registrations — where they hold (or are pending) a permit to collect. Pairs with nexus to surface gaps (nexus but not registered).
+      responses:
+        '200':
+          description: Registrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        state_code: { type: string }
+                        registration_number: { type: string }
+                        status: { type: string, enum: [registered, pending, not_registered] }
+                        registered_at: { type: [string, 'null'], format: date }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: setTaxRegistrations
+      tags: [Settings]
+      summary: Set US sales-tax registrations
+      description: Replaces the tenant's entire registration set. Owner/admin only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                registrations:
+                  type: array
+                  items:
+                    type: object
+                    required: [state_code]
+                    properties:
+                      state_code: { type: string, example: "CA" }
+                      registration_number: { type: string }
+                      status: { type: string, enum: [registered, pending, not_registered], default: registered }
+                      registered_at: { type: string, format: date }
+      responses:
+        '200':
+          description: Updated registrations.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: array, items: { type: object } }
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/settings/tax/nexus:
     get:
       operationId: getTaxNexus

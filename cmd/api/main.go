@@ -1721,6 +1721,8 @@ func main() {
 		v1.PUT("/settings/tax/nexus", taxNexusHandler.SetNexus)
 		v1.GET("/settings/tax/nexus/status", taxNexusHandler.GetNexusStatus)
 		v1.GET("/settings/tax/liability", taxNexusHandler.GetLiabilityReport)
+		v1.GET("/settings/tax/registrations", taxNexusHandler.GetRegistrations)
+		v1.PUT("/settings/tax/registrations", taxNexusHandler.SetRegistrations)
 		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
 		v1.GET("/india/gstr1", gstHandler.GetGSTR1)
 		v1.GET("/india/gstr3b", gstHandler.GetGSTR3B)
