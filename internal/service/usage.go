@@ -116,6 +116,11 @@ func validateUsageEvent(event *domain.UsageEvent) error {
 	if event.Quantity <= 0 {
 		return UsageValidationError("quantity must be greater than zero")
 	}
+	// A dynamic charge bills the SUM of dynamic_amount; a negative value would
+	// offset legitimate charges at aggregation time, underbilling the customer.
+	if event.DynamicAmount < 0 {
+		return UsageValidationError("dynamic_amount must not be negative")
+	}
 	if len(event.TransactionID) > maxTransactionIDLen {
 		return UsageValidationError(fmt.Sprintf("transaction_id must be at most %d characters", maxTransactionIDLen))
 	}

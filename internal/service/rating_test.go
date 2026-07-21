@@ -202,6 +202,33 @@ func TestRateChargeUnsupportedModel(t *testing.T) {
 	}
 }
 
+// TestRateChargeDynamic: the line is the pre-summed dynamic amount (identity),
+// with no pricing config and no rate applied.
+func TestRateChargeDynamic(t *testing.T) {
+	cases := []struct {
+		qty  int64 // Σ per-event dynamic_amount, minor units
+		want int64
+	}{
+		{0, 0},       // no usage
+		{4200, 4200}, // bills the sum exactly
+		{1, 1},       //
+		{999999, 999999},
+	}
+	for _, tc := range cases {
+		got, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, tc.qty)
+		if err != nil {
+			t.Fatalf("qty %d: %v", tc.qty, err)
+		}
+		if got != tc.want {
+			t.Fatalf("dynamic qty %d = %d, want %d", tc.qty, got, tc.want)
+		}
+	}
+	// Negative aggregate is rejected by the shared quantity guard.
+	if _, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, -1); err == nil {
+		t.Fatal("expected error for negative dynamic quantity")
+	}
+}
+
 func TestRateChargePercentage(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -263,6 +290,81 @@ func TestRateChargePercentageRejectsBadConfig(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, err := RateCharge(domain.ChargePercentage, tc.amounts, 100000); err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+		})
+	}
+}
+
+// graduatedPercentTiers: 0-1,000,000 @ 3%, 1,000,000-2,000,000 @ 2%,
+// 2,000,000+ @ 1% + flat ₹5. Bounds and base are minor units.
+func graduatedPercentTiers() []domain.ChargeTier {
+	return []domain.ChargeTier{
+		{UpTo: i64(1_000_000), Rate: "3"},
+		{UpTo: i64(2_000_000), Rate: "2"},
+		{UpTo: nil, Rate: "1", FlatAmount: 500},
+	}
+}
+
+func TestRateChargeGraduatedPercentage(t *testing.T) {
+	cases := []struct {
+		name string
+		base int64 // monetary base in minor units
+		want int64
+	}{
+		{"zero", 0, 0},
+		{"inside first band", 500_000, 15_000},           // 3%×500,000
+		{"exact first bound", 1_000_000, 30_000},         // 3%×1,000,000
+		{"spans two bands", 1_500_000, 40_000},           // 30,000 + 2%×500,000
+		{"exact second bound", 2_000_000, 50_000},        // 30,000 + 2%×1,000,000
+		{"reaches flat band", 2_000_001, 50_000 + 500},   // +1%×1 (0.01→0 in the sum) + flat
+		{"deep into last band", 3_000_000, 60_000 + 500}, // 30,000+20,000+1%×1,000,000 + flat
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: graduatedPercentTiers()}, tc.base)
+			if err != nil {
+				t.Fatalf("RateCharge: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("base %d = %d, want %d", tc.base, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRateChargeGraduatedPercentageRoundsOnce locks one-round-per-line: two
+// bands each producing 0.4p must round from the exact 0.8p sum (→ 1p), not
+// per-band (0 + 0 = 0p).
+func TestRateChargeGraduatedPercentageRoundsOnce(t *testing.T) {
+	tiers := []domain.ChargeTier{
+		{UpTo: i64(1), Rate: "40"}, // 40% × 1 = 0.4p
+		{UpTo: nil, Rate: "40"},    // 40% × 1 = 0.4p
+	}
+	got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tiers}, 2)
+	if err != nil {
+		t.Fatalf("RateCharge: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("expected exact-sum rounding to 1 paise, got %d", got)
+	}
+}
+
+func TestRateChargeGraduatedPercentageRejectsBadConfig(t *testing.T) {
+	cases := []struct {
+		name  string
+		tiers []domain.ChargeTier
+	}{
+		{"empty", nil},
+		{"missing rate", []domain.ChargeTier{{UpTo: nil}}},
+		{"bad rate", []domain.ChargeTier{{UpTo: nil, Rate: "abc"}}},
+		{"non-ascending bounds", []domain.ChargeTier{{UpTo: i64(100), Rate: "1"}, {UpTo: i64(100), Rate: "1"}, {UpTo: nil, Rate: "1"}}},
+		{"last tier bounded", []domain.ChargeTier{{UpTo: i64(100), Rate: "1"}}},
+		{"negative flat", []domain.ChargeTier{{UpTo: nil, Rate: "1", FlatAmount: -1}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tc.tiers}, 1_000_000); err == nil {
 				t.Fatalf("expected error for %s", tc.name)
 			}
 		})

@@ -38,6 +38,9 @@ type recordEventRequest struct {
 	// TransactionID is the caller's idempotency key: a retried event with
 	// the same (subscription, transaction_id) collapses to the original.
 	TransactionID string `json:"transaction_id"`
+	// DynamicAmount is the caller-supplied exact price for this event in minor
+	// units (non-negative); a `dynamic` charge bills the sum over the period.
+	DynamicAmount int64 `json:"dynamic_amount"`
 }
 
 // toEvent converts the request into a domain event (uuid errors reported
@@ -60,6 +63,7 @@ func (r recordEventRequest) toEvent() (*domain.UsageEvent, error) {
 		Timestamp:      time.Now().UTC(),
 		Properties:     r.Properties,
 		TransactionID:  r.TransactionID,
+		DynamicAmount:  r.DynamicAmount,
 	}, nil
 }
 

@@ -221,7 +221,7 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 
 		model := domain.ChargeModel(in.ChargeModel)
 		if !domain.ValidChargeModel(model) {
-			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage", i))
+			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: charge_model must be one of: per_unit, graduated, volume, package, percentage, graduated_percentage, dynamic", i))
 		}
 		if len(in.Amounts) == 0 {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: amounts must define at least one currency", i))
@@ -260,6 +260,18 @@ func (s *MeteringService) SetPlanCharges(ctx context.Context, tenantID, planID u
 		return nil, err
 	}
 	return charges, nil
+}
+
+// meteredQuantity picks the aggregate a charge model prices for [start, end):
+// a `dynamic` charge bills the Σ per-event dynamic_amount, every other model
+// uses the metric's configured aggregation. Both the live usage preview and
+// invoice generation route through this so they agree. The caller guarantees
+// ch.Metric is non-nil.
+func meteredQuantity(ctx context.Context, repo port.UsageRepository, subID uuid.UUID, ch domain.Charge, start, end time.Time) (int64, error) {
+	if ch.ChargeModel == domain.ChargeDynamic {
+		return repo.SumDynamicAmount(ctx, subID, ch.Metric.Code, start, end)
+	}
+	return repo.AggregateForMetric(ctx, subID, *ch.Metric, start, end)
 }
 
 func (s *MeteringService) GetPlanCharges(ctx context.Context, tenantID, planID uuid.UUID) ([]domain.Charge, error) {
@@ -343,7 +355,7 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 		if !ok {
 			continue
 		}
-		qty, err := s.usage.AggregateForMetric(ctx, sub.ID, *ch.Metric, sub.CurrentPeriodStart, asOf)
+		qty, err := meteredQuantity(ctx, s.usage, sub.ID, ch, sub.CurrentPeriodStart, asOf)
 		if err != nil {
 			return nil, err
 		}
