@@ -40,6 +40,7 @@ func TestCreateMetric_AllAggregations_Postgres(t *testing.T) {
 		{domain.AggregationLatest, "", ""},
 		{domain.AggregationPercentile, "95", ""},
 		{domain.AggregationCustom, "", "quantity * properties.multiplier"},
+		{domain.AggregationWeightedSum, "", ""},
 	}
 	for _, c := range cases {
 		m := &domain.BillableMetric{

@@ -212,15 +212,15 @@ func percentileFraction(field string) (float64, error) {
 }
 
 // StreamEventsForMetric invokes fn for each event of the subscription's
-// dimension inside [start, end), passing the event quantity and its raw string
-// properties (nil when the event has none). It streams rows rather than
-// materializing them, so the custom aggregation can fold a large period without
-// loading every event into memory. fn returning an error stops iteration and is
-// returned. Ordering is by (timestamp, id) so time-dependent folds (e.g. a
-// future time-weighted aggregation) see events in occurrence order.
-func (r *UsageRepository) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, props map[string]string) error) error {
+// dimension inside [start, end), passing the event quantity, its timestamp, and
+// its raw string properties (nil when the event has none). It streams rows
+// rather than materializing them, so an aggregation can fold a large period
+// without loading every event into memory. fn returning an error stops
+// iteration and is returned. Ordering is by (timestamp, id) so time-dependent
+// folds (weighted_sum) see events in occurrence order.
+func (r *UsageRepository) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(quantity int64, ts time.Time, props map[string]string) error) error {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT quantity, properties
+		SELECT quantity, timestamp, properties
 		FROM usage_events
 		WHERE subscription_id = $1 AND dimension = $2 AND timestamp >= $3 AND timestamp < $4
 		ORDER BY timestamp ASC, id ASC`,
@@ -232,8 +232,9 @@ func (r *UsageRepository) StreamEventsForMetric(ctx context.Context, subscriptio
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var quantity int64
+		var ts time.Time
 		var propsRaw []byte
-		if err := rows.Scan(&quantity, &propsRaw); err != nil {
+		if err := rows.Scan(&quantity, &ts, &propsRaw); err != nil {
 			return fmt.Errorf("failed to scan usage event: %w", err)
 		}
 		var props map[string]string
@@ -242,11 +243,28 @@ func (r *UsageRepository) StreamEventsForMetric(ctx context.Context, subscriptio
 				return fmt.Errorf("failed to decode event properties: %w", err)
 			}
 		}
-		if err := fn(quantity, props); err != nil {
+		if err := fn(quantity, ts, props); err != nil {
 			return err
 		}
 	}
 	return rows.Err()
+}
+
+// SumQuantityBefore returns Σ quantity of the dimension's events strictly before
+// `before` — the carry-forward starting level for weighted_sum. Zero events
+// sum to 0.
+func (r *UsageRepository) SumQuantityBefore(ctx context.Context, subscriptionID uuid.UUID, dimension string, before time.Time) (int64, error) {
+	var total int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(quantity), 0)
+		FROM usage_events
+		WHERE subscription_id = $1 AND dimension = $2 AND timestamp < $3`,
+		subscriptionID, dimension, before,
+	).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("failed to sum prior quantity for metric %q: %w", dimension, err)
+	}
+	return total, nil
 }
 
 // SumDynamicAmount sums the per-event dynamic_amount (minor units) for the

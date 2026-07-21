@@ -19,12 +19,12 @@ type fakeStreamer struct {
 	err error
 }
 
-func (f *fakeStreamer) StreamEventsForMetric(_ context.Context, _ uuid.UUID, _ string, _, _ time.Time, fn func(int64, map[string]string) error) error {
+func (f *fakeStreamer) StreamEventsForMetric(_ context.Context, _ uuid.UUID, _ string, _, _ time.Time, fn func(int64, time.Time, map[string]string) error) error {
 	if f.err != nil {
 		return f.err
 	}
 	for _, e := range f.events {
-		if err := fn(e.qty, e.props); err != nil {
+		if err := fn(e.qty, time.Time{}, e.props); err != nil {
 			return err
 		}
 	}

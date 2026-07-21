@@ -28,23 +28,30 @@ type mockUsageRepoForMeter struct {
 	qtyByMetricCode map[string]int64
 	dynByDimension  map[string]int64
 	filteredByValue map[string]int64
-	// eventsByDimension feeds StreamEventsForMetric for custom-aggregation tests.
+	// eventsByDimension feeds StreamEventsForMetric for custom/weighted_sum tests.
 	eventsByDimension map[string][]struct {
 		Qty   int64
+		Ts    time.Time
 		Props map[string]string
 	}
-	gotStart time.Time
-	gotEnd   time.Time
+	// priorByDimension is the carry-forward level SumQuantityBefore returns.
+	priorByDimension map[string]int64
+	gotStart         time.Time
+	gotEnd           time.Time
 }
 
-func (m *mockUsageRepoForMeter) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(int64, map[string]string) error) error {
+func (m *mockUsageRepoForMeter) StreamEventsForMetric(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time, fn func(int64, time.Time, map[string]string) error) error {
 	m.gotStart, m.gotEnd = start, end
 	for _, e := range m.eventsByDimension[dimension] {
-		if err := fn(e.Qty, e.Props); err != nil {
+		if err := fn(e.Qty, e.Ts, e.Props); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (m *mockUsageRepoForMeter) SumQuantityBefore(ctx context.Context, subscriptionID uuid.UUID, dimension string, before time.Time) (int64, error) {
+	return m.priorByDimension[dimension], nil
 }
 
 func (m *mockUsageRepoForMeter) AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error) {
@@ -197,6 +204,7 @@ func TestGenerateInvoice_CustomAggregation(t *testing.T) {
 	}}}
 	svc.UsageRepo = &mockUsageRepoForMeter{eventsByDimension: map[string][]struct {
 		Qty   int64
+		Ts    time.Time
 		Props map[string]string
 	}{
 		"storage": {
@@ -223,6 +231,54 @@ func TestGenerateInvoice_CustomAggregation(t *testing.T) {
 	}
 	// The claim's amount is the exact-priced 7500; the displayed quantity is the
 	// fractional total rounded to a whole unit (7.5 -> 8).
+	if len(ratingRepo.created) != 1 || ratingRepo.created[0].Amount != 7500 || ratingRepo.created[0].Quantity != 8 {
+		t.Fatalf("claim = %+v, want amount 7500 quantity 8", ratingRepo.created)
+	}
+}
+
+// TestGenerateInvoice_WeightedSum asserts a weighted_sum metric time-weights a
+// running level (built from carry-forward + in-period deltas) and prices the
+// fractional average once. Carry-forward level 5, +5 at day 15 of a 30-day
+// period → (5×15 + 10×15)/30 = 7.5 seats; at ₹10/seat the line is exactly
+// ₹75.00 (7500p), claim quantity rounds to 8.
+func TestGenerateInvoice_WeightedSum(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(0)
+	// The fixture period is 2026-06-01 .. 2026-07-01 (30 days).
+	mid := sub.CurrentPeriodStart.AddDate(0, 0, 15)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{
+		ID: metricID, Name: "Seats", Code: "seats",
+		AggregationType: domain.AggregationWeightedSum,
+	}
+	chargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:          chargeID,
+		PlanID:      sub.PlanID,
+		MetricID:    metricID,
+		ChargeModel: domain.ChargePerUnit,
+		Amounts:     map[string]domain.ChargeAmounts{"INR": {UnitAmount: "10"}},
+		Metric:      &metric,
+	}}}
+	svc.UsageRepo = &mockUsageRepoForMeter{
+		priorByDimension: map[string]int64{"seats": 5},
+		eventsByDimension: map[string][]struct {
+			Qty   int64
+			Ts    time.Time
+			Props map[string]string
+		}{
+			"seats": {{Qty: 5, Ts: mid}},
+		},
+	}
+
+	inv, err := svc.GenerateInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if inv.LineItems[1].Amount != 7500 {
+		t.Fatalf("weighted_sum line = %d, want 7500 (7.5 avg seats × ₹10)", inv.LineItems[1].Amount)
+	}
 	if len(ratingRepo.created) != 1 || ratingRepo.created[0].Amount != 7500 || ratingRepo.created[0].Quantity != 8 {
 		t.Fatalf("claim = %+v, want amount 7500 quantity 8", ratingRepo.created)
 	}
