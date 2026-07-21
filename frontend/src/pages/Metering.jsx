@@ -42,6 +42,7 @@ const Metering = () => {
     code: "",
     aggregation_type: "sum",
     field_name: "",
+    expression: "",
   });
 
   const [alertOpen, setAlertOpen] = useState(false);
@@ -94,6 +95,9 @@ const Metering = () => {
       // 1-99 (percentile); every other aggregation takes no field_name.
       if (body.aggregation_type !== "unique" && body.aggregation_type !== "percentile")
         delete body.field_name;
+      // expression is only for the custom aggregation; the API rejects it
+      // elsewhere.
+      if (body.aggregation_type !== "custom") delete body.expression;
       if (editingMetric) {
         await api.updateBillableMetric(editingMetric.id, body);
       } else {
@@ -101,7 +105,7 @@ const Metering = () => {
       }
       setMetricOpen(false);
       setEditingMetric(null);
-      setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "" });
+      setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "", expression: "" });
       fetchAll();
     } catch (err) {
       setActionError(
@@ -120,6 +124,7 @@ const Metering = () => {
       code: metric.code || "",
       aggregation_type: metric.aggregation_type || "sum",
       field_name: metric.field_name || "",
+      expression: metric.expression || "",
     });
     setActionError(null);
     setMetricOpen(true);
@@ -185,10 +190,17 @@ const Metering = () => {
       key: "aggregation",
       header: "Aggregation",
       cell: (m) => (
-        <Badge variant="neutral" className="font-mono">
-          {m.aggregation_type}
-          {m.field_name ? `(${m.field_name})` : ""}
-        </Badge>
+        <div className="flex flex-col gap-1">
+          <Badge variant="neutral" className="w-fit font-mono">
+            {m.aggregation_type}
+            {m.field_name ? `(${m.field_name})` : ""}
+          </Badge>
+          {m.expression ? (
+            <code className="max-w-[16rem] truncate text-xs text-muted-foreground" title={m.expression}>
+              {m.expression}
+            </code>
+          ) : null}
+        </div>
       ),
     },
     {
@@ -252,7 +264,7 @@ const Metering = () => {
           icon: Gauge,
           title: "No billable metrics yet",
           description:
-            "A metric's code doubles as the usage event dimension it aggregates (count, sum, max, unique, latest, percentile).",
+            "A metric's code doubles as the usage event dimension it aggregates (count, sum, max, unique, latest, percentile, weighted_sum, custom).",
           action: (
             <Button onClick={() => setMetricOpen(true)}>
               <Plus className="h-4 w-4" />
@@ -306,7 +318,7 @@ const Metering = () => {
           setMetricOpen(o);
           if (!o) {
             setEditingMetric(null);
-            setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "" });
+            setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "", expression: "" });
           }
         }}
       >
@@ -350,6 +362,8 @@ const Metering = () => {
                   <SelectItem value="unique">unique — distinct property values</SelectItem>
                   <SelectItem value="latest">latest — most recent event</SelectItem>
                   <SelectItem value="percentile">percentile — p-th percentile (e.g. p95)</SelectItem>
+                  <SelectItem value="weighted_sum">weighted_sum — time-weighted average (per-time resources)</SelectItem>
+                  <SelectItem value="custom">custom — expression over each event</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -376,6 +390,32 @@ const Metering = () => {
                   The percentile of event quantities to bill (e.g. 95 for p95).
                 </p>
               </div>
+            )}
+            {metricForm.aggregation_type === "custom" && (
+              <div>
+                <Label>Expression</Label>
+                <Input
+                  value={metricForm.expression}
+                  onChange={(e) => setMetricForm({ ...metricForm, expression: e.target.value })}
+                  placeholder="quantity * properties.multiplier"
+                  className="font-mono"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Evaluated per event, then summed over the period. Reads{" "}
+                  <code>quantity</code> and numeric <code>properties.*</code>{" "}
+                  (e.g. <code>properties.bytes / 1000000</code>). Arithmetic only —
+                  no functions or external access.
+                </p>
+              </div>
+            )}
+            {metricForm.aggregation_type === "weighted_sum" && (
+              <p className="text-xs text-muted-foreground">
+                Each event&apos;s quantity is a signed change to a running level
+                (e.g. <code>+5</code> / <code>-2</code> seats); the metric bills the
+                time-weighted average level over the period. The level carries
+                forward from before the period, so a resource already active at
+                period start is counted from the start.
+              </p>
             )}
             {actionError && <p className="text-sm text-red-600">{actionError}</p>}
           </div>
