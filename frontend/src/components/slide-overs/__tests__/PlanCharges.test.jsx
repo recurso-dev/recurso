@@ -108,6 +108,104 @@ describe('PlanCharges editor', () => {
         );
     });
 
+    it('saves a percentage charge with money fields scaled to minor units', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Charge model 1'), { target: { value: 'percentage' } });
+        fireEvent.change(screen.getByLabelText('Percentage rate 1'), { target: { value: '2.5' } });
+        fireEvent.change(screen.getByLabelText('Charge 1 Fixed fee'), { target: { value: '0.30' } });
+        fireEvent.change(screen.getByLabelText('Charge 1 Maximum'), { target: { value: '50' } });
+        fireEvent.click(screen.getByRole('button', { name: /save charges/i }));
+
+        await waitFor(() =>
+            expect(endpoints.setPlanCharges).toHaveBeenCalledWith('plan-123', [
+                {
+                    metric_id: 'metric-1',
+                    charge_model: 'percentage',
+                    amounts: {
+                        USD: { rate: '2.5', fixed_amount: 30, free_units: 0, min_amount: 0, max_amount: 5000 },
+                    },
+                    hsn_code: '',
+                },
+            ])
+        );
+    });
+
+    it('scales graduated_percentage tier bounds (money) to minor units', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-1' } });
+        fireEvent.change(screen.getByLabelText('Charge model 1'), { target: { value: 'graduated_percentage' } });
+        fireEvent.click(screen.getByRole('button', { name: /add tier/i }));
+
+        fireEvent.change(screen.getByLabelText('Charge 1 tier 1 up to'), { target: { value: '100' } }); // $100 -> 10000
+        fireEvent.change(screen.getByLabelText('Charge 1 tier 1 rate'), { target: { value: '3' } });
+        fireEvent.change(screen.getByLabelText('Charge 1 tier 2 rate'), { target: { value: '2' } });
+        fireEvent.click(screen.getByRole('button', { name: /save charges/i }));
+
+        await waitFor(() =>
+            expect(endpoints.setPlanCharges).toHaveBeenCalledWith('plan-123', [
+                {
+                    metric_id: 'metric-1',
+                    charge_model: 'graduated_percentage',
+                    amounts: {
+                        USD: {
+                            tiers: [
+                                { up_to: 10000, flat_amount: 0, rate: '3' },
+                                { up_to: null, flat_amount: 0, rate: '2' },
+                            ],
+                        },
+                    },
+                    hsn_code: '',
+                },
+            ])
+        );
+    });
+
+    it('saves a dynamic charge with an empty amounts entry (priced per event)', async () => {
+        renderCharges();
+        fireEvent.click(await screen.findByRole('button', { name: /edit/i }));
+        fireEvent.click(screen.getByRole('button', { name: /add charge/i }));
+
+        fireEvent.change(screen.getByLabelText('Metric 1'), { target: { value: 'metric-2' } });
+        fireEvent.change(screen.getByLabelText('Charge model 1'), { target: { value: 'dynamic' } });
+        fireEvent.click(screen.getByRole('button', { name: /save charges/i }));
+
+        await waitFor(() =>
+            expect(endpoints.setPlanCharges).toHaveBeenCalledWith('plan-123', [
+                {
+                    metric_id: 'metric-2',
+                    charge_model: 'dynamic',
+                    amounts: { USD: {} },
+                    hsn_code: '',
+                },
+            ])
+        );
+    });
+
+    it('summarizes a percentage charge read-only', async () => {
+        endpoints.getPlanCharges.mockResolvedValue({
+            data: {
+                data: [
+                    {
+                        id: 'ch-p',
+                        metric_id: 'metric-1',
+                        charge_model: 'percentage',
+                        amounts: { USD: { rate: '2.5', fixed_amount: 30 } },
+                        metric: { name: 'API Calls' },
+                    },
+                ],
+            },
+        });
+        renderCharges();
+        expect(await screen.findByText('2.5% of value + $0.30 fee')).toBeInTheDocument();
+    });
+
     it('blocks saving when a tier bound does not increase', async () => {
         renderCharges();
         fireEvent.click(await screen.findByRole('button', { name: /edit/i }));

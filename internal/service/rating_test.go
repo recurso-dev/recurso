@@ -197,7 +197,176 @@ func TestTierValidation(t *testing.T) {
 }
 
 func TestRateChargeUnsupportedModel(t *testing.T) {
-	if _, err := RateCharge(domain.ChargeModel("percentage"), domain.ChargeAmounts{}, 5); err == nil {
+	if _, err := RateCharge(domain.ChargeModel("mystery_model"), domain.ChargeAmounts{}, 5); err == nil {
 		t.Fatal("expected error for unsupported model")
+	}
+}
+
+// TestRateChargeDynamic: the line is the pre-summed dynamic amount (identity),
+// with no pricing config and no rate applied.
+func TestRateChargeDynamic(t *testing.T) {
+	cases := []struct {
+		qty  int64 // Σ per-event dynamic_amount, minor units
+		want int64
+	}{
+		{0, 0},       // no usage
+		{4200, 4200}, // bills the sum exactly
+		{1, 1},       //
+		{999999, 999999},
+	}
+	for _, tc := range cases {
+		got, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, tc.qty)
+		if err != nil {
+			t.Fatalf("qty %d: %v", tc.qty, err)
+		}
+		if got != tc.want {
+			t.Fatalf("dynamic qty %d = %d, want %d", tc.qty, got, tc.want)
+		}
+	}
+	// Negative aggregate is rejected by the shared quantity guard.
+	if _, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, -1); err == nil {
+		t.Fatal("expected error for negative dynamic quantity")
+	}
+}
+
+func TestRateChargePercentage(t *testing.T) {
+	cases := []struct {
+		name    string
+		amounts domain.ChargeAmounts
+		qty     int64 // monetary base in minor units
+		want    int64
+	}{
+		// 2.5% of ₹1000 (100000p) = ₹25 = 2500p
+		{"plain percent", domain.ChargeAmounts{Rate: "2.5"}, 100000, 2500},
+		// fractional percent, exact: 0.35% of 100000 = 350
+		{"sub-percent exact", domain.ChargeAmounts{Rate: "0.35"}, 100000, 350},
+		// rounds half up once: 1% of 150p = 1.5p → 2p
+		{"rounds half up", domain.ChargeAmounts{Rate: "1"}, 150, 2},
+		// fixed fee added after the percentage: 2% of 100000 = 2000, +30 = 2030
+		{"fixed fee", domain.ChargeAmounts{Rate: "2", FixedAmount: 30}, 100000, 2030},
+		// free units deducted first: 2% of (100000-20000) = 2% of 80000 = 1600
+		{"free units", domain.ChargeAmounts{Rate: "2", FreeUnits: 20000}, 100000, 1600},
+		// free units exceed base → base clamps to 0 → line 0 (+fixed if any)
+		{"free units exceed base", domain.ChargeAmounts{Rate: "2", FreeUnits: 200000}, 100000, 0},
+		{"free units exceed base with fixed", domain.ChargeAmounts{Rate: "2", FreeUnits: 200000, FixedAmount: 50}, 100000, 50},
+		// min floor applies when there IS usage: 1% of 1000 = 10, floored to 500
+		{"min floor", domain.ChargeAmounts{Rate: "1", MinAmount: 500}, 1000, 500},
+		// max cap: 5% of 100000 = 5000, capped to 3000
+		{"max cap", domain.ChargeAmounts{Rate: "5", MaxAmount: 3000}, 100000, 3000},
+		// max 0 means uncapped
+		{"max zero uncapped", domain.ChargeAmounts{Rate: "5", MaxAmount: 0}, 100000, 5000},
+		// zero quantity short-circuits to 0 regardless of min (no usage)
+		{"zero base no floor", domain.ChargeAmounts{Rate: "2", MinAmount: 500}, 0, 0},
+		// zero rate
+		{"zero rate", domain.ChargeAmounts{Rate: "0"}, 100000, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RateCharge(domain.ChargePercentage, tc.amounts, tc.qty)
+			if err != nil {
+				t.Fatalf("RateCharge: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("percentage %+v × %d = %d, want %d", tc.amounts, tc.qty, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRateChargePercentageRejectsBadConfig(t *testing.T) {
+	cases := []struct {
+		name    string
+		amounts domain.ChargeAmounts
+	}{
+		{"missing rate", domain.ChargeAmounts{}},
+		{"bad rate", domain.ChargeAmounts{Rate: "abc"}},
+		{"negative rate string", domain.ChargeAmounts{Rate: "-1"}},
+		{"negative free units", domain.ChargeAmounts{Rate: "1", FreeUnits: -1}},
+		{"negative fixed", domain.ChargeAmounts{Rate: "1", FixedAmount: -1}},
+		{"negative min", domain.ChargeAmounts{Rate: "1", MinAmount: -1}},
+		{"negative max", domain.ChargeAmounts{Rate: "1", MaxAmount: -1}},
+		{"max below min", domain.ChargeAmounts{Rate: "1", MinAmount: 500, MaxAmount: 300}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := RateCharge(domain.ChargePercentage, tc.amounts, 100000); err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+		})
+	}
+}
+
+// graduatedPercentTiers: 0-1,000,000 @ 3%, 1,000,000-2,000,000 @ 2%,
+// 2,000,000+ @ 1% + flat ₹5. Bounds and base are minor units.
+func graduatedPercentTiers() []domain.ChargeTier {
+	return []domain.ChargeTier{
+		{UpTo: i64(1_000_000), Rate: "3"},
+		{UpTo: i64(2_000_000), Rate: "2"},
+		{UpTo: nil, Rate: "1", FlatAmount: 500},
+	}
+}
+
+func TestRateChargeGraduatedPercentage(t *testing.T) {
+	cases := []struct {
+		name string
+		base int64 // monetary base in minor units
+		want int64
+	}{
+		{"zero", 0, 0},
+		{"inside first band", 500_000, 15_000},           // 3%×500,000
+		{"exact first bound", 1_000_000, 30_000},         // 3%×1,000,000
+		{"spans two bands", 1_500_000, 40_000},           // 30,000 + 2%×500,000
+		{"exact second bound", 2_000_000, 50_000},        // 30,000 + 2%×1,000,000
+		{"reaches flat band", 2_000_001, 50_000 + 500},   // +1%×1 (0.01→0 in the sum) + flat
+		{"deep into last band", 3_000_000, 60_000 + 500}, // 30,000+20,000+1%×1,000,000 + flat
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: graduatedPercentTiers()}, tc.base)
+			if err != nil {
+				t.Fatalf("RateCharge: %v", err)
+			}
+			if got != tc.want {
+				t.Fatalf("base %d = %d, want %d", tc.base, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRateChargeGraduatedPercentageRoundsOnce locks one-round-per-line: two
+// bands each producing 0.4p must round from the exact 0.8p sum (→ 1p), not
+// per-band (0 + 0 = 0p).
+func TestRateChargeGraduatedPercentageRoundsOnce(t *testing.T) {
+	tiers := []domain.ChargeTier{
+		{UpTo: i64(1), Rate: "40"}, // 40% × 1 = 0.4p
+		{UpTo: nil, Rate: "40"},    // 40% × 1 = 0.4p
+	}
+	got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tiers}, 2)
+	if err != nil {
+		t.Fatalf("RateCharge: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("expected exact-sum rounding to 1 paise, got %d", got)
+	}
+}
+
+func TestRateChargeGraduatedPercentageRejectsBadConfig(t *testing.T) {
+	cases := []struct {
+		name  string
+		tiers []domain.ChargeTier
+	}{
+		{"empty", nil},
+		{"missing rate", []domain.ChargeTier{{UpTo: nil}}},
+		{"bad rate", []domain.ChargeTier{{UpTo: nil, Rate: "abc"}}},
+		{"non-ascending bounds", []domain.ChargeTier{{UpTo: i64(100), Rate: "1"}, {UpTo: i64(100), Rate: "1"}, {UpTo: nil, Rate: "1"}}},
+		{"last tier bounded", []domain.ChargeTier{{UpTo: i64(100), Rate: "1"}}},
+		{"negative flat", []domain.ChargeTier{{UpTo: nil, Rate: "1", FlatAmount: -1}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tc.tiers}, 1_000_000); err == nil {
+				t.Fatalf("expected error for %s", tc.name)
+			}
+		})
 	}
 }

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -44,10 +46,10 @@ func (r *UsageRepository) RecordEventIdempotent(ctx context.Context, event *doma
 		txID = event.TransactionID
 	}
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties, transaction_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO usage_events (id, subscription_id, customer_id, dimension, quantity, timestamp, properties, transaction_id, dynamic_amount)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (subscription_id, transaction_id) WHERE transaction_id IS NOT NULL DO NOTHING`,
-		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props, txID,
+		event.ID, event.SubscriptionID, event.CustomerID, event.Dimension, event.Quantity, event.Timestamp, props, txID, event.DynamicAmount,
 	)
 	if err != nil {
 		return false, fmt.Errorf("failed to insert usage event: %w", err)
@@ -76,8 +78,15 @@ func (r *UsageRepository) RecordEventIdempotent(ctx context.Context, event *doma
 // The aggregation SQL is selected from a fixed set (never interpolated from
 // caller input); metric.AggregationType must be pre-validated by the service.
 func (r *UsageRepository) AggregateForMetric(ctx context.Context, subscriptionID uuid.UUID, metric domain.BillableMetric, start, end time.Time) (int64, error) {
-	var agg string
 	args := []interface{}{subscriptionID, metric.Code, start, end}
+
+	// where is the shared period/dimension scope. All aggregation SQL is chosen
+	// from a fixed set (never interpolated from caller input); the percentile
+	// fraction is bound as a parameter.
+	const where = `subscription_id = $1 AND dimension = $2 AND timestamp >= $3 AND timestamp < $4`
+
+	var query string
+	var agg string
 	switch metric.AggregationType {
 	case domain.AggregationCount:
 		agg = `COUNT(*)`
@@ -88,12 +97,57 @@ func (r *UsageRepository) AggregateForMetric(ctx context.Context, subscriptionID
 	case domain.AggregationUnique:
 		agg = `COUNT(DISTINCT properties->>$5)`
 		args = append(args, metric.FieldName)
+	case domain.AggregationPercentile:
+		// FieldName carries the percentile as an integer 1-99 (validated by the
+		// service). percentile_cont returns a double over the period's
+		// quantities; CAST rounds it to minor units. NULL (no events) -> 0.
+		frac, err := percentileFraction(metric.FieldName)
+		if err != nil {
+			return 0, err
+		}
+		agg = `COALESCE(CAST(percentile_cont($5) WITHIN GROUP (ORDER BY quantity) AS BIGINT), 0)`
+		args = append(args, frac)
+	case domain.AggregationLatest:
+		// The most recent event's quantity in the period; 0 when there are none.
+		// A scalar subquery keeps the shape a single-row single-value result.
+		query = `SELECT COALESCE((
+			SELECT quantity FROM usage_events
+			WHERE ` + where + `
+			ORDER BY timestamp DESC, id DESC
+			LIMIT 1
+		), 0)`
 	default:
 		return 0, fmt.Errorf("unsupported aggregation type %q", metric.AggregationType)
 	}
 
+	if query == "" {
+		query = `SELECT ` + agg + ` FROM usage_events WHERE ` + where
+	}
+
+	var total int64
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to aggregate usage for metric %q: %w", metric.Code, err)
+	}
+	return total, nil
+}
+
+// percentileFraction converts a stored percentile (integer 1-99, e.g. "95")
+// into the 0-1 fraction percentile_cont expects (0.95). Defense-in-depth: the
+// service validates the range before storage.
+func percentileFraction(field string) (float64, error) {
+	p, err := strconv.Atoi(strings.TrimSpace(field))
+	if err != nil || p < 1 || p > 99 {
+		return 0, fmt.Errorf("invalid percentile %q (want integer 1-99)", field)
+	}
+	return float64(p) / 100.0, nil
+}
+
+// SumDynamicAmount sums the per-event dynamic_amount (minor units) for the
+// dimension inside [start, end) — the quantity a `dynamic` charge bills. Zero
+// events sum to 0.
+func (r *UsageRepository) SumDynamicAmount(ctx context.Context, subscriptionID uuid.UUID, dimension string, start, end time.Time) (int64, error) {
 	query := `
-		SELECT ` + agg + `
+		SELECT COALESCE(SUM(dynamic_amount), 0)
 		FROM usage_events
 		WHERE subscription_id = $1
 		AND dimension = $2
@@ -101,8 +155,8 @@ func (r *UsageRepository) AggregateForMetric(ctx context.Context, subscriptionID
 		AND timestamp < $4
 	`
 	var total int64
-	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
-		return 0, fmt.Errorf("failed to aggregate usage for metric %q: %w", metric.Code, err)
+	if err := r.db.QueryRowContext(ctx, query, subscriptionID, dimension, start, end).Scan(&total); err != nil {
+		return 0, fmt.Errorf("failed to sum dynamic amount for dimension %q: %w", dimension, err)
 	}
 	return total, nil
 }

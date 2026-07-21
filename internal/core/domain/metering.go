@@ -27,12 +27,20 @@ const (
 	AggregationMax AggregationType = "max"
 	// AggregationUnique counts distinct values of properties[FieldName].
 	AggregationUnique AggregationType = "unique"
+	// AggregationLatest takes the most recent event's quantity in the period
+	// (last by timestamp). Uses Quantity; FieldName is not used.
+	AggregationLatest AggregationType = "latest"
+	// AggregationPercentile takes the p-th percentile of event quantities in
+	// the period (e.g. p95/p99 latency SLO billing). FieldName carries the
+	// percentile as an integer 1-99 (e.g. "95").
+	AggregationPercentile AggregationType = "percentile"
 )
 
 // ValidAggregationType reports whether t is a supported aggregation.
 func ValidAggregationType(t AggregationType) bool {
 	switch t {
-	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique:
+	case AggregationCount, AggregationSum, AggregationMax, AggregationUnique,
+		AggregationLatest, AggregationPercentile:
 		return true
 	}
 	return false
@@ -66,12 +74,29 @@ const (
 	ChargeVolume ChargeModel = "volume"
 	// ChargePackage prices ceil(quantity/PackageSize) bundles at PackageAmount.
 	ChargePackage ChargeModel = "package"
+	// ChargePercentage prices a percentage of the aggregated monetary base
+	// (a sum in minor units — e.g. payment volume), plus an optional flat fee,
+	// with an optional free-units allowance deducted before the rate applies
+	// and optional min/max clamps on the line. Unlike the other models, its
+	// quantity is a money amount in minor units, not a unit count.
+	ChargePercentage ChargeModel = "percentage"
+	// ChargeGraduatedPercentage prices each band of the monetary base at that
+	// band's percentage rate (Tiers[i].Rate) plus that band's flat amount —
+	// the percentage analogue of graduated. Like percentage, its quantity is a
+	// money amount in minor units, and the tier UpTo bounds band that base.
+	ChargeGraduatedPercentage ChargeModel = "graduated_percentage"
+	// ChargeDynamic bills the sum of the per-event UsageEvent.DynamicAmount for
+	// the period — the caller supplies the exact price with each event, so the
+	// line is that sum with no rate applied. Its quantity is the aggregated
+	// dynamic amount in minor units.
+	ChargeDynamic ChargeModel = "dynamic"
 )
 
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
-	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage:
+	case ChargePerUnit, ChargeGraduated, ChargeVolume, ChargePackage,
+		ChargePercentage, ChargeGraduatedPercentage, ChargeDynamic:
 		return true
 	}
 	return false
@@ -84,7 +109,11 @@ type ChargeTier struct {
 	UpTo *int64 `json:"up_to"`
 	// UnitAmount is the per-unit rate as a decimal string in MAJOR currency
 	// units (e.g. "0.0035") — D1: sub-minor-unit rates are first-class.
+	// Used by graduated/volume.
 	UnitAmount string `json:"unit_amount"`
+	// Rate is the percentage applied to this band of the monetary base, a
+	// decimal string of PERCENT (e.g. "2.5"). Used by graduated_percentage.
+	Rate string `json:"rate,omitempty"`
 	// FlatAmount (minor units) is added once when any unit lands in the tier.
 	FlatAmount int64 `json:"flat_amount,omitempty"`
 }
@@ -100,6 +129,21 @@ type ChargeAmounts struct {
 	PackageSize int64 `json:"package_size,omitempty"`
 	// Tiers (graduated/volume).
 	Tiers []ChargeTier `json:"tiers,omitempty"`
+
+	// Rate (percentage): the percentage applied to the base, as a decimal
+	// string of PERCENT, e.g. "2.5" = 2.5%. Exact big.Rat path like UnitAmount.
+	Rate string `json:"rate,omitempty"`
+	// FixedAmount (percentage): a flat fee in minor units added to the line
+	// after the percentage — e.g. a per-invoice processing fee.
+	FixedAmount int64 `json:"fixed_amount,omitempty"`
+	// FreeUnits (percentage): units of the base exempt from the percentage,
+	// deducted from the base before the rate applies.
+	FreeUnits int64 `json:"free_units,omitempty"`
+	// MinAmount (percentage): a floor on the line in minor units, applied only
+	// when there is usage. 0 means no floor.
+	MinAmount int64 `json:"min_amount,omitempty"`
+	// MaxAmount (percentage): a cap on the line in minor units. 0 means no cap.
+	MaxAmount int64 `json:"max_amount,omitempty"`
 }
 
 // Charge attaches usage pricing for a metric to a plan. Amounts is keyed by
