@@ -105,6 +105,16 @@ func PayInAdvanceEligible(m ChargeModel) bool {
 	return false
 }
 
+// ProgressiveBillingEligible reports whether a charge model can be billed
+// progressively (interim invoices via a billed-amount watermark). The watermark
+// requires the fee to be MONOTONIC non-decreasing in the cumulative quantity —
+// every model qualifies EXCEPT `volume`, which re-prices the whole quantity at a
+// (cheaper) tier as usage grows, so its fee can DROP. On a progressive
+// subscription, a volume charge falls back to classic period-close billing.
+func ProgressiveBillingEligible(m ChargeModel) bool {
+	return m != ChargeVolume && ValidChargeModel(m)
+}
+
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
