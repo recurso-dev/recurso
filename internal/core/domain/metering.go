@@ -92,6 +92,19 @@ const (
 	ChargeDynamic ChargeModel = "dynamic"
 )
 
+// PayInAdvanceEligible reports whether a charge model can be billed
+// pay-in-advance. Only non-cumulative models qualify: a single event has a
+// well-defined price under per_unit / percentage / dynamic, but graduated /
+// volume / graduated_percentage / package price depend on the whole period's
+// cumulative quantity, so they can only be rated at period close.
+func PayInAdvanceEligible(m ChargeModel) bool {
+	switch m {
+	case ChargePerUnit, ChargePercentage, ChargeDynamic:
+		return true
+	}
+	return false
+}
+
 // ValidChargeModel reports whether m is a supported charge model.
 func ValidChargeModel(m ChargeModel) bool {
 	switch m {
@@ -156,6 +169,10 @@ type Charge struct {
 	MetricID    uuid.UUID                `json:"metric_id"`
 	ChargeModel ChargeModel              `json:"charge_model"`
 	Amounts     map[string]ChargeAmounts `json:"amounts"`
+	// PayInAdvance rates this charge per usage event at ingestion time
+	// (captured as an unbilled charge) instead of aggregating at period close.
+	// Only non-cumulative models may set it (see PayInAdvanceEligible).
+	PayInAdvance bool `json:"pay_in_advance,omitempty"`
 	// HSNCode taxes this charge's invoice lines; empty falls back to the
 	// plan HSN, then the tenant SAC (the existing resolution chain).
 	HSNCode   string    `json:"hsn_code,omitempty"`

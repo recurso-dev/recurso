@@ -166,8 +166,8 @@ func (r *ChargeRepository) ReplaceForPlan(ctx context.Context, tenantID, planID 
 
 	const insert = `
 		INSERT INTO plan_charges
-			(id, tenant_id, plan_id, metric_id, charge_model, amounts, hsn_code, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			(id, tenant_id, plan_id, metric_id, charge_model, amounts, hsn_code, pay_in_advance, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 	for _, ch := range charges {
 		amounts, err := json.Marshal(ch.Amounts)
@@ -176,7 +176,7 @@ func (r *ChargeRepository) ReplaceForPlan(ctx context.Context, tenantID, planID 
 		}
 		if _, err := tx.ExecContext(ctx, insert,
 			ch.ID, tenantID, planID, ch.MetricID, ch.ChargeModel,
-			amounts, ch.HSNCode, ch.CreatedAt, ch.UpdatedAt,
+			amounts, ch.HSNCode, ch.PayInAdvance, ch.CreatedAt, ch.UpdatedAt,
 		); err != nil {
 			return fmt.Errorf("failed to insert plan charge: %w", err)
 		}
@@ -188,7 +188,7 @@ func (r *ChargeRepository) ReplaceForPlan(ctx context.Context, tenantID, planID 
 func (r *ChargeRepository) ListByPlan(ctx context.Context, tenantID, planID uuid.UUID) ([]domain.Charge, error) {
 	rows, err := r.db.QueryContext(ctx, `
 		SELECT c.id, c.tenant_id, c.plan_id, c.metric_id, c.charge_model, c.amounts, c.hsn_code,
-		       c.created_at, c.updated_at,
+		       c.pay_in_advance, c.created_at, c.updated_at,
 		       m.id, m.tenant_id, m.name, m.code, m.aggregation_type, m.field_name, m.created_at, m.updated_at
 		FROM plan_charges c
 		JOIN billable_metrics m ON m.id = c.metric_id
@@ -210,7 +210,7 @@ func (r *ChargeRepository) ListByPlan(ctx context.Context, tenantID, planID uuid
 		)
 		if err := rows.Scan(
 			&ch.ID, &ch.TenantID, &ch.PlanID, &ch.MetricID, &ch.ChargeModel, &amounts, &ch.HSNCode,
-			&ch.CreatedAt, &ch.UpdatedAt,
+			&ch.PayInAdvance, &ch.CreatedAt, &ch.UpdatedAt,
 			&m.ID, &m.TenantID, &m.Name, &m.Code, &m.AggregationType, &m.FieldName, &m.CreatedAt, &m.UpdatedAt,
 		); err != nil {
 			return nil, err
