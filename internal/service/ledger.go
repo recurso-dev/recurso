@@ -23,10 +23,118 @@ type LedgerService struct {
 	// nil-safe: unset, reports fall back to reportingCurrency (default "USD").
 	tenantLookup      TenantLookup
 	reportingCurrency string
+	// entities resolves a posting's legal entity (Multi-Entity Books) so each
+	// entity keeps its own ledger + chart of accounts. Optional and nil-safe:
+	// unset, every posting resolves to the tenant's primary ledger (LedgerID 1),
+	// which is byte-identical to single-entity behavior.
+	entities entityLedgerReader
+}
+
+// entityLedgerReader is the slice of the entity repository the ledger needs.
+type entityLedgerReader interface {
+	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Entity, error)
+	GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error)
 }
 
 func NewLedgerService(tbClient *tigerbeetle.LedgerClient, pgRepo port.LedgerRepository) *LedgerService {
 	return &LedgerService{tbClient: tbClient, pgRepo: pgRepo, reportingCurrency: "USD"}
+}
+
+// SetEntityReader wires per-entity ledger resolution (Multi-Entity Books).
+// nil-safe: without it, postings use the primary ledger.
+func (s *LedgerService) SetEntityReader(r entityLedgerReader) { s.entities = r }
+
+// ledgerEntity is the resolved posting entity: its TigerBeetle ledger id and
+// whether it's the tenant's primary (whose books stay byte-identical to today).
+type ledgerEntity struct {
+	ID       uuid.UUID
+	LedgerID uint32
+	Primary  bool
+}
+
+// arNamespace derives a stable AR sub-ledger account id per (entity, customer)
+// for non-primary entities — the primary entity keeps using the customer id
+// directly, so existing AR accounts are unchanged.
+var arNamespace = uuid.MustParse("a5b0e1f2-0000-4000-8000-00000000a500")
+
+// resolveEntity determines which entity (and ledger) a posting belongs to. A nil
+// entityID, an unresolved id, or no wired reader all fall back to the primary
+// ledger — so single-entity tenants and legacy callers are unchanged.
+func (s *LedgerService) resolveEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ledgerEntity {
+	primary := ledgerEntity{LedgerID: 1, Primary: true}
+	if s.entities == nil {
+		return primary
+	}
+	if entityID != nil {
+		if e, err := s.entities.GetByID(ctx, *entityID, tenantID); err == nil && e != nil {
+			return ledgerEntity{ID: e.ID, LedgerID: uint32(e.TBLedgerID), Primary: e.IsPrimary}
+		}
+	}
+	if e, err := s.entities.GetPrimary(ctx, tenantID); err == nil && e != nil {
+		return ledgerEntity{ID: e.ID, LedgerID: uint32(e.TBLedgerID), Primary: e.IsPrimary}
+	}
+	return primary
+}
+
+// arAccountID is the AR sub-ledger account id for an (entity, customer). The
+// primary entity uses the customer id directly (unchanged); other entities get
+// a stable derived id so their receivables are isolated.
+func (s *LedgerService) arAccountID(ent ledgerEntity, customerID uuid.UUID) uuid.UUID {
+	if ent.Primary {
+		return customerID
+	}
+	return uuid.NewSHA1(arNamespace, append(append([]byte{}, ent.ID[:]...), customerID[:]...))
+}
+
+// ensureEntityAR provisions the (entity, customer) AR account before a posting
+// references it (idempotent). Primary entity → the legacy per-customer path.
+func (s *LedgerService) ensureEntityAR(ctx context.Context, tenantID uuid.UUID, ent ledgerEntity, customerID uuid.UUID) {
+	if ent.Primary {
+		s.ensureCustomerAR(ctx, tenantID, customerID)
+		return
+	}
+	if s.pgRepo == nil {
+		return
+	}
+	entID := ent.ID
+	_ = s.pgRepo.CreateAccount(ctx, &domain.LedgerAccount{
+		ID:       s.arAccountID(ent, customerID),
+		TenantID: tenantID,
+		EntityID: &entID,
+		Name:     "Accounts Receivable",
+		Type:     domain.AccountTypeAsset,
+		Code:     domain.AccountCodeAR,
+		LedgerID: ent.LedgerID,
+	})
+}
+
+// getOrCreateEntityAccount resolves a GL account for an entity, creating it on
+// the entity's ledger when absent. The primary entity delegates to the legacy
+// per-tenant path, so its accounts (and account ids) are byte-identical.
+func (s *LedgerService) getOrCreateEntityAccount(ctx context.Context, tenantID uuid.UUID, ent ledgerEntity, code int, name string, accType domain.AccountType) (uuid.UUID, error) {
+	if ent.Primary || ent.ID == uuid.Nil {
+		return s.getOrCreateTenantAccount(ctx, tenantID, code, name, accType)
+	}
+	if s.pgRepo == nil {
+		return uuid.Nil, fmt.Errorf("ledger repository not configured")
+	}
+	if acc, err := s.pgRepo.GetAccountByEntityAndCode(ctx, tenantID, ent.ID, code); err == nil && acc != nil {
+		return acc.ID, nil
+	}
+	entID := ent.ID
+	acc := &domain.LedgerAccount{
+		ID:       uuid.New(),
+		TenantID: tenantID,
+		EntityID: &entID,
+		Name:     name,
+		Type:     accType,
+		Code:     code,
+		LedgerID: ent.LedgerID,
+	}
+	if err := s.pgRepo.CreateAccount(ctx, acc); err != nil {
+		return uuid.Nil, fmt.Errorf("failed to provision %s account for entity %s: %w", name, ent.ID, err)
+	}
+	return acc.ID, nil
 }
 
 // SetReporting wires the reporting currency for the read-only ledger reports:
@@ -161,7 +269,10 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	if invoice.Total < 0 || invoice.TaxAmount < 0 || invoice.TaxAmount > invoice.Total {
 		return fmt.Errorf("invoice %s: invalid amounts (total=%d tax=%d)", invoice.ID, invoice.Total, invoice.TaxAmount)
 	}
-	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
+	// Resolve the issuing entity (Multi-Entity Books) — the primary entity keeps
+	// LedgerID 1 and the customer-id AR account, so its books are unchanged.
+	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
+	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
 
 	// A subscription invoice bills for a service delivered over the period, so
 	// its revenue is DEFERRED (a liability) and recognized month-by-month by the
@@ -171,9 +282,9 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	var revenueAccountID uuid.UUID
 	var err error
 	if invoice.SubscriptionID != nil {
-		revenueAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	} else {
-		revenueAccountID, err = s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
 	}
 	if err != nil {
 		return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
@@ -188,9 +299,10 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	// The reconciler expects exactly one Code-1 per invoice summing to the total,
 	// and uq_ledger_tx_reference_code enforces one row per (reference_id, code) —
 	// so GST is handled as a separate reclassification below, not a 2nd Code-1.
+	arID := s.arAccountID(ent, invoice.CustomerID)
 	transfers := []*domain.LedgerTransaction{{
-		ID: uuid.New(), DebitAccountID: invoice.CustomerID, CreditAccountID: revenueAccountID,
-		Amount: total, LedgerID: 1, Code: 1, ReferenceID: invoice.ID,
+		ID: uuid.New(), DebitAccountID: arID, CreditAccountID: revenueAccountID,
+		Amount: total, LedgerID: ent.LedgerID, Code: 1, ReferenceID: invoice.ID,
 		Description: "Invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 	}}
 
@@ -199,7 +311,7 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	// Revenue/Deferred, credit Tax Payable, under a distinct code. Net effect:
 	// Revenue = taxable value, Tax Payable = GST, AR = gross; trial balance holds.
 	if invoice.TaxAmount > 0 {
-		taxAccountID, terr := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+		taxAccountID, terr := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
 		if terr != nil {
 			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, terr)
 		}
@@ -209,7 +321,7 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 		}
 		transfers = append(transfers, &domain.LedgerTransaction{
 			ID: uuid.New(), DebitAccountID: revenueAccountID, CreditAccountID: taxAccountID,
-			Amount: taxAmt, LedgerID: 1, Code: domain.LedgerCodeOutputTax, ReferenceID: invoice.ID,
+			Amount: taxAmt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeOutputTax, ReferenceID: invoice.ID,
 			Description: "GST on invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 		})
 	}
@@ -259,7 +371,9 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 			invoice.ID, invoice.Total, invoice.CreditApplied, invoice.TDSAmount, alreadySettled)
 	}
 
-	s.ensureCustomerAR(ctx, invoice.TenantID, invoice.CustomerID)
+	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
+	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
+	arID := s.arAccountID(ent, invoice.CustomerID)
 	var transfers []*domain.LedgerTransaction
 
 	// TDS leg: the customer withheld this portion and remits it to the
@@ -271,16 +385,16 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 		if err != nil {
 			return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 		}
-		tdsAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeTDSReceivable, "TDS Receivable", domain.AccountTypeAsset)
+		tdsAccountID, err := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeTDSReceivable, "TDS Receivable", domain.AccountTypeAsset)
 		if err != nil {
 			return fmt.Errorf("ledger write failed for TDS on invoice %s: %w", invoice.ID, err)
 		}
 		transfers = append(transfers, &domain.LedgerTransaction{
 			ID:              uuid.New(),
-			DebitAccountID:  tdsAccountID,       // TDS Receivable
-			CreditAccountID: invoice.CustomerID, // AR
+			DebitAccountID:  tdsAccountID, // TDS Receivable
+			CreditAccountID: arID,         // AR
 			Amount:          tdsAmount,
-			LedgerID:        1,
+			LedgerID:        ent.LedgerID,
 			Code:            domain.LedgerCodeTDSReceivable,
 			ReferenceID:     invoice.ID,
 			Description:     "TDS deducted at source on " + invoice.InvoiceNumber,
@@ -298,16 +412,16 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 		if err != nil {
 			return fmt.Errorf("invoice %s: %w", invoice.ID, err)
 		}
-		cashAccountID, err := s.getOrCreateTenantAccount(ctx, invoice.TenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+		cashAccountID, err := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
 		if err != nil {
 			return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
 		}
 		transfers = append(transfers, &domain.LedgerTransaction{
 			ID:              uuid.New(),
-			DebitAccountID:  cashAccountID,      // Cash
-			CreditAccountID: invoice.CustomerID, // AR
+			DebitAccountID:  cashAccountID, // Cash
+			CreditAccountID: arID,          // AR
 			Amount:          amount,
-			LedgerID:        1,
+			LedgerID:        ent.LedgerID,
 			Code:            3, // Payment
 			ReferenceID:     invoice.ID,
 			Description:     "Payment for " + invoice.InvoiceNumber,

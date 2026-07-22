@@ -218,8 +218,11 @@ type GeneralLedgerRow struct {
 
 // LedgerAccount represents a financial account in the ledger.
 type LedgerAccount struct {
-	ID            uuid.UUID   `json:"id" db:"id"`
-	TenantID      uuid.UUID   `json:"tenant_id" db:"tenant_id"`
+	ID       uuid.UUID `json:"id" db:"id"`
+	TenantID uuid.UUID `json:"tenant_id" db:"tenant_id"`
+	// EntityID scopes the account to a legal entity (Multi-Entity Books). Nil on
+	// legacy rows; backfilled to the tenant's primary entity by migration 000129.
+	EntityID      *uuid.UUID  `json:"entity_id,omitempty" db:"entity_id"`
 	Name          string      `json:"name" db:"name"`
 	Type          AccountType `json:"type" db:"type"` // asset, liability, equity, revenue, expense
 	Code          int         `json:"code" db:"code"` // TB: 1000 for Cash etc.

@@ -24,10 +24,10 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, account *domain.Le
 	}
 
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency, balance, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO ledger_accounts (id, tenant_id, entity_id, name, type, code, ledger_id, currency, balance, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 ON CONFLICT (id) DO NOTHING`,
-		account.ID, account.TenantID, account.Name, account.Type, account.Code,
+		account.ID, account.TenantID, account.EntityID, account.Name, account.Type, account.Code,
 		account.LedgerID, account.Currency, account.Balance, account.CreatedAt,
 	)
 	if err != nil {
@@ -143,6 +143,24 @@ func (r *LedgerRepository) GetTrialBalanceLines(ctx context.Context, tenantID uu
 		lines = append(lines, l)
 	}
 	return lines, rows.Err()
+}
+
+// GetAccountByEntityAndCode resolves a GL account scoped to a legal entity
+// (Multi-Entity Books). Used to keep each entity's chart of accounts separate.
+func (r *LedgerRepository) GetAccountByEntityAndCode(ctx context.Context, tenantID, entityID uuid.UUID, code int) (*domain.LedgerAccount, error) {
+	a := &domain.LedgerAccount{}
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
+		 FROM ledger_accounts WHERE tenant_id = $1 AND entity_id = $2 AND code = $3`,
+		tenantID, entityID, code).Scan(&a.ID, &a.TenantID, &a.Name, &a.Type, &a.Code,
+		&a.LedgerID, &a.Currency, &a.DebitsPosted, &a.CreditsPosted, &a.Balance, &a.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ledger account by entity and code: %w", err)
+	}
+	return a, nil
 }
 
 func (r *LedgerRepository) GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error) {
