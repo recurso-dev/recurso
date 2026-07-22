@@ -114,9 +114,15 @@ func main() {
 	}
 	defer func() { _ = database.Close() }()
 
-	// 2. Run Migrations
+	// 2. Run Migrations — FAIL CLOSED. A migration error means the DB schema does
+	// not match what this binary expects; booting anyway would serve requests
+	// against a stale/incomplete schema (which is exactly how prod once served
+	// 500s after a deploy that didn't migrate). Exit non-zero so Cloud Run's
+	// health-gated rollout holds the previous healthy revision instead of routing
+	// traffic to a mis-migrated one. RunMigrations already treats ErrNoChange as
+	// success, so any error returned here is a genuine schema failure.
 	if err := db.RunMigrations(dbURL); err != nil {
-		log.Printf("Migration warning: %v", err)
+		log.Fatalf("FATAL: database migrations failed — refusing to boot on a mismatched schema: %v", err)
 	}
 
 	// 3. Initialize Repositories
