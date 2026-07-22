@@ -12,7 +12,7 @@ import (
 
 type fakeEUConfig struct{ cfg *domain.TenantEUConfig }
 
-func (f *fakeEUConfig) GetByTenantID(_ context.Context, _ uuid.UUID) (*domain.TenantEUConfig, error) {
+func (f *fakeEUConfig) GetByTenantEntity(_ context.Context, _ uuid.UUID, _ *uuid.UUID) (*domain.TenantEUConfig, error) {
 	return f.cfg, nil
 }
 

@@ -44,7 +44,7 @@ type EUEInvoiceService struct {
 // euConfigReader / euInvoiceWriter are the narrow persistence the service needs;
 // satisfied by *db.TenantEUConfigRepository and *db.EUInvoiceRepository.
 type euConfigReader interface {
-	GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantEUConfig, error)
+	GetByTenantEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*domain.TenantEUConfig, error)
 }
 
 type euInvoiceWriter interface {
@@ -68,7 +68,12 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 	if s == nil || s.transport == nil || s.configRepo == nil || s.invoices == nil {
 		return nil, nil
 	}
-	cfg, err := s.configRepo.GetByTenantID(ctx, inv.TenantID)
+	// Resolve the seller party for the invoice's issuing entity (Multi-Entity
+	// Books Inc 3b): the primary entity uses the tenant default; a non-primary
+	// entity uses its own EU registration. A non-primary entity with no config
+	// of its own resolves to nil and is skipped below — strictly never filed
+	// under the tenant default's VAT id.
+	cfg, err := s.configRepo.GetByTenantEntity(ctx, inv.TenantID, inv.EntityID)
 	if err != nil {
 		return nil, fmt.Errorf("eu e-invoice: load tenant config: %w", err)
 	}
