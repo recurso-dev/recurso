@@ -203,7 +203,10 @@ func (s *SubscriptionService) SetAddonRepository(r port.SubscriptionAddonReposit
 }
 
 type CreateSubscriptionInput struct {
-	TenantID          uuid.UUID
+	TenantID uuid.UUID
+	// EntityID is the issuing legal entity (Multi-Entity Books). Nil ⇒ the
+	// tenant's primary entity (backward-compatible default).
+	EntityID          *uuid.UUID
 	CustomerID        uuid.UUID
 	PlanID            uuid.UUID
 	StartDate         time.Time
@@ -397,6 +400,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	sub := &domain.Subscription{
 		ID:                 subID,
 		TenantID:           input.TenantID,
+		EntityID:           input.EntityID,
 		CustomerID:         input.CustomerID,
 		PlanID:             input.PlanID,
 		Status:             subStatus,

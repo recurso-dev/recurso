@@ -18,8 +18,11 @@ const (
 )
 
 type Subscription struct {
-	ID                 uuid.UUID          `json:"id"`
-	TenantID           uuid.UUID          `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	// EntityID is the issuing legal entity (Multi-Entity Books). Nil ⇒ the
+	// tenant's primary entity, so its invoices post to that entity's ledger.
+	EntityID           *uuid.UUID         `json:"entity_id,omitempty"`
 	CustomerID         uuid.UUID          `json:"customer_id"`
 	PlanID             uuid.UUID          `json:"plan_id"`
 	Status             SubscriptionStatus `json:"status"`

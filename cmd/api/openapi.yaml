@@ -8412,6 +8412,10 @@ components:
         plan_id:
           type: string
           format: uuid
+        entity_id:
+          type: string
+          format: uuid
+          description: "Multi-Entity Books: the issuing legal entity. Omit for the tenant's primary entity."
         coupon_code:
           type: string
         start_date:
