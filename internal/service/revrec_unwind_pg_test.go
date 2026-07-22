@@ -144,7 +144,7 @@ func TestUnwindOnCancel_Postgres(t *testing.T) {
 	if err := ledger.RecordInvoice(ctx, inv); err != nil {
 		t.Fatalf("RecordInvoice: %v", err)
 	}
-	if _, err := ledger.RecordRecognition(ctx, tenantID, 20000, uuid.New()); err != nil {
+	if _, err := ledger.RecordRecognition(ctx, tenantID, nil, 20000, uuid.New()); err != nil {
 		t.Fatalf("seed recognition: %v", err)
 	}
 	schedID := seedRevRecSchedule(t, conn, tenantID, invID, subID, 10000, 10) // 100000 pending

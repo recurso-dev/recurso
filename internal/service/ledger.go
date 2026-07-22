@@ -849,18 +849,22 @@ func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([
 // id, which makes the posting attributable in reconciliation and idempotent (the
 // ENG-142 unique index on (reference_id, code) means a replayed event never
 // double-posts).
-func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, amount int64, referenceID uuid.UUID) (uuid.UUID, error) {
+func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, amount int64, referenceID uuid.UUID) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, err
 	}
 	txID := uuid.New()
 
-	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	// Multi-Entity Books: recognition must drain the SAME entity's Deferred that
+	// RecordInvoice credited at invoice time. A nil entityID resolves to the
+	// primary entity, so single-entity tenants are byte-identical.
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	deferredAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	recognizedAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRecognizedRevenue, "Recognized Revenue", domain.AccountTypeRevenue)
+	recognizedAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeRecognizedRevenue, "Recognized Revenue", domain.AccountTypeRevenue)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -870,7 +874,7 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 		DebitAccountID:  deferredAccountID,
 		CreditAccountID: recognizedAccountID,
 		Amount:          amt,
-		LedgerID:        1,
+		LedgerID:        ent.LedgerID,
 		Code:            2, // Revenue Recognition
 		ReferenceID:     referenceID,
 		Description:     "Revenue recognition",

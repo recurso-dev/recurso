@@ -57,7 +57,7 @@ func TestLedgerSignedBalance_Postgres(t *testing.T) {
 	}
 
 	// Full recognition: DR Deferred (2100) / CR Recognized (4100).
-	if _, err := svc.RecordRecognition(ctx, tenantID, amount, uuid.New()); err != nil {
+	if _, err := svc.RecordRecognition(ctx, tenantID, nil, amount, uuid.New()); err != nil {
 		t.Fatalf("RecordRecognition: %v", err)
 	}
 

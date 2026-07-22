@@ -48,7 +48,7 @@ func TestDeferredRollforward_Postgres(t *testing.T) {
 	if err := svc.RecordInvoice(ctx, subInv); err != nil { // DR AR / CR Deferred 12000
 		t.Fatalf("RecordInvoice: %v", err)
 	}
-	if _, err := svc.RecordRecognition(ctx, tenantID, 2000, uuid.New()); err != nil { // DR Deferred / CR Recognized 2000
+	if _, err := svc.RecordRecognition(ctx, tenantID, nil, 2000, uuid.New()); err != nil { // DR Deferred / CR Recognized 2000
 		t.Fatalf("RecordRecognition: %v", err)
 	}
 
