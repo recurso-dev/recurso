@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Notifications from '../Notifications';
 import { describe, it, expect, vi } from 'vitest';
 import { endpoints } from '../../lib/api';
@@ -28,13 +29,13 @@ const mockEvents = [
 describe('Notifications Page', () => {
     it('displays loading state initially', async () => {
         endpoints.getEvents.mockReturnValue(new Promise(() => { })); // Hang
-        render(<Notifications />);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><Notifications /></QueryClientProvider>);
         expect(screen.getByText('Loading notifications...')).toBeInTheDocument();
     });
 
     it('renders notifications from API', async () => {
         endpoints.getEvents.mockResolvedValue({ data: { data: mockEvents } });
-        render(<Notifications />);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><Notifications /></QueryClientProvider>);
 
         await waitFor(() => {
             expect(screen.queryByText('Loading notifications...')).not.toBeInTheDocument();
@@ -46,7 +47,7 @@ describe('Notifications Page', () => {
 
     it('displays empty state', async () => {
         endpoints.getEvents.mockResolvedValue({ data: { data: [] } });
-        render(<Notifications />);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><Notifications /></QueryClientProvider>);
 
         await waitFor(() => {
             expect(screen.getByText('No notifications found.')).toBeInTheDocument();

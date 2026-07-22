@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   UserPlus,
@@ -13,65 +13,58 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { Card } from "@/components/ui/card";
 
 export default function Notifications() {
-  const [notifications, setNotifications] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const {
+    data: notifications = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => {
+      const response = await endpoints.getEvents({ limit: 20 });
+      // Map events to notification format.
+      return (response.data.data || []).map((evt) => {
+        let title = "System Event";
+        let description = `Event ${evt.type} occurred on ${evt.object_type}`;
+        let Icon = Bell;
 
-  useEffect(() => {
-    const fetchNotifications = async () => {
-      try {
-        const response = await endpoints.getEvents({ limit: 20 });
-        // Map events to notification format.
-        const mapped = (response.data.data || []).map((evt) => {
-          let title = "System Event";
-          let description = `Event ${evt.type} occurred on ${evt.object_type}`;
-          let Icon = Bell;
+        switch (evt.type) {
+          case "subscription.created":
+            title = "New Subscription";
+            description = "A new subscription was created.";
+            Icon = UserPlus;
+            break;
+          case "invoice.paid":
+            title = "Payment Received";
+            description = "Invoice was successfully paid.";
+            Icon = CreditCard;
+            break;
+          case "invoice.payment_failed":
+            title = "Payment Failed";
+            description = "Payment processing failed for invoice.";
+            Icon = AlertCircle;
+            break;
+          case "customer.created":
+            title = "New Customer";
+            description = "A new customer has been registered.";
+            Icon = UserRound;
+            break;
+          default:
+            title = evt.type.replace(".", " ").replace(/\b\w/g, (l) => l.toUpperCase());
+            Icon = Bell;
+        }
 
-          switch (evt.type) {
-            case "subscription.created":
-              title = "New Subscription";
-              description = "A new subscription was created.";
-              Icon = UserPlus;
-              break;
-            case "invoice.paid":
-              title = "Payment Received";
-              description = "Invoice was successfully paid.";
-              Icon = CreditCard;
-              break;
-            case "invoice.payment_failed":
-              title = "Payment Failed";
-              description = "Payment processing failed for invoice.";
-              Icon = AlertCircle;
-              break;
-            case "customer.created":
-              title = "New Customer";
-              description = "A new customer has been registered.";
-              Icon = UserRound;
-              break;
-            default:
-              title = evt.type.replace(".", " ").replace(/\b\w/g, (l) => l.toUpperCase());
-              Icon = Bell;
-          }
-
-          return {
-            id: evt.id,
-            title,
-            description,
-            time: new Date(evt.created_at).toLocaleString(),
-            Icon,
-            read: false, // No backend support yet.
-          };
-        });
-        setNotifications(mapped);
-      } catch (err) {
-        console.error("Failed to fetch notifications:", err);
-        setError("Failed to load notifications.");
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchNotifications();
-  }, []);
+        return {
+          id: evt.id,
+          title,
+          description,
+          time: new Date(evt.created_at).toLocaleString(),
+          Icon,
+          read: false, // No backend support yet.
+        };
+      });
+    },
+  });
+  const error = queryError ? "Failed to load notifications." : null;
 
   return (
     <div className="mx-auto max-w-3xl">
