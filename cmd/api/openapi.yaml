@@ -6719,9 +6719,10 @@ paths:
       tags: [Wallets]
       summary: Create a prepaid wallet
       description: >-
-        One wallet per customer+currency, holding money-denominated balance
-        (minor units). At invoice time the wallet drains FIRST — before
-        adjustment credit notes and before the payment gateway.
+        One wallet per customer+entity+currency, holding money-denominated
+        balance (minor units). At invoice time the wallet drains FIRST — before
+        adjustment credit notes and before the payment gateway. A wallet is
+        spendable only on its own entity's invoices.
       operationId: createWallet
       requestBody:
         required: true
@@ -6733,6 +6734,12 @@ paths:
               properties:
                 customer_id: { type: string, format: uuid }
                 currency: { type: string, minLength: 3, maxLength: 3 }
+                entity_id:
+                  type: string
+                  format: uuid
+                  description: >-
+                    Legal entity the wallet belongs to (Multi-Entity Books).
+                    Omit for the tenant's primary entity.
                 auto_recharge_threshold:
                   type: [integer, 'null']
                   format: int64
@@ -8038,6 +8045,7 @@ components:
         and the gateway at invoice time. Amounts are minor units.
       properties:
         id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
         customer_id: { type: string, format: uuid }
         currency: { type: string }
         balance: { type: integer, format: int64 }

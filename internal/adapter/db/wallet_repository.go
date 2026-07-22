@@ -23,11 +23,11 @@ func NewWalletRepository(db *sql.DB) port.WalletRepository {
 	return &WalletRepository{db: db}
 }
 
-const walletColumns = `id, tenant_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at`
+const walletColumns = `id, tenant_id, entity_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at`
 
 func scanWallet(row interface{ Scan(...any) error }) (*domain.Wallet, error) {
 	var w domain.Wallet
-	if err := row.Scan(&w.ID, &w.TenantID, &w.CustomerID, &w.Currency, &w.Balance,
+	if err := row.Scan(&w.ID, &w.TenantID, &w.EntityID, &w.CustomerID, &w.Currency, &w.Balance,
 		&w.AutoRechargeThreshold, &w.AutoRechargeAmount, &w.CreatedAt, &w.UpdatedAt); err != nil {
 		return nil, err
 	}
@@ -36,9 +36,9 @@ func scanWallet(row interface{ Scan(...any) error }) (*domain.Wallet, error) {
 
 func (r *WalletRepository) Create(ctx context.Context, w *domain.Wallet) error {
 	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO wallets (id, tenant_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-		w.ID, w.TenantID, w.CustomerID, w.Currency, w.Balance,
+		INSERT INTO wallets (id, tenant_id, entity_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		w.ID, w.TenantID, w.EntityID, w.CustomerID, w.Currency, w.Balance,
 		w.AutoRechargeThreshold, w.AutoRechargeAmount, w.CreatedAt, w.UpdatedAt,
 	)
 	if err != nil {
@@ -59,10 +59,13 @@ func (r *WalletRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) 
 	return w, nil
 }
 
-func (r *WalletRepository) GetByCustomerAndCurrency(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (*domain.Wallet, error) {
+// GetByCustomerEntityAndCurrency resolves the (customer, entity, currency)
+// wallet — entity-scoped so a balance is spent only on the owning entity's
+// invoices (Multi-Entity Books).
+func (r *WalletRepository) GetByCustomerEntityAndCurrency(ctx context.Context, tenantID, customerID, entityID uuid.UUID, currency string) (*domain.Wallet, error) {
 	w, err := scanWallet(r.db.QueryRowContext(ctx,
-		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND customer_id = $2 AND UPPER(currency) = UPPER($3)`,
-		tenantID, customerID, currency))
+		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND customer_id = $2 AND entity_id = $3 AND UPPER(currency) = UPPER($4)`,
+		tenantID, customerID, entityID, currency))
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

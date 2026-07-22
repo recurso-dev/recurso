@@ -37,18 +37,29 @@ type walletCharger interface {
 	ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
 }
 
-// walletLedger is the slice of LedgerService wallets post through.
+// walletLedger is the slice of LedgerService wallets post through. Wallets are
+// entity-scoped (Multi-Entity Books): top-up/drain legs post on the wallet's
+// own entity ledger.
 type walletLedger interface {
-	RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
-	RecordWalletDrain(ctx context.Context, tenantID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordWalletDrain(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+}
+
+// walletEntityReader resolves the legal entity a new wallet belongs to
+// (Multi-Entity Books). nil-safe: without it wallets are created with a nil
+// entity (single-entity/test contexts), and the DB default handles primary.
+type walletEntityReader interface {
+	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Entity, error)
+	GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error)
 }
 
 type WalletService struct {
 	wallets   port.WalletRepository
 	customers port.CustomerRepository
 	ledger    walletLedger
-	notifier  port.Notifier // auto-recharge failure notices; nil-safe
+	entities  walletEntityReader // nil-safe: entity resolution for new wallets
+	notifier  port.Notifier      // auto-recharge failure notices; nil-safe
 
 	charger walletCharger        // nil-safe: without it auto-recharge only notifies
 	lookup  renewalPaymentLookup // saved-method resolution (shared slice)
@@ -68,6 +79,9 @@ func NewWalletService(wallets port.WalletRepository, customers port.CustomerRepo
 	}
 }
 
+// SetEntityReader wires multi-entity resolution for new wallets (nil-safe).
+func (s *WalletService) SetEntityReader(r walletEntityReader) { s.entities = r }
+
 // SetNotifier wires auto-recharge failure notifications (nil-safe).
 func (s *WalletService) SetNotifier(n port.Notifier) { s.notifier = n }
 
@@ -86,8 +100,11 @@ func (s *WalletService) SetChargerRouter(router renewalChargerRouter) {
 
 // CreateWalletInput creates a wallet, optionally with auto-recharge.
 type CreateWalletInput struct {
-	CustomerID            string `json:"customer_id" binding:"required"`
-	Currency              string `json:"currency" binding:"required"`
+	CustomerID string `json:"customer_id" binding:"required"`
+	Currency   string `json:"currency" binding:"required"`
+	// EntityID scopes the wallet to a legal entity (Multi-Entity Books). Empty
+	// = the tenant's primary entity.
+	EntityID              string `json:"entity_id" binding:"omitempty,uuid"`
 	AutoRechargeThreshold *int64 `json:"auto_recharge_threshold"`
 	AutoRechargeAmount    *int64 `json:"auto_recharge_amount"`
 }
@@ -109,10 +126,16 @@ func (s *WalletService) CreateWallet(ctx context.Context, tenantID uuid.UUID, in
 		return nil, ErrWalletCustomerGone
 	}
 
+	entityID, err := s.resolveWalletEntity(ctx, tenantID, in.EntityID)
+	if err != nil {
+		return nil, err
+	}
+
 	now := s.now()
 	w := &domain.Wallet{
 		ID:                    uuid.New(),
 		TenantID:              tenantID,
+		EntityID:              entityID,
 		CustomerID:            customerID,
 		Currency:              currency,
 		AutoRechargeThreshold: in.AutoRechargeThreshold,
@@ -127,6 +150,38 @@ func (s *WalletService) CreateWallet(ctx context.Context, tenantID uuid.UUID, in
 		return nil, err
 	}
 	return w, nil
+}
+
+// resolveWalletEntity turns the optional entity_id input into the concrete
+// entity id the wallet is scoped to. Empty input → the tenant's primary
+// entity. Without an entity reader wired (single-entity/test contexts) it
+// returns the nil UUID and leaves entity resolution to the DB default.
+func (s *WalletService) resolveWalletEntity(ctx context.Context, tenantID uuid.UUID, entityIDStr string) (uuid.UUID, error) {
+	if s.entities == nil {
+		return uuid.Nil, nil
+	}
+	if entityIDStr != "" {
+		entityID, err := uuid.Parse(entityIDStr)
+		if err != nil {
+			return uuid.Nil, WalletValidationError("invalid entity_id")
+		}
+		e, err := s.entities.GetByID(ctx, entityID, tenantID)
+		if err != nil {
+			return uuid.Nil, err
+		}
+		if e == nil {
+			return uuid.Nil, WalletValidationError("entity not found")
+		}
+		return e.ID, nil
+	}
+	e, err := s.entities.GetPrimary(ctx, tenantID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if e == nil {
+		return uuid.Nil, nil
+	}
+	return e.ID, nil
 }
 
 func validateAutoRecharge(threshold, amount *int64) error {
@@ -219,13 +274,14 @@ func (s *WalletService) TopUp(ctx context.Context, tenantID, walletID uuid.UUID,
 		return nil, err
 	}
 
-	s.postTopUpLedger(ctx, tenantID, wtx, source)
+	s.postTopUpLedger(ctx, tenantID, w.EntityID, wtx, source)
 	return wtx, nil
 }
 
 // postTopUpLedger books the top-up: paid credit moves cash, promotional
 // credit books an expense. Best-effort — reconciliation catches misses.
-func (s *WalletService) postTopUpLedger(ctx context.Context, tenantID uuid.UUID, wtx *domain.WalletTransaction, source string) {
+// entityID scopes the postings to the wallet's legal entity ledger.
+func (s *WalletService) postTopUpLedger(ctx context.Context, tenantID, entityID uuid.UUID, wtx *domain.WalletTransaction, source string) {
 	if s.ledger == nil {
 		return
 	}
@@ -233,7 +289,7 @@ func (s *WalletService) postTopUpLedger(ctx context.Context, tenantID uuid.UUID,
 	if source == domain.WalletSourcePromotional {
 		_, err = s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, wtx.ID, wtx.Amount, "Promotional wallet credit")
 	} else {
-		_, err = s.ledger.RecordWalletTopUp(ctx, tenantID, wtx.ID, wtx.Amount, fmt.Sprintf("Wallet top-up (%s)", source))
+		_, err = s.ledger.RecordWalletTopUp(ctx, tenantID, entityPtr(entityID), wtx.ID, wtx.Amount, fmt.Sprintf("Wallet top-up (%s)", source))
 	}
 	if err != nil {
 		slog.Error("wallet top-up ledger posting failed", "wallet_tx_id", wtx.ID, "error", err)
@@ -274,7 +330,13 @@ func (s *WalletService) DrainForInvoice(ctx context.Context, inv *domain.Invoice
 	if inv == nil || inv.Total <= 0 {
 		return 0, nil
 	}
-	w, err := s.wallets.GetByCustomerAndCurrency(ctx, inv.TenantID, inv.CustomerID, inv.Currency)
+	// A wallet is spendable only on its own entity's invoices — resolve the
+	// invoice's concrete entity and look the wallet up scoped to it.
+	entityID, err := s.resolveInvoiceEntity(ctx, inv.TenantID, inv.EntityID)
+	if err != nil {
+		return 0, err
+	}
+	w, err := s.wallets.GetByCustomerEntityAndCurrency(ctx, inv.TenantID, inv.CustomerID, entityID, inv.Currency)
 	if err != nil || w == nil || w.Balance <= 0 {
 		return 0, err
 	}
@@ -287,11 +349,41 @@ func (s *WalletService) DrainForInvoice(ctx context.Context, inv *domain.Invoice
 		return 0, err
 	}
 	if s.ledger != nil {
-		if _, lErr := s.ledger.RecordWalletDrain(ctx, inv.TenantID, inv.CustomerID, inv.ID, drained, "Wallet applied to invoice"); lErr != nil {
+		if _, lErr := s.ledger.RecordWalletDrain(ctx, inv.TenantID, entityPtr(w.EntityID), inv.CustomerID, inv.ID, drained, "Wallet applied to invoice"); lErr != nil {
 			slog.Error("wallet drain ledger posting failed", "invoice_id", inv.ID, "error", lErr)
 		}
 	}
 	return drained, nil
+}
+
+// resolveInvoiceEntity turns an invoice's optional entity pointer into the
+// concrete entity id the wallet lookup keys on. A non-nil pointer is trusted
+// (it was validated at invoice creation); nil falls back to the primary
+// entity, or the nil UUID when no entity reader is wired.
+func (s *WalletService) resolveInvoiceEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (uuid.UUID, error) {
+	if entityID != nil {
+		return *entityID, nil
+	}
+	if s.entities == nil {
+		return uuid.Nil, nil
+	}
+	e, err := s.entities.GetPrimary(ctx, tenantID)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if e == nil {
+		return uuid.Nil, nil
+	}
+	return e.ID, nil
+}
+
+// entityPtr returns a pointer to id, or nil when id is the zero UUID — so
+// ledger postings resolve to the primary entity in single-entity contexts.
+func entityPtr(id uuid.UUID) *uuid.UUID {
+	if id == uuid.Nil {
+		return nil
+	}
+	return &id
 }
 
 // ExpireOverdueCredits writes off expired promotional residue (called from
@@ -371,7 +463,7 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 			"wallet_id", w.ID, "amount", amount, "payment_id", result.PaymentID, "error", err)
 		return false
 	}
-	s.postTopUpLedger(ctx, w.TenantID, wtx, domain.WalletSourceManual) // cash received
+	s.postTopUpLedger(ctx, w.TenantID, w.EntityID, wtx, domain.WalletSourceManual) // cash received
 	slog.Info("wallet auto-recharged", "wallet_id", w.ID, "amount", amount)
 	return true
 }

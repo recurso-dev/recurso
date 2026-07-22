@@ -39,10 +39,18 @@ func TestWalletDrainFIFOAndExpiry_Postgres(t *testing.T) {
 	mustExec(t, conn, `INSERT INTO customers (id, tenant_id, name, email, ledger_account_id, created_at) VALUES ($1,$2,$3,$4,$5,NOW())`,
 		customerID, tenantID, "Wal Cust", "w-"+customerID.String()[:8]+"@example.com", uuid.New())
 
+	// The tenant-insert trigger provisions a primary entity; wallets are
+	// entity-scoped (Multi-Entity Books), so scope this one to it.
+	var entityID uuid.UUID
+	if err := conn.QueryRowContext(ctx,
+		`SELECT id FROM entities WHERE tenant_id=$1 AND is_primary`, tenantID).Scan(&entityID); err != nil {
+		t.Fatalf("primary entity: %v", err)
+	}
+
 	repo := db.NewWalletRepository(conn)
 	now := time.Now().UTC()
 	wallet := &domain.Wallet{
-		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID,
+		ID: uuid.New(), TenantID: tenantID, EntityID: entityID, CustomerID: customerID,
 		Currency: "INR", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := repo.Create(ctx, wallet); err != nil {
