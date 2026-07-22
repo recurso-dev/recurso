@@ -49,11 +49,19 @@ func (r *IRPConfigRepository) GetByTenantID(ctx context.Context, tenantID uuid.U
 	return r.GetByTenantEntity(ctx, tenantID, nil, env)
 }
 
-func (r *IRPConfigRepository) Upsert(ctx context.Context, config *domain.IRPConfig) error {
-	query := `
-		INSERT INTO tenant_irp_configs (tenant_id, environment, client_id, client_secret, username, password, gstin, is_enabled, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
-		ON CONFLICT (tenant_id, environment) WHERE entity_id IS NULL
+// Upsert writes the IRP config for an issuing entity + environment (Multi-Entity
+// Books Inc 3b): a nil entityID writes the tenant/primary default (entity_id
+// NULL), a non-primary entity writes its own row. The ON CONFLICT target matches
+// the partial unique index for whichever case applies.
+func (r *IRPConfigRepository) Upsert(ctx context.Context, entityID *uuid.UUID, config *domain.IRPConfig) error {
+	conflict := "(tenant_id, environment) WHERE entity_id IS NULL"
+	if entityID != nil {
+		conflict = "(tenant_id, environment, entity_id) WHERE entity_id IS NOT NULL"
+	}
+	query := fmt.Sprintf(`
+		INSERT INTO tenant_irp_configs (tenant_id, entity_id, environment, client_id, client_secret, username, password, gstin, is_enabled, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		ON CONFLICT %s
 		DO UPDATE SET
 			client_id = EXCLUDED.client_id,
 			client_secret = EXCLUDED.client_secret,
@@ -62,9 +70,9 @@ func (r *IRPConfigRepository) Upsert(ctx context.Context, config *domain.IRPConf
 			gstin = EXCLUDED.gstin,
 			is_enabled = EXCLUDED.is_enabled,
 			updated_at = NOW()
-	`
+	`, conflict)
 	_, err := r.db.ExecContext(ctx, query,
-		config.TenantID, config.Environment, config.ClientID, config.ClientSecret,
+		config.TenantID, entityID, config.Environment, config.ClientID, config.ClientSecret,
 		config.Username, config.Password, config.GSTIN, config.IsEnabled,
 	)
 	if err != nil {

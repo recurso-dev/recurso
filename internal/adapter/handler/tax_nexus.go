@@ -261,7 +261,12 @@ func (h *TaxNexusHandler) GetNexus(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
-	list, err := h.repo.ListByTenant(c.Request.Context(), tenantID)
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+	list, err := h.repo.ListByTenantEntity(c.Request.Context(), tenantID, entityID)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -280,6 +285,12 @@ func (h *TaxNexusHandler) SetNexus(c *gin.Context) {
 		return
 	}
 	if !h.requireManager(c) {
+		return
+	}
+
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
 		return
 	}
 
@@ -310,12 +321,12 @@ func (h *TaxNexusHandler) SetNexus(c *gin.Context) {
 		states = append(states, domain.TaxNexus{StateCode: code, NexusType: nt})
 	}
 
-	if err := h.repo.SetStates(c.Request.Context(), tenantID, states); err != nil {
+	if err := h.repo.SetStates(c.Request.Context(), tenantID, entityID, states); err != nil {
 		respondInternalError(c, err)
 		return
 	}
 
-	list, err := h.repo.ListByTenant(c.Request.Context(), tenantID)
+	list, err := h.repo.ListByTenantEntity(c.Request.Context(), tenantID, entityID)
 	if err != nil {
 		respondInternalError(c, err)
 		return

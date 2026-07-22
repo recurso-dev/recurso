@@ -17,10 +17,10 @@ type fakeEUConfigStore struct {
 	upserted *domain.TenantEUConfig
 }
 
-func (f *fakeEUConfigStore) GetByTenantID(_ context.Context, _ uuid.UUID) (*domain.TenantEUConfig, error) {
+func (f *fakeEUConfigStore) GetByTenantEntity(_ context.Context, _ uuid.UUID, _ *uuid.UUID) (*domain.TenantEUConfig, error) {
 	return f.cfg, nil
 }
-func (f *fakeEUConfigStore) Upsert(_ context.Context, c *domain.TenantEUConfig) error {
+func (f *fakeEUConfigStore) Upsert(_ context.Context, _ *uuid.UUID, c *domain.TenantEUConfig) error {
 	f.upserted = c
 	return nil
 }

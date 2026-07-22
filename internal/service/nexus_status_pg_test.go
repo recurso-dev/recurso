@@ -120,7 +120,7 @@ func TestNexusStatus_ThresholdCrossing_Postgres(t *testing.T) {
 	}
 
 	// A declared nexus must never be downgraded by evaluation.
-	if err := repo.SetStates(ctx, tenantID, []domain.TaxNexus{
+	if err := repo.SetStates(ctx, tenantID, nil, []domain.TaxNexus{
 		{StateCode: "GA", NexusType: domain.NexusPhysical},
 		{StateCode: "WA", NexusType: domain.NexusPhysical},
 	}); err != nil {

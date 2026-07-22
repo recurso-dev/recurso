@@ -44,34 +44,63 @@ func (r *TaxNexusRepository) ListByTenant(ctx context.Context, tenantID uuid.UUI
 	return out, rows.Err()
 }
 
-// SetStates replaces the tenant's entire nexus set atomically.
-func (r *TaxNexusRepository) SetStates(ctx context.Context, tenantID uuid.UUID, states []domain.TaxNexus) error {
+// SetStates replaces an issuing entity's entire nexus set atomically
+// (Multi-Entity Books Inc 3b): a nil entityID manages the tenant/primary set
+// (entity_id NULL), a non-primary entity manages its own — each independently.
+func (r *TaxNexusRepository) SetStates(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, states []domain.TaxNexus) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	// Replace only the tenant/primary set (entity_id NULL); per-entity nexus
-	// sets are managed independently (Multi-Entity Books Inc 3b).
-	if _, err := tx.ExecContext(ctx, `DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND entity_id IS NULL`, tenantID); err != nil {
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND entity_id IS NOT DISTINCT FROM $2`, tenantID, entityID); err != nil {
 		return fmt.Errorf("clear nexus: %w", err)
 	}
-	const ins = `
-		INSERT INTO tenant_tax_nexus (id, tenant_id, state_code, nexus_type, established_at)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (tenant_id, state_code) WHERE entity_id IS NULL DO NOTHING`
+	conflict := "(tenant_id, state_code) WHERE entity_id IS NULL"
+	if entityID != nil {
+		conflict = "(tenant_id, entity_id, state_code) WHERE entity_id IS NOT NULL"
+	}
+	ins := fmt.Sprintf(`
+		INSERT INTO tenant_tax_nexus (id, tenant_id, entity_id, state_code, nexus_type, established_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT %s DO NOTHING`, conflict)
 	for _, n := range states {
 		nt := n.NexusType
 		if nt == "" {
 			nt = domain.NexusPhysical
 		}
-		if _, err := tx.ExecContext(ctx, ins, uuid.New(), tenantID,
+		if _, err := tx.ExecContext(ctx, ins, uuid.New(), tenantID, entityID,
 			strings.ToUpper(strings.TrimSpace(n.StateCode)), nt, n.EstablishedAt); err != nil {
 			return fmt.Errorf("insert nexus: %w", err)
 		}
 	}
 	return tx.Commit()
+}
+
+// ListByTenantEntity lists an issuing entity's nexus set (nil = tenant/primary).
+func (r *TaxNexusRepository) ListByTenantEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ([]domain.TaxNexus, error) {
+	const q = `
+		SELECT id, tenant_id, state_code, nexus_type, established_at, created_at
+		FROM tenant_tax_nexus
+		WHERE tenant_id = $1 AND entity_id IS NOT DISTINCT FROM $2
+		ORDER BY state_code`
+	rows, err := r.db.QueryContext(ctx, q, tenantID, entityID)
+	if err != nil {
+		return nil, fmt.Errorf("list nexus: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.TaxNexus
+	for rows.Next() {
+		var n domain.TaxNexus
+		if err := rows.Scan(&n.ID, &n.TenantID, &n.StateCode, &n.NexusType, &n.EstablishedAt, &n.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan nexus: %w", err)
+		}
+		out = append(out, n)
+	}
+	return out, rows.Err()
 }
 
 // ListRegistrations returns the tenant's US sales-tax registrations (Track D · D4).
