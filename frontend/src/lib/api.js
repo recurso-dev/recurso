@@ -118,8 +118,12 @@ export const endpoints = {
     api.get('/finance/revrec/report', { params: { month, year } }),
   // Provable-ledger auditor reports (ENG-192): trial balance, GL CSV export,
   // the recognition waterfall, and the deferred-revenue rollforward.
-  getTrialBalance: () => api.get('/ledger/trial-balance'),
-  exportGeneralLedger: () => api.get('/ledger/export', { responseType: 'blob' }),
+  // Trial balance, optionally scoped by legal entity (Multi-Entity Books):
+  // pass { entity_id } for one entity, { consolidated: true } to roll every
+  // entity up by account code, or nothing for the all-entities breakdown.
+  getTrialBalance: (params) => api.get('/ledger/trial-balance', { params: params || {} }),
+  exportGeneralLedger: (entityId) =>
+    api.get('/ledger/export', { params: entityParams(entityId), responseType: 'blob' }),
   getRevenueWaterfall: () => api.get('/finance/revrec/waterfall'),
   getDeferredRollforward: (month, year) =>
     api.get('/ledger/deferred-rollforward', { params: { month, year } }),
