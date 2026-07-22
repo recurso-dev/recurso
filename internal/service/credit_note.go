@@ -57,9 +57,9 @@ type CreditNoteRepository interface {
 	GetByRefundID(ctx context.Context, refundID string) (*domain.CreditNote, error)
 	// SumApplicableAdjustments / ApplyAdjustmentCredits back credit application at
 	// billing time (ENG-153).
-	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error)
+	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error)
 
-	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
+	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error)
 }
@@ -102,8 +102,8 @@ func (s *CreditNoteService) SetRevRecService(revrec *RevRecService) {
 
 // SumApplicableAdjustments previews a customer's open adjustment-credit balance
 // in a currency (ENG-153 preview for gateway-first charge paths).
-func (s *CreditNoteService) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
-	return s.repo.SumApplicableAdjustments(ctx, tenantID, customerID, currency)
+func (s *CreditNoteService) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error) {
+	return s.repo.SumApplicableAdjustments(ctx, tenantID, customerID, entityID, currency)
 }
 
 // ApplyAdjustmentCredits draws down a customer's adjustment credit notes against
@@ -111,13 +111,13 @@ func (s *CreditNoteService) SumApplicableAdjustments(ctx context.Context, tenant
 // DR Customer-Credit / CR AR for the amount applied, so the credit liability is
 // drawn down as the receivable is settled. The ledger post is best-effort — a
 // failure is logged for reconciliation and never fails billing.
-func (s *CreditNoteService) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
-	applied, err := s.repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, currency, invoiceID, invoiceTotal)
+func (s *CreditNoteService) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+	applied, err := s.repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, entityID, currency, invoiceID, invoiceTotal)
 	if err != nil {
 		return 0, err
 	}
 	if applied > 0 && s.ledger != nil {
-		if _, lErr := s.ledger.RecordCreditApplication(ctx, tenantID, customerID, invoiceID, applied, "Account credit applied to invoice"); lErr != nil {
+		if _, lErr := s.ledger.RecordCreditApplication(ctx, tenantID, entityID, customerID, invoiceID, applied, "Account credit applied to invoice"); lErr != nil {
 			s.logger.Error("credit application ledger post failed — reconciliation needed",
 				"invoice_id", invoiceID, "amount", applied, "error", lErr)
 		}

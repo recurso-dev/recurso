@@ -129,11 +129,11 @@ func (m *mockCreditNoteRepo) GetByRefundID(ctx context.Context, refundID string)
 	return nil, nil // like the real repo: unknown refund id is (nil, nil)
 }
 
-func (m *mockCreditNoteRepo) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+func (m *mockCreditNoteRepo) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error) {
 	return 0, nil
 }
 
-func (m *mockCreditNoteRepo) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+func (m *mockCreditNoteRepo) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	return 0, nil
 }
 

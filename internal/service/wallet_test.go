@@ -281,7 +281,7 @@ type fakeInvoiceCreditApplier struct {
 	sawCeiling int64
 }
 
-func (f *fakeInvoiceCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+func (f *fakeInvoiceCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	f.sawCeiling = invoiceTotal
 	if f.gives > invoiceTotal {
 		return invoiceTotal, nil
@@ -289,7 +289,7 @@ func (f *fakeInvoiceCreditApplier) ApplyAdjustmentCredits(ctx context.Context, t
 	return f.gives, nil
 }
 
-func (f *fakeInvoiceCreditApplier) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+func (f *fakeInvoiceCreditApplier) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error) {
 	return f.gives, nil
 }
 

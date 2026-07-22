@@ -694,18 +694,20 @@ func (s *LedgerService) RecordAdjustmentCreditIssued(ctx context.Context, tenant
 //	Credit: Customer AR (Asset)         — the customer owes that much less
 //
 // referenceID is the invoice the credit settled; code 7 posts once per invoice.
-func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID, customerID uuid.UUID, referenceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID uuid.UUID, referenceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("credit application %s: %w", referenceID, err)
 	}
-	s.ensureCustomerAR(ctx, tenantID, customerID)
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	s.ensureEntityAR(ctx, tenantID, ent, customerID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	// AR is a per-customer sub-ledger whose account id is the customer id.
-	return s.postTransfer(ctx, creditAccountID, customerID, amt, 7, referenceID, description)
+	// AR is a per-(entity,customer) sub-ledger; the primary entity keeps using
+	// the customer id directly so its books stay byte-identical.
+	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, 7, referenceID, description)
 }
 
 // RecordWalletTopUp books money received into a prepaid wallet (B1):
@@ -754,16 +756,19 @@ func (s *LedgerService) RecordWalletDrain(ctx context.Context, tenantID uuid.UUI
 	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, domain.LedgerCodeWalletDrain, invoiceID, description)
 }
 
-// postTransfer writes a single ledger transfer (PG always; TigerBeetle when
-// connected), surfacing PG failures for retry/reconciliation.
-func (s *LedgerService) postTransfer(ctx context.Context, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {
+// postEntityTransfer writes a single ledger transfer (PG always; TigerBeetle
+// when connected) on a specific entity's ledger, surfacing PG failures for
+// retry/reconciliation. For the primary entity (LedgerID 1) the postings are
+// byte-identical to the pre-multi-entity behavior, so single-entity tenants
+// and the invariant harness are unaffected.
+func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {
 	txID := uuid.New()
 	transfer := &domain.LedgerTransaction{
 		ID:              txID,
 		DebitAccountID:  debitAccountID,
 		CreditAccountID: creditAccountID,
 		Amount:          amount,
-		LedgerID:        1,
+		LedgerID:        ent.LedgerID,
 		Code:            code,
 		ReferenceID:     referenceID,
 		Description:     description,

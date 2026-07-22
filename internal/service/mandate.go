@@ -268,6 +268,15 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 	total := subtotal + tax.Total
 	now := time.Now()
 
+	// The legal entity this debit's invoice belongs to (Multi-Entity Books) —
+	// the subscription's entity (nil = primary on the legacy fixed-amount path).
+	// Credit preview and draw-down both scope to it so a non-primary credit is
+	// never previewed against then drawn from the wrong entity's balance.
+	var entityID *uuid.UUID
+	if sub != nil {
+		entityID = sub.EntityID
+	}
+
 	// Fold the metered lines into the invoice totals; the base line keeps its
 	// own tax split and each metered line carries its own (per-line GST).
 	taxTotal, igst, cgst, sgst := tax.Total, tax.IGST, tax.CGST, tax.SGST
@@ -294,7 +303,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 	// the net; the actual draw-down happens after the invoice exists.
 	var previewCredit int64
 	if s.creditApplier != nil {
-		if sum, sErr := s.creditApplier.SumApplicableAdjustments(ctx, mandate.TenantID, mandate.CustomerID, currency); sErr != nil {
+		if sum, sErr := s.creditApplier.SumApplicableAdjustments(ctx, mandate.TenantID, mandate.CustomerID, entityID, currency); sErr != nil {
 			slog.Default().Error("mandate debit: credit preview failed; charging full amount",
 				"customer_id", mandate.CustomerID, "error", sErr)
 		} else {
@@ -315,6 +324,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 	invoice := &domain.Invoice{
 		ID:              invoiceID,
 		TenantID:        mandate.TenantID,
+		EntityID:        entityID,
 		CustomerID:      mandate.CustomerID,
 		SubscriptionID:  mandate.SubscriptionID,
 		InvoiceNumber:   fmt.Sprintf("MD-%s", invoiceID.String()[:8]),
@@ -434,7 +444,7 @@ func (s *MandateService) chargeMandate(ctx context.Context, mandate *domain.Mand
 	// debit, ApplyAdjustmentCredits marks the invoice paid (no webhook will arrive,
 	// since we skipped the gateway). Best-effort.
 	if s.creditApplier != nil && previewCredit > 0 {
-		applied, aErr := s.creditApplier.ApplyAdjustmentCredits(ctx, mandate.TenantID, mandate.CustomerID, currency, invoice.ID, total)
+		applied, aErr := s.creditApplier.ApplyAdjustmentCredits(ctx, mandate.TenantID, mandate.CustomerID, entityID, currency, invoice.ID, total)
 		if aErr != nil {
 			slog.Default().Error("mandate debit: credit application failed", "invoice_id", invoice.ID, "error", aErr)
 		} else {
