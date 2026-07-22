@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { Scale, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";

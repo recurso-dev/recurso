@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";
-import { useToast } from "../components/Toast";
+import { toast } from "@/components/ui/sonner";
 import { cn, toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -29,7 +29,6 @@ const CURRENCIES = ["USD", "INR", "EUR", "GBP"];
 
 export default function CreatePlan() {
   const navigate = useNavigate();
-  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({

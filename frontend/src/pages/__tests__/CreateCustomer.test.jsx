@@ -4,7 +4,6 @@ import { MemoryRouter } from 'react-router-dom';
 import CreateCustomer from '../CreateCustomer';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
-import { ToastProvider } from '../../components/Toast';
 
 // jsdom lacks these; Radix (Sheet/Select) touches them.
 beforeEach(() => {
@@ -25,9 +24,9 @@ vi.mock('../../lib/api', () => ({
 const renderForm = () =>
     render(
         <MemoryRouter>
-            <ToastProvider>
+            <>
                 <CreateCustomer />
-            </ToastProvider>
+            </>
         </MemoryRouter>
     );
 

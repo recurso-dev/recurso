@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
-import { useToast } from "../Toast";
+import { toast } from "@/components/ui/sonner";
 import PricingSimulator from "./PricingSimulator";
 import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -274,7 +274,6 @@ function chargeSummary(ch, currency) {
 }
 
 export default function PlanCharges({ planId, currency }) {
-  const toast = useToast();
   const [charges, setCharges] = useState([]);
   const [metrics, setMetrics] = useState([]);
   const [loadError, setLoadError] = useState(false);

@@ -4,7 +4,6 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { AuthProvider } from "../../auth/AuthProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "../../components/Toast";
 
 // jsdom in this config doesn't expose localStorage; AuthProvider reads it on init.
 const store = {};
@@ -70,7 +69,7 @@ const wrap = (ui) => (
   <MemoryRouter>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <AuthProvider>
-        <ToastProvider>{ui}</ToastProvider>
+        <>{ui}</>
       </AuthProvider>
     </QueryClientProvider>
   </MemoryRouter>

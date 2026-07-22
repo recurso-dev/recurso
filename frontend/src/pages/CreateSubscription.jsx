@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";
-import { useToast } from "../components/Toast";
+import { toast } from "@/components/ui/sonner";
 import ConsentCheckbox from "../components/ui/ConsentCheckbox";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
@@ -28,7 +28,6 @@ import {
 
 export default function CreateSubscription() {
   const navigate = useNavigate();
-  const toast = useToast();
 
   const [customers, setCustomers] = useState([]);
   const [plans, setPlans] = useState([]);

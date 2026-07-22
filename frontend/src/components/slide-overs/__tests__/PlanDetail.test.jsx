@@ -1,7 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import PlanDetail from '../PlanDetail';
-import { ToastProvider } from '../../Toast';
 import { endpoints } from '../../../lib/api';
 
 // Mock the API module
@@ -32,9 +31,9 @@ const existingEntitlements = [
 ];
 
 const renderPlanDetail = () => render(
-    <ToastProvider>
+    <>
         <PlanDetail plan={plan} isOpen={true} onClose={() => { }} />
-    </ToastProvider>
+    </>
 );
 
 describe('PlanDetail entitlements editor', () => {

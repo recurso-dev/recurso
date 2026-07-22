@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";
-import { useToast } from "../components/Toast";
+import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,6 @@ const INDIA_STATES = [
 
 export default function CreateCustomer() {
   const navigate = useNavigate();
-  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({

@@ -1,7 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import PlanCharges from '../PlanCharges';
-import { ToastProvider } from '../../Toast';
 import { endpoints } from '../../../lib/api';
 
 vi.mock('../../../lib/api', () => ({
@@ -19,9 +18,9 @@ const metrics = [
 
 const renderCharges = () =>
     render(
-        <ToastProvider>
+        <>
             <PlanCharges planId="plan-123" currency="USD" />
-        </ToastProvider>
+        </>
     );
 
 describe('PlanCharges editor', () => {

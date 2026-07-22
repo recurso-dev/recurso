@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { UserPlus, Trash2 } from "lucide-react";
