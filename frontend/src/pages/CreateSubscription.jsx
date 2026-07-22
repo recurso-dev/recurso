@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useCustomers, usePlans } from "@/lib/useCustomers";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
@@ -29,9 +30,9 @@ import {
 export default function CreateSubscription() {
   const navigate = useNavigate();
 
-  const [customers, setCustomers] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
+  // Reference data from the shared cache (ADR-005) — one fetch across the app.
+  const { customers } = useCustomers();
+  const { plans } = usePlans();
   const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -45,24 +46,6 @@ export default function CreateSubscription() {
 
   const setField = (key, value) => setFormData((f) => ({ ...f, [key]: value }));
   const close = () => navigate("/subscriptions");
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [custRes, plansRes] = await Promise.all([
-          endpoints.getCustomers(),
-          endpoints.getPlans(),
-        ]);
-        setCustomers(custRes.data.data || []);
-        setPlans(plansRes.data.data || []);
-      } catch (error) {
-        console.error("Failed to fetch data:", error);
-      } finally {
-        setLoadingData(false);
-      }
-    };
-    fetchData();
-  }, []);
 
   const selectedCustomer = customers.find((c) => c.id === formData.customer_id);
   const selectedPlan = plans.find((p) => p.id === formData.plan_id);
@@ -137,7 +120,7 @@ export default function CreateSubscription() {
       setSubmitting(false);
       return;
     }
-    if (!loadingData) setSubmitting(false);
+    setSubmitting(false);
   };
 
   return (
