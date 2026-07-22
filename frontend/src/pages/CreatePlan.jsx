@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
-import { queryClient } from "@/lib/queryClient";
-import { useToast } from "../components/Toast";
-import { cn } from "@/lib/utils";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/components/ui/sonner";
+import { cn, toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,8 +29,7 @@ const CURRENCIES = ["USD", "INR", "EUR", "GBP"];
 
 export default function CreatePlan() {
   const navigate = useNavigate();
-  const toast = useToast();
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     name: "",
@@ -54,31 +53,32 @@ export default function CreatePlan() {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
-    try {
-      // Map form fields to the API contract: amount (minor units),
-      // interval_unit + interval_count.
-      const payload = {
-        name: formData.name,
-        code: formData.code,
-        currency: formData.currency,
-        amount: Math.round(parseFloat(formData.price) * 100),
-        interval_unit: formData.interval,
-        interval_count: 1,
-      };
-      await endpoints.createPlan(payload);
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createPlan(payload),
+    onSuccess: () => {
       toast.success("Plan created");
       // Pickers and lists share a 60s plans cache — surface the new plan now.
       queryClient.invalidateQueries({ queryKey: ["plans"] });
       navigate("/plans");
-    } catch (error) {
-      toast.error(error?.response?.data?.error?.message || "Failed to create plan");
-    } finally {
-      setLoading(false);
-    }
+    },
+    onError: (error) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create plan"),
+  });
+  const loading = createMutation.isPending;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    // Map form fields to the API contract: amount (minor units),
+    // interval_unit + interval_count.
+    createMutation.mutate({
+      name: formData.name,
+      code: formData.code,
+      currency: formData.currency,
+      amount: toMinorUnits(formData.price, formData.currency),
+      interval_unit: formData.interval,
+      interval_count: 1,
+    });
   };
 
   return (

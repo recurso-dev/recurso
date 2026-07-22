@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import {
   ClipboardCheck,
   CheckCircle2,
@@ -19,6 +20,7 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -38,41 +40,24 @@ const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
 const selectClass =
   "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-// Close-pack amounts are summed across a tenant's accounts (which may span
-// currencies), so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
 export default function MonthEndClose() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [pack, setPack] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getClosePack(month, year);
-      setPack(res.data?.data || null);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message || "Failed to build the close pack",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [month, year]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: pack,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["close-pack", month, year],
+    queryFn: async () => (await endpoints.getClosePack(month, year)).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to build the close pack"
+    : null;
 
   const exportGL = async () => {
     setExporting(true);
@@ -118,6 +103,9 @@ export default function MonthEndClose() {
   const rollforward = pack?.deferred_revenue?.rollforward;
   const recognition = pack?.deferred_revenue?.recognition;
   const ties = pack?.deferred_revenue?.ties;
+  // Reporting currency (tenant base currency) for exponent-correct formatting.
+  const cur = pack?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
   const blockers = pack?.blockers || [];
 
   return (
@@ -165,7 +153,7 @@ export default function MonthEndClose() {
         <CardGridSkeleton count={4} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         pack && (

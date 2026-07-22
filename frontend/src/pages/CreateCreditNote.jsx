@@ -1,7 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
+import { useCustomers } from "@/lib/useCustomers";
+import { toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,8 +26,10 @@ import {
 
 const CreateCreditNote = () => {
   const navigate = useNavigate();
-  const [customers, setCustomers] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
+  // Shared cached customer list (limit 1000 — the old raw fetch defaulted to
+  // limit=10 and silently truncated the dropdown).
+  const { customers } = useCustomers();
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
@@ -34,18 +39,6 @@ const CreateCreditNote = () => {
     reason: "",
     invoice_id: "", // Optional
   });
-
-  useEffect(() => {
-    const fetchCustomers = async () => {
-      try {
-        const res = await endpoints.getCustomers();
-        setCustomers(res.data.data || []);
-      } catch (err) {
-        console.error("Failed to load customers", err);
-      }
-    };
-    fetchCustomers();
-  }, []);
 
   const close = () => navigate("/credit-notes");
 
@@ -64,31 +57,37 @@ const CreateCreditNote = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Convert amount to cents
-      const payload = {
-        ...formData,
-        amount: Math.round(parseFloat(formData.amount) * 100),
-        invoice_id: formData.invoice_id ? formData.invoice_id : null,
-      };
-      if (!payload.invoice_id) delete payload.invoice_id;
-
-      await endpoints.createCreditNote(payload);
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createCreditNote(payload),
+    onSuccess: () => {
+      // Read-your-write: the list is cached for 60s, so invalidate before
+      // navigating or the new credit note won't show until the cache expires.
+      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
       navigate("/credit-notes");
-    } catch (err) {
+    },
+    onError: (err) => {
       console.error(err);
       setError(
         err?.response?.data?.error?.message || "Failed to create credit note"
       );
-    } finally {
-      setLoading(false);
-    }
+    },
+  });
+  const loading = createMutation.isPending;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    setError(null);
+
+    // Convert amount to cents
+    const payload = {
+      ...formData,
+      amount: toMinorUnits(formData.amount, formData.currency),
+      invoice_id: formData.invoice_id ? formData.invoice_id : null,
+    };
+    if (!payload.invoice_id) delete payload.invoice_id;
+
+    createMutation.mutate(payload);
   };
 
   return (

@@ -11,6 +11,7 @@ import {
 } from "@stripe/react-stripe-js";
 
 import { API_ROOT as API_BASE } from "../lib/api";
+import { formatCurrency } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
 // PaymentForm renders the Stripe Payment Element and confirms the intent. It
@@ -346,11 +347,11 @@ export default function Checkout() {
           <>
             <SummaryRow
               label="Subtotal"
-              value={`${invoice.currency} ${(invoice.subtotal / 100).toFixed(2)}`}
+              value={formatCurrency(invoice.subtotal, invoice.currency)}
             />
             <SummaryRow
               label="Tax"
-              value={`${invoice.currency} ${(invoice.tax_amount / 100).toFixed(2)}`}
+              value={formatCurrency(invoice.tax_amount, invoice.currency)}
             />
             <div className="border-t border-stone-200 pt-2" />
           </>

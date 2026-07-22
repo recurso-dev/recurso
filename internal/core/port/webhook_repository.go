@@ -2,6 +2,7 @@ package port
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -35,4 +36,8 @@ type EventDeliveryRepository interface {
 	// (pending/succeeded/failed); empty string returns all.
 	ListByEndpointID(ctx context.Context, endpointID uuid.UUID, status string, limit, offset int) ([]*domain.EventDelivery, error)
 	ListPending(ctx context.Context, limit int) ([]*domain.EventDelivery, error)
+	// ClaimPending atomically leases up to `limit` due deliveries for the calling
+	// worker instance, advancing next_retry_at by `lease` so a second instance
+	// can't pick the same rows and double-deliver them (ADR-003).
+	ClaimPending(ctx context.Context, lease time.Duration, limit int) ([]*domain.EventDelivery, error)
 }

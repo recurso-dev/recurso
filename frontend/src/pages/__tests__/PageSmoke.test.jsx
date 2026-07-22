@@ -4,7 +4,6 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 
 import { AuthProvider } from "../../auth/AuthProvider";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { ToastProvider } from "../../components/Toast";
 
 // jsdom in this config doesn't expose localStorage; AuthProvider reads it on init.
 const store = {};
@@ -61,14 +60,16 @@ vi.mock("@tremor/react", () => {
   };
 });
 
-// Dashboard pages under App's routes (portal pages have their own auth shell).
-const PAGES = import.meta.glob("../*.jsx");
+// Dashboard pages under App's routes, plus the settings/* pages (same auth
+// shell). Portal pages are intentionally excluded — they mount under their own
+// auth shell and are covered separately.
+const PAGES = import.meta.glob(["../*.jsx", "../settings/*.jsx"]);
 
 const wrap = (ui) => (
   <MemoryRouter>
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <AuthProvider>
-        <ToastProvider>{ui}</ToastProvider>
+        <>{ui}</>
       </AuthProvider>
     </QueryClientProvider>
   </MemoryRouter>

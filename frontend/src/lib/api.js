@@ -162,6 +162,8 @@ export const endpoints = {
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
   createCreditNote: (data) => api.post('/credit-notes', data),
+  approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),
+  rejectCreditNote: (id) => api.post(`/credit-notes/${id}/reject`),
 
   // Coupons
   getCoupons: () => api.get('/coupons'),
@@ -327,6 +329,10 @@ export const endpoints = {
   setTaxRegistrations: (registrations) =>
     api.put('/settings/tax/registrations', { registrations }),
 
+  // India GST config
+  getGSTConfig: () => api.get('/settings/gst'),
+  validateGSTIN: (gstin) => api.post('/settings/gst/validate', { gstin }),
+  updateGSTConfig: (config) => api.put('/settings/gst', config),
   // India GST returns (readable sections + GSTN upload JSON)
   getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
   getGSTR3B: (month, year) => api.get('/india/gstr3b', { params: { month, year } }),

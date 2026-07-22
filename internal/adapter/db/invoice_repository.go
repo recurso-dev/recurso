@@ -309,16 +309,21 @@ func (r *InvoiceRepository) MarkPaid(ctx context.Context, tenantID, invoiceID uu
 	return n == 1, nil
 }
 
+// retryInvoiceColumns is the projection shared by GetDueForRetry and
+// ClaimDueForRetry (as a RETURNING list) — the two must stay column-aligned
+// with scanRetryInvoices.
+const retryInvoiceColumns = `
+	id, tenant_id, subscription_id, customer_id, invoice_number, status,
+	currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
+	igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
+	signed_qr_code, e_invoice_status, tds_amount,
+	created_at, due_date, paid_at, next_retry_at, retry_count,
+	COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
+	COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')`
+
 func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
 	query := `
-		SELECT
-			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
-			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
-			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, due_date, paid_at, next_retry_at, retry_count,
-			COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
-			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')
+		SELECT` + retryInvoiceColumns + `
 		FROM invoices
 		WHERE status IN ('open', 'past_due')
 		  AND next_retry_at IS NOT NULL
@@ -331,7 +336,44 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 		return nil, fmt.Errorf("failed to query retry invoices: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	return scanRetryInvoices(rows)
+}
 
+// ClaimDueForRetry atomically leases up to `limit` due retry invoices for THIS
+// worker instance and returns them, pushing each claimed row's next_retry_at
+// forward by `lease` so a second instance (Cloud Run scales to many, and the
+// Locker is a no-op without Redis) cannot claim the same rows in the same cycle
+// (ADR-003). FOR UPDATE SKIP LOCKED makes concurrent claimers take disjoint
+// sets instead of blocking. The caller overwrites next_retry_at with the real
+// next-retry time (or clears it on success); if the worker dies mid-process the
+// lease lapses and the row is retried on a later tick.
+func (r *InvoiceRepository) ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error) {
+	query := `
+		UPDATE invoices
+		SET next_retry_at = NOW() + $1 * INTERVAL '1 second', updated_at = NOW()
+		WHERE id IN (
+			SELECT id FROM invoices
+			WHERE status IN ('open', 'past_due')
+			  AND next_retry_at IS NOT NULL
+			  AND next_retry_at <= NOW()
+			  AND dunning_managed_by = 'worker'
+			ORDER BY next_retry_at
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING` + retryInvoiceColumns
+	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim retry invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanRetryInvoices(rows)
+}
+
+// scanRetryInvoices reads the retryInvoiceColumns projection into invoices,
+// tolerating the NULL e-invoice/due-date columns that failed (non-e-invoiced)
+// rows carry — a NULL scanned into a plain string/time would abort the sweep.
+func scanRetryInvoices(rows *sql.Rows) ([]*domain.Invoice, error) {
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}

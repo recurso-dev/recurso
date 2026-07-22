@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { TrendingUp } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -8,6 +9,7 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -23,14 +25,6 @@ const MONTHS = [
 ];
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
 
-// Recognition amounts sum across a tenant's schedules (possibly multi-currency),
-// so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
 const selectClass =
   "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -38,34 +32,32 @@ export default function RevenueWaterfall() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [waterfall, setWaterfall] = useState(null);
-  const [rollforward, setRollforward] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [w, r] = await Promise.all([
-        endpoints.getRevenueWaterfall(),
-        endpoints.getDeferredRollforward(month, year),
-      ]);
-      setWaterfall(w.data?.data || null);
-      setRollforward(r.data?.data || null);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message ||
-          "Failed to load the revenue waterfall",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [month, year]);
+  // The recognition curve is period-independent; the deferred rollforward is
+  // keyed by the selected month/year (its own cache entry, refetched on change).
+  const waterfallQuery = useQuery({
+    queryKey: ["revenue-waterfall"],
+    queryFn: async () => (await endpoints.getRevenueWaterfall()).data?.data || null,
+  });
+  const rollforwardQuery = useQuery({
+    queryKey: ["deferred-rollforward", month, year],
+    queryFn: async () => (await endpoints.getDeferredRollforward(month, year)).data?.data || null,
+  });
+  const waterfall = waterfallQuery.data;
+  const rollforward = rollforwardQuery.data;
+  const loading = waterfallQuery.isLoading || rollforwardQuery.isLoading;
+  const queryError = waterfallQuery.error || rollforwardQuery.error;
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load the revenue waterfall"
+    : null;
+  const load = () => {
+    waterfallQuery.refetch();
+    rollforwardQuery.refetch();
+  };
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Reporting currency (tenant base currency) for exponent-correct formatting.
+  const cur = waterfall?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
 
   const buckets = waterfall?.buckets || [];
   const years = [];

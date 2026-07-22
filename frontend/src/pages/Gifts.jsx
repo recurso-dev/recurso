@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { usePlans, useCustomers } from "@/lib/useCustomers";
 import { Plus, Gift, CheckCircle2, Clock } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -30,75 +32,55 @@ const statusVariant = (status) =>
   ({ redeemed: "success", purchased: "warning" })[status] || "neutral";
 
 function Gifts() {
-  const [gifts, setGifts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [plans, setPlans] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState({
     buyer_customer_id: "",
     plan_id: "",
     duration_months: 12,
   });
 
-  useEffect(() => {
-    fetchGifts();
-    fetchPlans();
-    fetchCustomers();
-  }, []);
+  const queryClient = useQueryClient();
+  // Reference data from the shared cache (ADR-005).
+  const { plans } = usePlans();
+  const { customers } = useCustomers();
 
-  const fetchGifts = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: gifts = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["gifts"],
+    queryFn: async () => {
       const response = await endpoints.getGifts();
-      setGifts(Array.isArray(response.data?.data) ? response.data.data : []);
-    } catch (err) {
-      console.error("Error fetching gifts:", err);
-      setError(err?.response?.data?.error?.message || err?.message || "Failed to load gifts");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    },
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load gifts"
+    : null;
 
-  const fetchPlans = async () => {
-    try {
-      const response = await endpoints.getPlans();
-      setPlans(response.data?.data || []);
-    } catch (error) {
-      console.error("Error fetching plans:", error);
-    }
-  };
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await endpoints.getCustomers();
-      setCustomers(response.data?.data || []);
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-    }
-  };
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!form.buyer_customer_id || !form.plan_id) return;
-    try {
-      setCreating(true);
-      await endpoints.purchaseGift({
-        buyer_customer_id: form.buyer_customer_id,
-        plan_id: form.plan_id,
-        duration_months: parseInt(form.duration_months),
-      });
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.purchaseGift(payload),
+    onSuccess: () => {
       setShowCreate(false);
       setForm({ buyer_customer_id: "", plan_id: "", duration_months: 12 });
-      fetchGifts();
-    } catch (error) {
-      console.error("Error creating gift:", error);
-    } finally {
-      setCreating(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["gifts"] });
+    },
+    onError: (err) => {
+      console.error("Error creating gift:", err);
+    },
+  });
+  const creating = createMutation.isPending;
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    if (!form.buyer_customer_id || !form.plan_id) return;
+    createMutation.mutate({
+      buyer_customer_id: form.buyer_customer_id,
+      plan_id: form.plan_id,
+      duration_months: parseInt(form.duration_months),
+    });
   };
 
   const redeemedCount = gifts.filter((g) => g.status === "redeemed").length;
@@ -164,7 +146,7 @@ function Gifts() {
         data={gifts}
         loading={loading}
         error={error}
-        onRetry={fetchGifts}
+        onRetry={refetch}
         empty={{
           icon: Gift,
           title: "No gifts yet",

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useCustomers, usePlans } from "@/lib/useCustomers";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";
-import { useToast } from "../components/Toast";
+import { toast } from "@/components/ui/sonner";
 import ConsentCheckbox from "../components/ui/ConsentCheckbox";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
@@ -28,11 +29,10 @@ import {
 
 export default function CreateSubscription() {
   const navigate = useNavigate();
-  const toast = useToast();
 
-  const [customers, setCustomers] = useState([]);
-  const [plans, setPlans] = useState([]);
-  const [loadingData, setLoadingData] = useState(true);
+  // Reference data from the shared cache (ADR-005) — one fetch across the app.
+  const { customers } = useCustomers();
+  const { plans } = usePlans();
   const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -46,24 +46,6 @@ export default function CreateSubscription() {
 
   const setField = (key, value) => setFormData((f) => ({ ...f, [key]: value }));
   const close = () => navigate("/subscriptions");
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [custRes, plansRes] = await Promise.all([
-          endpoints.getCustomers(),
-          endpoints.getPlans(),
-        ]);
-        setCustomers(custRes.data.data || []);
-        setPlans(plansRes.data.data || []);
-      } catch (error) {
-        console.error("Failed to fetch data:", error);
-      } finally {
-        setLoadingData(false);
-      }
-    };
-    fetchData();
-  }, []);
 
   const selectedCustomer = customers.find((c) => c.id === formData.customer_id);
   const selectedPlan = plans.find((p) => p.id === formData.plan_id);
@@ -138,7 +120,7 @@ export default function CreateSubscription() {
       setSubmitting(false);
       return;
     }
-    if (!loadingData) setSubmitting(false);
+    setSubmitting(false);
   };
 
   return (
@@ -187,7 +169,7 @@ export default function CreateSubscription() {
                 <SelectContent>
                   {plans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} - ${(plan.prices?.[0]?.amount / 100).toFixed(2)}/
+                      {plan.name} - {formatCurrency(plan.prices?.[0]?.amount, plan.prices?.[0]?.currency)}/
                       {plan.interval_unit}
                     </SelectItem>
                   ))}
@@ -271,7 +253,7 @@ export default function CreateSubscription() {
               planName={selectedPlan?.name || "the selected plan"}
               amount={
                 selectedPlan?.prices?.[0]?.amount
-                  ? `${currency} ${(selectedPlan.prices[0].amount / 100).toFixed(2)}`
+                  ? formatCurrency(selectedPlan.prices[0].amount, currency)
                   : ""
               }
               billingInterval={selectedPlan?.interval_unit || "month"}

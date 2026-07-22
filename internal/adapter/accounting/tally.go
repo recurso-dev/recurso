@@ -32,7 +32,7 @@ func NewTallyAdapter(exportDir string) *TallyAdapter {
 	if exportDir == "" {
 		exportDir = "/tmp/tally-exports"
 	}
-	_ = os.MkdirAll(exportDir, 0755)
+	_ = os.MkdirAll(exportDir, 0o750)
 	return &TallyAdapter{exportDir: exportDir}
 }
 
@@ -140,7 +140,7 @@ func (a *TallyAdapter) appendRecord(record tallyRecord) (string, error) {
 	filename := fmt.Sprintf("tally-export-%s.jsonl", time.Now().Format("2006-01-02"))
 	path := filepath.Join(a.exportDir, filename)
 
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("failed to open tally export file: %w", err)
 	}

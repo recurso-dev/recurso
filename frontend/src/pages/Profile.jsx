@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { KeyRound, Pencil } from "lucide-react";
 
@@ -33,32 +33,22 @@ export default function Profile() {
   // Session (cookie) login vs legacy API-key mode — the Security card below
   // describes whichever one is actually in effect.
   const { user } = useAuth();
-  const [account, setAccount] = useState({ name: "", email: "", id: "" });
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    const fetchAccount = async () => {
-      try {
-        const response = await endpoints.getAccount();
-        if (response.data.data) {
-          setAccount({
-            name: response.data.data.name,
-            email: response.data.data.email,
-            id: response.data.data.id,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch account:", error);
-        setLoadError(
-          error?.response?.data?.error?.message || error?.message || "Failed to load account"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAccount();
-  }, []);
+  const {
+    data: account = { name: "", email: "", id: "" },
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ["account"],
+    queryFn: async () => {
+      const d = (await endpoints.getAccount()).data.data;
+      return d
+        ? { name: d.name, email: d.email, id: d.id }
+        : { name: "", email: "", id: "" };
+    },
+  });
+  const loadError = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load account"
+    : null;
 
   return (
     <div>

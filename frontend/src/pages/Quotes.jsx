@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 
@@ -27,55 +28,57 @@ const quoteStatusVariant = (status) =>
   })[status] || "neutral";
 
 const Quotes = () => {
-  const [quotes, setQuotes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedQuote, setSelectedQuote] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    fetchQuotes();
-  }, [statusFilter, searchQuery]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const fetchQuotes = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  // Server-driven by status + search: each combination is its own cache entry;
+  // placeholderData keeps the current rows while the next query loads.
+  const {
+    data: quotes = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["quotes", { status: statusFilter, search: searchQuery }],
+    queryFn: async () => {
       const params = {};
       if (statusFilter) params.status = statusFilter;
       if (searchQuery) params.search = searchQuery;
+      return (await endpoints.getQuotes(params)).data.data || [];
+    },
+    placeholderData: (prev) => prev,
+  });
+  const error = queryError ? "Failed to load quotes" : null;
 
-      const response = await endpoints.getQuotes(params);
-      setQuotes(response.data.data || []);
-    } catch (err) {
-      setError("Failed to load quotes");
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const invalidateQuotes = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
+
+  const sendMutation = useMutation({
+    mutationFn: (id) => endpoints.sendQuote(id),
+    onSuccess: invalidateQuotes,
+    onError: (err) => console.error("Failed to send quote:", err),
+  });
+  const convertMutation = useMutation({
+    mutationFn: (id) => endpoints.convertQuoteToInvoice(id),
+    onSuccess: () => {
+      invalidateQuotes();
+      // A converted quote becomes an invoice — refresh the invoices list too.
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (err) => console.error("Failed to convert quote:", err),
+  });
+
+  const handleSend = (id, e) => {
+    e?.stopPropagation();
+    sendMutation.mutate(id);
   };
 
-  const handleSend = async (id, e) => {
+  const handleConvert = (id, e) => {
     e?.stopPropagation();
-    try {
-      await endpoints.sendQuote(id);
-      fetchQuotes();
-    } catch (err) {
-      console.error("Failed to send quote:", err);
-    }
-  };
-
-  const handleConvert = async (id, e) => {
-    e?.stopPropagation();
-    try {
-      await endpoints.convertQuoteToInvoice(id);
-      fetchQuotes();
-    } catch (err) {
-      console.error("Failed to convert quote:", err);
-    }
+    convertMutation.mutate(id);
   };
 
   const handleRowClick = (quote) => {
@@ -194,7 +197,7 @@ const Quotes = () => {
         data={quotes}
         loading={loading}
         error={error}
-        onRetry={fetchQuotes}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: searchQuery,

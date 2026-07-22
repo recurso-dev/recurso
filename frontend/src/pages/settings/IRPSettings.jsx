@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
@@ -28,56 +29,44 @@ export default function IRPSettings() {
     gstin: "",
     is_enabled: false,
   });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
-  const fetchConfig = useCallback(async () => {
-    setLoading(true);
-    try {
-      const response = await endpoints.getIRPConfig();
-      if (response.data?.data) {
-        setConfig((prev) => ({ ...prev, ...response.data.data }));
-      }
-    } catch (err) {
-      // Config may not exist yet, that's OK.
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Load the saved config once; a missing config just leaves the defaults.
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["irp-config"],
+    queryFn: async () => (await endpoints.getIRPConfig()).data?.data || null,
+  });
   useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+    if (data) setConfig((prev) => ({ ...prev, ...data }));
+  }, [data]);
 
-  const handleSave = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      await endpoints.updateIRPConfig(config);
-      toast.success("IRP configuration saved successfully");
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to save configuration");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const saveMutation = useMutation({
+    mutationFn: (cfg) => endpoints.updateIRPConfig(cfg),
+    onSuccess: () => toast.success("IRP configuration saved successfully"),
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to save configuration"),
+  });
+  const saving = saveMutation.isPending;
 
-  const handleTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const response = await endpoints.testIRPConfig();
-      setTestResult(response.data);
-    } catch (err) {
+  const testMutation = useMutation({
+    mutationFn: () => endpoints.testIRPConfig(),
+    onSuccess: (response) => setTestResult(response.data),
+    onError: (err) =>
       setTestResult({
         success: false,
         message: err?.response?.data?.error?.message || "Connection test failed",
-      });
-    } finally {
-      setTesting(false);
-    }
+      }),
+  });
+  const testing = testMutation.isPending;
+
+  const handleSave = (e) => {
+    e.preventDefault();
+    saveMutation.mutate(config);
+  };
+
+  const handleTest = () => {
+    setTestResult(null);
+    testMutation.mutate();
   };
 
   return (

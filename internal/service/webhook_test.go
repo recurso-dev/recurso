@@ -160,6 +160,10 @@ func (m *mockDeliveryRepo) ListPending(ctx context.Context, limit int) ([]*domai
 	return out, nil
 }
 
+func (m *mockDeliveryRepo) ClaimPending(ctx context.Context, lease time.Duration, limit int) ([]*domain.EventDelivery, error) {
+	return m.ListPending(ctx, limit)
+}
+
 // --- Test fixtures ---
 
 type webhookFixture struct {

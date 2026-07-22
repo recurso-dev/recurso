@@ -5,7 +5,7 @@ import { Plus, Users, Link2 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
-import { useToast } from "../components/Toast";
+import { toast } from "@/components/ui/sonner";
 import { useDebounce } from "../hooks/useDebounce";
 import CustomerDetail from "../components/slide-overs/CustomerDetail";
 import { cn, formatDate } from "@/lib/utils";
@@ -38,7 +38,6 @@ function RiskBadge({ score }) {
 
 export default function Customers() {
   const navigate = useNavigate();
-  const toast = useToast();
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -113,7 +112,7 @@ export default function Customers() {
       navigator.clipboard.writeText(url);
       toast.success("Portal link copied");
     },
-    [toast]
+    []
   );
 
   const columns = useMemo(

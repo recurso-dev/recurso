@@ -30,6 +30,13 @@ func (r *lifecycleSubRepo) Update(_ context.Context, sub *domain.Subscription) e
 	return nil
 }
 
+func (r *lifecycleSubRepo) SetResumeAt(_ context.Context, _, subID uuid.UUID, resumeAt *time.Time) error {
+	if s := r.subs[subID]; s != nil {
+		s.ResumeAt = resumeAt
+	}
+	return nil
+}
+
 func newLifecycleSvc(sub *domain.Subscription) (*SubscriptionService, *lifecycleSubRepo) {
 	repo := &lifecycleSubRepo{subs: map[uuid.UUID]*domain.Subscription{}}
 	if sub != nil {
@@ -56,7 +63,7 @@ func TestSubscriptionLifecycle_PauseResume(t *testing.T) {
 	ctx := context.Background()
 
 	// Pause an active subscription.
-	if _, err := svc.PauseSubscription(ctx, tenant, sub.ID); err != nil {
+	if _, err := svc.PauseSubscription(ctx, tenant, sub.ID, nil); err != nil {
 		t.Fatalf("pause active: %v", err)
 	}
 	if repo.subs[sub.ID].Status != domain.SubscriptionStatusPaused {
@@ -64,7 +71,7 @@ func TestSubscriptionLifecycle_PauseResume(t *testing.T) {
 	}
 
 	// Pausing again (now paused) is rejected.
-	if _, err := svc.PauseSubscription(ctx, tenant, sub.ID); err == nil {
+	if _, err := svc.PauseSubscription(ctx, tenant, sub.ID, nil); err == nil {
 		t.Fatal("pausing a paused subscription should fail")
 	}
 
@@ -82,6 +89,95 @@ func TestSubscriptionLifecycle_PauseResume(t *testing.T) {
 	}
 }
 
+// TestSubscriptionLifecycle_TimedPauseSetsAndClearsResumeAt proves the issue
+// #111 wiring: a timed pause records resume_at, and resuming clears it so the
+// resume scheduler won't re-claim the row.
+func TestSubscriptionLifecycle_TimedPauseSetsAndClearsResumeAt(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant)
+	svc, repo := newLifecycleSvc(sub)
+	ctx := context.Background()
+	resumeAt := time.Now().Add(90 * 24 * time.Hour)
+
+	if _, err := svc.PauseSubscription(ctx, tenant, sub.ID, &resumeAt); err != nil {
+		t.Fatalf("timed pause: %v", err)
+	}
+	if got := repo.subs[sub.ID].ResumeAt; got == nil || !got.Equal(resumeAt) {
+		t.Fatalf("ResumeAt after timed pause = %v, want %v", got, resumeAt)
+	}
+
+	if _, err := svc.ResumeSubscription(ctx, tenant, sub.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if got := repo.subs[sub.ID].ResumeAt; got != nil {
+		t.Errorf("ResumeAt after resume = %v, want nil (cleared)", got)
+	}
+}
+
+// lifecyclePlanRepo returns a fixed monthly plan for the resume period-roll.
+type lifecyclePlanRepo struct {
+	port.PlanRepository
+	plan *domain.Plan
+}
+
+func (r *lifecyclePlanRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Plan, error) {
+	return r.plan, nil
+}
+
+// TestSubscriptionLifecycle_ResumeRollsElapsedPeriodForward proves the
+// back-billing guard: resuming a subscription whose period fully elapsed during
+// the pause rolls the period forward from now, so the renewal scheduler doesn't
+// retroactively bill the paused window.
+func TestSubscriptionLifecycle_ResumeRollsElapsedPeriodForward(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant)
+	sub.Status = domain.SubscriptionStatusPaused
+	sub.PlanID = uuid.New()
+	// Period ended two months ago (a long pause).
+	sub.CurrentPeriodStart = time.Now().AddDate(0, -3, 0)
+	sub.CurrentPeriodEnd = time.Now().AddDate(0, -2, 0)
+
+	repo := &lifecycleSubRepo{subs: map[uuid.UUID]*domain.Subscription{sub.ID: sub}}
+	planRepo := &lifecyclePlanRepo{plan: &domain.Plan{ID: sub.PlanID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1}}
+	svc := &SubscriptionService{subRepo: repo, planRepo: planRepo}
+
+	if _, err := svc.ResumeSubscription(context.Background(), tenant, sub.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	got := repo.subs[sub.ID]
+	if got.Status != domain.SubscriptionStatusActive {
+		t.Fatalf("status = %s, want active", got.Status)
+	}
+	// Period must now be in the future (fresh from ~now), not the stale past — else
+	// the renewal scheduler would back-bill the paused months.
+	if !got.CurrentPeriodEnd.After(time.Now()) {
+		t.Errorf("current_period_end = %v, want a future date (rolled forward)", got.CurrentPeriodEnd)
+	}
+	if got.CurrentPeriodStart.Before(time.Now().Add(-time.Minute)) {
+		t.Errorf("current_period_start = %v, want ~now", got.CurrentPeriodStart)
+	}
+}
+
+// A brief pause that ends within the original period keeps its remaining time
+// (no roll-forward, no plan lookup needed).
+func TestSubscriptionLifecycle_ResumeKeepsUnexpiredPeriod(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant) // CurrentPeriodEnd = now + 30d
+	sub.Status = domain.SubscriptionStatusPaused
+	origEnd := sub.CurrentPeriodEnd
+	// No planRepo wired: if the code tried to roll forward it would nil-panic,
+	// proving the unexpired path doesn't touch the plan.
+	repo := &lifecycleSubRepo{subs: map[uuid.UUID]*domain.Subscription{sub.ID: sub}}
+	svc := &SubscriptionService{subRepo: repo}
+
+	if _, err := svc.ResumeSubscription(context.Background(), tenant, sub.ID); err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if !repo.subs[sub.ID].CurrentPeriodEnd.Equal(origEnd) {
+		t.Errorf("current_period_end changed to %v, want unchanged %v", repo.subs[sub.ID].CurrentPeriodEnd, origEnd)
+	}
+}
+
 // TestSubscriptionLifecycle_NotFoundAndCrossTenant proves the guards fail
 // closed: a missing subscription (GetByID -> nil) does not panic and a
 // cross-tenant caller is refused — for pause AND resume (resume previously
@@ -94,7 +190,7 @@ func TestSubscriptionLifecycle_NotFoundAndCrossTenant(t *testing.T) {
 	// Missing subscription: both must return an error, not panic.
 	svc, _ := newLifecycleSvc(nil)
 	missing := uuid.New()
-	if _, err := svc.PauseSubscription(ctx, tenant, missing); err == nil {
+	if _, err := svc.PauseSubscription(ctx, tenant, missing, nil); err == nil {
 		t.Fatal("pause missing: expected error")
 	}
 	if _, err := svc.ResumeSubscription(ctx, tenant, missing); err == nil {

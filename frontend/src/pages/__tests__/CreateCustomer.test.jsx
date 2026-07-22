@@ -1,10 +1,10 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import CreateCustomer from '../CreateCustomer';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
-import { ToastProvider } from '../../components/Toast';
 
 // jsdom lacks these; Radix (Sheet/Select) touches them.
 beforeEach(() => {
@@ -24,11 +24,11 @@ vi.mock('../../lib/api', () => ({
 
 const renderForm = () =>
     render(
-        <MemoryRouter>
-            <ToastProvider>
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+            <MemoryRouter>
                 <CreateCustomer />
-            </ToastProvider>
-        </MemoryRouter>
+            </MemoryRouter>
+        </QueryClientProvider>
     );
 
 describe('CreateCustomer (redesign — Sheet form)', () => {

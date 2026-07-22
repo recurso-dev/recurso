@@ -3,7 +3,7 @@ import { Pencil, Plus, Trash2, Check, X, Archive, ArchiveRestore } from "lucide-
 
 import { endpoints } from "../../lib/api";
 import PlanCharges from "./PlanCharges";
-import { useToast } from "../Toast";
+import { toast } from "@/components/ui/sonner";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,7 +78,6 @@ const toEditorRows = (ents) =>
   }));
 
 export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
-  const toast = useToast();
   const [entitlements, setEntitlements] = useState([]);
   const [entLoadError, setEntLoadError] = useState(false);
   const [isEditing, setIsEditing] = useState(false);

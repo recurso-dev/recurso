@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { FileClock } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -28,26 +28,18 @@ const BUCKET_COLOR = {
 };
 
 export default function InvoiceAging() {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getInvoiceAging();
-      setReport(res.data?.data || null);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load invoice aging");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: report,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["invoice-aging"],
+    queryFn: async () => (await endpoints.getInvoiceAging()).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load invoice aging"
+    : null;
 
   const cur = report?.reporting_currency || "USD";
   const money = (n) => formatCurrency(n || 0, cur);
@@ -70,7 +62,7 @@ export default function InvoiceAging() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         report && (

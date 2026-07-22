@@ -10,6 +10,26 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    // The 'charts' chunk (Tremor + recharts + d3) is large but intentionally
+    // isolated and lazy — only analytics routes pull it — so don't warn on it.
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        // Split heavy vendor code out of the main bundle so non-chart routes
+        // (which are lazy-loaded) don't pay for the charting stack. Charts
+        // (Tremor + its transitive recharts/d3) are only pulled by a handful of
+        // analytics pages.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+          if (/@tremor|recharts|d3-|victory|internmap/.test(id)) return 'charts'
+          if (id.includes('@radix-ui')) return 'radix'
+          if (id.includes('@stripe')) return 'stripe'
+          if (/react-router|@tanstack/.test(id)) return 'react-vendor'
+        },
+      },
+    },
+  },
   test: {
     globals: true,
     environment: 'jsdom',

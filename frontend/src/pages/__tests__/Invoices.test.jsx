@@ -4,7 +4,6 @@ import Invoices from '../Invoices';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
 import { BrowserRouter } from 'react-router-dom';
-import { ToastProvider } from '../../components/Toast';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../lib/api', () => ({
@@ -21,9 +20,9 @@ vi.mock('../../components/slide-overs/InvoiceDetail', () => ({
 const wrapper = ({ children }) => (
     <BrowserRouter>
         <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
-            <ToastProvider>
+            <>
                 {children}
-            </ToastProvider>
+            </>
         </QueryClientProvider>
     </BrowserRouter>
 );

@@ -479,6 +479,47 @@ var gstNumericStateToAlpha = map[string]string{
 	"36": "TS", "37": "AP", "38": "LA",
 }
 
+// gstAlphaToNumericState is the reverse of gstNumericStateToAlpha, for callers
+// (e.g. the NIC e-invoice schema) that need the NUMERIC GST state code. Built
+// once from the forward map. "AP" is pinned to 37 (the post-reorganization
+// Andhra Pradesh code) since the forward map has both 28 (legacy) and 37 → "AP";
+// a range-built reverse would otherwise pick one nondeterministically.
+var gstAlphaToNumericState = func() map[string]string {
+	m := make(map[string]string, len(gstNumericStateToAlpha))
+	for num, alpha := range gstNumericStateToAlpha {
+		m[alpha] = num
+	}
+	m["AP"] = "37"
+	return m
+}()
+
+// normalizeINStateNumeric canonicalizes an Indian state identifier to its
+// two-digit numeric GST state code (e.g. "TN"/"Tamil Nadu"/"33" -> "33"). NIC's
+// e-invoice INV-01 schema requires numeric state codes, but PlaceOfSupply is
+// commonly stored as the two-letter abbreviation. Unknown inputs pass through
+// unchanged (surfacing as an IRP validation error rather than a silent wrong
+// code).
+func normalizeINStateNumeric(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	if s == "" {
+		return ""
+	}
+	if len(s) == 1 && s[0] >= '0' && s[0] <= '9' {
+		s = "0" + s
+	}
+	if _, ok := gstNumericStateToAlpha[s]; ok {
+		return s // already a valid numeric code
+	}
+	if num, ok := gstAlphaToNumericState[s]; ok {
+		return num // two-letter abbreviation
+	}
+	key := strings.ReplaceAll(strings.ToLower(s), " ", "_")
+	if num, ok := domain.IndianStateCode[key]; ok {
+		return num // full state name
+	}
+	return s
+}
+
 // normalizeINState canonicalizes Indian state identifiers to two-letter
 // abbreviations so a tenant config storing the numeric GSTIN code ("33") and
 // a customer PlaceOfSupply storing the abbreviation ("TN") compare equal.

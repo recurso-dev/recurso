@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Megaphone, Settings2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -37,46 +38,47 @@ const TRIGGERS = [
 const triggerLabel = (v) => TRIGGERS.find((t) => t.value === v)?.label || v;
 
 const DunningCampaigns = () => {
-  const [campaigns, setCampaigns] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", trigger_event: "payment_failed" });
-  const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState(null);
+  const queryClient = useQueryClient();
 
-  const fetchCampaigns = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const {
+    data: campaigns = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["dunning-campaigns"],
+    queryFn: async () => {
       const res = await api.getDunningCampaigns();
-      setCampaigns(Array.isArray(res.data) ? res.data : res.data?.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load campaigns");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+    },
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load campaigns"
+    : null;
 
-  useEffect(() => {
-    fetchCampaigns();
-  }, []);
+  const invalidateCampaigns = () =>
+    queryClient.invalidateQueries({ queryKey: ["dunning-campaigns"] });
 
-  const submitCreate = async () => {
-    if (!createForm.name.trim()) return;
-    setCreating(true);
-    try {
-      const res = await api.createDunningCampaign(createForm);
+  const createMutation = useMutation({
+    mutationFn: (form) => api.createDunningCampaign(form),
+    onSuccess: (res) => {
       setCreateOpen(false);
       setCreateForm({ name: "", trigger_event: "payment_failed" });
-      await fetchCampaigns();
+      invalidateCampaigns();
       // Jump straight into configuring steps for the new campaign.
       if (res.data?.id) setDetailId(res.data.id);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to create campaign");
-    } finally {
-      setCreating(false);
-    }
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to create campaign"),
+  });
+  const creating = createMutation.isPending;
+
+  const submitCreate = () => {
+    if (!createForm.name.trim()) return;
+    createMutation.mutate(createForm);
   };
 
   const createButton = (
@@ -97,7 +99,7 @@ const DunningCampaigns = () => {
       {loading ? (
         <CardGridSkeleton count={3} />
       ) : error ? (
-        <ErrorState message={error} onRetry={fetchCampaigns} />
+        <ErrorState message={error} onRetry={refetch} />
       ) : campaigns.length === 0 ? (
         <EmptyState
           icon={Megaphone}
@@ -182,7 +184,7 @@ const DunningCampaigns = () => {
         campaignId={detailId}
         isOpen={!!detailId}
         onClose={() => setDetailId(null)}
-        onChanged={fetchCampaigns}
+        onChanged={invalidateCampaigns}
       />
     </div>
   );

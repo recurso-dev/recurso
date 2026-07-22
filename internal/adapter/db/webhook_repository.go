@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -370,10 +371,15 @@ func (r *EventDeliveryRepository) ListByEndpointID(ctx context.Context, endpoint
 	return deliveries, nil
 }
 
+// pendingDeliveryColumns is the projection shared by ListPending and
+// ClaimPending (as a RETURNING list); it must stay aligned with
+// scanPendingDeliveries.
+const pendingDeliveryColumns = `id, event_id, webhook_endpoint_id, status_code, response_body, attempt, next_retry_at, delivered_at, created_at`
+
 func (r *EventDeliveryRepository) ListPending(ctx context.Context, limit int) ([]*domain.EventDelivery, error) {
 	query := `
-		SELECT id, event_id, webhook_endpoint_id, status_code, response_body, attempt, next_retry_at, delivered_at, created_at
-		FROM event_deliveries 
+		SELECT ` + pendingDeliveryColumns + `
+		FROM event_deliveries
 		WHERE delivered_at IS NULL AND (next_retry_at IS NULL OR next_retry_at <= NOW())
 		ORDER BY created_at ASC
 		LIMIT $1
@@ -383,7 +389,38 @@ func (r *EventDeliveryRepository) ListPending(ctx context.Context, limit int) ([
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
+	return scanPendingDeliveries(rows)
+}
 
+// ClaimPending atomically leases up to `limit` due deliveries for the calling
+// worker instance and returns them, pushing each claimed row's next_retry_at
+// forward by `lease` so a second instance (Cloud Run scales to many, and the
+// Locker is a no-op without Redis) can't pick up the same rows this cycle and
+// double-POST them to the customer's endpoint (ADR-003). FOR UPDATE SKIP LOCKED
+// makes concurrent claimers take disjoint sets. The worker overwrites
+// next_retry_at (retry) or sets delivered_at (success/exhausted); a worker that
+// dies mid-delivery has its lease lapse and the delivery is retried later.
+func (r *EventDeliveryRepository) ClaimPending(ctx context.Context, lease time.Duration, limit int) ([]*domain.EventDelivery, error) {
+	query := `
+		UPDATE event_deliveries
+		SET next_retry_at = NOW() + $1 * INTERVAL '1 second'
+		WHERE id IN (
+			SELECT id FROM event_deliveries
+			WHERE delivered_at IS NULL AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+			ORDER BY created_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING ` + pendingDeliveryColumns
+	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanPendingDeliveries(rows)
+}
+
+func scanPendingDeliveries(rows *sql.Rows) ([]*domain.EventDelivery, error) {
 	var deliveries []*domain.EventDelivery
 	for rows.Next() {
 		var delivery domain.EventDelivery
@@ -402,5 +439,5 @@ func (r *EventDeliveryRepository) ListPending(ctx context.Context, limit int) ([
 		}
 		deliveries = append(deliveries, &delivery)
 	}
-	return deliveries, nil
+	return deliveries, rows.Err()
 }

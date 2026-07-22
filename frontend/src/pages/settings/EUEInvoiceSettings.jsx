@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
@@ -26,37 +27,29 @@ const EMPTY = {
 // seller identity (the backend rejects an incomplete opt-in).
 export default function EUEInvoiceSettings() {
   const [config, setConfig] = useState(EMPTY);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
-  const fetchConfig = useCallback(async () => {
-    try {
-      const res = await endpoints.getEUEInvoiceConfig();
-      setConfig({ ...EMPTY, ...(res.data?.data || {}) });
-    } catch {
-      /* leave defaults */
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Load the saved config once; a missing config (404) just leaves the defaults.
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["eu-einvoice-config"],
+    queryFn: async () => (await endpoints.getEUEInvoiceConfig()).data?.data || null,
+  });
   useEffect(() => {
-    fetchConfig();
-  }, [fetchConfig]);
+    if (data) setConfig((prev) => ({ ...prev, ...data }));
+  }, [data]);
 
   const set = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
 
-  const handleSave = async (e) => {
+  const saveMutation = useMutation({
+    mutationFn: (cfg) => endpoints.updateEUEInvoiceConfig(cfg),
+    onSuccess: () => toast.success("EU e-invoicing settings saved"),
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to save settings"),
+  });
+  const saving = saveMutation.isPending;
+
+  const handleSave = (e) => {
     e.preventDefault();
-    setSaving(true);
-    try {
-      await endpoints.updateEUEInvoiceConfig(config);
-      toast.success("EU e-invoicing settings saved");
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to save settings");
-    } finally {
-      setSaving(false);
-    }
+    saveMutation.mutate(config);
   };
 
   return (

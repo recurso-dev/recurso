@@ -94,4 +94,7 @@ type RevenueWaterfall struct {
 	Buckets         []RevenueWaterfallBucket `json:"buckets"`
 	TotalRecognized int64                    `json:"total_recognized"`
 	TotalScheduled  int64                    `json:"total_scheduled"`
+	// ReportingCurrency is the tenant's base currency, so the UI formats the
+	// minor-unit amounts with the right exponent (see ledger reports).
+	ReportingCurrency string `json:"reporting_currency"`
 }

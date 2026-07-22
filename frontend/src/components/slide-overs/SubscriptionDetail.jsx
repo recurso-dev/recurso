@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Pause, Play, Check, RotateCw, ArrowLeftRight, Plus, X } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 import { endpoints } from "../../lib/api";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, toMinorUnits } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -431,7 +431,7 @@ export default function SubscriptionDetail({
                     try {
                       await endpoints.setSubscriptionCommitment(
                         subscription.id,
-                        Math.round(parseFloat(commitAmount) * 100)
+                        toMinorUnits(commitAmount, currency)
                       );
                       toast.success("Commitment updated.");
                       setBillingPanel(null);
@@ -485,7 +485,7 @@ export default function SubscriptionDetail({
                     setBillingBusy(true);
                     try {
                       await endpoints.addSubscriptionCharge(subscription.id, {
-                        amount: Math.round(parseFloat(chargeAmount) * 100),
+                        amount: toMinorUnits(chargeAmount, currency),
                         currency,
                         description: chargeDesc.trim(),
                       });

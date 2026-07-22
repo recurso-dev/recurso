@@ -572,6 +572,10 @@ func main() {
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
 	analyticsService.SetFX(fxProvider, fxFallback, reportingCurrency)
 	analyticsService.SetTenantLookup(tenantRepo)
+	// Per-tenant reporting currency for the read-only ledger reports (trial
+	// balance, deferred rollforward, close pack), so the UI formats totals with
+	// the tenant's currency exponent.
+	ledgerService.SetReporting(tenantRepo, reportingCurrency)
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
@@ -991,6 +995,14 @@ func main() {
 	mrrSnapshotScheduler.Start()
 	defer mrrSnapshotScheduler.Stop()
 
+	// Subscription Resume Scheduler (daily, issue #111) — auto-resumes paused
+	// subscriptions whose scheduled resume_at has elapsed (e.g. a retention
+	// "pause N months" offer). Claim-based, so multi-instance-safe without Redis.
+	subscriptionResumeScheduler := scheduler.NewSubscriptionResumeScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository), subscriptionService, locker)
+	subscriptionResumeScheduler.Start()
+	defer subscriptionResumeScheduler.Stop()
+
 	// Operational alerting (solo-operator safety net) — POSTs to
 	// ALERT_WEBHOOK_URL on component state transitions; no-op when unset.
 	// See docs/incident-runbook.md.
@@ -1049,6 +1061,7 @@ func main() {
 			reconciliationScheduler.Stop,
 			progressiveBillingScheduler.Stop,
 			mrrSnapshotScheduler.Stop,
+			subscriptionResumeScheduler.Stop,
 			healthAlertScheduler.Stop,
 		}
 		if billingCycleScheduler != nil {
@@ -1681,6 +1694,8 @@ func main() {
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
+		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
+		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
 
 		// Webhooks & Events (P24)
 		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)
@@ -1835,7 +1850,17 @@ func main() {
 	}
 
 	serverAddr := fmt.Sprintf(":%s", port)
-	srv := &http.Server{Addr: serverAddr, Handler: r}
+	// ReadHeaderTimeout bounds how long a client may take to send request headers,
+	// closing slow-header (Slowloris) connections. Deliberately no ReadTimeout/
+	// WriteTimeout: they'd cap whole-request duration and could truncate large
+	// usage-event ingests or streamed exports (invoice PDFs, GL CSV). IdleTimeout
+	// reaps idle keep-alive connections.
+	srv := &http.Server{
+		Addr:              serverAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 
 	go func() {
 		sigChan := make(chan os.Signal, 1)

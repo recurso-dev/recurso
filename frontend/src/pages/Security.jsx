@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ShieldCheck,
@@ -310,53 +311,32 @@ function MfaSection() {
 }
 
 function SessionsSection() {
-  const [sessions, setSessions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-  const [working, setWorking] = useState(false);
+  const queryClient = useQueryClient();
+  const { data: sessions = [], isLoading: loading, isError: error, refetch } = useQuery({
+    queryKey: ["sessions"],
+    queryFn: async () => (await endpoints.getSessions()).data?.data || [],
+  });
+  const invalidateSessions = () => queryClient.invalidateQueries({ queryKey: ["sessions"] });
 
-  const load = async () => {
-    setLoading(true);
-    setError(false);
-    try {
-      const res = await endpoints.getSessions();
-      setSessions(res.data?.data || []);
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-  }, []);
-
-  const revoke = async (id) => {
-    setWorking(true);
-    try {
-      await endpoints.revokeSession(id);
+  const revokeMutation = useMutation({
+    mutationFn: (id) => endpoints.revokeSession(id),
+    onSuccess: () => {
       toast.success("Session revoked.");
-      await load();
-    } catch {
-      toast.error("Couldn't revoke that session.");
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const revokeOthers = async () => {
-    setWorking(true);
-    try {
-      await endpoints.revokeOtherSessions();
+      invalidateSessions();
+    },
+    onError: () => toast.error("Couldn't revoke that session."),
+  });
+  const revokeOthersMutation = useMutation({
+    mutationFn: () => endpoints.revokeOtherSessions(),
+    onSuccess: () => {
       toast.success("Signed out of all other sessions.");
-      await load();
-    } catch {
-      toast.error("Couldn't sign out other sessions.");
-    } finally {
-      setWorking(false);
-    }
-  };
+      invalidateSessions();
+    },
+    onError: () => toast.error("Couldn't sign out other sessions."),
+  });
+  const working = revokeMutation.isPending || revokeOthersMutation.isPending;
+  const revoke = (id) => revokeMutation.mutate(id);
+  const revokeOthers = () => revokeOthersMutation.mutate();
 
   const hasOthers = sessions.some((s) => !s.current);
 
@@ -389,7 +369,7 @@ function SessionsSection() {
             Couldn't load your sessions.{" "}
             <button
               type="button"
-              onClick={load}
+              onClick={() => refetch()}
               className="font-medium underline"
             >
               Retry
@@ -459,8 +439,7 @@ function SessionsSection() {
 
 function SSOSection() {
   const [conn, setConn] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [form, setForm] = useState({
     idp_entity_id: "",
     idp_sso_url: "",
@@ -478,55 +457,46 @@ function SSOSection() {
     });
   };
 
-  const load = async () => {
-    setLoading(true);
-    try {
+  // 404 = not configured yet; the query errors, `data` is undefined, and the
+  // form stays empty (sp_* URLs arrive on the first save).
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["sso-connection"],
+    queryFn: async () => {
       const res = await endpoints.getSSOConnection();
-      apply(res.data?.data || res.data);
-    } catch {
-      // 404 = not configured yet; keep the empty form (sp_* URLs arrive on save)
-      setConn(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
+      return res.data?.data || res.data || null;
+    },
+  });
   useEffect(() => {
-    load();
-    // load only runs on mount; it reads no changing props/state.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (data) apply(data);
+  }, [data]);
 
-  const save = async (e) => {
-    e.preventDefault();
-    setSaving(true);
-    try {
-      const res = await endpoints.updateSSOConnection(form);
+  const saveMutation = useMutation({
+    mutationFn: (payload) => endpoints.updateSSOConnection(payload),
+    onSuccess: (res) => {
       apply(res.data?.data || res.data);
       toast.success("SSO connection saved.");
-    } catch (err) {
-      toast.error(
-        err?.response?.data?.error?.message || "Couldn't save the SSO connection."
-      );
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const [confirmRemove, setConfirmRemove] = useState(false);
-
-  const remove = async () => {
-    setConfirmRemove(false);
-    setSaving(true);
-    try {
-      await endpoints.deleteSSOConnection();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Couldn't save the SSO connection."),
+  });
+  const removeMutation = useMutation({
+    mutationFn: () => endpoints.deleteSSOConnection(),
+    onSuccess: () => {
       apply(null);
       toast.success("SSO connection removed.");
-    } catch {
-      toast.error("Couldn't remove the SSO connection.");
-    } finally {
-      setSaving(false);
-    }
+    },
+    onError: () => toast.error("Couldn't remove the SSO connection."),
+  });
+  const saving = saveMutation.isPending || removeMutation.isPending;
+
+  const save = (e) => {
+    e.preventDefault();
+    saveMutation.mutate(form);
+  };
+
+  const remove = () => {
+    setConfirmRemove(false);
+    removeMutation.mutate();
   };
 
   return (

@@ -29,7 +29,10 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
-	cn, err := h.service.Create(ctx, tenantID, req)
+	userID := middleware.GetUserID(c)
+	userRole, _ := middleware.GetUserRole(c)
+
+	cn, err := h.service.Create(ctx, tenantID, userID, userRole, req)
 	if err != nil {
 		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
@@ -62,4 +65,62 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": cns})
+}
+
+func (h *CreditNoteHandler) ApproveCreditNote(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	cnIDStr := c.Param("id")
+	cnID, err := uuid.Parse(cnIDStr)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+	userID := middleware.GetUserID(c)
+	userRole, _ := middleware.GetUserRole(c)
+
+	if userRole != "" && userRole != string(domain.RoleAdmin) && userRole != string(domain.RoleOwner) {
+		respondError(c, http.StatusForbidden, codeValidationFailed, "only admins and owners can approve credit notes")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, err := h.service.Approve(ctx, tenantID, cnID, userID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrCreditNoteValidation) {
+			status = http.StatusBadRequest
+		}
+		respondErrorStatus(c, status, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": cn})
+}
+
+func (h *CreditNoteHandler) RejectCreditNote(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	cnIDStr := c.Param("id")
+	cnID, err := uuid.Parse(cnIDStr)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+	userID := middleware.GetUserID(c)
+	userRole, _ := middleware.GetUserRole(c)
+
+	if userRole != "" && userRole != string(domain.RoleAdmin) && userRole != string(domain.RoleOwner) {
+		respondError(c, http.StatusForbidden, codeValidationFailed, "only admins and owners can reject credit notes")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, err := h.service.Reject(ctx, tenantID, cnID, userID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrCreditNoteValidation) {
+			status = http.StatusBadRequest
+		}
+		respondErrorStatus(c, status, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": cn})
 }

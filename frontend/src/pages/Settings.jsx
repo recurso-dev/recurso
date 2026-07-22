@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe } from "lucide-react";
 
@@ -11,41 +12,32 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default function Settings() {
+  const queryClient = useQueryClient();
   const [account, setAccount] = useState({ name: "", email: "" });
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
+  // Shared account resource — keyed ["account"] so Profile (read-only view)
+  // and this editor read the same cache and a save here refreshes both.
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["account"],
+    queryFn: async () => (await endpoints.getAccount()).data.data || null,
+  });
   useEffect(() => {
-    const fetchAccount = async () => {
-      try {
-        const response = await endpoints.getAccount();
-        if (response.data.data) {
-          setAccount({
-            name: response.data.data.name,
-            email: response.data.data.email,
-          });
-        }
-      } catch (error) {
-        console.error("Failed to fetch account:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchAccount();
-  }, []);
+    if (data) setAccount({ name: data.name, email: data.email });
+  }, [data]);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await endpoints.updateAccount(account);
+  const saveMutation = useMutation({
+    mutationFn: (payload) => endpoints.updateAccount(payload),
+    onSuccess: () => {
       toast.success("Settings saved successfully.");
-    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: ["account"] });
+    },
+    onError: (error) => {
       console.error("Failed to update account:", error);
       toast.error("Failed to save settings.");
-    } finally {
-      setSaving(false);
-    }
-  };
+    },
+  });
+  const saving = saveMutation.isPending;
+  const handleSave = () => saveMutation.mutate(account);
 
   const settingsLinks = [
     {

@@ -107,6 +107,11 @@ type TrialBalance struct {
 	TotalCredits int64              `json:"total_credits"`
 	Balanced     bool               `json:"balanced"`
 	AsOf         time.Time          `json:"as_of"`
+	// ReportingCurrency is the tenant's base currency, so the UI can format the
+	// minor-unit totals with the right exponent (JPY/KWD/…). The ledger does not
+	// store a per-transaction currency, so for a genuinely multi-currency tenant
+	// these sums are a base-currency approximation.
+	ReportingCurrency string `json:"reporting_currency"`
 }
 
 // Chart of Accounts — standard account codes
@@ -190,6 +195,9 @@ type DeferredRollforward struct {
 	Added       int64     `json:"added"`    // new deferrals booked in period (credits)
 	Released    int64     `json:"released"` // recognized/reversed in period (debits)
 	Closing     int64     `json:"closing"`  // Opening + Added - Released
+	// ReportingCurrency is the tenant's base currency for exponent-correct
+	// formatting (see TrialBalance.ReportingCurrency).
+	ReportingCurrency string `json:"reporting_currency"`
 }
 
 // GeneralLedgerRow is one posted transaction flattened for export: the two

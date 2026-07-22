@@ -31,5 +31,9 @@ func (s *RevRecService) GetWaterfall(ctx context.Context, tenantID uuid.UUID) (*
 	if err != nil {
 		return nil, err
 	}
-	return summarizeWaterfall(tenantID, buckets), nil
+	wf := summarizeWaterfall(tenantID, buckets)
+	if s.ledger != nil {
+		wf.ReportingCurrency = s.ledger.ReportingCurrency(ctx, tenantID)
+	}
+	return wf, nil
 }

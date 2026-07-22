@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Plus, Receipt } from "lucide-react";
 
@@ -15,34 +16,26 @@ const creditStatusVariant = (status) =>
     issued: "info",
     used: "success",
     active: "success",
+    pending_approval: "warning",
+    rejected: "destructive",
   })[status] || "neutral";
 
 const CreditNotes = () => {
   const navigate = useNavigate();
-  const [creditNotes, setCreditNotes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [selectedNote, setSelectedNote] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
-  useEffect(() => {
-    fetchCreditNotes();
-  }, []);
-
-  const fetchCreditNotes = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await endpoints.getCreditNotes();
-      setCreditNotes(response.data.data || []);
-    } catch (err) {
-      console.error("Failed to fetch credit notes:", err);
-      setError("Failed to load credit notes.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: creditNotes = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["credit-notes"],
+    queryFn: async () => (await endpoints.getCreditNotes()).data.data || [],
+  });
+  const error = queryError ? "Failed to load credit notes." : null;
 
   const filteredNotes = creditNotes.filter(
     (cn) =>
@@ -104,7 +97,7 @@ const CreditNotes = () => {
       header: "Status",
       cell: (cn) => (
         <Badge variant={creditStatusVariant(cn.status)} className="capitalize">
-          {cn.status}
+          {(cn.status || "").replace("_", " ")}
         </Badge>
       ),
     },
@@ -135,7 +128,7 @@ const CreditNotes = () => {
         data={filteredNotes}
         loading={loading}
         error={error}
-        onRetry={fetchCreditNotes}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: search,

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { toast } from "@/components/ui/sonner";
 import { Scale, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -11,6 +12,7 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -20,41 +22,29 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Trial-balance amounts are summed across a tenant's accounts (which may span
-// currencies), so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
 const typeLabel = (t) =>
   ({ 1: "Asset", 2: "Liability", 3: "Equity", 4: "Revenue", 5: "Expense" }[t] || "—");
 
 export default function TrialBalance() {
-  const [tb, setTb] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const {
+    data: tb,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["trial-balance"],
+    queryFn: async () => (await endpoints.getTrialBalance()).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load the trial balance"
+    : null;
+
+  // Format in the tenant's reporting currency (base currency) so JPY/KWD/… show
+  // the right exponent. The ledger doesn't store a per-transaction currency, so
+  // for a multi-currency tenant this is a base-currency approximation.
+  const cur = tb?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
   const [exporting, setExporting] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getTrialBalance();
-      setTb(res.data?.data || null);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message || "Failed to load the trial balance",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const exportGL = async () => {
     setExporting(true);
@@ -95,7 +85,7 @@ export default function TrialBalance() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         tb && (

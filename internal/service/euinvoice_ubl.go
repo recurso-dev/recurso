@@ -77,9 +77,17 @@ type ublSupplier struct {
 }
 
 type ublTaxCategory struct {
-	ID        string         `xml:"cbc:ID"`
-	Percent   string         `xml:"cbc:Percent"`
-	TaxScheme ublTaxSchemeID `xml:"cac:TaxScheme"`
+	ID      string `xml:"cbc:ID"`
+	Percent string `xml:"cbc:Percent"`
+	// TaxExemptionReasonCode/Reason (BT-121/BT-120) are mandatory in a VAT
+	// breakdown (BG-23) whose category is reverse charge ("AE", BR-AE-10) or
+	// exempt ("E", BR-E-10). Emitted only on the document-level TaxSubtotal
+	// category, never on line-level ClassifiedTaxCategory; both are omitempty so
+	// standard/zero-rated breakdowns stay byte-identical. UBL 2.1 sequences these
+	// after cbc:Percent and before cac:TaxScheme.
+	TaxExemptionReasonCode string         `xml:"cbc:TaxExemptionReasonCode,omitempty"`
+	TaxExemptionReason     string         `xml:"cbc:TaxExemptionReason,omitempty"`
+	TaxScheme              ublTaxSchemeID `xml:"cac:TaxScheme"`
 }
 
 type ublTaxSubtotal struct {
@@ -163,6 +171,20 @@ func taxCategoryFor(ratePercent float64, buyerHasVAT bool) string {
 		return "AE"
 	}
 	return "Z"
+}
+
+// breakdownTaxCategory builds the VAT-breakdown (BG-23) tax category for a rate,
+// attaching the exemption reason (BT-121/BT-120) that EN 16931 mandates for a
+// reverse-charge ("AE", BR-AE-10) breakdown. The reason code "VATEX-EU-AE" is
+// the Peppol/EN 16931 VATEX entry for reverse charge; the text mirrors it. Any
+// other category (standard/zero-rated) carries no exemption reason.
+func breakdownTaxCategory(cat string, rate float64) ublTaxCategory {
+	tc := ublTaxCategory{ID: cat, Percent: ublPercent(rate), TaxScheme: ublTaxSchemeID{ID: ublVATScheme}}
+	if cat == "AE" {
+		tc.TaxExemptionReasonCode = "VATEX-EU-AE"
+		tc.TaxExemptionReason = "Reverse charge"
+	}
+	return tc
 }
 
 func ublParty2(p domain.EUParty) ublParty {
@@ -252,7 +274,7 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		subtotals = append(subtotals, ublTaxSubtotal{
 			TaxableAmount: ublAmount{Currency: cur, Value: ublMoney(g.taxable)},
 			TaxAmount:     ublAmount{Currency: cur, Value: ublMoney(lineTax)},
-			TaxCategory:   ublTaxCategory{ID: taxCategoryFor(r, buyerHasVAT), Percent: ublPercent(r), TaxScheme: ublTaxSchemeID{ID: ublVATScheme}},
+			TaxCategory:   breakdownTaxCategory(taxCategoryFor(r, buyerHasVAT), r),
 		})
 	}
 	// Reconcile: fold any rounding delta into the last subtotal's tax so the
@@ -268,7 +290,7 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		subtotals = append(subtotals, ublTaxSubtotal{
 			TaxableAmount: ublAmount{Currency: cur, Value: ublMoney(inv.Subtotal)},
 			TaxAmount:     ublAmount{Currency: cur, Value: ublMoney(inv.TaxAmount)},
-			TaxCategory:   ublTaxCategory{ID: taxCategoryFor(0, buyerHasVAT), Percent: "0", TaxScheme: ublTaxSchemeID{ID: ublVATScheme}},
+			TaxCategory:   breakdownTaxCategory(taxCategoryFor(0, buyerHasVAT), 0),
 		})
 	}
 

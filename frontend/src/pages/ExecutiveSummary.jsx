@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { AreaChart, BarChart } from "@tremor/react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -22,76 +23,68 @@ const monthStart = (offset) => {
 // Each endpoint is fetched independently (Promise.allSettled) so a single
 // failure degrades one tile rather than the whole page.
 export default function ExecutiveSummary() {
-  const [m, setM] = useState(null);
-  const [trend, setTrend] = useState(null); // [{ month, MRR }] in major units
   const [days, setDays] = useState(30);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const load = useCallback(async (windowDays) => {
-    setLoading(true);
-    setError(null);
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(start.getDate() - windowDays);
+  // The five headline endpoints are fetched together but tolerate partial
+  // failure (Promise.allSettled): one tile degrades rather than the whole page.
+  // The query only errors when ALL of them fail. Keyed by the movement window.
+  const summaryQuery = useQuery({
+    queryKey: ["executive-summary", days],
+    queryFn: async () => {
+      const now = new Date();
+      const start = new Date(now);
+      start.setDate(start.getDate() - days);
 
-    const [mrr, wf, ue, aging, rev] = await Promise.allSettled([
-      endpoints.getMRR(),
-      endpoints.getMRRWaterfall(iso(start), iso(now)),
-      endpoints.getUnitEconomics(),
-      endpoints.getInvoiceAging(),
-      endpoints.getRevenueRecognition(now.getMonth() + 1, now.getFullYear()),
-    ]);
-
-    // All five now wrap the payload in { data } (contract standardization).
-    const inner = (r) => (r.status === "fulfilled" ? r.value?.data?.data : null);
-
-    const next = {
-      mrr: inner(mrr),
-      wf: inner(wf),
-      ue: inner(ue),
-      aging: inner(aging),
-      rev: inner(rev),
-    };
-    if (!next.mrr && !next.wf && !next.ue && !next.aging && !next.rev) {
-      setError("Could not load metrics. Is the server running?");
-      setM(null);
-    } else {
-      setM(next);
-    }
-    setLoading(false);
-  }, []);
+      const [mrr, wf, ue, aging, rev] = await Promise.allSettled([
+        endpoints.getMRR(),
+        endpoints.getMRRWaterfall(iso(start), iso(now)),
+        endpoints.getUnitEconomics(),
+        endpoints.getInvoiceAging(),
+        endpoints.getRevenueRecognition(now.getMonth() + 1, now.getFullYear()),
+      ]);
+      const inner = (r) => (r.status === "fulfilled" ? r.value?.data?.data : null);
+      const next = {
+        mrr: inner(mrr),
+        wf: inner(wf),
+        ue: inner(ue),
+        aging: inner(aging),
+        rev: inner(rev),
+      };
+      if (!next.mrr && !next.wf && !next.ue && !next.aging && !next.rev) {
+        throw new Error("all-metrics-failed");
+      }
+      return next;
+    },
+  });
+  const m = summaryQuery.data ?? null;
+  const loading = summaryQuery.isLoading;
+  const error = summaryQuery.error ? "Could not load metrics. Is the server running?" : null;
 
   // Six-month MRR trend, built from monthly waterfall windows (ending_mrr per
-  // month). Fetched once — independent of the movement window above.
-  const loadTrend = useCallback(async () => {
-    const windows = Array.from({ length: 6 }, (_, i) => 5 - i).map((offset) => ({
-      start: monthStart(offset),
-      end: monthStart(offset - 1),
-    }));
-    const results = await Promise.allSettled(
-      windows.map((w) => endpoints.getMRRWaterfall(iso(w.start), iso(w.end)))
-    );
-    const points = results
-      .map((r, i) => {
-        const d = r.status === "fulfilled" ? r.value?.data?.data : null;
-        if (d?.ending_mrr == null) return null;
-        return {
-          month: windows[i].start.toLocaleString("en", { month: "short", timeZone: "UTC" }),
-          MRR: d.ending_mrr / 100,
-        };
-      })
-      .filter(Boolean);
-    setTrend(points);
-  }, []);
-
-  useEffect(() => {
-    load(days);
-  }, [load, days]);
-
-  useEffect(() => {
-    loadTrend();
-  }, [loadTrend]);
+  // month). Independent of the movement window above; failures just drop points.
+  const trendQuery = useQuery({
+    queryKey: ["executive-summary-trend"],
+    queryFn: async () => {
+      const windows = Array.from({ length: 6 }, (_, i) => 5 - i).map((offset) => ({
+        start: monthStart(offset),
+        end: monthStart(offset - 1),
+      }));
+      const results = await Promise.allSettled(
+        windows.map((w) => endpoints.getMRRWaterfall(iso(w.start), iso(w.end)))
+      );
+      return results
+        .map((r, i) => {
+          const d = r.status === "fulfilled" ? r.value?.data?.data : null;
+          if (d?.ending_mrr == null) return null;
+          return {
+            month: windows[i].start.toLocaleString("en", { month: "short", timeZone: "UTC" }),
+            MRR: fromMinorUnits(d.ending_mrr, d.reporting_currency),
+          };
+        })
+        .filter(Boolean);
+    },
+  });
+  const trend = trendQuery.data ?? null;
 
   const cur = m?.mrr?.reporting_currency || m?.ue?.reporting_currency || "USD";
   const money = (n) => (n == null ? "—" : formatCurrency(n, cur));
@@ -116,10 +109,10 @@ export default function ExecutiveSummary() {
 
   const movementData = m?.wf
     ? [
-        { name: "New", Amount: (m.wf.new || 0) / 100 },
-        { name: "Expansion", Amount: (m.wf.expansion || 0) / 100 },
-        { name: "Contraction", Amount: -((m.wf.contraction || 0) / 100) },
-        { name: "Churned", Amount: -((m.wf.churned || 0) / 100) },
+        { name: "New", Amount: fromMinorUnits(m.wf.new || 0, cur) },
+        { name: "Expansion", Amount: fromMinorUnits(m.wf.expansion || 0, cur) },
+        { name: "Contraction", Amount: -fromMinorUnits(m.wf.contraction || 0, cur) },
+        { name: "Churned", Amount: -fromMinorUnits(m.wf.churned || 0, cur) },
       ]
     : [];
 
@@ -152,7 +145,7 @@ export default function ExecutiveSummary() {
         <CardGridSkeleton count={4} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={() => load(days)} />
+          <ErrorState message={error} onRetry={() => summaryQuery.refetch()} />
         </Card>
       ) : (
         m && (

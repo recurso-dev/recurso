@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCustomers } from "@/lib/useCustomers";
 import { Plus, Users, DollarSign, Clock, Share2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -31,13 +33,7 @@ const statusVariant = (status) =>
   ({ rewarded: "success", qualified: "info" })[status] || "warning";
 
 function Referrals() {
-  const [referrals, setReferrals] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [qualifying, setQualifying] = useState(null);
-  const [error, setError] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [customers, setCustomers] = useState([]);
   const [form, setForm] = useState({
     referrer_id: "",
     referred_id: "",
@@ -45,55 +41,61 @@ function Referrals() {
     currency: "USD",
   });
 
-  useEffect(() => {
-    fetchReferrals();
-    fetchCustomers();
-  }, []);
+  const queryClient = useQueryClient();
+  // Reference data from the shared cache (ADR-005) — one fetch across the app.
+  const { customers } = useCustomers();
 
-  const fetchReferrals = async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: referrals = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["referrals"],
+    queryFn: async () => {
       const response = await endpoints.getReferrals();
-      setReferrals(Array.isArray(response.data?.data) ? response.data.data : []);
-    } catch (err) {
-      console.error("Error fetching referrals:", err);
-      setError(
-        err?.response?.data?.error?.message || err?.message || "Failed to load referrals"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+      return Array.isArray(response.data?.data) ? response.data.data : [];
+    },
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load referrals"
+    : null;
 
-  const fetchCustomers = async () => {
-    try {
-      const response = await endpoints.getCustomers();
-      setCustomers(response.data?.data || []);
-    } catch (error) {
-      console.error("Error fetching customers:", error);
-    }
-  };
-
-  const handleCreate = async (e) => {
-    e.preventDefault();
-    if (!form.referrer_id || !form.referred_id) return;
-    try {
-      setCreating(true);
-      await endpoints.createReferral({
-        referrer_id: form.referrer_id,
-        referred_id: form.referred_id,
-        reward_amount: parseInt(form.reward_amount),
-        currency: form.currency,
-      });
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createReferral(payload),
+    onSuccess: () => {
       setShowCreate(false);
       setForm({ referrer_id: "", referred_id: "", reward_amount: 500, currency: "USD" });
-      fetchReferrals();
-    } catch (error) {
-      console.error("Error creating referral:", error);
-    } finally {
-      setCreating(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    },
+    onError: (err) => {
+      console.error("Error creating referral:", err);
+    },
+  });
+  const creating = createMutation.isPending;
+
+  const qualifyMutation = useMutation({
+    mutationFn: (id) => endpoints.qualifyReferral(id),
+    onSuccess: () => {
+      toast.success("Referral qualified — reward is claimable.");
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to qualify referral");
+    },
+  });
+  // mutation.variables holds the id in flight, so the per-row disable is preserved.
+  const qualifying = qualifyMutation.isPending ? qualifyMutation.variables : null;
+
+  const handleCreate = (e) => {
+    e.preventDefault();
+    if (!form.referrer_id || !form.referred_id) return;
+    createMutation.mutate({
+      referrer_id: form.referrer_id,
+      referred_id: form.referred_id,
+      reward_amount: parseInt(form.reward_amount),
+      currency: form.currency,
+    });
   };
 
   const totalRewards = referrals
@@ -144,18 +146,9 @@ function Referrals() {
             size="sm"
             variant="outline"
             disabled={qualifying === r.id}
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              setQualifying(r.id);
-              try {
-                await endpoints.qualifyReferral(r.id);
-                toast.success("Referral qualified — reward is claimable.");
-                fetchReferrals();
-              } catch (err) {
-                toast.error(err?.response?.data?.error?.message || "Failed to qualify referral");
-              } finally {
-                setQualifying(null);
-              }
+              qualifyMutation.mutate(r.id);
             }}
           >
             {qualifying === r.id ? "Qualifying…" : "Qualify"}
@@ -188,7 +181,7 @@ function Referrals() {
         data={referrals}
         loading={loading}
         error={error}
-        onRetry={fetchReferrals}
+        onRetry={refetch}
         empty={{
           icon: Share2,
           title: "No referrals yet",

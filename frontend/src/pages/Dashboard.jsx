@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { AreaChart } from "@tremor/react";
 import {
@@ -14,7 +15,7 @@ import {
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, fromMinorUnits } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -43,20 +44,14 @@ const invoiceStatusVariant = (status) =>
   })[status] || "neutral";
 
 export default function Dashboard() {
-  const [loading, setLoading] = useState(true);
-  const [subscriptions, setSubscriptions] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [customerNames, setCustomerNames] = useState({});
-  const [mrr, setMrr] = useState(null);
-  const [recovered, setRecovered] = useState(null);
-  const [recoveredCurrency, setRecoveredCurrency] = useState("USD");
-  const [openDisputes, setOpenDisputes] = useState(0);
-  const [churnAlerts, setChurnAlerts] = useState(0);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
+  // One aggregate query for the whole overview. Each endpoint catches to null so
+  // Promise.all never rejects — a failed tile degrades rather than blanking the
+  // page (there's no error state, matching the original).
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ["dashboard-overview"],
+    queryFn: async () => {
       const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes] = await Promise.all([
         endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
         endpoints.getInvoices({ limit: 1000 }).catch(() => null),
@@ -66,37 +61,37 @@ export default function Dashboard() {
         endpoints.getDisputes("open").catch(() => null),
         endpoints.getChurnAlerts().catch(() => null),
       ]);
-      if (!active) return;
-
-      setSubscriptions(subsRes?.data?.data || []);
-      setInvoices(invRes?.data?.data || []);
-
       const names = {};
       (custRes?.data?.data || []).forEach((c) => {
         names[c.id] = c.name;
       });
-      setCustomerNames(names);
-
-      // MRR endpoint may return { mrr } or { data: { mrr } }; null => unavailable.
-      const mrrVal = mrrRes?.data?.mrr ?? mrrRes?.data?.data?.mrr;
-      setMrr(mrrVal ?? null);
-
       // Recovered revenue, normalized server-side into the tenant's reporting
       // currency (reporting_total / reporting_currency). Summing the raw
       // per-currency map would add ₹ and $ minor units together.
       const rec = recRes?.data?.data ?? recRes?.data;
-      setRecovered(rec?.reporting_total ?? null);
-      setRecoveredCurrency(rec?.reporting_currency || "USD");
-
-      setOpenDisputes((dispRes?.data?.data || []).length);
-      setChurnAlerts((churnRes?.data?.data || []).length);
-
-      setLoading(false);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
+      return {
+        subscriptions: subsRes?.data?.data || [],
+        invoices: invRes?.data?.data || [],
+        customerNames: names,
+        // MRR endpoint may return { mrr } or { data: { mrr } }; null => unavailable.
+        mrr: (mrrRes?.data?.mrr ?? mrrRes?.data?.data?.mrr) ?? null,
+        recovered: rec?.reporting_total ?? null,
+        recoveredCurrency: rec?.reporting_currency || "USD",
+        openDisputes: (dispRes?.data?.data || []).length,
+        churnAlerts: (churnRes?.data?.data || []).length,
+      };
+    },
+  });
+  // Stable references (only change when the query result does) so the derived
+  // useMemos below don't recompute every render.
+  const subscriptions = useMemo(() => data?.subscriptions ?? [], [data]);
+  const invoices = useMemo(() => data?.invoices ?? [], [data]);
+  const customerNames = data?.customerNames ?? {};
+  const mrr = data?.mrr ?? null;
+  const recovered = data?.recovered ?? null;
+  const recoveredCurrency = data?.recoveredCurrency ?? "USD";
+  const openDisputes = data?.openDisputes ?? 0;
+  const churnAlerts = data?.churnAlerts ?? 0;
 
   const activeSubs = useMemo(
     () => subscriptions.filter((s) => s.status === "active").length,
@@ -150,7 +145,7 @@ export default function Dashboard() {
       .map((day) => {
         const row = { date: formatDate(day, { month: "short", day: "numeric" }) };
         curs.forEach((c) => {
-          row[c] = (byDay[day][c] || 0) / 100;
+          row[c] = fromMinorUnits(byDay[day][c] || 0, c);
         });
         return row;
       });

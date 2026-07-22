@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Globe } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -13,26 +13,18 @@ import { Card } from "@/components/ui/card";
 const BAR_COLORS = ["bg-emerald-500", "bg-emerald-600", "bg-teal-500", "bg-cyan-600", "bg-sky-600", "bg-indigo-500"];
 
 export default function RevenueByGeography() {
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getRevenueByGeography();
-      setReport(res.data?.data || null);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load revenue by geography");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: report,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["revenue-by-geography"],
+    queryFn: async () => (await endpoints.getRevenueByGeography()).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load revenue by geography"
+    : null;
 
   const cur = report?.reporting_currency || "USD";
   const money = (n) => formatCurrency(n || 0, cur);
@@ -50,7 +42,7 @@ export default function RevenueByGeography() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         report && (

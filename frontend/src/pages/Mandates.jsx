@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Repeat2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -43,14 +44,10 @@ const emptyForm = { customer_id: "", vpa: "", max_amount: "", frequency: "monthl
 // UPI Autopay mandates: standing authorizations to debit a customer up to a
 // cap per cycle. Amounts are minor units; UPI mandates are INR.
 const Mandates = () => {
-  const [mandates, setMandates] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
-  const [creating, setCreating] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState(null);
-  const [revoking, setRevoking] = useState(false);
+  const queryClient = useQueryClient();
   const { customers, names } = useCustomers();
   // Subscriptions back the optional link picker in the create dialog; plans
   // give those options a human label. Both come from the shared query cache.
@@ -62,58 +59,58 @@ const Mandates = () => {
     (s) => s.customer_id === form.customer_id && s.status !== "canceled"
   );
 
-  const fetchMandates = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getMandates();
-      setMandates(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load mandates");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: mandates = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["mandates"],
+    queryFn: async () => (await api.getMandates()).data.data || [],
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load mandates"
+    : null;
 
-  useEffect(() => {
-    fetchMandates();
-  }, []);
-
-  const submitCreate = async () => {
-    setCreating(true);
-    try {
-      const body = {
-        customer_id: form.customer_id.trim(),
-        vpa: form.vpa.trim(),
-        max_amount: Math.round(parseFloat(form.max_amount) * 100),
-        frequency: form.frequency,
-      };
-      if (form.subscription_id.trim()) body.subscription_id = form.subscription_id.trim();
-      await api.createMandate(body);
+  const createMutation = useMutation({
+    mutationFn: (body) => api.createMandate(body),
+    onSuccess: () => {
       toast.success("Mandate created.");
       setCreateOpen(false);
       setForm(emptyForm);
-      fetchMandates();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to create mandate");
-    } finally {
-      setCreating(false);
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: ["mandates"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to create mandate"),
+  });
+  const creating = createMutation.isPending;
 
-  const confirmRevoke = async () => {
-    if (!revokeTarget) return;
-    setRevoking(true);
-    try {
-      await api.revokeMandate(revokeTarget.id);
+  const revokeMutation = useMutation({
+    mutationFn: (id) => api.revokeMandate(id),
+    onSuccess: () => {
       toast.success("Mandate revoked.");
       setRevokeTarget(null);
-      fetchMandates();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to revoke mandate");
-    } finally {
-      setRevoking(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["mandates"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to revoke mandate"),
+  });
+  const revoking = revokeMutation.isPending;
+
+  const submitCreate = () => {
+    const body = {
+      customer_id: form.customer_id.trim(),
+      vpa: form.vpa.trim(),
+      max_amount: toMinorUnits(form.max_amount),
+      frequency: form.frequency,
+    };
+    if (form.subscription_id.trim()) body.subscription_id = form.subscription_id.trim();
+    createMutation.mutate(body);
+  };
+
+  const confirmRevoke = () => {
+    if (!revokeTarget) return;
+    revokeMutation.mutate(revokeTarget.id);
   };
 
   const columns = [
@@ -185,7 +182,7 @@ const Mandates = () => {
         data={mandates}
         loading={loading}
         error={error}
-        onRetry={fetchMandates}
+        onRetry={refetch}
         empty={{
           icon: Repeat2,
           title: "No mandates yet",
