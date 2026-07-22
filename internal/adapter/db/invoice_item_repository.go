@@ -32,6 +32,7 @@ const invoiceItemInsert = `
 // execInsert runs the bulk insert against any execer (either *sql.DB or *sql.Tx).
 type execer interface {
 	ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error)
+	QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row
 }
 
 func insertInvoiceItems(ctx context.Context, ex execer, items []*domain.InvoiceItem) error {

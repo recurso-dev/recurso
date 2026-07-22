@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
@@ -76,6 +77,9 @@ func (s *EntityService) Create(ctx context.Context, tenantID uuid.UUID, in Creat
 		return nil, fmt.Errorf("%w: country_code must be a 2-letter ISO code", ErrEntityValidation)
 	}
 	if err := s.repo.Create(ctx, e); err != nil {
+		if db.IsUniqueViolation(err) {
+			return nil, fmt.Errorf("%w: invoice prefix %q is already used by another entity", ErrEntityValidation, prefix)
+		}
 		return nil, err
 	}
 	return e, nil
@@ -104,6 +108,9 @@ func (s *EntityService) Update(ctx context.Context, tenantID, id uuid.UUID, in C
 		e.CountryCode = c
 	}
 	if err := s.repo.Update(ctx, e); err != nil {
+		if db.IsUniqueViolation(err) {
+			return nil, fmt.Errorf("%w: invoice prefix %q is already used by another entity", ErrEntityValidation, e.InvoicePrefix)
+		}
 		return nil, err
 	}
 	return e, nil

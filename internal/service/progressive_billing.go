@@ -261,9 +261,9 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 	inv := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
+		EntityID:       sub.EntityID,
 		SubscriptionID: &sub.ID,
 		CustomerID:     sub.CustomerID,
-		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
 		BillingReason:  domain.BillingReasonProgressiveUsage,
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       currency,
