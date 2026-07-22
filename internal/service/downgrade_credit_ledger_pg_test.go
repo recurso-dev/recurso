@@ -205,7 +205,7 @@ func TestManualAdjustmentCreditLedger_Postgres(t *testing.T) {
 
 	// Issue a manual goodwill adjustment credit of 30000.
 	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
-	cn, err := cnSvc.Create(tctx, tenantID, domain.CreateCreditNoteRequest{
+	cn, err := cnSvc.Create(tctx, tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
 		CustomerID: customerID, Amount: 30000, Currency: "USD", Reason: "goodwill",
 	})
 	if err != nil {

@@ -11,15 +11,16 @@ import (
 type Role string
 
 const (
-	RoleOwner  Role = "owner"
-	RoleAdmin  Role = "admin"
-	RoleMember Role = "member"
+	RoleOwner   Role = "owner"
+	RoleAdmin   Role = "admin"
+	RoleMember  Role = "member"
+	RoleSupport Role = "support"
 )
 
 // Valid reports whether r is a recognized role.
 func (r Role) Valid() bool {
 	switch r {
-	case RoleOwner, RoleAdmin, RoleMember:
+	case RoleOwner, RoleAdmin, RoleMember, RoleSupport:
 		return true
 	default:
 		return false
@@ -124,7 +125,7 @@ var (
 	ErrLastOwner       = errors.New("cannot remove or demote the last owner")
 	ErrSelfLockout     = errors.New("you cannot remove your own account")
 	ErrWeakPassword    = errors.New("password must be at least 8 characters")
-	ErrInvalidRole     = errors.New("role must be one of owner, admin, member")
+	ErrInvalidRole     = errors.New("role must be one of owner, admin, member, support")
 	// ErrOwnerRoleRequired guards the owner boundary: only an owner may grant the
 	// owner role or remove/demote an existing owner. Without it an admin (who can
 	// manage the team) could self-promote to owner (privilege escalation).
