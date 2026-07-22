@@ -34,7 +34,7 @@ func (f *fakeWalletRepo) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*
 	return nil, nil
 }
 
-func (f *fakeWalletRepo) GetByCustomerAndCurrency(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (*domain.Wallet, error) {
+func (f *fakeWalletRepo) GetByCustomerEntityAndCurrency(ctx context.Context, tenantID, customerID, entityID uuid.UUID, currency string) (*domain.Wallet, error) {
 	if f.wallet != nil && f.wallet.CustomerID == customerID && f.wallet.Currency == currency {
 		return f.wallet, nil
 	}
@@ -65,12 +65,12 @@ type fakeWalletLedger struct {
 	drainPosted []int64
 }
 
-func (f *fakeWalletLedger) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (f *fakeWalletLedger) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	f.topUps = append(f.topUps, amount)
 	return uuid.New(), nil
 }
 
-func (f *fakeWalletLedger) RecordWalletDrain(ctx context.Context, tenantID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (f *fakeWalletLedger) RecordWalletDrain(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	f.drainPosted = append(f.drainPosted, amount)
 	return uuid.New(), nil
 }

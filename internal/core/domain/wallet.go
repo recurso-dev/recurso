@@ -42,8 +42,11 @@ const (
 
 // Wallet is a customer's prepaid balance in one currency.
 type Wallet struct {
-	ID         uuid.UUID `json:"id"`
-	TenantID   uuid.UUID `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	// EntityID is the legal entity this wallet belongs to (Multi-Entity Books):
+	// its balance is spendable only on that entity's invoices.
+	EntityID   uuid.UUID `json:"entity_id"`
 	CustomerID uuid.UUID `json:"customer_id"`
 	Currency   string    `json:"currency"`
 	// Balance is the drainable total in minor units (denormalized from the

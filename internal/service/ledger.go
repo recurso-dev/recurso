@@ -712,20 +712,21 @@ func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID, c
 //
 // referenceID is the wallet transaction. Promotional (unpaid) top-ups must
 // use RecordAdjustmentCreditIssued instead — no cash moved.
-func (s *LedgerService) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("wallet top-up %s: %w", walletTxID, err)
 	}
-	cashAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	cashAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.postTransfer(ctx, cashAccountID, creditAccountID, amt, domain.LedgerCodeWalletTopUp, walletTxID, description)
+	return s.postEntityTransfer(ctx, ent, cashAccountID, creditAccountID, amt, domain.LedgerCodeWalletTopUp, walletTxID, description)
 }
 
 // RecordWalletDrain books wallet balance settling an invoice (B1):
@@ -734,18 +735,20 @@ func (s *LedgerService) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUI
 //	Credit: Customer AR (Asset)         — the customer owes that much less
 //
 // referenceID is the settled invoice.
-func (s *LedgerService) RecordWalletDrain(ctx context.Context, tenantID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordWalletDrain(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("wallet drain %s: %w", invoiceID, err)
 	}
-	s.ensureCustomerAR(ctx, tenantID, customerID)
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	s.ensureEntityAR(ctx, tenantID, ent, customerID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	// AR is a per-customer sub-ledger whose account id is the customer id.
-	return s.postTransfer(ctx, creditAccountID, customerID, amt, domain.LedgerCodeWalletDrain, invoiceID, description)
+	// AR is a per-(entity,customer) sub-ledger; the primary entity keeps using
+	// the customer id directly so its books stay byte-identical.
+	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, domain.LedgerCodeWalletDrain, invoiceID, description)
 }
 
 // postTransfer writes a single ledger transfer (PG always; TigerBeetle when
@@ -758,6 +761,36 @@ func (s *LedgerService) postTransfer(ctx context.Context, debitAccountID, credit
 		CreditAccountID: creditAccountID,
 		Amount:          amount,
 		LedgerID:        1,
+		Code:            code,
+		ReferenceID:     referenceID,
+		Description:     description,
+		Timestamp:       time.Now(),
+	}
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			slog.Error("PG CreateTransaction failed", "code", code, "reference_id", referenceID, "error", err)
+			return uuid.Nil, fmt.Errorf("ledger write failed (code %d, ref %s): %w", code, referenceID, err)
+		}
+	}
+	if s.tbClient != nil {
+		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
+			return uuid.Nil, err
+		}
+	}
+	return txID, nil
+}
+
+// postEntityTransfer is postTransfer on a specific entity's ledger. For the
+// primary entity (LedgerID 1) it is byte-identical to postTransfer, so
+// single-entity tenants and the invariant harness are unaffected.
+func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {
+	txID := uuid.New()
+	transfer := &domain.LedgerTransaction{
+		ID:              txID,
+		DebitAccountID:  debitAccountID,
+		CreditAccountID: creditAccountID,
+		Amount:          amount,
+		LedgerID:        ent.LedgerID,
 		Code:            code,
 		ReferenceID:     referenceID,
 		Description:     description,

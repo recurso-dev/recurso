@@ -902,6 +902,7 @@ func main() {
 	walletRepo := db.NewWalletRepository(database)
 	auditLogRepo := db.NewAuditLogRepository(database) // C2: append-only audit trail
 	walletService := service.NewWalletService(walletRepo, customerRepo, ledgerService)
+	walletService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: scope wallets to a legal entity
 	walletService.SetNotifier(notifier)
 	invoiceService.WalletDrainer = walletService
 

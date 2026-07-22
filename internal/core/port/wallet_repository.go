@@ -14,9 +14,10 @@ import (
 type WalletRepository interface {
 	Create(ctx context.Context, w *domain.Wallet) error
 	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Wallet, error)
-	// GetByCustomerAndCurrency returns (nil, nil) when the customer has no
-	// wallet in the currency.
-	GetByCustomerAndCurrency(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (*domain.Wallet, error)
+	// GetByCustomerEntityAndCurrency returns (nil, nil) when the customer has
+	// no wallet for that entity in the currency (Multi-Entity Books: wallets
+	// are entity-scoped).
+	GetByCustomerEntityAndCurrency(ctx context.Context, tenantID, customerID, entityID uuid.UUID, currency string) (*domain.Wallet, error)
 	ListByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.Wallet, error)
 	ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.Wallet, error)
 	UpdateAutoRecharge(ctx context.Context, tenantID, id uuid.UUID, threshold, amount *int64) error
