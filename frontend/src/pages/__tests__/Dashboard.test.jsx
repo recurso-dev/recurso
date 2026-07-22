@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from '../Dashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
@@ -24,7 +25,11 @@ vi.mock('@tremor/react', () => ({
 }));
 
 const renderDashboard = () =>
-    render(<MemoryRouter><Dashboard /></MemoryRouter>);
+    render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+            <MemoryRouter><Dashboard /></MemoryRouter>
+        </QueryClientProvider>
+    );
 
 describe('Dashboard (redesign)', () => {
     beforeEach(() => {
