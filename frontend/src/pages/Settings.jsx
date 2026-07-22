@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -69,6 +69,12 @@ export default function Settings() {
       icon: MapPinned,
       title: "US sales-tax nexus",
       description: "Declare collection states and monitor economic thresholds.",
+    },
+    {
+      to: "/settings/mcp",
+      icon: Bot,
+      title: "MCP server",
+      description: "Let AI agents operate your billing, and gate money-path actions.",
     },
   ];
 

@@ -28,4 +28,8 @@ func TestReadToolPaths_ExistInOpenAPI(t *testing.T) {
 	for name, path := range writeToolPaths {
 		check(name, path)
 	}
+	for name, path := range sensitiveToolPaths {
+		check(name, path)
+	}
+	check("mcp_settings_optin", "/v1/settings/mcp") // the opt-in endpoint the Tier-3 gate calls
 }

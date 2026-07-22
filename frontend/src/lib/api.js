@@ -270,6 +270,9 @@ export const endpoints = {
   getEUEInvoiceConfig: () => api.get('/settings/eu-einvoice'),
   updateEUEInvoiceConfig: (data) => api.put('/settings/eu-einvoice', data),
 
+  getMCPSettings: () => api.get('/settings/mcp'),
+  updateMCPSettings: (data) => api.put('/settings/mcp', data),
+
   // Usage-based billing (metering)
   getBillableMetrics: () => api.get('/billable-metrics'),
   createBillableMetric: (data) => api.post('/billable-metrics', data),
