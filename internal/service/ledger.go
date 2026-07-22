@@ -788,36 +788,6 @@ func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity
 	return txID, nil
 }
 
-// postEntityTransfer is postTransfer on a specific entity's ledger. For the
-// primary entity (LedgerID 1) it is byte-identical to postTransfer, so
-// single-entity tenants and the invariant harness are unaffected.
-func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity, debitAccountID, creditAccountID uuid.UUID, amount uint64, code uint16, referenceID uuid.UUID, description string) (uuid.UUID, error) {
-	txID := uuid.New()
-	transfer := &domain.LedgerTransaction{
-		ID:              txID,
-		DebitAccountID:  debitAccountID,
-		CreditAccountID: creditAccountID,
-		Amount:          amount,
-		LedgerID:        ent.LedgerID,
-		Code:            code,
-		ReferenceID:     referenceID,
-		Description:     description,
-		Timestamp:       time.Now(),
-	}
-	if s.pgRepo != nil {
-		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed", "code", code, "reference_id", referenceID, "error", err)
-			return uuid.Nil, fmt.Errorf("ledger write failed (code %d, ref %s): %w", code, referenceID, err)
-		}
-	}
-	if s.tbClient != nil {
-		if err := s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer}); err != nil {
-			return uuid.Nil, err
-		}
-	}
-	return txID, nil
-}
-
 // ListAccounts returns all ledger accounts for a tenant.
 func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
 	if s.pgRepo != nil {
