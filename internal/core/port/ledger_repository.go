@@ -14,6 +14,9 @@ type LedgerRepository interface {
 	CreateAccount(ctx context.Context, account *domain.LedgerAccount) error
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
 	GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error)
+	// GetAccountByEntityAndCode resolves a GL account scoped to a legal entity
+	// (Multi-Entity Books). Nil when the entity has no such account yet.
+	GetAccountByEntityAndCode(ctx context.Context, tenantID, entityID uuid.UUID, code int) (*domain.LedgerAccount, error)
 	CreateTransaction(ctx context.Context, tx *domain.LedgerTransaction) error
 	// CreateTransactions posts several transfers atomically (one DB transaction),
 	// so a multi-leg posting can't be left half-committed.

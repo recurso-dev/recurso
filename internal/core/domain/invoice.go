@@ -33,8 +33,11 @@ const (
 )
 
 type Invoice struct {
-	ID             uuid.UUID  `json:"id"`
-	TenantID       uuid.UUID  `json:"tenant_id"`
+	ID       uuid.UUID `json:"id"`
+	TenantID uuid.UUID `json:"tenant_id"`
+	// EntityID is the issuing legal entity (Multi-Entity Books). Nil resolves to
+	// the tenant's primary entity, so single-entity tenants are unchanged.
+	EntityID       *uuid.UUID `json:"entity_id,omitempty"`
 	SubscriptionID *uuid.UUID `json:"subscription_id,omitempty"` // Nullable for one-off invoices
 	CustomerID     uuid.UUID  `json:"customer_id"`
 	InvoiceNumber  string     `json:"invoice_number"`

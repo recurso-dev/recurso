@@ -576,6 +576,9 @@ func main() {
 	// balance, deferred rollforward, close pack), so the UI formats totals with
 	// the tenant's currency exponent.
 	ledgerService.SetReporting(tenantRepo, reportingCurrency)
+	// Per-entity ledger resolution (Multi-Entity Books): postings resolve their
+	// legal entity's ledger; without this they use the primary ledger.
+	ledgerService.SetEntityReader(db.NewEntityRepository(database))
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
