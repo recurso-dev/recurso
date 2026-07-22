@@ -1,4 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCustomers } from "@/lib/useCustomers";
 import { useNavigate } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 
@@ -27,8 +29,8 @@ import {
 
 const CreateQuote = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [customers, setCustomers] = useState([]);
+  const queryClient = useQueryClient();
+  const { customers } = useCustomers();
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
 
@@ -43,18 +45,16 @@ const CreateQuote = () => {
     line_items: [{ description: "", quantity: 1, unit_price: 0 }],
   });
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
-
-  const fetchCustomers = async () => {
-    try {
-      const response = await endpoints.getCustomers();
-      setCustomers(response.data.data || []);
-    } catch (err) {
-      console.error("Failed to fetch customers:", err);
-    }
-  };
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createQuote(payload),
+    onSuccess: () => {
+      // The quotes list caches for 60s — invalidate so the new quote shows.
+      queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      navigate("/quotes");
+    },
+    onError: (err) => setError(err.response?.data?.error?.message || "Failed to create quote"),
+  });
+  const loading = createMutation.isPending;
 
   const close = () => navigate("/quotes");
 
@@ -104,38 +104,27 @@ const CreateQuote = () => {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!validate()) return;
-    setLoading(true);
     setError(null);
-
-    try {
-      const payload = {
-        customer_id: formData.customer_id,
-        currency: formData.currency,
-        notes: formData.notes,
-        terms: formData.terms,
-        tax_amount: parseInt(formData.tax_amount) || 0,
-        discount_amount: parseInt(formData.discount_amount) || 0,
-        valid_until: formData.valid_until
-          ? new Date(formData.valid_until).toISOString()
-          : null,
-        line_items: formData.line_items.map((item) => ({
-          description: item.description,
-          quantity: parseInt(item.quantity) || 1,
-          unit_price: parseInt(item.unit_price) || 0,
-          amount: (parseInt(item.quantity) || 1) * (parseInt(item.unit_price) || 0),
-        })),
-      };
-
-      await endpoints.createQuote(payload);
-      navigate("/quotes");
-    } catch (err) {
-      setError(err.response?.data?.error?.message || "Failed to create quote");
-    } finally {
-      setLoading(false);
-    }
+    createMutation.mutate({
+      customer_id: formData.customer_id,
+      currency: formData.currency,
+      notes: formData.notes,
+      terms: formData.terms,
+      tax_amount: parseInt(formData.tax_amount) || 0,
+      discount_amount: parseInt(formData.discount_amount) || 0,
+      valid_until: formData.valid_until
+        ? new Date(formData.valid_until).toISOString()
+        : null,
+      line_items: formData.line_items.map((item) => ({
+        description: item.description,
+        quantity: parseInt(item.quantity) || 1,
+        unit_price: parseInt(item.unit_price) || 0,
+        amount: (parseInt(item.quantity) || 1) * (parseInt(item.unit_price) || 0),
+      })),
+    });
   };
 
   return (
