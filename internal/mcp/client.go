@@ -63,6 +63,11 @@ func (c *Client) Post(ctx context.Context, key, path string, body any, idemKey s
 	return c.do(ctx, http.MethodPost, key, path, nil, body, idemKey)
 }
 
+// Put issues PUT baseURL+path with a JSON body and the caller's key.
+func (c *Client) Put(ctx context.Context, key, path string, body any, idemKey string) ([]byte, *APIError) {
+	return c.do(ctx, http.MethodPut, key, path, nil, body, idemKey)
+}
+
 func (c *Client) do(ctx context.Context, method, key, path string, query url.Values, body any, idemKey string) ([]byte, *APIError) {
 	u := c.baseURL + path
 	if len(query) > 0 {

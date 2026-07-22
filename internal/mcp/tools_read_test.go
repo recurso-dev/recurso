@@ -46,11 +46,15 @@ func TestListTools_Tier1SurfaceMatchesCatalogue(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[string]*mcp.Tool{}
+	readOnly := 0
 	for _, tl := range res.Tools {
 		got[tl.Name] = tl
+		if tl.Annotations != nil && tl.Annotations.ReadOnlyHint {
+			readOnly++
+		}
 	}
-	if len(got) != len(readToolPaths) {
-		t.Fatalf("registered %d tools, catalogue has %d", len(got), len(readToolPaths))
+	if readOnly != len(readToolPaths) {
+		t.Fatalf("registered %d read-only tools, catalogue has %d", readOnly, len(readToolPaths))
 	}
 	for name := range readToolPaths {
 		tl, ok := got[name]

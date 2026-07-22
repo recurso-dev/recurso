@@ -16,10 +16,16 @@ func TestReadToolPaths_ExistInOpenAPI(t *testing.T) {
 		t.Fatalf("read openapi.yaml: %v", err)
 	}
 	spec := string(data)
-	for name, path := range readToolPaths {
+	check := func(name, path string) {
 		// Path keys are indented two spaces under `paths:`.
 		if !strings.Contains(spec, "\n  "+path+":") {
 			t.Errorf("tool %q → %q not found as a path in cmd/api/openapi.yaml", name, path)
 		}
+	}
+	for name, path := range readToolPaths {
+		check(name, path)
+	}
+	for name, path := range writeToolPaths {
+		check(name, path)
 	}
 }
