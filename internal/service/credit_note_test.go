@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -21,14 +22,56 @@ type cnRefundUpdate struct {
 }
 
 type mockCreditNoteRepo struct {
-	created        []*domain.CreditNote
-	createErr      error
-	updates        []cnRefundUpdate
-	updateErr      error
-	refundedSum    int64
-	sumErr         error
-	existing       *domain.CreditNote // resolved by GetByRefundID
-	getByRefundErr error
+	created         []*domain.CreditNote
+	createErr       error
+	updates         []cnRefundUpdate
+	updateErr       error
+	refundedSum     int64
+	sumErr          error
+	existing        *domain.CreditNote // resolved by GetByRefundID / GetByID
+	getByRefundErr  error
+	getErr          error
+	updateStatusErr error
+	statusUpdates   int
+}
+
+// GetByID resolves a credit note from those created (or the seeded existing one).
+func (m *mockCreditNoteRepo) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error) {
+	if m.getErr != nil {
+		return nil, m.getErr
+	}
+	for _, cn := range m.created {
+		if cn.ID == id {
+			return cn, nil
+		}
+	}
+	if m.existing != nil && m.existing.ID == id {
+		return m.existing, nil
+	}
+	return nil, nil
+}
+
+// UpdateStatus mirrors the real repo's conditional CAS: it only transitions when
+// the current status matches oldStatus, and reports whether a row was updated.
+func (m *mockCreditNoteRepo) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error) {
+	if m.updateStatusErr != nil {
+		return false, m.updateStatusErr
+	}
+	for _, cn := range m.created {
+		if cn.ID == id {
+			if cn.Status != oldStatus {
+				return false, nil // CAS miss — someone else moved it first
+			}
+			cn.Status = newStatus
+			if approverID != uuid.Nil {
+				cn.ApprovedBy = &approverID
+				cn.ApprovedAt = &approvedAt
+			}
+			m.statusUpdates++
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 func (m *mockCreditNoteRepo) Create(ctx context.Context, cn *domain.CreditNote) error {
@@ -211,11 +254,11 @@ func refundRequest(f *cnFixture, amount int64, currency string) domain.CreateCre
 func TestCreditNote_RejectsNonPositiveAmount(t *testing.T) {
 	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
 	for _, amt := range []int64{0, -1, -5000} {
-		if _, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, amt, "INR")); err == nil {
+		if _, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, amt, "INR")); err == nil {
 			t.Errorf("refund amount %d: expected validation error, got nil", amt)
 		}
 		adj := domain.CreateCreditNoteRequest{CustomerID: f.customerID, Amount: amt, Currency: "INR", Type: string(domain.CreditNoteTypeAdjustment)}
-		if _, err := f.svc.Create(context.Background(), f.tenantID, adj); err == nil {
+		if _, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", adj); err == nil {
 			t.Errorf("adjustment amount %d: expected validation error, got nil", amt)
 		}
 	}
@@ -227,7 +270,7 @@ func TestCreditNote_RejectsNonPositiveAmount(t *testing.T) {
 func TestCreditNote_Refund_CallsGatewayAndPersistsRefundID(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 
-	cn, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -263,7 +306,7 @@ func TestCreditNote_Refund_PendingGatewayStatusStaysPending(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "INR", "pay_xyz"))
 	f.gateway.result = &port.RefundResult{RefundID: "rfnd_slow", Status: "pending"}
 
-	cn, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 250, "INR"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 250, "INR"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -279,7 +322,7 @@ func TestCreditNote_Refund_GatewayFailureMarksRefundFailed(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 	f.gateway.err = errors.New("card network unavailable")
 
-	cn, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -301,7 +344,7 @@ func TestCreditNote_Refund_GatewayFailureMarksRefundFailed(t *testing.T) {
 func TestCreditNote_Refund_NoPaymentIDRequiresManualProcessing(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "")) // mock-era / offline payment
 
-	cn, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -323,7 +366,7 @@ func TestCreditNote_Refund_NoPaymentIDRequiresManualProcessing(t *testing.T) {
 func TestCreditNote_Refund_OverRefundRejected(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 1200, "USD"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 1200, "USD"))
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation, got %v", err)
 	}
@@ -339,13 +382,13 @@ func TestCreditNote_Refund_CumulativeOverRefundRejected(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 	f.repo.refundedSum = 700 // previously refunded via earlier credit notes
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation for cumulative over-refund, got %v", err)
 	}
 
 	// 300 remaining is still refundable
-	if _, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 300, "USD")); err != nil {
+	if _, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 300, "USD")); err != nil {
 		t.Fatalf("refund within remaining paid amount should succeed, got %v", err)
 	}
 }
@@ -355,7 +398,7 @@ func TestCreditNote_Refund_UnpaidInvoiceRejected(t *testing.T) {
 	inv.Status = domain.InvoiceStatusOpen
 	f := newCNFixture(inv)
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation for unpaid invoice, got %v", err)
 	}
@@ -373,7 +416,7 @@ func TestCreditNote_Refund_RequiresInvoiceID(t *testing.T) {
 		Currency:   "USD",
 		Type:       string(domain.CreditNoteTypeRefund),
 	}
-	_, err := f.svc.Create(context.Background(), f.tenantID, req)
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", req)
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation without invoice_id, got %v", err)
 	}
@@ -382,7 +425,7 @@ func TestCreditNote_Refund_RequiresInvoiceID(t *testing.T) {
 func TestCreditNote_Refund_CurrencyMismatchRejected(t *testing.T) {
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "INR"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "INR"))
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation for currency mismatch, got %v", err)
 	}
@@ -393,7 +436,7 @@ func TestCreditNote_Refund_WrongCustomerRejected(t *testing.T) {
 	f := newCNFixture(inv)
 	inv.CustomerID = uuid.New() // invoice belongs to a different customer
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if !errors.Is(err, ErrCreditNoteValidation) {
 		t.Fatalf("expected ErrCreditNoteValidation for wrong customer, got %v", err)
 	}
@@ -403,7 +446,7 @@ func TestCreditNote_Refund_PersistFailureAfterGatewaySuccessSurfaces(t *testing.
 	f := newCNFixture(paidInvoice(1000, "USD", "pi_abc123"))
 	f.repo.updateErr = errors.New("db down")
 
-	_, err := f.svc.Create(context.Background(), f.tenantID, refundRequest(f, 400, "USD"))
+	_, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", refundRequest(f, 400, "USD"))
 	if err == nil {
 		t.Fatal("expected an error when the refund succeeded at the gateway but could not be persisted")
 	}
@@ -554,7 +597,7 @@ func TestCreditNote_Adjustment_DoesNotTouchGateway(t *testing.T) {
 		Reason:     "goodwill credit",
 		// Type omitted — defaults to adjustment (pre-refund behavior)
 	}
-	cn, err := f.svc.Create(context.Background(), f.tenantID, req)
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.Nil, "", req)
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -570,5 +613,145 @@ func TestCreditNote_Adjustment_DoesNotTouchGateway(t *testing.T) {
 	}
 	if cn.Balance != 500 {
 		t.Errorf("adjustment balance = %d, want 500 (spendable credit)", cn.Balance)
+	}
+}
+
+// --- Maker-checker (RBAC / segregation-of-duties) tests ---
+
+const (
+	roleSupport = "support"
+	roleAdmin   = "admin"
+)
+
+// TestCreditNote_MakerChecker_SupportCreatesPending: a support user (maker) can
+// only draft — the credit note lands in pending_approval and NO gateway refund
+// fires until a checker approves.
+func TestCreditNote_MakerChecker_SupportCreatesPending(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleSupport, refundRequest(f, 5000, "INR"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if cn.Status != domain.CreditNoteStatusPending {
+		t.Errorf("support-created refund status = %q, want pending_approval", cn.Status)
+	}
+	if len(f.gateway.calls) != 0 {
+		t.Errorf("pending credit note must not touch the gateway; got %d refund call(s)", len(f.gateway.calls))
+	}
+}
+
+// A non-support caller (admin, or an API key with empty role) issues immediately.
+func TestCreditNote_MakerChecker_AdminSelfIssues(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleAdmin, refundRequest(f, 5000, "INR"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if cn.Status != domain.CreditNoteStatusIssued {
+		t.Errorf("admin-created refund status = %q, want issued", cn.Status)
+	}
+	if len(f.gateway.calls) != 1 {
+		t.Errorf("admin self-issue should refund immediately; got %d call(s)", len(f.gateway.calls))
+	}
+}
+
+// A checker approving a pending refund issues it and executes exactly one refund.
+func TestCreditNote_Approve_IssuesAndRefundsOnce(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, _ := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleSupport, refundRequest(f, 5000, "INR"))
+
+	approved, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, uuid.New())
+	if err != nil {
+		t.Fatalf("approve: %v", err)
+	}
+	if approved.Status != domain.CreditNoteStatusIssued {
+		t.Errorf("approved status = %q, want issued", approved.Status)
+	}
+	if len(f.gateway.calls) != 1 {
+		t.Errorf("approval should fire exactly one refund; got %d", len(f.gateway.calls))
+	}
+}
+
+// Double-approve is idempotent — the second call is a no-op and does NOT refund
+// again (guards the check-then-act path).
+func TestCreditNote_Approve_IdempotentNoDoubleRefund(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, _ := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleSupport, refundRequest(f, 5000, "INR"))
+	approver := uuid.New()
+
+	if _, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, approver); err != nil {
+		t.Fatalf("first approve: %v", err)
+	}
+	if _, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, approver); err != nil {
+		t.Fatalf("second approve: %v", err)
+	}
+	if len(f.gateway.calls) != 1 {
+		t.Errorf("double approve must not double-refund; got %d gateway call(s)", len(f.gateway.calls))
+	}
+}
+
+// The creator cannot approve their own credit note (segregation of duties), and
+// no refund is executed on the blocked attempt.
+func TestCreditNote_Approve_CreatorCannotSelfApprove(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	creator := uuid.New()
+	cn, _ := f.svc.Create(context.Background(), f.tenantID, creator, roleSupport, refundRequest(f, 5000, "INR"))
+
+	if _, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, creator); err == nil {
+		t.Error("creator must not be able to approve their own credit note")
+	}
+	if len(f.gateway.calls) != 0 {
+		t.Errorf("blocked self-approval must not refund; got %d call(s)", len(f.gateway.calls))
+	}
+	if cn.Status != domain.CreditNoteStatusPending {
+		t.Errorf("status after blocked self-approval = %q, want still pending_approval", cn.Status)
+	}
+}
+
+// Rejecting a pending credit note moves it to rejected without any refund.
+func TestCreditNote_Reject_NoRefund(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, _ := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleSupport, refundRequest(f, 5000, "INR"))
+
+	rejected, err := f.svc.Reject(context.Background(), f.tenantID, cn.ID, uuid.New())
+	if err != nil {
+		t.Fatalf("reject: %v", err)
+	}
+	if rejected.Status != domain.CreditNoteStatusRejected {
+		t.Errorf("rejected status = %q, want rejected", rejected.Status)
+	}
+	if len(f.gateway.calls) != 0 {
+		t.Errorf("reject must not refund; got %d call(s)", len(f.gateway.calls))
+	}
+}
+
+// TestCreditNote_Approve_NoRevertAfterGatewayCharged is the money-path guard for
+// the revert edge case: if the gateway refund SUCCEEDS but persisting its result
+// fails, Approve must NOT roll the credit note back to pending_approval — a
+// re-approval would otherwise refund the customer a second time. The note stays
+// issued and a retry fires no further gateway call.
+func TestCreditNote_Approve_NoRevertAfterGatewayCharged(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	// Gateway refund succeeds, but persisting the refund result fails.
+	f.repo.updateErr = errors.New("db write failed")
+	cn, _ := f.svc.Create(context.Background(), f.tenantID, uuid.New(), roleSupport, refundRequest(f, 5000, "INR"))
+
+	// First approval: gateway is charged once; post-processing fails but is swallowed.
+	if _, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, uuid.New()); err != nil {
+		t.Fatalf("approve should not surface an error once the gateway was charged: %v", err)
+	}
+	if cn.Status != domain.CreditNoteStatusIssued {
+		t.Errorf("status = %q, want issued (must NOT revert to pending after a gateway charge)", cn.Status)
+	}
+	if len(f.gateway.calls) != 1 {
+		t.Fatalf("expected exactly one gateway refund, got %d", len(f.gateway.calls))
+	}
+
+	// A re-approval must be a no-op — the note is already issued, so no second charge.
+	if _, err := f.svc.Approve(context.Background(), f.tenantID, cn.ID, uuid.New()); err != nil {
+		t.Fatalf("re-approve: %v", err)
+	}
+	if len(f.gateway.calls) != 1 {
+		t.Errorf("re-approval after a charged refund must NOT refund again; got %d gateway call(s)", len(f.gateway.calls))
 	}
 }

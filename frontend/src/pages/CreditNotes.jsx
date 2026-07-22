@@ -16,6 +16,8 @@ const creditStatusVariant = (status) =>
     issued: "info",
     used: "success",
     active: "success",
+    pending_approval: "warning",
+    rejected: "destructive",
   })[status] || "neutral";
 
 const CreditNotes = () => {
@@ -95,7 +97,7 @@ const CreditNotes = () => {
       header: "Status",
       cell: (cn) => (
         <Badge variant={creditStatusVariant(cn.status)} className="capitalize">
-          {cn.status}
+          {(cn.status || "").replace("_", " ")}
         </Badge>
       ),
     },
