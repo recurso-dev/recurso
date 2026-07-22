@@ -25,6 +25,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Select,
   SelectContent,
@@ -54,6 +55,9 @@ const Wallets = () => {
   const [autoForm, setAutoForm] = useState({ threshold: "", amount: "" });
   const [txWallet, setTxWallet] = useState(null);
   const [txs, setTxs] = useState([]);
+  const [closingWallet, setClosingWallet] = useState(null);
+  const [closing, setClosing] = useState(false);
+  const [closeResult, setCloseResult] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [creating, setCreating] = useState(false);
   const { customers, names } = useCustomers();
@@ -143,6 +147,26 @@ const Wallets = () => {
     }
   };
 
+  // Closing settles the wallet: paid balance is refunded to the customer,
+  // promotional balance is forfeited. Irreversible, so it goes through a
+  // ConfirmDialog and the settlement result is surfaced afterward.
+  const submitClose = async () => {
+    if (!closingWallet) return;
+    setActionError(null);
+    setClosing(true);
+    try {
+      const res = await api.closeWallet(closingWallet.id);
+      const { refunded = 0, forfeited = 0 } = res.data?.data || {};
+      setCloseResult({ currency: closingWallet.currency, refunded, forfeited });
+      setClosingWallet(null);
+      fetchWallets();
+    } catch (err) {
+      setActionError(err?.response?.data?.error?.message || "Failed to close wallet");
+    } finally {
+      setClosing(false);
+    }
+  };
+
   const openTransactions = async (wallet) => {
     setTxWallet(wallet);
     setTxs([]);
@@ -186,30 +210,47 @@ const Wallets = () => {
       key: "actions",
       header: "",
       align: "right",
-      cell: (w) => (
-        <div className="flex justify-end gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={(e) => {
-              e.stopPropagation();
-              openAutoRecharge(w);
-            }}
-          >
-            Auto-recharge
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation();
-              setTopUpWallet(w);
-            }}
-          >
-            Top up
-          </Button>
-        </div>
-      ),
+      cell: (w) =>
+        w.closed_at ? (
+          <div className="flex justify-end">
+            <Badge variant="neutral">Closed</Badge>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={(e) => {
+                e.stopPropagation();
+                openAutoRecharge(w);
+              }}
+            >
+              Auto-recharge
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation();
+                setTopUpWallet(w);
+              }}
+            >
+              Top up
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-red-600 hover:text-red-600"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActionError(null);
+                setClosingWallet(w);
+              }}
+            >
+              Close
+            </Button>
+          </div>
+        ),
     },
   ];
 
@@ -418,6 +459,48 @@ const Wallets = () => {
               </div>
             ))}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Close wallet — irreversible settlement */}
+      <ConfirmDialog
+        open={!!closingWallet}
+        onOpenChange={(open) => !open && setClosingWallet(null)}
+        title="Close this wallet?"
+        description={
+          closingWallet
+            ? `The remaining ${fmtMoney(closingWallet.balance, closingWallet.currency)} will be settled: paid balance is refunded to the customer, promotional balance is forfeited. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Close wallet"
+        destructive
+        busy={closing}
+        onConfirm={submitClose}
+      />
+
+      {/* Settlement result */}
+      <Dialog open={!!closeResult} onOpenChange={(open) => !open && setCloseResult(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Wallet closed</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Refunded to customer</span>
+              <span className="tabular-nums font-medium">
+                {fmtMoney(closeResult?.refunded || 0, closeResult?.currency || "")}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Promotional forfeited</span>
+              <span className="tabular-nums font-medium">
+                {fmtMoney(closeResult?.forfeited || 0, closeResult?.currency || "")}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCloseResult(null)}>Done</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
