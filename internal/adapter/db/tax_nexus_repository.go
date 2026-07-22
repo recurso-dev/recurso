@@ -20,10 +20,12 @@ func NewTaxNexusRepository(db *sql.DB) *TaxNexusRepository {
 }
 
 func (r *TaxNexusRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]domain.TaxNexus, error) {
+	// Multi-Entity Books Inc 3b: the tenant/primary nexus set is the entity_id
+	// NULL rows; per-entity sets (when the management UI lands) are separate.
 	const q = `
 		SELECT id, tenant_id, state_code, nexus_type, established_at, created_at
 		FROM tenant_tax_nexus
-		WHERE tenant_id = $1
+		WHERE tenant_id = $1 AND entity_id IS NULL
 		ORDER BY state_code`
 	rows, err := r.db.QueryContext(ctx, q, tenantID)
 	if err != nil {
@@ -50,13 +52,15 @@ func (r *TaxNexusRepository) SetStates(ctx context.Context, tenantID uuid.UUID, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM tenant_tax_nexus WHERE tenant_id = $1`, tenantID); err != nil {
+	// Replace only the tenant/primary set (entity_id NULL); per-entity nexus
+	// sets are managed independently (Multi-Entity Books Inc 3b).
+	if _, err := tx.ExecContext(ctx, `DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND entity_id IS NULL`, tenantID); err != nil {
 		return fmt.Errorf("clear nexus: %w", err)
 	}
 	const ins = `
 		INSERT INTO tenant_tax_nexus (id, tenant_id, state_code, nexus_type, established_at)
 		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (tenant_id, state_code) DO NOTHING`
+		ON CONFLICT (tenant_id, state_code) WHERE entity_id IS NULL DO NOTHING`
 	for _, n := range states {
 		nt := n.NexusType
 		if nt == "" {
@@ -125,7 +129,7 @@ func (r *TaxNexusRepository) SetRegistrations(ctx context.Context, tenantID uuid
 
 func (r *TaxNexusRepository) Delete(ctx context.Context, tenantID uuid.UUID, stateCode string) error {
 	_, err := r.db.ExecContext(ctx,
-		`DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND state_code = $2`,
+		`DELETE FROM tenant_tax_nexus WHERE tenant_id = $1 AND state_code = $2 AND entity_id IS NULL`,
 		tenantID, strings.ToUpper(strings.TrimSpace(stateCode)))
 	return err
 }
@@ -134,7 +138,7 @@ func (r *TaxNexusRepository) Delete(ctx context.Context, tenantID uuid.UUID, sta
 func (r *TaxNexusRepository) NexusFor(ctx context.Context, tenantID uuid.UUID, stateCode string) (bool, bool, error) {
 	const q = `
 		SELECT COUNT(*), COUNT(*) FILTER (WHERE state_code = $2)
-		FROM tenant_tax_nexus WHERE tenant_id = $1`
+		FROM tenant_tax_nexus WHERE tenant_id = $1 AND entity_id IS NULL`
 	var total, inState int
 	if err := r.db.QueryRowContext(ctx, q, tenantID, strings.ToUpper(strings.TrimSpace(stateCode))).Scan(&total, &inState); err != nil {
 		return false, false, fmt.Errorf("nexus lookup: %w", err)
@@ -214,7 +218,7 @@ func (r *TaxNexusRepository) EstablishEconomic(ctx context.Context, tenantID uui
 	res, err := r.db.ExecContext(ctx, `
 		INSERT INTO tenant_tax_nexus (id, tenant_id, state_code, nexus_type, established_at)
 		VALUES ($1, $2, $3, 'economic', $4)
-		ON CONFLICT (tenant_id, state_code) DO NOTHING`,
+		ON CONFLICT (tenant_id, state_code) WHERE entity_id IS NULL DO NOTHING`,
 		uuid.New(), tenantID, strings.ToUpper(stateCode), establishedAt)
 	if err != nil {
 		return false, fmt.Errorf("failed to establish economic nexus: %w", err)
