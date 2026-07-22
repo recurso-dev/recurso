@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Info, TrendingUp } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -48,26 +49,19 @@ export default function MRRWaterfall() {
 
   const [start, setStart] = useState(iso(monthAgo));
   const [end, setEnd] = useState(iso(now));
-  const [wf, setWf] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getMRRWaterfall(start, end);
-      setWf(res.data?.data || null);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load the MRR waterfall");
-    } finally {
-      setLoading(false);
-    }
-  }, [start, end]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: wf,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["mrr-waterfall", start, end],
+    queryFn: async () => (await endpoints.getMRRWaterfall(start, end)).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load the MRR waterfall"
+    : null;
 
   const cur = wf?.reporting_currency || "USD";
   const money = (n) => formatCurrency(n || 0, cur);
@@ -97,7 +91,7 @@ export default function MRRWaterfall() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         wf && (

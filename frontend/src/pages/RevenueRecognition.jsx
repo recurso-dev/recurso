@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, Coins } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -32,29 +33,19 @@ export default function RevenueRecognition() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [report, setReport] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getRevenueRecognition(month, year);
-      setReport(res.data?.data || null);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message ||
-          "Failed to load the revenue-recognition report",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [month, year]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: report,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["revenue-recognition", month, year],
+    queryFn: async () => (await endpoints.getRevenueRecognition(month, year)).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load the revenue-recognition report"
+    : null;
 
   const byCurrency = report?.by_currency || [];
   const upcoming = report?.upcoming || [];
@@ -116,7 +107,7 @@ export default function RevenueRecognition() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         report && (
