@@ -5,6 +5,8 @@ import { Scale, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { ReportScopeSelect } from "@/components/patterns/ReportScopeSelect";
+import { SCOPE_ALL, scopeToParams, scopeEntityId } from "@/components/patterns/reportScope";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -26,14 +28,18 @@ const typeLabel = (t) =>
   ({ 1: "Asset", 2: "Liability", 3: "Equity", 4: "Revenue", 5: "Expense" }[t] || "—");
 
 export default function TrialBalance() {
+  // How the report is scoped across legal entities (Multi-Entity Books). Default
+  // is the all-entities breakdown; single-entity tenants never see the control.
+  const [scope, setScope] = useState(SCOPE_ALL);
+
   const {
     data: tb,
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["trial-balance"],
-    queryFn: async () => (await endpoints.getTrialBalance()).data?.data || null,
+    queryKey: ["trial-balance", scope],
+    queryFn: async () => (await endpoints.getTrialBalance(scopeToParams(scope))).data?.data || null,
   });
   const error = queryError
     ? queryError?.response?.data?.error?.message || "Failed to load the trial balance"
@@ -49,7 +55,7 @@ export default function TrialBalance() {
   const exportGL = async () => {
     setExporting(true);
     try {
-      const res = await endpoints.exportGeneralLedger();
+      const res = await endpoints.exportGeneralLedger(scopeEntityId(scope));
       const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
       const a = document.createElement("a");
       a.href = url;
@@ -67,6 +73,9 @@ export default function TrialBalance() {
 
   const lines = tb?.lines || [];
   const abnormal = lines.filter((l) => l.abnormal);
+  // Show the entity column only in the all-entities breakdown, where each line
+  // belongs to a specific entity (hidden when scoped to one or consolidated).
+  const showEntity = scope === SCOPE_ALL && lines.some((l) => l.entity_name);
 
   return (
     <div>
@@ -74,10 +83,13 @@ export default function TrialBalance() {
         title="Trial Balance"
         description="Every account's posted totals, with the double-entry invariant — debits must equal credits."
         actions={
-          <Button variant="outline" onClick={exportGL} disabled={exporting}>
-            <Download className="h-4 w-4" />
-            {exporting ? "Exporting…" : "Export GL (CSV)"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <ReportScopeSelect value={scope} onChange={setScope} />
+            <Button variant="outline" onClick={exportGL} disabled={exporting}>
+              <Download className="h-4 w-4" />
+              {exporting ? "Exporting…" : "Export GL (CSV)"}
+            </Button>
+          </div>
         }
       />
 
@@ -135,6 +147,7 @@ export default function TrialBalance() {
                     <TableHeader>
                       <TableRow className="bg-muted/40 hover:bg-muted/40">
                         <TableHead>Account</TableHead>
+                        {showEntity && <TableHead>Entity</TableHead>}
                         <TableHead>Type</TableHead>
                         <TableHead className="text-right">Debits</TableHead>
                         <TableHead className="text-right">Credits</TableHead>
@@ -143,7 +156,7 @@ export default function TrialBalance() {
                     </TableHeader>
                     <TableBody>
                       {lines.map((l) => (
-                        <TableRow key={l.account_id}>
+                        <TableRow key={`${l.account_id}-${l.code}`}>
                           <TableCell className="text-foreground">
                             <span className="font-mono text-xs text-muted-foreground">{l.code}</span>{" "}
                             {l.name}
@@ -153,6 +166,11 @@ export default function TrialBalance() {
                               </Badge>
                             )}
                           </TableCell>
+                          {showEntity && (
+                            <TableCell className="text-muted-foreground">
+                              {l.entity_name || "—"}
+                            </TableCell>
+                          )}
                           <TableCell className="text-muted-foreground">{typeLabel(l.type)}</TableCell>
                           <TableCell className="text-right font-mono text-sm tabular-nums text-foreground">
                             {money(l.debits)}
