@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Plus, Gift, Package } from "lucide-react";
 
@@ -27,9 +28,6 @@ const PAGE_SIZE = 10;
 export default function Plans() {
   const navigate = useNavigate();
 
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [currencyFilter, setCurrencyFilter] = useState("all");
   const [intervalFilter, setIntervalFilter] = useState("all");
@@ -40,28 +38,26 @@ export default function Plans() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
-  const fetchPlans = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      // The backend defaults to limit 10 — without explicit paging the list
-      // silently truncated past ten plans.
+  // Server-driven list keyed by (page, q); placeholderData keeps the current
+  // page rendered while the next loads. The backend defaults to limit 10, so
+  // paging must be explicit or the list silently truncates past ten plans.
+  const {
+    data: plans = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["plans", { page, q: debouncedSearch }],
+    queryFn: async () => {
       const params = { page, limit: PAGE_SIZE };
       if (debouncedSearch) params.q = debouncedSearch;
-      const response = await endpoints.getPlans(params);
-      setPlans(response.data.data || []);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message || err?.message || "Failed to load plans"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [page, debouncedSearch]);
-
-  useEffect(() => {
-    fetchPlans();
-  }, [fetchPlans]);
+      return (await endpoints.getPlans(params)).data.data || [];
+    },
+    placeholderData: (prev) => prev,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load plans"
+    : null;
 
   // Reset to page 1 whenever the query changes.
   useEffect(() => {
@@ -109,10 +105,9 @@ export default function Plans() {
         prev && prev.id === updated.id ? { ...prev, ...updated, prices: updated.prices || prev.prices } : prev
       );
     }
-    // Edits/archives must also reach the shared react-query plans cache
-    // (Subscriptions/Metering/Mandates pickers), not just this legacy list.
+    // Invalidating the "plans" prefix refreshes this server-driven list AND the
+    // shared usePlans cache (Subscriptions/Metering/Mandates pickers) in one go.
     queryClient.invalidateQueries({ queryKey: ["plans"] });
-    fetchPlans();
   };
 
   const hasFilters = search || currencyFilter !== "all" || intervalFilter !== "all";
@@ -184,7 +179,7 @@ export default function Plans() {
         data={filteredPlans}
         loading={loading}
         error={error}
-        onRetry={fetchPlans}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: search,
