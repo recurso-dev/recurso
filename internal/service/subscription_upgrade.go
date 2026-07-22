@@ -324,6 +324,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		chargeInvoice = &domain.Invoice{
 			ID:             prInvID,
 			TenantID:       tenantID,
+			EntityID:       sub.EntityID, // Multi-Entity Books: post the proration to the sub's own ledger, not the primary
 			SubscriptionID: &sub.ID,
 			CustomerID:     sub.CustomerID,
 			BillingReason:  domain.BillingReasonSubscriptionUpdate,
