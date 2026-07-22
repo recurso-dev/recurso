@@ -19,13 +19,16 @@ func NewTenantEUConfigRepository(db *sql.DB) *TenantEUConfigRepository {
 	return &TenantEUConfigRepository{db: db}
 }
 
-// GetByTenantID returns the tenant's EU config, or nil when none is set (EU
-// e-invoicing simply stays off for that tenant).
-func (r *TenantEUConfigRepository) GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantEUConfig, error) {
+// GetByTenantEntity resolves the EU seller config for a specific issuing entity
+// (Multi-Entity Books Inc 3b). A nil entityID matches the tenant/primary default
+// (entity_id IS NULL); a non-primary entity matches only its own row, so an
+// unconfigured non-primary entity returns (nil, nil) and its EU e-invoice is
+// skipped rather than filed under the default's VAT id.
+func (r *TenantEUConfigRepository) GetByTenantEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*domain.TenantEUConfig, error) {
 	c := &domain.TenantEUConfig{}
 	err := r.db.QueryRowContext(ctx,
 		`SELECT tenant_id, enabled, legal_name, vat_number, country_code, street, city, postal_zone
-		   FROM tenant_eu_config WHERE tenant_id = $1`, tenantID,
+		   FROM tenant_eu_config WHERE tenant_id = $1 AND entity_id IS NOT DISTINCT FROM $2`, tenantID, entityID,
 	).Scan(&c.TenantID, &c.Enabled, &c.LegalName, &c.VATNumber, &c.CountryCode, &c.Street, &c.City, &c.PostalZone)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -36,12 +39,18 @@ func (r *TenantEUConfigRepository) GetByTenantID(ctx context.Context, tenantID u
 	return c, nil
 }
 
+// GetByTenantID returns the tenant/primary default EU config (entity_id NULL),
+// or nil when none is set (EU e-invoicing simply stays off for that tenant).
+func (r *TenantEUConfigRepository) GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantEUConfig, error) {
+	return r.GetByTenantEntity(ctx, tenantID, nil)
+}
+
 // Upsert creates or replaces the tenant's EU config.
 func (r *TenantEUConfigRepository) Upsert(ctx context.Context, c *domain.TenantEUConfig) error {
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO tenant_eu_config (tenant_id, enabled, legal_name, vat_number, country_code, street, city, postal_zone, updated_at)
 		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-		 ON CONFLICT (tenant_id) DO UPDATE SET
+		 ON CONFLICT (tenant_id) WHERE entity_id IS NULL DO UPDATE SET
 		   enabled = EXCLUDED.enabled, legal_name = EXCLUDED.legal_name, vat_number = EXCLUDED.vat_number,
 		   country_code = EXCLUDED.country_code, street = EXCLUDED.street, city = EXCLUDED.city,
 		   postal_zone = EXCLUDED.postal_zone, updated_at = NOW()`,
