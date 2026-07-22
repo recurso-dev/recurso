@@ -53,10 +53,10 @@ func TestDowngradeTaxReversal_Postgres(t *testing.T) {
 
 	// Mid-period downgrade credit of gross 59000 = net 50000 + tax 9000.
 	cnID := uuid.New()
-	if _, err := svc.RecordDowngradeCredit(ctx, tenantID, cnID, 50000, "downgrade credit (net)"); err != nil {
+	if _, err := svc.RecordDowngradeCredit(ctx, tenantID, nil, cnID, 50000, "downgrade credit (net)"); err != nil {
 		t.Fatalf("RecordDowngradeCredit: %v", err)
 	}
-	if _, err := svc.RecordDowngradeTaxReversal(ctx, tenantID, cnID, 9000, "downgrade GST reversal"); err != nil {
+	if _, err := svc.RecordDowngradeTaxReversal(ctx, tenantID, nil, cnID, 9000, "downgrade GST reversal"); err != nil {
 		t.Fatalf("RecordDowngradeTaxReversal: %v", err)
 	}
 

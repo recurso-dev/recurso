@@ -8802,6 +8802,12 @@ components:
         invoice_id:
           type: [string, 'null']
           format: uuid
+        entity_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            Legal entity that issued the credit note (Multi-Entity Books);
+            inherits the referenced invoice's entity.
         reference:
           type: [string, 'null']
         amount:

@@ -67,11 +67,11 @@ func (r *CreditNoteRepository) CreateRefundWithinLimit(ctx context.Context, cn *
 	// column set can't drift.
 	insert := `
 		INSERT INTO credit_notes (
-			tenant_id, customer_id, invoice_id, reference, amount, balance,
+			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
 			refund_message, created_at, updated_at
 		) VALUES (
-			:tenant_id, :customer_id, :invoice_id, :reference, :amount, :balance,
+			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
 			:refund_message, :created_at, :updated_at
 		) RETURNING id`
@@ -93,11 +93,11 @@ func (r *CreditNoteRepository) CreateRefundWithinLimit(ctx context.Context, cn *
 func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.CreditNote) error {
 	query := `
 		INSERT INTO credit_notes (
-			tenant_id, customer_id, invoice_id, reference, amount, balance,
+			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
 			refund_message, created_at, updated_at
 		) VALUES (
-			:tenant_id, :customer_id, :invoice_id, :reference, :amount, :balance,
+			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
 			:refund_message, :created_at, :updated_at
 		) RETURNING id`
@@ -120,13 +120,13 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 func (r *CreditNoteRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, cn *domain.CreditNote) error {
 	query := `
 		INSERT INTO credit_notes (
-			tenant_id, customer_id, invoice_id, reference, amount, balance,
+			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
 			refund_message, created_at, updated_at
-		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		RETURNING id`
 	return tx.QueryRowContext(ctx, query,
-		cn.TenantID, cn.CustomerID, cn.InvoiceID, cn.Reference, cn.Amount, cn.Balance,
+		cn.TenantID, cn.CustomerID, cn.InvoiceID, cn.EntityID, cn.Reference, cn.Amount, cn.Balance,
 		cn.Currency, cn.Status, cn.Reason, cn.Type, cn.RefundStatus, cn.RefundID,
 		cn.RefundMessage, cn.CreatedAt, cn.UpdatedAt,
 	).Scan(&cn.ID)
