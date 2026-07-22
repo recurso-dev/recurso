@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -42,61 +43,64 @@ const roleVariant = (r) =>
 
 export default function Team() {
   const { user } = useAuth();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "member" });
+  const [removeTarget, setRemoveTarget] = useState(null);
+  const queryClient = useQueryClient();
 
   const canManage = user?.role === "owner" || user?.role === "admin";
 
-  const load = () =>
-    endpoints
-      .getUsers()
-      .then((res) => setUsers(res.data?.data || []))
-      .catch(() => toast.error("Failed to load team"))
-      .finally(() => setLoading(false));
-
+  const { data: users = [], isLoading: loading, error: queryError } = useQuery({
+    queryKey: ["team"],
+    queryFn: async () => (await endpoints.getUsers()).data?.data || [],
+  });
+  // Preserve the original toast on load failure (react-query v5 dropped the
+  // query-level onError callback).
   useEffect(() => {
-    load();
-  }, []);
+    if (queryError) toast.error("Failed to load team");
+  }, [queryError]);
 
-  const invite = async (e) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await endpoints.inviteUser(form);
+  const invalidateTeam = () => queryClient.invalidateQueries({ queryKey: ["team"] });
+
+  const inviteMutation = useMutation({
+    mutationFn: (payload) => endpoints.inviteUser(payload),
+    onSuccess: () => {
       toast.success("Invitation sent — they'll get an email to set their password");
       setInviteOpen(false);
       setForm({ name: "", email: "", role: "member" });
-      await load();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to send invitation");
-    } finally {
-      setBusy(false);
-    }
-  };
+      invalidateTeam();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to send invitation"),
+  });
+  const busy = inviteMutation.isPending;
 
-  const changeRole = async (id, role) => {
-    try {
-      await endpoints.updateUserRole(id, role);
-      await load();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to update role");
-    }
-  };
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role }) => endpoints.updateUserRole(id, role),
+    onSuccess: invalidateTeam,
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to update role"),
+  });
 
-  const [removeTarget, setRemoveTarget] = useState(null);
-
-  const remove = async () => {
-    if (!removeTarget) return;
-    try {
-      await endpoints.deleteUser(removeTarget);
+  const removeMutation = useMutation({
+    mutationFn: (id) => endpoints.deleteUser(id),
+    onSuccess: () => {
       setRemoveTarget(null);
-      await load();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to remove");
-    }
+      invalidateTeam();
+    },
+    onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to remove"),
+  });
+
+  const invite = (e) => {
+    e.preventDefault();
+    inviteMutation.mutate(form);
+  };
+
+  const changeRole = (id, role) => roleMutation.mutate({ id, role });
+
+  const remove = () => {
+    if (!removeTarget) return;
+    removeMutation.mutate(removeTarget);
   };
 
   return (
