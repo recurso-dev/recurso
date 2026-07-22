@@ -6,6 +6,7 @@ import { endpoints } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { FormField } from "@/components/patterns/FormField";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -27,11 +28,12 @@ const EMPTY = {
 // seller identity (the backend rejects an incomplete opt-in).
 export default function EUEInvoiceSettings() {
   const [config, setConfig] = useState(EMPTY);
+  const [entityId, setEntityId] = useState("");
 
-  // Load the saved config once; a missing config (404) just leaves the defaults.
+  // Load the saved config; a missing config (404) just leaves the defaults.
   const { data, isLoading: loading } = useQuery({
-    queryKey: ["eu-einvoice-config"],
-    queryFn: async () => (await endpoints.getEUEInvoiceConfig()).data?.data || null,
+    queryKey: ["eu-einvoice-config", entityId],
+    queryFn: async () => (await endpoints.getEUEInvoiceConfig(entityId)).data?.data || null,
   });
   useEffect(() => {
     if (data) setConfig((prev) => ({ ...prev, ...data }));
@@ -40,7 +42,7 @@ export default function EUEInvoiceSettings() {
   const set = (patch) => setConfig((prev) => ({ ...prev, ...patch }));
 
   const saveMutation = useMutation({
-    mutationFn: (cfg) => endpoints.updateEUEInvoiceConfig(cfg),
+    mutationFn: (cfg) => endpoints.updateEUEInvoiceConfig(cfg, entityId),
     onSuccess: () => toast.success("EU e-invoicing settings saved"),
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to save settings"),
@@ -57,6 +59,7 @@ export default function EUEInvoiceSettings() {
       <PageHeader
         title="EU e-invoicing"
         description="Generate EN 16931 (UBL 2.1) structured invoices. Off by default — enable it only for tenants under an EU e-invoicing mandate."
+        actions={<EntityScopeSelect value={entityId} onChange={setEntityId} />}
       />
 
       {loading ? (

@@ -5,6 +5,7 @@ import { Save, Check, AlertCircle } from "lucide-react";
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { FormField } from "@/components/patterns/FormField";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
@@ -26,10 +27,11 @@ export default function GSTSettings() {
     has_lut: false,
   });
   const [validation, setValidation] = useState(null);
+  const [entityId, setEntityId] = useState("");
 
   const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
-    queryKey: ["gst-config"],
-    queryFn: async () => (await endpoints.getGSTConfig()).data.data || null,
+    queryKey: ["gst-config", entityId],
+    queryFn: async () => (await endpoints.getGSTConfig(entityId)).data.data || null,
   });
   useEffect(() => {
     if (data) setConfig(data);
@@ -53,7 +55,7 @@ export default function GSTSettings() {
   const validating = validateMutation.isPending;
 
   const saveMutation = useMutation({
-    mutationFn: (cfg) => endpoints.updateGSTConfig(cfg),
+    mutationFn: (cfg) => endpoints.updateGSTConfig(cfg, entityId),
     onSuccess: () => toast.success("GST configuration saved successfully"),
     onError: () => toast.error("Failed to save configuration"),
   });
@@ -78,10 +80,13 @@ export default function GSTSettings() {
         title="GST configuration"
         description="Configure your GST details for invoice generation."
         actions={
-          <Button onClick={saveConfig} disabled={saving || loading}>
-            <Save className="h-4 w-4" />
-            {saving ? "Saving..." : "Save configuration"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <EntityScopeSelect value={entityId} onChange={setEntityId} />
+            <Button onClick={saveConfig} disabled={saving || loading}>
+              <Save className="h-4 w-4" />
+              {saving ? "Saving..." : "Save configuration"}
+            </Button>
+          </div>
         }
       />
 
