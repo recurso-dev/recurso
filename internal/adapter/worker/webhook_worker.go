@@ -82,9 +82,14 @@ func (w *WebhookWorker) Start(ctx context.Context) {
 }
 
 func (w *WebhookWorker) processDeliveries(ctx context.Context) {
-	deliveries, err := w.deliveryRepo.ListPending(ctx, 10) // Process 10 at a time
+	// Atomically claim (lease) the due deliveries so a second worker instance —
+	// Cloud Run scales to many, and the Locker is a no-op without Redis — can't
+	// pick up the same rows this cycle and double-POST them to the customer's
+	// endpoint (ADR-003). The lease exceeds the poll interval so a row can't
+	// lapse back to due while we're still delivering it.
+	deliveries, err := w.deliveryRepo.ClaimPending(ctx, 10*time.Minute, 10) // Process 10 at a time
 	if err != nil {
-		slog.Error("failed to fetch pending webhooks", "error", err)
+		slog.Error("failed to claim pending webhooks", "error", err)
 		return
 	}
 
