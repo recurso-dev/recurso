@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import { Plus, BadgePercent } from "lucide-react";
 
@@ -19,24 +20,25 @@ const statusVariant = (status) =>
 
 const Coupons = () => {
   const navigate = useNavigate();
-  const [coupons, setCoupons] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
   const [selectedCoupon, setSelectedCoupon] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
-  const [toggling, setToggling] = useState(false);
 
-  const fetchCoupons = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const queryClient = useQueryClient();
+  const {
+    data: coupons = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["coupons"],
+    queryFn: async () => {
       const response = await api.getCoupons();
       // Map backend fields to frontend expectations (unchanged logic).
-      const mappedCoupons = (response.data.data || []).map((c) => ({
+      return (response.data.data || []).map((c) => ({
         ...c,
         status: c.active ? "active" : "inactive",
         redemptions: 0,
@@ -49,35 +51,30 @@ const Coupons = () => {
             : formatCurrency(c.discount_value, c.currency),
         duration_in_months: c.duration_months,
       }));
-      setCoupons(mappedCoupons);
-    } catch (err) {
-      console.error("Failed to fetch coupons:", err);
-      setError(
-        err?.response?.data?.error?.message || err?.message || "Failed to load coupons"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load coupons"
+    : null;
 
-  useEffect(() => {
-    fetchCoupons();
-  }, []);
-
-  // Reactivation is low-risk, so it skips the confirm; deactivation confirms.
-  const setActive = async (coupon, active) => {
-    setToggling(true);
-    try {
-      await api.setCouponActive(coupon.id, active);
+  // A toggle invalidates the whole "coupons" key so the list (and any other
+  // coupons-keyed view) refetches — the standard prefix-invalidation contract
+  // for mutations (ADR-005).
+  const setActiveMutation = useMutation({
+    mutationFn: ({ id, active }) => api.setCouponActive(id, active),
+    onSuccess: (_data, { active }) => {
       toast.success(active ? "Coupon reactivated." : "Coupon deactivated.");
       setDeactivateTarget(null);
-      fetchCoupons();
-    } catch (err) {
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+    },
+    onError: (err) => {
       toast.error(err?.response?.data?.error?.message || "Failed to update coupon");
-    } finally {
-      setToggling(false);
-    }
-  };
+    },
+  });
+  const toggling = setActiveMutation.isPending;
+  // Reactivation is low-risk, so it skips the confirm; deactivation confirms.
+  const setActive = (coupon, active) =>
+    setActiveMutation.mutate({ id: coupon.id, active });
 
   const handleRowClick = (coupon) => {
     setSelectedCoupon(coupon);
@@ -179,7 +176,7 @@ const Coupons = () => {
         data={filteredCoupons}
         loading={loading}
         error={error}
-        onRetry={fetchCoupons}
+        onRetry={refetch}
         onRowClick={handleRowClick}
         search={{
           value: search,
