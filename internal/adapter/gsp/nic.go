@@ -161,15 +161,20 @@ func (n *NICAdapter) GenerateIRN(ctx context.Context, invoice *domain.Invoice) (
 
 // GenerateIRNFull generates an IRN with full seller/buyer/item data.
 func (n *NICAdapter) GenerateIRNFull(ctx context.Context, req *port.EInvoiceRequest) (*port.EInvoiceResponse, error) {
-	// Get tenant IRP config
+	// Resolve the IRP submission credentials for the invoice's issuing entity
+	// (Multi-Entity Books Inc 3b): the primary entity uses the tenant default;
+	// a non-primary entity submits under its own IRP account. A non-primary
+	// entity without its own credentials resolves to nil and is not submitted
+	// under another entity's account.
 	tenantID := req.Invoice.TenantID
-	config, err := n.irpConfigRepo.GetByTenantID(ctx, tenantID, "production")
+	entityID := req.Invoice.EntityID
+	config, err := n.irpConfigRepo.GetByTenantEntity(ctx, tenantID, entityID, "production")
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IRP config: %w", err)
 	}
 	if config == nil {
 		// Try sandbox
-		config, err = n.irpConfigRepo.GetByTenantID(ctx, tenantID, "sandbox")
+		config, err = n.irpConfigRepo.GetByTenantEntity(ctx, tenantID, entityID, "sandbox")
 		if err != nil || config == nil {
 			return nil, fmt.Errorf("no IRP config found for tenant %s", tenantID)
 		}
