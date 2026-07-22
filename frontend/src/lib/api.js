@@ -33,6 +33,11 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// entityParams builds the ?entity_id= query for per-entity tax config
+// (Multi-Entity Books). A falsy entityId → no param, i.e. the tenant's
+// primary/default config.
+const entityParams = (entityId) => (entityId ? { entity_id: entityId } : {});
+
 export const endpoints = {
   // --- Auth (session, cookie-based) ---
   authRegister: (data) => axios.post(`${API_ROOT}/auth/register`, data),
@@ -263,12 +268,14 @@ export const endpoints = {
   getEInvoiceStatus: (invoiceId) => api.get(`/invoices/${invoiceId}/einvoice`),
   retryEInvoice: (invoiceId) => api.post(`/invoices/${invoiceId}/einvoice/retry`),
   cancelEInvoice: (invoiceId, data) => api.post(`/invoices/${invoiceId}/einvoice/cancel`, data),
-  getIRPConfig: () => api.get('/settings/irp'),
-  updateIRPConfig: (data) => api.put('/settings/irp', data),
-  testIRPConfig: () => api.post('/settings/irp/test'),
+  // Tax config is per legal entity (Multi-Entity Books): pass an entityId to
+  // read/write that entity's config; omit for the tenant's primary/default.
+  getIRPConfig: (entityId) => api.get('/settings/irp', { params: entityParams(entityId) }),
+  updateIRPConfig: (data, entityId) => api.put('/settings/irp', data, { params: entityParams(entityId) }),
+  testIRPConfig: (entityId) => api.post('/settings/irp/test', null, { params: entityParams(entityId) }),
   // EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
-  getEUEInvoiceConfig: () => api.get('/settings/eu-einvoice'),
-  updateEUEInvoiceConfig: (data) => api.put('/settings/eu-einvoice', data),
+  getEUEInvoiceConfig: (entityId) => api.get('/settings/eu-einvoice', { params: entityParams(entityId) }),
+  updateEUEInvoiceConfig: (data, entityId) => api.put('/settings/eu-einvoice', data, { params: entityParams(entityId) }),
 
   getMCPSettings: () => api.get('/settings/mcp'),
   updateMCPSettings: (data) => api.put('/settings/mcp', data),
@@ -324,9 +331,9 @@ export const endpoints = {
   getOrgMRR: (id) => api.get(`/organizations/${id}/analytics/mrr`),
 
   // US sales-tax nexus
-  getTaxNexus: () => api.get('/settings/tax/nexus'),
-  // Full replacement of the declared-state set.
-  setTaxNexus: (states) => api.put('/settings/tax/nexus', { states }),
+  getTaxNexus: (entityId) => api.get('/settings/tax/nexus', { params: entityParams(entityId) }),
+  // Full replacement of the declared-state set (per entity).
+  setTaxNexus: (states, entityId) => api.put('/settings/tax/nexus', { states }, { params: entityParams(entityId) }),
   getTaxNexusStatus: (year) =>
     api.get('/settings/tax/nexus/status', { params: year ? { year } : {} }),
   // Per-state US sales-tax liability for a filing period (D3).
@@ -338,9 +345,9 @@ export const endpoints = {
     api.put('/settings/tax/registrations', { registrations }),
 
   // India GST config
-  getGSTConfig: () => api.get('/settings/gst'),
+  getGSTConfig: (entityId) => api.get('/settings/gst', { params: entityParams(entityId) }),
   validateGSTIN: (gstin) => api.post('/settings/gst/validate', { gstin }),
-  updateGSTConfig: (config) => api.put('/settings/gst', config),
+  updateGSTConfig: (config, entityId) => api.put('/settings/gst', config, { params: entityParams(entityId) }),
   // India GST returns (readable sections + GSTN upload JSON)
   getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
   getGSTR3B: (month, year) => api.get('/india/gstr3b', { params: { month, year } }),

@@ -6,6 +6,7 @@ import { endpoints } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { FormField } from "@/components/patterns/FormField";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -30,18 +31,19 @@ export default function IRPSettings() {
     is_enabled: false,
   });
   const [testResult, setTestResult] = useState(null);
+  const [entityId, setEntityId] = useState("");
 
-  // Load the saved config once; a missing config just leaves the defaults.
+  // Load the saved config; a missing config just leaves the defaults.
   const { data, isLoading: loading } = useQuery({
-    queryKey: ["irp-config"],
-    queryFn: async () => (await endpoints.getIRPConfig()).data?.data || null,
+    queryKey: ["irp-config", entityId],
+    queryFn: async () => (await endpoints.getIRPConfig(entityId)).data?.data || null,
   });
   useEffect(() => {
     if (data) setConfig((prev) => ({ ...prev, ...data }));
   }, [data]);
 
   const saveMutation = useMutation({
-    mutationFn: (cfg) => endpoints.updateIRPConfig(cfg),
+    mutationFn: (cfg) => endpoints.updateIRPConfig(cfg, entityId),
     onSuccess: () => toast.success("IRP configuration saved successfully"),
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to save configuration"),
@@ -49,7 +51,7 @@ export default function IRPSettings() {
   const saving = saveMutation.isPending;
 
   const testMutation = useMutation({
-    mutationFn: () => endpoints.testIRPConfig(),
+    mutationFn: () => endpoints.testIRPConfig(entityId),
     onSuccess: (response) => setTestResult(response.data),
     onError: (err) =>
       setTestResult({
@@ -74,6 +76,7 @@ export default function IRPSettings() {
       <PageHeader
         title="IRP settings"
         description="Configure NIC Invoice Registration Portal credentials for e-invoicing."
+        actions={<EntityScopeSelect value={entityId} onChange={setEntityId} />}
       />
 
       {loading ? (

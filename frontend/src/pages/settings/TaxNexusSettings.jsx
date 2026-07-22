@@ -5,6 +5,7 @@ import { endpoints as api } from "../../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ const REGISTRATION_STATUSES = ["registered", "pending", "not_registered"];
 // US sales-tax nexus: declare where you must collect, and watch economic
 // thresholds per state (crossings auto-establish nexus server-side).
 export default function TaxNexusSettings() {
+  const [entityId, setEntityId] = useState("");
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -40,7 +42,7 @@ export default function TaxNexusSettings() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await api.getTaxNexus();
+      const res = await api.getTaxNexus(entityId);
       setRows(
         (res.data.data || []).map((n) => ({
           state_code: n.state_code,
@@ -98,7 +100,8 @@ export default function TaxNexusSettings() {
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entityId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,7 +119,7 @@ export default function TaxNexusSettings() {
   const save = async () => {
     setSaving(true);
     try {
-      await api.setTaxNexus(rows.filter((r) => r.state_code.trim()));
+      await api.setTaxNexus(rows.filter((r) => r.state_code.trim()), entityId);
       toast.success("Nexus states saved.");
       load();
     } catch (err) {
@@ -146,10 +149,13 @@ export default function TaxNexusSettings() {
         title="US sales-tax nexus"
         description="Declare the states where you collect sales tax, and monitor economic-nexus thresholds."
         actions={
-          <Button onClick={save} disabled={saving || loading}>
-            <Save className="h-4 w-4" />
-            {saving ? "Saving…" : "Save states"}
-          </Button>
+          <div className="flex items-center gap-3">
+            <EntityScopeSelect value={entityId} onChange={setEntityId} />
+            <Button onClick={save} disabled={saving || loading}>
+              <Save className="h-4 w-4" />
+              {saving ? "Saving…" : "Save states"}
+            </Button>
+          </div>
         }
       />
 
