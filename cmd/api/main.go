@@ -1602,6 +1602,7 @@ func main() {
 		v1.GET("/wallets", walletHandler.List)
 		v1.GET("/wallets/:id", walletHandler.Get)
 		v1.POST("/wallets/:id/top-up", walletHandler.TopUp)
+		v1.POST("/wallets/:id/close", walletHandler.Close)
 		v1.GET("/wallets/:id/transactions", walletHandler.ListTransactions)
 		v1.PUT("/wallets/:id/auto-recharge", walletHandler.UpdateAutoRecharge)
 		v1.GET("/customers/:id/wallets", walletHandler.ListForCustomer)

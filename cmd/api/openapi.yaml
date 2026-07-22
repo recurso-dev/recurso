@@ -6844,6 +6844,38 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/wallets/{id}/close:
+    post:
+      tags: [Wallets]
+      summary: Close a wallet and settle its balance
+      description: >-
+        Closes the wallet: paid residue is refunded to the customer, promotional
+        residue is forfeited (non-refundable), and the ledger legs are posted
+        (DR Customer Credit / CR Cash for the refund; DR Customer Credit /
+        CR Credits for the forfeit). A closed wallet accepts no further top-ups
+        or drains. `refunded` is the amount owed back to the customer; the actual
+        money return is handled out of band, like a manual refund.
+      operationId: closeWallet
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: The settled amounts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      refunded: { type: integer, format: int64, description: Paid balance to return (minor units) }
+                      forfeited: { type: integer, format: int64, description: Promotional balance written off (minor units) }
+                  message: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/wallets/{id}/transactions:
     get:
       tags: [Wallets]
