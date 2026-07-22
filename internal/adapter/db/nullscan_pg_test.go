@@ -172,4 +172,35 @@ func TestBackgroundJobNullScans_Postgres(t *testing.T) {
 	if !retried {
 		t.Fatal("worker-managed retry invoice was not returned")
 	}
+
+	// --- ClaimDueForRetry (ADR-003): the atomic claim must return the same due
+	// row, lease it by advancing next_retry_at into the future, and a second
+	// immediate claim must NOT return it (a concurrent instance is locked out
+	// until the lease lapses). ---
+	claimed, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 10)
+	if err != nil {
+		t.Fatalf("ClaimDueForRetry: %v", err)
+	}
+	var claimedFound bool
+	for _, inv := range claimed {
+		if inv.ID == invID {
+			claimedFound = true
+			if inv.NextRetryAt == nil || !inv.NextRetryAt.After(time.Now()) {
+				t.Errorf("claim must lease next_retry_at into the future, got %v", inv.NextRetryAt)
+			}
+		}
+	}
+	if !claimedFound {
+		t.Fatal("ClaimDueForRetry did not return the due retry invoice")
+	}
+	// A second claim in the same window must skip the just-leased row.
+	again, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 10)
+	if err != nil {
+		t.Fatalf("second ClaimDueForRetry: %v", err)
+	}
+	for _, inv := range again {
+		if inv.ID == invID {
+			t.Error("a leased invoice must not be re-claimed within its lease window")
+		}
+	}
 }

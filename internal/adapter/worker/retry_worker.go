@@ -150,9 +150,13 @@ func (w *RetryWorker) Start(ctx context.Context) {
 }
 
 func (w *RetryWorker) processRetries(ctx context.Context) {
-	invoices, err := w.invoiceRepo.GetDueForRetry(ctx)
+	// Atomically claim (lease) the due invoices so a second worker instance —
+	// Cloud Run scales to many, and the Locker is a no-op without Redis — can't
+	// pick up the same rows this cycle (ADR-003). The lease exceeds the poll
+	// interval so a row can't lapse back to due while we're still charging it.
+	invoices, err := w.invoiceRepo.ClaimDueForRetry(ctx, 10*time.Minute, 10)
 	if err != nil {
-		slog.Error("retry worker: failed to fetch retry invoices", "error", err)
+		slog.Error("retry worker: failed to claim retry invoices", "error", err)
 		return
 	}
 

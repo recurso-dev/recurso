@@ -23,6 +23,12 @@ func (m *mockInvoiceRepo) GetDueForRetry(ctx context.Context) ([]*domain.Invoice
 	return m.invoices, nil
 }
 
+func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error) {
+	// The atomic claim leases the same due rows the worker would otherwise
+	// SELECT; for the mock it behaves like GetDueForRetry.
+	return m.invoices, nil
+}
+
 func (m *mockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error {
 	m.updated = append(m.updated, inv)
 	return nil
