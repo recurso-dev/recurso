@@ -56,6 +56,9 @@ type ClosePack struct {
 	Reconciliation *ReconciliationReport `json:"reconciliation"`
 	Deferred       ClosePackDeferred     `json:"deferred_revenue"`
 	GeneralLedger  ClosePackGL           `json:"general_ledger"`
+	// ReportingCurrency is the tenant's base currency (from the trial balance),
+	// so the UI formats the pack's minor-unit totals with the right exponent.
+	ReportingCurrency string `json:"reporting_currency"`
 }
 
 // ClosePackService composes the existing read-only finance services into a
@@ -114,15 +117,16 @@ func (s *ClosePackService) Generate(ctx context.Context, tenantID uuid.UUID, mon
 	blockers := closeBlockers(tb, recon)
 
 	return &ClosePack{
-		TenantID:       tenantID,
-		Period:         ClosePackPeriod{Month: month, Year: year, Start: start, End: end},
-		GeneratedAt:    time.Now().UTC(),
-		ReadyToClose:   len(blockers) == 0,
-		Blockers:       blockers,
-		TrialBalance:   tb,
-		Reconciliation: recon,
-		Deferred:       deferred,
-		GeneralLedger:  ClosePackGL{Format: "csv", ExportURL: glExportPath},
+		TenantID:          tenantID,
+		Period:            ClosePackPeriod{Month: month, Year: year, Start: start, End: end},
+		GeneratedAt:       time.Now().UTC(),
+		ReadyToClose:      len(blockers) == 0,
+		Blockers:          blockers,
+		TrialBalance:      tb,
+		Reconciliation:    recon,
+		Deferred:          deferred,
+		GeneralLedger:     ClosePackGL{Format: "csv", ExportURL: glExportPath},
+		ReportingCurrency: tb.ReportingCurrency,
 	}, nil
 }
 

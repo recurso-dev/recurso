@@ -11,6 +11,7 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -20,19 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Trial-balance amounts are summed across a tenant's accounts (which may span
-// currencies), so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
 const typeLabel = (t) =>
   ({ 1: "Asset", 2: "Liability", 3: "Equity", 4: "Revenue", 5: "Expense" }[t] || "—");
 
 export default function TrialBalance() {
   const [tb, setTb] = useState(null);
+  // Format in the tenant's reporting currency (base currency) so JPY/KWD/… show
+  // the right exponent. The ledger doesn't store a per-transaction currency, so
+  // for a multi-currency tenant this is a base-currency approximation.
+  const cur = tb?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);

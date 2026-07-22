@@ -19,6 +19,7 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -37,14 +38,6 @@ const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
 
 const selectClass =
   "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-// Close-pack amounts are summed across a tenant's accounts (which may span
-// currencies), so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
 
 export default function MonthEndClose() {
   const now = new Date();
@@ -118,6 +111,9 @@ export default function MonthEndClose() {
   const rollforward = pack?.deferred_revenue?.rollforward;
   const recognition = pack?.deferred_revenue?.recognition;
   const ties = pack?.deferred_revenue?.ties;
+  // Reporting currency (tenant base currency) for exponent-correct formatting.
+  const cur = pack?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
   const blockers = pack?.blockers || [];
 
   return (

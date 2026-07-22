@@ -17,10 +17,41 @@ import (
 type LedgerService struct {
 	tbClient *tigerbeetle.LedgerClient
 	pgRepo   port.LedgerRepository
+	// tenantLookup + reportingCurrency resolve the currency the read-only ledger
+	// reports (trial balance, deferred rollforward, close pack) are labeled with,
+	// so the UI formats minor-unit totals with the right exponent. Optional and
+	// nil-safe: unset, reports fall back to reportingCurrency (default "USD").
+	tenantLookup      TenantLookup
+	reportingCurrency string
 }
 
 func NewLedgerService(tbClient *tigerbeetle.LedgerClient, pgRepo port.LedgerRepository) *LedgerService {
-	return &LedgerService{tbClient: tbClient, pgRepo: pgRepo}
+	return &LedgerService{tbClient: tbClient, pgRepo: pgRepo, reportingCurrency: "USD"}
+}
+
+// SetReporting wires the reporting currency for the read-only ledger reports:
+// per-tenant base currency via the lookup, with defaultCurrency (REPORTING_CURRENCY
+// env, "USD") as the fallback. nil-safe / optional — mirrors the analytics and
+// dunning-recovery reporting-currency wiring.
+func (s *LedgerService) SetReporting(l TenantLookup, defaultCurrency string) {
+	s.tenantLookup = l
+	if defaultCurrency != "" {
+		s.reportingCurrency = defaultCurrency
+	}
+}
+
+// ReportingCurrency resolves the currency the ledger reports are labeled with:
+// the tenant's base currency when available, else the configured default.
+func (s *LedgerService) ReportingCurrency(ctx context.Context, tenantID uuid.UUID) string {
+	if s.tenantLookup != nil && tenantID != uuid.Nil {
+		if tenant, err := s.tenantLookup.GetByID(ctx, tenantID); err == nil && tenant != nil && tenant.BaseCurrency != "" {
+			return tenant.BaseCurrency
+		}
+	}
+	if s.reportingCurrency != "" {
+		return s.reportingCurrency
+	}
+	return "USD"
 }
 
 // ledgerAmount converts a money amount to the ledger's unsigned representation.

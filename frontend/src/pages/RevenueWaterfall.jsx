@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
+import { formatCurrency } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -23,14 +24,6 @@ const MONTHS = [
 ];
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
 
-// Recognition amounts sum across a tenant's schedules (possibly multi-currency),
-// so we show major units without asserting a single symbol.
-const money = (minor) =>
-  (Number(minor || 0) / 100).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
 const selectClass =
   "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -39,6 +32,9 @@ export default function RevenueWaterfall() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [waterfall, setWaterfall] = useState(null);
+  // Reporting currency (tenant base currency) for exponent-correct formatting.
+  const cur = waterfall?.reporting_currency || "USD";
+  const money = (minor) => formatCurrency(minor, cur);
   const [rollforward, setRollforward] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);

@@ -51,7 +51,9 @@ func (s *LedgerService) GetTrialBalance(ctx context.Context, tenantID uuid.UUID)
 	if err != nil {
 		return nil, err
 	}
-	return finalizeTrialBalance(tenantID, lines, time.Now()), nil
+	tb := finalizeTrialBalance(tenantID, lines, time.Now())
+	tb.ReportingCurrency = s.ReportingCurrency(ctx, tenantID)
+	return tb, nil
 }
 
 // GeneralLedger returns every posted transaction for a tenant, flattened with
@@ -77,12 +79,13 @@ func (s *LedgerService) GetDeferredRollforward(ctx context.Context, tenantID uui
 		return nil, err
 	}
 	return &domain.DeferredRollforward{
-		TenantID:    tenantID,
-		PeriodStart: start,
-		PeriodEnd:   end,
-		Opening:     opening,
-		Added:       added,
-		Released:    released,
-		Closing:     deferredClosing(opening, added, released),
+		TenantID:          tenantID,
+		PeriodStart:       start,
+		PeriodEnd:         end,
+		Opening:           opening,
+		Added:             added,
+		Released:          released,
+		Closing:           deferredClosing(opening, added, released),
+		ReportingCurrency: s.ReportingCurrency(ctx, tenantID),
 	}, nil
 }

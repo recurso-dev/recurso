@@ -572,6 +572,10 @@ func main() {
 	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
 	analyticsService.SetFX(fxProvider, fxFallback, reportingCurrency)
 	analyticsService.SetTenantLookup(tenantRepo)
+	// Per-tenant reporting currency for the read-only ledger reports (trial
+	// balance, deferred rollforward, close pack), so the UI formats totals with
+	// the tenant's currency exponent.
+	ledgerService.SetReporting(tenantRepo, reportingCurrency)
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
