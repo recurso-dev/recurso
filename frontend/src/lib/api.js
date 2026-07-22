@@ -273,6 +273,11 @@ export const endpoints = {
   getMCPSettings: () => api.get('/settings/mcp'),
   updateMCPSettings: (data) => api.put('/settings/mcp', data),
 
+  getEntities: () => api.get('/entities'),
+  createEntity: (data) => api.post('/entities', data),
+  updateEntity: (id, data) => api.put(`/entities/${id}`, data),
+  deleteEntity: (id) => api.delete(`/entities/${id}`),
+
   // Usage-based billing (metering)
   getBillableMetrics: () => api.get('/billable-metrics'),
   createBillableMetric: (data) => api.post('/billable-metrics', data),

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -75,6 +75,12 @@ export default function Settings() {
       icon: Bot,
       title: "MCP server",
       description: "Let AI agents operate your billing, and gate money-path actions.",
+    },
+    {
+      to: "/settings/entities",
+      icon: Building2,
+      title: "Legal entities",
+      description: "Bill under multiple legal entities with per-entity books and invoice series.",
     },
   ];
 
