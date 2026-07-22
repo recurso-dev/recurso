@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { endpoints } from "../lib/api";
-import { queryClient } from "@/lib/queryClient";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
@@ -45,7 +45,7 @@ const INDIA_STATES = [
 
 export default function CreateCustomer() {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
     name: "",
@@ -74,40 +74,39 @@ export default function CreateCustomer() {
     return Object.keys(next).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validate()) return;
-    setLoading(true);
-    try {
-      const isoCountry = COUNTRY_ISO[form.country] || "US";
-      // Payload is byte-for-byte identical to the original create-customer form.
-      const payload = {
-        name: form.name,
-        email: form.email,
-        phone: form.phone,
-        tax_id: form.tax_id,
-        gstin: isIndia ? form.tax_id : "",
-        place_of_supply: isIndia ? form.state : "",
-        line1: form.address,
-        country: isoCountry,
-        state: form.state,
-        // US sales-tax exemption (D2) — only meaningful outside India.
-        tax_exempt: isIndia ? false : form.tax_exempt,
-        tax_exemption_number: isIndia ? "" : form.tax_exemption_number,
-        tax_exemption_code: isIndia ? "" : form.tax_exemption_code,
-      };
-      await endpoints.createCustomer(payload);
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createCustomer(payload),
+    onSuccess: () => {
       toast.success("Customer created");
       // The list caches for 60s — without this the new customer is invisible.
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       navigate("/customers");
-    } catch (error) {
-      toast.error(
-        error?.response?.data?.error?.message || "Failed to create customer"
-      );
-    } finally {
-      setLoading(false);
-    }
+    },
+    onError: (error) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create customer"),
+  });
+  const loading = createMutation.isPending;
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!validate()) return;
+    const isoCountry = COUNTRY_ISO[form.country] || "US";
+    // Payload is byte-for-byte identical to the original create-customer form.
+    createMutation.mutate({
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      tax_id: form.tax_id,
+      gstin: isIndia ? form.tax_id : "",
+      place_of_supply: isIndia ? form.state : "",
+      line1: form.address,
+      country: isoCountry,
+      state: form.state,
+      // US sales-tax exemption (D2) — only meaningful outside India.
+      tax_exempt: isIndia ? false : form.tax_exempt,
+      tax_exemption_number: isIndia ? "" : form.tax_exemption_number,
+      tax_exemption_code: isIndia ? "" : form.tax_exemption_code,
+    });
   };
 
   return (

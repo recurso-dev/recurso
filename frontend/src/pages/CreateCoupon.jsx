@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router-dom";
 import { Sparkles } from "lucide-react";
@@ -27,7 +28,7 @@ import {
 
 const CreateCoupon = () => {
   const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
+  const queryClient = useQueryClient();
   const [formData, setFormData] = useState({
     code: "",
     discount_type: "percent",
@@ -50,12 +51,23 @@ const CreateCoupon = () => {
     setField("code", result);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const createMutation = useMutation({
+    mutationFn: (payload) => endpoints.createCoupon(payload),
+    onSuccess: () => {
+      // Pickers and the list share a 60s coupons cache — surface the new coupon
+      // now, or landing on /coupons shows a stale list without it.
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+      navigate("/coupons");
+    },
+    onError: (error) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create coupon"),
+  });
+  const loading = createMutation.isPending;
 
+  const handleSubmit = (e) => {
+    e.preventDefault();
     const isPercent = formData.discount_type.toLowerCase().includes("percent");
-    const payload = {
+    createMutation.mutate({
       code: formData.code,
       discount_type: isPercent ? "percent" : "amount",
       // Amount-off is typed in major units (e.g. 25 = $25) but the API expects
@@ -69,16 +81,7 @@ const CreateCoupon = () => {
         formData.duration === "repeating" && formData.duration_months
           ? parseInt(formData.duration_months)
           : null,
-    };
-
-    try {
-      await endpoints.createCoupon(payload);
-      navigate("/coupons");
-    } catch (error) {
-      toast.error(error?.response?.data?.error?.message || "Failed to create coupon");
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   return (
