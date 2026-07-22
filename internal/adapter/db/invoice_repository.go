@@ -35,8 +35,49 @@ const invoiceInsertQuery = `
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
 `
 
+// allocateInvoiceNumber draws the next number in the issuing entity's gapless
+// series (Multi-Entity Books Inc 3a): {invoice_prefix}-{seq:06d}. A nil entity
+// resolves to the tenant's primary entity, so single-entity tenants get one
+// continuous "INV-000001…" series. The UPDATE…RETURNING is atomic per entity
+// row, so concurrent finalizations serialize into gapless, unique numbers; run
+// on the caller's execer it shares the invoice-insert transaction, so a rolled
+// back insert (e.g. a rejected mandate-cycle claim) returns the number too.
+func allocateInvoiceNumber(ctx context.Context, ex execer, tenantID uuid.UUID, entityID *uuid.UUID) (string, error) {
+	var entID uuid.UUID
+	var prefix string
+	var row *sql.Row
+	if entityID != nil {
+		row = ex.QueryRowContext(ctx,
+			`SELECT id, invoice_prefix FROM entities WHERE id = $1 AND tenant_id = $2`, *entityID, tenantID)
+	} else {
+		row = ex.QueryRowContext(ctx,
+			`SELECT id, invoice_prefix FROM entities WHERE tenant_id = $1 AND is_primary`, tenantID)
+	}
+	if err := row.Scan(&entID, &prefix); err != nil {
+		return "", fmt.Errorf("resolve invoice-series entity: %w", err)
+	}
+	var seq int64
+	if err := ex.QueryRowContext(ctx,
+		`UPDATE entity_invoice_sequences SET next_number = next_number + 1 WHERE entity_id = $1 RETURNING next_number - 1`,
+		entID).Scan(&seq); err != nil {
+		return "", fmt.Errorf("allocate invoice number for entity %s: %w", entID, err)
+	}
+	return fmt.Sprintf("%s-%06d", prefix, seq), nil
+}
+
 // insertInvoiceRow writes the invoice row against any execer (*sql.DB or *sql.Tx).
 func insertInvoiceRow(ctx context.Context, ex execer, inv *domain.Invoice) error {
+	// Allocate the gapless per-entity invoice number when the caller left it
+	// blank (all billing paths do — see Inc 3a). Same execer as the insert, so
+	// the sequence draw commits or rolls back with the row.
+	if inv.InvoiceNumber == "" {
+		num, err := allocateInvoiceNumber(ctx, ex, inv.TenantID, inv.EntityID)
+		if err != nil {
+			return err
+		}
+		inv.InvoiceNumber = num
+	}
+
 	// amount_paid default 0 if not set
 	amountPaid := int64(0)
 	if inv.PaidAt != nil {

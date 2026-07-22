@@ -368,9 +368,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	invoice := &domain.Invoice{
 		ID:             invID,
 		TenantID:       input.TenantID,
+		EntityID:       input.EntityID,
 		SubscriptionID: &subID,
 		CustomerID:     input.CustomerID,
-		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", time.Now().UnixNano(), invID.String()[:8]),
 		BillingReason:  domain.BillingReasonSubscriptionCreate,
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,

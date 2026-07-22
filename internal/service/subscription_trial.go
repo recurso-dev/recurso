@@ -72,9 +72,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	invoice := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
+		EntityID:       sub.EntityID,
 		SubscriptionID: &sub.ID,
 		CustomerID:     sub.CustomerID,
-		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
 		BillingReason:  domain.BillingReasonSubscriptionCycle,
 		Status:         domain.InvoiceStatusOpen,
 		Currency:       price.Currency,
