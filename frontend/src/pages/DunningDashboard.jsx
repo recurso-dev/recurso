@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { BarChart } from "@tremor/react";
 import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3, Settings2 } from "lucide-react";
@@ -50,37 +50,34 @@ const lastTwelveMonths = () => {
 };
 
 const DunningDashboard = () => {
-  const [overview, setOverview] = useState(null);
-  const [weights, setWeights] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [recovered, setRecovered] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [overviewRes, weightsRes, historyRes, recoveredRes] = await Promise.all([
-          endpoints.getDunningOverview(),
-          endpoints.getDunningWeights(),
-          endpoints.getDunningHistory({ limit: 50 }),
-          endpoints.getDunningRecovered(),
-        ]);
-        setOverview(overviewRes.data?.data);
-        setWeights(weightsRes.data?.data || []);
-        setHistory(historyRes.data?.data || []);
-        setRecovered(recoveredRes.data?.data);
-      } catch (err) {
-        console.error("Failed to fetch dunning data:", err);
-        setLoadError(
-          err?.response?.data?.error?.message || err?.message || "Failed to load dunning data"
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ["dunning-dashboard"],
+    queryFn: async () => {
+      const [overviewRes, weightsRes, historyRes, recoveredRes] = await Promise.all([
+        endpoints.getDunningOverview(),
+        endpoints.getDunningWeights(),
+        endpoints.getDunningHistory({ limit: 50 }),
+        endpoints.getDunningRecovered(),
+      ]);
+      return {
+        overview: overviewRes.data?.data,
+        weights: weightsRes.data?.data || [],
+        history: historyRes.data?.data || [],
+        recovered: recoveredRes.data?.data,
+      };
+    },
+  });
+  const overview = data?.overview ?? null;
+  const weights = data?.weights ?? [];
+  const history = data?.history ?? [];
+  const recovered = data?.recovered ?? null;
+  const loadError = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load dunning data"
+    : null;
 
   // Group weights by context key to find the winning arm per context.
   const contextGroups = {};

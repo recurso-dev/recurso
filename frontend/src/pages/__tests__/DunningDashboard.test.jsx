@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import DunningDashboard from '../DunningDashboard';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
@@ -51,7 +52,7 @@ describe('DunningDashboard Component', () => {
     });
 
     it('displays the recovered revenue tile with totals', async () => {
-        render(<MemoryRouter><DunningDashboard /></MemoryRouter>);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter><DunningDashboard /></MemoryRouter></QueryClientProvider>);
 
         await waitFor(() => {
             expect(screen.getByText('Recovered Revenue')).toBeInTheDocument();
@@ -63,7 +64,7 @@ describe('DunningDashboard Component', () => {
     });
 
     it('renders the monthly recovered revenue chart', async () => {
-        render(<MemoryRouter><DunningDashboard /></MemoryRouter>);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter><DunningDashboard /></MemoryRouter></QueryClientProvider>);
 
         await waitFor(() => {
             expect(screen.getByText('Recovered Revenue by Month')).toBeInTheDocument();
@@ -85,7 +86,7 @@ describe('DunningDashboard Component', () => {
             } }
         });
 
-        render(<MemoryRouter><DunningDashboard /></MemoryRouter>);
+        render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}><MemoryRouter><DunningDashboard /></MemoryRouter></QueryClientProvider>);
 
         await waitFor(() => {
             expect(screen.getByText('Recovered Revenue')).toBeInTheDocument();
