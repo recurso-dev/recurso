@@ -156,20 +156,20 @@ elimination is D3/v2). Plus a per-entity filter on existing finance reports.
 4. Concurrent invoice finalization yields a gapless, unique per-entity series.
 5. Invariant harness green per-entity and in aggregate.
 
-## Open questions (need founder decision — see chat)
+## Resolved decisions (Q1–Q4, locked 2026-07-22)
 
-- **Q1 — Shared vs per-entity resources.** Proposed: **customers shared** (a customer is
-  a party; the entity is the *seller*), **catalog (plans/prices) shared**, but each
-  **subscription and invoice belongs to exactly one entity**. Confirm — this is the
-  biggest shaping choice.
-- **Q2 — How does a subscription/invoice choose its entity?** Proposed: explicit
-  `entity_id` at subscription creation (defaults to the primary entity); invoices inherit
-  the subscription's entity; one-off invoices take an explicit entity.
-- **Q3 — Gapless strictness + void policy.** Gapless per-entity series allocated at
-  finalization; define what a void/cancel does to the series (leave a documented gap vs
-  reuse). Some jurisdictions require strict gapless — confirm the target.
-- **Q4 — e-invoicing per entity.** Confirm D4 extends to India IRN + EU Peppol resolving
-  each entity's own GSTIN/VAT registration (it should).
+- **Q1 — Scope: customers + catalog are SHARED; sub/invoice are per-entity.** A customer
+  is a party billable by any entity; plans/prices are defined once. `entity_id` goes on
+  **subscriptions, invoices, credit_notes, quotes, ledger_accounts, and the identity
+  configs** — NOT on customers or plans/prices.
+- **Q2 — Entity is explicit at subscription create.** `entity_id` is passed when creating
+  a subscription (defaults to the tenant's primary entity if omitted — backward-compatible);
+  invoices inherit the subscription's entity; one-off invoices take an explicit entity.
+- **Q3 — Gapless series, allocated at finalization.** The per-entity number is drawn from
+  `entity_invoice_sequences` at invoice **finalization** (not draft); a void/cancel leaves
+  a **documented gap** (the number is spent). Strict no-gap is out of scope for v1.
+- **Q4 — e-invoicing resolves per entity.** India IRN + EU Peppol use the **issuing
+  entity's** own GSTIN/VAT registration.
 
 ## Increment plan & tasks
 

@@ -5,7 +5,7 @@ Plan: `tasks/multi-entity-plan.md`. Spec: `docs/spec_multi_entity_books.md`. One
 
 ## Inc 1 — entities foundation
 - [ ] migration 000128: `entities` + `entity_invoice_sequences`; backfill one primary entity per tenant (tb_ledger_id=1, identity from existing configs).
-- [ ] migration: nullable `entity_id` on invoices/subscriptions/credit_notes/quotes/ledger_accounts → backfill to primary → NOT NULL. (Customers/catalog only if Q1 says per-entity.)
+- [ ] migration: nullable `entity_id` on invoices/subscriptions/credit_notes/quotes/ledger_accounts → backfill to primary → NOT NULL. (Q1 LOCKED: customers + catalog stay SHARED — no entity_id on them.)
 - [ ] domain.Entity + EntityRepository + EntityService (nil-safe wiring).
 - [ ] `/v1/entities` CRUD (+ openapi + drift) with "exactly one primary / can't delete last" guards.
 - [ ] Dashboard: Entities settings page (list/create/edit).
