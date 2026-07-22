@@ -5,7 +5,7 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -85,7 +85,7 @@ const Mandates = () => {
       const body = {
         customer_id: form.customer_id.trim(),
         vpa: form.vpa.trim(),
-        max_amount: Math.round(parseFloat(form.max_amount) * 100),
+        max_amount: toMinorUnits(form.max_amount),
         frequency: form.frequency,
       };
       if (form.subscription_id.trim()) body.subscription_id = form.subscription_id.trim();

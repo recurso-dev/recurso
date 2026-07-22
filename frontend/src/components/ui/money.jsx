@@ -1,14 +1,13 @@
-import { cn } from "@/lib/utils";
+import { cn, fromMinorUnits } from "@/lib/utils";
 
 // Money renders a monetary amount as data: tabular mono numerals with the
 // currency symbol set in a muted tone. amountMinor is in the currency's
-// smallest unit (cents/paise).
+// smallest unit (cents/paise/etc.) — decimals shown are the currency's own.
 export function Money({ amountMinor, currency = "USD", className }) {
-  const value = (Number(amountMinor) || 0) / 100;
+  const value = fromMinorUnits(amountMinor, currency);
   const parts = new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: currency || "USD",
-    maximumFractionDigits: 2,
   }).formatToParts(value);
 
   return (

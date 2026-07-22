@@ -4,7 +4,7 @@ import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
 import { endpoints } from "../../lib/api";
 import { useToast } from "../Toast";
 import PricingSimulator from "./PricingSimulator";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -87,14 +87,14 @@ const toEditorRows = (charges, currency) =>
     if (ch.charge_model === "per_unit") {
       row.unit_amount = a.unit_amount || "";
     } else if (ch.charge_model === "package") {
-      row.package_amount = a.package_amount != null ? String(a.package_amount / 100) : "";
+      row.package_amount = a.package_amount != null ? String(fromMinorUnits(a.package_amount, currency)) : "";
       row.package_size = a.package_size != null ? String(a.package_size) : "";
     } else if (ch.charge_model === "percentage") {
       row.rate = a.rate || "";
-      row.fixed_amount = a.fixed_amount ? String(a.fixed_amount / 100) : "";
-      row.free_amount = a.free_units ? String(a.free_units / 100) : "";
-      row.min_amount = a.min_amount ? String(a.min_amount / 100) : "";
-      row.max_amount = a.max_amount ? String(a.max_amount / 100) : "";
+      row.fixed_amount = a.fixed_amount ? String(fromMinorUnits(a.fixed_amount, currency)) : "";
+      row.free_amount = a.free_units ? String(fromMinorUnits(a.free_units, currency)) : "";
+      row.min_amount = a.min_amount ? String(fromMinorUnits(a.min_amount, currency)) : "";
+      row.max_amount = a.max_amount ? String(fromMinorUnits(a.max_amount, currency)) : "";
     } else if (ch.charge_model === "dynamic") {
       // No pricing config: the price arrives per event.
     } else {
@@ -103,10 +103,10 @@ const toEditorRows = (charges, currency) =>
       // (stored minor units); per-unit tiers band unit counts.
       const isPct = ch.charge_model === "graduated_percentage";
       row.tiers = (a.tiers && a.tiers.length ? a.tiers : [blankTier()]).map((t) => ({
-        up_to: t.up_to != null ? String(isPct ? t.up_to / 100 : t.up_to) : "",
+        up_to: t.up_to != null ? String(isPct ? fromMinorUnits(t.up_to, currency) : t.up_to) : "",
         unit_amount: t.unit_amount || "",
         rate: t.rate || "",
-        flat_amount: t.flat_amount ? String(t.flat_amount / 100) : "",
+        flat_amount: t.flat_amount ? String(fromMinorUnits(t.flat_amount, currency)) : "",
       }));
     }
     return row;
@@ -196,7 +196,7 @@ const validateRows = (rows) => {
 // map keyed by the plan currency.
 const rowsToPayload = (rows, currency) =>
   rows.map((r) => {
-    const money = (s) => (s === "" ? 0 : Math.round(Number(s) * 100));
+    const money = (s) => (s === "" ? 0 : toMinorUnits(s, currency));
     let amounts;
     if (r.charge_model === "per_unit") {
       amounts = { unit_amount: String(r.unit_amount).trim() };

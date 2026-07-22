@@ -5,7 +5,7 @@ import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3, Settings2 } fro
 
 import { endpoints } from "../lib/api";
 import { Button } from "@/components/ui/button";
-import { formatNumber } from "@/lib/utils";
+import { formatNumber, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -22,15 +22,17 @@ import {
 } from "@/components/ui/table";
 
 // Recovered-revenue money is shown with no fraction digits (headline currency).
+// Amounts arrive in minor units; convert with the currency's real exponent.
 const formatMoney = (amount, currency) => {
+  const major = fromMinorUnits(amount, currency);
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       maximumFractionDigits: 0,
-    }).format(amount / 100);
+    }).format(major);
   } catch {
-    return `${currency} ${(amount / 100).toFixed(0)}`;
+    return `${currency} ${major.toFixed(0)}`;
   }
 };
 
@@ -115,7 +117,7 @@ const DunningDashboard = () => {
   });
   const chartData = months.map((m) => ({
     month: m.slice(5),
-    Recovered: (monthlyByMonth[m]?.amount || 0) / 100,
+    Recovered: fromMinorUnits(monthlyByMonth[m]?.amount || 0, primaryCurrency),
   }));
   const hasRecovered = (recovered?.recovered_count || 0) > 0;
 

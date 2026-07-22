@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AreaChart, BarChart } from "@tremor/react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -78,7 +78,7 @@ export default function ExecutiveSummary() {
         if (d?.ending_mrr == null) return null;
         return {
           month: windows[i].start.toLocaleString("en", { month: "short", timeZone: "UTC" }),
-          MRR: d.ending_mrr / 100,
+          MRR: fromMinorUnits(d.ending_mrr, d.reporting_currency),
         };
       })
       .filter(Boolean);
@@ -116,10 +116,10 @@ export default function ExecutiveSummary() {
 
   const movementData = m?.wf
     ? [
-        { name: "New", Amount: (m.wf.new || 0) / 100 },
-        { name: "Expansion", Amount: (m.wf.expansion || 0) / 100 },
-        { name: "Contraction", Amount: -((m.wf.contraction || 0) / 100) },
-        { name: "Churned", Amount: -((m.wf.churned || 0) / 100) },
+        { name: "New", Amount: fromMinorUnits(m.wf.new || 0, cur) },
+        { name: "Expansion", Amount: fromMinorUnits(m.wf.expansion || 0, cur) },
+        { name: "Contraction", Amount: -fromMinorUnits(m.wf.contraction || 0, cur) },
+        { name: "Churned", Amount: -fromMinorUnits(m.wf.churned || 0, cur) },
       ]
     : [];
 

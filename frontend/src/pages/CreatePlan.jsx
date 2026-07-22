@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";
 import { useToast } from "../components/Toast";
-import { cn } from "@/lib/utils";
+import { cn, toMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,7 +65,7 @@ export default function CreatePlan() {
         name: formData.name,
         code: formData.code,
         currency: formData.currency,
-        amount: Math.round(parseFloat(formData.price) * 100),
+        amount: toMinorUnits(formData.price, formData.currency),
         interval_unit: formData.interval,
         interval_count: 1,
       };

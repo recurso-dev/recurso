@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn, formatCurrency, formatDate } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, fromMinorUnits } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -150,7 +150,7 @@ export default function Dashboard() {
       .map((day) => {
         const row = { date: formatDate(day, { month: "short", day: "numeric" }) };
         curs.forEach((c) => {
-          row[c] = (byDay[day][c] || 0) / 100;
+          row[c] = fromMinorUnits(byDay[day][c] || 0, c);
         });
         return row;
       });

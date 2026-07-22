@@ -4,7 +4,7 @@ import { Plus, BadgePercent } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import CouponDetail from "../components/slide-overs/CouponDetail";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -46,7 +46,7 @@ const Coupons = () => {
         discount:
           c.discount_type === "percent" || c.discount_type === "percentage"
             ? `${c.discount_value}%`
-            : `$${(c.discount_value / 100).toFixed(2)}`,
+            : formatCurrency(c.discount_value, c.currency),
         duration_in_months: c.duration_months,
       }));
       setCoupons(mappedCoupons);

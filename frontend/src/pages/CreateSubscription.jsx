@@ -187,7 +187,7 @@ export default function CreateSubscription() {
                 <SelectContent>
                   {plans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
-                      {plan.name} - ${(plan.prices?.[0]?.amount / 100).toFixed(2)}/
+                      {plan.name} - {formatCurrency(plan.prices?.[0]?.amount, plan.prices?.[0]?.currency)}/
                       {plan.interval_unit}
                     </SelectItem>
                   ))}
@@ -271,7 +271,7 @@ export default function CreateSubscription() {
               planName={selectedPlan?.name || "the selected plan"}
               amount={
                 selectedPlan?.prices?.[0]?.amount
-                  ? `${currency} ${(selectedPlan.prices[0].amount / 100).toFixed(2)}`
+                  ? formatCurrency(selectedPlan.prices[0].amount, currency)
                   : ""
               }
               billingInterval={selectedPlan?.interval_unit || "month"}
