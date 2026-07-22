@@ -79,6 +79,25 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 		return nil, nil
 	}
 
+	// Strict per-entity identity (Multi-Entity Books Inc 3b): a non-primary
+	// entity must have its OWN GST registration to be e-invoiced — its IRN must
+	// carry its own GSTIN, never the tenant default's. If it hasn't registered
+	// one, skip (NA) and log for admin follow-up rather than mis-file under
+	// another entity's GSTIN. The primary entity (nil) keeps using the tenant
+	// default, so single-entity tenants are unaffected.
+	if invoice.EntityID != nil && s.gstConfigRepo != nil {
+		cfg, err := s.gstConfigRepo.GetByTenantEntity(ctx, invoice.TenantID, invoice.EntityID)
+		if err != nil {
+			return nil, fmt.Errorf("resolve entity GST config: %w", err)
+		}
+		if cfg == nil || cfg.GSTIN == "" {
+			s.logger.Warn("e-invoice skipped: issuing entity has no GST registration",
+				"invoice_id", invoice.ID, "entity_id", *invoice.EntityID)
+			invoice.EInvoiceStatus = "NA"
+			return nil, nil
+		}
+	}
+
 	// Build the e-invoice request
 	req, err := s.buildRequest(ctx, invoice, customer)
 	if err != nil {
@@ -242,7 +261,10 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 	// Fetch tenant GST config for seller details
 	var seller port.EInvoiceSeller
 	if s.gstConfigRepo != nil {
-		gstConfig, err := s.gstConfigRepo.GetByTenantID(ctx, invoice.TenantID)
+		// Resolve the seller GSTIN for the invoice's issuing entity (Multi-Entity
+		// Books Inc 3b): the primary entity uses the tenant default; a non-primary
+		// entity uses its own registration.
+		gstConfig, err := s.gstConfigRepo.GetByTenantEntity(ctx, invoice.TenantID, invoice.EntityID)
 		if err != nil {
 			s.logger.Warn("failed to get GST config", "error", err, "tenant_id", invoice.TenantID)
 		}
