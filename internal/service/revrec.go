@@ -135,7 +135,7 @@ func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscripti
 // be idempotent against replays — a replay would reduce the schedule twice while
 // the code-5 ledger posting deduped, diverging the two. The ledger post is
 // best-effort (a failure is logged for reconciliation, never fails the refund).
-func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID, invoiceID, creditNoteID uuid.UUID, refundAmount int64) (int64, error) {
+func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, invoiceID, creditNoteID uuid.UUID, refundAmount int64) (int64, error) {
 	if refundAmount <= 0 {
 		return 0, nil
 	}
@@ -190,7 +190,7 @@ func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID, invoiceID,
 
 	// Post the deferred reversal best-effort (schedule state already corrected).
 	if s.ledger != nil {
-		if _, err := s.ledger.RecordDeferredRefundReversal(ctx, tenantID, creditNoteID, reverse,
+		if _, err := s.ledger.RecordDeferredRefundReversal(ctx, tenantID, entityID, creditNoteID, reverse,
 			"Deferred reversal for refund"); err != nil {
 			slog.Error("deferred reversal ledger post failed — reconciliation needed",
 				"credit_note_id", creditNoteID, "amount", reverse, "error", err)

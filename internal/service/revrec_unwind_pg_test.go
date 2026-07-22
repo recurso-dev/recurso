@@ -216,13 +216,13 @@ func TestUnwindOnRefund_Postgres(t *testing.T) {
 	}
 	// The gateway cash refund that createRefund would post first (DR Refunds / CR Cash).
 	creditNoteID := uuid.New()
-	if err := ledger.RecordRefund(ctx, tenantID, creditNoteID, 25000, "cash refund"); err != nil {
+	if err := ledger.RecordRefund(ctx, tenantID, nil, creditNoteID, 25000, "cash refund"); err != nil {
 		t.Fatalf("RecordRefund: %v", err)
 	}
 	schedID := seedRevRecSchedule(t, conn, tenantID, invID, subID, 10000, 12) // 120000 pending
 
 	// Refund 25000: crosses two 10000 events (voided) + reduces a third to 5000.
-	reversed, err := svc.UnwindOnRefund(ctx, tenantID, invID, creditNoteID, 25000)
+	reversed, err := svc.UnwindOnRefund(ctx, tenantID, nil, invID, creditNoteID, 25000)
 	if err != nil {
 		t.Fatalf("UnwindOnRefund: %v", err)
 	}
@@ -280,12 +280,12 @@ func TestUnwindOnRefund_FullRefund_Postgres(t *testing.T) {
 		t.Fatalf("RecordInvoice: %v", err)
 	}
 	creditNoteID := uuid.New()
-	if err := ledger.RecordRefund(ctx, tenantID, creditNoteID, 60000, "full cash refund"); err != nil {
+	if err := ledger.RecordRefund(ctx, tenantID, nil, creditNoteID, 60000, "full cash refund"); err != nil {
 		t.Fatalf("RecordRefund: %v", err)
 	}
 	schedID := seedRevRecSchedule(t, conn, tenantID, invID, subID, 10000, 6)
 
-	reversed, err := svc.UnwindOnRefund(ctx, tenantID, invID, creditNoteID, 60000)
+	reversed, err := svc.UnwindOnRefund(ctx, tenantID, nil, invID, creditNoteID, 60000)
 	if err != nil {
 		t.Fatalf("UnwindOnRefund: %v", err)
 	}
