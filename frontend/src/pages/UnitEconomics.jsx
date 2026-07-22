@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Gauge } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -11,26 +11,18 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
 
 export default function UnitEconomics() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getUnitEconomics();
-      setData(res.data?.data || null);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load unit economics");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["unit-economics"],
+    queryFn: async () => (await endpoints.getUnitEconomics()).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load unit economics"
+    : null;
 
   const cur = data?.reporting_currency || "USD";
   const money = (n) => formatCurrency(n || 0, cur);
@@ -47,7 +39,7 @@ export default function UnitEconomics() {
         <CardGridSkeleton count={3} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         data && (
