@@ -54,6 +54,7 @@ func NewServer(client *Client, opts Options) *Server {
 	}
 	registerReadTools(s)
 	registerWriteTools(s)
+	registerSensitiveTools(s)
 	return s
 }
 
