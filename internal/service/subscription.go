@@ -610,58 +610,6 @@ func (s *SubscriptionService) ListSubscriptions(ctx context.Context, tenantID uu
 	return s.subRepo.List(ctx, tenantID, filter)
 }
 
-// PauseSubscription pauses an active subscription (Phase 49)
-func (s *SubscriptionService) PauseSubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
-	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
-	if err != nil {
-		return nil, err
-	}
-	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
-	}
-	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
-	}
-
-	if sub.Status != domain.SubscriptionStatusActive {
-		return nil, fmt.Errorf("only active subscriptions can be paused")
-	}
-
-	sub.Status = domain.SubscriptionStatusPaused
-
-	if err := s.subRepo.Update(ctx, sub); err != nil {
-		return nil, err
-	}
-
-	return sub, nil
-}
-
-// ResumeSubscription resumes a paused subscription (Phase 49)
-func (s *SubscriptionService) ResumeSubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
-	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
-	if err != nil {
-		return nil, err
-	}
-	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
-	}
-	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
-	}
-
-	if sub.Status != domain.SubscriptionStatusPaused {
-		return nil, fmt.Errorf("only paused subscriptions can be resumed")
-	}
-
-	sub.Status = domain.SubscriptionStatusActive
-
-	if err := s.subRepo.Update(ctx, sub); err != nil {
-		return nil, err
-	}
-
-	return sub, nil
-}
-
 func (s *SubscriptionService) ListInvoices(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error) {
 	return s.invoiceRepo.List(ctx, tenantID)
 }

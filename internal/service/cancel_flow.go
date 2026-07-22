@@ -284,13 +284,21 @@ func (s *CancelFlowService) processOfferStep(ctx context.Context, session *domai
 func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.CancelFlowSession, offer domain.RetentionOffer) error {
 	switch offer.Type {
 	case domain.OfferTypePause:
-		_, err := s.subscriptionService.PauseSubscription(ctx, session.TenantID, session.SubscriptionID)
+		// Schedule an automatic resume PauseMonths from now (issue #111). A
+		// non-positive PauseMonths means an open-ended pause (resume manually).
+		var resumeAt *time.Time
+		if offer.PauseMonths > 0 {
+			t := time.Now().UTC().AddDate(0, offer.PauseMonths, 0)
+			resumeAt = &t
+		}
+		_, err := s.subscriptionService.PauseSubscription(ctx, session.TenantID, session.SubscriptionID, resumeAt)
 		if err != nil {
 			return fmt.Errorf("failed to pause subscription: %w", err)
 		}
 		s.logger.Info("subscription paused via retention offer",
 			"subscription_id", session.SubscriptionID,
 			"pause_months", offer.PauseMonths,
+			"resume_at", resumeAt,
 		)
 
 	case domain.OfferTypePlanSwitch:

@@ -18,25 +18,30 @@ const (
 )
 
 type Subscription struct {
-	ID                   uuid.UUID          `json:"id"`
-	TenantID             uuid.UUID          `json:"tenant_id"`
-	CustomerID           uuid.UUID          `json:"customer_id"`
-	PlanID               uuid.UUID          `json:"plan_id"`
-	Status               SubscriptionStatus `json:"status"`
-	CurrentPeriodStart   time.Time          `json:"current_period_start" db:"current_period_start"`
-	CurrentPeriodEnd     time.Time          `json:"current_period_end" db:"current_period_end"`
-	TrialEnd             *time.Time         `json:"trial_end,omitempty" db:"trial_end"`             // set while status = trialing; nil for non-trial subs
-	CancelAtPeriodEnd    bool               `json:"cancel_at_period_end" db:"cancel_at_period_end"` // P43
-	CanceledAt           *time.Time         `json:"canceled_at,omitempty" db:"canceled_at"`
-	CancellationReason   string             `json:"cancellation_reason,omitempty" db:"cancellation_reason"`
-	CancellationFeedback string             `json:"cancellation_feedback,omitempty" db:"cancellation_feedback"`
-	BillingAnchor        time.Time          `json:"billing_anchor"`
-	BillingAnchorType    string             `json:"billing_anchor_type"`                      // P15
-	BillingAnchorDay     int                `json:"billing_anchor_day"`                       // P15
-	PaymentTerms         string             `json:"payment_terms"`                            // P15
-	CouponID             *uuid.UUID         `json:"coupon_id,omitempty"`                      // P7
-	ReferenceID          string             `json:"reference_id,omitempty" db:"reference_id"` // P43
-	MandateID            *uuid.UUID         `json:"mandate_id,omitempty" db:"mandate_id"`
+	ID                 uuid.UUID          `json:"id"`
+	TenantID           uuid.UUID          `json:"tenant_id"`
+	CustomerID         uuid.UUID          `json:"customer_id"`
+	PlanID             uuid.UUID          `json:"plan_id"`
+	Status             SubscriptionStatus `json:"status"`
+	CurrentPeriodStart time.Time          `json:"current_period_start" db:"current_period_start"`
+	CurrentPeriodEnd   time.Time          `json:"current_period_end" db:"current_period_end"`
+	TrialEnd           *time.Time         `json:"trial_end,omitempty" db:"trial_end"` // set while status = trialing; nil for non-trial subs
+	// ResumeAt is when a paused subscription is scheduled to auto-resume (issue
+	// #111). Set when a timed pause (e.g. a retention "pause N months" offer) is
+	// applied; nil means an indefinite, manual-resume pause. The resume scheduler
+	// scans for elapsed values and reactivates.
+	ResumeAt             *time.Time `json:"resume_at,omitempty" db:"resume_at"`
+	CancelAtPeriodEnd    bool       `json:"cancel_at_period_end" db:"cancel_at_period_end"` // P43
+	CanceledAt           *time.Time `json:"canceled_at,omitempty" db:"canceled_at"`
+	CancellationReason   string     `json:"cancellation_reason,omitempty" db:"cancellation_reason"`
+	CancellationFeedback string     `json:"cancellation_feedback,omitempty" db:"cancellation_feedback"`
+	BillingAnchor        time.Time  `json:"billing_anchor"`
+	BillingAnchorType    string     `json:"billing_anchor_type"`                      // P15
+	BillingAnchorDay     int        `json:"billing_anchor_day"`                       // P15
+	PaymentTerms         string     `json:"payment_terms"`                            // P15
+	CouponID             *uuid.UUID `json:"coupon_id,omitempty"`                      // P7
+	ReferenceID          string     `json:"reference_id,omitempty" db:"reference_id"` // P43
+	MandateID            *uuid.UUID `json:"mandate_id,omitempty" db:"mandate_id"`
 	// CommitmentAmount is the per-period minimum in minor units (Lago-parity
 	// B2): when a period's subtotal falls short, a true-up line fills the
 	// gap on the renewal invoice. 0 = no commitment.

@@ -991,6 +991,14 @@ func main() {
 	mrrSnapshotScheduler.Start()
 	defer mrrSnapshotScheduler.Stop()
 
+	// Subscription Resume Scheduler (daily, issue #111) — auto-resumes paused
+	// subscriptions whose scheduled resume_at has elapsed (e.g. a retention
+	// "pause N months" offer). Claim-based, so multi-instance-safe without Redis.
+	subscriptionResumeScheduler := scheduler.NewSubscriptionResumeScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository), subscriptionService, locker)
+	subscriptionResumeScheduler.Start()
+	defer subscriptionResumeScheduler.Stop()
+
 	// Operational alerting (solo-operator safety net) — POSTs to
 	// ALERT_WEBHOOK_URL on component state transitions; no-op when unset.
 	// See docs/incident-runbook.md.
@@ -1049,6 +1057,7 @@ func main() {
 			reconciliationScheduler.Stop,
 			progressiveBillingScheduler.Stop,
 			mrrSnapshotScheduler.Stop,
+			subscriptionResumeScheduler.Stop,
 			healthAlertScheduler.Stop,
 		}
 		if billingCycleScheduler != nil {

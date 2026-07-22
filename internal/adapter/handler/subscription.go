@@ -329,7 +329,9 @@ func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
-	sub, err := h.service.PauseSubscription(ctx, tenantID, subID)
+	// Manual pause is indefinite (nil resume) — the caller resumes via /resume.
+	// Timed pauses come from the retention flow, which passes a resume date.
+	sub, err := h.service.PauseSubscription(ctx, tenantID, subID, nil)
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return

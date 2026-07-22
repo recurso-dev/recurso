@@ -31,6 +31,9 @@ func (m *mockSubRepoForMRR) List(ctx context.Context, tenantID uuid.UUID, filter
 	return m.byList[tenantID], nil
 }
 func (m *mockSubRepoForMRR) Update(ctx context.Context, s *domain.Subscription) error { return nil }
+func (m *mockSubRepoForMRR) SetResumeAt(ctx context.Context, tenantID, subID uuid.UUID, resumeAt *time.Time) error {
+	return nil
+}
 func (m *mockSubRepoForMRR) CountActiveByCustomer(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int, error) {
 	return nil, nil
 }

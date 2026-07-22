@@ -76,22 +76,25 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, commitment_amount, created_at, updated_at
+			trial_end, commitment_amount, created_at, updated_at, resume_at
 		FROM subscriptions WHERE id = $1 AND tenant_id = $2
 	`
 	var razorpayID, stripeID, refID sql.NullString
-	var billingAnchor, trialEnd sql.NullTime
+	var billingAnchor, trialEnd, resumeAt sql.NullTime
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
 		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
 		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt,
+		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt, &resumeAt,
 	)
 	if billingAnchor.Valid {
 		sub.BillingAnchor = billingAnchor.Time
 	}
 	if trialEnd.Valid {
 		sub.TrialEnd = &trialEnd.Time
+	}
+	if resumeAt.Valid {
+		sub.ResumeAt = &resumeAt.Time
 	}
 	sub.ReferenceID = refID.String
 	sub.RazorpaySubscriptionID = razorpayID.String
@@ -566,6 +569,61 @@ func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease t
 		sub.ReferenceID = refID.String
 		sub.RazorpaySubscriptionID = razorpayID.String
 		sub.StripeSubscriptionID = stripeID.String
+		subs = append(subs, sub)
+	}
+	return subs, rows.Err()
+}
+
+// SetResumeAt records (or clears, when resumeAt is nil) the scheduled
+// auto-resume time for a subscription (issue #111). It is a targeted write that
+// touches only resume_at — deliberately NOT routed through the full-row Update,
+// so a caller that hasn't loaded resume_at can never clobber it (the ENG-144
+// class of bug). tenant_id is scoped in the WHERE (defense-in-depth).
+func (r *SubscriptionRepository) SetResumeAt(ctx context.Context, tenantID, subID uuid.UUID, resumeAt *time.Time) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE subscriptions SET resume_at = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		resumeAt, subID, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to set resume_at: %w", err)
+	}
+	return nil
+}
+
+// ClaimDueForResume atomically leases up to `limit` paused subscriptions whose
+// scheduled resume_at has elapsed, for the calling scheduler instance. It pushes
+// resume_at forward by `lease` so a second instance (the distributed lock is a
+// no-op without Redis) can't claim the same rows this tick (ADR-003);
+// FOR UPDATE SKIP LOCKED keeps concurrent claimers disjoint. The caller resumes
+// each (which sets status active and clears resume_at); if it dies mid-resume
+// the lease lapses and the row is retried on a later tick.
+func (r *SubscriptionRepository) ClaimDueForResume(ctx context.Context, lease time.Duration, limit int) ([]*domain.Subscription, error) {
+	query := `
+		UPDATE subscriptions SET resume_at = NOW() + $1 * INTERVAL '1 second'
+		WHERE id IN (
+			SELECT id FROM subscriptions
+			WHERE status = 'paused' AND resume_at IS NOT NULL AND resume_at <= NOW()
+			ORDER BY resume_at
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		RETURNING id, tenant_id, customer_id, plan_id, status,
+			current_period_start, current_period_end
+	`
+	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim subscriptions due for resume: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var subs []*domain.Subscription
+	for rows.Next() {
+		sub := &domain.Subscription{}
+		if err := rows.Scan(
+			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
+			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd,
+		); err != nil {
+			return nil, err
+		}
 		subs = append(subs, sub)
 	}
 	return subs, rows.Err()
