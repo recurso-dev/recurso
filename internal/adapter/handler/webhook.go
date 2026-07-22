@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -675,6 +676,16 @@ func (h *WebhookHandler) handleSubscriptionDeleted(ctx context.Context, event st
 
 	sub, err := h.subRepo.GetByStripeSubscriptionID(ctx, stripeSub.ID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// No local subscription maps to this Stripe id — it was created
+			// outside Recurso, already removed, or never synced. There is nothing
+			// to cancel, and retrying can't change that, so ACK (return nil → 200)
+			// instead of erroring: a 500 here makes Stripe redeliver the same
+			// deletion indefinitely.
+			h.logger.Info("stripe subscription.deleted for unknown subscription; acking",
+				"stripe_subscription_id", stripeSub.ID)
+			return nil
+		}
 		h.logger.Error("failed to find subscription by stripe ID",
 			"stripe_subscription_id", stripeSub.ID,
 			"error", err,
