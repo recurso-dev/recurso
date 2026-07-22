@@ -46,6 +46,7 @@ type walletLedger interface {
 	RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordWalletRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordWalletForfeit(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordWalletExpiry(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 }
 
 // walletEntityReader resolves the legal entity a new wallet belongs to
@@ -433,10 +434,24 @@ func entityPtr(id uuid.UUID) *uuid.UUID {
 	return &id
 }
 
-// ExpireOverdueCredits writes off expired promotional residue (called from
-// the billing-cycle sweep).
+// ExpireOverdueCredits writes off expired promotional residue (called from the
+// billing-cycle sweep) and posts the discharging ledger leg for each write-off
+// (DR Customer Credit / CR Credits) — without it, expired promo shrinks the
+// wallet but leaves Customer Credit overstated in the GL. Returns the number of
+// wallets touched.
 func (s *WalletService) ExpireOverdueCredits(ctx context.Context) (int, error) {
-	return s.wallets.ExpireOverdue(ctx, s.now())
+	expiries, err := s.wallets.ExpireOverdue(ctx, s.now())
+	if err != nil {
+		return len(expiries), err
+	}
+	if s.ledger != nil {
+		for _, e := range expiries {
+			if _, lErr := s.ledger.RecordWalletExpiry(ctx, e.TenantID, entityPtr(e.EntityID), e.ExpiryTxID, e.Amount, "Wallet promotional credit expired"); lErr != nil {
+				slog.Error("wallet expiry ledger posting failed", "wallet_id", e.WalletID, "error", lErr)
+			}
+		}
+	}
+	return len(expiries), nil
 }
 
 // autoRechargeBatchLimit bounds one sweep.

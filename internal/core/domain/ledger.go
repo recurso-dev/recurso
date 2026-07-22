@@ -182,6 +182,12 @@ const LedgerCodeWalletRefund uint16 = 13
 // liability is discharged and the original grant expense is reversed.
 const LedgerCodeWalletForfeit uint16 = 14
 
+// LedgerCodeWalletExpiry books a wallet's promotional balance written off when
+// it lapses (expiry sweep): DR Customer Credit / CR Credits & Adjustments —
+// same discharge as a forfeit, kept a distinct code so the GL tells time-based
+// expiry apart from closure.
+const LedgerCodeWalletExpiry uint16 = 15
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

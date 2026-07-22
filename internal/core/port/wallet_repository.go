@@ -12,6 +12,16 @@ import (
 // ErrWalletAlreadyClosed is returned when closing a wallet that is already closed.
 var ErrWalletAlreadyClosed = errors.New("wallet already closed")
 
+// WalletExpiry describes one wallet's expired-residue write-off, so the caller
+// can post the discharging ledger leg (DR Customer Credit / CR Credits).
+type WalletExpiry struct {
+	TenantID   uuid.UUID
+	WalletID   uuid.UUID
+	EntityID   uuid.UUID
+	Amount     int64
+	ExpiryTxID uuid.UUID
+}
+
 // WalletCloseResult is the outcome of closing a wallet: the amounts settled
 // (paid residue refunded to the customer, promotional residue forfeited) and the
 // ids of the closing transactions the caller references from the ledger legs.
@@ -49,10 +59,10 @@ type WalletRepository interface {
 	// to invoiceID, and decreases the balance — all atomically. Returns the
 	// amount actually drained (0 when the wallet is empty or expired-only).
 	Drain(ctx context.Context, tenantID, walletID uuid.UUID, maxAmount int64, invoiceID uuid.UUID, now time.Time) (int64, error)
-	// ExpireOverdue writes off expired residues across all wallets,
-	// appending expiry transactions and reducing balances. Returns the
-	// number of wallets touched.
-	ExpireOverdue(ctx context.Context, now time.Time) (int, error)
+	// ExpireOverdue writes off expired residues across all wallets, appending
+	// expiry transactions and reducing balances. Returns one WalletExpiry per
+	// wallet touched so the caller can post the discharging ledger legs.
+	ExpireOverdue(ctx context.Context, now time.Time) ([]WalletExpiry, error)
 	// ListDueForRecharge returns wallets whose auto-recharge is configured
 	// and whose balance sits below the threshold.
 	ListDueForRecharge(ctx context.Context, limit int) ([]domain.Wallet, error)

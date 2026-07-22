@@ -321,7 +321,7 @@ func (r *WalletRepository) Drain(ctx context.Context, tenantID, walletID uuid.UU
 	return drained, nil
 }
 
-func (r *WalletRepository) ExpireOverdue(ctx context.Context, now time.Time) (int, error) {
+func (r *WalletRepository) ExpireOverdue(ctx context.Context, now time.Time) ([]port.WalletExpiry, error) {
 	// One pass per wallet holding expired residue; each pass is its own
 	// small transaction so a failure never blocks other wallets.
 	rows, err := r.db.QueryContext(ctx, `
@@ -329,7 +329,7 @@ func (r *WalletRepository) ExpireOverdue(ctx context.Context, now time.Time) (in
 		WHERE type = 'top_up' AND remaining > 0 AND expires_at IS NOT NULL AND expires_at <= $1`,
 		now)
 	if err != nil {
-		return 0, fmt.Errorf("failed to find expired wallet residue: %w", err)
+		return nil, fmt.Errorf("failed to find expired wallet residue: %w", err)
 	}
 	type target struct{ walletID, tenantID uuid.UUID }
 	var targets []target
@@ -337,40 +337,45 @@ func (r *WalletRepository) ExpireOverdue(ctx context.Context, now time.Time) (in
 		var tgt target
 		if err := rows.Scan(&tgt.walletID, &tgt.tenantID); err != nil {
 			_ = rows.Close()
-			return 0, err
+			return nil, err
 		}
 		targets = append(targets, tgt)
 	}
 	_ = rows.Close()
 	if err := rows.Err(); err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	touched := 0
+	var expiries []port.WalletExpiry
 	for _, tgt := range targets {
-		if err := r.expireWallet(ctx, tgt.tenantID, tgt.walletID, now); err != nil {
-			return touched, err
+		exp, err := r.expireWallet(ctx, tgt.tenantID, tgt.walletID, now)
+		if err != nil {
+			return expiries, err
 		}
-		touched++
+		if exp != nil {
+			expiries = append(expiries, *exp)
+		}
 	}
-	return touched, nil
+	return expiries, nil
 }
 
 // expireWallet writes off one wallet's expired residue: the wallet row is
 // locked, the expired sum is read and zeroed in the same transaction, and
-// the balance + expiry transaction land atomically.
-func (r *WalletRepository) expireWallet(ctx context.Context, tenantID, walletID uuid.UUID, now time.Time) error {
+// the balance + expiry transaction land atomically. Returns the write-off
+// details (nil when nothing had actually expired for this wallet).
+func (r *WalletRepository) expireWallet(ctx context.Context, tenantID, walletID uuid.UUID, now time.Time) (*port.WalletExpiry, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var balance int64
+	var entityID uuid.UUID
 	if err := tx.QueryRowContext(ctx,
-		`SELECT balance FROM wallets WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
-		tenantID, walletID).Scan(&balance); err != nil {
-		return fmt.Errorf("failed to lock wallet for expiry: %w", err)
+		`SELECT balance, entity_id FROM wallets WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+		tenantID, walletID).Scan(&balance, &entityID); err != nil {
+		return nil, fmt.Errorf("failed to lock wallet for expiry: %w", err)
 	}
 
 	var expired int64
@@ -379,42 +384,46 @@ func (r *WalletRepository) expireWallet(ctx context.Context, tenantID, walletID 
 		WHERE wallet_id = $1 AND type = 'top_up' AND remaining > 0
 		AND expires_at IS NOT NULL AND expires_at <= $2`,
 		walletID, now).Scan(&expired); err != nil {
-		return fmt.Errorf("failed to sum expired residue: %w", err)
+		return nil, fmt.Errorf("failed to sum expired residue: %w", err)
 	}
 	if expired == 0 {
-		return tx.Commit()
+		return nil, tx.Commit()
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE wallet_transactions SET remaining = 0
 		WHERE wallet_id = $1 AND type = 'top_up' AND remaining > 0
 		AND expires_at IS NOT NULL AND expires_at <= $2`,
 		walletID, now); err != nil {
-		return fmt.Errorf("failed to zero expired residue: %w", err)
+		return nil, fmt.Errorf("failed to zero expired residue: %w", err)
 	}
-	return r.finishExpiry(ctx, tx, tenantID, walletID, balance, expired, now)
+	expiryTxID, err := r.finishExpiry(ctx, tx, tenantID, walletID, balance, expired, now)
+	if err != nil {
+		return nil, err
+	}
+	return &port.WalletExpiry{TenantID: tenantID, WalletID: walletID, EntityID: entityID, Amount: expired, ExpiryTxID: expiryTxID}, nil
 }
 
-func (r *WalletRepository) finishExpiry(ctx context.Context, tx *sql.Tx, tenantID, walletID uuid.UUID, balance, expired int64, now time.Time) error {
-	if expired == 0 {
-		return tx.Commit()
-	}
+// finishExpiry writes the expiry transaction + updated balance and commits,
+// returning the id of the expiry transaction (referenced by the ledger leg).
+func (r *WalletRepository) finishExpiry(ctx context.Context, tx *sql.Tx, tenantID, walletID uuid.UUID, balance, expired int64, now time.Time) (uuid.UUID, error) {
 	balance -= expired
 	if balance < 0 {
 		balance = 0
 	}
+	expiryTxID := uuid.New()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, amount, balance_after, created_at)
 		VALUES ($1, $2, $3, 'expiry', $4, $5, $6)`,
-		uuid.New(), tenantID, walletID, expired, balance, now,
+		expiryTxID, tenantID, walletID, expired, balance, now,
 	); err != nil {
-		return fmt.Errorf("failed to insert expiry transaction: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to insert expiry transaction: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE wallets SET balance = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
 		tenantID, walletID, balance); err != nil {
-		return fmt.Errorf("failed to update wallet balance after expiry: %w", err)
+		return uuid.Nil, fmt.Errorf("failed to update wallet balance after expiry: %w", err)
 	}
-	return tx.Commit()
+	return expiryTxID, tx.Commit()
 }
 
 func (r *WalletRepository) ListDueForRecharge(ctx context.Context, limit int) ([]domain.Wallet, error) {
