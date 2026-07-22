@@ -454,18 +454,19 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 // RecordRefund posts a refund to the ledger.
 // Debit: Refunds (Expense)
 // Credit: Cash (Asset)
-func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) error {
+func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) error {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return fmt.Errorf("refund %s: %w", creditNoteID, err)
 	}
 	txID := uuid.New()
+	ent := s.resolveEntity(ctx, tenantID, entityID)
 
-	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	refundsAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
 	if err != nil {
 		return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
 	}
-	cashAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	cashAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
 	if err != nil {
 		return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
 	}
@@ -475,7 +476,7 @@ func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, cr
 		DebitAccountID:  refundsAccountID,
 		CreditAccountID: cashAccountID,
 		Amount:          amt,
-		LedgerID:        1,
+		LedgerID:        ent.LedgerID,
 		Code:            4, // Refund
 		ReferenceID:     creditNoteID,
 		Description:     description,
@@ -507,18 +508,19 @@ func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, cr
 // and Deferred is not left overstated. referenceID is the credit note id; the
 // distinct code (5) keeps this off the code-4 cash-refund idempotency key, so
 // the two postings for one credit note never dedupe against each other.
-func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("deferred reversal %s: %w", creditNoteID, err)
 	}
 	txID := uuid.New()
+	ent := s.resolveEntity(ctx, tenantID, entityID)
 
-	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	deferredAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	refundsAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -528,7 +530,7 @@ func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenant
 		DebitAccountID:  deferredAccountID,
 		CreditAccountID: refundsAccountID,
 		Amount:          amt,
-		LedgerID:        1,
+		LedgerID:        ent.LedgerID,
 		Code:            5, // Deferred-revenue reversal (distinct from code 4 cash refund)
 		ReferenceID:     creditNoteID,
 		Description:     description,
@@ -561,18 +563,19 @@ func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenant
 // reverse. taxAmount is the tax slice of the refund (proportional to the
 // invoice's tax rate — see refundTaxPortion). referenceID is the credit note id;
 // the distinct code keeps it idempotent and off the code-4/5 keys.
-func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(taxAmount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("refund tax reversal %s: %w", creditNoteID, err)
 	}
 	txID := uuid.New()
+	ent := s.resolveEntity(ctx, tenantID, entityID)
 
-	taxAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+	taxAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	refundsAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
+	refundsAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeRefunds, "Refunds", domain.AccountTypeExpense)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -582,7 +585,7 @@ func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uu
 		DebitAccountID:  taxAccountID,
 		CreditAccountID: refundsAccountID,
 		Amount:          amt,
-		LedgerID:        1,
+		LedgerID:        ent.LedgerID,
 		Code:            domain.LedgerCodeRefundTaxReversal,
 		ReferenceID:     creditNoteID,
 		Description:     description,

@@ -86,14 +86,14 @@ func TestRefundTaxReversal_Postgres(t *testing.T) {
 
 	// Full refund: cash refund + deferred reversal + tax reversal.
 	cnID := uuid.New()
-	if err := svc.RecordRefund(ctx, tenantID, cnID, 118000, "refund"); err != nil {
+	if err := svc.RecordRefund(ctx, tenantID, nil, cnID, 118000, "refund"); err != nil {
 		t.Fatalf("RecordRefund: %v", err)
 	}
-	if _, err := svc.RecordDeferredRefundReversal(ctx, tenantID, cnID, 100000, "deferred reversal"); err != nil {
+	if _, err := svc.RecordDeferredRefundReversal(ctx, tenantID, nil, cnID, 100000, "deferred reversal"); err != nil {
 		t.Fatalf("RecordDeferredRefundReversal: %v", err)
 	}
 	taxPortion := refundTaxPortion(118000, inv.TaxAmount, inv.Total) // 18000
-	if _, err := svc.RecordRefundTaxReversal(ctx, tenantID, cnID, taxPortion, "GST reversal"); err != nil {
+	if _, err := svc.RecordRefundTaxReversal(ctx, tenantID, nil, cnID, taxPortion, "GST reversal"); err != nil {
 		t.Fatalf("RecordRefundTaxReversal: %v", err)
 	}
 

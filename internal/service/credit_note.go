@@ -341,14 +341,14 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	// Ledger reversal: debit Refunds, credit Cash. Same soft-fail stance as
 	// invoice/payment postings — the reconciliation job surfaces any gap.
 	if s.ledger != nil {
-		if err := s.ledger.RecordRefund(ctx, tenantID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
+		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
 		}
 		// Reverse the GST portion of the refund out of Tax Payable — otherwise the
 		// output-tax liability booked at invoice time stays overstated forever on
 		// every refunded GST invoice (ENG-191b). Proportional to the refund.
 		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
-			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
 				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
@@ -359,7 +359,7 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	// refund doesn't keep recognizing revenue the customer got back (ENG-147).
 	// Best-effort: a failure is logged, never fails the refund.
 	if s.revrec != nil {
-		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.ID, cn.ID, cn.Amount); err != nil {
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, cn.Amount); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
 			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
@@ -639,18 +639,18 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 	cn.RefundStatus = status
 
 	if s.ledger != nil {
-		if err := s.ledger.RecordRefund(ctx, tenantID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
+		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
 		}
 		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
-			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
 				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
 	}
 
 	if s.revrec != nil {
-		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.ID, cn.ID, cn.Amount); err != nil {
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, cn.Amount); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
 			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)

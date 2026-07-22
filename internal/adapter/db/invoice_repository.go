@@ -179,7 +179,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler'),
 			COALESCE(payment_wall_active, FALSE),
 			COALESCE(gateway_payment_id, ''),
-			COALESCE(billing_reason, '')
+			COALESCE(billing_reason, ''), entity_id
 		FROM invoices WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -189,6 +189,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 	}
 
 	var hsnCode, irn, signedQRCode, eInvoiceStatus, ackNo sql.NullString
+	var entityID uuid.NullUUID
 
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&inv.ID, &inv.TenantID, &inv.SubscriptionID, &inv.CustomerID, &inv.InvoiceNumber, &inv.Status,
@@ -202,13 +203,16 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.LastPaymentError, &inv.DunningManagedBy,
 		&inv.PaymentWallActive,
 		&inv.GatewayPaymentID,
-		&inv.BillingReason,
+		&inv.BillingReason, &entityID,
 	)
 
 	inv.HSNCode = hsnCode.String
 	inv.IRN = irn.String
 	inv.AckNo = ackNo.String
 	inv.SignedQRCode = signedQRCode.String
+	if entityID.Valid {
+		inv.EntityID = &entityID.UUID
+	}
 	inv.EInvoiceStatus = eInvoiceStatus.String
 	if err == sql.ErrNoRows {
 		return nil, nil // Not found
