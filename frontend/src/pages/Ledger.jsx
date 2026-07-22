@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -17,12 +18,27 @@ import {
 } from "@/components/ui/select";
 
 export default function Ledger() {
-  const [accounts, setAccounts] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [entriesLoading, setEntriesLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [selectedAccountId, setSelectedAccountId] = useState("");
+
+  const accountsQuery = useQuery({
+    queryKey: ["ledger-accounts"],
+    queryFn: async () => (await endpoints.getLedgerAccounts()).data.data || [],
+  });
+  // Stable ref (only changes with the query result) so the effect/memo below
+  // that depend on `accounts` don't re-run every render.
+  const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
+  const loading = accountsQuery.isLoading;
+  const error = accountsQuery.error ? "Failed to load accounts." : null;
+
+  // Entries for the selected account; disabled until one is chosen.
+  const entriesQuery = useQuery({
+    queryKey: ["ledger-entries", selectedAccountId],
+    queryFn: async () =>
+      (await endpoints.getLedgerEntries({ account_id: selectedAccountId, limit: 50 })).data.data || [],
+    enabled: !!selectedAccountId,
+  });
+  const entries = entriesQuery.data ?? [];
+  const entriesLoading = entriesQuery.isFetching;
   // Every customer has their own AR sub-account (same name + code 1100, id ==
   // customer id) — label them with the customer so the picker isn't a wall of
   // identical "Accounts Receivable (1100)" rows.
@@ -39,54 +55,12 @@ export default function Ledger() {
     return null;
   };
 
-  // Fetch accounts on mount.
+  // Auto-select the first account once accounts load (matches prior behavior).
   useEffect(() => {
-    fetchAccounts();
-  }, []);
-
-  // Fetch entries whenever the selected account changes.
-  useEffect(() => {
-    if (selectedAccountId) {
-      fetchEntries(selectedAccountId);
-    } else {
-      setEntries([]);
+    if (!selectedAccountId && accounts.length > 0) {
+      setSelectedAccountId(accounts[0].id);
     }
-  }, [selectedAccountId]);
-
-  const fetchAccounts = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const response = await endpoints.getLedgerAccounts();
-      const accs = response.data.data || [];
-      setAccounts(accs);
-      // Auto-select the first account if available.
-      if (accs.length > 0) {
-        setSelectedAccountId(accs[0].id);
-      }
-    } catch (err) {
-      console.error("Failed to fetch ledger accounts:", err);
-      setError("Failed to load accounts.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchEntries = async (accountId) => {
-    setEntriesLoading(true);
-    try {
-      const response = await endpoints.getLedgerEntries({
-        account_id: accountId,
-        limit: 50,
-      });
-      setEntries(response.data.data || []);
-    } catch (err) {
-      // Entries failures are non-critical; log and leave the list empty.
-      console.error("Failed to fetch ledger entries:", err);
-    } finally {
-      setEntriesLoading(false);
-    }
-  };
+  }, [accounts, selectedAccountId]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.id === selectedAccountId),
@@ -193,7 +167,7 @@ export default function Ledger() {
         data={entries}
         loading={entriesLoading}
         error={error}
-        onRetry={fetchAccounts}
+        onRetry={accountsQuery.refetch}
         empty={{
           icon: BookOpen,
           title: "No entries found",
