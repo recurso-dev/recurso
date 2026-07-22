@@ -119,14 +119,20 @@ func (h *EInvoiceHandler) GetIRPConfig(c *gin.Context) {
 		return
 	}
 
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
 	// Try production first, then sandbox
-	config, err := h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
+	config, err := h.irpConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID, "production")
 	if err != nil {
 		respondInternalError(c, err)
 		return
 	}
 	if config == nil {
-		config, _ = h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "sandbox")
+		config, _ = h.irpConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID, "sandbox")
 	}
 
 	if config == nil {
@@ -159,6 +165,12 @@ func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 		return
 	}
 
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
 	var config domain.IRPConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
@@ -170,7 +182,7 @@ func (h *EInvoiceHandler) UpdateIRPConfig(c *gin.Context) {
 		config.Environment = "sandbox"
 	}
 
-	if err := h.irpConfigRepo.Upsert(c.Request.Context(), &config); err != nil {
+	if err := h.irpConfigRepo.Upsert(c.Request.Context(), entityID, &config); err != nil {
 		respondInternalError(c, err)
 		return
 	}
@@ -190,10 +202,16 @@ func (h *EInvoiceHandler) TestIRPConnection(c *gin.Context) {
 		return
 	}
 
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
 	// Try to get config
-	config, err := h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "sandbox")
+	config, err := h.irpConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID, "sandbox")
 	if err != nil || config == nil {
-		config, _ = h.irpConfigRepo.GetByTenantID(c.Request.Context(), tenantID, "production")
+		config, _ = h.irpConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID, "production")
 	}
 
 	if config == nil {

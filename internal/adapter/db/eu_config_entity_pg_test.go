@@ -51,7 +51,7 @@ func TestEUConfig_PerEntityResolution_Postgres(t *testing.T) {
 	repo := NewTenantEUConfigRepository(conn)
 
 	// Tenant/primary default config (entity_id NULL) via the settings Upsert.
-	if err := repo.Upsert(ctx, &domain.TenantEUConfig{
+	if err := repo.Upsert(ctx, nil, &domain.TenantEUConfig{
 		TenantID: tenantID, Enabled: true, LegalName: "ACME Primary BV",
 		VATNumber: "NL000099998B57", CountryCode: "NL",
 	}); err != nil {

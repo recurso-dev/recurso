@@ -45,16 +45,23 @@ func (r *TenantEUConfigRepository) GetByTenantID(ctx context.Context, tenantID u
 	return r.GetByTenantEntity(ctx, tenantID, nil)
 }
 
-// Upsert creates or replaces the tenant's EU config.
-func (r *TenantEUConfigRepository) Upsert(ctx context.Context, c *domain.TenantEUConfig) error {
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO tenant_eu_config (tenant_id, enabled, legal_name, vat_number, country_code, street, city, postal_zone, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
-		 ON CONFLICT (tenant_id) WHERE entity_id IS NULL DO UPDATE SET
+// Upsert writes the EU config for an issuing entity (Multi-Entity Books Inc 3b):
+// a nil entityID writes the tenant/primary default (entity_id NULL), a
+// non-primary entity writes its own row. The ON CONFLICT target matches the
+// partial unique index for whichever case applies.
+func (r *TenantEUConfigRepository) Upsert(ctx context.Context, entityID *uuid.UUID, c *domain.TenantEUConfig) error {
+	conflict := "(tenant_id) WHERE entity_id IS NULL"
+	if entityID != nil {
+		conflict = "(tenant_id, entity_id) WHERE entity_id IS NOT NULL"
+	}
+	_, err := r.db.ExecContext(ctx, fmt.Sprintf(
+		`INSERT INTO tenant_eu_config (tenant_id, entity_id, enabled, legal_name, vat_number, country_code, street, city, postal_zone, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+		 ON CONFLICT %s DO UPDATE SET
 		   enabled = EXCLUDED.enabled, legal_name = EXCLUDED.legal_name, vat_number = EXCLUDED.vat_number,
 		   country_code = EXCLUDED.country_code, street = EXCLUDED.street, city = EXCLUDED.city,
-		   postal_zone = EXCLUDED.postal_zone, updated_at = NOW()`,
-		c.TenantID, c.Enabled, c.LegalName, c.VATNumber, c.CountryCode, c.Street, c.City, c.PostalZone,
+		   postal_zone = EXCLUDED.postal_zone, updated_at = NOW()`, conflict),
+		c.TenantID, entityID, c.Enabled, c.LegalName, c.VATNumber, c.CountryCode, c.Street, c.City, c.PostalZone,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to upsert EU config: %w", err)

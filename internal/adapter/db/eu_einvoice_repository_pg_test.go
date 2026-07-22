@@ -37,7 +37,7 @@ func TestEUConfigAndEInvoiceRepos_Postgres(t *testing.T) {
 		TenantID: tenantID, Enabled: true, LegalName: "Acme GmbH", VATNumber: "DE123456789",
 		CountryCode: "DE", Street: "Hauptstr. 1", City: "Berlin", PostalZone: "10115",
 	}
-	if err := cfgRepo.Upsert(ctx, cfg); err != nil {
+	if err := cfgRepo.Upsert(ctx, nil, cfg); err != nil {
 		t.Fatalf("upsert config: %v", err)
 	}
 	got, err := cfgRepo.GetByTenantID(ctx, tenantID)
@@ -49,7 +49,7 @@ func TestEUConfigAndEInvoiceRepos_Postgres(t *testing.T) {
 	}
 	// Re-upsert flips the opt-in flag in place.
 	cfg.Enabled = false
-	_ = cfgRepo.Upsert(ctx, cfg)
+	_ = cfgRepo.Upsert(ctx, nil, cfg)
 	got, _ = cfgRepo.GetByTenantID(ctx, tenantID)
 	if got.Enabled {
 		t.Fatal("re-upsert should have disabled the config")

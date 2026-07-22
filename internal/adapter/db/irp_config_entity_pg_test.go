@@ -51,7 +51,7 @@ func TestIRPConfig_PerEntityResolution_Postgres(t *testing.T) {
 	repo := NewIRPConfigRepository(conn)
 
 	// Tenant/primary default credentials (entity_id NULL) via the settings Upsert.
-	if err := repo.Upsert(ctx, &domain.IRPConfig{
+	if err := repo.Upsert(ctx, nil, &domain.IRPConfig{
 		TenantID: tenantID.String(), Environment: "production",
 		ClientID: "primary-client", GSTIN: "29AAAAA0000A1Z5", IsEnabled: true,
 	}); err != nil {

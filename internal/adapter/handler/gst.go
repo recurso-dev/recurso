@@ -135,8 +135,14 @@ func (h *GSTHandler) GetConfig(c *gin.Context) {
 		return
 	}
 
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
 	if h.gstConfigRepo != nil {
-		config, err := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID)
+		config, err := h.gstConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID)
 		if err == nil && config != nil {
 			c.JSON(http.StatusOK, gin.H{"data": GSTConfig{
 				GSTIN:     config.GSTIN,
@@ -172,6 +178,12 @@ func (h *GSTHandler) UpdateConfig(c *gin.Context) {
 		return
 	}
 
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
 	var config GSTConfig
 	if err := c.ShouldBindJSON(&config); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
@@ -204,7 +216,7 @@ func (h *GSTHandler) UpdateConfig(c *gin.Context) {
 			Address:   config.Address,
 			HasLUT:    config.HasLUT,
 		}
-		if err := h.gstConfigRepo.Upsert(c.Request.Context(), tenantID, dbConfig); err != nil {
+		if err := h.gstConfigRepo.Upsert(c.Request.Context(), tenantID, entityID, dbConfig); err != nil {
 			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to save GST configuration")
 			return
 		}

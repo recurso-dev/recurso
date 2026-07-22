@@ -84,7 +84,7 @@ func TestLiabilityReport_Postgres(t *testing.T) {
 	mkInvoice(deCust, 300000, 0, "sales_tax", "paid", inPeriod)
 
 	// Declare physical nexus in CA (NY left undeclared to prove has_nexus=false).
-	if err := db.NewTaxNexusRepository(conn).SetStates(ctx, tenantID,
+	if err := db.NewTaxNexusRepository(conn).SetStates(ctx, tenantID, nil,
 		[]domain.TaxNexus{{TenantID: tenantID, StateCode: "CA", NexusType: domain.NexusPhysical}}); err != nil {
 		t.Fatalf("declare CA nexus: %v", err)
 	}

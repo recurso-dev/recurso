@@ -14,8 +14,8 @@ import (
 // euConfigStore is the persistence the handler needs; satisfied by
 // *db.TenantEUConfigRepository.
 type euConfigStore interface {
-	GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantEUConfig, error)
-	Upsert(ctx context.Context, c *domain.TenantEUConfig) error
+	GetByTenantEntity(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*domain.TenantEUConfig, error)
+	Upsert(ctx context.Context, entityID *uuid.UUID, c *domain.TenantEUConfig) error
 }
 
 // EUConfigHandler manages a tenant's EU e-invoicing configuration (Track C):
@@ -48,7 +48,12 @@ func (h *EUConfigHandler) GetEUConfig(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
-	cfg, err := h.repo.GetByTenantID(c.Request.Context(), tenantID)
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+	cfg, err := h.repo.GetByTenantEntity(c.Request.Context(), tenantID, entityID)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -76,6 +81,11 @@ func (h *EUConfigHandler) UpdateEUConfig(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
 		return
 	}
 	var in EUConfigDTO
@@ -114,7 +124,7 @@ func (h *EUConfigHandler) UpdateEUConfig(c *gin.Context) {
 		City:        strings.TrimSpace(in.City),
 		PostalZone:  strings.TrimSpace(in.PostalZone),
 	}
-	if err := h.repo.Upsert(c.Request.Context(), cfg); err != nil {
+	if err := h.repo.Upsert(c.Request.Context(), entityID, cfg); err != nil {
 		respondInternalError(c, err)
 		return
 	}

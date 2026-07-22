@@ -3964,6 +3964,7 @@ paths:
   /v1/settings/gst:
     get:
       operationId: getGSTConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Get GST configuration
       description: Returns the tenant's Indian GST configuration, or sensible defaults when unconfigured.
@@ -3981,6 +3982,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
     put:
       operationId: updateGSTConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Update GST configuration
       description: When a GSTIN is supplied without a state code, the state is derived from the GSTIN prefix.
@@ -4113,6 +4115,7 @@ paths:
   /v1/settings/tax/nexus:
     get:
       operationId: getTaxNexus
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: List US sales-tax nexus states
       description: Returns the US states the tenant has declared sales-tax nexus in. Once any state is declared, US sales tax is collected only in those states.
@@ -4131,6 +4134,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
     put:
       operationId: setTaxNexus
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Set US sales-tax nexus states
       description: Replaces the tenant's entire nexus set. Owner/admin only.
@@ -4309,6 +4313,7 @@ paths:
   /v1/settings/irp:
     get:
       operationId: getIRPConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Get IRP (e-invoicing) configuration
       description: Returns the tenant's Invoice Registration Portal credentials with secrets masked.
@@ -4326,6 +4331,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
     put:
       operationId: updateIRPConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Create or update IRP credentials
       description: Upserts IRP credentials for the tenant. `environment` defaults to `sandbox`.
@@ -4378,6 +4384,7 @@ paths:
   /v1/settings/eu-einvoice:
     get:
       operationId: getEUEInvoiceConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Get EU e-invoicing configuration
       description: Returns the tenant's EU e-invoicing config (opt-in flag + EN 16931 seller identity), or an empty disabled default when none is set.
@@ -4395,6 +4402,7 @@ paths:
           $ref: '#/components/responses/Unauthorized'
     put:
       operationId: updateEUEInvoiceConfig
+      parameters: [{ $ref: '#/components/parameters/EntityIdQuery' }]
       tags: [Settings]
       summary: Create or update EU e-invoicing config
       description: >
@@ -7736,6 +7744,16 @@ components:
         tenant API key (`bearerAuth`).
 
   parameters:
+    EntityIdQuery:
+      name: entity_id
+      in: query
+      required: false
+      description: >-
+        Legal entity to scope the tax config to (Multi-Entity Books). Omit for
+        the tenant's primary entity / default config.
+      schema:
+        type: string
+        format: uuid
     PathID:
       name: id
       in: path
