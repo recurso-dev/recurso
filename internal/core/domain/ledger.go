@@ -95,6 +95,12 @@ type TrialBalanceLine struct {
 	Credits   int64       `json:"credits"`  // minor units posted to the credit side
 	Balance   int64       `json:"balance"`  // signed, on the account's normal side
 	Abnormal  bool        `json:"abnormal"` // Balance < 0 — wrong sign for this account
+	// EntityID / EntityName tag the issuing legal entity (Multi-Entity Books):
+	// each entity keeps its own accounts on its own ledger, so a consolidated
+	// trial balance shows the same code once per entity. Empty on a
+	// code-consolidated line (summed across entities).
+	EntityID   *uuid.UUID `json:"entity_id,omitempty"`
+	EntityName string     `json:"entity_name,omitempty"`
 }
 
 // TrialBalance is a tenant's chart of accounts with posted totals. Balanced is
@@ -214,6 +220,10 @@ type GeneralLedgerRow struct {
 	Amount            int64     `json:"amount"` // minor units
 	ReferenceID       uuid.UUID `json:"reference_id"`
 	Description       string    `json:"description"`
+	// EntityName tags the issuing legal entity of the posting (Multi-Entity
+	// Books), resolved from the debit account's ledger. Empty for single-entity.
+	EntityID   *uuid.UUID `json:"entity_id,omitempty"`
+	EntityName string     `json:"entity_name,omitempty"`
 }
 
 // LedgerAccount represents a financial account in the ledger.

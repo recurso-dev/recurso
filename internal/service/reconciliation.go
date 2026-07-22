@@ -52,7 +52,7 @@ type ReconciliationRepository interface {
 	GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
 	// GetTrialBalanceLines feeds the double-entry integrity assertion.
-	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error)
+	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
 
 	// TigerBeetle comparison inputs (all read-only).
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
@@ -178,7 +178,7 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 	// Double-entry integrity: the books must balance and no account may carry a
 	// wrong-sign balance. Prepended so these critical findings always survive
 	// the maxListed truncation even when billing drift is large.
-	tbLines, err := s.repo.GetTrialBalanceLines(ctx, tenantID)
+	tbLines, err := s.repo.GetTrialBalanceLines(ctx, tenantID, nil) // all entities — the tenant total must balance
 	if err != nil {
 		return nil, fmt.Errorf("trial balance for tenant %s: %w", tenantID, err)
 	}

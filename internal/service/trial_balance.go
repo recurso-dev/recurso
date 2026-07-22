@@ -46,8 +46,12 @@ func finalizeTrialBalance(tenantID uuid.UUID, lines []domain.TrialBalanceLine, a
 // and the overall debits==credits invariant. Read-only — the artifact a
 // controller uses to prove the books balance and to catch posting bugs (an
 // abnormal Deferred Revenue balance surfaces the ENG-191 class immediately).
-func (s *LedgerService) GetTrialBalance(ctx context.Context, tenantID uuid.UUID) (*domain.TrialBalance, error) {
-	lines, err := s.pgRepo.GetTrialBalanceLines(ctx, tenantID)
+// GetTrialBalance returns the trial balance for a tenant, optionally scoped to a
+// single legal entity (Multi-Entity Books). A nil entityID consolidates across
+// every entity ledger (one line per account, tagged with its entity); a non-nil
+// entityID filters to that entity's ledger.
+func (s *LedgerService) GetTrialBalance(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*domain.TrialBalance, error) {
+	lines, err := s.pgRepo.GetTrialBalanceLines(ctx, tenantID, s.entityLedgerFilter(ctx, tenantID, entityID))
 	if err != nil {
 		return nil, err
 	}
@@ -56,11 +60,51 @@ func (s *LedgerService) GetTrialBalance(ctx context.Context, tenantID uuid.UUID)
 	return tb, nil
 }
 
-// GeneralLedger returns every posted transaction for a tenant, flattened with
-// account codes and names, oldest first. Read-only — the GL export an auditor
-// imports.
-func (s *LedgerService) GeneralLedger(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
-	return s.pgRepo.GetGeneralLedgerRows(ctx, tenantID)
+// GetConsolidatedTrialBalance rolls the per-entity accounts up by account code,
+// summing debits and credits across every entity ledger into one line per code
+// — the tenant-wide consolidated view (Multi-Entity Books Inc 4).
+func (s *LedgerService) GetConsolidatedTrialBalance(ctx context.Context, tenantID uuid.UUID) (*domain.TrialBalance, error) {
+	lines, err := s.pgRepo.GetTrialBalanceLines(ctx, tenantID, nil)
+	if err != nil {
+		return nil, err
+	}
+	byCode := map[int]*domain.TrialBalanceLine{}
+	order := []int{}
+	for _, l := range lines {
+		agg, ok := byCode[l.Code]
+		if !ok {
+			// A code-consolidated line carries no single account/entity.
+			agg = &domain.TrialBalanceLine{Code: l.Code, Name: l.Name, Type: l.Type}
+			byCode[l.Code] = agg
+			order = append(order, l.Code)
+		}
+		agg.Debits += l.Debits
+		agg.Credits += l.Credits
+	}
+	consolidated := make([]domain.TrialBalanceLine, 0, len(order))
+	for _, code := range order {
+		consolidated = append(consolidated, *byCode[code])
+	}
+	tb := finalizeTrialBalance(tenantID, consolidated, time.Now())
+	tb.ReportingCurrency = s.ReportingCurrency(ctx, tenantID)
+	return tb, nil
+}
+
+// entityLedgerFilter maps an optional entity id to a ledger-id filter: nil →
+// nil (all entities); otherwise the resolved entity's TigerBeetle ledger id.
+func (s *LedgerService) entityLedgerFilter(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) *int {
+	if entityID == nil {
+		return nil
+	}
+	lid := int(s.resolveEntity(ctx, tenantID, entityID).LedgerID)
+	return &lid
+}
+
+// GeneralLedger returns posted transactions for a tenant, flattened with account
+// codes and names, oldest first, optionally scoped to one entity's ledger. Read-
+// only — the GL export an auditor imports.
+func (s *LedgerService) GeneralLedger(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	return s.pgRepo.GetGeneralLedgerRows(ctx, tenantID, s.entityLedgerFilter(ctx, tenantID, entityID))
 }
 
 // deferredClosing derives the closing deferred balance from the period movement.

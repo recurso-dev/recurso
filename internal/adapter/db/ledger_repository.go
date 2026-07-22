@@ -87,16 +87,22 @@ func (r *LedgerRepository) GetDeferredRollforward(ctx context.Context, tenantID 
 // with both account codes and names, ordered oldest first. Tenant-scoped via the
 // debit account (both sides of a transfer always belong to the same tenant).
 // This is the read-only general-ledger export an auditor imports.
-func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+// GetGeneralLedgerRows returns posted transactions, optionally filtered to one
+// entity's ledger (Multi-Entity Books). A nil ledgerID returns every posting
+// across the tenant's entity ledgers. Each row is tagged with the entity of its
+// debit account's ledger.
+func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.GeneralLedgerRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.created_at, t.code,
 		        da.code, da.name, ca.code, ca.name,
-		        t.amount::bigint, t.reference_id, COALESCE(t.description, '')
+		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
+		        e.id, COALESCE(e.name, '')
 		 FROM ledger_transactions t
 		 JOIN ledger_accounts da ON da.id = t.debit_account_id
 		 JOIN ledger_accounts ca ON ca.id = t.credit_account_id
-		 WHERE da.tenant_id = $1
-		 ORDER BY t.created_at, t.id`, tenantID)
+		 LEFT JOIN entities e ON e.tenant_id = da.tenant_id AND e.tb_ledger_id = da.ledger_id
+		 WHERE da.tenant_id = $1 AND ($2::int IS NULL OR da.ledger_id = $2)
+		 ORDER BY t.created_at, t.id`, tenantID, ledgerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query general ledger: %w", err)
 	}
@@ -105,10 +111,14 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 	var out []domain.GeneralLedgerRow
 	for rows.Next() {
 		var g domain.GeneralLedgerRow
+		var entityID uuid.NullUUID
 		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
 			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
-			&g.Amount, &g.ReferenceID, &g.Description); err != nil {
+			&g.Amount, &g.ReferenceID, &g.Description, &entityID, &g.EntityName); err != nil {
 			return nil, fmt.Errorf("failed to scan general ledger row: %w", err)
+		}
+		if entityID.Valid {
+			g.EntityID = &entityID.UUID
 		}
 		out = append(out, g)
 	}
@@ -119,16 +129,23 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 // for a tenant. Each ledger_transactions row carries one debit account and one
 // credit account, so a row contributes its amount to exactly one side of each
 // of the two accounts it touches. Accounts with no postings return zeros.
-func (r *LedgerRepository) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error) {
+// GetTrialBalanceLines aggregates per account, optionally filtered to one
+// entity's ledger (Multi-Entity Books). A nil ledgerID returns every account
+// across all the tenant's entity ledgers (consolidated) — the reconciler and
+// the default report use this. Each line is tagged with its entity, resolved
+// from the account's ledger_id.
+func (r *LedgerRepository) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT a.id, a.code, a.name, a.type,
 		        COALESCE(SUM(CASE WHEN t.debit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint  AS debits,
-		        COALESCE(SUM(CASE WHEN t.credit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint AS credits
+		        COALESCE(SUM(CASE WHEN t.credit_account_id = a.id THEN t.amount ELSE 0 END), 0)::bigint AS credits,
+		        e.id, COALESCE(e.name, '')
 		 FROM ledger_accounts a
 		 LEFT JOIN ledger_transactions t ON a.id IN (t.debit_account_id, t.credit_account_id)
-		 WHERE a.tenant_id = $1
-		 GROUP BY a.id, a.code, a.name, a.type
-		 ORDER BY a.code`, tenantID)
+		 LEFT JOIN entities e ON e.tenant_id = a.tenant_id AND e.tb_ledger_id = a.ledger_id
+		 WHERE a.tenant_id = $1 AND ($2::int IS NULL OR a.ledger_id = $2)
+		 GROUP BY a.id, a.code, a.name, a.type, e.id, e.name
+		 ORDER BY a.code`, tenantID, ledgerID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query trial balance: %w", err)
 	}
@@ -137,8 +154,12 @@ func (r *LedgerRepository) GetTrialBalanceLines(ctx context.Context, tenantID uu
 	var lines []domain.TrialBalanceLine
 	for rows.Next() {
 		var l domain.TrialBalanceLine
-		if err := rows.Scan(&l.AccountID, &l.Code, &l.Name, &l.Type, &l.Debits, &l.Credits); err != nil {
+		var entityID uuid.NullUUID
+		if err := rows.Scan(&l.AccountID, &l.Code, &l.Name, &l.Type, &l.Debits, &l.Credits, &entityID, &l.EntityName); err != nil {
 			return nil, fmt.Errorf("failed to scan trial balance line: %w", err)
+		}
+		if entityID.Valid {
+			l.EntityID = &entityID.UUID
 		}
 		lines = append(lines, l)
 	}

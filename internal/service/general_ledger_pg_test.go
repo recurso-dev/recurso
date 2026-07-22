@@ -65,7 +65,7 @@ func TestGeneralLedger_Postgres(t *testing.T) {
 		t.Fatalf("RecordInvoice(other): %v", err)
 	}
 
-	rows, err := svc.GeneralLedger(ctx, tenantID)
+	rows, err := svc.GeneralLedger(ctx, tenantID, nil)
 	if err != nil {
 		t.Fatalf("GeneralLedger: %v", err)
 	}

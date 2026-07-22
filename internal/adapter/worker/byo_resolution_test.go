@@ -102,7 +102,7 @@ func TestCRMWorker_SkipsWhenNoClient(t *testing.T) {
 
 type fakeLedger struct{ rows []domain.GeneralLedgerRow }
 
-func (f fakeLedger) GeneralLedger(_ context.Context, _ uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+func (f fakeLedger) GeneralLedger(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]domain.GeneralLedgerRow, error) {
 	return f.rows, nil
 }
 

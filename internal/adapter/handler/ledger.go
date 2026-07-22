@@ -64,7 +64,22 @@ func (h *LedgerHandler) GetTrialBalance(c *gin.Context) {
 		return
 	}
 
-	tb, err := h.service.GetTrialBalance(c.Request.Context(), tenantID.(uuid.UUID))
+	entityID, ok2 := entityIDParam(c)
+	if !ok2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	// ?consolidated=true rolls every entity's accounts up by code into one
+	// tenant-wide view (Multi-Entity Books); otherwise ?entity_id scopes to a
+	// single entity, and the default lists every entity's accounts.
+	var tb *domain.TrialBalance
+	var err error
+	if entityID == nil && c.Query("consolidated") == "true" {
+		tb, err = h.service.GetConsolidatedTrialBalance(c.Request.Context(), tenantID.(uuid.UUID))
+	} else {
+		tb, err = h.service.GetTrialBalance(c.Request.Context(), tenantID.(uuid.UUID), entityID)
+	}
 	if err != nil {
 		log.Printf("ledger GetTrialBalance error: %v", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to build trial balance")
@@ -117,7 +132,13 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 		return
 	}
 
-	entries, err := h.service.GeneralLedger(c.Request.Context(), tenantID.(uuid.UUID))
+	entityID, ok2 := entityIDParam(c)
+	if !ok2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	entries, err := h.service.GeneralLedger(c.Request.Context(), tenantID.(uuid.UUID), entityID)
 	if err != nil {
 		log.Printf("ledger ExportGL error: %v", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to export general ledger")

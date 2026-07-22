@@ -50,7 +50,7 @@ func TestTrialBalance_Postgres(t *testing.T) {
 		t.Fatalf("RecordPayment: %v", err)
 	}
 
-	tb, err := svc.GetTrialBalance(ctx, tenantID)
+	tb, err := svc.GetTrialBalance(ctx, tenantID, nil)
 	if err != nil {
 		t.Fatalf("GetTrialBalance: %v", err)
 	}
