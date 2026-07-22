@@ -756,6 +756,54 @@ func (s *LedgerService) RecordWalletDrain(ctx context.Context, tenantID uuid.UUI
 	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, domain.LedgerCodeWalletDrain, invoiceID, description)
 }
 
+// RecordWalletRefund books a wallet's paid balance returned to the customer on
+// closure — the mirror of a paid top-up:
+//
+//	Debit:  Customer Credit (Liability) — the stored value we owed is discharged
+//	Credit: Cash (Asset)                — money paid back out
+//
+// referenceID is the closing wallet transaction.
+func (s *LedgerService) RecordWalletRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("wallet refund %s: %w", walletTxID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	cashAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, creditAccountID, cashAccountID, amt, domain.LedgerCodeWalletRefund, walletTxID, description)
+}
+
+// RecordWalletForfeit books a wallet's promotional balance forfeited on closure
+// (promotional credit is non-refundable):
+//
+//	Debit:  Customer Credit (Liability)      — the stored-value liability is discharged
+//	Credit: Credits & Adjustments (Expense)  — reverses the original grant expense
+//
+// referenceID is the closing wallet transaction.
+func (s *LedgerService) RecordWalletForfeit(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("wallet forfeit %s: %w", walletTxID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	expenseAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeWalletForfeit, walletTxID, description)
+}
+
 // postEntityTransfer writes a single ledger transfer (PG always; TigerBeetle
 // when connected) on a specific entity's ledger, surfacing PG failures for
 // retry/reconciliation. For the primary entity (LedgerID 1) the postings are

@@ -23,12 +23,12 @@ func NewWalletRepository(db *sql.DB) port.WalletRepository {
 	return &WalletRepository{db: db}
 }
 
-const walletColumns = `id, tenant_id, entity_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at`
+const walletColumns = `id, tenant_id, entity_id, customer_id, currency, balance, auto_recharge_threshold, auto_recharge_amount, created_at, updated_at, closed_at`
 
 func scanWallet(row interface{ Scan(...any) error }) (*domain.Wallet, error) {
 	var w domain.Wallet
 	if err := row.Scan(&w.ID, &w.TenantID, &w.EntityID, &w.CustomerID, &w.Currency, &w.Balance,
-		&w.AutoRechargeThreshold, &w.AutoRechargeAmount, &w.CreatedAt, &w.UpdatedAt); err != nil {
+		&w.AutoRechargeThreshold, &w.AutoRechargeAmount, &w.CreatedAt, &w.UpdatedAt, &w.ClosedAt); err != nil {
 		return nil, err
 	}
 	return &w, nil
@@ -64,7 +64,7 @@ func (r *WalletRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) 
 // invoices (Multi-Entity Books).
 func (r *WalletRepository) GetByCustomerEntityAndCurrency(ctx context.Context, tenantID, customerID, entityID uuid.UUID, currency string) (*domain.Wallet, error) {
 	w, err := scanWallet(r.db.QueryRowContext(ctx,
-		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND customer_id = $2 AND entity_id = $3 AND UPPER(currency) = UPPER($4)`,
+		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND customer_id = $2 AND entity_id = $3 AND UPPER(currency) = UPPER($4) AND closed_at IS NULL`,
 		tenantID, customerID, entityID, currency))
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -163,6 +163,72 @@ func (r *WalletRepository) TopUp(ctx context.Context, wtx *domain.WalletTransact
 		return fmt.Errorf("failed to update wallet balance: %w", err)
 	}
 	return tx.Commit()
+}
+
+// Close settles and closes a wallet in one transaction: it zeroes every open
+// residue, splitting the total into a REFUND of paid residue (returned to the
+// customer) and a FORFEIT of promotional residue (non-refundable), appends one
+// closing transaction per non-zero portion, and stamps closed_at.
+func (r *WalletRepository) Close(ctx context.Context, tenantID, walletID uuid.UUID, now time.Time) (port.WalletCloseResult, error) {
+	var res port.WalletCloseResult
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var closedAt sql.NullTime
+	if err := tx.QueryRowContext(ctx,
+		`SELECT closed_at FROM wallets WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
+		tenantID, walletID).Scan(&closedAt); err != nil {
+		return res, fmt.Errorf("failed to lock wallet for close: %w", err)
+	}
+	if closedAt.Valid {
+		return res, port.ErrWalletAlreadyClosed
+	}
+
+	// Sum open residues, split by whether the top-up was paid or promotional.
+	if err := tx.QueryRowContext(ctx, `
+		SELECT
+		  COALESCE(SUM(CASE WHEN source = 'promotional' THEN remaining ELSE 0 END), 0)::bigint,
+		  COALESCE(SUM(CASE WHEN source <> 'promotional' OR source IS NULL THEN remaining ELSE 0 END), 0)::bigint
+		FROM wallet_transactions
+		WHERE wallet_id = $1 AND type = 'top_up' AND remaining > 0`,
+		walletID).Scan(&res.Forfeited, &res.Refunded); err != nil {
+		return res, fmt.Errorf("failed to sum wallet residues: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE wallet_transactions SET remaining = 0 WHERE wallet_id = $1 AND type = 'top_up' AND remaining > 0`,
+		walletID); err != nil {
+		return res, fmt.Errorf("failed to zero wallet residues: %w", err)
+	}
+
+	insertClosing := func(txType domain.WalletTransactionType, amount int64) (uuid.UUID, error) {
+		id := uuid.New()
+		_, e := tx.ExecContext(ctx, `
+			INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, amount, balance_after, created_at)
+			VALUES ($1, $2, $3, $4, $5, 0, $6)`,
+			id, tenantID, walletID, txType, amount, now)
+		return id, e
+	}
+	if res.Refunded > 0 {
+		if res.RefundTxID, err = insertClosing(domain.WalletTxRefund, res.Refunded); err != nil {
+			return res, fmt.Errorf("failed to insert wallet refund: %w", err)
+		}
+	}
+	if res.Forfeited > 0 {
+		if res.ForfeitTxID, err = insertClosing(domain.WalletTxForfeit, res.Forfeited); err != nil {
+			return res, fmt.Errorf("failed to insert wallet forfeit: %w", err)
+		}
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE wallets SET balance = 0, closed_at = $3, updated_at = $3 WHERE tenant_id = $1 AND id = $2`,
+		tenantID, walletID, now); err != nil {
+		return res, fmt.Errorf("failed to close wallet: %w", err)
+	}
+	return res, tx.Commit()
 }
 
 func (r *WalletRepository) Drain(ctx context.Context, tenantID, walletID uuid.UUID, maxAmount int64, invoiceID uuid.UUID, now time.Time) (int64, error) {
@@ -358,6 +424,7 @@ func (r *WalletRepository) ListDueForRecharge(ctx context.Context, limit int) ([
 		AND auto_recharge_amount IS NOT NULL
 		AND auto_recharge_amount > 0
 		AND balance < auto_recharge_threshold
+		AND closed_at IS NULL
 		ORDER BY updated_at
 		LIMIT $1`, limit)
 	if err != nil {

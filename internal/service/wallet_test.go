@@ -63,6 +63,8 @@ type fakeWalletLedger struct {
 	topUps      []int64
 	promos      []int64
 	drainPosted []int64
+	refunded    []int64
+	forfeited   []int64
 }
 
 func (f *fakeWalletLedger) RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
@@ -77,6 +79,16 @@ func (f *fakeWalletLedger) RecordWalletDrain(ctx context.Context, tenantID uuid.
 
 func (f *fakeWalletLedger) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	f.promos = append(f.promos, amount)
+	return uuid.New(), nil
+}
+
+func (f *fakeWalletLedger) RecordWalletRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	f.refunded = append(f.refunded, amount)
+	return uuid.New(), nil
+}
+
+func (f *fakeWalletLedger) RecordWalletForfeit(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	f.forfeited = append(f.forfeited, amount)
 	return uuid.New(), nil
 }
 

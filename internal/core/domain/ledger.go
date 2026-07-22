@@ -173,6 +173,15 @@ const LedgerCodeWalletTopUp uint16 = 11
 // and the customer owes that much less.
 const LedgerCodeWalletDrain uint16 = 12
 
+// LedgerCodeWalletRefund books a wallet's paid balance returned to the customer
+// on closure: DR Customer Credit / CR Cash (the mirror of a paid top-up).
+const LedgerCodeWalletRefund uint16 = 13
+
+// LedgerCodeWalletForfeit books a wallet's promotional balance forfeited on
+// closure: DR Customer Credit / CR Credits & Adjustments — the stored-value
+// liability is discharged and the original grant expense is reversed.
+const LedgerCodeWalletForfeit uint16 = 14
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

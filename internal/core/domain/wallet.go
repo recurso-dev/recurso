@@ -25,6 +25,11 @@ const (
 	WalletTxDrain WalletTransactionType = "drain"
 	// WalletTxExpiry writes off the expired residue of a dated top-up.
 	WalletTxExpiry WalletTransactionType = "expiry"
+	// WalletTxRefund returns a wallet's paid residue to the customer on closure.
+	WalletTxRefund WalletTransactionType = "refund"
+	// WalletTxForfeit writes off a wallet's promotional residue on closure
+	// (promotional credit is non-refundable).
+	WalletTxForfeit WalletTransactionType = "forfeit"
 )
 
 // Wallet top-up sources.
@@ -58,6 +63,9 @@ type Wallet struct {
 	AutoRechargeAmount    *int64    `json:"auto_recharge_amount,omitempty"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
+	// ClosedAt is set when the wallet is closed/cashed out; a closed wallet has a
+	// zero balance and accepts no further top-ups or drains. nil = open.
+	ClosedAt *time.Time `json:"closed_at,omitempty"`
 }
 
 // WalletTransaction is one append-only wallet movement.

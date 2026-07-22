@@ -44,6 +44,8 @@ type walletLedger interface {
 	RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordWalletDrain(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordWalletRefund(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordWalletForfeit(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 }
 
 // walletEntityReader resolves the legal entity a new wallet belongs to
@@ -203,6 +205,51 @@ func (s *WalletService) GetWallet(ctx context.Context, tenantID, id uuid.UUID) (
 		return nil, ErrWalletNotFound
 	}
 	return w, nil
+}
+
+// CloseWalletResult reports what a closure settled.
+type CloseWalletResult struct {
+	Refunded  int64 `json:"refunded"`  // paid balance to return to the customer (minor units)
+	Forfeited int64 `json:"forfeited"` // promotional balance written off (minor units)
+}
+
+// CloseWallet closes a wallet and settles its remaining balance: paid residue is
+// refunded to the customer, promotional residue is forfeited (non-refundable),
+// and the ledger legs are posted (DR Customer Credit / CR Cash for the refund;
+// DR Customer Credit / CR Credits for the forfeit). A closed wallet accepts no
+// further top-ups or drains. The actual money return is handled out of band
+// (like a manual refund) — the returned `refunded` amount is what's owed back.
+func (s *WalletService) CloseWallet(ctx context.Context, tenantID, walletID uuid.UUID) (*CloseWalletResult, error) {
+	w, err := s.GetWallet(ctx, tenantID, walletID)
+	if err != nil {
+		return nil, err
+	}
+	if w.ClosedAt != nil {
+		return nil, WalletValidationError("wallet is already closed")
+	}
+
+	res, err := s.wallets.Close(ctx, tenantID, walletID, s.now())
+	if err != nil {
+		if errors.Is(err, port.ErrWalletAlreadyClosed) {
+			return nil, WalletValidationError("wallet is already closed")
+		}
+		return nil, err
+	}
+
+	if s.ledger != nil {
+		eid := entityPtr(w.EntityID)
+		if res.Refunded > 0 {
+			if _, lErr := s.ledger.RecordWalletRefund(ctx, tenantID, eid, res.RefundTxID, res.Refunded, "Wallet closed — paid balance refunded"); lErr != nil {
+				slog.Error("wallet refund ledger posting failed", "wallet_id", walletID, "error", lErr)
+			}
+		}
+		if res.Forfeited > 0 {
+			if _, lErr := s.ledger.RecordWalletForfeit(ctx, tenantID, eid, res.ForfeitTxID, res.Forfeited, "Wallet closed — promotional balance forfeited"); lErr != nil {
+				slog.Error("wallet forfeit ledger posting failed", "wallet_id", walletID, "error", lErr)
+			}
+		}
+	}
+	return &CloseWalletResult{Refunded: res.Refunded, Forfeited: res.Forfeited}, nil
 }
 
 // ListWallets returns the tenant's wallets, most recently active first.

@@ -194,3 +194,25 @@ func (h *WalletHandler) UpdateAutoRecharge(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": w})
 }
+
+// Close closes a wallet and settles its remaining balance (paid residue refunded,
+// promotional residue forfeited), posting the ledger legs. The response reports
+// the refunded amount owed back to the customer and the forfeited amount.
+// POST /wallets/:id/close
+func (h *WalletHandler) Close(c *gin.Context) {
+	tenantID, ctx, ok := walletTenantCtx(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid wallet id")
+		return
+	}
+	res, err := h.svc.CloseWallet(ctx, tenantID, id)
+	if err != nil {
+		respondWalletError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": res, "message": "wallet closed"})
+}

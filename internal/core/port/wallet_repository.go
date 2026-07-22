@@ -2,11 +2,25 @@ package port
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
+
+// ErrWalletAlreadyClosed is returned when closing a wallet that is already closed.
+var ErrWalletAlreadyClosed = errors.New("wallet already closed")
+
+// WalletCloseResult is the outcome of closing a wallet: the amounts settled
+// (paid residue refunded to the customer, promotional residue forfeited) and the
+// ids of the closing transactions the caller references from the ledger legs.
+type WalletCloseResult struct {
+	Refunded    int64
+	Forfeited   int64
+	RefundTxID  uuid.UUID
+	ForfeitTxID uuid.UUID
+}
 
 // WalletRepository persists prepaid wallets (Lago-parity B1). Drain and
 // TopUp are transactional: the movement row, the residue bookkeeping, and
@@ -14,6 +28,11 @@ import (
 type WalletRepository interface {
 	Create(ctx context.Context, w *domain.Wallet) error
 	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Wallet, error)
+	// Close settles and closes a wallet atomically: it zeroes every open residue
+	// (splitting into a refund of paid residue and a forfeit of promotional
+	// residue), appends the closing transactions, and stamps closed_at. Returns
+	// ErrWalletAlreadyClosed if it was already closed.
+	Close(ctx context.Context, tenantID, walletID uuid.UUID, now time.Time) (WalletCloseResult, error)
 	// GetByCustomerEntityAndCurrency returns (nil, nil) when the customer has
 	// no wallet for that entity in the currency (Multi-Entity Books: wallets
 	// are entity-scoped).
