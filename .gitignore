@@ -1,4 +1,5 @@
 # Compiled binaries
+/api
 api_bin
 server
 main
