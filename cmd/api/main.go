@@ -1267,6 +1267,7 @@ func main() {
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
 	euConfigHandler := handler.NewEUConfigHandler(db.NewTenantEUConfigRepository(database))
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
+	entityHandler := handler.NewEntityHandler(service.NewEntityService(db.NewEntityRepository(database)))
 
 	// Consent Service & Handler (P30 - RBI compliance)
 	consentRepo := db.NewConsentRepository(database)
@@ -1755,6 +1756,13 @@ func main() {
 		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
 		v1.GET("/settings/mcp", mcpSettingsHandler.GetMCPSettings)
 		v1.PUT("/settings/mcp", mcpSettingsHandler.UpdateMCPSettings)
+
+		// Legal entities (Multi-Entity Books)
+		v1.GET("/entities", entityHandler.ListEntities)
+		v1.POST("/entities", entityHandler.CreateEntity)
+		v1.GET("/entities/:id", entityHandler.GetEntity)
+		v1.PUT("/entities/:id", entityHandler.UpdateEntity)
+		v1.DELETE("/entities/:id", entityHandler.DeleteEntity)
 
 		// Consent API (P30 - RBI compliance)
 		v1.POST("/consents", consentHandler.RecordConsent)

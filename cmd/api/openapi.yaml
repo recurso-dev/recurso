@@ -4423,6 +4423,120 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/entities:
+    get:
+      operationId: listEntities
+      tags: [Entities]
+      summary: List legal entities
+      description: Returns the tenant's legal entities (Multi-Entity Books), primary first. Every tenant has exactly one primary entity.
+      responses:
+        '200':
+          description: The tenant's entities.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Entity'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: createEntity
+      tags: [Entities]
+      summary: Create a legal entity
+      description: Creates a new (non-primary) entity. Its ledger id and invoice-number sequence are allocated automatically.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityInput'
+      responses:
+        '201':
+          description: Entity created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Entity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/entities/{id}:
+    get:
+      operationId: getEntity
+      tags: [Entities]
+      summary: Get a legal entity
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The entity.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Entity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateEntity
+      tags: [Entities]
+      summary: Update a legal entity
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityInput'
+      responses:
+        '200':
+          description: Entity updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Entity'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    delete:
+      operationId: deleteEntity
+      tags: [Entities]
+      summary: Delete a legal entity
+      description: Deletes a non-primary entity. The primary entity cannot be deleted.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Entity deleted.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/settings/mcp:
     get:
       operationId: getMCPSettings
@@ -9261,6 +9375,28 @@ components:
           type: boolean
           description: Letter of Undertaking on file (zero-rated exports).
 
+    Entity:
+      type: object
+      description: A legal entity under a tenant (Multi-Entity Books). Each entity has its own ledger and invoice series; every tenant has exactly one primary entity.
+      properties:
+        id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        name: { type: string, description: Display name, e.g. "ACME India". }
+        legal_name: { type: string }
+        is_primary: { type: boolean, description: The backfill entity every tenant has; cannot be deleted. }
+        tb_ledger_id: { type: integer, description: The entity's isolated ledger id (primary is 1). Assigned automatically. }
+        invoice_prefix: { type: string, description: Prefix for this entity's invoice series, e.g. "ACME-IN". }
+        country_code: { type: string, description: ISO 3166-1 alpha-2. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    EntityInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        legal_name: { type: string }
+        invoice_prefix: { type: string, description: Optional; defaults to a slug of the name. }
+        country_code: { type: string, minLength: 2, maxLength: 2 }
     MCPSettings:
       type: object
       description: A tenant's MCP server opt-in.
