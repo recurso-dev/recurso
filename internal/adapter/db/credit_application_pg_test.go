@@ -100,7 +100,7 @@ func TestApplyAdjustmentCredits_FIFO_Postgres(t *testing.T) {
 	newer := seedAdjustmentCredit(t, conn, tenantID, customerID, 2000, -1*time.Hour)
 
 	repo := NewCreditNoteRepository(dbx)
-	applied, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, "USD", invID, 4000)
+	applied, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, nil, "USD", invID, 4000)
 	if err != nil {
 		t.Fatalf("ApplyAdjustmentCredits: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestApplyAdjustmentCredits_PartialInvoice_Postgres(t *testing.T) {
 	seedAdjustmentCredit(t, conn, tenantID, customerID, 2000, -1*time.Hour)
 
 	repo := NewCreditNoteRepository(dbx)
-	applied, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, "USD", invID, 10000)
+	applied, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, nil, "USD", invID, 10000)
 	if err != nil {
 		t.Fatalf("ApplyAdjustmentCredits: %v", err)
 	}
@@ -178,11 +178,82 @@ func TestApplyAdjustmentCredits_PartialInvoice_Postgres(t *testing.T) {
 	}
 
 	// A currency mismatch must not touch these credits.
-	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, "INR"); err != nil || sum != 0 {
+	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, nil, "INR"); err != nil || sum != 0 {
 		t.Errorf("SumApplicableAdjustments(INR) = (%d, %v), want (0, nil)", sum, err)
 	}
-	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, "USD"); err != nil || sum != 0 {
+	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, nil, "USD"); err != nil || sum != 0 {
 		t.Errorf("SumApplicableAdjustments(USD) after full draw = (%d, %v), want (0, nil)", sum, err)
+	}
+}
+
+// TestApplyAdjustmentCredits_EntityScoped_Postgres proves Multi-Entity Books
+// Inc 2f: a credit is spendable ONLY on its issuing entity's invoices. A
+// non-primary entity's credit is not drawn by a primary (nil-entity) invoice,
+// and vice versa; each entity's application sees only its own credit.
+func TestApplyAdjustmentCredits_EntityScoped_Postgres(t *testing.T) {
+	dbx := openCreditAppTestDB(t)
+	defer func() { _ = dbx.Close() }()
+	conn := dbx.DB
+	ctx := context.Background()
+	tenantID, customerID := seedCreditAppTenantCustomer(t, conn)
+
+	// A second, non-primary entity for the same tenant.
+	entityRepo := NewEntityRepository(conn)
+	second := &domain.Entity{TenantID: tenantID, Name: "ACME UK", InvoicePrefix: "UK"}
+	if err := entityRepo.Create(ctx, second); err != nil {
+		t.Fatalf("create entity: %v", err)
+	}
+
+	// One credit for the primary entity (NULL) and one for the second entity.
+	primaryCredit := seedAdjustmentCredit(t, conn, tenantID, customerID, 3000, -2*time.Hour)
+	secondID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO credit_notes (id, tenant_id, entity_id, customer_id, amount, balance, currency, status, reason, type, refund_status, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$5,'USD','issued','uk credit','adjustment','none',$6,NOW())`,
+		secondID, tenantID, second.ID, customerID, 5000, time.Now().Add(-1*time.Hour)); err != nil {
+		t.Fatalf("seed second-entity credit: %v", err)
+	}
+
+	repo := NewCreditNoteRepository(dbx)
+
+	// Sum for the primary (nil) sees only the primary credit; sum for the
+	// second entity sees only its own.
+	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, nil, "USD"); err != nil || sum != 3000 {
+		t.Fatalf("primary sum = (%d, %v), want (3000, nil)", sum, err)
+	}
+	if sum, err := repo.SumApplicableAdjustments(ctx, tenantID, customerID, &second.ID, "USD"); err != nil || sum != 5000 {
+		t.Fatalf("second-entity sum = (%d, %v), want (5000, nil)", sum, err)
+	}
+
+	// A primary invoice draws only the primary credit — the second entity's
+	// credit is untouched.
+	primInv := seedInvoiceRow(t, conn, tenantID, customerID, 10000)
+	applied, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, nil, "USD", primInv, 10000)
+	if err != nil {
+		t.Fatalf("apply (primary): %v", err)
+	}
+	if applied != 3000 {
+		t.Errorf("primary invoice applied = %d, want 3000 (only the primary credit)", applied)
+	}
+	if bal, _ := creditNoteState(t, conn, secondID); bal != 5000 {
+		t.Errorf("second-entity credit balance = %d, want 5000 (untouched by the primary invoice)", bal)
+	}
+
+	// An invoice for the second entity draws only its credit; the primary
+	// credit is already spent, but even if it weren't it would be out of scope.
+	if bal, _ := creditNoteState(t, conn, primaryCredit); bal != 0 {
+		t.Fatalf("primary credit balance = %d, want 0 (drawn by the primary invoice)", bal)
+	}
+	secondInv := seedInvoiceRow(t, conn, tenantID, customerID, 2000)
+	appliedUK, err := repo.ApplyAdjustmentCredits(ctx, tenantID, customerID, &second.ID, "USD", secondInv, 2000)
+	if err != nil {
+		t.Fatalf("apply (second entity): %v", err)
+	}
+	if appliedUK != 2000 {
+		t.Errorf("second-entity invoice applied = %d, want 2000", appliedUK)
+	}
+	if bal, _ := creditNoteState(t, conn, secondID); bal != 3000 {
+		t.Errorf("second-entity credit balance = %d, want 3000 (5000 - 2000)", bal)
 	}
 }
 

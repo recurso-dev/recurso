@@ -94,8 +94,8 @@ type walletDrainer interface {
 // creditApplier applies open adjustment credit-note balances to an invoice,
 // returning the amount applied (ENG-153). Satisfied by *db.CreditNoteRepository.
 type creditApplier interface {
-	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
-	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error)
+	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
+	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error)
 }
 
 func NewInvoiceService(
@@ -405,7 +405,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// invoice at its full amount (recoverable), never fails invoice generation.
 	// The applicable ceiling is what remains AFTER the wallet drain.
 	if s.CreditApplier != nil && inv.Total-inv.AmountPaid > 0 {
-		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total-inv.AmountPaid); err != nil {
+		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.EntityID, inv.Currency, inv.ID, inv.Total-inv.AmountPaid); err != nil {
 			slog.Error("credit application failed on invoice generation", "invoice_id", inv.ID, "error", err)
 		} else if applied > 0 {
 			inv.CreditApplied = applied

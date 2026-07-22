@@ -146,7 +146,7 @@ func TestDowngradeCreditLedgerLifecycle_Postgres(t *testing.T) {
 	}
 	cnSvc := NewCreditNoteService(db.NewCreditNoteRepository(dbx), nil, nil, nil)
 	cnSvc.SetLedgerService(ledger)
-	applied, err := cnSvc.ApplyAdjustmentCredits(ctx, tenantID, customerID, "USD", newInvID, 100000)
+	applied, err := cnSvc.ApplyAdjustmentCredits(ctx, tenantID, customerID, nil, "USD", newInvID, 100000)
 	if err != nil {
 		t.Fatalf("ApplyAdjustmentCredits: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestManualAdjustmentCreditLedger_Postgres(t *testing.T) {
 		invID, tenantID, customerID, "INV-"+run); err != nil {
 		t.Fatalf("seed invoice: %v", err)
 	}
-	applied, err := cnSvc.ApplyAdjustmentCredits(ctx, tenantID, customerID, "USD", invID, 50000)
+	applied, err := cnSvc.ApplyAdjustmentCredits(ctx, tenantID, customerID, nil, "USD", invID, 50000)
 	if err != nil {
 		t.Fatalf("ApplyAdjustmentCredits: %v", err)
 	}

@@ -139,7 +139,7 @@ func (s *SubscriptionService) applyCreditToInvoice(ctx context.Context, inv *dom
 	if s.creditApplier == nil || inv == nil || inv.Total <= 0 {
 		return
 	}
-	applied, err := s.creditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.Currency, inv.ID, inv.Total)
+	applied, err := s.creditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.EntityID, inv.Currency, inv.ID, inv.Total)
 	if err != nil {
 		s.logger.Error("credit application failed", "invoice_id", inv.ID, "error", err)
 		return

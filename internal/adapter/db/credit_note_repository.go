@@ -179,14 +179,19 @@ func (r *CreditNoteRepository) SumActiveRefundsForInvoice(ctx context.Context, i
 // open adjustment credit notes in the given currency (ENG-153). Read-only
 // preview used to reduce a gateway charge before the invoice exists; the actual
 // application (ApplyAdjustmentCredits) re-reads under a row lock.
-func (r *CreditNoteRepository) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+func (r *CreditNoteRepository) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error) {
 	var total int64
+	// entityID scopes the credit to its issuing entity (Multi-Entity Books): a
+	// credit is spendable only on that entity's invoices. IS NOT DISTINCT FROM
+	// matches NULL=NULL, so the primary entity (NULL) sums its own NULL credits
+	// — byte-identical to the pre-entity behavior for single-entity tenants.
 	err := r.db.GetContext(ctx, &total, `
 		SELECT COALESCE(SUM(balance), 0)
 		FROM credit_notes
 		WHERE tenant_id = $1 AND customer_id = $2 AND currency = $3
-		  AND type = $4 AND status = $5 AND balance > 0`,
-		tenantID, customerID, currency, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued)
+		  AND entity_id IS NOT DISTINCT FROM $4
+		  AND type = $5 AND status = $6 AND balance > 0`,
+		tenantID, customerID, currency, entityID, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued)
 	if err != nil {
 		return 0, fmt.Errorf("failed to sum applicable adjustment credits: %w", err)
 	}
@@ -200,7 +205,7 @@ func (r *CreditNoteRepository) SumApplicableAdjustments(ctx context.Context, ten
 // credit_note_applications, and the invoice's credit_applied is set (marking it
 // paid when fully covered). Returns the total applied. The FOR UPDATE lock makes
 // concurrent invoices for the same customer safe from double-spend.
-func (r *CreditNoteRepository) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+func (r *CreditNoteRepository) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	if invoiceTotal <= 0 {
 		return 0, nil
 	}
@@ -218,10 +223,11 @@ func (r *CreditNoteRepository) ApplyAdjustmentCredits(ctx context.Context, tenan
 	if err := tx.SelectContext(ctx, &notes, `
 		SELECT id, balance FROM credit_notes
 		WHERE tenant_id = $1 AND customer_id = $2 AND currency = $3
-		  AND type = $4 AND status = $5 AND balance > 0
+		  AND entity_id IS NOT DISTINCT FROM $4
+		  AND type = $5 AND status = $6 AND balance > 0
 		ORDER BY created_at ASC, id ASC
 		FOR UPDATE`,
-		tenantID, customerID, currency, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued); err != nil {
+		tenantID, customerID, currency, entityID, domain.CreditNoteTypeAdjustment, domain.CreditNoteStatusIssued); err != nil {
 		return 0, fmt.Errorf("lock applicable credit notes: %w", err)
 	}
 

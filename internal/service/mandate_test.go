@@ -70,11 +70,11 @@ type fakeCreditApplier struct {
 	appliedTo  uuid.UUID
 }
 
-func (f *fakeCreditApplier) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error) {
+func (f *fakeCreditApplier) SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error) {
 	return f.available, nil
 }
 
-func (f *fakeCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
+func (f *fakeCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	f.applyCalls++
 	f.appliedTo = invoiceID
 	applied := f.available
