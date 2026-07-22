@@ -339,6 +339,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	inv := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
+		EntityID:       sub.EntityID,
 		SubscriptionID: &sub.ID,
 		CustomerID:     sub.CustomerID,
 		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
@@ -515,6 +516,7 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 	inv := &domain.Invoice{
 		ID:             invID,
 		TenantID:       sub.TenantID,
+		EntityID:       sub.EntityID,
 		SubscriptionID: &sub.ID,
 		CustomerID:     sub.CustomerID,
 		InvoiceNumber:  fmt.Sprintf("INV-%d-%s", now.UnixNano(), invID.String()[:8]),
@@ -819,6 +821,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 	inv := &domain.Invoice{
 		ID:             advInvID,
 		TenantID:       sub.TenantID,
+		EntityID:       sub.EntityID,
 		SubscriptionID: &sub.ID,
 		CustomerID:     sub.CustomerID,
 		InvoiceNumber:  fmt.Sprintf("INV-ADV-%d-%s", now.UnixNano(), advInvID.String()[:8]),

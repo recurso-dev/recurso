@@ -24,11 +24,12 @@ func NewSubscriptionHandler(s *service.SubscriptionService) *SubscriptionHandler
 type createSubscriptionRequest struct {
 	CustomerID        string    `json:"customer_id" binding:"required,uuid"`
 	PlanID            string    `json:"plan_id" binding:"required,uuid"`
-	CouponCode        string    `json:"coupon_code"`         // P7
-	StartDate         time.Time `json:"start_date"`          // Optional
-	BillingAnchorType string    `json:"billing_anchor_type"` // P26: "acquisition" or "first_of_month"
-	PaymentTerms      string    `json:"payment_terms"`       // P26: "net0", "net15", "net30", "net60"
-	TrialDays         int       `json:"trial_days"`          // >0 starts the subscription in "trialing"
+	EntityID          string    `json:"entity_id" binding:"omitempty,uuid"` // Multi-Entity: issuing entity; empty ⇒ primary
+	CouponCode        string    `json:"coupon_code"`                        // P7
+	StartDate         time.Time `json:"start_date"`                         // Optional
+	BillingAnchorType string    `json:"billing_anchor_type"`                // P26: "acquisition" or "first_of_month"
+	PaymentTerms      string    `json:"payment_terms"`                      // P26: "net0", "net15", "net30", "net60"
+	TrialDays         int       `json:"trial_days"`                         // >0 starts the subscription in "trialing"
 }
 
 func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
@@ -47,8 +48,16 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	customerID, _ := uuid.Parse(req.CustomerID)
 	planID, _ := uuid.Parse(req.PlanID)
 
+	var entityID *uuid.UUID
+	if req.EntityID != "" {
+		if id, err := uuid.Parse(req.EntityID); err == nil {
+			entityID = &id
+		}
+	}
+
 	input := service.CreateSubscriptionInput{
 		TenantID:          tenantID,
+		EntityID:          entityID,
 		CustomerID:        customerID,
 		PlanID:            planID,
 		CouponCode:        req.CouponCode,

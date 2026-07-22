@@ -30,9 +30,9 @@ const invoiceInsertQuery = `
 		created_at, due_date, next_retry_at, retry_count,
 		ack_date, e_invoice_retry_count, e_invoice_next_retry_at, e_invoice_error_message,
 		dunning_action_id, dunning_context_key, last_payment_error, dunning_managed_by,
-		credit_applied, mandate_cycle_key, billing_reason, tax_type
+		credit_applied, mandate_cycle_key, billing_reason, tax_type, entity_id
 	)
-	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
 `
 
 // insertInvoiceRow writes the invoice row against any execer (*sql.DB or *sql.Tx).
@@ -61,7 +61,7 @@ func insertInvoiceRow(ctx context.Context, ex execer, inv *domain.Invoice) error
 		inv.CreatedAt, inv.DueDate, inv.NextRetryAt, inv.RetryCount,
 		inv.AckDate, inv.EInvoiceRetryCount, inv.EInvoiceNextRetryAt, inv.EInvoiceErrorMessage,
 		nilIfEmpty(inv.DunningActionID), nilIfEmpty(inv.DunningContextKey), nilIfEmpty(inv.LastPaymentError), managedBy,
-		inv.CreditApplied, nilIfEmpty(inv.MandateCycleKey), nilIfEmpty(inv.BillingReason), inv.TaxType,
+		inv.CreditApplied, nilIfEmpty(inv.MandateCycleKey), nilIfEmpty(inv.BillingReason), inv.TaxType, inv.EntityID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert invoice: %w", err)

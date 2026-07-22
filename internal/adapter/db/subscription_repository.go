@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,21 +20,89 @@ func NewSubscriptionRepository(db *sql.DB) port.SubscriptionRepository {
 	return &SubscriptionRepository{db: db}
 }
 
+// subscriptionColumns is the single canonical column list for loading a full
+// subscription row — the union of everything the individual queries used to
+// select. Every full-row SELECT/RETURNING uses it (optionally prefixed for a
+// JOIN alias) and every scan goes through scanSubscription, so a new column is
+// added in exactly one place and the sites can never drift apart.
+const subscriptionColumnList = `id, tenant_id, customer_id, plan_id, status, ` +
+	`current_period_start, current_period_end, billing_anchor, ` +
+	`billing_anchor_type, billing_anchor_day, payment_terms, ` +
+	`cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id, ` +
+	`trial_end, commitment_amount, created_at, updated_at, resume_at, entity_id`
+
+// subscriptionColumns returns the canonical column list, optionally prefixed
+// (e.g. "s." for aliased JOIN queries).
+func subscriptionColumns(prefix string) string {
+	if prefix == "" {
+		return subscriptionColumnList
+	}
+	parts := strings.Split(subscriptionColumnList, ", ")
+	for i, p := range parts {
+		parts[i] = prefix + p
+	}
+	return strings.Join(parts, ", ")
+}
+
+// rowScanner is satisfied by both *sql.Row and *sql.Rows.
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanSubscription scans one full subscription row (columns in subscriptionColumnList
+// order), handling the nullable columns. The single scan point for the whole repo.
+func scanSubscription(row rowScanner) (*domain.Subscription, error) {
+	sub := &domain.Subscription{}
+	var razorpayID, stripeID, refID, anchorType, paymentTerms sql.NullString
+	var billingAnchor, trialEnd, resumeAt sql.NullTime
+	var anchorDay sql.NullInt64
+	var entityID uuid.NullUUID
+	err := row.Scan(
+		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
+		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
+		&anchorType, &anchorDay, &paymentTerms,
+		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
+		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt, &resumeAt, &entityID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if entityID.Valid {
+		sub.EntityID = &entityID.UUID
+	}
+	if billingAnchor.Valid {
+		sub.BillingAnchor = billingAnchor.Time
+	}
+	if trialEnd.Valid {
+		sub.TrialEnd = &trialEnd.Time
+	}
+	if resumeAt.Valid {
+		sub.ResumeAt = &resumeAt.Time
+	}
+	sub.BillingAnchorType = anchorType.String
+	sub.BillingAnchorDay = int(anchorDay.Int64)
+	sub.PaymentTerms = paymentTerms.String
+	sub.ReferenceID = refID.String
+	sub.RazorpaySubscriptionID = razorpayID.String
+	sub.StripeSubscriptionID = stripeID.String
+	return sub, nil
+}
+
 func (r *SubscriptionRepository) Create(ctx context.Context, sub *domain.Subscription) error {
 	query := `
 		INSERT INTO subscriptions (
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at
+			trial_end, created_at, updated_at, entity_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
-		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt,
+		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt, sub.EntityID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription: %w", err)
@@ -48,15 +117,15 @@ func (r *SubscriptionRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, s
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at
+			trial_end, created_at, updated_at, entity_id
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
 	`
 	_, err := tx.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
-		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt,
+		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt, sub.EntityID,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription in tx: %w", err)
@@ -70,35 +139,8 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 		return nil, fmt.Errorf("tenant_id missing from context")
 	}
 
-	sub := &domain.Subscription{}
-	query := `
-		SELECT
-			id, tenant_id, customer_id, plan_id, status,
-			current_period_start, current_period_end, billing_anchor,
-			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, commitment_amount, created_at, updated_at, resume_at
-		FROM subscriptions WHERE id = $1 AND tenant_id = $2
-	`
-	var razorpayID, stripeID, refID sql.NullString
-	var billingAnchor, trialEnd, resumeAt sql.NullTime
-	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
-		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt, &resumeAt,
-	)
-	if billingAnchor.Valid {
-		sub.BillingAnchor = billingAnchor.Time
-	}
-	if trialEnd.Valid {
-		sub.TrialEnd = &trialEnd.Time
-	}
-	if resumeAt.Valid {
-		sub.ResumeAt = &resumeAt.Time
-	}
-	sub.ReferenceID = refID.String
-	sub.RazorpaySubscriptionID = razorpayID.String
-	sub.StripeSubscriptionID = stripeID.String
+	query := `SELECT ` + subscriptionColumns("") + ` FROM subscriptions WHERE id = $1 AND tenant_id = $2`
+	sub, err := scanSubscription(r.db.QueryRowContext(ctx, query, id, tenantID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get subscription: %w", err)
 	}
@@ -111,32 +153,11 @@ func (r *SubscriptionRepository) GetByID(ctx context.Context, id uuid.UUID) (*do
 // (migration 000047) guarantees at most one match. Do not call this from
 // tenant-scoped request paths — use GetByID with a tenant_id instead.
 func (r *SubscriptionRepository) GetByStripeSubscriptionID(ctx context.Context, stripeSubID string) (*domain.Subscription, error) {
-	sub := &domain.Subscription{}
-	query := `
-		SELECT
-			id, tenant_id, customer_id, plan_id, status,
-			current_period_start, current_period_end, billing_anchor,
-			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			created_at, updated_at
-		FROM subscriptions WHERE stripe_subscription_id = $1
-	`
-	var razorpayID, stripeID, refID sql.NullString
-	var billingAnchor sql.NullTime
-	err := r.db.QueryRowContext(ctx, query, stripeSubID).Scan(
-		&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-		&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-		&sub.CreatedAt, &sub.UpdatedAt,
-	)
+	query := `SELECT ` + subscriptionColumns("") + ` FROM subscriptions WHERE stripe_subscription_id = $1`
+	sub, err := scanSubscription(r.db.QueryRowContext(ctx, query, stripeSubID))
 	if err != nil {
 		return nil, fmt.Errorf("failed to get subscription by stripe ID: %w", err)
 	}
-	if billingAnchor.Valid {
-		sub.BillingAnchor = billingAnchor.Time
-	}
-	sub.ReferenceID = refID.String
-	sub.RazorpaySubscriptionID = razorpayID.String
-	sub.StripeSubscriptionID = stripeID.String
 	return sub, nil
 }
 
@@ -168,15 +189,7 @@ func (r *SubscriptionRepository) CountActiveByCustomer(ctx context.Context, tena
 }
 
 func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error) {
-	query := `
-		SELECT
-			id, tenant_id, customer_id, plan_id, status,
-			current_period_start, current_period_end, billing_anchor,
-			cancel_at_period_end, razorpay_subscription_id, stripe_subscription_id,
-			created_at, updated_at
-		FROM subscriptions
-		WHERE status = 'active' AND tenant_id = $1
-	`
+	query := `SELECT ` + subscriptionColumns("") + ` FROM subscriptions WHERE status = 'active' AND tenant_id = $1`
 	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active subscriptions: %w", err)
@@ -185,22 +198,10 @@ func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, ten
 
 	var subs []*domain.Subscription
 	for rows.Next() {
-		sub := &domain.Subscription{}
-		var razorpayID, stripeID sql.NullString
-		var billingAnchor sql.NullTime
-		if err := rows.Scan(
-			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-			&sub.CancelAtPeriodEnd, &razorpayID, &stripeID,
-			&sub.CreatedAt, &sub.UpdatedAt,
-		); err != nil {
+		sub, err := scanSubscription(rows)
+		if err != nil {
 			return nil, err
 		}
-		if billingAnchor.Valid {
-			sub.BillingAnchor = billingAnchor.Time
-		}
-		sub.RazorpaySubscriptionID = razorpayID.String
-		sub.StripeSubscriptionID = stripeID.String
 		subs = append(subs, sub)
 	}
 	return subs, nil
@@ -208,11 +209,7 @@ func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, ten
 
 func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error) {
 	query := `
-		SELECT 
-			s.id, s.tenant_id, s.customer_id, s.plan_id, s.status,
-			s.current_period_start, s.current_period_end, s.billing_anchor,
-			s.cancel_at_period_end, s.reference_id, s.razorpay_subscription_id, s.stripe_subscription_id,
-			s.created_at, s.updated_at
+		SELECT ` + subscriptionColumns("s.") + `
 		FROM subscriptions s
 		LEFT JOIN customers c ON s.customer_id = c.id
 		WHERE s.tenant_id = $1
@@ -259,23 +256,10 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 
 	var subs []*domain.Subscription
 	for rows.Next() {
-		sub := &domain.Subscription{}
-		var razorpayID, stripeID, refID sql.NullString
-		var billingAnchor sql.NullTime
-		if err := rows.Scan(
-			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-			&sub.CreatedAt, &sub.UpdatedAt,
-		); err != nil {
+		sub, err := scanSubscription(rows)
+		if err != nil {
 			return nil, err
 		}
-		if billingAnchor.Valid {
-			sub.BillingAnchor = billingAnchor.Time
-		}
-		sub.ReferenceID = refID.String
-		sub.RazorpaySubscriptionID = razorpayID.String
-		sub.StripeSubscriptionID = stripeID.String
 		subs = append(subs, sub)
 	}
 	return subs, nil
@@ -450,11 +434,7 @@ func (r *SubscriptionRepository) MarkPreChargeNotificationSent(ctx context.Conte
 // and pre-charge jobs) and resolves the owning tenant from each row.
 func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domain.Subscription, error) {
 	query := `
-		SELECT
-			id, tenant_id, customer_id, plan_id, status,
-			current_period_start, current_period_end, billing_anchor,
-			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at
+		SELECT ` + subscriptionColumns("") + `
 		FROM subscriptions
 		WHERE status = 'trialing'
 			AND trial_end IS NOT NULL
@@ -470,26 +450,10 @@ func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domai
 
 	var subs []*domain.Subscription
 	for rows.Next() {
-		sub := &domain.Subscription{}
-		var razorpayID, stripeID, refID sql.NullString
-		var billingAnchor, trialEnd sql.NullTime
-		if err := rows.Scan(
-			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-			&trialEnd, &sub.CreatedAt, &sub.UpdatedAt,
-		); err != nil {
+		sub, err := scanSubscription(rows)
+		if err != nil {
 			return nil, err
 		}
-		if billingAnchor.Valid {
-			sub.BillingAnchor = billingAnchor.Time
-		}
-		if trialEnd.Valid {
-			sub.TrialEnd = &trialEnd.Time
-		}
-		sub.ReferenceID = refID.String
-		sub.RazorpaySubscriptionID = razorpayID.String
-		sub.StripeSubscriptionID = stripeID.String
 		subs = append(subs, sub)
 	}
 	return subs, rows.Err()
@@ -533,11 +497,7 @@ func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease t
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
 		)
-		RETURNING id, tenant_id, customer_id, plan_id, status,
-			current_period_start, current_period_end, billing_anchor,
-			billing_anchor_type, billing_anchor_day, payment_terms,
-			cancel_at_period_end, reference_id, razorpay_subscription_id,
-			stripe_subscription_id, commitment_amount, created_at, updated_at
+		RETURNING ` + subscriptionColumns("") + `
 	`
 	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
 	if err != nil {
@@ -547,28 +507,10 @@ func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease t
 
 	var subs []*domain.Subscription
 	for rows.Next() {
-		sub := &domain.Subscription{}
-		var razorpayID, stripeID, refID, anchorType, paymentTerms sql.NullString
-		var billingAnchor sql.NullTime
-		var anchorDay sql.NullInt64
-		if err := rows.Scan(
-			&sub.ID, &sub.TenantID, &sub.CustomerID, &sub.PlanID, &sub.Status,
-			&sub.CurrentPeriodStart, &sub.CurrentPeriodEnd, &billingAnchor,
-			&anchorType, &anchorDay, &paymentTerms,
-			&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
-			&sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt,
-		); err != nil {
+		sub, err := scanSubscription(rows)
+		if err != nil {
 			return nil, err
 		}
-		if billingAnchor.Valid {
-			sub.BillingAnchor = billingAnchor.Time
-		}
-		sub.BillingAnchorType = anchorType.String
-		sub.BillingAnchorDay = int(anchorDay.Int64)
-		sub.PaymentTerms = paymentTerms.String
-		sub.ReferenceID = refID.String
-		sub.RazorpaySubscriptionID = razorpayID.String
-		sub.StripeSubscriptionID = stripeID.String
 		subs = append(subs, sub)
 	}
 	return subs, rows.Err()
