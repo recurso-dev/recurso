@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileQuestion } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -31,47 +32,42 @@ const textareaClass =
 
 // Customer-raised invoice disputes; admins close them with an optional note.
 const Disputes = () => {
-  const [disputes, setDisputes] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("open");
   const [resolveTarget, setResolveTarget] = useState(null);
   const [note, setNote] = useState("");
-  const [resolving, setResolving] = useState(false);
+  const queryClient = useQueryClient();
 
-  const fetchDisputes = async (status = statusFilter) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getDisputes(status === "all" ? undefined : status);
-      setDisputes(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load disputes");
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Server-driven by status: each filter is its own cache entry.
+  const {
+    data: disputes = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["disputes", statusFilter],
+    queryFn: async () =>
+      (await api.getDisputes(statusFilter === "all" ? undefined : statusFilter)).data.data || [],
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load disputes"
+    : null;
 
-  useEffect(() => {
-    fetchDisputes(statusFilter);
-    // statusFilter is the only input; fetchDisputes identity is per-render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
-
-  const submitResolve = async () => {
-    if (!resolveTarget) return;
-    setResolving(true);
-    try {
-      await api.resolveDispute(resolveTarget.id, note.trim());
+  const resolveMutation = useMutation({
+    mutationFn: ({ id, note }) => api.resolveDispute(id, note),
+    onSuccess: () => {
       toast.success("Dispute resolved.");
       setResolveTarget(null);
       setNote("");
-      fetchDisputes();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to resolve dispute");
-    } finally {
-      setResolving(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["disputes"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to resolve dispute"),
+  });
+  const resolving = resolveMutation.isPending;
+
+  const submitResolve = () => {
+    if (!resolveTarget) return;
+    resolveMutation.mutate({ id: resolveTarget.id, note: note.trim() });
   };
 
   const columns = [
@@ -146,7 +142,7 @@ const Disputes = () => {
         data={disputes}
         loading={loading}
         error={error}
-        onRetry={() => fetchDisputes()}
+        onRetry={refetch}
         toolbar={
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-32">
