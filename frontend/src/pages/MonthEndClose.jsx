@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { toast } from "@/components/ui/sonner";
 import {
@@ -43,29 +44,20 @@ export default function MonthEndClose() {
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
-  const [pack, setPack] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [exporting, setExporting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await endpoints.getClosePack(month, year);
-      setPack(res.data?.data || null);
-    } catch (err) {
-      setError(
-        err?.response?.data?.error?.message || "Failed to build the close pack",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, [month, year]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+  const {
+    data: pack,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["close-pack", month, year],
+    queryFn: async () => (await endpoints.getClosePack(month, year)).data?.data || null,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to build the close pack"
+    : null;
 
   const exportGL = async () => {
     setExporting(true);
@@ -161,7 +153,7 @@ export default function MonthEndClose() {
         <CardGridSkeleton count={4} />
       ) : error ? (
         <Card className="overflow-hidden">
-          <ErrorState message={error} onRetry={load} />
+          <ErrorState message={error} onRetry={refetch} />
         </Card>
       ) : (
         pack && (
