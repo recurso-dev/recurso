@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save, Check, AlertCircle } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
@@ -24,40 +25,19 @@ export default function GSTSettings() {
     address: "",
     has_lut: false,
   });
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [validating, setValidating] = useState(false);
   const [validation, setValidation] = useState(null);
 
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
+    queryKey: ["gst-config"],
+    queryFn: async () => (await endpoints.getGSTConfig()).data.data || null,
+  });
   useEffect(() => {
-    fetchConfig();
-  }, []);
+    if (data) setConfig(data);
+  }, [data]);
 
-  const fetchConfig = async () => {
-    setLoading(true);
-    setLoadError(false);
-    try {
-      const response = await endpoints.getGSTConfig();
-      if (response.data.data) {
-        setConfig(response.data.data);
-      }
-    } catch (error) {
-      setLoadError(true);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const validateGSTIN = async () => {
-    if (!config.gstin || config.gstin.length !== 15) {
-      setValidation({ valid: false, message: "GSTIN must be 15 characters" });
-      return;
-    }
-
-    setValidating(true);
-    try {
-      const response = await endpoints.validateGSTIN(config.gstin);
+  const validateMutation = useMutation({
+    mutationFn: (gstin) => endpoints.validateGSTIN(gstin),
+    onSuccess: (response) => {
       setValidation(response.data);
       if (response.data.valid) {
         setConfig((prev) => ({
@@ -67,24 +47,27 @@ export default function GSTSettings() {
           pan: response.data.pan,
         }));
       }
-    } catch (error) {
-      setValidation({ valid: false, message: "Validation failed" });
-    } finally {
-      setValidating(false);
+    },
+    onError: () => setValidation({ valid: false, message: "Validation failed" }),
+  });
+  const validating = validateMutation.isPending;
+
+  const saveMutation = useMutation({
+    mutationFn: (cfg) => endpoints.updateGSTConfig(cfg),
+    onSuccess: () => toast.success("GST configuration saved successfully"),
+    onError: () => toast.error("Failed to save configuration"),
+  });
+  const saving = saveMutation.isPending;
+
+  const validateGSTIN = () => {
+    if (!config.gstin || config.gstin.length !== 15) {
+      setValidation({ valid: false, message: "GSTIN must be 15 characters" });
+      return;
     }
+    validateMutation.mutate(config.gstin);
   };
 
-  const saveConfig = async () => {
-    setSaving(true);
-    try {
-      await endpoints.updateGSTConfig(config);
-      toast.success("GST configuration saved successfully");
-    } catch (error) {
-      toast.error("Failed to save configuration");
-    } finally {
-      setSaving(false);
-    }
-  };
+  const saveConfig = () => saveMutation.mutate(config);
 
   const textareaClass =
     "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1";
@@ -111,7 +94,7 @@ export default function GSTSettings() {
         <ErrorState
           title="Couldn't load GST configuration"
           message="We couldn't reach the settings service. Please try again."
-          onRetry={fetchConfig}
+          onRetry={refetch}
         />
       ) : (
         <div className="space-y-6">
