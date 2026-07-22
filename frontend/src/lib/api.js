@@ -162,6 +162,8 @@ export const endpoints = {
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
   createCreditNote: (data) => api.post('/credit-notes', data),
+  approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),
+  rejectCreditNote: (id) => api.post(`/credit-notes/${id}/reject`),
 
   // Coupons
   getCoupons: () => api.get('/coupons'),

@@ -9,9 +9,11 @@ import (
 type CreditNoteStatus string
 
 const (
-	CreditNoteStatusIssued CreditNoteStatus = "issued"
-	CreditNoteStatusUsed   CreditNoteStatus = "used"
-	CreditNoteStatusVoid   CreditNoteStatus = "void"
+	CreditNoteStatusIssued   CreditNoteStatus = "issued"
+	CreditNoteStatusUsed     CreditNoteStatus = "used"
+	CreditNoteStatusVoid     CreditNoteStatus = "void"
+	CreditNoteStatusPending  CreditNoteStatus = "pending_approval"
+	CreditNoteStatusRejected CreditNoteStatus = "rejected"
 )
 
 // CreditNoteType distinguishes a plain balance adjustment (spendable credit)
@@ -54,6 +56,11 @@ type CreditNote struct {
 	Reason     string           `json:"reason" db:"reason"`
 	CreatedAt  time.Time        `json:"created_at" db:"created_at"`
 	UpdatedAt  time.Time        `json:"updated_at" db:"updated_at"`
+
+	// Audit tracking
+	CreatedBy  *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
+	ApprovedBy *uuid.UUID `json:"approved_by,omitempty" db:"approved_by"`
+	ApprovedAt *time.Time `json:"approved_at,omitempty" db:"approved_at"`
 
 	// Refund tracking (type == "refund" only)
 	Type          CreditNoteType         `json:"type" db:"type"`

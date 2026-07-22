@@ -1694,6 +1694,8 @@ func main() {
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
+		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
+		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
 
 		// Webhooks & Events (P24)
 		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)

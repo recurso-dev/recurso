@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -326,4 +327,33 @@ func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, fil
 	// Let's keep it simple.
 
 	return creditNotes, nil
+}
+
+func (r *CreditNoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error) {
+	var cn domain.CreditNote
+	err := r.db.GetContext(ctx, &cn, `SELECT * FROM credit_notes WHERE id = $1 AND tenant_id = $2`, id, tenantID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil // or domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credit note: %w", err)
+	}
+	return &cn, nil
+}
+
+func (r *CreditNoteRepository) UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error) {
+	query := `
+		UPDATE credit_notes
+		SET status = $1, approved_by = $2, approved_at = $3, updated_at = NOW()
+		WHERE id = $4 AND status = $5`
+
+	res, err := r.db.ExecContext(ctx, query, newStatus, approverID, approvedAt, id, oldStatus)
+	if err != nil {
+		return false, fmt.Errorf("failed to update credit note status: %w", err)
+	}
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+	return rows == 1, nil
 }

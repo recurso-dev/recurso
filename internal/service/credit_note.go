@@ -58,7 +58,10 @@ type CreditNoteRepository interface {
 	// SumApplicableAdjustments / ApplyAdjustmentCredits back credit application at
 	// billing time (ENG-153).
 	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, currency string) (int64, error)
+
 	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
+	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error)
+	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error)
 }
 
 // creditNoteCustomerReader is the slice of the customer repository we use.
@@ -137,7 +140,7 @@ func NewCreditNoteService(
 	}
 }
 
-func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req domain.CreateCreditNoteRequest) (*domain.CreditNote, error) {
+func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid.UUID, creatorRole string, req domain.CreateCreditNoteRequest) (*domain.CreditNote, error) {
 	// 1. Validate Customer belongs to Tenant
 	customer, err := s.customerRepo.GetByID(ctx, req.CustomerID)
 	if err != nil {
@@ -164,6 +167,19 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req 
 	}
 
 	ref := fmt.Sprintf("CN-%d", time.Now().Unix())
+
+	// Support users are makers; admins/owners are checkers (can self-issue).
+	// API keys (creatorID == nil or role "") bypass maker-checker so automations don't break.
+	initialStatus := domain.CreditNoteStatusIssued
+	if creatorRole == string(domain.RoleSupport) {
+		initialStatus = domain.CreditNoteStatusPending
+	}
+
+	var createdBy *uuid.UUID
+	if creatorID != uuid.Nil {
+		createdBy = &creatorID
+	}
+
 	cn := &domain.CreditNote{
 		TenantID:     tenantID,
 		CustomerID:   req.CustomerID,
@@ -172,7 +188,8 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req 
 		Amount:       req.Amount,
 		Balance:      req.Amount, // adjustments are spendable credit
 		Currency:     req.Currency,
-		Status:       domain.CreditNoteStatusIssued,
+		Status:       initialStatus,
+		CreatedBy:    createdBy,
 		Reason:       req.Reason,
 		Type:         cnType,
 		RefundStatus: domain.RefundStatusNone,
@@ -180,7 +197,27 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID uuid.UUID, req 
 		UpdatedAt:    time.Now(),
 	}
 
-	if cnType == domain.CreditNoteTypeRefund {
+	if initialStatus == domain.CreditNoteStatusPending {
+		// If pending, we just persist. Gateway calls / ledger posts happen upon approval.
+		// For refunds, we enforce the within-limit check here too.
+		if cnType == domain.CreditNoteTypeRefund {
+			inv, err := s.invoiceRepo.GetByIDPublic(ctx, *req.InvoiceID)
+			if err != nil || inv == nil {
+				return nil, fmt.Errorf("%w: invoice not found", ErrCreditNoteValidation)
+			}
+			within, err := s.repo.CreateRefundWithinLimit(ctx, cn, inv.ID, inv.AmountPaid)
+			if err != nil {
+				return nil, err
+			}
+			if !within {
+				return nil, fmt.Errorf("%w: refund exceeds refundable amount", ErrCreditNoteValidation)
+			}
+		} else {
+			if err := s.repo.Create(ctx, cn); err != nil {
+				return nil, err
+			}
+		}
+	} else if cnType == domain.CreditNoteTypeRefund {
 		if err := s.createRefund(ctx, tenantID, req, cn); err != nil {
 			return nil, err
 		}
@@ -448,4 +485,187 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 	}
 
 	return cns, nil
+}
+
+func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approverID uuid.UUID) (*domain.CreditNote, error) {
+	cn, err := s.repo.GetByID(ctx, cnID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credit note: %w", err)
+	}
+	if cn == nil {
+		return nil, fmt.Errorf("%w: credit note not found", ErrCreditNoteValidation)
+	}
+	if cn.Status != domain.CreditNoteStatusPending {
+		// Idempotent: already approved (or rejected)
+		return cn, nil
+	}
+
+	// SoD: Enforce approver != creator (API keys have uuid.Nil so they bypass this)
+	if cn.CreatedBy != nil && *cn.CreatedBy == approverID && approverID != uuid.Nil {
+		return nil, fmt.Errorf("%w: creator cannot approve their own credit note", ErrCreditNoteValidation)
+	}
+
+	// For both types, change status to Issued with CAS
+	now := time.Now()
+	updated, err := s.repo.UpdateStatus(ctx, cn.ID, domain.CreditNoteStatusPending, domain.CreditNoteStatusIssued, approverID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to approve credit note: %w", err)
+	}
+	if !updated {
+		// Someone else already approved/rejected it, or it was voided concurrently.
+		return cn, nil
+	}
+	cn.Status = domain.CreditNoteStatusIssued
+	cn.ApprovedBy = &approverID
+	cn.ApprovedAt = &now
+
+	if cn.Type == domain.CreditNoteTypeRefund {
+		// Needs to do the gateway call and ledger posts, which we didn't do at creation time.
+		if cn.InvoiceID == nil {
+			_, _ = s.repo.UpdateStatus(ctx, cn.ID, domain.CreditNoteStatusIssued, domain.CreditNoteStatusPending, uuid.Nil, time.Time{})
+			return nil, fmt.Errorf("refund credit note %s missing invoice_id", cn.ID)
+		}
+		inv, err := s.invoiceRepo.GetByIDPublic(ctx, *cn.InvoiceID)
+		if err != nil || inv == nil {
+			_, _ = s.repo.UpdateStatus(ctx, cn.ID, domain.CreditNoteStatusIssued, domain.CreditNoteStatusPending, uuid.Nil, time.Time{})
+			return nil, fmt.Errorf("failed to load invoice for refund approval: %w", err)
+		}
+		charged, err := s.executeRefundGatewayAndLedger(ctx, tenantID, inv, cn)
+		if err != nil {
+			if charged {
+				// The gateway already refunded the customer; reverting to pending
+				// would let a re-approval double-refund. Leave the credit note
+				// issued and surface it for reconciliation instead.
+				s.logger.Error("refund succeeded at gateway but post-processing failed — leaving credit note issued; reconciliation needed",
+					"credit_note_id", cn.ID, "error", err)
+			} else {
+				// No money moved — safe to revert to pending so it can be retried.
+				_, _ = s.repo.UpdateStatus(ctx, cn.ID, domain.CreditNoteStatusIssued, domain.CreditNoteStatusPending, uuid.Nil, time.Time{})
+				return nil, fmt.Errorf("refund execution failed: %w", err)
+			}
+		}
+	} else {
+		// Adjustment credit
+		if s.ledger != nil {
+			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.ID, cn.Amount, "Adjustment credit issued (approved)"); err != nil {
+				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
+					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
+			}
+		}
+	}
+
+	return cn, nil
+}
+
+func (s *CreditNoteService) Reject(ctx context.Context, tenantID, cnID, approverID uuid.UUID) (*domain.CreditNote, error) {
+	cn, err := s.repo.GetByID(ctx, cnID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credit note: %w", err)
+	}
+	if cn == nil {
+		return nil, fmt.Errorf("%w: credit note not found", ErrCreditNoteValidation)
+	}
+	if cn.Status != domain.CreditNoteStatusPending {
+		return cn, nil
+	}
+
+	// SoD: Enforce rejector != creator (API keys have uuid.Nil so they bypass this)
+	if cn.CreatedBy != nil && *cn.CreatedBy == approverID && approverID != uuid.Nil {
+		return nil, fmt.Errorf("%w: creator cannot reject their own credit note", ErrCreditNoteValidation)
+	}
+
+	now := time.Now()
+	updated, err := s.repo.UpdateStatus(ctx, cn.ID, domain.CreditNoteStatusPending, domain.CreditNoteStatusRejected, approverID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reject credit note: %w", err)
+	}
+	if !updated {
+		return cn, nil
+	}
+	cn.Status = domain.CreditNoteStatusRejected
+	cn.ApprovedBy = &approverID
+	cn.ApprovedAt = &now
+
+	// For refunds, we must also free up the over-refund limit, but our Sum logic excludes
+	// Void. Does it exclude Rejected?
+	// Let's ensure Rejected is not summed. The SumActiveRefundsForInvoice query excludes Void,
+	// but it does NOT explicitly exclude Rejected. Wait, it only includes RefundStatusPending, Processed, ManualRequired.
+	// We should probably mark the refund_status as failed to be safe, or leave it as None.
+	// Since it's Rejected, the sum won't count it if it's not in one of those refund states,
+	// BUT wait, when a refund was inserted in Create, its refund_status was RefundStatusNone.
+	// RefundStatusNone is NOT in (Pending, Processed, ManualRequired). So it's already excluded from Sum!
+
+	return cn, nil
+}
+
+// executeRefundGatewayAndLedger performs the gateway API call and ledger entries
+// for an already-persisted credit note. It returns whether the gateway was
+// actually charged: once it has, the caller MUST NOT roll the credit note back
+// to pending_approval, or a re-approval would refund the customer twice.
+func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, tenantID uuid.UUID, inv *domain.Invoice, cn *domain.CreditNote) (charged bool, err error) {
+	manual := inv.GatewayPaymentID == ""
+	if manual {
+		s.logger.Warn("refund credit note requires manual processing",
+			"credit_note_id", cn.ID, "invoice_id", inv.ID)
+		cn.RefundStatus = domain.RefundStatusManualRequired
+		cn.RefundMessage = fmt.Sprintf("invoice %s has no gateway payment id on record", inv.InvoiceNumber)
+		// No gateway charge happened → charged=false, so a failed persist here is
+		// safe to revert and retry.
+		return false, s.repo.UpdateRefund(ctx, cn.ID, cn.RefundStatus, nil, cn.RefundMessage)
+	}
+
+	if s.gateway == nil {
+		s.markRefundFailed(ctx, cn, "no payment gateway configured; refund was not sent to the gateway")
+		return false, nil
+	}
+
+	res, err := s.gateway.Refund(ctx, inv.GatewayPaymentID, cn.Amount, inv.Currency)
+	if err != nil {
+		s.markRefundFailed(ctx, cn, fmt.Sprintf("gateway refund failed: %v", err))
+		return false, nil
+	}
+
+	// From here the money has moved at the gateway: charged=true on every path.
+	status := domain.RefundStatusProcessed
+	if strings.EqualFold(res.Status, "pending") {
+		status = domain.RefundStatusPending
+	}
+	refundID := res.RefundID
+	message := fmt.Sprintf("gateway refund %s (gateway status: %s)", res.RefundID, res.Status)
+
+	if err := s.repo.UpdateRefund(ctx, cn.ID, status, &refundID, message); err != nil {
+		return true, fmt.Errorf("refund %s succeeded at gateway but persisting it on credit note %s failed: %w", res.RefundID, cn.ID, err)
+	}
+	cn.RefundStatus = status
+
+	if s.ledger != nil {
+		if err := s.ledger.RecordRefund(ctx, tenantID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
+			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
+		}
+		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
+			}
+		}
+	}
+
+	if s.revrec != nil {
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.ID, cn.ID, cn.Amount); err != nil {
+			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
+		} else if reversed > 0 {
+			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
+		}
+	}
+	cn.RefundID = &refundID
+	cn.RefundMessage = message
+
+	s.logger.Info("gateway refund issued for approved credit note",
+		"credit_note_id", cn.ID,
+		"invoice_id", inv.ID,
+		"payment_id", inv.GatewayPaymentID,
+		"refund_id", res.RefundID,
+		"amount", cn.Amount,
+		"status", status,
+	)
+	return true, nil
 }
