@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
   Plus,
@@ -140,13 +141,9 @@ function EventDeliveries({ state }) {
 }
 
 export default function Developers() {
-  const [keys, setKeys] = useState([]);
-  const [webhooks, setWebhooks] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [eventTypes, setEventTypes] = useState([]);
+  const queryClient = useQueryClient();
+
   const [activeTab, setActiveTab] = useState("keys"); // 'keys' | 'webhooks' | 'events'
-  const [loading, setLoading] = useState(true);
-  const [eventsLoading, setEventsLoading] = useState(true);
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [expandedEventId, setExpandedEventId] = useState(null);
   const [generatedKey, setGeneratedKey] = useState(null);
@@ -154,184 +151,174 @@ export default function Developers() {
   const [isWebhookModalOpen, setIsWebhookModalOpen] = useState(false);
   const [newWebhook, setNewWebhook] = useState({ url: "", events: [] });
   const [createdWebhookSecret, setCreatedWebhookSecret] = useState(null);
-
-  // Per-event delivery state, keyed by event id: { loading, error, data }.
-  const [deliveries, setDeliveries] = useState({});
-  const [redeliveringId, setRedeliveringId] = useState(null);
+  const [deleteWebhookTarget, setDeleteWebhookTarget] = useState(null);
+  const [revokeKeyTarget, setRevokeKeyTarget] = useState(null);
 
   // Endpoint "View deliveries" sheet.
   const [deliveriesSheet, setDeliveriesSheet] = useState(null); // the webhook endpoint, or null
-  const [endpointDeliveries, setEndpointDeliveries] = useState([]);
-  const [endpointDeliveriesLoading, setEndpointDeliveriesLoading] = useState(false);
-  const [endpointDeliveriesError, setEndpointDeliveriesError] = useState(null);
   const [endpointStatusFilter, setEndpointStatusFilter] = useState("all");
 
-  const fetchKeys = async () => {
-    try {
-      const response = await endpoints.getAPIKeys();
-      setKeys(response.data.data || []);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Reads (errors leave the list empty, matching the prior console-only behavior).
+  const { data: keys = [], isLoading: loading } = useQuery({
+    queryKey: ["api-keys"],
+    queryFn: async () => (await endpoints.getAPIKeys()).data.data || [],
+  });
+  const { data: webhooks = [] } = useQuery({
+    queryKey: ["webhooks"],
+    queryFn: async () => (await endpoints.getWebhooks()).data.data || [],
+  });
+  const {
+    data: events = [],
+    isLoading: eventsLoading,
+    refetch: refetchEvents,
+  } = useQuery({
+    queryKey: ["events", { limit: 50 }],
+    queryFn: async () => (await endpoints.getEvents({ limit: 50 })).data.data || [],
+  });
+  const { data: eventTypes = [] } = useQuery({
+    queryKey: ["event-types"],
+    queryFn: async () => (await endpoints.getEventTypes()).data.data || [],
+  });
 
-  const fetchWebhooks = async () => {
-    try {
-      const response = await endpoints.getWebhooks();
-      setWebhooks(response.data.data || []);
-    } catch (error) {
-      console.error("Failed to fetch webhooks:", error);
-    }
-  };
+  // Per-event deliveries: only the expanded row is fetched; results stay cached
+  // in react-query so re-expanding a row doesn't refetch within staleTime.
+  const {
+    data: expandedDeliveries = [],
+    isLoading: deliveriesLoading,
+    isError: deliveriesIsError,
+    error: deliveriesErr,
+  } = useQuery({
+    queryKey: ["event-deliveries", expandedEventId],
+    queryFn: async () =>
+      (await endpoints.getEventDeliveries(expandedEventId)).data.data || [],
+    enabled: !!expandedEventId,
+  });
+  const expandedDeliveryState = expandedEventId
+    ? {
+        loading: deliveriesLoading,
+        error: deliveriesIsError
+          ? deliveriesErr?.response?.data?.error?.message ||
+            deliveriesErr?.message ||
+            "Failed to load deliveries"
+          : null,
+        data: expandedDeliveries,
+      }
+    : null;
 
-  const fetchEvents = async () => {
-    setEventsLoading(true);
-    try {
-      const response = await endpoints.getEvents({ limit: 50 });
-      setEvents(response.data.data || []);
-    } catch (error) {
-      console.error("Failed to fetch events:", error);
-    } finally {
-      setEventsLoading(false);
-    }
-  };
+  // Endpoint deliveries sheet: keyed on the endpoint + status filter, fetched
+  // only while the sheet is open.
+  const {
+    data: endpointDeliveries = [],
+    isLoading: endpointDeliveriesLoading,
+    isError: endpointDeliveriesIsError,
+    error: endpointDeliveriesErr,
+    refetch: refetchEndpointDeliveries,
+  } = useQuery({
+    queryKey: ["webhook-deliveries", deliveriesSheet?.id, endpointStatusFilter],
+    queryFn: async () => {
+      const params = { limit: 50 };
+      if (endpointStatusFilter && endpointStatusFilter !== "all")
+        params.status = endpointStatusFilter;
+      return (await endpoints.getWebhookDeliveries(deliveriesSheet.id, params)).data
+        .data || [];
+    },
+    enabled: !!deliveriesSheet,
+  });
+  const endpointDeliveriesError = endpointDeliveriesIsError
+    ? endpointDeliveriesErr?.response?.data?.error?.message ||
+      endpointDeliveriesErr?.message ||
+      "Failed to load deliveries"
+    : null;
 
-  const fetchEventTypes = async () => {
-    try {
-      const response = await endpoints.getEventTypes();
-      setEventTypes(response.data.data || []);
-    } catch (error) {
-      console.error("Failed to fetch event types:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchKeys();
-    fetchWebhooks();
-    fetchEvents();
-    fetchEventTypes();
-  }, []);
-
-  const handleCreateKey = async () => {
-    try {
-      const response = await endpoints.createKey({});
+  const createKeyMutation = useMutation({
+    mutationFn: () => endpoints.createKey({}),
+    onSuccess: (response) => {
       // POST /developer/keys returns the APIKey object directly;
       // key_value is only present on creation.
       setGeneratedKey(response.data.data.key_value || response.data.data.key);
       setIsModalOpen(true);
-      fetchKeys();
-    } catch (error) {
-      console.error("Failed to create key:", error);
-    }
-  };
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (error) => console.error("Failed to create key:", error),
+  });
+  const handleCreateKey = () => createKeyMutation.mutate();
 
-  const handleCreateWebhook = async () => {
+  const createWebhookMutation = useMutation({
+    mutationFn: (payload) => endpoints.createWebhook(payload),
+    onSuccess: (response) => {
+      setCreatedWebhookSecret(response.data.data?.secret);
+      setNewWebhook({ url: "", events: [] });
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+    },
+    onError: (error) =>
+      toast.error(
+        "Failed to create webhook: " +
+          (error.response?.data?.error?.message || error.message)
+      ),
+  });
+  const handleCreateWebhook = () => {
     if (!newWebhook.url || newWebhook.events.length === 0) {
       toast.error("Enter a URL and select at least one event type.");
       return;
     }
-    try {
-      const response = await endpoints.createWebhook(newWebhook);
-      setCreatedWebhookSecret(response.data.data?.secret);
-      setNewWebhook({ url: "", events: [] });
-      fetchWebhooks();
-    } catch (error) {
-      toast.error(
-        "Failed to create webhook: " +
-          (error.response?.data?.error?.message || error.message)
-      );
-    }
+    createWebhookMutation.mutate(newWebhook);
   };
 
-  const [deleteWebhookTarget, setDeleteWebhookTarget] = useState(null);
-  const [revokeKeyTarget, setRevokeKeyTarget] = useState(null);
-  const [revokingKey, setRevokingKey] = useState(false);
-
-  const handleRevokeKey = async () => {
-    if (!revokeKeyTarget) return;
-    setRevokingKey(true);
-    try {
-      await endpoints.revokeKey(revokeKeyTarget.id);
+  const revokeKeyMutation = useMutation({
+    mutationFn: (id) => endpoints.revokeKey(id),
+    onSuccess: () => {
       toast.success("API key revoked.");
       setRevokeKeyTarget(null);
-      fetchKeys();
-    } catch (error) {
-      toast.error(error.response?.data?.error?.message || "Failed to revoke key");
-    } finally {
-      setRevokingKey(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["api-keys"] });
+    },
+    onError: (error) =>
+      toast.error(error.response?.data?.error?.message || "Failed to revoke key"),
+  });
+  const handleRevokeKey = () => {
+    if (!revokeKeyTarget) return;
+    revokeKeyMutation.mutate(revokeKeyTarget.id);
   };
+  const revokingKey = revokeKeyMutation.isPending;
 
-  const handleDeleteWebhook = async () => {
-    if (!deleteWebhookTarget) return;
-    try {
-      await endpoints.deleteWebhook(deleteWebhookTarget);
+  const deleteWebhookMutation = useMutation({
+    mutationFn: (id) => endpoints.deleteWebhook(id),
+    onSuccess: () => {
       setDeleteWebhookTarget(null);
-      fetchWebhooks();
-    } catch (error) {
-      toast.error(error.response?.data?.error?.message || "Failed to delete webhook");
-    }
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+    },
+    onError: (error) =>
+      toast.error(error.response?.data?.error?.message || "Failed to delete webhook"),
+  });
+  const handleDeleteWebhook = () => {
+    if (!deleteWebhookTarget) return;
+    deleteWebhookMutation.mutate(deleteWebhookTarget);
   };
 
-  const fetchEventDeliveries = async (eventId) => {
-    setDeliveries((prev) => ({
-      ...prev,
-      [eventId]: { ...prev[eventId], loading: true, error: null },
-    }));
-    try {
-      const response = await endpoints.getEventDeliveries(eventId);
-      setDeliveries((prev) => ({
-        ...prev,
-        [eventId]: { loading: false, error: null, data: response.data.data || [] },
-      }));
-    } catch (error) {
-      setDeliveries((prev) => ({
-        ...prev,
-        [eventId]: {
-          loading: false,
-          data: [],
-          error:
-            error.response?.data?.error?.message ||
-            error.message ||
-            "Failed to load deliveries",
-        },
-      }));
-    }
-  };
-
-  // Expand/collapse an event row; lazily load its deliveries on first expand.
+  // Expand/collapse an event row; the deliveries query loads lazily via `enabled`.
   const handleToggleEvent = (eventId) => {
-    if (expandedEventId === eventId) {
-      setExpandedEventId(null);
-      return;
-    }
-    setExpandedEventId(eventId);
-    if (!deliveries[eventId]) {
-      fetchEventDeliveries(eventId);
-    }
+    setExpandedEventId((cur) => (cur === eventId ? null : eventId));
   };
 
-  const handleRedeliver = async (eventId) => {
-    setRedeliveringId(eventId);
-    try {
-      const response = await endpoints.redeliverEvent(eventId);
+  const redeliverMutation = useMutation({
+    mutationFn: (eventId) => endpoints.redeliverEvent(eventId),
+    onSuccess: (response, eventId) => {
       const queued = response.data?.deliveries_queued ?? 0;
       toast.success(
         `Re-delivery queued for ${queued} ${queued === 1 ? "endpoint" : "endpoints"}.`
       );
-      await fetchEventDeliveries(eventId);
-    } catch (error) {
+      queryClient.invalidateQueries({ queryKey: ["event-deliveries", eventId] });
+    },
+    onError: (error) =>
       toast.error(
         error.response?.data?.error?.message ||
           error.message ||
           "Failed to queue re-delivery"
-      );
-    } finally {
-      setRedeliveringId(null);
-    }
-  };
+      ),
+  });
+  const handleRedeliver = (eventId) => redeliverMutation.mutate(eventId);
+  const redeliveringId = redeliverMutation.isPending
+    ? redeliverMutation.variables
+    : null;
 
   const openEndpointDeliveries = (hook) => {
     setEndpointStatusFilter("all");
@@ -339,42 +326,19 @@ export default function Developers() {
   };
 
   // Pause/resume deliveries for an endpoint; config and secret are kept.
-  const toggleWebhookStatus = async (hook) => {
+  const toggleStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => endpoints.setWebhookStatus(id, status),
+    onSuccess: (_data, { status }) => {
+      toast.success(status === "active" ? "Endpoint resumed." : "Endpoint paused.");
+      queryClient.invalidateQueries({ queryKey: ["webhooks"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to update endpoint"),
+  });
+  const toggleWebhookStatus = (hook) => {
     const next = hook.status === "active" ? "inactive" : "active";
-    try {
-      await endpoints.setWebhookStatus(hook.id, next);
-      toast.success(next === "active" ? "Endpoint resumed." : "Endpoint paused.");
-      fetchWebhooks();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to update endpoint");
-    }
+    toggleStatusMutation.mutate({ id: hook.id, status: next });
   };
-
-  const fetchEndpointDeliveries = async (id, status) => {
-    setEndpointDeliveriesLoading(true);
-    setEndpointDeliveriesError(null);
-    try {
-      const params = { limit: 50 };
-      if (status && status !== "all") params.status = status;
-      const response = await endpoints.getWebhookDeliveries(id, params);
-      setEndpointDeliveries(response.data.data || []);
-    } catch (error) {
-      setEndpointDeliveriesError(
-        error.response?.data?.error?.message ||
-          error.message ||
-          "Failed to load deliveries"
-      );
-      setEndpointDeliveries([]);
-    } finally {
-      setEndpointDeliveriesLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (deliveriesSheet) {
-      fetchEndpointDeliveries(deliveriesSheet.id, endpointStatusFilter);
-    }
-  }, [deliveriesSheet, endpointStatusFilter]);
 
   const toggleEventType = (eventType) => {
     setNewWebhook((prev) => {
@@ -611,7 +575,7 @@ export default function Developers() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={fetchEvents}
+                onClick={() => refetchEvents()}
                 title="Refresh events"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -707,7 +671,7 @@ export default function Developers() {
                               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                                 Deliveries
                               </p>
-                              <EventDeliveries state={deliveries[evt.id]} />
+                              <EventDeliveries state={expandedDeliveryState} />
                             </div>
 
                             {/* Raw payload */}
@@ -887,10 +851,7 @@ export default function Developers() {
             <Button
               variant="outline"
               size="icon"
-              onClick={() =>
-                deliveriesSheet &&
-                fetchEndpointDeliveries(deliveriesSheet.id, endpointStatusFilter)
-              }
+              onClick={() => refetchEndpointDeliveries()}
               title="Refresh deliveries"
             >
               <RefreshCw className="h-4 w-4" />
