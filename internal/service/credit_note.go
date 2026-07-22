@@ -197,6 +197,16 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 		UpdatedAt:    time.Now(),
 	}
 
+	// A credit note is issued by the legal entity that issued the invoice it
+	// references (Multi-Entity Books). Its Customer-Credit liability posts on
+	// that entity's ledger; a standalone credit (no invoice) stays nil and
+	// resolves to the tenant's primary entity.
+	if req.InvoiceID != nil {
+		if inv, err := s.invoiceRepo.GetByIDPublic(ctx, *req.InvoiceID); err == nil && inv != nil {
+			cn.EntityID = inv.EntityID
+		}
+	}
+
 	if initialStatus == domain.CreditNoteStatusPending {
 		// If pending, we just persist. Gateway calls / ledger posts happen upon approval.
 		// For refunds, we enforce the within-limit check here too.
@@ -232,7 +242,7 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 		// UpdateSubscription (DR Deferred), so they don't pass through here.
 		// Best-effort; a failure is logged for reconciliation.
 		if s.ledger != nil {
-			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.ID, cn.Amount, "Adjustment credit issued"); err != nil {
+			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.EntityID, cn.ID, cn.Amount, "Adjustment credit issued"); err != nil {
 				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
 					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
 			}
@@ -547,7 +557,7 @@ func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approve
 	} else {
 		// Adjustment credit
 		if s.ledger != nil {
-			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.ID, cn.Amount, "Adjustment credit issued (approved)"); err != nil {
+			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.EntityID, cn.ID, cn.Amount, "Adjustment credit issued (approved)"); err != nil {
 				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
 					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
 			}

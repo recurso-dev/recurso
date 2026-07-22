@@ -43,7 +43,7 @@ type walletCharger interface {
 type walletLedger interface {
 	RecordWalletTopUp(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 	RecordWalletDrain(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, customerID, invoiceID uuid.UUID, amount int64, description string) (uuid.UUID, error)
-	RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error)
+	RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error)
 }
 
 // walletEntityReader resolves the legal entity a new wallet belongs to
@@ -287,7 +287,7 @@ func (s *WalletService) postTopUpLedger(ctx context.Context, tenantID, entityID 
 	}
 	var err error
 	if source == domain.WalletSourcePromotional {
-		_, err = s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, wtx.ID, wtx.Amount, "Promotional wallet credit")
+		_, err = s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, entityPtr(entityID), wtx.ID, wtx.Amount, "Promotional wallet credit")
 	} else {
 		_, err = s.ledger.RecordWalletTopUp(ctx, tenantID, entityPtr(entityID), wtx.ID, wtx.Amount, fmt.Sprintf("Wallet top-up (%s)", source))
 	}

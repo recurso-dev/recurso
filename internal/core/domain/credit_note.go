@@ -44,18 +44,22 @@ const (
 )
 
 type CreditNote struct {
-	ID         uuid.UUID        `json:"id" db:"id"`
-	TenantID   uuid.UUID        `json:"tenant_id" db:"tenant_id"`
-	CustomerID uuid.UUID        `json:"customer_id" db:"customer_id"`
-	InvoiceID  *uuid.UUID       `json:"invoice_id,omitempty" db:"invoice_id"`
-	Reference  *string          `json:"reference,omitempty" db:"reference"`
-	Amount     int64            `json:"amount" db:"amount"`
-	Balance    int64            `json:"balance" db:"balance"`
-	Currency   string           `json:"currency" db:"currency"`
-	Status     CreditNoteStatus `json:"status" db:"status"`
-	Reason     string           `json:"reason" db:"reason"`
-	CreatedAt  time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt  time.Time        `json:"updated_at" db:"updated_at"`
+	ID         uuid.UUID  `json:"id" db:"id"`
+	TenantID   uuid.UUID  `json:"tenant_id" db:"tenant_id"`
+	CustomerID uuid.UUID  `json:"customer_id" db:"customer_id"`
+	InvoiceID  *uuid.UUID `json:"invoice_id,omitempty" db:"invoice_id"`
+	// EntityID is the legal entity that issued this credit note (Multi-Entity
+	// Books): its Customer-Credit liability posts on that entity's ledger and
+	// it is spendable only on that entity's invoices.
+	EntityID  *uuid.UUID       `json:"entity_id,omitempty" db:"entity_id"`
+	Reference *string          `json:"reference,omitempty" db:"reference"`
+	Amount    int64            `json:"amount" db:"amount"`
+	Balance   int64            `json:"balance" db:"balance"`
+	Currency  string           `json:"currency" db:"currency"`
+	Status    CreditNoteStatus `json:"status" db:"status"`
+	Reason    string           `json:"reason" db:"reason"`
+	CreatedAt time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at" db:"updated_at"`
 
 	// Audit tracking
 	CreatedBy  *uuid.UUID `json:"created_by,omitempty" db:"created_by"`

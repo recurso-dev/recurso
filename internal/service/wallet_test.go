@@ -75,7 +75,7 @@ func (f *fakeWalletLedger) RecordWalletDrain(ctx context.Context, tenantID uuid.
 	return uuid.New(), nil
 }
 
-func (f *fakeWalletLedger) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (f *fakeWalletLedger) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	f.promos = append(f.promos, amount)
 	return uuid.New(), nil
 }

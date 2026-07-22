@@ -618,20 +618,21 @@ func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uu
 // Pairs with RecordDowngradeCredit (which posts DR Deferred / CR Customer Credit
 // for the NET). Splitting the credit this way keeps Deferred draining only the
 // net it holds (post-ENG-191) instead of going negative by the tax.
-func (s *LedgerService) RecordDowngradeTaxReversal(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordDowngradeTaxReversal(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, taxAmount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(taxAmount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("downgrade tax reversal %s: %w", creditNoteID, err)
 	}
-	taxAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	taxAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.postTransfer(ctx, taxAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeTaxReversal, creditNoteID, description)
+	return s.postEntityTransfer(ctx, ent, taxAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeTaxReversal, creditNoteID, description)
 }
 
 // RecordDowngradeCredit books the deferred revenue freed by a mid-period plan
@@ -643,20 +644,21 @@ func (s *LedgerService) RecordDowngradeTaxReversal(ctx context.Context, tenantID
 //
 // referenceID is the downgrade credit note id; code 6 keeps it idempotent and
 // attributable per (reference_id, code).
-func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("downgrade credit %s: %w", creditNoteID, err)
 	}
-	deferredAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	deferredAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.postTransfer(ctx, deferredAccountID, creditAccountID, amt, 6, creditNoteID, description)
+	return s.postEntityTransfer(ctx, ent, deferredAccountID, creditAccountID, amt, 6, creditNoteID, description)
 }
 
 // RecordAdjustmentCreditIssued books a manually-issued adjustment credit note as
@@ -668,20 +670,21 @@ func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid
 // This gives the later application (DR Customer-Credit / CR AR) an origin to draw
 // down, keeping the ledger balanced regardless of where the credit came from.
 // Downgrade credits are booked separately (DR Deferred) and don't pass here.
-func (s *LedgerService) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+func (s *LedgerService) RecordAdjustmentCreditIssued(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
 	amt, err := ledgerAmount(amount)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("adjustment credit %s: %w", creditNoteID, err)
 	}
-	expenseAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	expenseAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	creditAccountID, err := s.getOrCreateTenantAccount(ctx, tenantID, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.postTransfer(ctx, expenseAccountID, creditAccountID, amt, 8, creditNoteID, description)
+	return s.postEntityTransfer(ctx, ent, expenseAccountID, creditAccountID, amt, 8, creditNoteID, description)
 }
 
 // RecordCreditApplication books the settlement of an invoice by account credit

@@ -354,6 +354,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		creditNote = &domain.CreditNote{
 			ID:           uuid.New(),
 			TenantID:     tenantID,
+			EntityID:     sub.EntityID,
 			CustomerID:   sub.CustomerID,
 			Amount:       creditAmount,
 			Balance:      creditAmount,
@@ -432,13 +433,13 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		}
 		if s.ledger != nil {
 			if netCredit > 0 {
-				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.ID, netCredit, "Plan downgrade credit (net)"); err != nil {
+				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.EntityID, creditNote.ID, netCredit, "Plan downgrade credit (net)"); err != nil {
 					s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
 						"credit_note_id", creditNote.ID, "amount", netCredit, "error", err)
 				}
 			}
 			if taxCredit > 0 {
-				if _, err := s.ledger.RecordDowngradeTaxReversal(ctx, tenantID, creditNote.ID, taxCredit, "Plan downgrade GST reversal"); err != nil {
+				if _, err := s.ledger.RecordDowngradeTaxReversal(ctx, tenantID, creditNote.EntityID, creditNote.ID, taxCredit, "Plan downgrade GST reversal"); err != nil {
 					s.logger.Error("downgrade tax reversal ledger post failed — reconciliation needed",
 						"credit_note_id", creditNote.ID, "amount", taxCredit, "error", err)
 				}
