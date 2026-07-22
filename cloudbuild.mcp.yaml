@@ -1,0 +1,72 @@
+# Continuous deployment for the MCP server (cmd/mcp) → the `recurso-mcp` Cloud
+# Run service at mcp.recurso.dev. Separate from cloudbuild.yaml (the API) so the
+# two deploy independently.
+#
+# One-time setup (founder / infra):
+#   1. Create the Cloud Run service `recurso-mcp` in ${_DEPLOY_REGION}.
+#   2. Set its env: API_BASE_URL=https://api.recurso.dev  (MCP_TRANSPORT defaults
+#      to http; PORT is provided by Cloud Run).
+#   3. Map the custom domain mcp.recurso.dev to the service.
+#   4. Point a Cloud Build trigger at this file (Configuration → /cloudbuild.mcp.yaml).
+#
+# The MCP server holds no database and no credentials — it forwards each caller's
+# rsk_ key to the /v1 API — so there is no Postgres step and no secrets to wire.
+
+substitutions:
+  _AR_HOSTNAME: asia-south1-docker.pkg.dev
+  _AR_PROJECT_ID: recurso-502110
+  _AR_REPOSITORY: cloud-run-source-deploy
+  _SERVICE_NAME: recurso-mcp
+  _DEPLOY_REGION: asia-south1
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  substitutionOption: ALLOW_LOOSE
+
+images:
+  - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+
+steps:
+  # 1. The gate: the MCP suite (in-process mock /v1, no DB). A failing test
+  #    fails the build, so a broken commit never deploys.
+  - id: Test
+    name: golang:1.25
+    env:
+      - CGO_ENABLED=0
+    entrypoint: bash
+    args:
+      - -c
+      - go test ./internal/mcp/...
+
+  # 2. Build the MCP image.
+  - id: Build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --no-cache
+      - -t
+      - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+      - .
+      - -f
+      - Dockerfile.mcp
+
+  # 3. Push to Artifact Registry.
+  - id: Push
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}'
+
+  # 4. Deploy the new revision (inherits the service's env: API_BASE_URL).
+  - id: Deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - services
+      - update
+      - '${_SERVICE_NAME}'
+      - --platform=managed
+      - --image=${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${REPO_NAME}/${_SERVICE_NAME}:${COMMIT_SHA}
+      - --region=${_DEPLOY_REGION}
+      - --quiet

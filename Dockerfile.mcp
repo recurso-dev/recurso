@@ -1,0 +1,36 @@
+# Recurso MCP server. Unlike the API image, this is a thin facade over /v1 —
+# no database, no migrations, no templates. It only needs the compiled binary.
+#
+# Build Stage
+FROM golang:1.25-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+ARG VERSION=dev
+# Gate the image on the MCP test suite (no DB needed — it runs against an
+# in-process mock /v1), so a broken commit never reaches the deployed server.
+RUN CGO_ENABLED=0 go test ./internal/mcp/...
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o recurso-mcp ./cmd/mcp
+
+# Run Stage
+FROM alpine:3.21
+
+WORKDIR /app
+
+# CA certificates so the server can reach the /v1 API over HTTPS.
+RUN apk --no-cache add ca-certificates \
+    && addgroup -S recurso && adduser -S recurso -G recurso
+
+COPY --from=builder --chown=recurso:recurso /app/recurso-mcp .
+
+USER recurso
+
+# Streamable HTTP transport (multi-tenant). Cloud Run provides $PORT; the server
+# defaults to 8090 locally.
+EXPOSE 8090
+
+CMD ["./recurso-mcp"]
