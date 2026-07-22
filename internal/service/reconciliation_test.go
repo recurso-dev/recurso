@@ -77,7 +77,7 @@ func (m *mockReconciliationRepo) GetOrphanLedgerTransactions(ctx context.Context
 	return m.orphanRows, m.orphanTotal, nil
 }
 
-func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error) {
+func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error) {
 	if m.trialBalanceErr != nil {
 		return nil, m.trialBalanceErr
 	}

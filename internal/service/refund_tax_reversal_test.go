@@ -76,7 +76,7 @@ func TestRefundTaxReversal_Postgres(t *testing.T) {
 	}
 
 	// Tax Payable should carry the 18000 GST after invoicing.
-	tb, err := svc.GetTrialBalance(ctx, tenantID)
+	tb, err := svc.GetTrialBalance(ctx, tenantID, nil)
 	if err != nil {
 		t.Fatalf("GetTrialBalance: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRefundTaxReversal_Postgres(t *testing.T) {
 		t.Fatalf("RecordRefundTaxReversal: %v", err)
 	}
 
-	tb, err = svc.GetTrialBalance(ctx, tenantID)
+	tb, err = svc.GetTrialBalance(ctx, tenantID, nil)
 	if err != nil {
 		t.Fatalf("GetTrialBalance (post-refund): %v", err)
 	}

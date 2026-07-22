@@ -25,10 +25,12 @@ type LedgerRepository interface {
 	// GetTrialBalanceLines returns each of the tenant's accounts with its posted
 	// debit and credit totals (minor units). Balance/Abnormal are computed by the
 	// service, not the repository.
-	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID) ([]domain.TrialBalanceLine, error)
+	// A nil ledgerID includes all of the tenant's entity ledgers (consolidated);
+	// a non-nil ledgerID filters to that entity's ledger (Multi-Entity Books).
+	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
 	// GetGeneralLedgerRows returns every posted transaction for a tenant,
 	// flattened with account codes and names, for the read-only GL export.
-	GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error)
+	GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.GeneralLedgerRow, error)
 	// GetDeferredRollforward returns the Deferred Revenue account's opening
 	// balance, deferrals added, and amounts released over [start, end).
 	GetDeferredRollforward(ctx context.Context, tenantID uuid.UUID, start, end time.Time) (opening, added, released int64, err error)

@@ -89,7 +89,7 @@ func (s *ClosePackService) Generate(ctx context.Context, tenantID uuid.UUID, mon
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 
-	tb, err := s.ledger.GetTrialBalance(ctx, tenantID)
+	tb, err := s.ledger.GetTrialBalance(ctx, tenantID, nil) // month-end close is tenant-wide (all entities)
 	if err != nil {
 		return nil, fmt.Errorf("close pack trial balance: %w", err)
 	}

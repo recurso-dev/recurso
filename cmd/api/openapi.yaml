@@ -3680,7 +3680,17 @@ paths:
       description: |
         Every account with its posted debit/credit totals, its balance on the
         account's normal side, an abnormal-sign flag, and the double-entry
-        invariant (total debits == total credits). Read-only.
+        invariant (total debits == total credits). Read-only. Each line is
+        tagged with its legal entity (Multi-Entity Books); pass `entity_id` to
+        scope to one entity, or `consolidated=true` to roll every entity's
+        accounts up by code into one tenant-wide view.
+      parameters:
+        - { $ref: '#/components/parameters/EntityIdQuery' }
+        - name: consolidated
+          in: query
+          required: false
+          description: Roll all entities' accounts up by code into one consolidated trial balance.
+          schema: { type: boolean }
       responses:
         '200':
           description: Trial balance.
@@ -3701,7 +3711,10 @@ paths:
       summary: Export the general ledger (CSV)
       description: |
         Every posted transaction for the tenant, flattened with both account
-        codes/names, amount, and provenance, as a CSV download. Read-only.
+        codes/names, amount, and provenance, as a CSV download. Read-only. Pass
+        `entity_id` to scope the export to one legal entity's ledger.
+      parameters:
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: General ledger as CSV.

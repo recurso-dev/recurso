@@ -27,7 +27,7 @@ type exportTenantLister interface {
 
 // exportLedgerSource supplies the GL rows; *service.LedgerService.
 type exportLedgerSource interface {
-	GeneralLedger(ctx context.Context, tenantID uuid.UUID) ([]domain.GeneralLedgerRow, error)
+	GeneralLedger(ctx context.Context, tenantID uuid.UUID, ledgerFilter *uuid.UUID) ([]domain.GeneralLedgerRow, error)
 }
 
 // ExportUploader is the object-storage slice the worker needs; *export.S3Client.
@@ -150,7 +150,7 @@ func (w *ExportWorker) exportTenant(ctx context.Context, tenantID uuid.UUID, dat
 	if uploader == nil {
 		return false, nil
 	}
-	rows, err := w.ledger.GeneralLedger(tctx, tenantID)
+	rows, err := w.ledger.GeneralLedger(tctx, tenantID, nil)
 	if err != nil {
 		return false, err
 	}
