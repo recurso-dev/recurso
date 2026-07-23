@@ -1324,6 +1324,32 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  /v1/invoices/{id}/send:
+    post:
+      operationId: sendInvoiceEmail
+      tags: [Invoices]
+      summary: Email the invoice to the customer
+      description: >
+        (Re)sends the invoice email — the customer's rendered invoice with a
+        hosted "Pay Now" checkout link — to the customer's email on file.
+        Invoices are also auto-emailed on generation; this is the on-demand
+        resend. 400 if the customer has no email address.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Invoice email sent.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/invoices/{id}/einvoice:
     get:
       operationId: getEInvoiceStatus

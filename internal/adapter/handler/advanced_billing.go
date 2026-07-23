@@ -97,6 +97,28 @@ type AdvanceInvoiceRequest struct {
 	Periods int `json:"periods" binding:"required,min=1,max=60"`
 }
 
+// SendInvoice handles POST /v1/invoices/:id/send — (re)email the customer their
+// invoice with the hosted Pay Now link, on demand.
+func (h *AdvancedBillingHandler) SendInvoice(c *gin.Context) {
+	invoiceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
+		return
+	}
+	tenantID, ok := c.Get("tenant_id")
+	tid, okc := tenantID.(uuid.UUID)
+	if !ok || !okc {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tid)
+	if err := h.InvoiceService.SendInvoiceEmail(ctx, tid, invoiceID); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "Invoice email sent"})
+}
+
 func (h *AdvancedBillingHandler) GenerateAdvanceInvoice(c *gin.Context) {
 	subIDStr := c.Param("id")
 	subID, err := uuid.Parse(subIDStr)
