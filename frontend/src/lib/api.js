@@ -312,6 +312,7 @@ export const endpoints = {
   topUpWallet: (id, data) => api.post(`/wallets/${id}/top-up`, data),
   getWalletTransactions: (id, params) => api.get(`/wallets/${id}/transactions`, { params }),
   setWalletAutoRecharge: (id, data) => api.put(`/wallets/${id}/auto-recharge`, data),
+  closeWallet: (id) => api.post(`/wallets/${id}/close`),
 
   // Usage alerts
   // Raw ingestion stream, newest first (debugging: did my events land?).
