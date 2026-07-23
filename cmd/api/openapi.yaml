@@ -1349,6 +1349,61 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/invoices/{id}/eu-einvoice:
+    get:
+      operationId: getEUEInvoice
+      tags: [Invoices]
+      summary: Get EU e-invoice (EN 16931 / UBL) status
+      description: Returns the invoice's generated EU e-invoice — status, syntax, UBL document, delivery id/error — or data:null when none has been generated.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: EU e-invoice record, or null when not generated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+                    type: object
+                    description: The EU e-invoice record (null if none generated).
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/invoices/{id}/eu-einvoice/retry:
+    post:
+      operationId: retryEUEInvoice
+      tags: [Invoices]
+      summary: Regenerate and re-transmit the EU e-invoice
+      description: Re-runs EN 16931 UBL generation and Access Point transmission for the invoice, recovering a generation or transmission failure. Idempotent. data:null when the tenant hasn't opted in.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: Retry executed; the current EU e-invoice record (or null).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+                    type: object
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/coupons/{id}:
     put:
       operationId: updateCoupon

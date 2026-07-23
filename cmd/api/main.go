@@ -1276,6 +1276,7 @@ func main() {
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
 	euConfigHandler := handler.NewEUConfigHandler(db.NewTenantEUConfigRepository(database))
+	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
 	entityHandler := handler.NewEntityHandler(service.NewEntityService(db.NewEntityRepository(database)))
 
@@ -1765,6 +1766,10 @@ func main() {
 		// EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
 		v1.GET("/settings/eu-einvoice", euConfigHandler.GetEUConfig)
 		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
+		// EU e-invoicing per invoice (Track C inc 2): inspect the generated UBL +
+		// delivery status, and manually regenerate/re-transmit a failed one.
+		v1.GET("/invoices/:id/eu-einvoice", euEInvoiceHandler.GetEUEInvoice)
+		v1.POST("/invoices/:id/eu-einvoice/retry", euEInvoiceHandler.RetryEUEInvoice)
 		v1.GET("/settings/mcp", mcpSettingsHandler.GetMCPSettings)
 		v1.PUT("/settings/mcp", mcpSettingsHandler.UpdateMCPSettings)
 

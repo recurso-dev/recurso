@@ -280,6 +280,10 @@ export const endpoints = {
   // EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
   getEUEInvoiceConfig: (entityId) => api.get('/settings/eu-einvoice', { params: entityParams(entityId) }),
   updateEUEInvoiceConfig: (data, entityId) => api.put('/settings/eu-einvoice', data, { params: entityParams(entityId) }),
+  // Per-invoice EU e-invoice: inspect the generated UBL + delivery status, and
+  // regenerate/re-transmit a failed one.
+  getEUEInvoice: (invoiceId) => api.get(`/invoices/${invoiceId}/eu-einvoice`),
+  retryEUEInvoice: (invoiceId) => api.post(`/invoices/${invoiceId}/eu-einvoice/retry`),
 
   getMCPSettings: () => api.get('/settings/mcp'),
   updateMCPSettings: (data) => api.put('/settings/mcp', data),
