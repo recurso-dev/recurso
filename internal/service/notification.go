@@ -17,28 +17,31 @@ import (
 // NotificationService handles sending notifications for billing events
 type NotificationService struct {
 	emailSender port.EmailSender
-	// baseURL is the API base (e.g. https://api.recurso.dev) — the hosted
-	// checkout at /checkout/{id} is served here.
+	// baseURL is the API base (e.g. https://api.recurso.dev). Only API-served
+	// links belong here — currently none of the customer-facing emails do.
 	baseURL string
-	// portalBaseURL is where the customer-facing portal SPA is served (PORTAL_URL,
-	// e.g. https://app.recurso.dev). Portal links (login / update payment method)
-	// MUST use this, not the API base. Defaults to baseURL until SetPortalBaseURL.
-	portalBaseURL string
+	// appBaseURL is where the customer-facing SPA is served (PORTAL_URL /
+	// DASHBOARD_URL, e.g. https://app.recurso.dev). Every link a customer clicks
+	// — the hosted checkout (/checkout/{id}) and the portal (/portal/login) — is
+	// an SPA route and MUST use this, not the API base. The API's /checkout/{id}
+	// only returns JSON that the SPA page fetches. Defaults to baseURL until
+	// SetAppBaseURL.
+	appBaseURL string
 }
 
 func NewNotificationService(emailSender port.EmailSender, baseURL string) *NotificationService {
 	return &NotificationService{
-		emailSender:   emailSender,
-		baseURL:       baseURL,
-		portalBaseURL: baseURL,
+		emailSender: emailSender,
+		baseURL:     baseURL,
+		appBaseURL:  baseURL,
 	}
 }
 
-// SetPortalBaseURL points customer-facing portal links at the portal SPA
-// (PORTAL_URL) instead of the API domain.
-func (s *NotificationService) SetPortalBaseURL(url string) {
+// SetAppBaseURL points customer-facing links (hosted checkout, portal) at the
+// SPA host (PORTAL_URL / DASHBOARD_URL) instead of the API domain.
+func (s *NotificationService) SetAppBaseURL(url string) {
 	if url != "" {
-		s.portalBaseURL = url
+		s.appBaseURL = url
 	}
 }
 
@@ -47,7 +50,7 @@ type InvoiceData struct {
 	CustomerName  string
 	CustomerEmail string
 	InvoiceNumber string
-	InvoiceID     string // used to build the hosted-checkout link when PaymentURL is empty
+	InvoiceID     string // used to build the SPA hosted-checkout link when PaymentURL is empty
 	Amount        string
 	DueDate       string
 	PaymentURL    string
@@ -56,9 +59,11 @@ type InvoiceData struct {
 // SendInvoiceCreated sends an invoice notification
 func (s *NotificationService) SendInvoiceCreated(ctx context.Context, data InvoiceData) error {
 	// The template renders a "Pay Now" button — an empty href is a dead
-	// button, so default it to the hosted checkout for this invoice.
+	// button, so default it to the hosted checkout for this invoice. This is the
+	// SPA page (app.recurso.dev/checkout/{id}), NOT the API's JSON endpoint of
+	// the same path — linking the API base leaves the customer staring at raw JSON.
 	if data.PaymentURL == "" && data.InvoiceID != "" {
-		data.PaymentURL = strings.TrimRight(s.baseURL, "/") + "/checkout/" + data.InvoiceID
+		data.PaymentURL = strings.TrimRight(s.appBaseURL, "/") + "/checkout/" + data.InvoiceID
 	}
 
 	content, err := s.renderTemplate(email.InvoiceCreatedTemplate, data)
@@ -262,7 +267,7 @@ func (s *NotificationService) SendPaymentFailed(ctx context.Context, data Paymen
 // SPA's login route: bare "/portal" matches nothing and the router's catch-all
 // bounces the customer to the merchant dashboard.
 func (s *NotificationService) portalPaymentMethodURL() string {
-	return strings.TrimRight(s.portalBaseURL, "/") + "/portal/login"
+	return strings.TrimRight(s.appBaseURL, "/") + "/portal/login"
 }
 
 // Helper to render a template

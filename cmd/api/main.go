@@ -1213,7 +1213,9 @@ func main() {
 	// PORTAL_URL is where the customer-facing portal SPA is served; magic
 	// link emails point there. Defaults to the API base URL for dev.
 	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
-	notificationService.SetPortalBaseURL(portalBaseURL) // portal links (update-payment-method) point at the SPA, not the API domain
+	// Every customer-facing email link — hosted checkout (Pay Now) and portal
+	// (update-payment-method) — is an SPA route on app.recurso.dev, not the API.
+	notificationService.SetAppBaseURL(getEnvDefault("DASHBOARD_URL", portalBaseURL))
 	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
 	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
