@@ -356,9 +356,22 @@ func (r *LedgerRepository) GetInvoiceLedgerMismatches(ctx context.Context, tenan
 	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
 }
 
-// GetPaymentLedgerMismatches returns paid invoices whose Code-3 (payment)
-// ledger postings are missing or do not sum to amount_paid. At most limit
-// rows are returned; the second return value is the total mismatch count.
+// GetPaymentLedgerMismatches returns paid invoices whose payment-side ledger
+// postings are missing or do not sum to amount_paid. At most limit rows are
+// returned; the second return value is the total mismatch count.
+//
+// amount_paid is total-less-credit (MarkPaid), and that balance is relieved from
+// AR by three cash-equivalent legs, not just cash: Code-3 (cash collected),
+// Code-10 (TDS receivable — the buyer withheld it and remits to the government),
+// and Code-12 (wallet drain — prepaid balance settled the invoice). Summing all
+// three is what makes the check correct: a TDS invoice's cash leg is short by the
+// withheld tax, and a wallet-fully-paid invoice has NO cash leg at all — checking
+// Code-3 alone raised a false payment_amount_mismatch on the former and a false
+// missing_payment_transaction on the latter, even though AR was fully relieved.
+//
+// Credit application (Code-7) is intentionally excluded: amount_paid already nets
+// it out. A fully-credit-settled invoice therefore owes zero cash and needs no
+// payment leg, so tx_count=0 is only a genuine "missing payment" when expected>0.
 func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
 	const query = `
 		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
@@ -367,11 +380,11 @@ func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenan
 			       COALESCE(SUM(t.amount), 0) AS found,
 			       COUNT(t.id) AS tx_count
 			FROM invoices i
-			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 3
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code IN (3, 10, 12)
 			WHERE i.tenant_id = $1 AND i.status = 'paid'
 			GROUP BY i.id, i.amount_paid
 		) sub
-		WHERE sub.tx_count = 0 OR sub.found <> sub.expected
+		WHERE (sub.tx_count = 0 AND sub.expected > 0) OR sub.found <> sub.expected
 		ORDER BY sub.id
 		LIMIT $2`
 	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
