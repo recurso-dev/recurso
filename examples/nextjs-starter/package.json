@@ -18,5 +18,9 @@
     "@types/react": "19.2.2",
     "@types/react-dom": "19.2.1",
     "typescript": "5.5.3"
+  },
+  "overrides": {
+    "sharp": "^0.35.0",
+    "postcss": "^8.5.10"
   }
 }
