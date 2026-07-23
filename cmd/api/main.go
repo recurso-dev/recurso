@@ -957,8 +957,9 @@ func main() {
 	}
 	if billingCycleInterval > 0 {
 		billingCycleScheduler = scheduler.NewBillingCycleScheduler(renewalService, locker, billingCycleInterval)
-		billingCycleScheduler.SetWalletMaintainer(walletService)   // credit expiry + auto-recharge (B1)
-		billingCycleScheduler.SetAlertEvaluator(usageAlertService) // usage thresholds (B3)
+		billingCycleScheduler.SetWalletMaintainer(walletService)     // wallet expiry + auto-recharge (B1)
+		billingCycleScheduler.SetCreditMaintainer(creditNoteService) // account-credit expiry (ledger-backed credits inc 2)
+		billingCycleScheduler.SetAlertEvaluator(usageAlertService)   // usage thresholds (B3)
 		billingCycleScheduler.Start()
 		defer billingCycleScheduler.Stop()
 	} else {

@@ -62,6 +62,9 @@ type CreditNoteRepository interface {
 	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
 	// ListApplicationsByCustomer returns the customer's credit draw-down history.
 	ListApplicationsByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CreditApplicationLine, error)
+	// ClaimExpiredCredits atomically writes off due dated credits, returning each
+	// so the caller can post its GL leg (ledger-backed credits inc 2).
+	ClaimExpiredCredits(ctx context.Context, now time.Time, limit int) ([]domain.CreditExpiry, error)
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error)
 }
@@ -197,6 +200,11 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 		RefundStatus: domain.RefundStatusNone,
 		CreatedAt:    time.Now(),
 		UpdatedAt:    time.Now(),
+	}
+	// Expiry applies only to spendable adjustment credit; a refund carries no
+	// balance to lapse, so its expires_at stays nil.
+	if cnType == domain.CreditNoteTypeAdjustment {
+		cn.ExpiresAt = req.ExpiresAt
 	}
 
 	// A credit note is issued by the legal entity that issued the invoice it
@@ -588,6 +596,34 @@ func (s *CreditNoteService) GetCreditStatement(ctx context.Context, tenantID, cu
 		Applications: apps,
 		Summary:      summary,
 	}, nil
+}
+
+// creditExpiryBatch bounds how many credits one sweep writes off; the scheduler
+// re-runs, so a large backlog drains across ticks without a long-held claim.
+const creditExpiryBatch = 500
+
+// ExpireDueCredits writes off every dated adjustment credit whose expiry has
+// passed and posts each one's GL leg (DR Customer Credit / CR Credits &
+// Adjustments — the reversal of issuance). The balance is zeroed atomically in
+// the claim; the ledger post is best-effort and logged for reconciliation on
+// failure (matching the wallet promo-expiry idiom), and idempotent per
+// (credit_note_id, code) so it can never double-post. Returns the count expired.
+func (s *CreditNoteService) ExpireDueCredits(ctx context.Context) (int, error) {
+	expiries, err := s.repo.ClaimExpiredCredits(ctx, time.Now().UTC(), creditExpiryBatch)
+	if err != nil {
+		return 0, fmt.Errorf("claim expired credits: %w", err)
+	}
+	for _, e := range expiries {
+		if s.ledger == nil {
+			continue
+		}
+		if _, lErr := s.ledger.RecordCreditExpiry(ctx, e.TenantID, e.EntityID, e.CreditNoteID, e.Amount,
+			"Account credit expired"); lErr != nil {
+			s.logger.Error("credit expiry ledger post failed — reconciliation needed",
+				"credit_note_id", e.CreditNoteID, "amount", e.Amount, "error", lErr)
+		}
+	}
+	return len(expiries), nil
 }
 
 func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approverID uuid.UUID) (*domain.CreditNote, error) {

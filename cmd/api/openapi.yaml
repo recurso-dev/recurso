@@ -1761,6 +1761,14 @@ paths:
                     in `invoice_id` and posts a Refunds-vs-Cash ledger
                     reversal; its progress is tracked by the credit note's
                     `refund_status`.
+                expires_at:
+                  type: [string, 'null']
+                  format: date-time
+                  description: >-
+                    Optional expiry for a spendable adjustment credit. When it
+                    passes with balance remaining, the expiry sweep writes the
+                    balance off (DR Customer Credit / CR Credits & Adjustments).
+                    Ignored for refunds.
       responses:
         '201':
           description: Credit note issued.
@@ -8999,9 +9007,13 @@ components:
           type: string
         status:
           type: string
-          enum: [issued, used, void]
+          enum: [issued, used, void, pending_approval, rejected, expired]
         reason:
           type: string
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: When a dated adjustment credit lapses; null = never expires.
         created_at:
           type: string
           format: date-time

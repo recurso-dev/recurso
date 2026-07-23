@@ -33,9 +33,17 @@ type walletMaintainer interface {
 	ProcessAutoRecharges(ctx context.Context) (int, error)
 }
 
+// creditMaintainer is the slice of service.CreditNoteService the sweep runs:
+// writing off dated account credits whose expiry has passed (ledger-backed
+// credits inc 2). nil-safe.
+type creditMaintainer interface {
+	ExpireDueCredits(ctx context.Context) (int, error)
+}
+
 type BillingCycleScheduler struct {
 	renewals renewalProcessor
 	wallets  walletMaintainer // nil-safe
+	credits  creditMaintainer // nil-safe
 	alerts   alertEvaluator   // nil-safe
 	locker   port.Locker
 	interval time.Duration
@@ -46,6 +54,9 @@ type BillingCycleScheduler struct {
 
 // SetWalletMaintainer wires wallet expiry + auto-recharge into the sweep.
 func (s *BillingCycleScheduler) SetWalletMaintainer(w walletMaintainer) { s.wallets = w }
+
+// SetCreditMaintainer wires account-credit expiry into the sweep.
+func (s *BillingCycleScheduler) SetCreditMaintainer(c creditMaintainer) { s.credits = c }
 
 // alertEvaluator is the slice of service.UsageAlertService the sweep runs
 // (Lago-parity B3). nil-safe.
@@ -133,6 +144,16 @@ func (s *BillingCycleScheduler) runRenewals() {
 			slog.Error("wallet auto-recharge sweep failed", "error", err)
 		} else if recharged > 0 {
 			slog.Info("wallets auto-recharged", "count", recharged)
+		}
+	}
+
+	// Account-credit expiry rides the same tick: write off dated adjustment
+	// credits whose expiry has passed (ledger-backed credits inc 2).
+	if s.credits != nil {
+		if expired, err := s.credits.ExpireDueCredits(ctx); err != nil {
+			slog.Error("credit expiry sweep failed", "error", err)
+		} else if expired > 0 {
+			slog.Info("expired account credit written off", "credits", expired)
 		}
 	}
 

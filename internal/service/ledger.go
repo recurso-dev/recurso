@@ -829,6 +829,31 @@ func (s *LedgerService) RecordWalletExpiry(ctx context.Context, tenantID uuid.UU
 	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeWalletExpiry, walletTxID, description)
 }
 
+// RecordCreditExpiry writes off an account credit note whose dated balance has
+// lapsed (ledger-backed credits inc 2), discharging the Customer-Credit liability:
+//
+//	Debit:  Customer Credit (Liability)      — the liability we no longer owe
+//	Credit: Credits & Adjustments (Expense)  — reverses the original issuance
+//
+// referenceID is the credit note id, which makes the posting idempotent per
+// (reference_id, code) — a note expires once, so a replay never double-posts.
+func (s *LedgerService) RecordCreditExpiry(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("credit expiry %s: %w", creditNoteID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	expenseAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeCreditExpiry, creditNoteID, description)
+}
+
 // postEntityTransfer writes a single ledger transfer (PG always; TigerBeetle
 // when connected) on a specific entity's ledger, surfacing PG failures for
 // retry/reconciliation. For the primary entity (LedgerID 1) the postings are
