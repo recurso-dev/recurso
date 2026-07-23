@@ -38,6 +38,7 @@ const CreateCreditNote = () => {
     currency: "USD",
     reason: "",
     invoice_id: "", // Optional
+    expires_at: "", // Optional — blank means the credit never expires
   });
 
   const close = () => navigate("/credit-notes");
@@ -86,6 +87,13 @@ const CreateCreditNote = () => {
       invoice_id: formData.invoice_id ? formData.invoice_id : null,
     };
     if (!payload.invoice_id) delete payload.invoice_id;
+    // Expiry is optional; send an end-of-day RFC3339 timestamp so the credit is
+    // usable through the selected date, or omit it entirely (never expires).
+    if (formData.expires_at) {
+      payload.expires_at = new Date(`${formData.expires_at}T23:59:59Z`).toISOString();
+    } else {
+      delete payload.expires_at;
+    }
 
     createMutation.mutate(payload);
   };
@@ -169,6 +177,21 @@ const CreateCreditNote = () => {
               />
             </FormField>
           </div>
+
+          <FormField
+            label="Expires on (optional)"
+            htmlFor="expires_at"
+            description="Leave blank for a credit that never expires. On this date, any unused balance is written off."
+          >
+            <Input
+              id="expires_at"
+              type="date"
+              name="expires_at"
+              value={formData.expires_at}
+              onChange={handleChange}
+              className="sm:max-w-[12rem]"
+            />
+          </FormField>
 
           <FormField label="Reason for credit" htmlFor="reason">
             <textarea
