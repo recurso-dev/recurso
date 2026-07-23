@@ -22,7 +22,10 @@ type InvoiceService struct {
 	GSPAdapter         port.GSPAdapter               // P25
 	EInvoiceService    *EInvoiceService              // P25: E-invoice service (India IRN)
 	EUEInvoiceService  *EUEInvoiceService            // Track C: EU e-invoicing (EN 16931/UBL); nil-safe, opt-in
-	TaxResolver        *TaxResolver                  // Jurisdiction-aware tax
+	// NotificationService emails the customer their new invoice (with the hosted
+	// Pay Now link) on generation. nil-safe: unset ⇒ no invoice emails.
+	NotificationService *NotificationService
+	TaxResolver         *TaxResolver // Jurisdiction-aware tax
 	// AddonRepo enables multi-product add-on lines on recurring invoices
 	// (Multi-product catalog v1). nil-safe: when unset, GenerateInvoice
 	// produces byte-identical single-plan invoices.
@@ -135,6 +138,61 @@ func (s *InvoiceService) generateEUEInvoiceAfterCommit(ctx context.Context, inv 
 	if _, err := s.EUEInvoiceService.GenerateForInvoice(ctx, inv, customer); err != nil {
 		slog.Warn("eu e-invoice generation failed (stored for retry)", "error", err, "invoice_id", inv.ID)
 	}
+}
+
+// invoiceEmailData projects an invoice + customer into the invoice-email payload.
+func invoiceEmailData(inv *domain.Invoice, customer *domain.Customer) InvoiceData {
+	return InvoiceData{
+		CustomerName:  domain.PtrToString(customer.Name),
+		CustomerEmail: customer.Email,
+		InvoiceNumber: inv.InvoiceNumber,
+		InvoiceID:     inv.ID.String(), // SendInvoiceCreated builds the /checkout/{id} Pay Now link
+		Amount:        formatAmount(inv.Total, inv.Currency),
+		DueDate:       inv.DueDate.Format("Jan 02, 2006"),
+	}
+}
+
+// notifyInvoiceCreated emails the customer their new invoice with the hosted
+// "Pay Now" link — best-effort and NON-BLOCKING, so a slow SMTP send never
+// delays or fails invoice generation (which may run in a renewal sweep). No-op
+// when the notifier is unwired, the invoice is nil, or nothing is owed
+// (a zero / already-covered invoice needs no "Pay Now" prompt).
+func (s *InvoiceService) notifyInvoiceCreated(inv *domain.Invoice) {
+	if s.NotificationService == nil || inv == nil || inv.Total <= 0 {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		customer, err := s.CustomerRepo.GetByID(ctx, inv.CustomerID)
+		if err != nil || customer == nil || customer.Email == "" {
+			return
+		}
+		if err := s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(inv, customer)); err != nil {
+			slog.Error("failed to send invoice email", "error", err, "invoice_id", inv.ID)
+		}
+	}()
+}
+
+// SendInvoiceEmail (re)sends the invoice email on demand — the manual "Send
+// invoice" action. Unlike the auto-send it is synchronous and surfaces errors
+// to the caller, and it is tenant-scoped.
+func (s *InvoiceService) SendInvoiceEmail(ctx context.Context, tenantID, invoiceID uuid.UUID) error {
+	if s.NotificationService == nil {
+		return fmt.Errorf("email notifications are not configured")
+	}
+	inv, err := s.InvoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil || inv == nil || inv.TenantID != tenantID {
+		return fmt.Errorf("invoice not found")
+	}
+	customer, err := s.CustomerRepo.GetByID(ctx, inv.CustomerID)
+	if err != nil || customer == nil {
+		return fmt.Errorf("customer not found")
+	}
+	if customer.Email == "" {
+		return fmt.Errorf("customer has no email address on file")
+	}
+	return s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(inv, customer))
 }
 
 // generateEInvoiceAfterCommit registers the government e-invoice (IRN) for a
@@ -378,6 +436,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// P25 e-invoicing on the now-committed invoice.
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
+	s.notifyInvoiceCreated(inv) // email the customer their invoice + Pay Now link (best-effort)
 
 	// 6a. Drain the customer's prepaid wallet FIRST (Lago-parity B1, D3
 	// ordering: wallet → adjustment credit notes → gateway). The drain is a
@@ -543,6 +602,7 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
+	s.notifyInvoiceCreated(inv) // email the customer their invoice + Pay Now link (best-effort)
 
 	if s.RatingRepo != nil {
 		for _, rating := range ratings {
@@ -863,5 +923,6 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 		slog.Warn("failed to update subscription period after advance invoice", "error", err, "subscription_id", sub.ID)
 	}
 
+	s.notifyInvoiceCreated(inv) // email the customer their advance invoice + Pay Now link (best-effort)
 	return inv, nil
 }

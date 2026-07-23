@@ -487,6 +487,7 @@ func main() {
 		einvoice_eu.NewMockTransport(),
 	)
 	invoiceService.EUEInvoiceService = euEInvoiceService
+	invoiceService.NotificationService = notificationService // email the customer their invoice + Pay Now link on generation
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetNotificationService(notificationService)
 	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
@@ -1579,6 +1580,7 @@ func main() {
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
 		v1.GET("/invoices/:id/pdf", pdfHandler.DownloadPDF)
 		v1.GET("/invoices/:id/preview", pdfHandler.PreviewHTML)
+		v1.POST("/invoices/:id/send", advancedBillingHandler.SendInvoice) // email the invoice + Pay Now link
 
 		// Usage Platform v1
 		v1.POST("/usage/events", usageHandler.RecordEvent)

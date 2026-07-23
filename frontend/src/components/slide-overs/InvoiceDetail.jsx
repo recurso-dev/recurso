@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, XCircle, FileDown, FileCode, Eye } from "lucide-react";
+import { RefreshCw, XCircle, FileDown, FileCode, Eye, Send } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -100,6 +100,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
   const [euRetrying, setEuRetrying] = useState(false);
   const [previewHtml, setPreviewHtml] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // Fetch the invoice's EU e-invoice (EN 16931 / UBL) on open. It lives in its
   // own table, so it isn't on the invoice row — load it on demand. A tenant that
@@ -203,6 +204,22 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
         type: "error",
         text: err?.response?.data?.error?.message || "PDF download failed",
       });
+    }
+  };
+
+  const handleSend = async () => {
+    setSending(true);
+    setActionMessage(null);
+    try {
+      const res = await endpoints.sendInvoice(invoice.id);
+      setActionMessage({ type: "success", text: res?.data?.message || "Invoice email sent." });
+    } catch (err) {
+      setActionMessage({
+        type: "error",
+        text: err?.response?.data?.error?.message || "Failed to send invoice email",
+      });
+    } finally {
+      setSending(false);
     }
   };
 
@@ -546,15 +563,33 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
           )}
 
           {/* Actions */}
-          <div className="mt-8 flex gap-3">
-            <Button variant="outline" className="flex-1" onClick={handlePreview} disabled={previewLoading}>
-              <Eye className="h-4 w-4" />
-              {previewLoading ? "Loading…" : "Preview"}
+          <div className="mt-8 space-y-3">
+            {!hasEInvoice && actionMessage && (
+              <div
+                className={
+                  "rounded-lg px-3 py-2 text-sm " +
+                  (actionMessage.type === "success"
+                    ? "bg-emerald-50 text-emerald-800"
+                    : "bg-red-50 text-red-800")
+                }
+              >
+                {actionMessage.text}
+              </div>
+            )}
+            <Button variant="outline" className="w-full" onClick={handleSend} disabled={sending}>
+              <Send className="h-4 w-4" />
+              {sending ? "Sending…" : "Send invoice to customer"}
             </Button>
-            <Button className="flex-1" onClick={handleDownloadPdf}>
-              <FileDown className="h-4 w-4" />
-              Download PDF
-            </Button>
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={handlePreview} disabled={previewLoading}>
+                <Eye className="h-4 w-4" />
+                {previewLoading ? "Loading…" : "Preview"}
+              </Button>
+              <Button className="flex-1" onClick={handleDownloadPdf}>
+                <FileDown className="h-4 w-4" />
+                Download PDF
+              </Button>
+            </div>
           </div>
         </div>
       </SheetContent>

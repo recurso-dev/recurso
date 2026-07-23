@@ -101,6 +101,8 @@ export const endpoints = {
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
   // Rendered HTML invoice (for an in-dashboard preview modal).
   getInvoicePreview: (id) => api.get(`/invoices/${id}/preview`, { responseType: 'text' }),
+  // (Re)email the invoice to the customer with a hosted Pay Now link.
+  sendInvoice: (id) => api.post(`/invoices/${id}/send`),
   getMRR: () => api.get('/analytics/mrr'),
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
   getMRRWaterfall: (start, end) =>
