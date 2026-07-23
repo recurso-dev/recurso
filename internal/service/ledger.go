@@ -804,6 +804,31 @@ func (s *LedgerService) RecordWalletForfeit(ctx context.Context, tenantID uuid.U
 	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeWalletForfeit, walletTxID, description)
 }
 
+// RecordWalletExpiry books a wallet's promotional balance written off when it
+// lapses (the expiry sweep), discharging the stored-value liability:
+//
+//	Debit:  Customer Credit (Liability)      — the liability we no longer owe
+//	Credit: Credits & Adjustments (Expense)  — reverses the original grant expense
+//
+// Without this, expired promo credit shrinks the wallet but leaves Customer
+// Credit overstated in the GL. referenceID is the expiry wallet transaction.
+func (s *LedgerService) RecordWalletExpiry(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, walletTxID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("wallet expiry %s: %w", walletTxID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	expenseAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeWalletExpiry, walletTxID, description)
+}
+
 // postEntityTransfer writes a single ledger transfer (PG always; TigerBeetle
 // when connected) on a specific entity's ledger, surfacing PG failures for
 // retry/reconciliation. For the primary entity (LedgerID 1) the postings are

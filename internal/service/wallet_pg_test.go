@@ -106,8 +106,8 @@ func TestWalletDrainFIFOAndExpiry_Postgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expire: %v", err)
 	}
-	if touched != 1 {
-		t.Fatalf("expiry touched %d wallets, want 1", touched)
+	if len(touched) != 1 {
+		t.Fatalf("expiry touched %d wallets, want 1", len(touched))
 	}
 	if remaining(expiredID) != 0 {
 		t.Fatal("expired residue must be zeroed by the sweep")
