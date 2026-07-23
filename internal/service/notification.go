@@ -17,13 +17,28 @@ import (
 // NotificationService handles sending notifications for billing events
 type NotificationService struct {
 	emailSender port.EmailSender
-	baseURL     string
+	// baseURL is the API base (e.g. https://api.recurso.dev) — the hosted
+	// checkout at /checkout/{id} is served here.
+	baseURL string
+	// portalBaseURL is where the customer-facing portal SPA is served (PORTAL_URL,
+	// e.g. https://app.recurso.dev). Portal links (login / update payment method)
+	// MUST use this, not the API base. Defaults to baseURL until SetPortalBaseURL.
+	portalBaseURL string
 }
 
 func NewNotificationService(emailSender port.EmailSender, baseURL string) *NotificationService {
 	return &NotificationService{
-		emailSender: emailSender,
-		baseURL:     baseURL,
+		emailSender:   emailSender,
+		baseURL:       baseURL,
+		portalBaseURL: baseURL,
+	}
+}
+
+// SetPortalBaseURL points customer-facing portal links at the portal SPA
+// (PORTAL_URL) instead of the API domain.
+func (s *NotificationService) SetPortalBaseURL(url string) {
+	if url != "" {
+		s.portalBaseURL = url
 	}
 }
 
@@ -247,7 +262,7 @@ func (s *NotificationService) SendPaymentFailed(ctx context.Context, data Paymen
 // SPA's login route: bare "/portal" matches nothing and the router's catch-all
 // bounces the customer to the merchant dashboard.
 func (s *NotificationService) portalPaymentMethodURL() string {
-	return strings.TrimRight(s.baseURL, "/") + "/portal/login"
+	return strings.TrimRight(s.portalBaseURL, "/") + "/portal/login"
 }
 
 // Helper to render a template
