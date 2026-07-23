@@ -21,11 +21,11 @@ func NewRevRecRepository(db *sql.DB) *RevRecRepository {
 
 func (r *RevRecRepository) CreateSchedule(ctx context.Context, schedule *domain.RevenueSchedule) error {
 	query := `
-		INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 	_, err := r.db.ExecContext(ctx, query,
-		schedule.ID, schedule.TenantID, schedule.InvoiceID, schedule.SubscriptionID, schedule.TotalAmount,
+		schedule.ID, schedule.TenantID, schedule.InvoiceID, schedule.SubscriptionID, schedule.EntityID, schedule.TotalAmount,
 		schedule.Currency, schedule.StartDate, schedule.EndDate, schedule.Status, schedule.CreatedAt, schedule.UpdatedAt,
 	)
 	return err
@@ -64,10 +64,15 @@ func (r *RevRecRepository) ClaimDueEvents(ctx context.Context, date time.Time) (
 		 WHERE status = 'processing' AND claimed_at < NOW() - INTERVAL '1 hour'`); err != nil {
 		return nil, fmt.Errorf("requeue stale recognition claims: %w", err)
 	}
+	// Join the parent schedule so each claimed event carries its entity_id — the
+	// recognition worker posts DR Deferred / CR Recognized to that entity's
+	// ledger (Multi-Entity Books). UPDATE ... FROM lets RETURNING project the
+	// schedule column; the join is on the PK so it can't fan out the claim.
 	query := `
-		UPDATE recognition_events SET status = 'processing', claimed_at = NOW()
-		WHERE recognition_date <= $1 AND status = 'pending'
-		RETURNING id, revenue_schedule_id, tenant_id, amount, recognition_date, status, ledger_tx_id, created_at
+		UPDATE recognition_events re SET status = 'processing', claimed_at = NOW()
+		FROM revenue_schedules rs
+		WHERE re.revenue_schedule_id = rs.id AND re.recognition_date <= $1 AND re.status = 'pending'
+		RETURNING re.id, re.revenue_schedule_id, re.tenant_id, rs.entity_id, re.amount, re.recognition_date, re.status, re.ledger_tx_id, re.created_at
 	`
 	log.Printf("RevRec Repository: Claiming events <= %v", date)
 	rows, err := r.db.QueryContext(ctx, query, date)
@@ -80,12 +85,17 @@ func (r *RevRecRepository) ClaimDueEvents(ctx context.Context, date time.Time) (
 	for rows.Next() {
 		var e domain.RecognitionEvent
 		var ledgerTxID sql.NullString // Use NullString for UUID scan safety
+		var entityID sql.NullString
 
-		if err := rows.Scan(&e.ID, &e.RevenueScheduleID, &e.TenantID, &e.Amount, &e.RecognitionDate, &e.Status, &ledgerTxID, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.RevenueScheduleID, &e.TenantID, &entityID, &e.Amount, &e.RecognitionDate, &e.Status, &ledgerTxID, &e.CreatedAt); err != nil {
 			log.Printf("RevRec Repository: Scan error: %v", err)
 			return nil, err
 		}
 
+		if entityID.Valid {
+			u := uuid.MustParse(entityID.String)
+			e.EntityID = &u
+		}
 		if ledgerTxID.Valid {
 			u := uuid.MustParse(ledgerTxID.String)
 			e.LedgerTxID = &u
@@ -118,7 +128,7 @@ func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUI
 // (tenant-scoped) for an unwind (ENG-147).
 func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RevenueSchedule, error) {
 	query := `
-		SELECT id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
 		FROM revenue_schedules
 		WHERE tenant_id = $1 AND subscription_id = $2 AND status = 'active'
 	`
@@ -131,9 +141,14 @@ func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context,
 	var schedules []*domain.RevenueSchedule
 	for rows.Next() {
 		var s domain.RevenueSchedule
-		if err := rows.Scan(&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &s.TotalAmount,
+		var entityID sql.NullString
+		if err := rows.Scan(&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &entityID, &s.TotalAmount,
 			&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
+		}
+		if entityID.Valid {
+			u := uuid.MustParse(entityID.String)
+			s.EntityID = &u
 		}
 		schedules = append(schedules, &s)
 	}
@@ -144,20 +159,25 @@ func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context,
 // when there is none (one-off invoice, or already fully recognized/canceled).
 func (r *RevRecRepository) GetActiveScheduleByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (*domain.RevenueSchedule, error) {
 	query := `
-		SELECT id, tenant_id, invoice_id, subscription_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
 		FROM revenue_schedules
 		WHERE tenant_id = $1 AND invoice_id = $2 AND status = 'active'
 		LIMIT 1
 	`
 	var s domain.RevenueSchedule
+	var entityID sql.NullString
 	err := r.db.QueryRowContext(ctx, query, tenantID, invoiceID).Scan(
-		&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &s.TotalAmount,
+		&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &entityID, &s.TotalAmount,
 		&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	if err != nil {
 		return nil, err
+	}
+	if entityID.Valid {
+		u := uuid.MustParse(entityID.String)
+		s.EntityID = &u
 	}
 	return &s, nil
 }

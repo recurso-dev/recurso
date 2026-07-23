@@ -176,7 +176,7 @@ func TestLedgerNegativeAmountsRejected(t *testing.T) {
 	if err := svc.RecordPayment(context.Background(), inv); err == nil {
 		t.Error("RecordPayment must reject a negative total, got nil")
 	}
-	if _, err := svc.RecordRecognition(context.Background(), inv.TenantID, -500, uuid.New()); err == nil {
+	if _, err := svc.RecordRecognition(context.Background(), inv.TenantID, nil, -500, uuid.New()); err == nil {
 		t.Error("RecordRecognition must reject a negative amount, got nil")
 	}
 	if len(repo.transactions) != 0 {
@@ -305,7 +305,7 @@ func TestLedgerRecordRecognition_MovesDeferredToRecognized(t *testing.T) {
 	svc := NewLedgerService(nil, repo)
 
 	eventID := uuid.New()
-	txID, err := svc.RecordRecognition(context.Background(), uuid.New(), 4200, eventID)
+	txID, err := svc.RecordRecognition(context.Background(), uuid.New(), nil, 4200, eventID)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

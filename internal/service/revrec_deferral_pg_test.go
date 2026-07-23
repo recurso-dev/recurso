@@ -66,7 +66,7 @@ func TestRevRecDeferral_Postgres(t *testing.T) {
 
 	// Recognition drains Deferred → Recognized, referenced by the event id.
 	eventA := uuid.New()
-	if _, err := svc.RecordRecognition(ctx, tenantID, 10000, eventA); err != nil {
+	if _, err := svc.RecordRecognition(ctx, tenantID, nil, 10000, eventA); err != nil {
 		t.Fatalf("RecordRecognition: %v", err)
 	}
 	if code := creditAccountCode(t, conn, eventA, 2); code != domain.AccountCodeRecognizedRevenue {
@@ -76,10 +76,10 @@ func TestRevRecDeferral_Postgres(t *testing.T) {
 	// Distinct events post distinct rows; a replayed event id posts once
 	// (ENG-142 unique index compatibility — recognitions must not collide).
 	eventB := uuid.New()
-	if _, err := svc.RecordRecognition(ctx, tenantID, 10000, eventB); err != nil {
+	if _, err := svc.RecordRecognition(ctx, tenantID, nil, 10000, eventB); err != nil {
 		t.Fatalf("RecordRecognition(B): %v", err)
 	}
-	if _, err := svc.RecordRecognition(ctx, tenantID, 10000, eventB); err != nil {
+	if _, err := svc.RecordRecognition(ctx, tenantID, nil, 10000, eventB); err != nil {
 		t.Fatalf("RecordRecognition(B replay): %v", err)
 	}
 	if n := countTxByRef(t, conn, eventB, 2); n != 1 {

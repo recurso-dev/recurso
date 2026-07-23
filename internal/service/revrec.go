@@ -59,7 +59,7 @@ func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
 	for _, e := range events {
 		// 1. Execute Ledger Transfer (reference the event so the posting is
 		// attributable and idempotent per event).
-		txID, err := s.ledger.RecordRecognition(ctx, e.TenantID, e.Amount, e.ID)
+		txID, err := s.ledger.RecordRecognition(ctx, e.TenantID, e.EntityID, e.Amount, e.ID)
 		if err != nil {
 			slog.Error("revenue recognition ledger transfer failed", "event_id", e.ID, "error", err)
 			if markErr := s.repo.MarkEventFailed(ctx, e.ID, err.Error()); markErr != nil {
@@ -113,7 +113,7 @@ func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscripti
 		// referenceID is the schedule id, keeping this posting off the per-event
 		// recognition keys and idempotent under (reference_id, code=2).
 		if forfeited > 0 && s.ledger != nil {
-			if _, err := s.ledger.RecordRecognition(ctx, tenantID, forfeited, sched.ID); err != nil {
+			if _, err := s.ledger.RecordRecognition(ctx, tenantID, sched.EntityID, forfeited, sched.ID); err != nil {
 				slog.Error("forfeit recognition ledger post failed — reconciliation needed",
 					"schedule_id", sched.ID, "amount", forfeited, "error", err)
 			}
@@ -290,6 +290,7 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 		TenantID:       invoice.TenantID,
 		InvoiceID:      invoice.ID,
 		SubscriptionID: invoice.SubscriptionID,
+		EntityID:       invoice.EntityID, // Multi-Entity Books: recognize on the invoice's entity
 		TotalAmount:    netRevenue,
 		Currency:       invoice.Currency,
 		StartDate:      startDate,
@@ -324,6 +325,7 @@ func (s *RevRecService) createImmediateRecognition(ctx context.Context, invoice 
 		ID:          uuid.New(),
 		TenantID:    invoice.TenantID,
 		InvoiceID:   invoice.ID,
+		EntityID:    invoice.EntityID, // Multi-Entity Books (immediate recognition posts no ledger leg, but keep books consistent)
 		TotalAmount: netRevenue,
 		Currency:    invoice.Currency,
 		StartDate:   invoice.CreatedAt,
