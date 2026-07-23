@@ -54,6 +54,8 @@ export default function SubscriptionDetail({
   // Live usage-amount preview (accrued metered charges for the running period).
   const [usageAmount, setUsageAmount] = useState(null);
   const [billingUsage, setBillingUsage] = useState(false);
+  // Per-dimension usage report (period + lifetime quantity, entitlement limits).
+  const [subUsage, setSubUsage] = useState(null);
 
   // Load plans + add-ons whenever the detail opens.
   useEffect(() => {
@@ -73,6 +75,11 @@ export default function SubscriptionDetail({
       .getUsageAmount(subscription.id)
       .then((res) => setUsageAmount(res.data?.data || null))
       .catch(() => {}); // no metered charges / not applicable — section just hides
+    setSubUsage(null);
+    endpoints
+      .getSubscriptionUsage(subscription.id)
+      .then((res) => setSubUsage(res.data?.data || null))
+      .catch(() => {}); // no metered usage — section just hides
   }, [isOpen, subscription, plans.length]);
 
   const refreshAddons = () =>
@@ -538,6 +545,56 @@ export default function SubscriptionDetail({
                     {formatCurrency(usageAmount.total_amount, usageAmount.currency)}
                   </span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Usage consumption — quantity per dimension + entitlement limits */}
+          {subUsage?.dimensions?.length > 0 && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-foreground">Usage consumption</h3>
+                <span className="text-xs text-muted-foreground">this period · lifetime</span>
+              </div>
+              <div className="flex flex-col gap-3">
+                {subUsage.dimensions.map((d) => {
+                  const hasLimit = d.limit_value != null;
+                  const pct = hasLimit && d.limit_value > 0
+                    ? Math.min(100, Math.round((d.period_quantity / d.limit_value) * 100))
+                    : 0;
+                  const over = hasLimit && d.remaining != null && d.remaining < 0;
+                  return (
+                    <div key={d.dimension} className="text-sm">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 truncate font-mono text-xs text-foreground">
+                          {d.dimension}
+                        </span>
+                        <span className="tabular-nums text-foreground">
+                          {d.period_quantity.toLocaleString()}
+                          {hasLimit && (
+                            <span className="text-muted-foreground"> / {d.limit_value.toLocaleString()}</span>
+                          )}
+                          <span className="ml-1.5 text-xs text-muted-foreground">
+                            · {d.lifetime_quantity.toLocaleString()} lifetime
+                          </span>
+                        </span>
+                      </div>
+                      {hasLimit && (
+                        <div className="mt-1.5 flex items-center gap-2">
+                          <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+                            <span
+                              className={`block h-full rounded-full ${over ? "bg-red-500" : "bg-primary"}`}
+                              style={{ width: `${over ? 100 : pct}%` }}
+                            />
+                          </span>
+                          <span className={`text-xs tabular-nums ${over ? "text-red-600" : "text-muted-foreground"}`}>
+                            {over ? `${Math.abs(d.remaining).toLocaleString()} over` : `${d.remaining.toLocaleString()} left`}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
