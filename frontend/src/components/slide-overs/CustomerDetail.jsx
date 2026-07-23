@@ -106,6 +106,7 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
   const [consentsLoading, setConsentsLoading] = useState(false);
   const [revokingId, setRevokingId] = useState(null);
   const [credit, setCredit] = useState(null);
+  const [entitlements, setEntitlements] = useState([]);
 
   const custId = customer?.id;
   useEffect(() => {
@@ -123,6 +124,11 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
       .getCreditStatement(custId)
       .then((res) => !cancelled && setCredit(res.data?.data || null))
       .catch(() => !cancelled && setCredit(null));
+    setEntitlements([]);
+    endpoints
+      .getCustomerEntitlements(custId)
+      .then((res) => !cancelled && setEntitlements(res.data?.data || []))
+      .catch(() => !cancelled && setEntitlements([]));
     return () => {
       cancelled = true;
     };
@@ -491,6 +497,46 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                       </div>
                     )}
                   </div>
+                </>
+              )}
+
+              {/* Entitlements — effective feature grants from active plans */}
+              {entitlements.length > 0 && (
+                <>
+                  <Separator />
+                  <Section title="Entitlements">
+                    <div className="space-y-2">
+                      {entitlements.map((e) => {
+                        const v = e.value;
+                        const display =
+                          typeof v === "boolean"
+                            ? v
+                              ? "Enabled"
+                              : "Disabled"
+                            : v == null
+                              ? "—"
+                              : typeof v === "object"
+                                ? JSON.stringify(v)
+                                : String(v);
+                        return (
+                          <div
+                            key={e.feature_key}
+                            className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate font-mono text-xs text-foreground">{e.feature_key}</p>
+                              <p className="text-[11px] text-muted-foreground">{e.kind}</p>
+                            </div>
+                            {typeof v === "boolean" ? (
+                              <Badge variant={v ? "success" : "neutral"}>{display}</Badge>
+                            ) : (
+                              <span className="shrink-0 tabular-nums text-sm text-foreground">{display}</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Section>
                 </>
               )}
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { RefreshCw, XCircle, FileDown, FileCode } from "lucide-react";
+import { RefreshCw, XCircle, FileDown, FileCode, Eye } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -21,6 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const invoiceStatusVariant = (status) =>
   ({
@@ -92,6 +98,8 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
   const [actionMessage, setActionMessage] = useState(null);
   const [euInvoice, setEuInvoice] = useState(null);
   const [euRetrying, setEuRetrying] = useState(false);
+  const [previewHtml, setPreviewHtml] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   // Fetch the invoice's EU e-invoice (EN 16931 / UBL) on open. It lives in its
   // own table, so it isn't on the invoice row — load it on demand. A tenant that
@@ -198,12 +206,31 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
     }
   };
 
+  const handlePreview = async () => {
+    setActionMessage(null);
+    setPreviewLoading(true);
+    setPreviewHtml(""); // opens the modal in a loading state
+    try {
+      const res = await endpoints.getInvoicePreview(invoice.id);
+      setPreviewHtml(typeof res.data === "string" ? res.data : "");
+    } catch (err) {
+      setPreviewHtml(null);
+      setActionMessage({
+        type: "error",
+        text: err?.response?.data?.error?.message || "Preview failed",
+      });
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const hasEInvoice =
     invoice.e_invoice_status &&
     invoice.e_invoice_status !== "NA" &&
     invoice.e_invoice_status !== "PENDING";
 
   return (
+    <>
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-md">
         <SheetHeader>
@@ -519,8 +546,12 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
           )}
 
           {/* Actions */}
-          <div className="mt-8">
-            <Button className="w-full" onClick={handleDownloadPdf}>
+          <div className="mt-8 flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={handlePreview} disabled={previewLoading}>
+              <Eye className="h-4 w-4" />
+              {previewLoading ? "Loading…" : "Preview"}
+            </Button>
+            <Button className="flex-1" onClick={handleDownloadPdf}>
               <FileDown className="h-4 w-4" />
               Download PDF
             </Button>
@@ -528,6 +559,30 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* HTML invoice preview */}
+    <Dialog open={previewHtml !== null} onOpenChange={(o) => !o && setPreviewHtml(null)}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Invoice {invoice.invoice_number}</DialogTitle>
+        </DialogHeader>
+        <div className="h-[70vh] overflow-hidden rounded-md border border-border bg-white">
+          {previewHtml ? (
+            <iframe
+              title="Invoice preview"
+              srcDoc={previewHtml}
+              className="h-full w-full"
+              sandbox=""
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading preview…
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

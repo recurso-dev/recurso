@@ -89,6 +89,8 @@ export const endpoints = {
   updateCustomer: (id, data) => api.put(`/customers/${id}`, data),
   // Consent audit trail (GDPR): list a customer's recorded consents and revoke one.
   getCustomerConsents: (id) => api.get(`/customers/${id}/consents`),
+  // A customer's effective feature entitlements (from their active plans).
+  getCustomerEntitlements: (id) => api.get(`/customers/${id}/entitlements`),
   // Ledger-backed credits: a customer's consolidated account-credit statement.
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
@@ -97,6 +99,8 @@ export const endpoints = {
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
+  // Rendered HTML invoice (for an in-dashboard preview modal).
+  getInvoicePreview: (id) => api.get(`/invoices/${id}/preview`, { responseType: 'text' }),
   getMRR: () => api.get('/analytics/mrr'),
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
   getMRRWaterfall: (start, end) =>
@@ -307,6 +311,9 @@ export const endpoints = {
   // usage, no persistence. Body: { currency?, subscription_id?, charges[], usage[] }.
   simulateCharges: (planId, body) => api.post(`/plans/${planId}/simulate-charges`, body),
   getUsageAmount: (subId) => api.get(`/subscriptions/${subId}/usage-amount`),
+  // Per-subscription usage report: current-period + lifetime quantity per
+  // dimension, with the entitlement limit and what remains.
+  getSubscriptionUsage: (subId) => api.get(`/subscriptions/${subId}/usage`),
   // Progressive billing: generate an interim invoice now for accrued usage past
   // the threshold (A5). No-op (204) when nothing is due.
   billUsageNow: (subId) => api.post(`/subscriptions/${subId}/bill-usage`),
