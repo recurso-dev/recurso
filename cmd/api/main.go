@@ -1562,6 +1562,8 @@ func main() {
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
+		// Ledger-backed credits: a customer's consolidated account-credit statement.
+		v1.GET("/customers/:id/credit-statement", creditNoteHandler.GetCreditStatement)
 
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
 		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)

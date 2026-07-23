@@ -694,6 +694,66 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/customers/{id}/credit-statement:
+    get:
+      operationId: getCreditStatement
+      tags: [Customers]
+      summary: Customer account-credit statement
+      description: >
+        A customer's consolidated account-credit statement — spendable balance
+        per currency/entity, every grant (credit note), the invoice draw-down
+        history, and a per-currency rollup. Reads existing GL-backed data; the
+        spendable balance equals the credit applier's view.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The credit statement.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      customer_id: { type: string, format: uuid }
+                      balances:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            currency: { type: string }
+                            entity_id: { type: string, format: uuid, nullable: true }
+                            balance: { type: integer, format: int64 }
+                      grants:
+                        type: array
+                        items: { $ref: '#/components/schemas/CreditNote' }
+                      applications:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            credit_note_id: { type: string, format: uuid }
+                            invoice_id: { type: string, format: uuid }
+                            invoice_number: { type: string }
+                            currency: { type: string }
+                            amount: { type: integer, format: int64 }
+                            created_at: { type: string, format: date-time }
+                      summary:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            currency: { type: string }
+                            total_issued: { type: integer, format: int64 }
+                            total_applied: { type: integer, format: int64 }
+                            current_balance: { type: integer, format: int64 }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/customers:
     post:
       operationId: createCustomer

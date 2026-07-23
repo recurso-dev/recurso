@@ -20,6 +20,26 @@ func NewCreditNoteHandler(service *service.CreditNoteService) *CreditNoteHandler
 	return &CreditNoteHandler{service: service}
 }
 
+// GetCreditStatement returns a customer's consolidated account-credit statement:
+// spendable balance (per currency/entity), grants, draw-down history, and a
+// per-currency rollup.
+// GET /v1/customers/:id/credit-statement
+func (h *CreditNoteHandler) GetCreditStatement(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	stmt, err := h.service.GetCreditStatement(ctx, tenantID, customerID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": stmt})
+}
+
 func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	var req domain.CreateCreditNoteRequest

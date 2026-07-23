@@ -133,6 +133,10 @@ func (m *mockCreditNoteRepo) SumApplicableAdjustments(ctx context.Context, tenan
 	return 0, nil
 }
 
+func (m *mockCreditNoteRepo) ListApplicationsByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CreditApplicationLine, error) {
+	return nil, nil
+}
+
 func (m *mockCreditNoteRepo) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	return 0, nil
 }

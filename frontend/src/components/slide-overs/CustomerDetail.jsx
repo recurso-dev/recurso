@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Pencil, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
-import { formatDate, cn } from "@/lib/utils";
+import { formatDate, cn, fromMinorUnits, currencyDecimals } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,25 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+
+const fmtMoney = (minor, currency) => {
+  const d = currencyDecimals(currency);
+  return `${fromMinorUnits(minor, currency).toLocaleString(undefined, {
+    minimumFractionDigits: d,
+    maximumFractionDigits: d,
+  })} ${currency}`;
+};
+
+// Map a credit-note status to a Badge variant.
+const creditStatusVariant = (status) =>
+  ({
+    issued: "success",
+    used: "neutral",
+    void: "neutral",
+    pending_approval: "warning",
+    rejected: "destructive",
+    expired: "warning",
+  })[status] || "neutral";
 
 const riskVariant = (score) => {
   if (score == null) return "neutral";
@@ -86,6 +105,7 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
   const [consents, setConsents] = useState([]);
   const [consentsLoading, setConsentsLoading] = useState(false);
   const [revokingId, setRevokingId] = useState(null);
+  const [credit, setCredit] = useState(null);
 
   const custId = customer?.id;
   useEffect(() => {
@@ -97,10 +117,38 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
       .then((res) => !cancelled && setConsents(res.data?.data || []))
       .catch(() => !cancelled && setConsents([]))
       .finally(() => !cancelled && setConsentsLoading(false));
+    // Account-credit statement (ledger-backed credits).
+    setCredit(null);
+    endpoints
+      .getCreditStatement(custId)
+      .then((res) => !cancelled && setCredit(res.data?.data || null))
+      .catch(() => !cancelled && setCredit(null));
     return () => {
       cancelled = true;
     };
   }, [isOpen, custId]);
+
+  // Export the statement's grants + applications as a CSV the customer's finance
+  // team can reconcile against their own books.
+  const exportCreditCsv = () => {
+    if (!credit) return;
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = [["kind", "date", "reason_or_invoice", "currency", "type_or_status", "amount", "balance"]];
+    (credit.grants || []).forEach((g) =>
+      rows.push(["grant", g.created_at, g.reason || "", g.currency, `${g.type}/${g.status}`, g.amount, g.balance]),
+    );
+    (credit.applications || []).forEach((a) =>
+      rows.push(["application", a.created_at, a.invoice_number || a.invoice_id, a.currency, "applied", -a.amount, ""]),
+    );
+    const csv = rows.map((r) => r.map(esc).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `credit-statement-${customer?.name || custId}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
 
   const revokeConsent = async (id) => {
     setRevokingId(id);
@@ -366,6 +414,80 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   </Field>
                 )}
               </Section>
+
+              {/* Account credit (ledger-backed credits) */}
+              {credit && ((credit.balances?.length || 0) > 0 || (credit.grants?.length || 0) > 0) && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Account credit
+                      </p>
+                      <Button variant="outline" size="sm" onClick={exportCreditCsv}>
+                        Export CSV
+                      </Button>
+                    </div>
+
+                    {/* Spendable balance per currency */}
+                    {(credit.balances?.length || 0) > 0 ? (
+                      <div className="flex flex-wrap gap-2">
+                        {credit.balances.map((b, i) => (
+                          <Badge key={i} variant="success">
+                            {fmtMoney(b.balance, b.currency)} available
+                          </Badge>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">No spendable balance.</p>
+                    )}
+
+                    {/* Grants */}
+                    {(credit.grants?.length || 0) > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Grants</p>
+                        {credit.grants.map((g) => (
+                          <div
+                            key={g.id}
+                            className="flex items-center justify-between gap-3 border-b border-border py-1.5 last:border-0"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm text-foreground">{g.reason || "Credit"}</p>
+                              <div className="flex items-center gap-2">
+                                <Badge variant={creditStatusVariant(g.status)}>{g.status}</Badge>
+                                <span className="text-xs text-muted-foreground capitalize">{g.type}</span>
+                              </div>
+                            </div>
+                            <div className="shrink-0 text-right tabular-nums">
+                              <p className="text-sm text-foreground">{fmtMoney(g.amount, g.currency)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {fmtMoney(g.balance, g.currency)} left
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Draw-down history */}
+                    {(credit.applications?.length || 0) > 0 && (
+                      <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Applied to invoices</p>
+                        {credit.applications.map((a, i) => (
+                          <div key={i} className="flex items-center justify-between gap-3 text-sm">
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              {a.invoice_number || a.invoice_id}
+                            </span>
+                            <span className="tabular-nums text-foreground">
+                              −{fmtMoney(a.amount, a.currency)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
 
               {/* Consent audit trail (GDPR) — view and revoke */}
               {(consentsLoading || consents.length > 0) && (

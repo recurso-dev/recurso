@@ -60,6 +60,8 @@ type CreditNoteRepository interface {
 	SumApplicableAdjustments(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string) (int64, error)
 
 	ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error)
+	// ListApplicationsByCustomer returns the customer's credit draw-down history.
+	ListApplicationsByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CreditApplicationLine, error)
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error)
 }
@@ -495,6 +497,97 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 	}
 
 	return cns, nil
+}
+
+// GetCreditStatement assembles a customer's account-credit statement: the
+// spendable balance (per currency + entity), every grant, the draw-down history,
+// and a per-currency rollup. The spendable balance uses the exact predicate the
+// credit applier does — type=adjustment, status=issued, balance>0 — so the
+// statement can never disagree with what the customer can actually spend.
+func (s *CreditNoteService) GetCreditStatement(ctx context.Context, tenantID, customerID uuid.UUID) (*domain.CreditStatement, error) {
+	grants, err := s.repo.List(ctx, tenantID, domain.CreditNoteFilter{CustomerID: &customerID})
+	if err != nil {
+		return nil, fmt.Errorf("load credit grants: %w", err)
+	}
+	apps, err := s.repo.ListApplicationsByCustomer(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("load credit applications: %w", err)
+	}
+
+	// Spendable is exactly what ApplyAdjustmentCredits will draw from.
+	spendable := func(cn *domain.CreditNote) bool {
+		return cn.Type == domain.CreditNoteTypeAdjustment &&
+			cn.Status == domain.CreditNoteStatusIssued && cn.Balance > 0
+	}
+
+	// Balances by (currency, entity) — the granularity credit is spendable at.
+	type ceKey struct {
+		currency string
+		entity   uuid.UUID // uuid.Nil = primary entity (NULL)
+	}
+	balByCE := map[ceKey]int64{}
+	// Per-currency rollup.
+	issuedByCur := map[string]int64{}
+	balByCur := map[string]int64{}
+	cnCurrency := map[uuid.UUID]string{}
+
+	statementGrants := make([]domain.CreditNote, 0, len(grants))
+	for _, cn := range grants {
+		statementGrants = append(statementGrants, *cn)
+		cnCurrency[cn.ID] = cn.Currency
+		if cn.Type == domain.CreditNoteTypeAdjustment {
+			issuedByCur[cn.Currency] += cn.Amount
+		}
+		if spendable(cn) {
+			ent := uuid.Nil
+			if cn.EntityID != nil {
+				ent = *cn.EntityID
+			}
+			balByCE[ceKey{cn.Currency, ent}] += cn.Balance
+			balByCur[cn.Currency] += cn.Balance
+		}
+	}
+
+	appliedByCur := map[string]int64{}
+	for _, a := range apps {
+		appliedByCur[cnCurrency[a.CreditNoteID]] += a.Amount
+	}
+
+	balances := make([]domain.CreditBalanceLine, 0, len(balByCE))
+	for k, v := range balByCE {
+		line := domain.CreditBalanceLine{Currency: k.currency, Balance: v}
+		if k.entity != uuid.Nil {
+			e := k.entity
+			line.EntityID = &e
+		}
+		balances = append(balances, line)
+	}
+
+	// Union of every currency seen across grants + applications.
+	curs := map[string]bool{}
+	for c := range issuedByCur {
+		curs[c] = true
+	}
+	for c := range appliedByCur {
+		curs[c] = true
+	}
+	summary := make([]domain.CreditSummaryLine, 0, len(curs))
+	for c := range curs {
+		summary = append(summary, domain.CreditSummaryLine{
+			Currency:       c,
+			TotalIssued:    issuedByCur[c],
+			TotalApplied:   appliedByCur[c],
+			CurrentBalance: balByCur[c],
+		})
+	}
+
+	return &domain.CreditStatement{
+		CustomerID:   customerID,
+		Balances:     balances,
+		Grants:       statementGrants,
+		Applications: apps,
+		Summary:      summary,
+	}, nil
 }
 
 func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approverID uuid.UUID) (*domain.CreditNote, error) {
