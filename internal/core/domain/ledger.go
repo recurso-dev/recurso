@@ -158,10 +158,14 @@ const LedgerCodeTDSReceivable uint16 = 10
 // the downgrade reduces the value of supply, so the output tax on the reduced
 // portion comes back down and is credited to the customer along with the net.
 // Distinct code so it stays idempotent per (reference_id, code).
-// NOTE: shares value 10 with LedgerCodeTDSReceivable — benign today because
-// the two post against different reference types (credit note vs invoice),
-// but new codes must not reuse either.
-const LedgerCodeDowngradeTaxReversal uint16 = 10
+const LedgerCodeDowngradeTaxReversal uint16 = 17
+
+// LedgerCodeDowngradeCredit books the NET (ex-tax) portion of a mid-period plan
+// downgrade as customer account credit: DR Deferred Revenue / CR Customer Credit.
+// It pairs with LedgerCodeDowngradeTaxReversal above (the tax portion). Its own
+// code so it stays idempotent per (reference_id, code) — previously posted with
+// a hardcoded 6, silently sharing LedgerCodeOutputTax's value.
+const LedgerCodeDowngradeCredit uint16 = 16
 
 // LedgerCodeWalletTopUp books money received into a prepaid wallet
 // (Lago-parity B1): DR Cash / CR Customer Credit — the tenant holds the

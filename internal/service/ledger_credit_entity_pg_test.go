@@ -68,7 +68,7 @@ func TestLedger_AccountCreditPerEntity_Postgres(t *testing.T) {
 		what string
 	}{
 		{8, adjID, "adjustment credit"},
-		{6, downID, "downgrade credit"},
+		{domain.LedgerCodeDowngradeCredit, downID, "downgrade credit"},
 		{domain.LedgerCodeDowngradeTaxReversal, taxID, "downgrade tax reversal"},
 	} {
 		var ledgerID int

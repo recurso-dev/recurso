@@ -658,7 +658,7 @@ func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.postEntityTransfer(ctx, ent, deferredAccountID, creditAccountID, amt, 6, creditNoteID, description)
+	return s.postEntityTransfer(ctx, ent, deferredAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeCredit, creditNoteID, description)
 }
 
 // RecordAdjustmentCreditIssued books a manually-issued adjustment credit note as
