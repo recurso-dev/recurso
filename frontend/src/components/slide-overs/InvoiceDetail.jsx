@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { RefreshCw, XCircle, FileDown } from "lucide-react";
+import { useState, useEffect } from "react";
+import { RefreshCw, XCircle, FileDown, FileCode } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -75,6 +75,14 @@ function Row({ label, value, strong, danger, border }) {
   );
 }
 
+// Map an EU e-invoice status (lowercase) to a Badge variant.
+const euStatusVariant = (status) =>
+  ({
+    generated: "info",
+    sent: "success",
+    failed: "destructive",
+  })[status] || "neutral";
+
 const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -82,8 +90,60 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelCode, setCancelCode] = useState(1);
   const [actionMessage, setActionMessage] = useState(null);
+  const [euInvoice, setEuInvoice] = useState(null);
+  const [euRetrying, setEuRetrying] = useState(false);
+
+  // Fetch the invoice's EU e-invoice (EN 16931 / UBL) on open. It lives in its
+  // own table, so it isn't on the invoice row — load it on demand. A tenant that
+  // hasn't opted in (or a non-EU invoice) returns null and the section stays hidden.
+  useEffect(() => {
+    if (!isOpen || !invoice?.id) {
+      setEuInvoice(null);
+      return;
+    }
+    let cancelled = false;
+    endpoints
+      .getEUEInvoice(invoice.id)
+      .then((res) => {
+        if (!cancelled) setEuInvoice(res?.data?.data || null);
+      })
+      .catch(() => {
+        if (!cancelled) setEuInvoice(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, invoice?.id]);
 
   if (!invoice) return null;
+
+  const handleEuRetry = async () => {
+    setEuRetrying(true);
+    setActionMessage(null);
+    try {
+      const res = await endpoints.retryEUEInvoice(invoice.id);
+      setEuInvoice(res?.data?.data || null);
+      setActionMessage({ type: "success", text: res?.data?.message || "EU e-invoice retried." });
+    } catch (err) {
+      setActionMessage({
+        type: "error",
+        text: err?.response?.data?.error?.message || "EU e-invoice retry failed",
+      });
+    } finally {
+      setEuRetrying(false);
+    }
+  };
+
+  const handleDownloadUbl = () => {
+    if (!euInvoice?.document) return;
+    const blob = new Blob([euInvoice.document], { type: "application/xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${invoice.invoice_number || invoice.id}-ubl.xml`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  };
 
   const handleRetry = async () => {
     setRetrying(true);
@@ -339,6 +399,72 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
                   </Button>
                 )}
               </div>
+            </>
+          )}
+
+          {/* EU E-Invoice Section (EN 16931 / UBL) — shown only when generated */}
+          {euInvoice && (
+            <>
+              <Separator className="my-6" />
+              <h3 className="mb-4 text-sm font-semibold text-foreground">EU e-invoice</h3>
+              <dl className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <dt className="text-sm text-muted-foreground">Status</dt>
+                  <dd>
+                    <Badge variant={euStatusVariant(euInvoice.status)}>
+                      {(euInvoice.status || "").toUpperCase()}
+                    </Badge>
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-sm text-muted-foreground">Syntax</dt>
+                  <dd className="text-sm text-foreground">
+                    {(euInvoice.syntax || "ubl21").toUpperCase()}
+                  </dd>
+                </div>
+                {euInvoice.message_id && (
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Delivery ID</dt>
+                    <dd className="mt-1 break-all font-mono text-xs text-foreground">
+                      {euInvoice.message_id}
+                    </dd>
+                  </div>
+                )}
+                {euInvoice.status === "failed" && euInvoice.error_message && (
+                  <div>
+                    <dt className="text-sm text-muted-foreground">Error</dt>
+                    <dd className="mt-1 text-sm text-red-600">{euInvoice.error_message}</dd>
+                  </div>
+                )}
+              </dl>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                {euInvoice.document && (
+                  <Button onClick={handleDownloadUbl} variant="outline" size="sm">
+                    <FileCode className="h-4 w-4" />
+                    Download UBL
+                  </Button>
+                )}
+                {euInvoice.status === "failed" && (
+                  <Button onClick={handleEuRetry} disabled={euRetrying} size="sm">
+                    <RefreshCw className="h-4 w-4" />
+                    {euRetrying ? "Retrying…" : "Retry"}
+                  </Button>
+                )}
+              </div>
+
+              {actionMessage && (
+                <div
+                  className={
+                    "mt-4 rounded-lg px-3 py-2 text-sm " +
+                    (actionMessage.type === "success"
+                      ? "bg-emerald-50 text-emerald-800"
+                      : "bg-red-50 text-red-800")
+                  }
+                >
+                  {actionMessage.text}
+                </div>
+              )}
             </>
           )}
 

@@ -130,3 +130,105 @@ func (h *EUConfigHandler) UpdateEUConfig(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": in})
 }
+
+// --- Per-invoice EU e-invoice inspection + manual retry (Track C inc 2) ---
+
+// euInvoiceReader / euInvoiceOwnerLookup / euCustomerLookup / euGenerator are the
+// narrow deps the per-invoice handler needs, satisfied by *db.EUInvoiceRepository,
+// *db.InvoiceRepository, *db.CustomerRepository and *service.EUEInvoiceService.
+type euInvoiceReader interface {
+	GetByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (*domain.EUInvoice, error)
+}
+type euInvoiceOwnerLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
+}
+type euCustomerLookup interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error)
+}
+type euGenerator interface {
+	GenerateForInvoice(ctx context.Context, inv *domain.Invoice, customer *domain.Customer) (*domain.EUInvoice, error)
+}
+
+// EUEInvoiceHandler serves an individual invoice's EU e-invoice: its generated
+// EN 16931 UBL document and delivery status, plus a manual regenerate/re-transmit
+// for a failed one. Ownership is checked by loading the invoice and matching the
+// tenant (the eu_einvoices read is not tenant-scoped on its own).
+type EUEInvoiceHandler struct {
+	euInvoices euInvoiceReader
+	invoices   euInvoiceOwnerLookup
+	customers  euCustomerLookup
+	svc        euGenerator
+}
+
+func NewEUEInvoiceHandler(euInvoices euInvoiceReader, invoices euInvoiceOwnerLookup, customers euCustomerLookup, svc euGenerator) *EUEInvoiceHandler {
+	return &EUEInvoiceHandler{euInvoices: euInvoices, invoices: invoices, customers: customers, svc: svc}
+}
+
+// ownedInvoice loads the invoice and confirms it belongs to the caller's tenant,
+// writing the appropriate error response and returning ok=false otherwise.
+func (h *EUEInvoiceHandler) ownedInvoice(c *gin.Context) (*domain.Invoice, uuid.UUID, bool) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return nil, uuid.Nil, false
+	}
+	invoiceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
+		return nil, uuid.Nil, false
+	}
+	inv, err := h.invoices.GetByID(c.Request.Context(), invoiceID)
+	if err != nil {
+		respondInternalError(c, err)
+		return nil, uuid.Nil, false
+	}
+	if inv == nil || inv.TenantID != tenantID {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return nil, uuid.Nil, false
+	}
+	return inv, tenantID, true
+}
+
+// GetEUEInvoice returns the invoice's EU e-invoice record (status, syntax, UBL
+// document, delivery id / error), or data:null when none has been generated.
+// GET /v1/invoices/:id/eu-einvoice
+func (h *EUEInvoiceHandler) GetEUEInvoice(c *gin.Context) {
+	inv, _, ok := h.ownedInvoice(c)
+	if !ok {
+		return
+	}
+	rec, err := h.euInvoices.GetByInvoiceID(c.Request.Context(), inv.ID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rec}) // rec == nil ⇒ data:null (not generated)
+}
+
+// RetryEUEInvoice regenerates and re-transmits the invoice's EU e-invoice. It
+// re-runs the same generation the post-commit hook uses, so it recovers both a
+// generation failure (data since corrected) and a transmission failure, and is
+// idempotent (upsert on invoice_id). data:null means the tenant hasn't opted in.
+// POST /v1/invoices/:id/eu-einvoice/retry
+func (h *EUEInvoiceHandler) RetryEUEInvoice(c *gin.Context) {
+	inv, _, ok := h.ownedInvoice(c)
+	if !ok {
+		return
+	}
+	customer, err := h.customers.GetByID(c.Request.Context(), inv.CustomerID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	// GenerateForInvoice records a failure on the stored record and returns it
+	// alongside the error, so surface the (updated) record either way — the
+	// client reads status/error_message rather than relying on the HTTP code.
+	rec, genErr := h.svc.GenerateForInvoice(c.Request.Context(), inv, customer)
+	msg := "EU e-invoice regenerated"
+	if rec == nil && genErr == nil {
+		msg = "EU e-invoicing is not enabled for this tenant"
+	} else if genErr != nil {
+		msg = "retry ran but the EU e-invoice is still failing"
+	}
+	c.JSON(http.StatusOK, gin.H{"data": rec, "message": msg})
+}
