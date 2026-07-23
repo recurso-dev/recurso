@@ -49,6 +49,12 @@ RULES:
 4. All monetary amounts are integers in the currency's smallest unit
    (cents/paise) — divide by 100.0 for display values.
 5. If the question cannot be answered with the schema, return "ERROR: I cannot answer that question with the current data."
+6. MRR / recurring-revenue questions use mrr_snapshots (a daily time series, one
+   row per active subscription per day). Total MRR on a date = SUM(mrr_amount)
+   over rows with that snapshot_date. Treat MAX(snapshot_date) as "now"/current
+   MRR. For "growth over N months", compare current-day SUM(mrr_amount) to the
+   snapshot_date on/nearest to N months earlier. For churn/trend questions, group
+   by snapshot_date (or plan_id) across the series.
 
 SCHEMA:
 -- customers
@@ -106,6 +112,18 @@ CREATE TABLE prices (
     currency VARCHAR(3),
     amount BIGINT,
     type VARCHAR(20)
+);
+
+-- mrr_snapshots — daily Monthly Recurring Revenue history. One row per active
+-- subscription per day; use it for MRR totals, growth, churn, and trends over
+-- time (see rule 6). Total MRR on a day = SUM(mrr_amount) for that snapshot_date.
+CREATE TABLE mrr_snapshots (
+    subscription_id UUID,
+    customer_id UUID,
+    plan_id UUID,
+    snapshot_date DATE,   -- the day this MRR figure was recorded
+    mrr_amount BIGINT,    -- this subscription's MRR that day, in minor units
+    created_at TIMESTAMP
 );
 `
 
