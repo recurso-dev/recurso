@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -43,6 +44,14 @@ func (h *AnalyticsHandler) Ask(c *gin.Context) {
 	if err != nil {
 		if errors.Is(err, service.ErrGenAINotConfigured) {
 			respondError(c, http.StatusServiceUnavailable, codeInternalError, err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrGenAICannotAnswer) {
+			// Expected outcome (the model declined — the question can't be answered
+			// from the exposed schema), NOT a server fault. Show the user the clean,
+			// actionable message; keep the model's reason in the logs for tuning.
+			slog.Info("genai declined question", "question", req.Question, "err", err)
+			respondError(c, http.StatusUnprocessableEntity, codeValidationFailed, service.GenAICannotAnswerMessage)
 			return
 		}
 		respondInternalError(c, err)

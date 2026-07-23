@@ -15,6 +15,17 @@ import (
 // OPENAI_API_KEY unset). Callers map it to 503 rather than a 500.
 var ErrGenAINotConfigured = errors.New("genai analytics is not configured on this server")
 
+// ErrGenAICannotAnswer marks the case where the model declines a question because
+// it can't be satisfied from the limited genai schema (e.g. "MRR growth over the
+// last 3 months" — there is no MRR time-series in the exposed views). This is an
+// EXPECTED, user-facing outcome, not a server fault, so handlers map it to 422
+// rather than a 500 "internal error".
+var ErrGenAICannotAnswer = errors.New("question not answerable from the available data")
+
+// GenAICannotAnswerMessage is the user-facing text shown verbatim in the Ask AI
+// panel when the model declines (paired with ErrGenAICannotAnswer).
+const GenAICannotAnswerMessage = "I couldn't answer that from the data available here. Try rephrasing, or ask about customers, invoices, subscriptions, plans, or prices — e.g. \"which plan has the most active subscriptions?\""
+
 type GenAIService struct {
 	llm port.LLMProvider
 	db  *sql.DB
@@ -114,7 +125,10 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 
 	sqlQuery = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(sqlQuery), ";"))
 	if strings.HasPrefix(sqlQuery, "ERROR:") {
-		return nil, "", fmt.Errorf("%s", sqlQuery)
+		// The model followed its instruction to decline (question not answerable
+		// with the exposed schema). Surface a friendly, actionable message — not a
+		// 500. The model's own reason is logged for debugging but not shown raw.
+		return nil, "", fmt.Errorf("%w (model said: %s)", ErrGenAICannotAnswer, strings.TrimSpace(strings.TrimPrefix(sqlQuery, "ERROR:")))
 	}
 	if err := guardGeneratedSQL(sqlQuery); err != nil {
 		return nil, sqlQuery, err
