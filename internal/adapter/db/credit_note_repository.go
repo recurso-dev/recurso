@@ -335,6 +335,31 @@ func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, fil
 	return creditNotes, nil
 }
 
+// ListApplicationsByCustomer returns a customer's credit draw-down history —
+// each credit_note_applications row (which credit note settled which invoice for
+// how much), joined to the invoice number, newest first. Scoped through the
+// credit note's customer so it can't leak another customer's applications.
+func (r *CreditNoteRepository) ListApplicationsByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CreditApplicationLine, error) {
+	var lines []domain.CreditApplicationLine
+	err := r.db.SelectContext(ctx, &lines, `
+		SELECT a.credit_note_id AS credit_note_id,
+		       a.invoice_id      AS invoice_id,
+		       COALESCE(i.invoice_number, '') AS invoice_number,
+		       cn.currency       AS currency,
+		       a.amount          AS amount,
+		       a.created_at      AS created_at
+		FROM credit_note_applications a
+		JOIN credit_notes cn ON cn.id = a.credit_note_id
+		LEFT JOIN invoices i ON i.id = a.invoice_id
+		WHERE a.tenant_id = $1 AND cn.customer_id = $2
+		ORDER BY a.created_at DESC`,
+		tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list credit applications: %w", err)
+	}
+	return lines, nil
+}
+
 func (r *CreditNoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error) {
 	var cn domain.CreditNote
 	err := r.db.GetContext(ctx, &cn, `SELECT * FROM credit_notes WHERE id = $1 AND tenant_id = $2`, id, tenantID)
