@@ -1213,6 +1213,7 @@ func main() {
 	// PORTAL_URL is where the customer-facing portal SPA is served; magic
 	// link emails point there. Defaults to the API base URL for dev.
 	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
+	notificationService.SetPortalBaseURL(portalBaseURL) // portal links (update-payment-method) point at the SPA, not the API domain
 	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
 	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
 	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
