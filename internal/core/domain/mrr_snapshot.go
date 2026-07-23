@@ -17,6 +17,10 @@ type MRRSnapshot struct {
 	Currency       string     `json:"currency"`
 	CustomerID     *uuid.UUID `json:"customer_id,omitempty"`
 	PlanID         *uuid.UUID `json:"plan_id,omitempty"`
+	// EntityID is the concrete legal entity this MRR belongs to (the primary
+	// entity's id when the subscription is on the primary). Stored concrete — not
+	// NULL-for-primary — so per-entity reporting is a plain equality filter.
+	EntityID *uuid.UUID `json:"entity_id,omitempty"`
 }
 
 // MRRWaterfall breaks the change in MRR between two dates into its movement

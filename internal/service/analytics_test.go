@@ -156,6 +156,55 @@ func mrrFixture(plans ...*domain.Plan) (*mockSubRepoForMRR, *mockPlanRepoForMRR)
 
 // --- Tests ---
 
+type fakeAnalyticsEntityReader struct{ primary *domain.Entity }
+
+func (f *fakeAnalyticsEntityReader) GetPrimary(_ context.Context, _ uuid.UUID) (*domain.Entity, error) {
+	return f.primary, nil
+}
+func (f *fakeAnalyticsEntityReader) GetByID(_ context.Context, id, _ uuid.UUID) (*domain.Entity, error) {
+	return &domain.Entity{ID: id}, nil
+}
+
+// TestGetMRR_PerEntityScoping proves the Multi-Entity Books MRR follow-up: nil
+// entityID is consolidated (all entities), a concrete id scopes to that entity,
+// and a primary-entity subscription (entity_id NULL) is resolved to the primary's
+// concrete id so it's counted under the primary — not lost.
+func TestGetMRR_PerEntityScoping(t *testing.T) {
+	primaryID := uuid.New()
+	entityB := uuid.New()
+
+	planA := mrrPlan("USD", 1000) // on the primary entity (EntityID nil)
+	planB := mrrPlan("USD", 3000) // on entity B
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{planA.ID: planA, planB.ID: planB}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), PlanID: planA.ID, EntityID: nil},
+		{ID: uuid.New(), PlanID: planB.ID, EntityID: &entityB},
+	}}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
+	svc.SetEntityReader(&fakeAnalyticsEntityReader{primary: &domain.Entity{ID: primaryID, IsPrimary: true}})
+
+	cases := []struct {
+		name   string
+		entity *uuid.UUID
+		want   int64
+	}{
+		{"consolidated (nil)", nil, 4000},
+		{"primary entity", &primaryID, 1000},
+		{"entity B", &entityB, 3000},
+	}
+	for _, tc := range cases {
+		got, err := svc.GetMRR(context.Background(), uuid.New(), tc.entity)
+		if err != nil {
+			t.Fatalf("%s: GetMRR: %v", tc.name, err)
+		}
+		if got.NormalizedMRR != tc.want {
+			t.Errorf("%s: MRR = %d, want %d", tc.name, got.NormalizedMRR, tc.want)
+		}
+	}
+}
+
 func TestGetMRR_SingleCurrency_NoConversion(t *testing.T) {
 	planA := mrrPlan("USD", 1000)
 	planB := mrrPlan("USD", 2500)
@@ -165,7 +214,7 @@ func TestGetMRR_SingleCurrency_NoConversion(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -201,7 +250,7 @@ func TestGetMRR_MixedCurrency_ConversionMath(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -243,7 +292,7 @@ func TestGetMRR_RoundsHalfAwayFromZero(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -267,7 +316,7 @@ func TestGetMRR_FallbackSourceFlagged(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(primary, fallback, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -291,7 +340,7 @@ func TestGetMRR_UnconvertibleCurrency_ExcludedAndFlagged(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -317,7 +366,7 @@ func TestGetMRR_ZeroSubscriptions(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(fxp, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -346,7 +395,7 @@ func TestGetMRR_TenantBaseCurrencyPreferred(t *testing.T) {
 	svc.SetFX(fxp, nil, "USD")
 	svc.SetTenantLookup(lookup)
 
-	got, err := svc.GetMRR(context.Background(), tenantID)
+	got, err := svc.GetMRR(context.Background(), tenantID, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -459,7 +508,7 @@ func TestGetMRR_NormalizesBillingInterval(t *testing.T) {
 	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
 	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
 
-	got, err := svc.GetMRR(context.Background(), uuid.Nil)
+	got, err := svc.GetMRR(context.Background(), uuid.Nil, nil)
 	if err != nil {
 		t.Fatalf("GetMRR: %v", err)
 	}
@@ -493,31 +542,38 @@ func (f *fakeMRRSnapshotStore) UpsertSnapshots(_ context.Context, snaps []domain
 	return nil
 }
 
-func (f *fakeMRRSnapshotStore) ResolveSnapshotDate(_ context.Context, tenantID uuid.UUID, onOrBefore time.Time) (time.Time, bool, error) {
+func fakeEntityMatch(rowEntity, want *uuid.UUID) bool {
+	if want == nil {
+		return true
+	}
+	return rowEntity != nil && *rowEntity == *want
+}
+
+func (f *fakeMRRSnapshotStore) ResolveSnapshotDate(_ context.Context, tenantID uuid.UUID, entityID *uuid.UUID, onOrBefore time.Time) (time.Time, bool, error) {
 	var best time.Time
 	found := false
 	for _, r := range f.rows {
-		if r.TenantID == tenantID && !r.SnapshotDate.After(onOrBefore) && (!found || r.SnapshotDate.After(best)) {
+		if r.TenantID == tenantID && fakeEntityMatch(r.EntityID, entityID) && !r.SnapshotDate.After(onOrBefore) && (!found || r.SnapshotDate.After(best)) {
 			best, found = r.SnapshotDate, true
 		}
 	}
 	return best, found, nil
 }
 
-func (f *fakeMRRSnapshotStore) GetSnapshotsOn(_ context.Context, tenantID uuid.UUID, date time.Time) ([]domain.MRRSnapshot, error) {
+func (f *fakeMRRSnapshotStore) GetSnapshotsOn(_ context.Context, tenantID uuid.UUID, entityID *uuid.UUID, date time.Time) ([]domain.MRRSnapshot, error) {
 	var out []domain.MRRSnapshot
 	for _, r := range f.rows {
-		if r.TenantID == tenantID && r.SnapshotDate.Equal(date) {
+		if r.TenantID == tenantID && fakeEntityMatch(r.EntityID, entityID) && r.SnapshotDate.Equal(date) {
 			out = append(out, r)
 		}
 	}
 	return out, nil
 }
 
-func (f *fakeMRRSnapshotStore) SubscriptionIDsSeenBefore(_ context.Context, tenantID uuid.UUID, date time.Time) (map[uuid.UUID]bool, error) {
+func (f *fakeMRRSnapshotStore) SubscriptionIDsSeenBefore(_ context.Context, tenantID uuid.UUID, entityID *uuid.UUID, date time.Time) (map[uuid.UUID]bool, error) {
 	m := map[uuid.UUID]bool{}
 	for _, r := range f.rows {
-		if r.TenantID == tenantID && r.SnapshotDate.Before(date) {
+		if r.TenantID == tenantID && fakeEntityMatch(r.EntityID, entityID) && r.SnapshotDate.Before(date) {
 			m[r.SubscriptionID] = true
 		}
 	}
@@ -549,7 +605,7 @@ func TestGetMRRWaterfall_Components(t *testing.T) {
 	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
 	svc.SetSnapshotStore(store)
 
-	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, d1, d2)
+	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, nil, d1, d2)
 	if err != nil {
 		t.Fatalf("GetMRRWaterfall: %v", err)
 	}
@@ -599,7 +655,7 @@ func TestGetMRRWaterfall_NoStartHistory(t *testing.T) {
 	svc.SetFX(&mockFXForMRR{source: "live"}, nil, "USD")
 	svc.SetSnapshotStore(store)
 
-	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, d2.AddDate(0, -1, 0), d2)
+	wf, err := svc.GetMRRWaterfall(context.Background(), tenant, nil, d2.AddDate(0, -1, 0), d2)
 	if err != nil {
 		t.Fatalf("GetMRRWaterfall: %v", err)
 	}

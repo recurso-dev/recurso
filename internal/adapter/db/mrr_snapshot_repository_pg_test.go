@@ -52,7 +52,7 @@ func TestMRRSnapshotRepository_RoundTrip(t *testing.T) {
 	}
 
 	// ResolveSnapshotDate: mid-June resolves to d1 (nearest on-or-before).
-	got, ok, err := repo.ResolveSnapshotDate(ctx, tenant, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
+	got, ok, err := repo.ResolveSnapshotDate(ctx, tenant, nil, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC))
 	if err != nil || !ok {
 		t.Fatalf("resolve: ok=%v err=%v", ok, err)
 	}
@@ -61,7 +61,7 @@ func TestMRRSnapshotRepository_RoundTrip(t *testing.T) {
 	}
 
 	// GetSnapshotsOn d1 → just subA at 1000.
-	snaps, err := repo.GetSnapshotsOn(ctx, tenant, d1)
+	snaps, err := repo.GetSnapshotsOn(ctx, tenant, nil, d1)
 	if err != nil {
 		t.Fatalf("get on d1: %v", err)
 	}
@@ -73,13 +73,13 @@ func TestMRRSnapshotRepository_RoundTrip(t *testing.T) {
 	if err := repo.UpsertSnapshots(ctx, []domain.MRRSnapshot{mrrSnap(tenant, subA, d1, 1200)}); err != nil {
 		t.Fatalf("re-upsert: %v", err)
 	}
-	snaps, _ = repo.GetSnapshotsOn(ctx, tenant, d1)
+	snaps, _ = repo.GetSnapshotsOn(ctx, tenant, nil, d1)
 	if len(snaps) != 1 || snaps[0].MRRAmount != 1200 {
 		t.Fatalf("after re-upsert d1 = %+v, want [subA=1200]", snaps)
 	}
 
 	// SubscriptionIDsSeenBefore(d1): subB (d0 < d1) yes, subA (earliest d1) no.
-	seen, err := repo.SubscriptionIDsSeenBefore(ctx, tenant, d1)
+	seen, err := repo.SubscriptionIDsSeenBefore(ctx, tenant, nil, d1)
 	if err != nil {
 		t.Fatalf("seen-before: %v", err)
 	}

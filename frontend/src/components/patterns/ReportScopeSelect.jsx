@@ -17,7 +17,11 @@ import { SCOPE_ALL, SCOPE_CONSOLIDATED } from "@/components/patterns/reportScope
 // (Multi-Entity Books): all entities (each line tagged with its entity), a
 // tenant-wide consolidated rollup, or a single entity. Renders nothing for
 // single-entity tenants — there is only one ledger to report on.
-export function ReportScopeSelect({ value, onChange }) {
+//
+// hideConsolidated drops the "Consolidated" option for SCALAR reports (e.g. MRR)
+// where a total across entities is identical to "All entities" — showing both
+// would offer two controls that produce the same number.
+export function ReportScopeSelect({ value, onChange, hideConsolidated = false }) {
   const { data: entities = [] } = useQuery({
     queryKey: ["entities"],
     queryFn: async () => (await endpoints.getEntities()).data?.data || [],
@@ -37,7 +41,9 @@ export function ReportScopeSelect({ value, onChange }) {
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={SCOPE_ALL}>All entities</SelectItem>
-          <SelectItem value={SCOPE_CONSOLIDATED}>Consolidated</SelectItem>
+          {!hideConsolidated && (
+            <SelectItem value={SCOPE_CONSOLIDATED}>Consolidated</SelectItem>
+          )}
           <SelectGroup>
             <SelectLabel>By entity</SelectLabel>
             {entities.map((e) => (

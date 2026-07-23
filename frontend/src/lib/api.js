@@ -103,10 +103,12 @@ export const endpoints = {
   getInvoicePreview: (id) => api.get(`/invoices/${id}/preview`, { responseType: 'text' }),
   // (Re)email the invoice to the customer with a hosted Pay Now link.
   sendInvoice: (id) => api.post(`/invoices/${id}/send`),
-  getMRR: () => api.get('/analytics/mrr'),
+  // params may carry { entity_id } to scope MRR to one legal entity (omitted = all).
+  getMRR: (params = {}) => api.get('/analytics/mrr', { params }),
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
-  getMRRWaterfall: (start, end) =>
-    api.get('/analytics/mrr/waterfall', { params: { start, end } }),
+  // params may carry { entity_id } to scope to one legal entity.
+  getMRRWaterfall: (start, end, params = {}) =>
+    api.get('/analytics/mrr/waterfall', { params: { start, end, ...params } }),
   // Outstanding receivables bucketed by days past due.
   getInvoiceAging: () => api.get('/analytics/invoice-aging'),
   // ARPA / ARPU / LTV.

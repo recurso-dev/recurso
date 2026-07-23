@@ -5,6 +5,8 @@ import { Info, TrendingUp } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { ReportScopeSelect } from "@/components/patterns/ReportScopeSelect";
+import { SCOPE_ALL, scopeToParams } from "@/components/patterns/reportScope";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -49,6 +51,8 @@ export default function MRRWaterfall() {
 
   const [start, setStart] = useState(iso(monthAgo));
   const [end, setEnd] = useState(iso(now));
+  const [scope, setScope] = useState(SCOPE_ALL);
+  const scopeParams = scopeToParams(scope);
 
   const {
     data: wf,
@@ -56,8 +60,8 @@ export default function MRRWaterfall() {
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["mrr-waterfall", start, end],
-    queryFn: async () => (await endpoints.getMRRWaterfall(start, end)).data?.data || null,
+    queryKey: ["mrr-waterfall", start, end, scope],
+    queryFn: async () => (await endpoints.getMRRWaterfall(start, end, scopeParams)).data?.data || null,
   });
   const error = queryError
     ? queryError?.response?.data?.error?.message || "Failed to load the MRR waterfall"
@@ -77,12 +81,15 @@ export default function MRRWaterfall() {
         title="MRR Waterfall"
         description="How recurring revenue moved over the period — new, expansion, contraction, and churn."
         actions={
-          <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="wf-start">Start date</label>
-            <input id="wf-start" type="date" className={dateInputClass} value={start} max={end} onChange={(e) => setStart(e.target.value)} />
-            <span className="text-sm text-muted-foreground">→</span>
-            <label className="sr-only" htmlFor="wf-end">End date</label>
-            <input id="wf-end" type="date" className={dateInputClass} value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+          <div className="flex flex-wrap items-center gap-3">
+            <ReportScopeSelect value={scope} onChange={setScope} hideConsolidated />
+            <div className="flex items-center gap-2">
+              <label className="sr-only" htmlFor="wf-start">Start date</label>
+              <input id="wf-start" type="date" className={dateInputClass} value={start} max={end} onChange={(e) => setStart(e.target.value)} />
+              <span className="text-sm text-muted-foreground">→</span>
+              <label className="sr-only" htmlFor="wf-end">End date</label>
+              <input id="wf-end" type="date" className={dateInputClass} value={end} min={start} onChange={(e) => setEnd(e.target.value)} />
+            </div>
           </div>
         }
       />

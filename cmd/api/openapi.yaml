@@ -2375,7 +2375,9 @@ paths:
       operationId: getMRR
       tags: [Analytics]
       summary: Monthly recurring revenue
-      description: Current MRR across active subscriptions. Responses are cached for up to 5 minutes.
+      description: Current MRR across active subscriptions. Optional entity_id scopes to one legal entity; omitted = all entities (consolidated). Responses are cached for up to 5 minutes.
+      parameters:
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: Current MRR.
@@ -2405,6 +2407,7 @@ paths:
           in: query
           schema: { type: string, format: date }
           description: Period end (YYYY-MM-DD). Defaults to today.
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: MRR waterfall for the period.

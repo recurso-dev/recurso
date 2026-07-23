@@ -56,9 +56,45 @@ type AnalyticsService struct {
 	tenantLookup      TenantLookup
 	reportingCurrency string // env-level default when the tenant has no base currency
 
-	snapshots  MRRSnapshotStore  // optional; enables MRR snapshot capture + waterfall
-	agingStore InvoiceAgingStore // optional; enables invoice aging
-	customers  CustomerLookup    // optional; enables revenue-by-geography
+	snapshots  MRRSnapshotStore      // optional; enables MRR snapshot capture + waterfall
+	agingStore InvoiceAgingStore     // optional; enables invoice aging
+	customers  CustomerLookup        // optional; enables revenue-by-geography
+	entities   analyticsEntityReader // optional; enables per-entity MRR scoping
+}
+
+// analyticsEntityReader resolves legal entities so MRR can be reported per entity
+// (Multi-Entity Books). Optional/nil-safe: without it, snapshots carry the
+// subscription's raw entity (primary → nil) and per-entity filtering of the
+// live GetMRR on the primary entity is unavailable — consolidated still works.
+type analyticsEntityReader interface {
+	GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error)
+	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Entity, error)
+}
+
+// SetEntityReader wires per-entity MRR scoping.
+func (s *AnalyticsService) SetEntityReader(r analyticsEntityReader) { s.entities = r }
+
+// primaryEntityID returns the tenant's primary entity id, or nil when no reader
+// is wired. Used to give primary-entity subscriptions (whose entity_id is NULL)
+// a concrete id for reporting.
+func (s *AnalyticsService) primaryEntityID(ctx context.Context, tenantID uuid.UUID) *uuid.UUID {
+	if s.entities == nil {
+		return nil
+	}
+	if e, err := s.entities.GetPrimary(ctx, tenantID); err == nil && e != nil {
+		id := e.ID
+		return &id
+	}
+	return nil
+}
+
+// effectiveEntityID is a subscription's concrete reporting entity — its own
+// entity_id, or the primary's id when it's on the primary (subEntityID nil).
+func effectiveEntityID(subEntityID, primaryID *uuid.UUID) *uuid.UUID {
+	if subEntityID != nil {
+		return subEntityID
+	}
+	return primaryID
 }
 
 func NewAnalyticsService(
@@ -130,7 +166,9 @@ type MRRMetrics struct {
 // GetMRR calculates Monthly Recurring Revenue, normalized to the tenant's
 // reporting currency (tenant.BaseCurrency, else the configured default).
 // Simplification P3: Sum of all Active Subscriptions * Plan Amount (normalized to Monthly).
-func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRRMetrics, error) {
+// GetMRR takes an optional entityID: nil = all entities (consolidated, the
+// historical behavior); a concrete entity id scopes MRR to that legal entity.
+func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*MRRMetrics, error) {
 	subs, err := s.subRepo.GetActiveSubscriptions(ctx, tenantID)
 	if err != nil {
 		return nil, err
@@ -138,11 +176,24 @@ func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID) (*MRR
 
 	reporting := s.resolveReportingCurrency(ctx, tenantID)
 
+	// For a per-entity view, resolve the primary once so primary-entity subs
+	// (entity_id NULL) match their concrete entity id.
+	var primaryID *uuid.UUID
+	if entityID != nil {
+		primaryID = s.primaryEntityID(ctx, tenantID)
+	}
+
 	// Sum MRR per currency. Plan lookups are cached to avoid repeated queries.
 	planCache := make(map[uuid.UUID]*domain.Plan)
 	perCurrency := make(map[string]int64)
 	perCurrencyCount := make(map[string]int)
 	for _, sub := range subs {
+		if entityID != nil {
+			eff := effectiveEntityID(sub.EntityID, primaryID)
+			if eff == nil || *eff != *entityID {
+				continue
+			}
+		}
 		plan, ok := planCache[sub.PlanID]
 		if !ok {
 			p, err := s.planRepo.GetByID(ctx, sub.PlanID)
