@@ -69,11 +69,11 @@ func (r *CreditNoteRepository) CreateRefundWithinLimit(ctx context.Context, cn *
 		INSERT INTO credit_notes (
 			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
-			refund_message, created_at, updated_at
+			refund_message, expires_at, created_at, updated_at
 		) VALUES (
 			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
-			:refund_message, :created_at, :updated_at
+			:refund_message, :expires_at, :created_at, :updated_at
 		) RETURNING id`
 	q, args, err := sqlx.Named(insert, cn)
 	if err != nil {
@@ -95,11 +95,11 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 		INSERT INTO credit_notes (
 			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
-			refund_message, created_at, updated_at
+			refund_message, expires_at, created_at, updated_at
 		) VALUES (
 			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
-			:refund_message, :created_at, :updated_at
+			:refund_message, :expires_at, :created_at, :updated_at
 		) RETURNING id`
 
 	rows, err := r.db.NamedQueryContext(ctx, query, creditNote)
@@ -358,6 +358,54 @@ func (r *CreditNoteRepository) ListApplicationsByCustomer(ctx context.Context, t
 		return nil, fmt.Errorf("failed to list credit applications: %w", err)
 	}
 	return lines, nil
+}
+
+// ClaimExpiredCredits atomically writes off every spendable adjustment credit
+// whose expires_at is due: it zeroes the balance and flips status to 'expired' in
+// one statement, and returns each written-off amount (the pre-update balance) so
+// the caller can post the GL leg. FOR UPDATE SKIP LOCKED is the claim primitive
+// (ADR-003) — concurrent sweeps take disjoint sets and a note is claimed once
+// (the status flip removes it from the predicate), so its ledger write-off can't
+// double-post. `now` must be UTC to match the TIMESTAMPTZ comparison.
+func (r *CreditNoteRepository) ClaimExpiredCredits(ctx context.Context, now time.Time, limit int) ([]domain.CreditExpiry, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		WITH due AS (
+			SELECT id, tenant_id, entity_id, balance, currency
+			FROM credit_notes
+			WHERE type = 'adjustment' AND status = 'issued' AND balance > 0
+			  AND expires_at IS NOT NULL AND expires_at <= $1
+			ORDER BY expires_at ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		)
+		UPDATE credit_notes c
+		   SET balance = 0, status = 'expired', updated_at = NOW()
+		  FROM due
+		 WHERE c.id = due.id
+		 RETURNING c.id, due.tenant_id, due.entity_id, due.balance, due.currency`,
+		now.UTC(), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim expired credits: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.CreditExpiry
+	for rows.Next() {
+		var e domain.CreditExpiry
+		var entityID sql.NullString
+		if err := rows.Scan(&e.CreditNoteID, &e.TenantID, &entityID, &e.Amount, &e.Currency); err != nil {
+			return nil, fmt.Errorf("failed to scan expired credit: %w", err)
+		}
+		if entityID.Valid {
+			id, perr := uuid.Parse(entityID.String)
+			if perr != nil {
+				return nil, fmt.Errorf("parse entity id: %w", perr)
+			}
+			e.EntityID = &id
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 func (r *CreditNoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error) {

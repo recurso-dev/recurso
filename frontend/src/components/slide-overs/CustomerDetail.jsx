@@ -456,6 +456,11 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                               <div className="flex items-center gap-2">
                                 <Badge variant={creditStatusVariant(g.status)}>{g.status}</Badge>
                                 <span className="text-xs text-muted-foreground capitalize">{g.type}</span>
+                                {g.expires_at && (
+                                  <span className="text-xs text-muted-foreground">
+                                    · {g.status === "expired" ? "expired" : "expires"} {formatDate(g.expires_at)}
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <div className="shrink-0 text-right tabular-nums">

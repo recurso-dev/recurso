@@ -192,6 +192,13 @@ const LedgerCodeWalletForfeit uint16 = 14
 // expiry apart from closure.
 const LedgerCodeWalletExpiry uint16 = 15
 
+// LedgerCodeCreditExpiry books an account credit note written off when its dated
+// balance lapses (ledger-backed credits inc 2): DR Customer Credit / CR Credits
+// & Adjustments — the reversal of the original issuance, discharging the
+// liability. Distinct from the wallet-expiry code (its reference is a credit
+// note, not a wallet transaction). Codes 16/17 are the downgrade legs.
+const LedgerCodeCreditExpiry uint16 = 18
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

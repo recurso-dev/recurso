@@ -14,6 +14,9 @@ const (
 	CreditNoteStatusVoid     CreditNoteStatus = "void"
 	CreditNoteStatusPending  CreditNoteStatus = "pending_approval"
 	CreditNoteStatusRejected CreditNoteStatus = "rejected"
+	// CreditNoteStatusExpired is set by the expiry sweep when a dated adjustment
+	// credit lapses with balance remaining (ledger-backed credits inc 2).
+	CreditNoteStatusExpired CreditNoteStatus = "expired"
 )
 
 // CreditNoteType distinguishes a plain balance adjustment (spendable credit)
@@ -58,8 +61,11 @@ type CreditNote struct {
 	Currency  string           `json:"currency" db:"currency"`
 	Status    CreditNoteStatus `json:"status" db:"status"`
 	Reason    string           `json:"reason" db:"reason"`
-	CreatedAt time.Time        `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time        `json:"updated_at" db:"updated_at"`
+	// ExpiresAt bounds a spendable adjustment credit's life; nil = never expires.
+	// The expiry sweep writes off any balance still open at this time.
+	ExpiresAt *time.Time `json:"expires_at,omitempty" db:"expires_at"`
+	CreatedAt time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at" db:"updated_at"`
 
 	// Audit tracking
 	CreatedBy  *uuid.UUID `json:"created_by,omitempty" db:"created_by"`
@@ -85,6 +91,20 @@ type CreateCreditNoteRequest struct {
 	// Type defaults to "adjustment"; "refund" triggers a gateway refund
 	// against the (paid) invoice referenced by InvoiceID.
 	Type string `json:"type" binding:"omitempty,oneof=adjustment refund"`
+	// ExpiresAt optionally bounds a spendable adjustment credit's life (nil =
+	// never expires). Ignored for refunds, which carry no spendable balance.
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+// CreditExpiry is one lapsed adjustment credit the sweep wrote off: the amount
+// (its balance at expiry) and the entity whose Customer-Credit liability it
+// discharges. The credit note id is the ledger reference.
+type CreditExpiry struct {
+	CreditNoteID uuid.UUID
+	TenantID     uuid.UUID
+	EntityID     *uuid.UUID
+	Amount       int64
+	Currency     string
 }
 
 type CreditNoteFilter struct {
