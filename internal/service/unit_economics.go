@@ -14,7 +14,7 @@ import (
 // trailing-30-day MRR waterfall — so it's only reported once snapshot history
 // exists and churn is non-zero (HasLTV).
 func (s *AnalyticsService) GetUnitEconomics(ctx context.Context, tenantID uuid.UUID) (*domain.UnitEconomics, error) {
-	mrrM, err := s.GetMRR(ctx, tenantID)
+	mrrM, err := s.GetMRR(ctx, tenantID, nil) // tenant-wide (all entities)
 	if err != nil {
 		return nil, err
 	}
@@ -45,7 +45,7 @@ func (s *AnalyticsService) GetUnitEconomics(ctx context.Context, tenantID uuid.U
 	// trailing-30-day waterfall's revenue churn when that history exists.
 	if s.snapshots != nil {
 		end := time.Now()
-		wf, err := s.GetMRRWaterfall(ctx, tenantID, end.AddDate(0, 0, -30), end)
+		wf, err := s.GetMRRWaterfall(ctx, tenantID, nil, end.AddDate(0, 0, -30), end)
 		if err == nil && wf.HasStartHistory && wf.StartingMRR > 0 && wf.Churned > 0 {
 			churnRate := float64(wf.Churned) / float64(wf.StartingMRR)
 			ue.MonthlyChurnRate = churnRate * 100

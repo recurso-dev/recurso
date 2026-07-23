@@ -74,7 +74,14 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 	// Inject TenantID into context for Service/Repo
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
-	mrr, err := h.svc.GetMRR(ctx, tenantID)
+	// Optional ?entity_id= scopes to one legal entity; omitted = all/consolidated.
+	entityID, ok2 := entityIDParam(c)
+	if !ok2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	mrr, err := h.svc.GetMRR(ctx, tenantID, entityID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to calculate MRR")
 		return
@@ -115,7 +122,13 @@ func (h *AnalyticsHandler) GetMRRWaterfall(c *gin.Context) {
 		return
 	}
 
-	wf, err := h.svc.GetMRRWaterfall(ctx, tenantID, start, end)
+	entityID, ok2 := entityIDParam(c)
+	if !ok2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	wf, err := h.svc.GetMRRWaterfall(ctx, tenantID, entityID, start, end)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to compute MRR waterfall")
 		return

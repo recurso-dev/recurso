@@ -588,6 +588,7 @@ func main() {
 	ledgerService.SetEntityReader(db.NewEntityRepository(database))
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
+	analyticsService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: per-entity MRR scoping + concrete entity on snapshots
 	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
 		analyticsService.SetInvoiceAgingStore(agingStore)
 	}

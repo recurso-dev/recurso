@@ -55,6 +55,11 @@ RULES:
    MRR. For "growth over N months", compare current-day SUM(mrr_amount) to the
    snapshot_date on/nearest to N months earlier. For churn/trend questions, group
    by snapshot_date (or plan_id) across the series.
+7. For PER-ENTITY questions (e.g. "what is <Entity>'s MRR growth?"), join
+   mrr_snapshots.entity_id to entities.id and filter by entities.name (case-
+   insensitive: ILIKE). mrr_snapshots.entity_id is always the concrete entity
+   (the primary entity for primary subscriptions), so a plain equality/join works.
+   Grouping MRR by entities.name gives a per-entity breakdown.
 
 SCHEMA:
 -- customers
@@ -121,8 +126,20 @@ CREATE TABLE mrr_snapshots (
     subscription_id UUID,
     customer_id UUID,
     plan_id UUID,
+    entity_id UUID,       -- the legal entity this MRR belongs to (see rule 7)
     snapshot_date DATE,   -- the day this MRR figure was recorded
     mrr_amount BIGINT,    -- this subscription's MRR that day, in minor units
+    created_at TIMESTAMP
+);
+
+-- entities — the tenant's legal entities (Multi-Entity Books). Join
+-- mrr_snapshots.entity_id = entities.id to scope/group MRR by entity (rule 7).
+CREATE TABLE entities (
+    id UUID PRIMARY KEY,
+    name VARCHAR(255),
+    legal_name VARCHAR(255),
+    is_primary BOOLEAN,
+    country_code VARCHAR(2),
     created_at TIMESTAMP
 );
 `

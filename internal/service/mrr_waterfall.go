@@ -8,12 +8,14 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
-// MRRSnapshotStore persists and reads per-subscription MRR history.
+// MRRSnapshotStore persists and reads per-subscription MRR history. The read
+// methods take an optional entityID: nil scopes to all entities (consolidated);
+// a concrete id filters to one legal entity (snapshots store concrete entity ids).
 type MRRSnapshotStore interface {
 	UpsertSnapshots(ctx context.Context, snaps []domain.MRRSnapshot) error
-	ResolveSnapshotDate(ctx context.Context, tenantID uuid.UUID, onOrBefore time.Time) (time.Time, bool, error)
-	GetSnapshotsOn(ctx context.Context, tenantID uuid.UUID, date time.Time) ([]domain.MRRSnapshot, error)
-	SubscriptionIDsSeenBefore(ctx context.Context, tenantID uuid.UUID, date time.Time) (map[uuid.UUID]bool, error)
+	ResolveSnapshotDate(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, onOrBefore time.Time) (time.Time, bool, error)
+	GetSnapshotsOn(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, date time.Time) ([]domain.MRRSnapshot, error)
+	SubscriptionIDsSeenBefore(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, date time.Time) (map[uuid.UUID]bool, error)
 }
 
 // dayUTC reduces a timestamp to its calendar day in UTC, matching the DATE
@@ -37,6 +39,11 @@ func (s *AnalyticsService) CaptureMRRSnapshot(ctx context.Context, tenantID uuid
 	}
 	reporting := s.resolveReportingCurrency(ctx, tenantID)
 	day := dayUTC(date)
+
+	// Stamp each snapshot with its CONCRETE entity id so per-entity reporting is
+	// a plain equality filter. Primary-entity subs (entity_id NULL) get the
+	// primary's id; resolve it once.
+	primaryID := s.primaryEntityID(tctx, tenantID)
 
 	planCache := make(map[uuid.UUID]*domain.Plan)
 	snaps := make([]domain.MRRSnapshot, 0, len(subs))
@@ -67,6 +74,7 @@ func (s *AnalyticsService) CaptureMRRSnapshot(ctx context.Context, tenantID uuid
 			Currency:       currency,
 			CustomerID:     &cust,
 			PlanID:         &planID,
+			EntityID:       effectiveEntityID(sub.EntityID, primaryID),
 		})
 	}
 	if err := s.snapshots.UpsertSnapshots(ctx, snaps); err != nil {
@@ -80,38 +88,40 @@ func (s *AnalyticsService) CaptureMRRSnapshot(ctx context.Context, tenantID uuid
 // reporting currency. Period boundaries resolve to the nearest captured snapshot
 // on or before each date. When no snapshot exists on or before the start,
 // HasStartHistory is false and everything present at the end counts as New.
-func (s *AnalyticsService) GetMRRWaterfall(ctx context.Context, tenantID uuid.UUID, start, end time.Time) (*domain.MRRWaterfall, error) {
+// GetMRRWaterfall takes an optional entityID: nil = all entities (consolidated);
+// a concrete entity id scopes the movement breakdown to that legal entity.
+func (s *AnalyticsService) GetMRRWaterfall(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, start, end time.Time) (*domain.MRRWaterfall, error) {
 	reporting := s.resolveReportingCurrency(ctx, tenantID)
 	wf := &domain.MRRWaterfall{StartDate: start, EndDate: end, ReportingCurrency: reporting}
 
-	endDate, hasEnd, err := s.snapshots.ResolveSnapshotDate(ctx, tenantID, end)
+	endDate, hasEnd, err := s.snapshots.ResolveSnapshotDate(ctx, tenantID, entityID, end)
 	if err != nil {
 		return nil, err
 	}
 	if !hasEnd {
 		return wf, nil // no history captured yet
 	}
-	startDate, hasStart, err := s.snapshots.ResolveSnapshotDate(ctx, tenantID, start)
+	startDate, hasStart, err := s.snapshots.ResolveSnapshotDate(ctx, tenantID, entityID, start)
 	if err != nil {
 		return nil, err
 	}
 	wf.HasStartHistory = hasStart
 
-	endSnaps, err := s.snapshots.GetSnapshotsOn(ctx, tenantID, endDate)
+	endSnaps, err := s.snapshots.GetSnapshotsOn(ctx, tenantID, entityID, endDate)
 	if err != nil {
 		return nil, err
 	}
 	startMap := make(map[uuid.UUID]domain.MRRSnapshot)
 	seenBefore := make(map[uuid.UUID]bool)
 	if hasStart {
-		startSnaps, err := s.snapshots.GetSnapshotsOn(ctx, tenantID, startDate)
+		startSnaps, err := s.snapshots.GetSnapshotsOn(ctx, tenantID, entityID, startDate)
 		if err != nil {
 			return nil, err
 		}
 		for _, sn := range startSnaps {
 			startMap[sn.SubscriptionID] = sn
 		}
-		if seenBefore, err = s.snapshots.SubscriptionIDsSeenBefore(ctx, tenantID, startDate); err != nil {
+		if seenBefore, err = s.snapshots.SubscriptionIDsSeenBefore(ctx, tenantID, entityID, startDate); err != nil {
 			return nil, err
 		}
 	}
