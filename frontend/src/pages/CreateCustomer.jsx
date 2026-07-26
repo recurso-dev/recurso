@@ -58,6 +58,7 @@ export default function CreateCustomer() {
     tax_exempt: false,
     tax_exemption_number: "",
     tax_exemption_code: "",
+    tax_exemption_expires_at: "",
   });
 
   const isIndia = form.country === "India";
@@ -106,6 +107,7 @@ export default function CreateCustomer() {
       tax_exempt: isIndia ? false : form.tax_exempt,
       tax_exemption_number: isIndia ? "" : form.tax_exemption_number,
       tax_exemption_code: isIndia ? "" : form.tax_exemption_code,
+      tax_exemption_expires_at: isIndia || !form.tax_exempt ? "" : form.tax_exemption_expires_at,
     });
   };
 
@@ -279,6 +281,18 @@ export default function CreateCustomer() {
                         placeholder="e.g. A (federal govt)"
                         value={form.tax_exemption_code}
                         onChange={(e) => setField("tax_exemption_code", e.target.value.toUpperCase())}
+                      />
+                    </FormField>
+                    <FormField
+                      label="Certificate expiry"
+                      htmlFor="tax_exemption_expires_at"
+                      description="Optional. After this date the buyer is charged tax again."
+                    >
+                      <Input
+                        id="tax_exemption_expires_at"
+                        type="date"
+                        value={form.tax_exemption_expires_at}
+                        onChange={(e) => setField("tax_exemption_expires_at", e.target.value)}
                       />
                     </FormField>
                   </div>

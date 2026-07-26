@@ -202,6 +202,8 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
       tax_exempt: customer.tax_exempt || false,
       tax_exemption_number: customer.tax_exemption_number || "",
       tax_exemption_code: customer.tax_exemption_code || "",
+      // The API returns an RFC3339 timestamp; <input type="date"> needs YYYY-MM-DD.
+      tax_exemption_expires_at: (customer.tax_exemption_expires_at || "").slice(0, 10),
     });
     setIsEditing(true);
   };
@@ -342,6 +344,12 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                     value={form.tax_exemption_code}
                     onChange={(v) => set("tax_exemption_code")(v.toUpperCase())}
                     placeholder="A"
+                  />
+                  <EditField
+                    label="Certificate expiry"
+                    type="date"
+                    value={form.tax_exemption_expires_at}
+                    onChange={set("tax_exemption_expires_at")}
                   />
                 </div>
               )}

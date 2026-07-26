@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,6 +16,20 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
 )
+
+// parseExemptionExpiry parses a YYYY-MM-DD certificate expiry into a *time.Time.
+// Empty ⇒ nil (no expiry on file).
+func parseExemptionExpiry(s string) (*time.Time, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return nil, fmt.Errorf("tax_exemption_expires_at must be a date (YYYY-MM-DD)")
+	}
+	return &t, nil
+}
 
 type CustomerHandler struct {
 	service *service.CustomerService
@@ -37,9 +54,10 @@ type createCustomerRequest struct {
 	Zip           string `json:"zip"`
 	Country       string `json:"country" binding:"omitempty,len=2"` // Allow empty or iso code
 	// US sales-tax exemption (D2)
-	TaxExempt          bool   `json:"tax_exempt"`
-	TaxExemptionNumber string `json:"tax_exemption_number"`
-	TaxExemptionCode   string `json:"tax_exemption_code"`
+	TaxExempt             bool   `json:"tax_exempt"`
+	TaxExemptionNumber    string `json:"tax_exemption_number"`
+	TaxExemptionCode      string `json:"tax_exemption_code"`
+	TaxExemptionExpiresAt string `json:"tax_exemption_expires_at"` // YYYY-MM-DD; empty = no expiry (Inc 2)
 }
 
 func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
@@ -52,6 +70,12 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+
+	expiry, err := parseExemptionExpiry(req.TaxExemptionExpiresAt)
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
 
@@ -70,9 +94,10 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 		Zip:           req.Zip,
 		Country:       req.Country,
 
-		TaxExempt:          req.TaxExempt,
-		TaxExemptionNumber: req.TaxExemptionNumber,
-		TaxExemptionCode:   req.TaxExemptionCode,
+		TaxExempt:             req.TaxExempt,
+		TaxExemptionNumber:    req.TaxExemptionNumber,
+		TaxExemptionCode:      req.TaxExemptionCode,
+		TaxExemptionExpiresAt: expiry,
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
@@ -177,9 +202,10 @@ type updateCustomerRequest struct {
 	Country       *string `json:"country" binding:"omitempty,len=2"`
 	Active        *bool   `json:"active"`
 	// US sales-tax exemption (D2)
-	TaxExempt          *bool   `json:"tax_exempt"`
-	TaxExemptionNumber *string `json:"tax_exemption_number"`
-	TaxExemptionCode   *string `json:"tax_exemption_code"`
+	TaxExempt             *bool   `json:"tax_exempt"`
+	TaxExemptionNumber    *string `json:"tax_exemption_number"`
+	TaxExemptionCode      *string `json:"tax_exemption_code"`
+	TaxExemptionExpiresAt *string `json:"tax_exemption_expires_at"` // nil=unchanged; ""=clear; YYYY-MM-DD=set (Inc 2)
 }
 
 // UpdateCustomer handles PUT /v1/customers/:id. Archiving (active=false) is
@@ -202,6 +228,19 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 		return
 	}
 
+	// Partial: only touch the exemption expiry when the field is present.
+	var expiry *time.Time
+	expirySet := false
+	if req.TaxExemptionExpiresAt != nil {
+		parsed, perr := parseExemptionExpiry(*req.TaxExemptionExpiresAt)
+		if perr != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, perr.Error())
+			return
+		}
+		expiry = parsed
+		expirySet = true
+	}
+
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	customer, err := h.service.UpdateCustomer(ctx, service.UpdateCustomerInput{
 		TenantID:      tenantID,
@@ -220,9 +259,11 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 		Country:       req.Country,
 		Active:        req.Active,
 
-		TaxExempt:          req.TaxExempt,
-		TaxExemptionNumber: req.TaxExemptionNumber,
-		TaxExemptionCode:   req.TaxExemptionCode,
+		TaxExempt:                req.TaxExempt,
+		TaxExemptionNumber:       req.TaxExemptionNumber,
+		TaxExemptionCode:         req.TaxExemptionCode,
+		TaxExemptionExpiresAt:    expiry,
+		TaxExemptionExpiresAtSet: expirySet,
 	})
 	if err != nil {
 		// The archive gate ("active subscriptions") and field validation are

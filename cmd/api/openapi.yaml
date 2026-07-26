@@ -671,6 +671,7 @@ paths:
                 tax_exempt: { type: boolean, description: "US sales-tax exemption status (D2)." }
                 tax_exemption_number: { type: string, description: "Exemption/resale certificate number." }
                 tax_exemption_code: { type: string, description: "Provider entity-use / usage code (also the reason)." }
+                tax_exemption_expires_at: { type: string, format: date, description: "Exemption certificate expiry (YYYY-MM-DD); empty/omitted = no expiry. Past this date the buyer is charged tax again (Inc 2)." }
                 line1: { type: string }
                 city: { type: string }
                 state: { type: string }
@@ -8578,6 +8579,10 @@ components:
         tax_exemption_code:
           type: string
           description: Provider entity-use / customer-usage code (e.g. Avalara "A"); also the exemption reason.
+        tax_exemption_expires_at:
+          type: [string, 'null']
+          format: date
+          description: Exemption certificate expiry (YYYY-MM-DD). Honored through this date; past it the buyer is charged tax again. Null = no expiry on file (Inc 2).
         line1:
           type: string
         city:
@@ -8641,6 +8646,9 @@ components:
           type: string
         tax_exemption_code:
           type: string
+        tax_exemption_expires_at:
+          type: [string, 'null']
+          format: date
         referral_code:
           type: [string, 'null']
         risk_score:

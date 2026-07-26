@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -327,6 +328,25 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 // ("sales_tax_stub"). A provider error at invoice time must never fail the
 // invoice: it degrades to 0% with TaxType "sales_tax_error" and a warn log,
 // so the invoice ships and the gap is auditable.
+// exemptForCustomer reports whether a customer's US sales-tax exemption applies
+// right now. An exemption certificate is honored only through its expiry date
+// (Inc 2); a nil expiry never expires (existing behavior). An expired
+// certificate is logged and treated as non-exempt, so tax is collected again —
+// the conservative, audit-safe direction.
+func exemptForCustomer(logger *slog.Logger, customer *domain.Customer) bool {
+	if !customer.TaxExempt {
+		return false
+	}
+	if exp := customer.TaxExemptionExpiresAt; exp != nil && exp.Before(time.Now().Truncate(24*time.Hour)) {
+		if logger != nil {
+			logger.Info("customer tax-exemption certificate expired; collecting tax",
+				"customer_id", customer.ID, "expired_at", exp.Format("2006-01-02"))
+		}
+		return false
+	}
+	return true
+}
+
 func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngine, tenantID uuid.UUID, customer *domain.Customer, currency string, amount int64) InvoiceTax {
 	buyerCountry := normalizeCountry(customer.BillingAddress.Country)
 	if buyerCountry != "" && buyerCountry != "US" {
@@ -362,8 +382,9 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 		IsBusiness:    isBusinessBuyer(customer),
 		// D2: an exempt customer is passed through to the provider (exemption
 		// number + entity-use code) so it returns zero tax and records an exempt
-		// sale, rather than the engine short-circuiting.
-		TaxExempt:          customer.TaxExempt,
+		// sale, rather than the engine short-circuiting. Inc 2: an exemption is
+		// honored only through its certificate's expiry date.
+		TaxExempt:          exemptForCustomer(r.logger, customer),
 		TaxExemptionNumber: customer.TaxExemptionNumber,
 		TaxExemptionCode:   customer.TaxExemptionCode,
 	})
