@@ -105,6 +105,8 @@ export const endpoints = {
   sendInvoice: (id) => api.post(`/invoices/${id}/send`),
   // params may carry { entity_id } to scope MRR to one legal entity (omitted = all).
   getMRR: (params = {}) => api.get('/analytics/mrr', { params }),
+  // MRR contribution of every legal entity (Multi-Entity Books).
+  getMRRByEntity: () => api.get('/analytics/mrr/by-entity'),
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
   // params may carry { entity_id } to scope to one legal entity.
   getMRRWaterfall: (start, end, params = {}) =>

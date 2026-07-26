@@ -156,13 +156,19 @@ func mrrFixture(plans ...*domain.Plan) (*mockSubRepoForMRR, *mockPlanRepoForMRR)
 
 // --- Tests ---
 
-type fakeAnalyticsEntityReader struct{ primary *domain.Entity }
+type fakeAnalyticsEntityReader struct {
+	primary *domain.Entity
+	all     []*domain.Entity
+}
 
 func (f *fakeAnalyticsEntityReader) GetPrimary(_ context.Context, _ uuid.UUID) (*domain.Entity, error) {
 	return f.primary, nil
 }
 func (f *fakeAnalyticsEntityReader) GetByID(_ context.Context, id, _ uuid.UUID) (*domain.Entity, error) {
 	return &domain.Entity{ID: id}, nil
+}
+func (f *fakeAnalyticsEntityReader) List(_ context.Context, _ uuid.UUID) ([]*domain.Entity, error) {
+	return f.all, nil
 }
 
 // TestGetMRR_PerEntityScoping proves the Multi-Entity Books MRR follow-up: nil
@@ -202,6 +208,76 @@ func TestGetMRR_PerEntityScoping(t *testing.T) {
 		if got.NormalizedMRR != tc.want {
 			t.Errorf("%s: MRR = %d, want %d", tc.name, got.NormalizedMRR, tc.want)
 		}
+	}
+}
+
+// TestGetMRRByEntity proves the per-entity breakdown: each active subscription
+// lands under its effective entity (primary for a NULL entity_id), entities with
+// no MRR still appear (zero), the total equals consolidated MRR, and rows are
+// sorted by MRR descending.
+func TestGetMRRByEntity(t *testing.T) {
+	primaryID := uuid.New()
+	entityB := uuid.New()
+	entityC := uuid.New() // no subscriptions → should still appear at 0
+
+	planA := mrrPlan("USD", 1000) // primary (EntityID nil)
+	planB := mrrPlan("USD", 3000) // entity B
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{planA.ID: planA, planB.ID: planB}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), PlanID: planA.ID, EntityID: nil},
+		{ID: uuid.New(), PlanID: planB.ID, EntityID: &entityB},
+	}}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
+	svc.SetEntityReader(&fakeAnalyticsEntityReader{
+		primary: &domain.Entity{ID: primaryID, IsPrimary: true},
+		all: []*domain.Entity{
+			{ID: primaryID, Name: "HQ", IsPrimary: true},
+			{ID: entityB, Name: "Entity B"},
+			{ID: entityC, Name: "Entity C"},
+		},
+	})
+
+	got, err := svc.GetMRRByEntity(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetMRRByEntity: %v", err)
+	}
+	if got.TotalMRR != 4000 {
+		t.Errorf("total MRR = %d, want 4000 (consolidated)", got.TotalMRR)
+	}
+	if len(got.Entities) != 3 {
+		t.Fatalf("expected all 3 entities in the roster, got %d", len(got.Entities))
+	}
+	// Sorted by MRR desc: Entity B (3000), HQ (1000), Entity C (0).
+	if got.Entities[0].EntityID != entityB || got.Entities[0].NormalizedMRR != 3000 {
+		t.Errorf("rank 0 = %+v, want Entity B / 3000", got.Entities[0])
+	}
+	if got.Entities[1].EntityID != primaryID || got.Entities[1].NormalizedMRR != 1000 || !got.Entities[1].IsPrimary {
+		t.Errorf("rank 1 = %+v, want HQ (primary) / 1000", got.Entities[1])
+	}
+	if got.Entities[2].EntityID != entityC || got.Entities[2].NormalizedMRR != 0 {
+		t.Errorf("rank 2 = %+v, want Entity C / 0 (zero-MRR entity still listed)", got.Entities[2])
+	}
+	if got.Entities[0].ARR != 36000 {
+		t.Errorf("Entity B ARR = %d, want 36000 (MRR×12)", got.Entities[0].ARR)
+	}
+}
+
+// Without an entity reader wired, the breakdown is empty (caller falls back to
+// consolidated GetMRR) — never an error.
+func TestGetMRRByEntity_NoReader(t *testing.T) {
+	planA := mrrPlan("USD", 1000)
+	subRepo, planRepo := mrrFixture(planA, mrrPlan("USD", 2000))
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(&mockFXForMRR{source: "live", asOf: time.Now()}, nil, "USD")
+
+	got, err := svc.GetMRRByEntity(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetMRRByEntity: %v", err)
+	}
+	if len(got.Entities) != 0 {
+		t.Errorf("expected empty breakdown without an entity reader, got %d", len(got.Entities))
 	}
 }
 

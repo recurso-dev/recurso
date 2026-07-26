@@ -89,6 +89,23 @@ func (h *AnalyticsHandler) GetMRR(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": mrr})
 }
 
+// GetMRRByEntity returns MRR broken down across every legal entity (Multi-Entity
+// Books). A single-entity tenant gets one row. GET /v1/analytics/mrr/by-entity
+func (h *AnalyticsHandler) GetMRRByEntity(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	breakdown, err := h.svc.GetMRRByEntity(ctx, tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to calculate MRR by entity")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": breakdown})
+}
+
 // GetMRRWaterfall returns the MRR movement breakdown between two dates
 // (?start=YYYY-MM-DD&end=YYYY-MM-DD; default = the trailing month).
 func (h *AnalyticsHandler) GetMRRWaterfall(c *gin.Context) {

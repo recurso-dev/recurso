@@ -69,6 +69,9 @@ type AnalyticsService struct {
 type analyticsEntityReader interface {
 	GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error)
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Entity, error)
+	// List enumerates the tenant's entities so MRR can be broken down and named
+	// per entity (GetMRRByEntity).
+	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Entity, error)
 }
 
 // SetEntityReader wires per-entity MRR scoping.
@@ -251,6 +254,106 @@ func (s *AnalyticsService) GetMRR(ctx context.Context, tenantID uuid.UUID, entit
 		Breakdown:         breakdown,
 		FX:                normalizer.snapshot(),
 	}, nil
+}
+
+// MRREntityBreakdown is one legal entity's MRR contribution, normalized to the
+// tenant's reporting currency (Multi-Entity Books follow-up).
+type MRREntityBreakdown struct {
+	EntityID      uuid.UUID `json:"entity_id"`
+	EntityName    string    `json:"entity_name"`
+	IsPrimary     bool      `json:"is_primary"`
+	NormalizedMRR int64     `json:"normalized_mrr"`
+	ARR           int64     `json:"arr"`
+	Subscriptions int       `json:"subscriptions"`
+}
+
+// MRRByEntity is the per-entity MRR breakdown plus the consolidated total.
+type MRRByEntity struct {
+	ReportingCurrency string               `json:"reporting_currency"`
+	TotalMRR          int64                `json:"total_mrr"`
+	Entities          []MRREntityBreakdown `json:"entities"`
+}
+
+// GetMRRByEntity breaks MRR down across every legal entity in one pass over the
+// active subscriptions — the per-entity view of the consolidated GetMRR total.
+// Each subscription is attributed to its effective entity (its own entity_id, or
+// the primary when null) and normalized to the reporting currency. Entities with
+// no active MRR still appear (zero), so the breakdown is a complete roster.
+// Requires the entity reader; without it, returns just the consolidated total
+// under a single synthetic "primary" row is NOT done — it returns an empty
+// entities list so the caller can fall back to consolidated GetMRR.
+func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUID) (*MRRByEntity, error) {
+	reporting := s.resolveReportingCurrency(ctx, tenantID)
+	result := &MRRByEntity{ReportingCurrency: reporting, Entities: []MRREntityBreakdown{}}
+	if s.entities == nil {
+		return result, nil
+	}
+
+	entities, err := s.entities.List(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	primaryID := s.primaryEntityID(ctx, tenantID)
+
+	subs, err := s.subRepo.GetActiveSubscriptions(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Accumulate per-entity, per-currency MRR in a single pass.
+	perEntityCurrency := make(map[uuid.UUID]map[string]int64)
+	perEntityCount := make(map[uuid.UUID]int)
+	planCache := make(map[uuid.UUID]*domain.Plan)
+	for _, sub := range subs {
+		eff := effectiveEntityID(sub.EntityID, primaryID)
+		if eff == nil {
+			continue // no entity reader / no primary — can't attribute
+		}
+		plan, ok := planCache[sub.PlanID]
+		if !ok {
+			p, err := s.planRepo.GetByID(ctx, sub.PlanID)
+			if err != nil || p == nil {
+				continue
+			}
+			plan = p
+			planCache[sub.PlanID] = plan
+		}
+		if len(plan.Prices) == 0 {
+			continue
+		}
+		currency := plan.Prices[0].Currency
+		if currency == "" {
+			currency = reporting
+		}
+		if perEntityCurrency[*eff] == nil {
+			perEntityCurrency[*eff] = make(map[string]int64)
+		}
+		perEntityCurrency[*eff][currency] += monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
+		perEntityCount[*eff]++
+	}
+
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	for _, ent := range entities {
+		row := MRREntityBreakdown{
+			EntityID:      ent.ID,
+			EntityName:    ent.Name,
+			IsPrimary:     ent.IsPrimary,
+			Subscriptions: perEntityCount[ent.ID],
+		}
+		for currency, amount := range perEntityCurrency[ent.ID] {
+			if converted, _, err := normalizer.convert(ctx, amount, currency, reporting); err == nil {
+				row.NormalizedMRR += converted
+			}
+		}
+		row.ARR = row.NormalizedMRR * 12
+		result.TotalMRR += row.NormalizedMRR
+		result.Entities = append(result.Entities, row)
+	}
+	// Highest MRR first — the operator's most valuable entity leads.
+	sort.Slice(result.Entities, func(i, j int) bool {
+		return result.Entities[i].NormalizedMRR > result.Entities[j].NormalizedMRR
+	})
+	return result, nil
 }
 
 // resolveReportingCurrency prefers the tenant's base currency when available,

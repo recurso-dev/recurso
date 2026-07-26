@@ -2389,6 +2389,36 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/analytics/mrr/by-entity:
+    get:
+      operationId: getMRRByEntity
+      tags: [Analytics]
+      summary: MRR broken down by legal entity
+      description: >-
+        MRR contribution of each legal entity (Multi-Entity Books), normalized to
+        the reporting currency and sorted by MRR descending. Every entity appears
+        (zero if it has no active MRR); a single-entity tenant gets one row.
+        Cached for up to 5 minutes.
+      responses:
+        '200':
+          description: Per-entity MRR breakdown.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reporting_currency: { type: string }
+                      total_mrr: { type: integer, format: int64 }
+                      entities:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MRREntityBreakdown'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/analytics/mrr/waterfall:
     get:
       operationId: getMRRWaterfall
@@ -9531,6 +9561,17 @@ components:
         created_at:
           type: string
           format: date-time
+
+    MRREntityBreakdown:
+      type: object
+      description: One legal entity's MRR contribution, in the reporting currency.
+      properties:
+        entity_id: { type: string, format: uuid }
+        entity_name: { type: string }
+        is_primary: { type: boolean }
+        normalized_mrr: { type: integer, format: int64 }
+        arr: { type: integer, format: int64 }
+        subscriptions: { type: integer }
 
     MRRMetrics:
       type: object
