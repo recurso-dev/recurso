@@ -195,6 +195,39 @@ type OverdueInvoice struct {
 	IsMandate bool
 }
 
+// CollectionsQueueItem is one currently-failing invoice as shown on the
+// operator-facing Collections worklist (Collections Intelligence Inc 1). It
+// joins the invoice's recovery state (retry count, last failure, next retry,
+// which engine owns it) with the customer and the latest payment-attempt status,
+// so a human can see who is failing right now, why, and what happens next —
+// without touching the automated recovery engine. Read-only.
+type CollectionsQueueItem struct {
+	ID               uuid.UUID  `json:"id"`
+	CustomerID       uuid.UUID  `json:"customer_id"`
+	CustomerName     string     `json:"customer_name"`
+	CustomerEmail    string     `json:"customer_email"`
+	InvoiceNumber    string     `json:"invoice_number"`
+	Status           string     `json:"status"` // past_due | uncollectible
+	Currency         string     `json:"currency"`
+	AmountRemaining  int64      `json:"amount_remaining"` // total − amount_paid, minor units
+	DueDate          time.Time  `json:"due_date"`
+	DaysOverdue      int        `json:"days_overdue"`
+	RetryCount       int        `json:"retry_count"`
+	LastPaymentError string     `json:"last_payment_error"` // gateway/ACH failure code, raw
+	NextRetryAt      *time.Time `json:"next_retry_at,omitempty"`
+	ManagedBy        string     `json:"managed_by"`               // scheduler | worker | campaign
+	AttemptStatus    string     `json:"attempt_status,omitempty"` // latest payment_attempt status (ACH), if any
+}
+
+// CollectionsQueueFilter narrows the collections worklist. Empty fields mean "no
+// filter"; Limit/Offset are pre-clamped by the handler.
+type CollectionsQueueFilter struct {
+	Status    string // "", "past_due", "uncollectible"
+	ManagedBy string // "", "scheduler", "worker", "campaign"
+	Limit     int
+	Offset    int
+}
+
 // CalculateDueDate returns the due date based on payment terms (e.g., "net15", "net30")
 func CalculateDueDate(start time.Time, terms string) time.Time {
 	if terms == "" || terms == "net0" || terms == "due_on_receipt" {

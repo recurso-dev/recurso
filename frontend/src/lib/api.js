@@ -238,6 +238,9 @@ export const endpoints = {
   getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
   getDunningRecovered: () => api.get('/analytics/dunning/recovered'),
 
+  // Collections Intelligence — operator worklist of currently-failing invoices.
+  getCollectionsQueue: (params) => api.get('/collections/queue', { params }),
+
   // Payment mandates (UPI Autopay)
   getMandates: () => api.get('/mandates'),
   createMandate: (data) => api.post('/mandates', data),

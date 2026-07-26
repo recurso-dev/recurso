@@ -3651,6 +3651,56 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/collections/queue:
+    get:
+      operationId: getCollectionsQueue
+      tags: [Collections]
+      summary: Collections worklist of currently-failing invoices
+      description: >
+        Operator-facing list of invoices in a recovery state (past_due or
+        uncollectible with a balance owing), each with its customer, amount
+        remaining, days overdue, retry count, last failure code, next scheduled
+        retry, which engine owns it, and the latest ACH attempt status. Read-only.
+      parameters:
+        - name: status
+          in: query
+          description: Narrow to a single recovery status.
+          schema:
+            type: string
+            enum: [past_due, uncollectible]
+        - name: managed_by
+          in: query
+          description: Narrow to invoices owned by a specific recovery engine.
+          schema:
+            type: string
+            enum: [scheduler, worker, campaign]
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: per_page
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 250, default: 50 }
+      responses:
+        '200':
+          description: The collections worklist.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CollectionsQueueItem'
+                  meta:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      per_page: { type: integer }
+                      total: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/analytics/ask:
     post:
       operationId: askAnalytics
@@ -9520,6 +9570,40 @@ components:
         created_at:
           type: string
           format: date-time
+
+    CollectionsQueueItem:
+      type: object
+      description: One currently-failing invoice on the collections worklist.
+      properties:
+        id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+        customer_name: { type: string }
+        customer_email: { type: string }
+        invoice_number: { type: string }
+        status:
+          type: string
+          enum: [past_due, uncollectible]
+        currency: { type: string }
+        amount_remaining:
+          type: integer
+          format: int64
+          description: Total minus amount paid, in minor units.
+        due_date: { type: string, format: date-time }
+        days_overdue: { type: integer }
+        retry_count: { type: integer }
+        last_payment_error:
+          type: string
+          description: Raw gateway/ACH failure code from the last attempt, if any.
+        next_retry_at:
+          type: string
+          format: date-time
+          nullable: true
+        managed_by:
+          type: string
+          enum: [scheduler, worker, campaign]
+        attempt_status:
+          type: string
+          description: Status of the latest payment attempt (ACH), if one exists.
 
     APIKey:
       type: object
