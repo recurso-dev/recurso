@@ -780,7 +780,7 @@ func TestCaptureMRRSnapshot(t *testing.T) {
 
 type fakeInvoiceAgingStore struct{ rows []domain.InvoiceAgingRow }
 
-func (f *fakeInvoiceAgingStore) GetInvoiceAgingRows(_ context.Context, _ uuid.UUID) ([]domain.InvoiceAgingRow, error) {
+func (f *fakeInvoiceAgingStore) GetInvoiceAgingRows(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]domain.InvoiceAgingRow, error) {
 	return f.rows, nil
 }
 
@@ -797,7 +797,7 @@ func TestGetInvoiceAging_NormalizesAndOrders(t *testing.T) {
 	svc.SetFX(&mockFXForMRR{rates: map[string]float64{"EUR:USD": 1.25}, source: "live"}, nil, "USD")
 	svc.SetInvoiceAgingStore(store)
 
-	rep, err := svc.GetInvoiceAging(context.Background(), uuid.New())
+	rep, err := svc.GetInvoiceAging(context.Background(), uuid.New(), nil)
 	if err != nil {
 		t.Fatalf("GetInvoiceAging: %v", err)
 	}

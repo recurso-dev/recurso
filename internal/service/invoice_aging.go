@@ -7,9 +7,10 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
-// InvoiceAgingStore reads AR aging aggregates for a tenant.
+// InvoiceAgingStore reads AR aging aggregates for a tenant, optionally scoped to
+// one legal entity (nil = all entities, the historical behavior).
 type InvoiceAgingStore interface {
-	GetInvoiceAgingRows(ctx context.Context, tenantID uuid.UUID) ([]domain.InvoiceAgingRow, error)
+	GetInvoiceAgingRows(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ([]domain.InvoiceAgingRow, error)
 }
 
 // SetInvoiceAgingStore wires the invoice-aging source.
@@ -20,8 +21,8 @@ func (s *AnalyticsService) SetInvoiceAgingStore(store InvoiceAgingStore) {
 // GetInvoiceAging returns outstanding receivables bucketed by how far past due
 // they are, normalized to the tenant's reporting currency. All buckets are
 // present (zero when empty) and ordered current → 90+.
-func (s *AnalyticsService) GetInvoiceAging(ctx context.Context, tenantID uuid.UUID) (*domain.InvoiceAgingReport, error) {
-	rows, err := s.agingStore.GetInvoiceAgingRows(ctx, tenantID)
+func (s *AnalyticsService) GetInvoiceAging(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) (*domain.InvoiceAgingReport, error) {
+	rows, err := s.agingStore.GetInvoiceAgingRows(ctx, tenantID, entityID)
 	if err != nil {
 		return nil, err
 	}

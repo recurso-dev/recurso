@@ -626,7 +626,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 // GetInvoiceAgingRows aggregates open/past-due invoices for a tenant into AR
 // aging buckets by how far past due they are, per currency. Outstanding is the
 // generated amount_remaining (total - amount_paid); fully-paid rows are excluded.
-func (r *InvoiceRepository) GetInvoiceAgingRows(ctx context.Context, tenantID uuid.UUID) ([]domain.InvoiceAgingRow, error) {
+func (r *InvoiceRepository) GetInvoiceAgingRows(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ([]domain.InvoiceAgingRow, error) {
 	query := `
 		SELECT currency,
 		       CASE
@@ -640,8 +640,9 @@ func (r *InvoiceRepository) GetInvoiceAgingRows(ctx context.Context, tenantID uu
 		       COALESCE(SUM(amount_remaining),0) AS amt
 		FROM invoices
 		WHERE tenant_id = $1 AND status IN ('open', 'past_due') AND amount_remaining > 0
+		  AND ($2::uuid IS NULL OR entity_id = $2)
 		GROUP BY currency, bucket`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("query invoice aging: %w", err)
 	}

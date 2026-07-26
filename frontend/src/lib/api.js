@@ -112,7 +112,8 @@ export const endpoints = {
   getMRRWaterfall: (start, end, params = {}) =>
     api.get('/analytics/mrr/waterfall', { params: { start, end, ...params } }),
   // Outstanding receivables bucketed by days past due.
-  getInvoiceAging: () => api.get('/analytics/invoice-aging'),
+  // params may carry { entity_id } to scope AR aging to one legal entity.
+  getInvoiceAging: (params = {}) => api.get('/analytics/invoice-aging', { params }),
   // ARPA / ARPU / LTV.
   getUnitEconomics: () => api.get('/analytics/unit-economics'),
   // MRR split across plans.
