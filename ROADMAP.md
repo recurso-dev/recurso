@@ -185,14 +185,20 @@ multi-currency, zero-rated exports. The gap list:
       it, matching the PDF. `docs/design-us-invoice-presentation.md`. Remaining:
       per-jurisdiction (state/county) sales-tax lines, and entity-level (not just
       tenant-level) seller resolution.
-- [~] **US-first onboarding defaults** — tenant country=US flips defaults:
-      USD, Stripe primary, TaxJar prompts, W-9 (not GSTIN) fields.
-      **Foundation SHIPPED**: the seller country is now a first-class per-tenant
-      setting — sellerJurisdiction resolves it from the primary entity's
-      country_code (GST config still wins; unset ⇒ env, so existing tenants are
-      unchanged), so setting an entity to US routes tax + the invoice regime to
-      US sales tax without env config. Remaining: the onboarding UX flips (USD /
-      Stripe-primary / TaxJar prompts / EIN-W9 fields).
+- [x] **US-first onboarding defaults** — tenant country=US flips defaults:
+      USD, Stripe primary, TaxJar prompts, W-9 (not GSTIN) fields. **SHIPPED**
+      across #182/#185/#187/#188/#189: (1) seller country is a first-class
+      per-tenant setting — sellerJurisdiction resolves it from the primary
+      entity's country_code (GST config wins; unset ⇒ env, existing tenants
+      unchanged); (2) a Business-country control + region-aware Settings hub
+      surface the right tax setup; (3) US invoice presentation hides GST
+      artifacts and stamps a per-invoice tax_regime; (4) a validated all-50+DC
+      state dropdown for nexus/registration; (5) a per-tenant US tax identity
+      (W-9: legal name + EIN) shown as the seller on US invoices. USD default and
+      Stripe-primary routing were already the case (plans default to USD; the
+      smart router sends USD → Stripe). Remaining US work is founder/compliance-
+      gated, not onboarding: certify the economic-nexus threshold values, and the
+      ACH / exemption-certificate increments.
 - [ ] **GoCardless ACH debit certification** 🔒 — the experimental adapter
       also covers ACH; certify for US usage alongside UK/EU bank debit.
 - [ ] **SOC 2 posture** 🔒 — already on the Enterprise plan promise; start
