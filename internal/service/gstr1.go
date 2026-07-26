@@ -13,10 +13,12 @@ import (
 )
 
 // GSTR1Source is the read side the GSTR-1 export needs: a period's finalized
-// invoices and refund credit notes, flattened with buyer GST identity.
+// invoices and refund credit notes, flattened with buyer GST identity. The
+// optional entityID scopes to one legal entity's own GSTIN filing; nil is the
+// historical all-tenant behavior (correct for single-entity tenants).
 type GSTR1Source interface {
-	GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error)
-	GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error)
+	GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error)
+	GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error)
 }
 
 // GSTRService produces the GSTR-1 return for a tenant's tax period.
@@ -28,15 +30,15 @@ func NewGSTRService(src GSTR1Source) *GSTRService { return &GSTRService{src: src
 
 // GetGSTR1 assembles the return for a calendar month from that month's finalized
 // invoices and refund credit notes.
-func (s *GSTRService) GetGSTR1(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.GSTR1Return, error) {
+func (s *GSTRService) GetGSTR1(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, month, year int) (*domain.GSTR1Return, error) {
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 
-	invoices, err := s.src.GetGSTR1Invoices(ctx, tenantID, start, end)
+	invoices, err := s.src.GetGSTR1Invoices(ctx, tenantID, entityID, start, end)
 	if err != nil {
 		return nil, err
 	}
-	creditNotes, err := s.src.GetGSTR1CreditNotes(ctx, tenantID, start, end)
+	creditNotes, err := s.src.GetGSTR1CreditNotes(ctx, tenantID, entityID, start, end)
 	if err != nil {
 		return nil, err
 	}

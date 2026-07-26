@@ -4244,6 +4244,7 @@ paths:
           required: true
           schema: { type: integer, minimum: 2017, maximum: 2100 }
           description: Year of the tax period.
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: The GSTR-1 return, readable and in government JSON shape.
@@ -4289,6 +4290,7 @@ paths:
           required: true
           schema: { type: integer, minimum: 2017, maximum: 2100 }
           description: Year of the tax period.
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: The GSTR-3B return, readable and in government JSON shape.

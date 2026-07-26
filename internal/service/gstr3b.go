@@ -13,15 +13,15 @@ import (
 // GetGSTR3B assembles the GSTR-3B summary return for a calendar month from the
 // same period inputs as GSTR-1 (finalized invoices + refund credit notes), so
 // the two returns are consistent by construction.
-func (s *GSTRService) GetGSTR3B(ctx context.Context, tenantID uuid.UUID, month, year int) (*domain.GSTR3BReturn, error) {
+func (s *GSTRService) GetGSTR3B(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, month, year int) (*domain.GSTR3BReturn, error) {
 	start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 
-	invoices, err := s.src.GetGSTR1Invoices(ctx, tenantID, start, end)
+	invoices, err := s.src.GetGSTR1Invoices(ctx, tenantID, entityID, start, end)
 	if err != nil {
 		return nil, err
 	}
-	creditNotes, err := s.src.GetGSTR1CreditNotes(ctx, tenantID, start, end)
+	creditNotes, err := s.src.GetGSTR1CreditNotes(ctx, tenantID, entityID, start, end)
 	if err != nil {
 		return nil, err
 	}
