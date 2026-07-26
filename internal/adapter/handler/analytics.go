@@ -162,7 +162,14 @@ func (h *AnalyticsHandler) GetInvoiceAging(c *gin.Context) {
 	}
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 
-	report, err := h.svc.GetInvoiceAging(ctx, tenantID)
+	// Optional ?entity_id= scopes AR aging to one legal entity; omitted = all.
+	entityID, ok2 := entityIDParam(c)
+	if !ok2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	report, err := h.svc.GetInvoiceAging(ctx, tenantID, entityID)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to compute invoice aging")
 		return

@@ -2461,6 +2461,9 @@ paths:
       description: >-
         Outstanding receivables bucketed by how far past due each open invoice is
         (current / 1-30 / 31-60 / 61-90 / 90+), normalized to the reporting currency.
+        Optional entity_id scopes to one legal entity; omitted = all entities.
+      parameters:
+        - { $ref: '#/components/parameters/EntityIdQuery' }
       responses:
         '200':
           description: Invoice aging report.

@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { FileClock } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -9,6 +10,8 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
+import { ReportScopeSelect } from "@/components/patterns/ReportScopeSelect";
+import { SCOPE_ALL, scopeToParams } from "@/components/patterns/reportScope";
 
 const BUCKET_LABELS = {
   current: "Current",
@@ -28,14 +31,17 @@ const BUCKET_COLOR = {
 };
 
 export default function InvoiceAging() {
+  const [scope, setScope] = useState(SCOPE_ALL);
   const {
     data: report,
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["invoice-aging"],
-    queryFn: async () => (await endpoints.getInvoiceAging()).data?.data || null,
+    queryKey: ["invoice-aging", scope],
+    queryFn: async () =>
+      (await endpoints.getInvoiceAging(scopeToParams(scope))).data?.data || null,
+    placeholderData: keepPreviousData,
   });
   const error = queryError
     ? queryError?.response?.data?.error?.message || "Failed to load invoice aging"
@@ -56,6 +62,7 @@ export default function InvoiceAging() {
       <PageHeader
         title="Invoice Aging"
         description="Outstanding receivables by how far past due each open invoice is."
+        actions={<ReportScopeSelect value={scope} onChange={setScope} hideConsolidated />}
       />
 
       {loading ? (

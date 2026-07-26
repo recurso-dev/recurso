@@ -58,7 +58,7 @@ func TestInvoiceAging_Buckets(t *testing.T) {
 	seedAgingInvoice(t, conn, tenantID, customerID, 5000, 5000, "paid", now.Add(-200*24*time.Hour))
 	seedAgingInvoice(t, conn, tenantID, customerID, 6000, 0, "draft", now.Add(-5*24*time.Hour))
 
-	rows, err := repo.GetInvoiceAgingRows(ctx, tenantID)
+	rows, err := repo.GetInvoiceAgingRows(ctx, tenantID, nil)
 	if err != nil {
 		t.Fatalf("GetInvoiceAgingRows: %v", err)
 	}
@@ -85,5 +85,63 @@ func TestInvoiceAging_Buckets(t *testing.T) {
 	// Paid + draft excluded → exactly 4 buckets populated.
 	if len(rows) != 4 {
 		t.Errorf("got %d bucket rows, want 4 (paid + draft excluded): %+v", len(rows), rows)
+	}
+}
+
+// TestInvoiceAging_PerEntity proves the aging query filters by legal entity: a
+// concrete entity returns only its receivables; nil returns the whole tenant.
+func TestInvoiceAging_PerEntity(t *testing.T) {
+	repo, conn := openAgingTestDB(t)
+	ctx := context.Background()
+	tenantID, customerID := seedCreditAppTenantCustomer(t, conn)
+	now := time.Now()
+
+	var entA, entB uuid.UUID
+	if err := conn.QueryRowContext(ctx,
+		`SELECT id FROM entities WHERE tenant_id=$1 AND is_primary=TRUE`, tenantID).Scan(&entA); err != nil {
+		t.Fatalf("load primary entity: %v", err)
+	}
+	if err := conn.QueryRowContext(ctx,
+		`INSERT INTO entities (tenant_id, name, is_primary, tb_ledger_id, invoice_prefix) VALUES ($1,'Branch',FALSE,2,$2) RETURNING id`,
+		tenantID, "AGBR"+uuid.New().String()[:4]).Scan(&entB); err != nil {
+		t.Fatalf("seed entity B: %v", err)
+	}
+
+	// stampAging inserts an open invoice and assigns it to an entity.
+	stampAging := func(total int64, ent uuid.UUID) {
+		id := uuid.New()
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied, status, invoice_number, entity_id, created_at, due_date)
+			 VALUES ($1,$2,$3,'USD',$4,$4,0,0,'past_due',$5,$6,NOW(),$7)`,
+			id, tenantID, customerID, total, "AG-"+id.String()[:8], ent, now.Add(-10*24*time.Hour)); err != nil {
+			t.Fatalf("stamp aging invoice: %v", err)
+		}
+	}
+	stampAging(1000, entA)
+	stampAging(2000, entA)
+	stampAging(4000, entB)
+
+	total := func(entity *uuid.UUID) (int64, int) {
+		rows, err := repo.GetInvoiceAgingRows(ctx, tenantID, entity)
+		if err != nil {
+			t.Fatalf("GetInvoiceAgingRows: %v", err)
+		}
+		var amt int64
+		var cnt int
+		for _, r := range rows {
+			amt += r.Amount
+			cnt += r.Count
+		}
+		return amt, cnt
+	}
+
+	if amt, cnt := total(&entA); amt != 3000 || cnt != 2 {
+		t.Errorf("entity A aging = %d/%d, want 3000/2", amt, cnt)
+	}
+	if amt, cnt := total(&entB); amt != 4000 || cnt != 1 {
+		t.Errorf("entity B aging = %d/%d, want 4000/1", amt, cnt)
+	}
+	if amt, cnt := total(nil); amt != 7000 || cnt != 3 {
+		t.Errorf("consolidated aging = %d/%d, want 7000/3", amt, cnt)
 	}
 }
