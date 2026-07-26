@@ -4596,6 +4596,50 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/settings/tax/us:
+    get:
+      operationId: getUSTaxConfig
+      tags: [Settings]
+      summary: Get US tax identity (W-9)
+      description: Returns the tenant's US tax identity (legal name, EIN, address) shown on US sales-tax invoices, or an empty default when none is set.
+      responses:
+        '200':
+          description: US tax configuration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/USTaxConfig'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateUSTaxConfig
+      tags: [Settings]
+      summary: Create or update US tax identity (W-9)
+      description: Upserts the tenant's US tax identity (legal name, EIN, address). Presentation only — it does not affect tax computation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/USTaxConfig'
+      responses:
+        '200':
+          description: Configuration saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/USTaxConfig'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/entities:
     get:
       operationId: listEntities
@@ -9649,6 +9693,19 @@ components:
         tier3_enabled:
           type: boolean
           description: When true, AI agents may run money-path / destructive MCP tools (convert quote to invoice, cancel subscription, issue credit note, top up wallet, …) against this tenant. Off by default.
+    USTaxConfig:
+      type: object
+      description: A tenant's US tax identity (W-9) — the seller party shown on US sales-tax invoices. Presentation only.
+      properties:
+        legal_name:
+          type: string
+          description: Seller legal name shown on US invoices.
+        ein:
+          type: string
+          description: Employer Identification Number (the W-9 tax id).
+        address:
+          type: string
+          description: Seller postal address shown on US invoices.
     EUEInvoiceConfig:
       type: object
       description: A tenant's EU e-invoicing configuration — the opt-in flag plus the EN 16931 seller party.

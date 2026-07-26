@@ -18,6 +18,13 @@ type InvoicePDFHandler struct {
 	invoiceRepo  port.InvoiceRepository
 	customerRepo port.CustomerRepository
 	seller       sellerJurisdictionResolver // optional; picks the per-tenant regime
+	usTax        usTaxIdentityResolver      // optional; per-tenant US seller identity (W-9)
+}
+
+// usTaxIdentityResolver returns a tenant's US tax identity (W-9). Optional and
+// nil-safe; *db.TenantUSTaxConfigRepository satisfies it.
+type usTaxIdentityResolver interface {
+	GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantUSTaxConfig, error)
 }
 
 // NewInvoicePDFHandler creates a new PDF handler.
@@ -33,6 +40,33 @@ func NewInvoicePDFHandler(pdfService *service.InvoicePDFService, invoiceRepo por
 // renders under its own tenant's regime instead of the PDF service's env-global
 // seller country. Nil-safe: without it the service default (env) is used.
 func (h *InvoicePDFHandler) SetSellerResolver(r sellerJurisdictionResolver) { h.seller = r }
+
+// SetUSTaxIdentity wires the per-tenant US tax identity (W-9). Nil-safe: without
+// it, or on a GST invoice, the env seller identity is used unchanged.
+func (h *InvoicePDFHandler) SetUSTaxIdentity(r usTaxIdentityResolver) { h.usTax = r }
+
+// applyUSSellerIdentity overrides the seller block of a US (non-GST) invoice
+// with the tenant's own W-9 identity when one is set. GST invoices and the
+// no-config case are left untouched (env identity).
+func (h *InvoicePDFHandler) applyUSSellerIdentity(ctx context.Context, tenantID uuid.UUID, data *service.PDFInvoiceData) {
+	if h.usTax == nil || data.ShowGST {
+		return
+	}
+	cfg, err := h.usTax.GetByTenantID(ctx, tenantID)
+	if err != nil || cfg == nil {
+		return
+	}
+	if cfg.LegalName != "" {
+		data.SellerName = cfg.LegalName
+	}
+	if cfg.Address != "" {
+		data.SellerAddress = cfg.Address
+	}
+	if cfg.EIN != "" {
+		data.SellerTaxLabel = "EIN"
+		data.SellerTaxID = cfg.EIN
+	}
+}
 
 // sellerCountryFor resolves a tenant's seller country, or "" when no resolver is
 // wired (BuildInvoiceDataFor then falls back to the service's env default).
@@ -81,6 +115,7 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 	}
 
 	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, tenantID))
+	h.applyUSSellerIdentity(ctx, tenantID, &data)
 
 	// The e-invoice QR is GST-only — the IRN is set only on e-invoiced invoices.
 	if data.IRN != "" {
@@ -149,6 +184,7 @@ func (h *InvoicePDFHandler) PortalDownloadPDF(c *gin.Context) {
 	}
 
 	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, inv.TenantID))
+	h.applyUSSellerIdentity(ctx, inv.TenantID, &data)
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
 			data.QRCodeData = qr

@@ -290,6 +290,9 @@ export const endpoints = {
   // EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
   getEUEInvoiceConfig: (entityId) => api.get('/settings/eu-einvoice', { params: entityParams(entityId) }),
   updateEUEInvoiceConfig: (data, entityId) => api.put('/settings/eu-einvoice', data, { params: entityParams(entityId) }),
+  // US tax identity (W-9): seller party shown on US sales-tax invoices.
+  getUSTaxConfig: () => api.get('/settings/tax/us'),
+  updateUSTaxConfig: (data) => api.put('/settings/tax/us', data),
   // Per-invoice EU e-invoice: inspect the generated UBL + delivery status, and
   // regenerate/re-transmit a failed one.
   getEUEInvoice: (invoiceId) => api.get(`/invoices/${invoiceId}/eu-einvoice`),
