@@ -1,5 +1,11 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Send, Check, X, ArrowRight } from "lucide-react";
+
+import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -28,7 +34,64 @@ const Field = ({ label, children, mono }) => (
   </div>
 );
 
-const QuoteDetail = ({ quote, isOpen, onClose }) => {
+const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
+  const queryClient = useQueryClient();
+  // Optimistic local status so acting on a quote updates the badge and reveals
+  // the next action (e.g. Accept → Convert) without reopening the sheet. Reset
+  // whenever a different quote is opened.
+  const [statusOverride, setStatusOverride] = useState(null);
+  const [actionError, setActionError] = useState(null);
+  useEffect(() => {
+    setStatusOverride(null);
+    setActionError(null);
+  }, [quote?.id]);
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
+  const onActionError = (verb) => (err) => {
+    setActionError(
+      err?.response?.data?.error?.message || `Failed to ${verb} quote`,
+    );
+  };
+
+  const sendMutation = useMutation({
+    mutationFn: (id) => endpoints.sendQuote(id),
+    onSuccess: () => {
+      setStatusOverride("sent");
+      invalidate();
+      onChanged?.();
+    },
+    onError: onActionError("send"),
+  });
+  const acceptMutation = useMutation({
+    mutationFn: (id) => endpoints.acceptQuote(id),
+    onSuccess: () => {
+      setStatusOverride("accepted");
+      invalidate();
+      onChanged?.();
+    },
+    onError: onActionError("accept"),
+  });
+  const declineMutation = useMutation({
+    mutationFn: (id) => endpoints.declineQuote(id),
+    onSuccess: () => {
+      setStatusOverride("declined");
+      invalidate();
+      onChanged?.();
+    },
+    onError: onActionError("decline"),
+  });
+  const convertMutation = useMutation({
+    mutationFn: (id) => endpoints.convertQuoteToInvoice(id),
+    onSuccess: () => {
+      invalidate();
+      // A converted quote becomes an invoice — refresh that list and close.
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      onChanged?.();
+      onClose();
+    },
+    onError: onActionError("convert"),
+  });
+
   if (!quote) return null;
 
   const currency = quote.currency;
@@ -36,14 +99,25 @@ const QuoteDetail = ({ quote, isOpen, onClose }) => {
   // API field is `total` (not `total_amount`).
   const total = quote.total ?? quote.total_amount ?? 0;
 
+  const status = statusOverride || quote.status;
+  const busy =
+    sendMutation.isPending ||
+    acceptMutation.isPending ||
+    declineMutation.isPending ||
+    convertMutation.isPending;
+  const canSend = status === "draft" || status === "sent";
+  const canDecide = status === "sent";
+  const canConvert = status === "accepted" && !quote.invoice_id;
+  const hasActions = canSend || canDecide || canConvert;
+
   return (
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-3">
             <span className="font-mono">{quote.quote_number || "Quote"}</span>
-            <Badge variant={quoteStatusVariant(quote.status)} className="capitalize">
-              {quote.status || "draft"}
+            <Badge variant={quoteStatusVariant(status)} className="capitalize">
+              {status || "draft"}
             </Badge>
           </SheetTitle>
         </SheetHeader>
@@ -149,6 +223,58 @@ const QuoteDetail = ({ quote, isOpen, onClose }) => {
             {quote.notes && <Field label="Notes">{quote.notes}</Field>}
             {quote.terms && <Field label="Terms">{quote.terms}</Field>}
           </dl>
+
+          {/* Actions — state-appropriate, mirroring the quote lifecycle. */}
+          {hasActions && (
+            <div className="space-y-3 border-t border-border pt-5">
+              {actionError && (
+                <p className="text-sm text-red-600" role="alert">
+                  {actionError}
+                </p>
+              )}
+              <div className="flex flex-wrap gap-2">
+                {canSend && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => sendMutation.mutate(quote.id)}
+                  >
+                    <Send className="h-4 w-4" />
+                    {status === "sent" ? "Resend" : "Send"}
+                  </Button>
+                )}
+                {canDecide && (
+                  <Button
+                    disabled={busy}
+                    onClick={() => acceptMutation.mutate(quote.id)}
+                  >
+                    <Check className="h-4 w-4" />
+                    Accept
+                  </Button>
+                )}
+                {canDecide && (
+                  <Button
+                    variant="outline"
+                    className="text-red-600 hover:text-red-700"
+                    disabled={busy}
+                    onClick={() => declineMutation.mutate(quote.id)}
+                  >
+                    <X className="h-4 w-4" />
+                    Decline
+                  </Button>
+                )}
+                {canConvert && (
+                  <Button
+                    disabled={busy}
+                    onClick={() => convertMutation.mutate(quote.id)}
+                  >
+                    Convert to invoice
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
