@@ -186,3 +186,77 @@ func TestStripeChargeSavedPaymentMethod_Decline(t *testing.T) {
 		t.Fatalf("result = %+v, want failure card_declined", res)
 	}
 }
+
+// TestStripeCreateBankAccountSetupIntent asserts the ACH bank-capture SetupIntent
+// is built for Financial Connections instant verification (Inc 3a): a
+// us_bank_account, off_session, with the payment_method FC permission.
+func TestStripeCreateBankAccountSetupIntent(t *testing.T) {
+	var usage, pmt, vm, perm, meta string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		usage = r.Form.Get("usage")
+		pmt = r.Form.Get("payment_method_types[0]")
+		vm = r.Form.Get("payment_method_options[us_bank_account][verification_method]")
+		perm = r.Form.Get("payment_method_options[us_bank_account][financial_connections][permissions][0]")
+		meta = r.Form.Get("metadata[customer_id]")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"seti_test","client_secret":"seti_test_secret","status":"requires_payment_method"}`))
+	}))
+	defer srv.Close()
+
+	gw := newTestStripeGateway(t, srv)
+	secret, err := gw.CreateBankAccountSetupIntent(context.Background(), "cus_123", map[string]string{"customer_id": "cust-1"})
+	if err != nil {
+		t.Fatalf("CreateBankAccountSetupIntent: %v", err)
+	}
+	if secret != "seti_test_secret" {
+		t.Fatalf("client_secret = %q, want seti_test_secret", secret)
+	}
+	if usage != "off_session" {
+		t.Errorf("usage = %q, want off_session", usage)
+	}
+	if pmt != "us_bank_account" {
+		t.Errorf("payment_method_types[0] = %q, want us_bank_account", pmt)
+	}
+	if vm != "instant" {
+		t.Errorf("verification_method = %q, want instant", vm)
+	}
+	if perm != "payment_method" {
+		t.Errorf("financial_connections permission = %q, want payment_method", perm)
+	}
+	if meta != "cust-1" {
+		t.Errorf("metadata[customer_id] = %q, want cust-1", meta)
+	}
+}
+
+// TestStripeFinalizeSetupIntent_BankAccount asserts a saved us_bank_account reads
+// back as a bank method (name + last4), not a card.
+func TestStripeFinalizeSetupIntent_BankAccount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.Contains(r.URL.Path, "/setup_intents/"):
+			_, _ = w.Write([]byte(`{"id":"seti_test","status":"succeeded","payment_method":"pm_bank_1","customer":"cus_123","metadata":{"customer_id":"cust-1"}}`))
+		case strings.Contains(r.URL.Path, "/payment_methods/"):
+			_, _ = w.Write([]byte(`{"id":"pm_bank_1","type":"us_bank_account","us_bank_account":{"bank_name":"STRIPE TEST BANK","last4":"6789"}}`))
+		default:
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	defer srv.Close()
+
+	gw := newTestStripeGateway(t, srv)
+	saved, err := gw.FinalizeSetupIntent(context.Background(), "seti_test")
+	if err != nil {
+		t.Fatalf("FinalizeSetupIntent: %v", err)
+	}
+	if saved.Type != "us_bank_account" || saved.BankName != "STRIPE TEST BANK" || saved.Last4 != "6789" {
+		t.Fatalf("bank readback wrong: %+v", saved)
+	}
+	if saved.Brand != "" || saved.ExpMonth != 0 {
+		t.Errorf("bank method must not carry card fields: %+v", saved)
+	}
+	if saved.CustomerID != "cust-1" {
+		t.Errorf("customer_id = %q, want cust-1", saved.CustomerID)
+	}
+}
