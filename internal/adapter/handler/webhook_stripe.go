@@ -491,6 +491,13 @@ func (h *WebhookHandler) applyStripeRefund(ctx context.Context, ref *stripe.Refu
 
 	err := h.creditNoteService.ProcessGatewayRefundEvent(ctx, ref.ID, succeeded, reason)
 	if errors.Is(err, service.ErrRefundNotFound) {
+		// No credit note owns this refund. A merchant-initiated refund always
+		// has one; a succeeded refund with none is an involuntary bank claw-back
+		// — an ACH return (Inc 3c). Reopen the invoice and reverse the settled
+		// cash if we can tie it to a tracked ACH attempt.
+		if succeeded {
+			return h.handleACHReturn(ctx, ref)
+		}
 		h.logger.Info("stripe refund event ignored — no matching credit note", "refund_id", ref.ID)
 		return nil
 	}
@@ -498,4 +505,67 @@ func (h *WebhookHandler) applyStripeRefund(ctx context.Context, ref *stripe.Refu
 		h.logger.Error("failed to process stripe refund event", "refund_id", ref.ID, "error", err)
 	}
 	return err
+}
+
+// handleACHReturn treats a succeeded refund that owns no credit note as an
+// involuntary ACH return: the us_bank_account debit cleared and settled the
+// invoice, then the bank clawed it back days later. It marks the settled
+// attempt `returned` and reverses the settlement — the invoice reopens
+// (paid → past_due) and the settlement cash leg is inverted (DR AR / CR Cash,
+// ledger code 19). Both steps are idempotent: a redelivered return finds the
+// attempt already returned and the invoice already reopened and no-ops, so the
+// ledger reversal posts exactly once (guarded further by the
+// (reference_id, code) unique index). Best-effort attribution — a refund we
+// can't tie to a tracked ACH attempt (e.g. an unexpected card refund with no
+// credit note) is logged and swallowed so Stripe's webhook is acknowledged.
+func (h *WebhookHandler) handleACHReturn(ctx context.Context, ref *stripe.Refund) error {
+	if h.paymentAttempts == nil || h.subService == nil {
+		h.logger.Info("stripe refund with no credit note ignored — ACH return handling not configured", "refund_id", ref.ID)
+		return nil
+	}
+	piID := ""
+	if ref.PaymentIntent != nil {
+		piID = ref.PaymentIntent.ID
+	}
+	if piID == "" {
+		h.logger.Info("stripe refund with no credit note carried no payment intent — ignored", "refund_id", ref.ID)
+		return nil
+	}
+
+	attempt, err := h.paymentAttempts.GetByPaymentIntentID(ctx, piID)
+	if err != nil {
+		h.logger.Error("failed to load payment attempt for ACH return", "payment_intent_id", piID, "error", err)
+		return fmt.Errorf("load payment attempt for ACH return: %w", err)
+	}
+	if attempt == nil {
+		// Cards settle synchronously and never create attempts, so a refund with
+		// no credit note AND no attempt is nothing we track — swallow it.
+		h.logger.Info("stripe refund with no credit note and no ACH attempt — ignored",
+			"refund_id", ref.ID, "payment_intent_id", piID)
+		return nil
+	}
+
+	returnCode := string(ref.FailureReason)
+	if returnCode == "" {
+		returnCode = "ach_return"
+	}
+
+	// Mark the attempt returned first so dunning's in-flight guard sees a
+	// settled-then-returned attempt (no longer in-flight) and re-collects.
+	if err := h.paymentAttempts.UpdateStatusByPaymentIntent(ctx, piID, domain.PaymentAttemptReturned, returnCode, nil); err != nil {
+		h.logger.Error("failed to mark payment attempt returned", "payment_intent_id", piID, "error", err)
+		return fmt.Errorf("mark attempt returned: %w", err)
+	}
+
+	// Webhooks carry no tenant — inject the attempt's own (same pattern as the
+	// settle path). ReverseSettledPayment is idempotent on the paid guard.
+	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, attempt.TenantID)
+	reversed, err := h.subService.ReverseSettledPayment(ctxWithTenant, attempt.InvoiceID)
+	if err != nil {
+		h.logger.Error("failed to reverse settled payment for ACH return", "invoice_id", attempt.InvoiceID, "error", err)
+		return fmt.Errorf("reverse settled payment: %w", err)
+	}
+	h.logger.Warn("ACH return processed — invoice reopened",
+		"refund_id", ref.ID, "invoice_id", attempt.InvoiceID, "reversed", reversed, "return_code", returnCode)
+	return nil
 }

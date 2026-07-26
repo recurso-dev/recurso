@@ -102,3 +102,52 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 
 	return true, nil
 }
+
+// ReverseSettledPayment undoes a settlement the bank later clawed back — an ACH
+// debit that cleared, settled the invoice, then bounced days later as a return
+// (Inc 3c). It is the mirror of MarkInvoicePaid: reopen the invoice (paid →
+// past_due) via a conditional UPDATE, and if THIS caller performed the
+// transition, post the inverse ledger leg (DR AR / CR Cash, code 19). Returns
+// whether this caller reopened the invoice; a redelivered return webhook gets
+// reversed=false and skips the ledger so the reversal can't double-post.
+//
+// Once reopened, the invoice is past_due with the payment_attempt marked
+// 'returned', so the dunning in-flight guard has cleared and the scheduler
+// re-collects it on its normal cadence — no re-charge is triggered here.
+func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoiceID uuid.UUID) (reversed bool, err error) {
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		return false, err
+	}
+	if inv == nil {
+		return false, fmt.Errorf("invoice not found")
+	}
+	if inv.Status != domain.InvoiceStatusPaid {
+		// Not currently settled — nothing to claw back (already reopened by an
+		// earlier delivery of the same return, or never reached paid).
+		return false, nil
+	}
+
+	reversed, err = s.invoiceRepo.ReverseToUnpaid(ctx, inv.TenantID, invoiceID)
+	if err != nil {
+		return false, err
+	}
+	if !reversed {
+		return false, nil // another handler already reopened it
+	}
+	inv.Status = domain.InvoiceStatusPastDue
+	inv.PaidAt = nil
+	inv.AmountPaid = 0
+
+	// Reverse the settlement cash leg. Non-fatal per ADR-002: a failed posting is
+	// caught by reconciliation, and the invoice is already correctly reopened.
+	if s.ledger != nil {
+		if err := s.ledger.RecordPaymentReversal(ctx, inv); err != nil {
+			s.logger.Error("ledger payment reversal write failed", "error", err, "invoice_id", inv.ID)
+		}
+	}
+
+	s.logger.Warn("payment reversed (bank return); invoice reopened for collection",
+		"invoice_id", inv.ID, "invoice_number", inv.InvoiceNumber)
+	return true, nil
+}

@@ -354,6 +354,30 @@ func (r *InvoiceRepository) MarkPaid(ctx context.Context, tenantID, invoiceID uu
 	return n == 1, nil
 }
 
+// ReverseToUnpaid is the inverse of MarkPaid: it reopens an invoice whose
+// payment the bank later clawed back (an ACH return, Inc 3c). The
+// `AND status = 'paid'` guard makes it idempotent and safe against a
+// redelivered return webhook — only a currently-paid row transitions, and it
+// lands in 'past_due' so dunning picks it back up (the in-flight guard has
+// already cleared because the attempt is now 'returned'). amount_paid resets to
+// 0 and paid_at to NULL so the invoice reads as fully outstanding again.
+// Returns true iff this call performed the transition.
+func (r *InvoiceRepository) ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices
+		SET status = 'past_due', amount_paid = 0, paid_at = NULL, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2 AND status = 'paid'
+	`, invoiceID, tenantID)
+	if err != nil {
+		return false, fmt.Errorf("failed to reverse invoice to unpaid: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
 // retryInvoiceColumns is the projection shared by GetDueForRetry and
 // ClaimDueForRetry (as a RETURNING list) — the two must stay column-aligned
 // with scanRetryInvoices.
