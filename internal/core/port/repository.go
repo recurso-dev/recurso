@@ -31,6 +31,12 @@ type InvoiceRepository interface {
 	// invoice was already paid — so concurrent settlers can gate their
 	// side-effects on the winner. amount_paid is set to the invoice total.
 	MarkPaid(ctx context.Context, tenantID, invoiceID uuid.UUID, paidAt time.Time) (bool, error)
+	// ReverseToUnpaid is the inverse of MarkPaid: it reopens a currently-paid
+	// invoice (paid → past_due, amount_paid → 0, paid_at → NULL) when the bank
+	// claws back a cleared payment (an ACH return, Inc 3c). It is idempotent via
+	// the `status = 'paid'` guard and returns true only when this call performed
+	// the transition, so a redelivered return webhook can't reopen twice.
+	ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
 	// the calling worker instance, advancing next_retry_at by `lease` so a

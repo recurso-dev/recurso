@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/service"
 	"github.com/stripe/stripe-go/v76"
 )
 
@@ -140,4 +141,87 @@ func TestACHWebhook_NilStoreIsNoop(t *testing.T) {
 		t.Fatalf("nil store must be a no-op (failed): %v", err)
 	}
 	h.settleAttempt(context.Background(), "pi_x") // must not panic
+}
+
+// --- Inc 3c: late ACH return reverses the settlement ---
+
+// returnStubRepo stubs the two reads ReverseSettledPayment needs so the webhook
+// test can drive the whole return chain (mark attempt returned → reopen invoice)
+// in memory. The ledger is left nil on the SubscriptionService (nil-safe).
+type returnStubRepo struct {
+	port.InvoiceRepository
+	inv          *domain.Invoice
+	reverseCalls int
+}
+
+func (r *returnStubRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Invoice, error) {
+	return r.inv, nil
+}
+func (r *returnStubRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID) (bool, error) {
+	r.reverseCalls++
+	r.inv.Status = domain.InvoiceStatusPastDue // reflect the transition for redelivery
+	return true, nil
+}
+
+func refundEvt(piID string, status stripe.RefundStatus) *stripe.Refund {
+	return &stripe.Refund{
+		ID:            "re_" + piID,
+		Status:        status,
+		PaymentIntent: &stripe.PaymentIntent{ID: piID},
+	}
+}
+
+// A succeeded refund that owns no credit note, tied to a settled us_bank_account
+// attempt, is an involuntary ACH return: the attempt is marked `returned` and
+// the invoice is reopened (paid → past_due) for re-collection.
+func TestACHWebhook_ReturnMarksAttemptAndReopensInvoice(t *testing.T) {
+	tenantID, invoiceID := uuid.New(), uuid.New()
+	attempts := newMemAttempts()
+	attempts.byPI["pi_ret"] = &domain.PaymentAttempt{
+		GatewayPaymentIntentID: "pi_ret", Status: domain.PaymentAttemptSucceeded,
+		Method: "us_bank_account", InvoiceID: invoiceID, TenantID: tenantID,
+	}
+	repo := &returnStubRepo{inv: &domain.Invoice{
+		ID: invoiceID, TenantID: tenantID, Status: domain.InvoiceStatusPaid, Total: 1000,
+	}}
+	subSvc := service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := &WebhookHandler{logger: slog.Default(), paymentAttempts: attempts, subService: subSvc}
+
+	if err := h.handleACHReturn(context.Background(), refundEvt("pi_ret", stripe.RefundStatusSucceeded)); err != nil {
+		t.Fatalf("handleACHReturn: %v", err)
+	}
+	if got := attempts.byPI["pi_ret"].Status; got != domain.PaymentAttemptReturned {
+		t.Errorf("attempt status = %s, want returned", got)
+	}
+	if repo.reverseCalls != 1 {
+		t.Errorf("ReverseToUnpaid called %d times, want 1", repo.reverseCalls)
+	}
+	if repo.inv.Status != domain.InvoiceStatusPastDue {
+		t.Errorf("invoice status = %s, want past_due", repo.inv.Status)
+	}
+
+	// Redelivery: the same return event must not reopen or reverse twice — the
+	// invoice is already past_due, so ReverseToUnpaid is never re-invoked.
+	if err := h.handleACHReturn(context.Background(), refundEvt("pi_ret", stripe.RefundStatusSucceeded)); err != nil {
+		t.Fatalf("handleACHReturn (redelivery): %v", err)
+	}
+	if repo.reverseCalls != 1 {
+		t.Errorf("redelivered return re-reopened the invoice: %d ReverseToUnpaid calls, want 1", repo.reverseCalls)
+	}
+}
+
+// A refund with no credit note and no tracked attempt (e.g. an unexpected card
+// refund) is swallowed — nothing to attribute, and the webhook must still 200.
+func TestACHWebhook_ReturnWithNoAttemptIsSwallowed(t *testing.T) {
+	attempts := newMemAttempts()
+	repo := &returnStubRepo{inv: &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusPaid}}
+	subSvc := service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := &WebhookHandler{logger: slog.Default(), paymentAttempts: attempts, subService: subSvc}
+
+	if err := h.handleACHReturn(context.Background(), refundEvt("pi_unknown", stripe.RefundStatusSucceeded)); err != nil {
+		t.Fatalf("expected no error for an unattributable refund, got %v", err)
+	}
+	if repo.reverseCalls != 0 {
+		t.Errorf("no invoice must be reopened when no attempt matches, got %d calls", repo.reverseCalls)
+	}
 }

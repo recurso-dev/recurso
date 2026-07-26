@@ -32,6 +32,7 @@ func TestLedgerCodesAreUnique(t *testing.T) {
 		"WalletForfeit":        LedgerCodeWalletForfeit,
 		"WalletExpiry":         LedgerCodeWalletExpiry,
 		"CreditExpiry":         LedgerCodeCreditExpiry,
+		"PaymentReversal":      LedgerCodePaymentReversal,
 	}
 
 	seen := make(map[uint16]string, len(codes))

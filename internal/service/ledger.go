@@ -451,6 +451,52 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 	return nil
 }
 
+// RecordPaymentReversal reverses a settled payment the bank later clawed back
+// (an ACH return, Inc 3c) — the exact inverse of the Code-3 payment leg:
+// DR Accounts Receivable / CR Cash, so the cash is removed and the receivable
+// reinstated (the invoice reopens for collection). It posts the same collected
+// figure the settlement did (Total − CreditApplied − TDS; TDS is 0 for US ACH).
+// Idempotent via the (reference_id=invoice.ID, code=19) unique index — a
+// redelivered return webhook can't double-reverse. Never fails the caller's
+// business write (ADR-002): a broken posting is caught by reconciliation.
+func (s *LedgerService) RecordPaymentReversal(ctx context.Context, invoice *domain.Invoice) error {
+	collected := invoice.Total - invoice.CreditApplied - invoice.TDSAmount
+	if collected <= 0 {
+		return nil
+	}
+	amount, err := ledgerAmount(collected)
+	if err != nil {
+		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+	}
+	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
+	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
+	arID := s.arAccountID(ent, invoice.CustomerID)
+	cashAccountID, err := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
+	if err != nil {
+		return fmt.Errorf("ledger reversal failed for invoice %s: %w", invoice.ID, err)
+	}
+	transfer := &domain.LedgerTransaction{
+		ID:              uuid.New(),
+		DebitAccountID:  arID,          // Accounts Receivable — reinstated
+		CreditAccountID: cashAccountID, // Cash — removed
+		Amount:          amount,
+		LedgerID:        ent.LedgerID,
+		Code:            domain.LedgerCodePaymentReversal,
+		ReferenceID:     invoice.ID,
+		Description:     "ACH return / payment reversal for " + invoice.InvoiceNumber,
+		Timestamp:       time.Now(),
+	}
+	if s.pgRepo != nil {
+		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+			return fmt.Errorf("ledger reversal write failed for invoice %s: %w", invoice.ID, err)
+		}
+	}
+	if s.tbClient != nil {
+		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})
+	}
+	return nil
+}
+
 // RecordRefund posts a refund to the ledger.
 // Debit: Refunds (Expense)
 // Credit: Cash (Asset)

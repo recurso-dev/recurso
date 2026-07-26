@@ -199,6 +199,14 @@ const LedgerCodeWalletExpiry uint16 = 15
 // note, not a wallet transaction). Codes 16/17 are the downgrade legs.
 const LedgerCodeCreditExpiry uint16 = 18
 
+// LedgerCodePaymentReversal reverses a settled payment that the bank later
+// clawed back — an ACH debit returned days after it cleared (Inc 3c). It is the
+// exact inverse of the Code-3 payment leg: DR Accounts Receivable / CR Cash, so
+// the cash is removed and the receivable reinstated (the invoice reopens for
+// collection). Distinct from a refund (Code 3 / Refunds expense), which is a
+// merchant-initiated return of funds, not an involuntary claw-back.
+const LedgerCodePaymentReversal uint16 = 19
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{
