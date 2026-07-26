@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -25,16 +26,25 @@ type collectionsAnalytics interface {
 	GetFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]service.CollectionsFailureBucket, error)
 }
 
-// CollectionsHandler serves the operator-facing collections views
-// (Collections Intelligence). Read-only; the automated recovery engine is
-// untouched.
+// collectionsActions is the operator-initiated mutation surface (Inc 3).
+// *service.CollectionsActionService satisfies it.
+type collectionsActions interface {
+	RetryNow(ctx context.Context, tenantID, invoiceID uuid.UUID) error
+	SetPaused(ctx context.Context, tenantID, invoiceID uuid.UUID, paused bool) error
+	MarkUncollectible(ctx context.Context, tenantID, invoiceID uuid.UUID) error
+}
+
+// CollectionsHandler serves the operator-facing collections views + actions
+// (Collections Intelligence). The read paths are read-only; the Inc 3 actions
+// mutate a single invoice's dunning state (never the ledger).
 type CollectionsHandler struct {
 	repo      collectionsQueueLister
 	analytics collectionsAnalytics // nil-safe
+	actions   collectionsActions   // nil-safe
 }
 
-func NewCollectionsHandler(repo collectionsQueueLister, analytics collectionsAnalytics) *CollectionsHandler {
-	return &CollectionsHandler{repo: repo, analytics: analytics}
+func NewCollectionsHandler(repo collectionsQueueLister, analytics collectionsAnalytics, actions collectionsActions) *CollectionsHandler {
+	return &CollectionsHandler{repo: repo, analytics: analytics, actions: actions}
 }
 
 // validCollectionsStatus / validManagedBy guard the filter inputs so an
@@ -124,4 +134,90 @@ func (h *CollectionsHandler) GetFailures(c *gin.Context) {
 		buckets = []service.CollectionsFailureBucket{}
 	}
 	c.JSON(http.StatusOK, gin.H{"data": buckets})
+}
+
+// actionContext validates the tenant + :id path param and confirms actions are
+// wired, returning the ids and false if the request can't proceed (it has
+// already written the error response).
+func (h *CollectionsHandler) actionContext(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return uuid.Nil, uuid.Nil, false
+	}
+	if h.actions == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "collections actions not configured")
+		return uuid.Nil, uuid.Nil, false
+	}
+	invoiceID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return uuid.Nil, uuid.Nil, false
+	}
+	return tenantID, invoiceID, true
+}
+
+// respondActionError maps a collections-action service error to an HTTP status:
+// not-found → 404, any refused-precondition → 409 Conflict, else 500.
+func respondActionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrCollectionInvoiceNotFound):
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+	case errors.Is(err, service.ErrRetryNotPastDue),
+		errors.Is(err, service.ErrRetryPaused),
+		errors.Is(err, service.ErrRetryMandate),
+		errors.Is(err, service.ErrRetryInFlight):
+		respondError(c, http.StatusConflict, codeConflict, err.Error())
+	default:
+		respondInternalError(c, err)
+	}
+}
+
+// RetryNow requeues a failing invoice for an immediate worker retry.
+// POST /v1/collections/invoices/:id/retry-now
+func (h *CollectionsHandler) RetryNow(c *gin.Context) {
+	tenantID, invoiceID, ok := h.actionContext(c)
+	if !ok {
+		return
+	}
+	if err := h.actions.RetryNow(c.Request.Context(), tenantID, invoiceID); err != nil {
+		respondActionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"status": "requeued"}})
+}
+
+// PauseDunning pauses or resumes automated dunning on an invoice.
+// POST /v1/collections/invoices/:id/pause  body: {"paused": true|false}
+func (h *CollectionsHandler) PauseDunning(c *gin.Context) {
+	tenantID, invoiceID, ok := h.actionContext(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Paused bool `json:"paused"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "body must be {\"paused\": bool}")
+		return
+	}
+	if err := h.actions.SetPaused(c.Request.Context(), tenantID, invoiceID, body.Paused); err != nil {
+		respondActionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"dunning_paused": body.Paused}})
+}
+
+// MarkUncollectible is the operator-initiated write-off (status change only).
+// POST /v1/collections/invoices/:id/mark-uncollectible
+func (h *CollectionsHandler) MarkUncollectible(c *gin.Context) {
+	tenantID, invoiceID, ok := h.actionContext(c)
+	if !ok {
+		return
+	}
+	if err := h.actions.MarkUncollectible(c.Request.Context(), tenantID, invoiceID); err != nil {
+		respondActionError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"status": "uncollectible"}})
 }

@@ -1,7 +1,10 @@
 import { useState } from "react";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Inbox, RefreshCw, AlertTriangle, Ban, CircleDollarSign, Clock, Percent, RotateCcw } from "lucide-react";
+import {
+  Inbox, RefreshCw, AlertTriangle, Ban, CircleDollarSign, Clock, Percent, RotateCcw,
+  MoreHorizontal, Play, Pause,
+} from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatCurrency } from "@/lib/utils";
@@ -13,6 +16,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { toast } from "@/components/ui/sonner";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -67,6 +79,106 @@ const relativeRetry = (iso) => {
   const diffHr = Math.round(diffMin / 60);
   if (Math.abs(diffHr) < 48) return diffHr <= 0 ? `${-diffHr}h ago` : `in ${diffHr}h`;
   return new Date(iso).toLocaleDateString();
+};
+
+// RowActions is the per-invoice manual-controls menu (Inc 3): retry now, pause /
+// resume dunning, and mark uncollectible. Each mutation refreshes the queue +
+// funnel on success and surfaces the server's precise refusal (e.g. mandate /
+// in-flight → 409) as a toast.
+const RowActions = ({ item }) => {
+  const queryClient = useQueryClient();
+  const [confirmWriteOff, setConfirmWriteOff] = useState(false);
+
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: ["collections-queue"] });
+    queryClient.invalidateQueries({ queryKey: ["collections-analytics"] });
+  };
+  const onError = (err, fallback) =>
+    toast.error(err?.response?.data?.error?.message || fallback);
+
+  const retry = useMutation({
+    mutationFn: () => endpoints.collectionsRetryNow(item.id),
+    onSuccess: () => {
+      toast.success(`Retry scheduled for ${item.invoice_number}`);
+      refresh();
+    },
+    onError: (e) => onError(e, "Could not retry this invoice"),
+  });
+  const pause = useMutation({
+    mutationFn: (paused) => endpoints.collectionsPauseDunning(item.id, paused),
+    onSuccess: (_res, paused) => {
+      toast.success(paused ? "Dunning paused" : "Dunning resumed");
+      refresh();
+    },
+    onError: (e) => onError(e, "Could not update dunning"),
+  });
+  const writeOff = useMutation({
+    mutationFn: () => endpoints.collectionsMarkUncollectible(item.id),
+    onSuccess: () => {
+      toast.success(`${item.invoice_number} written off`);
+      setConfirmWriteOff(false);
+      refresh();
+    },
+    onError: (e) => {
+      onError(e, "Could not write off this invoice");
+      setConfirmWriteOff(false);
+    },
+  });
+
+  const isUncollectible = item.status === "uncollectible";
+  const busy = retry.isPending || pause.isPending || writeOff.isPending;
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label="Invoice actions" disabled={busy}>
+            <MoreHorizontal className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {!isUncollectible && (
+            <DropdownMenuItem onClick={() => retry.mutate()} disabled={item.dunning_paused}>
+              <RefreshCw className="mr-2 h-4 w-4" /> Retry now
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={() => pause.mutate(!item.dunning_paused)}>
+            {item.dunning_paused ? (
+              <>
+                <Play className="mr-2 h-4 w-4" /> Resume dunning
+              </>
+            ) : (
+              <>
+                <Pause className="mr-2 h-4 w-4" /> Pause dunning
+              </>
+            )}
+          </DropdownMenuItem>
+          {!isUncollectible && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-red-600 focus:text-red-600"
+                onClick={() => setConfirmWriteOff(true)}
+              >
+                <Ban className="mr-2 h-4 w-4" /> Mark uncollectible
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ConfirmDialog
+        open={confirmWriteOff}
+        onOpenChange={setConfirmWriteOff}
+        title={`Write off ${item.invoice_number}?`}
+        description="This marks the invoice uncollectible and stops all dunning. It won't be collected automatically anymore. You can still record a manual payment later."
+        confirmLabel="Mark uncollectible"
+        destructive
+        busy={writeOff.isPending}
+        onConfirm={() => writeOff.mutate()}
+      />
+    </>
+  );
 };
 
 const Collections = () => {
@@ -241,7 +353,8 @@ const Collections = () => {
                     <TableHead>Status</TableHead>
                     <TableHead>Last failure</TableHead>
                     <TableHead>Next retry</TableHead>
-                    <TableHead className="pr-6">Owner</TableHead>
+                    <TableHead>Owner</TableHead>
+                    <TableHead className="pr-6 text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -300,13 +413,22 @@ const Collections = () => {
                         )}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        <span className="inline-flex items-center gap-1">
-                          {it.status !== "uncollectible" && <Clock className="h-3 w-3" />}
-                          {it.status === "uncollectible" ? "—" : relativeRetry(it.next_retry_at)}
-                        </span>
+                        {it.dunning_paused ? (
+                          <Badge variant="outline" className="gap-1 text-xs">
+                            <Pause className="h-3 w-3" /> paused
+                          </Badge>
+                        ) : (
+                          <span className="inline-flex items-center gap-1">
+                            {it.status !== "uncollectible" && <Clock className="h-3 w-3" />}
+                            {it.status === "uncollectible" ? "—" : relativeRetry(it.next_retry_at)}
+                          </span>
+                        )}
                       </TableCell>
-                      <TableCell className="pr-6 text-xs capitalize text-muted-foreground">
+                      <TableCell className="text-xs capitalize text-muted-foreground">
                         {it.managed_by}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <RowActions item={it} />
                       </TableCell>
                     </TableRow>
                   ))}

@@ -48,6 +48,12 @@ type InvoiceRepository interface {
 	// (Collections Intelligence Inc 2). Read-only.
 	GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error)
 	GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error)
+	// Manual collections controls (Collections Intelligence Inc 3): all
+	// tenant-scoped and idempotent, returning whether a row changed.
+	GetRetryEligibility(ctx context.Context, tenantID, invoiceID uuid.UUID) (domain.InvoiceRetryEligibility, error)
+	RequeueForRetry(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
+	SetDunningPaused(ctx context.Context, tenantID, invoiceID uuid.UUID, paused bool) (bool, error)
+	MarkUncollectibleScoped(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
 	// the calling worker instance, advancing next_retry_at by `lease` so a

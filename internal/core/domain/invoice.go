@@ -217,6 +217,18 @@ type CollectionsQueueItem struct {
 	NextRetryAt      *time.Time `json:"next_retry_at,omitempty"`
 	ManagedBy        string     `json:"managed_by"`               // scheduler | worker | campaign
 	AttemptStatus    string     `json:"attempt_status,omitempty"` // latest payment_attempt status (ACH), if any
+	DunningPaused    bool       `json:"dunning_paused"`           // operator paused automated dunning (Inc 3)
+}
+
+// InvoiceRetryEligibility is the minimal state a manual "retry now" needs to
+// decide whether an invoice can be requeued and, if not, why (Collections
+// Intelligence Inc 3). Read via a focused query so the big GetByID scan is
+// untouched.
+type InvoiceRetryEligibility struct {
+	Found     bool
+	Status    string
+	Paused    bool
+	IsMandate bool // a UPI mandate auto-debit, which can't be gateway-retried (ENG-168)
 }
 
 // CollectionsQueueFilter narrows the collections worklist. Empty fields mean "no

@@ -113,6 +113,9 @@ describe('Collections page', () => {
         // "Card declined" appears both as a failure-breakdown row and (humanized)
         // in the table, so assert at least one.
         expect(screen.getAllByText('Card declined').length).toBeGreaterThanOrEqual(1);
+
+        // Each row exposes a manual-actions menu (Inc 3), one per invoice.
+        expect(screen.getAllByLabelText('Invoice actions')).toHaveLength(2);
     });
 
     it('shows the good-news empty state when nothing is failing', async () => {
