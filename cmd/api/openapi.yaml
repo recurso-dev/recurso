@@ -8834,6 +8834,14 @@ components:
         total:
           type: integer
           format: int64
+        tax_regime:
+          type: string
+          enum: [gst, sales_tax, vat, plain]
+          description: >-
+            Presentation regime (how the invoice is displayed, not how it was
+            taxed), from the seller's jurisdiction. gst shows GSTIN/HSN/
+            CGST-SGST-IGST/IRN; sales_tax, vat and plain show a single tax line
+            and hide every GST artifact. Computed at read time; not persisted.
         igst_amount:
           type: integer
           format: int64

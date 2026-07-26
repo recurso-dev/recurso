@@ -176,9 +176,15 @@ multi-currency, zero-rated exports. The gap list:
       buyers, and carry the exemption reason on the invoice.
 - [ ] **Avalara AvaTax certification** 🔒 — shipped experimental; needs
       sandbox credentials to certify as the TaxJar alternative.
-- [ ] **US invoice presentation** — invoice template variant with no GST
+- [~] **US invoice presentation** — invoice template variant with no GST
       artifacts (GSTIN/HSN/IRN blocks hidden for non-IN sellers), US date
-      formats, and sales-tax-by-jurisdiction lines.
+      formats, and sales-tax-by-jurisdiction lines. **Inc 1a SHIPPED**:
+      presentation now follows the seller's jurisdiction per tenant (not the
+      env-global `PDF_COMPANY_COUNTRY`) — a `tax_regime` is stamped on invoices
+      and the dashboard `InvoiceDetail` gates GST/HSN/CGST-SGST-IGST/TDS/IRP on
+      it, matching the PDF. `docs/design-us-invoice-presentation.md`. Remaining:
+      per-jurisdiction (state/county) sales-tax lines, and entity-level (not just
+      tenant-level) seller resolution.
 - [ ] **US-first onboarding defaults** — tenant country=US flips defaults:
       USD, Stripe primary, TaxJar prompts, W-9 (not GSTIN) fields.
 - [ ] **GoCardless ACH debit certification** 🔒 — the experimental adapter
