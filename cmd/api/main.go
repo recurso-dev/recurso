@@ -346,6 +346,19 @@ func main() {
 	// US sales-tax nexus gating (opt-in): once a tenant declares nexus states,
 	// US tax is collected only there; a tenant with none is unaffected.
 	taxResolver = taxResolver.WithNexusRepo(taxNexusRepo)
+	// A tenant's declared business country (its primary entity's country_code)
+	// becomes the seller jurisdiction when there's no GST registration — so a US
+	// tenant is treated as a US seller (sales tax, no GST) without env config.
+	{
+		entityCountryRepo := db.NewEntityRepository(database)
+		taxResolver = taxResolver.WithPrimaryEntityCountry(func(ctx context.Context, tenantID uuid.UUID) string {
+			e, err := entityCountryRepo.GetPrimary(ctx, tenantID)
+			if err != nil || e == nil {
+				return ""
+			}
+			return e.CountryCode
+		})
+	}
 	// US sales tax — TaxJar when a key is set (the resolver caches rates
 	// in-memory for 24h per state+zip); otherwise the US engine stays an
 	// honest 0% stub (invoices marked sales_tax_stub).
