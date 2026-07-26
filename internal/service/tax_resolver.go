@@ -42,8 +42,10 @@ type InvoiceTax struct {
 // Seller jurisdiction resolution order:
 //  1. The tenant's GST configuration (gstConfigs): a GST registration implies
 //     an Indian seller, with the seller state taken from the config.
-//  2. Env-level company defaults (COMPANY_COUNTRY / COMPANY_STATE) when the
-//     tenant has no config, the lookup fails, or no provider is wired.
+//  2. The tenant's declared business country (primaryEntityCountry — the primary
+//     entity's country_code), when set: a first-class per-tenant seller country.
+//  3. Env-level company defaults (COMPANY_COUNTRY / COMPANY_STATE) when the
+//     tenant has no config/country, the lookup fails, or no provider is wired.
 //
 // Engine selection follows tax.NewTaxEngine: IN -> GST, US -> sales tax,
 // EU/GB -> VAT, anything else defaults to GST (India-focused product).
@@ -58,7 +60,12 @@ type TaxResolver struct {
 	// salesTaxFor resolves a tenant's OWN sales-tax provider (BYO), returning
 	// nil to fall back to salesTax (the env provider). Optional.
 	salesTaxFor func(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider
-	logger      *slog.Logger
+	// primaryEntityCountry returns a tenant's declared business country (its
+	// primary entity's ISO-2 country_code), or "" when unset. It promotes the
+	// seller country to a first-class per-tenant setting instead of env-only.
+	// Optional; nil keeps the historical env fallback.
+	primaryEntityCountry func(ctx context.Context, tenantID uuid.UUID) string
+	logger               *slog.Logger
 }
 
 // NexusProvider tells the resolver which US states a tenant has declared
@@ -127,6 +134,17 @@ func (r *TaxResolver) WithPerTenantSalesTax(fn func(ctx context.Context, tenantI
 	return r
 }
 
+// WithPrimaryEntityCountry wires a resolver for a tenant's declared business
+// country (its primary entity's ISO-2 country_code). It becomes the seller
+// jurisdiction when the tenant has no GST registration, so a US tenant that set
+// its entity country to "US" is treated as a US seller (sales tax, no GST) —
+// making the seller country a first-class per-tenant setting, not just env.
+// Returns the resolver for chaining.
+func (r *TaxResolver) WithPrimaryEntityCountry(fn func(ctx context.Context, tenantID uuid.UUID) string) *TaxResolver {
+	r.primaryEntityCountry = fn
+	return r
+}
+
 // salesTaxProviderFor picks the tenant's own provider (BYO) when available,
 // else the env provider.
 func (r *TaxResolver) salesTaxProviderFor(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider {
@@ -163,35 +181,46 @@ func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID,
 	}
 }
 
-// sellerJurisdiction resolves the seller's country/state. Tenant GST config
-// wins; env defaults are the fallback. Lookup failures are logged (once per
-// invoice generation) and never propagate.
+// sellerJurisdiction resolves the seller's country/state, in priority order:
+//  1. a tenant GST registration ⇒ Indian seller (the strongest signal);
+//  2. the tenant's declared business country (primary entity country_code);
+//  3. env company defaults.
+//
+// So a US tenant that set its entity country to "US" is treated as a US seller
+// even without any GST config. Lookup failures are logged once and never
+// propagate. Unset entity country ("") falls through to env — existing tenants
+// are unchanged.
 func (r *TaxResolver) sellerJurisdiction(ctx context.Context, tenantID uuid.UUID) (country, state string, cfg *domain.TenantGSTConfig) {
-	country, state = r.defaultCountry, r.defaultState
-
-	if r.gstConfigs == nil || tenantID == uuid.Nil {
-		return country, state, nil
+	// 1. GST registration wins — a real GSTIN means an Indian seller.
+	if r.gstConfigs != nil && tenantID != uuid.Nil {
+		c, err := r.gstConfigs.GetByTenantID(ctx, tenantID)
+		if err != nil {
+			r.logger.Warn("tenant GST config lookup failed; trying entity country / env defaults",
+				"tenant_id", tenantID, "error", err)
+		} else if c != nil && (c.GSTIN != "" || c.StateCode != "") {
+			state = c.StateCode
+			if state == "" {
+				state = domain.GetStateCodeFromGSTIN(c.GSTIN)
+			}
+			return "IN", state, c
+		}
 	}
 
-	c, err := r.gstConfigs.GetByTenantID(ctx, tenantID)
-	if err != nil {
-		r.logger.Warn("tenant GST config lookup failed; using env company defaults",
-			"tenant_id", tenantID, "country", country, "state", state, "error", err)
-		return country, state, nil
-	}
-	if c == nil || (c.GSTIN == "" && c.StateCode == "") {
-		r.logger.Debug("no tenant GST config; using env company defaults",
-			"tenant_id", tenantID, "country", country, "state", state)
-		return country, state, nil
+	// 2. Declared business country (primary entity). Promotes the seller country
+	// to a first-class per-tenant setting instead of env-only.
+	if r.primaryEntityCountry != nil && tenantID != uuid.Nil {
+		if pc := strings.ToUpper(strings.TrimSpace(r.primaryEntityCountry(ctx, tenantID))); pc != "" {
+			// Entities don't carry a sub-national state; keep the env state only
+			// for an Indian entity (where GST place-of-supply needs it).
+			if pc == "IN" {
+				return pc, r.defaultState, nil
+			}
+			return pc, "", nil
+		}
 	}
 
-	// A GST registration implies an Indian seller.
-	country = "IN"
-	state = c.StateCode
-	if state == "" {
-		state = domain.GetStateCodeFromGSTIN(c.GSTIN)
-	}
-	return country, state, c
+	// 3. Env company defaults.
+	return r.defaultCountry, r.defaultState, nil
 }
 
 // SellerCountry returns the seller's ISO-2 country for a tenant using the same

@@ -185,8 +185,14 @@ multi-currency, zero-rated exports. The gap list:
       it, matching the PDF. `docs/design-us-invoice-presentation.md`. Remaining:
       per-jurisdiction (state/county) sales-tax lines, and entity-level (not just
       tenant-level) seller resolution.
-- [ ] **US-first onboarding defaults** — tenant country=US flips defaults:
+- [~] **US-first onboarding defaults** — tenant country=US flips defaults:
       USD, Stripe primary, TaxJar prompts, W-9 (not GSTIN) fields.
+      **Foundation SHIPPED**: the seller country is now a first-class per-tenant
+      setting — sellerJurisdiction resolves it from the primary entity's
+      country_code (GST config still wins; unset ⇒ env, so existing tenants are
+      unchanged), so setting an entity to US routes tax + the invoice regime to
+      US sales tax without env config. Remaining: the onboarding UX flips (USD /
+      Stripe-primary / TaxJar prompts / EIN-W9 fields).
 - [ ] **GoCardless ACH debit certification** 🔒 — the experimental adapter
       also covers ACH; certify for US usage alongside UK/EU bank debit.
 - [ ] **SOC 2 posture** 🔒 — already on the Enterprise plan promise; start
