@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ReportScopeSelect } from "@/components/patterns/ReportScopeSelect";
+import { SCOPE_ALL, scopeToParams } from "@/components/patterns/reportScope";
 
 const now = new Date();
 // Default to the previous month — the period being filed.
@@ -28,7 +30,7 @@ const downloadJSON = (obj, filename) => {
 };
 
 // One return's panel: fetch on demand, show the readable JSON, download either form.
-function ReturnPanel({ kind, month, year }) {
+function ReturnPanel({ kind, month, year, scopeParams }) {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -37,7 +39,9 @@ function ReturnPanel({ kind, month, year }) {
     setResult(null);
     try {
       const res =
-        kind === "gstr1" ? await api.getGSTR1(month, year) : await api.getGSTR3B(month, year);
+        kind === "gstr1"
+          ? await api.getGSTR1(month, year, scopeParams)
+          : await api.getGSTR3B(month, year, scopeParams);
       setResult(res.data);
     } catch (err) {
       toast.error(
@@ -104,6 +108,10 @@ function ReturnPanel({ kind, month, year }) {
 // the exact JSON the GSTN portal accepts for upload.
 const GSTReturns = () => {
   const [{ month, year }, setPeriod] = useState(defaultPeriod());
+  // GSTR is filed per GSTIN, so a multi-entity tenant picks which entity to file
+  // for. Single-entity tenants see no selector and get the whole tenant (SCOPE_ALL).
+  const [scope, setScope] = useState(SCOPE_ALL);
+  const scopeParams = scopeToParams(scope);
 
   return (
     <div>
@@ -135,6 +143,9 @@ const GSTReturns = () => {
             className="w-28"
           />
         </div>
+        <div>
+          <ReportScopeSelect value={scope} onChange={setScope} hideConsolidated />
+        </div>
         <FileSpreadsheet className="mb-2 h-5 w-5 text-stone-300" />
       </div>
 
@@ -144,10 +155,10 @@ const GSTReturns = () => {
           <TabsTrigger value="gstr3b">GSTR-3B</TabsTrigger>
         </TabsList>
         <TabsContent value="gstr1" className="mt-6">
-          <ReturnPanel kind="gstr1" month={month} year={year} />
+          <ReturnPanel kind="gstr1" month={month} year={year} scopeParams={scopeParams} />
         </TabsContent>
         <TabsContent value="gstr3b" className="mt-6">
-          <ReturnPanel kind="gstr3b" month={month} year={year} />
+          <ReturnPanel kind="gstr3b" month={month} year={year} scopeParams={scopeParams} />
         </TabsContent>
       </Tabs>
     </div>

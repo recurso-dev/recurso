@@ -61,23 +61,23 @@ func (h *GSTHandler) GetGSTR1(c *gin.Context) {
 		return
 	}
 
-	ret, err := h.gstrSvc.GetGSTR1(c.Request.Context(), tenantID, month, year)
+	// Optional ?entity_id= files for one legal entity's GSTIN; omitted = all
+	// invoices (correct for single-entity tenants, the historical behavior).
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	ret, err := h.gstrSvc.GetGSTR1(c.Request.Context(), tenantID, entityID, month, year)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to build GSTR-1")
 		return
 	}
 
-	// Seller GSTIN for the government JSON header (best-effort; empty if unset).
-	sellerGSTIN := ""
-	if h.gstConfigRepo != nil {
-		if cfg, cerr := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); cerr == nil && cfg != nil {
-			sellerGSTIN = cfg.GSTIN
-		}
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"data":       ret,
-		"gov_schema": service.BuildGSTR1GovDocument(sellerGSTIN, ret),
+		"gov_schema": service.BuildGSTR1GovDocument(h.sellerGSTIN(c, tenantID, entityID), ret),
 	})
 }
 
@@ -106,24 +106,41 @@ func (h *GSTHandler) GetGSTR3B(c *gin.Context) {
 		return
 	}
 
-	ret, err := h.gstrSvc.GetGSTR3B(c.Request.Context(), tenantID, month, year)
+	entityID, ok := entityIDParam(c)
+	if !ok {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid entity_id")
+		return
+	}
+
+	ret, err := h.gstrSvc.GetGSTR3B(c.Request.Context(), tenantID, entityID, month, year)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to build GSTR-3B")
 		return
 	}
 
-	// Seller GSTIN for the government JSON header (best-effort; empty if unset).
-	sellerGSTIN := ""
-	if h.gstConfigRepo != nil {
-		if cfg, cerr := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); cerr == nil && cfg != nil {
-			sellerGSTIN = cfg.GSTIN
-		}
-	}
-
 	c.JSON(http.StatusOK, gin.H{
 		"data":       ret,
-		"gov_schema": service.BuildGSTR3BGovDocument(sellerGSTIN, ret),
+		"gov_schema": service.BuildGSTR3BGovDocument(h.sellerGSTIN(c, tenantID, entityID), ret),
 	})
+}
+
+// sellerGSTIN resolves the GSTIN for the government JSON header, scoped to the
+// requested entity (falling back to the tenant/primary config when no entity is
+// given). Best-effort — empty when unset.
+func (h *GSTHandler) sellerGSTIN(c *gin.Context, tenantID uuid.UUID, entityID *uuid.UUID) string {
+	if h.gstConfigRepo == nil {
+		return ""
+	}
+	if entityID != nil {
+		if cfg, err := h.gstConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID); err == nil && cfg != nil {
+			return cfg.GSTIN
+		}
+		return ""
+	}
+	if cfg, err := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); err == nil && cfg != nil {
+		return cfg.GSTIN
+	}
+	return ""
 }
 
 // GetConfig returns the current GST configuration

@@ -1018,7 +1018,7 @@ func (r *InvoiceRepository) UpdateEInvoiceStatus(ctx context.Context, tenantID, 
 // invoices issued in [start, end), flattened with the buyer's GST identity —
 // the input for the GSTR-1 export. TaxableValue is the invoice subtotal (the
 // GST base); the tax split is what was billed.
-func (r *InvoiceRepository) GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error) {
+func (r *InvoiceRepository) GetGSTR1Invoices(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, start, end time.Time) ([]domain.GSTR1Invoice, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT i.invoice_number, i.created_at,
 		        COALESCE(c.gstin, ''), COALESCE(c.place_of_supply, ''),
@@ -1028,7 +1028,8 @@ func (r *InvoiceRepository) GetGSTR1Invoices(ctx context.Context, tenantID uuid.
 		 WHERE i.tenant_id = $1
 		   AND i.status NOT IN ('draft', 'void')
 		   AND i.created_at >= $2 AND i.created_at < $3
-		 ORDER BY i.created_at, i.invoice_number`, tenantID, start, end)
+		   AND ($4::uuid IS NULL OR i.entity_id = $4)
+		 ORDER BY i.created_at, i.invoice_number`, tenantID, start, end, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gstr-1 invoices: %w", err)
 	}
@@ -1050,7 +1051,7 @@ func (r *InvoiceRepository) GetGSTR1Invoices(ctx context.Context, tenantID uuid.
 // an invoice, for the CDNR section. A credit note stores only its gross amount,
 // so the tax it reversed is derived proportionally from the originating
 // invoice's tax split — matching how RecordRefundTaxReversal reverses the ledger.
-func (r *InvoiceRepository) GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error) {
+func (r *InvoiceRepository) GetGSTR1CreditNotes(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, start, end time.Time) ([]domain.GSTR1CreditNote, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT COALESCE(NULLIF(cn.reference, ''), cn.id::text), cn.created_at,
 		        COALESCE(c.gstin, ''), COALESCE(c.place_of_supply, ''),
@@ -1060,7 +1061,8 @@ func (r *InvoiceRepository) GetGSTR1CreditNotes(ctx context.Context, tenantID uu
 		 JOIN customers c ON c.id = cn.customer_id
 		 WHERE cn.tenant_id = $1 AND cn.type = 'refund' AND cn.invoice_id IS NOT NULL
 		   AND cn.created_at >= $2 AND cn.created_at < $3
-		 ORDER BY cn.created_at`, tenantID, start, end)
+		   AND ($4::uuid IS NULL OR cn.entity_id = $4)
+		 ORDER BY cn.created_at`, tenantID, start, end, entityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query gstr-1 credit notes: %w", err)
 	}

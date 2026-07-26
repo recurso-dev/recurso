@@ -385,8 +385,9 @@ export const endpoints = {
   validateGSTIN: (gstin) => api.post('/settings/gst/validate', { gstin }),
   updateGSTConfig: (config, entityId) => api.put('/settings/gst', config, { params: entityParams(entityId) }),
   // India GST returns (readable sections + GSTN upload JSON)
-  getGSTR1: (month, year) => api.get('/india/gstr1', { params: { month, year } }),
-  getGSTR3B: (month, year) => api.get('/india/gstr3b', { params: { month, year } }),
+  // params may carry { entity_id } to file for one legal entity's GSTIN.
+  getGSTR1: (month, year, params = {}) => api.get('/india/gstr1', { params: { month, year, ...params } }),
+  getGSTR3B: (month, year, params = {}) => api.get('/india/gstr3b', { params: { month, year, ...params } }),
 
   // GenAI analytics: natural-language question -> { data, query }
   askAnalytics: (question) => api.post('/analytics/ask', { question }),

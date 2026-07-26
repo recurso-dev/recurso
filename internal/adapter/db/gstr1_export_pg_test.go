@@ -101,7 +101,7 @@ func TestGSTR1Export_QueriesAndReconciliation(t *testing.T) {
 	start := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 1, 0)
 
-	invoices, err := repo.GetGSTR1Invoices(ctx, tenantID, start, end)
+	invoices, err := repo.GetGSTR1Invoices(ctx, tenantID, nil, start, end)
 	if err != nil {
 		t.Fatalf("GetGSTR1Invoices: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestGSTR1Export_QueriesAndReconciliation(t *testing.T) {
 	}
 
 	// Credit notes: the proportional split reverses exactly half the B2B tax.
-	notes, err := repo.GetGSTR1CreditNotes(ctx, tenantID, start, end)
+	notes, err := repo.GetGSTR1CreditNotes(ctx, tenantID, nil, start, end)
 	if err != nil {
 		t.Fatalf("GetGSTR1CreditNotes: %v", err)
 	}
