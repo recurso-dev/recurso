@@ -46,6 +46,14 @@ type paymentMethodSetup interface {
 	FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
 }
 
+// bankAccountSetup is the ACH (us_bank_account) capture extension via Stripe
+// Financial Connections. Stripe-only, so it's reached by type-assertion — a
+// non-Stripe setup simply reports ACH unavailable rather than forcing every
+// implementer to add it. *gateway.StripeGateway satisfies it (Inc 3a).
+type bankAccountSetup interface {
+	CreateBankAccountSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error)
+}
+
 // mandateReauth creates a fresh UPI mandate whose AuthURL the customer approves
 // on Razorpay's hosted page (ENG-5 Phase 3a). Satisfied by
 // *service.MandateService; nil when Razorpay isn't really configured — the
@@ -331,6 +339,71 @@ func (h *PortalAPIHandler) StartPaymentMethodSetup(c *gin.Context) {
 	clientSecret, err := setup.CreateSetupIntent(ctx, stripeCustomerID, map[string]string{"customer_id": id.String()})
 	if err != nil {
 		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start payment setup")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{
+		"client_secret":   clientSecret,
+		"publishable_key": pubKey,
+	}})
+}
+
+// StartBankAccountSetup begins an ACH (us_bank_account) SetupIntent via Stripe
+// Financial Connections for the authenticated portal customer, returning the
+// client_secret the browser's collectBankAccountForSetup confirms plus the
+// publishable key. The saved bank account is finalized by the shared
+// ConfirmPaymentMethod (FinalizeSetupIntent already reads us_bank_account). No
+// bank data touches Recurso — it goes browser→Stripe. (US Market Readiness, Inc 3a.)
+func (h *PortalAPIHandler) StartBankAccountSetup(c *gin.Context) {
+	customerID, exists := c.Get("portal_customer_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	if h.paymentSetup == nil || h.customerStore == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "self-serve payment setup isn't available on this deployment")
+		return
+	}
+	id := customerID.(uuid.UUID)
+	ctx := c.Request.Context()
+
+	cust, err := h.customerStore.GetByIDPublic(ctx, id)
+	if err != nil || cust == nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+	existing, err := h.customerStore.GetStripeCustomerID(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to load customer")
+		return
+	}
+	name := ""
+	if cust.Name != nil {
+		name = *cust.Name
+	}
+
+	setup, _, pubKey := h.resolveSetup(ctx, cust)
+	bankSetup, ok := setup.(bankAccountSetup)
+	if !ok {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "bank (ACH) payments aren't available on this deployment")
+		return
+	}
+
+	stripeCustomerID, err := setup.EnsureStripeCustomer(ctx, existing, cust.Email, name)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to prepare payment setup")
+		return
+	}
+	if stripeCustomerID != existing {
+		if err := h.customerStore.SetStripeCustomerID(ctx, id, stripeCustomerID); err != nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to save customer")
+			return
+		}
+	}
+
+	clientSecret, err := bankSetup.CreateBankAccountSetupIntent(ctx, stripeCustomerID, map[string]string{"customer_id": id.String()})
+	if err != nil {
+		respondError(c, http.StatusBadGateway, codeInternalError, "failed to start bank setup")
 		return
 	}
 
