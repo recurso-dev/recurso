@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -74,6 +75,10 @@ func (h *WebhookHandler) HandleStripe(c *gin.Context) {
 	switch event.Type {
 	case "payment_intent.succeeded":
 		handlerErr = h.handlePaymentIntentSucceeded(ctx, event)
+	case "payment_intent.processing":
+		handlerErr = h.handlePaymentIntentProcessing(ctx, event)
+	case "payment_intent.payment_failed":
+		handlerErr = h.handlePaymentIntentPaymentFailed(ctx, event)
 	case "invoice.payment_failed":
 		handlerErr = h.handleInvoicePaymentFailed(ctx, event)
 	case "customer.subscription.deleted":
@@ -160,7 +165,123 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 	if transitioned {
 		h.recordDunningSuccess(ctx, invoiceID)
 	}
+
+	// Settle the async payment attempt (ACH). Best-effort — the invoice is the
+	// source of truth; a missing/failed attempt update must not fail the webhook.
+	h.settleAttempt(ctx, pi.ID)
 	return nil
+}
+
+// paymentAttemptStore is the ACH settlement-state persistence the Stripe webhook
+// needs. *db.PaymentAttemptRepository satisfies it. Nil-safe via SetPaymentAttempts.
+type paymentAttemptStore interface {
+	Create(ctx context.Context, a *domain.PaymentAttempt) error
+	GetByPaymentIntentID(ctx context.Context, paymentIntentID string) (*domain.PaymentAttempt, error)
+	UpdateStatusByPaymentIntent(ctx context.Context, paymentIntentID string, status domain.PaymentAttemptStatus, failureCode string, settledAt *time.Time) error
+}
+
+// settleAttempt advances an existing attempt to succeeded (idempotent, best-effort).
+func (h *WebhookHandler) settleAttempt(ctx context.Context, paymentIntentID string) {
+	if h.paymentAttempts == nil || paymentIntentID == "" {
+		return
+	}
+	existing, err := h.paymentAttempts.GetByPaymentIntentID(ctx, paymentIntentID)
+	if err != nil || existing == nil {
+		return
+	}
+	now := time.Now().UTC()
+	if err := h.paymentAttempts.UpdateStatusByPaymentIntent(ctx, paymentIntentID, domain.PaymentAttemptSucceeded, "", &now); err != nil {
+		h.logger.Error("failed to settle payment attempt", "payment_intent_id", paymentIntentID, "error", err)
+	}
+}
+
+// handlePaymentIntentProcessing records an ACH debit that has entered the
+// multi-day `processing` window (payment_intent.processing). The invoice stays
+// `open`; the attempt row is what makes the in-flight state visible (and stops
+// dunning re-charging). Upsert-by-PaymentIntent keeps redeliveries idempotent.
+func (h *WebhookHandler) handlePaymentIntentProcessing(ctx context.Context, event stripe.Event) error {
+	if h.paymentAttempts == nil {
+		return nil
+	}
+	var pi stripe.PaymentIntent
+	if err := json.Unmarshal(event.Data.Raw, &pi); err != nil {
+		return fmt.Errorf("failed to unmarshal payment intent: %w", err)
+	}
+	invoiceID, ok := parseInvoiceMetadata(h, pi)
+	if !ok {
+		return nil
+	}
+	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)
+	if err != nil {
+		return fmt.Errorf("failed to load invoice %s: %w", invoiceID, err)
+	}
+	if inv == nil {
+		return nil
+	}
+	if existing, _ := h.paymentAttempts.GetByPaymentIntentID(ctx, pi.ID); existing != nil {
+		return h.paymentAttempts.UpdateStatusByPaymentIntent(ctx, pi.ID, domain.PaymentAttemptProcessing, "", nil)
+	}
+	return h.paymentAttempts.Create(ctx, &domain.PaymentAttempt{
+		TenantID:               inv.TenantID,
+		InvoiceID:              invoiceID,
+		Gateway:                "stripe",
+		Method:                 paymentMethodOfPI(pi),
+		GatewayPaymentIntentID: pi.ID,
+		Status:                 domain.PaymentAttemptProcessing,
+		Amount:                 pi.Amount,
+	})
+}
+
+// handlePaymentIntentPaymentFailed marks an ACH attempt failed (with its return
+// code) when the debit fails at settlement time (days later). The invoice was
+// never marked paid, so it simply stays open for dunning to resume.
+func (h *WebhookHandler) handlePaymentIntentPaymentFailed(ctx context.Context, event stripe.Event) error {
+	if h.paymentAttempts == nil {
+		return nil
+	}
+	var pi stripe.PaymentIntent
+	if err := json.Unmarshal(event.Data.Raw, &pi); err != nil {
+		return fmt.Errorf("failed to unmarshal payment intent: %w", err)
+	}
+	if pi.ID == "" {
+		return nil
+	}
+	existing, _ := h.paymentAttempts.GetByPaymentIntentID(ctx, pi.ID)
+	if existing == nil {
+		return nil // not an attempt we're tracking
+	}
+	code := ""
+	if pi.LastPaymentError != nil {
+		code = string(pi.LastPaymentError.Code)
+		if code == "" {
+			code = string(pi.LastPaymentError.DeclineCode)
+		}
+	}
+	return h.paymentAttempts.UpdateStatusByPaymentIntent(ctx, pi.ID, domain.PaymentAttemptFailed, code, nil)
+}
+
+// parseInvoiceMetadata pulls a valid invoice UUID out of a PaymentIntent's
+// metadata, logging + returning false when absent/malformed.
+func parseInvoiceMetadata(h *WebhookHandler, pi stripe.PaymentIntent) (uuid.UUID, bool) {
+	s := pi.Metadata["invoice_id"]
+	if s == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(s)
+	if err != nil {
+		h.logger.Warn("invalid invoice_id in stripe metadata", "invoice_id", s)
+		return uuid.Nil, false
+	}
+	return id, true
+}
+
+// paymentMethodOfPI reports the payment method (e.g. "us_bank_account") a
+// PaymentIntent used, from its declared method types.
+func paymentMethodOfPI(pi stripe.PaymentIntent) string {
+	if len(pi.PaymentMethodTypes) > 0 {
+		return pi.PaymentMethodTypes[0]
+	}
+	return ""
 }
 
 func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event stripe.Event) error {
