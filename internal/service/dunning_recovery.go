@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -62,6 +63,16 @@ type DunningRecoveryService struct {
 	fxFallback        port.ExchangeRateProvider
 	tenantLookup      TenantLookup
 	reportingCurrency string // env-level default when the tenant has no base currency
+
+	collectionsAgg collectionsAggregator // nil-safe; powers the funnel + failure breakdown (Inc 2)
+}
+
+// collectionsAggregator is the invoice-side aggregation the recovery funnel and
+// failure breakdown need (Collections Intelligence Inc 2). *db.InvoiceRepository
+// satisfies it.
+type collectionsAggregator interface {
+	GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error)
+	GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error)
 }
 
 // NewDunningRecoveryService builds the service. strategy is the tenant-wide
@@ -99,6 +110,13 @@ func (s *DunningRecoveryService) SetFX(provider, fallback port.ExchangeRateProvi
 // SetTenantLookup enables per-tenant reporting currency (tenant.BaseCurrency).
 func (s *DunningRecoveryService) SetTenantLookup(l TenantLookup) {
 	s.tenantLookup = l
+}
+
+// SetCollectionsAggregator wires the invoice-side aggregation used by the
+// collections funnel + failure breakdown (Inc 2). Nil-safe: without it those
+// endpoints return empty results rather than failing.
+func (s *DunningRecoveryService) SetCollectionsAggregator(a collectionsAggregator) {
+	s.collectionsAgg = a
 }
 
 func (s *DunningRecoveryService) resolveReportingCurrency(ctx context.Context, tenantID uuid.UUID) string {
@@ -253,4 +271,142 @@ func (s *DunningRecoveryService) GetRecoveredSummary(ctx context.Context, tenant
 		AvgDaysToRecover:     totals.AvgDaysToRecover,
 		Monthly:              normMonthly,
 	}, nil
+}
+
+// CollectionsBucket is one stage of the recovery funnel: how many invoices and
+// how much money (in the reporting currency), post FX-normalization.
+type CollectionsBucket struct {
+	Count  int   `json:"count"`
+	Amount int64 `json:"amount"`
+}
+
+// CollectionsFunnel is the failed → resolved journey of billed revenue
+// (Collections Intelligence Inc 2). PastDue is money still being chased,
+// Uncollectible is written off, Recovered is what the engine clawed back
+// (all-time). RecoveryRate is recovered ÷ (recovered + uncollectible) — of the
+// cases that have *concluded*, the fraction saved — so in-flight past_due
+// doesn't drag it down.
+type CollectionsFunnel struct {
+	ReportingCurrency string            `json:"reporting_currency"`
+	PastDue           CollectionsBucket `json:"past_due"`
+	Uncollectible     CollectionsBucket `json:"uncollectible"`
+	Recovered         CollectionsBucket `json:"recovered"`
+	RecoveryRate      float64           `json:"recovery_rate"`
+}
+
+// CollectionsFailureBucket is one failure reason ranked by money at risk, in the
+// reporting currency.
+type CollectionsFailureBucket struct {
+	ErrorCode    string `json:"error_code"`
+	Count        int    `json:"count"`
+	AmountAtRisk int64  `json:"amount_at_risk"`
+}
+
+// GetCollectionsFunnel composes the recovery funnel: currently-failing (past_due)
+// and written-off (uncollectible) invoices from the invoice side, recovered
+// totals from recovered_payments, all normalized to the tenant's reporting
+// currency. Nil aggregator → an empty (but valid) funnel.
+func (s *DunningRecoveryService) GetCollectionsFunnel(ctx context.Context, tenantID uuid.UUID) (*CollectionsFunnel, error) {
+	reporting := s.resolveReportingCurrency(ctx, tenantID)
+	funnel := &CollectionsFunnel{ReportingCurrency: reporting}
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	haveFX := s.fxProvider != nil || s.fxFallback != nil
+
+	// norm converts a per-currency minor-unit amount into the reporting currency,
+	// skipping amounts it can't convert (rather than mis-summing mixed currencies).
+	norm := func(amt int64, ccy string) (int64, bool) {
+		if ccy == reporting {
+			return amt, true
+		}
+		if !haveFX {
+			return 0, false
+		}
+		conv, _, err := normalizer.convert(ctx, amt, ccy, reporting)
+		if err != nil {
+			return 0, false
+		}
+		return conv, true
+	}
+
+	if s.collectionsAgg != nil {
+		atRisk, err := s.collectionsAgg.GetCollectionsAtRisk(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range atRisk {
+			amt, ok := norm(row.Amount, row.Currency)
+			bucket := &funnel.PastDue
+			if row.Status == string(domain.InvoiceStatusUncollectible) {
+				bucket = &funnel.Uncollectible
+			}
+			bucket.Count += row.Count
+			if ok {
+				bucket.Amount += amt
+			}
+		}
+	}
+
+	// Recovered totals (all-time) from the recovered-payments ledger.
+	if s.repo != nil {
+		totals, err := s.repo.GetRecoveryTotals(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		funnel.Recovered.Count = totals.RecoveredCount
+		for ccy, amt := range totals.RecoveredAmountTotal {
+			if conv, ok := norm(amt, ccy); ok {
+				funnel.Recovered.Amount += conv
+			}
+		}
+	}
+
+	// Recovery rate over concluded cases only (recovered vs written off).
+	concluded := funnel.Recovered.Count + funnel.Uncollectible.Count
+	if concluded > 0 {
+		funnel.RecoveryRate = float64(funnel.Recovered.Count) / float64(concluded)
+	}
+	return funnel, nil
+}
+
+// GetFailureBreakdown ranks the failure reasons holding the most billed revenue
+// hostage right now, normalized to the reporting currency and sorted by amount
+// at risk (desc). Nil aggregator → empty slice.
+func (s *DunningRecoveryService) GetFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]CollectionsFailureBucket, error) {
+	if s.collectionsAgg == nil {
+		return []CollectionsFailureBucket{}, nil
+	}
+	rows, err := s.collectionsAgg.GetCollectionsFailureBreakdown(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	reporting := s.resolveReportingCurrency(ctx, tenantID)
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	haveFX := s.fxProvider != nil || s.fxFallback != nil
+
+	byCode := map[string]*CollectionsFailureBucket{}
+	var order []string
+	for _, row := range rows {
+		b := byCode[row.ErrorCode]
+		if b == nil {
+			b = &CollectionsFailureBucket{ErrorCode: row.ErrorCode}
+			byCode[row.ErrorCode] = b
+			order = append(order, row.ErrorCode)
+		}
+		b.Count += row.Count
+		if row.Currency == reporting {
+			b.AmountAtRisk += row.Amount
+		} else if haveFX {
+			if conv, _, err := normalizer.convert(ctx, row.Amount, row.Currency, reporting); err == nil {
+				b.AmountAtRisk += conv
+			}
+		}
+	}
+
+	out := make([]CollectionsFailureBucket, 0, len(order))
+	for _, code := range order {
+		out = append(out, *byCode[code])
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].AmountAtRisk > out[j].AmountAtRisk })
+	return out, nil
 }

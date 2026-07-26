@@ -9,8 +9,30 @@ import { endpoints } from '../../lib/api';
 vi.mock('../../lib/api', () => ({
     endpoints: {
         getCollectionsQueue: vi.fn(),
+        getCollectionsFunnel: vi.fn(),
+        getCollectionsFailures: vi.fn(),
     },
 }));
+
+const funnelResponse = {
+    data: {
+        data: {
+            reporting_currency: 'USD',
+            past_due: { count: 4, amount: 40000 },
+            uncollectible: { count: 2, amount: 15000 },
+            recovered: { count: 6, amount: 30000 },
+            recovery_rate: 0.75,
+        },
+    },
+};
+const failuresResponse = {
+    data: {
+        data: [
+            { error_code: 'card_declined', count: 5, amount_at_risk: 20000 },
+            { error_code: 'insufficient_funds', count: 3, amount_at_risk: 8000 },
+        ],
+    },
+};
 
 const wrap = (ui) => (
     <MemoryRouter>
@@ -21,7 +43,11 @@ const wrap = (ui) => (
 );
 
 describe('Collections page', () => {
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        endpoints.getCollectionsFunnel.mockResolvedValue(funnelResponse);
+        endpoints.getCollectionsFailures.mockResolvedValue(failuresResponse);
+    });
 
     it('renders failing invoices with humanized failure reasons', async () => {
         endpoints.getCollectionsQueue.mockResolvedValue({
@@ -69,16 +95,24 @@ describe('Collections page', () => {
         render(wrap(<Collections />));
 
         await waitFor(() => expect(screen.getByText('Acme Inc')).toBeInTheDocument());
-        // Humanized codes, not the raw snake_case.
-        expect(screen.getByText('Insufficient funds')).toBeInTheDocument();
+        // Humanized codes, not the raw snake_case (may appear in both the table
+        // row and the failure-breakdown card).
+        expect(screen.getAllByText('Insufficient funds').length).toBeGreaterThanOrEqual(1);
         expect(screen.getByText('ACH return')).toBeInTheDocument();
         // Status badges (label also appears as a filter tab, hence getAllByText).
         expect(screen.getAllByText('Past due').length).toBeGreaterThanOrEqual(1);
         expect(screen.getAllByText('Uncollectible').length).toBeGreaterThanOrEqual(1);
         // Returned ACH attempt chip.
         expect(screen.getByText('returned')).toBeInTheDocument();
-        // Total count in the header stat.
         expect(screen.getByText('Globex')).toBeInTheDocument();
+
+        // Funnel stats + failure breakdown (tenant-wide, FX-normalized).
+        expect(screen.getByText('Recovery rate')).toBeInTheDocument();
+        expect(screen.getByText('75.0%')).toBeInTheDocument();
+        expect(screen.getByText('Top failure reasons')).toBeInTheDocument();
+        // "Card declined" appears both as a failure-breakdown row and (humanized)
+        // in the table, so assert at least one.
+        expect(screen.getAllByText('Card declined').length).toBeGreaterThanOrEqual(1);
     });
 
     it('shows the good-news empty state when nothing is failing', async () => {

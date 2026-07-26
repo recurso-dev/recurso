@@ -1317,8 +1317,11 @@ func main() {
 	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
 	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc, dunningRecoveryService)
 
-	// Collections Intelligence — operator-facing worklist over the invoice repo.
-	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo)
+	// Collections Intelligence — operator-facing worklist over the invoice repo,
+	// plus the recovery-funnel / failure-breakdown analytics (fed the invoice-side
+	// aggregates via the recovery service's nil-safe aggregator).
+	dunningRecoveryService.SetCollectionsAggregator(invoiceRepo)
+	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo, dunningRecoveryService)
 
 	// Phase 2: New Handlers
 	mandateHandler := handler.NewMandateHandler(mandateService)
@@ -1664,6 +1667,8 @@ func main() {
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
 			analytics.GET("/dunning/history", dunningHandler.GetHistory)
 			analytics.GET("/dunning/recovered", dunningHandler.GetRecovered)
+			analytics.GET("/collections/funnel", collectionsHandler.GetFunnel)
+			analytics.GET("/collections/failures", collectionsHandler.GetFailures)
 		}
 		v1.POST("/analytics/ask", analyticsHandler.Ask) // P48 GenAI
 

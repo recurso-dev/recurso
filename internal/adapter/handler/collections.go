@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 // collectionsQueueLister is the read-only slice of the invoice repository the
@@ -17,15 +18,23 @@ type collectionsQueueLister interface {
 	CountCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) (int, error)
 }
 
+// collectionsAnalytics is the recovery-funnel + failure-breakdown analytics the
+// dashboard needs (Inc 2). *service.DunningRecoveryService satisfies it.
+type collectionsAnalytics interface {
+	GetCollectionsFunnel(ctx context.Context, tenantID uuid.UUID) (*service.CollectionsFunnel, error)
+	GetFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]service.CollectionsFailureBucket, error)
+}
+
 // CollectionsHandler serves the operator-facing collections views
 // (Collections Intelligence). Read-only; the automated recovery engine is
 // untouched.
 type CollectionsHandler struct {
-	repo collectionsQueueLister
+	repo      collectionsQueueLister
+	analytics collectionsAnalytics // nil-safe
 }
 
-func NewCollectionsHandler(repo collectionsQueueLister) *CollectionsHandler {
-	return &CollectionsHandler{repo: repo}
+func NewCollectionsHandler(repo collectionsQueueLister, analytics collectionsAnalytics) *CollectionsHandler {
+	return &CollectionsHandler{repo: repo, analytics: analytics}
 }
 
 // validCollectionsStatus / validManagedBy guard the filter inputs so an
@@ -71,4 +80,48 @@ func (h *CollectionsHandler) GetQueue(c *gin.Context) {
 		"data": items,
 		"meta": gin.H{"page": p.Page, "per_page": p.PerPage, "total": total},
 	})
+}
+
+// GetFunnel returns the recovery funnel (past_due → resolved as recovered vs
+// uncollectible) with revenue-at-risk, FX-normalized to the reporting currency.
+// GET /v1/analytics/collections/funnel
+func (h *CollectionsHandler) GetFunnel(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if h.analytics == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "collections analytics not configured")
+		return
+	}
+	funnel, err := h.analytics.GetCollectionsFunnel(c.Request.Context(), tenantID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": funnel})
+}
+
+// GetFailures returns the failure-reason breakdown ranked by money at risk.
+// GET /v1/analytics/collections/failures
+func (h *CollectionsHandler) GetFailures(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	if h.analytics == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "collections analytics not configured")
+		return
+	}
+	buckets, err := h.analytics.GetFailureBreakdown(c.Request.Context(), tenantID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if buckets == nil {
+		buckets = []service.CollectionsFailureBucket{}
+	}
+	c.JSON(http.StatusOK, gin.H{"data": buckets})
 }

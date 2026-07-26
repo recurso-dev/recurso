@@ -742,6 +742,58 @@ func (r *InvoiceRepository) CountCollectionsQueue(ctx context.Context, tenantID 
 	return n, nil
 }
 
+// GetCollectionsAtRisk aggregates invoices still owing money in a recovery
+// state, grouped by status + currency (Collections Intelligence Inc 2). The
+// service FX-normalizes these into the recovery-funnel buckets. Read-only.
+func (r *InvoiceRepository) GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT status, currency, COUNT(*), COALESCE(SUM(amount_remaining), 0)
+		FROM invoices
+		WHERE tenant_id = $1 AND status IN ('past_due', 'uncollectible') AND amount_remaining > 0
+		GROUP BY status, currency`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query collections at-risk: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.CollectionsAtRiskRow
+	for rows.Next() {
+		var row domain.CollectionsAtRiskRow
+		if err := rows.Scan(&row.Status, &row.Currency, &row.Count, &row.Amount); err != nil {
+			return nil, fmt.Errorf("scan collections at-risk row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+// GetCollectionsFailureBreakdown aggregates currently-failing invoices by their
+// last failure code + currency (Collections Intelligence Inc 2). A blank code
+// (offline/manual invoices that never hit a gateway) folds into "unknown".
+// Read-only.
+func (r *InvoiceRepository) GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT COALESCE(NULLIF(last_payment_error, ''), 'unknown') AS code, currency,
+		       COUNT(*), COALESCE(SUM(amount_remaining), 0)
+		FROM invoices
+		WHERE tenant_id = $1 AND status IN ('past_due', 'uncollectible') AND amount_remaining > 0
+		GROUP BY code, currency`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query collections failure breakdown: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.CollectionsFailureRow
+	for rows.Next() {
+		var row domain.CollectionsFailureRow
+		if err := rows.Scan(&row.ErrorCode, &row.Currency, &row.Count, &row.Amount); err != nil {
+			return nil, fmt.Errorf("scan collections failure row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // UpdateRetryInfo updates the retry count and next retry date
 func (r *InvoiceRepository) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
 	query := `

@@ -228,6 +228,26 @@ type CollectionsQueueFilter struct {
 	Offset    int
 }
 
+// CollectionsAtRiskRow aggregates open recovery invoices by status and currency
+// (Collections Intelligence Inc 2) — the raw material for the recovery funnel's
+// "at risk" and "written off" figures before FX normalization.
+type CollectionsAtRiskRow struct {
+	Status   string // past_due | uncollectible
+	Currency string
+	Count    int
+	Amount   int64 // sum(amount_remaining), minor units
+}
+
+// CollectionsFailureRow aggregates currently-failing invoices by their last
+// failure code and currency (Collections Intelligence Inc 2) — which decline
+// reasons hold the most money hostage right now.
+type CollectionsFailureRow struct {
+	ErrorCode string // last_payment_error, or "unknown" when blank
+	Currency  string
+	Count     int
+	Amount    int64 // sum(amount_remaining), minor units
+}
+
 // CalculateDueDate returns the due date based on payment terms (e.g., "net15", "net30")
 func CalculateDueDate(start time.Time, terms string) time.Time {
 	if terms == "" || terms == "net0" || terms == "due_on_receipt" {

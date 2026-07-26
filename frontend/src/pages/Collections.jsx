@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { Inbox, RefreshCw, AlertTriangle, Ban, CircleDollarSign, Clock } from "lucide-react";
+import { Inbox, RefreshCw, AlertTriangle, Ban, CircleDollarSign, Clock, Percent, RotateCcw } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatCurrency } from "@/lib/utils";
@@ -85,6 +85,22 @@ const Collections = () => {
     placeholderData: keepPreviousData,
   });
 
+  // Funnel + failure breakdown are tenant-wide and FX-normalized — independent of
+  // the queue's status filter / page, so they get their own cached query.
+  const { data: analytics } = useQuery({
+    queryKey: ["collections-analytics"],
+    queryFn: async () => {
+      const [funnelRes, failuresRes] = await Promise.all([
+        endpoints.getCollectionsFunnel(),
+        endpoints.getCollectionsFailures(),
+      ]);
+      return {
+        funnel: funnelRes.data?.data ?? null,
+        failures: failuresRes.data?.data ?? [],
+      };
+    },
+  });
+
   const items = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
@@ -92,11 +108,10 @@ const Collections = () => {
     ? error?.response?.data?.error?.message || error?.message || "Failed to load the collections queue"
     : null;
 
-  // At-risk amount on this page (a page-scoped hint, not the tenant-wide total —
-  // Inc 2 adds the FX-normalized revenue-at-risk figure).
-  const pageAtRisk = items.reduce((sum, it) => sum + (it.amount_remaining || 0), 0);
-  const pageCurrency = items[0]?.currency || "USD";
-  const mixedCurrency = items.some((it) => it.currency !== pageCurrency);
+  const funnel = analytics?.funnel ?? null;
+  const failures = analytics?.failures ?? [];
+  const reportingCurrency = funnel?.reporting_currency || "USD";
+  const maxFailureAmount = failures.reduce((m, f) => Math.max(m, f.amount_at_risk || 0), 0);
 
   const onStatusChange = (v) => {
     setStatus(v);
@@ -124,21 +139,65 @@ const Collections = () => {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Invoices in collections" value={total.toLocaleString()} icon={Inbox} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          label="At risk (this page)"
-          value={formatCurrency(pageAtRisk, pageCurrency)}
+          label="Revenue at risk"
+          value={formatCurrency(funnel?.past_due?.amount || 0, reportingCurrency)}
           icon={CircleDollarSign}
-          hint={mixedCurrency ? "mixed currencies — page subtotal" : `${items.length} shown`}
+          hint={`${(funnel?.past_due?.count || 0).toLocaleString()} invoices in dunning`}
         />
         <StatCard
-          label="Uncollectible"
-          value={items.filter((it) => it.status === "uncollectible").length.toLocaleString()}
+          label="Recovery rate"
+          value={funnel ? `${(funnel.recovery_rate * 100).toFixed(1)}%` : "—"}
+          icon={Percent}
+          hint="recovered vs written off"
+        />
+        <StatCard
+          label="Recovered (all-time)"
+          value={formatCurrency(funnel?.recovered?.amount || 0, reportingCurrency)}
+          icon={RotateCcw}
+          hint={`${(funnel?.recovered?.count || 0).toLocaleString()} invoices`}
+        />
+        <StatCard
+          label="Written off"
+          value={formatCurrency(funnel?.uncollectible?.amount || 0, reportingCurrency)}
           icon={Ban}
-          hint="on this page"
+          hint={`${(funnel?.uncollectible?.count || 0).toLocaleString()} uncollectible`}
         />
       </div>
+
+      {/* Failure reasons ranked by money at risk */}
+      {failures.length > 0 && (
+        <Card className="mt-6">
+          <CardContent className="p-6">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-foreground">Top failure reasons</h3>
+              <span className="text-xs text-muted-foreground">by revenue at risk ({reportingCurrency})</span>
+            </div>
+            <ul className="space-y-3">
+              {failures.slice(0, 6).map((f) => (
+                <li key={f.error_code}>
+                  <div className="mb-1 flex items-center justify-between text-sm">
+                    <span className="text-foreground">{humanizeFailure(f.error_code)}</span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {formatCurrency(f.amount_at_risk, reportingCurrency)}
+                      <span className="ml-2 text-xs">({f.count})</span>
+                    </span>
+                  </div>
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-amber-500"
+                      style={{
+                        width: `${maxFailureAmount > 0 ? Math.max(4, (f.amount_at_risk / maxFailureAmount) * 100) : 0}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mt-6 flex items-center justify-between gap-4">
         <Tabs value={status} onValueChange={onStatusChange}>
