@@ -19,6 +19,7 @@ vi.mock('../../lib/api', () => ({
         getDunningWeights: vi.fn(),
         getDunningHistory: vi.fn(),
         getDunningRecovered: vi.fn(),
+        getDunningTiming: vi.fn(),
     }
 }));
 
@@ -48,6 +49,9 @@ describe('DunningDashboard Component', () => {
                     { month: currentMonth(), currency: 'INR', amount: 236000, count: 2 },
                 ],
             } }
+        });
+        endpoints.getDunningTiming.mockResolvedValue({
+            data: { data: { by_hour: [], by_day_of_week: [], best_hour: null, best_day: null, sample_size: 0 } }
         });
     });
 

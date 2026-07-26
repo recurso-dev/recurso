@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -130,4 +131,37 @@ func (r *DunningRepository) GetHistoryStats(ctx context.Context, tenantID uuid.U
 	`
 	err = r.db.QueryRowContext(ctx, query, tenantID).Scan(&totalRetries, &totalSuccesses)
 	return
+}
+
+// GetTimingRates tallies retry outcomes by hour-of-day and day-of-week from the
+// tenant's dunning_history (Collections Intelligence Inc 4) — the raw material
+// for "best time to retry" insights. Buckets use EXTRACT on the timestamptz, so
+// they are in the DB session timezone (UTC). Read-only.
+func (r *DunningRepository) GetTimingRates(ctx context.Context, tenantID uuid.UUID) ([]domain.DunningTimingBucket, error) {
+	query := `
+		SELECT 'hour' AS unit, EXTRACT(HOUR FROM created_at)::int AS bucket,
+		       COUNT(*), COUNT(*) FILTER (WHERE outcome = 'success')
+		FROM dunning_history WHERE tenant_id = $1
+		GROUP BY EXTRACT(HOUR FROM created_at)
+		UNION ALL
+		SELECT 'dow', EXTRACT(DOW FROM created_at)::int,
+		       COUNT(*), COUNT(*) FILTER (WHERE outcome = 'success')
+		FROM dunning_history WHERE tenant_id = $1
+		GROUP BY EXTRACT(DOW FROM created_at)
+	`
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query dunning timing rates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.DunningTimingBucket
+	for rows.Next() {
+		var b domain.DunningTimingBucket
+		if err := rows.Scan(&b.Unit, &b.Bucket, &b.Total, &b.Successes); err != nil {
+			return nil, fmt.Errorf("scan dunning timing bucket: %w", err)
+		}
+		out = append(out, b)
+	}
+	return out, rows.Err()
 }

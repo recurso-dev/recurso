@@ -69,6 +69,22 @@ func (h *DunningHandler) GetHistory(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": history})
 }
 
+// GetTiming returns "best time to retry" insights (success rate by hour-of-day
+// and day-of-week) from historical dunning outcomes. Read-only.
+func (h *DunningHandler) GetTiming(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	insights, err := h.svc.GetTimingInsights(c.Request.Context(), tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch dunning timing insights")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": insights})
+}
+
 // GetRecovered returns tenant-scoped recovered-revenue totals and a
 // last-12-months monthly series.
 func (h *DunningHandler) GetRecovered(c *gin.Context) {

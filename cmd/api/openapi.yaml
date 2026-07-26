@@ -6656,6 +6656,38 @@ paths:
                         count: { type: integer }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/analytics/dunning/timing:
+    get:
+      tags: [Dunning]
+      summary: Best-time-to-retry insights
+      description: >-
+        Historical retry success rate by hour-of-day (0-23) and day-of-week
+        (0-6, Sunday=0), in UTC, plus the best-performing hour and day among
+        buckets with enough samples. Read-only; does not change the live retry
+        bandit. Cached for up to 5 minutes.
+      operationId: getDunningTiming
+      responses:
+        "200":
+          description: Timing insights.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      by_hour:
+                        type: array
+                        items: { $ref: '#/components/schemas/DunningTimingRate' }
+                      by_day_of_week:
+                        type: array
+                        items: { $ref: '#/components/schemas/DunningTimingRate' }
+                      best_hour: { type: integer, nullable: true }
+                      best_day: { type: integer, nullable: true }
+                      sample_size: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/analytics/collections/funnel:
     get:
       tags: [Collections]
@@ -9745,6 +9777,17 @@ components:
           type: integer
           format: int64
           description: Minor units at risk, FX-normalized to the reporting currency.
+
+    DunningTimingRate:
+      type: object
+      description: One time bucket's retry success rate.
+      properties:
+        bucket:
+          type: integer
+          description: Hour (0-23) or day-of-week (0-6, Sunday=0), UTC.
+        total: { type: integer }
+        successes: { type: integer }
+        success_rate: { type: number }
 
     APIKey:
       type: object
