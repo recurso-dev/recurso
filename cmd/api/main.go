@@ -1317,6 +1317,9 @@ func main() {
 	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
 	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc, dunningRecoveryService)
 
+	// Collections Intelligence — operator-facing worklist over the invoice repo.
+	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo)
+
 	// Phase 2: New Handlers
 	mandateHandler := handler.NewMandateHandler(mandateService)
 	offlinePaymentHandler := handler.NewOfflinePaymentHandler(offlinePaymentService)
@@ -1663,6 +1666,10 @@ func main() {
 			analytics.GET("/dunning/recovered", dunningHandler.GetRecovered)
 		}
 		v1.POST("/analytics/ask", analyticsHandler.Ask) // P48 GenAI
+
+		// Collections Intelligence — operator worklist of currently-failing
+		// invoices. Uncached: operational data that changes on every retry.
+		v1.GET("/collections/queue", collectionsHandler.GetQueue)
 
 		v1.POST("/coupons", couponHandler.CreateCoupon) // P7
 		v1.GET("/coupons", couponHandler.ListCoupons)

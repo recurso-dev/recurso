@@ -655,6 +655,93 @@ func (r *InvoiceRepository) GetInvoiceAgingRows(ctx context.Context, tenantID uu
 	return out, rows.Err()
 }
 
+// collectionsQueueWhere builds the shared WHERE clause + args for the
+// collections worklist (list + count must stay identical, or the pagination
+// total lies). The population is every invoice still owing money in a recovery
+// state: past_due (dunning/retry in progress) or uncollectible (given up on but
+// not yet written off). Optional status/managed_by narrowing. $1 is always the
+// tenant id; filter args start at $2.
+func collectionsQueueWhere(tenantID uuid.UUID, f domain.CollectionsQueueFilter) (string, []interface{}) {
+	where := `WHERE i.tenant_id = $1
+		AND i.status IN ('past_due', 'uncollectible')
+		AND i.amount_remaining > 0`
+	args := []interface{}{tenantID}
+	if f.Status != "" {
+		args = append(args, f.Status)
+		where += fmt.Sprintf(" AND i.status = $%d", len(args))
+	}
+	if f.ManagedBy != "" {
+		args = append(args, f.ManagedBy)
+		where += fmt.Sprintf(" AND COALESCE(i.dunning_managed_by, 'scheduler') = $%d", len(args))
+	}
+	return where, args
+}
+
+// ListCollectionsQueue returns the operator-facing collections worklist for a
+// tenant — currently-failing invoices with their recovery state, customer, and
+// latest payment-attempt status (Collections Intelligence Inc 1). Ordered oldest
+// due-date first (most urgent). Read-only; no money-path.
+func (r *InvoiceRepository) ListCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) ([]domain.CollectionsQueueItem, error) {
+	where, args := collectionsQueueWhere(tenantID, f)
+	limit := f.Limit
+	if limit <= 0 {
+		limit = 50
+	}
+	args = append(args, limit, f.Offset)
+	query := `
+		SELECT
+			i.id, i.customer_id, COALESCE(c.name, ''), COALESCE(c.email, ''),
+			i.invoice_number, i.status, i.currency, i.amount_remaining, i.due_date,
+			GREATEST(0, DATE_PART('day', NOW() - i.due_date))::int AS days_overdue,
+			i.retry_count, COALESCE(i.last_payment_error, ''), i.next_retry_at,
+			COALESCE(i.dunning_managed_by, 'scheduler'),
+			COALESCE(att.status, '')
+		FROM invoices i
+		JOIN customers c ON c.id = i.customer_id
+		LEFT JOIN LATERAL (
+			SELECT status FROM payment_attempts pa
+			WHERE pa.invoice_id = i.id
+			ORDER BY pa.created_at DESC
+			LIMIT 1
+		) att ON true
+		` + where + `
+		ORDER BY i.due_date ASC
+		LIMIT $` + fmt.Sprint(len(args)-1) + ` OFFSET $` + fmt.Sprint(len(args))
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query collections queue: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.CollectionsQueueItem
+	for rows.Next() {
+		var it domain.CollectionsQueueItem
+		if err := rows.Scan(
+			&it.ID, &it.CustomerID, &it.CustomerName, &it.CustomerEmail,
+			&it.InvoiceNumber, &it.Status, &it.Currency, &it.AmountRemaining, &it.DueDate,
+			&it.DaysOverdue, &it.RetryCount, &it.LastPaymentError, &it.NextRetryAt,
+			&it.ManagedBy, &it.AttemptStatus,
+		); err != nil {
+			return nil, fmt.Errorf("scan collections queue row: %w", err)
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// CountCollectionsQueue returns the total number of invoices matching the same
+// filter (for pagination). Must use the identical predicate as
+// ListCollectionsQueue.
+func (r *InvoiceRepository) CountCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) (int, error) {
+	where, args := collectionsQueueWhere(tenantID, f)
+	query := `SELECT COUNT(*) FROM invoices i ` + where
+	var n int
+	if err := r.db.QueryRowContext(ctx, query, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("count collections queue: %w", err)
+	}
+	return n, nil
+}
+
 // UpdateRetryInfo updates the retry count and next retry date
 func (r *InvoiceRepository) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
 	query := `

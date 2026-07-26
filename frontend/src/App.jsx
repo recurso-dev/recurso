@@ -61,6 +61,7 @@ const CreateQuote = lazy(() => import('./pages/CreateQuote'))
 const Checkout = lazy(() => import('./pages/Checkout'))
 const DunningDashboard = lazy(() => import('./pages/DunningDashboard'))
 const DunningCampaigns = lazy(() => import('./pages/DunningCampaigns'))
+const Collections = lazy(() => import('./pages/Collections'))
 const CancelFlows = lazy(() => import('./pages/CancelFlows'))
 const Churn = lazy(() => import('./pages/Churn'))
 const Mandates = lazy(() => import('./pages/Mandates'))
@@ -176,6 +177,7 @@ function App() {
                             <Route path="/gifts" element={<Gifts />} />
                             <Route path="/dunning" element={<DunningDashboard />} />
                             <Route path="/dunning/campaigns" element={<DunningCampaigns />} />
+                            <Route path="/collections" element={<Collections />} />
                             <Route path="/cancel-flows" element={<CancelFlows />} />
                             <Route path="/churn" element={<Churn />} />
                             <Route path="/mandates" element={<Mandates />} />

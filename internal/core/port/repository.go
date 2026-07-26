@@ -37,6 +37,12 @@ type InvoiceRepository interface {
 	// the `status = 'paid'` guard and returns true only when this call performed
 	// the transition, so a redelivered return webhook can't reopen twice.
 	ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
+	// ListCollectionsQueue / CountCollectionsQueue back the operator-facing
+	// collections worklist (Collections Intelligence Inc 1): currently-failing
+	// invoices (past_due/uncollectible, balance owing) with recovery state,
+	// customer, and latest ACH attempt status. Read-only.
+	ListCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) ([]domain.CollectionsQueueItem, error)
+	CountCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) (int, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
 	// the calling worker instance, advancing next_retry_at by `lease` so a
