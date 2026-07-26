@@ -40,6 +40,14 @@ type InvoiceRepoForDunning interface {
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
 }
 
+// inFlightChecker reports whether an invoice has an in-flight (still-settling)
+// payment attempt — e.g. an ACH debit in its multi-day `processing` window.
+// Dunning skips such invoices so it neither re-charges nor emails a misleading
+// "payment failed" while the money is on its way. Optional and nil-safe (Inc 3b).
+type inFlightChecker interface {
+	HasInFlightForInvoice(ctx context.Context, invoiceID uuid.UUID) (bool, error)
+}
+
 // DunningScheduler handles payment retry and dunning notifications
 type DunningScheduler struct {
 	invoiceRepo     InvoiceRepoForDunning
@@ -47,10 +55,15 @@ type DunningScheduler struct {
 	locker          port.Locker
 	config          DunningConfig
 	portalBaseURL   string
+	attempts        inFlightChecker // nil-safe; skips dunning for a settling payment
 	ticker          *time.Ticker
 	done            chan bool
 	stopOnce        sync.Once
 }
+
+// SetPaymentAttempts wires the in-flight checker so dunning skips invoices with
+// a settling payment (e.g. an ACH debit still processing). Nil-safe (Inc 3b).
+func (s *DunningScheduler) SetPaymentAttempts(c inFlightChecker) { s.attempts = c }
 
 // NewDunningScheduler creates a new dunning scheduler
 func NewDunningScheduler(
@@ -142,6 +155,18 @@ func (s *DunningScheduler) processDunning() {
 
 // processInvoice handles a single overdue invoice
 func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.OverdueInvoice) {
+	// Skip an invoice whose payment is still settling (e.g. an ACH debit in its
+	// multi-day `processing` window): don't re-charge it and don't email
+	// "payment failed" while the money is on its way. It re-enters dunning only
+	// if that attempt ultimately fails. Nil checker ⇒ unchanged behavior.
+	if s.attempts != nil {
+		if inFlight, err := s.attempts.HasInFlightForInvoice(ctx, invoice.ID); err == nil && inFlight {
+			slog.Info("skipping dunning — payment is settling (in-flight attempt)",
+				"invoice_number", invoice.InvoiceNumber, "invoice_id", invoice.ID)
+			return
+		}
+	}
+
 	daysOverdue := int(time.Since(invoice.DueDate).Hours() / 24)
 
 	// Determine dunning level based on retry count

@@ -888,6 +888,7 @@ func main() {
 		scheduler.DefaultDunningConfig(),
 		baseURL,
 	)
+	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database)) // skip dunning for a settling ACH (Inc 3b)
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 
