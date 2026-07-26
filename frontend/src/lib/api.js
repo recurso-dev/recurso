@@ -237,6 +237,7 @@ export const endpoints = {
   getDunningWeights: () => api.get('/analytics/dunning/weights'),
   getDunningHistory: (params) => api.get('/analytics/dunning/history', { params }),
   getDunningRecovered: () => api.get('/analytics/dunning/recovered'),
+  getDunningTiming: () => api.get('/analytics/dunning/timing'),
 
   // Collections Intelligence — operator worklist of currently-failing invoices.
   getCollectionsQueue: (params) => api.get('/collections/queue', { params }),

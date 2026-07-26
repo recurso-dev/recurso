@@ -79,6 +79,18 @@ type DunningHistory struct {
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 
+// DunningTimingBucket is a raw success/total tally for one time bucket, used to
+// compute "best time to retry" insights (Collections Intelligence Inc 4). Unit
+// is "hour" (bucket 0-23) or "dow" (bucket 0-6, Sunday=0). Read-only — it
+// summarizes historical dunning_history outcomes and does NOT feed the live
+// bandit. Buckets are in the database session timezone (UTC).
+type DunningTimingBucket struct {
+	Unit      string `json:"unit"`
+	Bucket    int    `json:"bucket"`
+	Total     int    `json:"total"`
+	Successes int    `json:"successes"`
+}
+
 // Standard Dunning Actions
 var (
 	Action1Hour  = DunningAction{ID: "1h", Interval: 1 * time.Hour}

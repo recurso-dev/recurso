@@ -57,17 +57,19 @@ const DunningDashboard = () => {
   } = useQuery({
     queryKey: ["dunning-dashboard"],
     queryFn: async () => {
-      const [overviewRes, weightsRes, historyRes, recoveredRes] = await Promise.all([
+      const [overviewRes, weightsRes, historyRes, recoveredRes, timingRes] = await Promise.all([
         endpoints.getDunningOverview(),
         endpoints.getDunningWeights(),
         endpoints.getDunningHistory({ limit: 50 }),
         endpoints.getDunningRecovered(),
+        endpoints.getDunningTiming(),
       ]);
       return {
         overview: overviewRes.data?.data,
         weights: weightsRes.data?.data || [],
         history: historyRes.data?.data || [],
         recovered: recoveredRes.data?.data,
+        timing: timingRes.data?.data,
       };
     },
   });
@@ -75,6 +77,15 @@ const DunningDashboard = () => {
   const weights = data?.weights ?? [];
   const history = data?.history ?? [];
   const recovered = data?.recovered ?? null;
+  const timing = data?.timing ?? null;
+
+  // "Best time to retry" — success rate per UTC hour, with the best-performing
+  // hour highlighted. Only meaningful once there's enough history.
+  const hourRates = timing?.by_hour ?? [];
+  const timingHasData = (timing?.sample_size ?? 0) > 0;
+  const maxHourRate = hourRates.reduce((m, h) => Math.max(m, h.success_rate || 0), 0);
+  const fmtHour = (h) => `${String(h).padStart(2, "0")}:00`;
+  const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const loadError = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load dunning data"
     : null;
@@ -347,6 +358,59 @@ const DunningDashboard = () => {
                 ))}
               </TableBody>
             </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Best time to retry (read-only insight from historical outcomes) */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="text-base">Best time to retry</CardTitle>
+          <CardDescription>
+            Historical retry success rate by hour of day (UTC). Insight only — the
+            live bandit is unchanged.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <Skeleton className="h-40 w-full" />
+          ) : !timingHasData ? (
+            <EmptyState
+              icon={BarChart3}
+              title="Not enough history yet"
+              description="Once retries accumulate, the best hours and days to retry appear here."
+            />
+          ) : (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2 text-sm">
+                {timing?.best_hour != null && (
+                  <Badge variant="success">Best hour: {fmtHour(timing.best_hour)} UTC</Badge>
+                )}
+                {timing?.best_day != null && (
+                  <Badge variant="success">Best day: {DAY_NAMES[timing.best_day]}</Badge>
+                )}
+                <span className="text-muted-foreground">
+                  {formatNumber(timing?.sample_size || 0)} retries analyzed
+                </span>
+              </div>
+              {/* 24 hourly bars; height encodes success rate, best hour emphasized. */}
+              <div className="flex h-32 items-end gap-1" role="img" aria-label="Retry success rate by hour of day">
+                {hourRates.map((h) => (
+                  <div key={h.bucket} className="flex flex-1 flex-col items-center gap-1" title={`${fmtHour(h.bucket)} — ${(h.success_rate * 100).toFixed(0)}% of ${h.total}`}>
+                    <div
+                      className={
+                        "w-full rounded-t " +
+                        (h.bucket === timing?.best_hour ? "bg-emerald-500" : "bg-muted-foreground/30")
+                      }
+                      style={{ height: `${maxHourRate > 0 ? Math.max(2, (h.success_rate / maxHourRate) * 100) : 2}%` }}
+                    />
+                    {h.bucket % 6 === 0 && (
+                      <span className="text-[10px] text-muted-foreground">{h.bucket}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>

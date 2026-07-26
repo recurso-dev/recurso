@@ -1671,6 +1671,7 @@ func main() {
 			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
 			analytics.GET("/dunning/history", dunningHandler.GetHistory)
 			analytics.GET("/dunning/recovered", dunningHandler.GetRecovered)
+			analytics.GET("/dunning/timing", dunningHandler.GetTiming)
 			analytics.GET("/collections/funnel", collectionsHandler.GetFunnel)
 			analytics.GET("/collections/failures", collectionsHandler.GetFailures)
 		}
