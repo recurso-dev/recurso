@@ -49,10 +49,13 @@ describe("Settings — region-aware tax setup", () => {
     // The business-country control is present.
     expect(await screen.findByText("Business country")).toBeInTheDocument();
 
-    // Exactly one "For your region" badge, on the US nexus link.
-    await waitFor(() => expect(screen.getAllByText("For your region")).toHaveLength(1));
-    const badged = screen.getByText("For your region").closest("a");
-    expect(badged).toHaveTextContent("US sales-tax nexus");
+    // The US-region setups (sales-tax nexus + W-9 identity) are badged.
+    await waitFor(() => expect(screen.getAllByText("For your region")).toHaveLength(2));
+    const badgedTitles = screen
+      .getAllByText("For your region")
+      .map((b) => b.closest("a").textContent);
+    expect(badgedTitles.some((t) => t.includes("US sales-tax nexus"))).toBe(true);
+    expect(badgedTitles.some((t) => t.includes("US tax identity"))).toBe(true);
     // GST is present but not badged for a US seller.
     expect(screen.getByText("GST configuration").closest("a")).not.toHaveTextContent("For your region");
   });

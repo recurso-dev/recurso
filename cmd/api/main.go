@@ -1297,6 +1297,9 @@ func main() {
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
 	euConfigHandler := handler.NewEUConfigHandler(db.NewTenantEUConfigRepository(database))
+	usTaxConfigRepo := db.NewTenantUSTaxConfigRepository(database)
+	usTaxConfigHandler := handler.NewUSTaxConfigHandler(usTaxConfigRepo)
+	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
 	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
 	entityHandler := handler.NewEntityHandler(service.NewEntityService(db.NewEntityRepository(database)))
@@ -1790,6 +1793,8 @@ func main() {
 		// EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
 		v1.GET("/settings/eu-einvoice", euConfigHandler.GetEUConfig)
 		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
+		v1.GET("/settings/tax/us", usTaxConfigHandler.GetUSTaxConfig)
+		v1.PUT("/settings/tax/us", usTaxConfigHandler.UpdateUSTaxConfig)
 		// EU e-invoicing per invoice (Track C inc 2): inspect the generated UBL +
 		// delivery status, and manually regenerate/re-transmit a failed one.
 		v1.GET("/invoices/:id/eu-einvoice", euEInvoiceHandler.GetEUEInvoice)

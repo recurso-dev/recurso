@@ -149,6 +149,13 @@ export default function Settings() {
       regions: ["US"],
     },
     {
+      to: "/settings/tax-us",
+      icon: Receipt,
+      title: "US tax identity (W-9)",
+      description: "Legal name and EIN shown as the seller on US invoices.",
+      regions: ["US"],
+    },
+    {
       to: "/settings/mcp",
       icon: Bot,
       title: "MCP server",
