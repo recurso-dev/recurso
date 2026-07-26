@@ -1332,6 +1332,7 @@ func main() {
 	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
 	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
 	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
+	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))     // ACH async settlement (Inc 3b)
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)

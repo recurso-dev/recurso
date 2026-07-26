@@ -28,6 +28,7 @@ type WebhookHandler struct {
 	dunningCampaignService *service.DunningCampaignService
 	creditNoteService      *service.CreditNoteService
 	inboundDedup           InboundWebhookDedup // nil-safe; when unset, dedup is skipped
+	paymentAttempts        paymentAttemptStore // nil-safe; ACH async settlement state (Inc 3b)
 	stripeWebhookSecret    string
 	gatewayConns           gatewayConnResolver // nil-safe; per-connection (BYO) webhook secrets
 	logger                 *slog.Logger
@@ -92,6 +93,10 @@ type InboundWebhookDedup interface {
 // SetInboundWebhookDedup wires inbound webhook idempotency (ENG-162). Nil-safe:
 // left unset, webhook processing is unchanged.
 func (h *WebhookHandler) SetInboundWebhookDedup(d InboundWebhookDedup) { h.inboundDedup = d }
+
+// SetPaymentAttempts wires the ACH async-settlement store so the Stripe webhook
+// records processing/succeeded/failed transitions (Inc 3b). Nil-safe.
+func (h *WebhookHandler) SetPaymentAttempts(s paymentAttemptStore) { h.paymentAttempts = s }
 
 // alreadyProcessed acknowledges and returns true when this (gateway, eventID)
 // was already fully processed — the caller should stop. Fails open (returns
