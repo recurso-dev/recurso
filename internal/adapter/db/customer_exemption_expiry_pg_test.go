@@ -71,6 +71,12 @@ func TestCustomerExemptionExpiry_AllReadPaths_Postgres(t *testing.T) {
 	byID, err := repo.getByIDInternal(ctx, cust.ID, nil)
 	assertExpiry("getByID", byID, err)
 
+	// Create() does not persist referral_code (it's set via the referral flow),
+	// so set it directly before exercising the GetByReferralCode read path.
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE customers SET referral_code = $1 WHERE id = $2`, ref, cust.ID); err != nil {
+		t.Fatalf("set referral_code: %v", err)
+	}
 	byRef, err := repo.GetByReferralCode(ctx, tenantID, ref)
 	assertExpiry("getByReferralCode", byRef, err)
 
