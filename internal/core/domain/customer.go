@@ -21,18 +21,22 @@ type Customer struct {
 	// US sales-tax exemption (Track D · D2). When TaxExempt is set, the number
 	// and entity-use code are passed to the tax provider so it returns zero tax
 	// and records an exempt sale, rather than the engine short-circuiting.
-	TaxExempt          bool                   `json:"tax_exempt" db:"tax_exempt"`
-	TaxExemptionNumber string                 `json:"tax_exemption_number" db:"tax_exemption_number"`
-	TaxExemptionCode   string                 `json:"tax_exemption_code" db:"tax_exemption_code"` // provider entity-use / usage code; also the reason
-	ReferralCode       *string                `json:"referral_code" db:"referral_code"`           // P42
-	RiskScore          int                    `json:"risk_score" db:"risk_score"`                 // P45: 0-100
-	RiskFactors        map[string]interface{} `json:"risk_factors" db:"risk_factors"`             // P45: JSON
-	CardBrand          *string                `json:"card_brand,omitempty" db:"card_brand"`
-	CardLast4          *string                `json:"card_last4,omitempty" db:"card_last4"`
-	CardExpMonth       *int                   `json:"card_exp_month,omitempty" db:"card_exp_month"`
-	CardExpYear        *int                   `json:"card_exp_year,omitempty" db:"card_exp_year"`
-	CardTokenID        *string                `json:"card_token_id,omitempty" db:"card_token_id"`
-	CardFingerprint    *string                `json:"card_fingerprint,omitempty" db:"card_fingerprint"`
+	TaxExempt          bool   `json:"tax_exempt" db:"tax_exempt"`
+	TaxExemptionNumber string `json:"tax_exemption_number" db:"tax_exemption_number"`
+	TaxExemptionCode   string `json:"tax_exemption_code" db:"tax_exemption_code"` // provider entity-use / usage code; also the reason
+	// TaxExemptionExpiresAt is the certificate's expiry (Inc 2). A certificate is
+	// honored through this date; once past, the buyer is charged tax again. Nil
+	// means no expiry on file — always honored (existing behavior).
+	TaxExemptionExpiresAt *time.Time             `json:"tax_exemption_expires_at" db:"tax_exemption_expires_at"`
+	ReferralCode          *string                `json:"referral_code" db:"referral_code"` // P42
+	RiskScore             int                    `json:"risk_score" db:"risk_score"`       // P45: 0-100
+	RiskFactors           map[string]interface{} `json:"risk_factors" db:"risk_factors"`   // P45: JSON
+	CardBrand             *string                `json:"card_brand,omitempty" db:"card_brand"`
+	CardLast4             *string                `json:"card_last4,omitempty" db:"card_last4"`
+	CardExpMonth          *int                   `json:"card_exp_month,omitempty" db:"card_exp_month"`
+	CardExpYear           *int                   `json:"card_exp_year,omitempty" db:"card_exp_year"`
+	CardTokenID           *string                `json:"card_token_id,omitempty" db:"card_token_id"`
+	CardFingerprint       *string                `json:"card_fingerprint,omitempty" db:"card_fingerprint"`
 	// Active is the soft-archive flag. Archiving is blocked while the customer
 	// has active subscriptions; archived customers keep full billing history.
 	Active    bool      `json:"active" db:"active"`

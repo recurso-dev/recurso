@@ -43,9 +43,10 @@ type CreateCustomerInput struct {
 	Zip           string
 	Country       string
 
-	TaxExempt          bool
-	TaxExemptionNumber string
-	TaxExemptionCode   string
+	TaxExempt             bool
+	TaxExemptionNumber    string
+	TaxExemptionCode      string
+	TaxExemptionExpiresAt *time.Time
 }
 
 func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustomerInput) (*domain.Customer, error) {
@@ -83,12 +84,13 @@ func (s *CustomerService) CreateCustomer(ctx context.Context, input CreateCustom
 			Zip:     input.Zip,
 			Country: input.Country,
 		},
-		LedgerAccountID:    ledgerID,
-		TaxExempt:          input.TaxExempt,
-		TaxExemptionNumber: input.TaxExemptionNumber,
-		TaxExemptionCode:   input.TaxExemptionCode,
-		Active:             true,
-		CreatedAt:          time.Now().UTC(),
+		LedgerAccountID:       ledgerID,
+		TaxExempt:             input.TaxExempt,
+		TaxExemptionNumber:    input.TaxExemptionNumber,
+		TaxExemptionCode:      input.TaxExemptionCode,
+		TaxExemptionExpiresAt: input.TaxExemptionExpiresAt,
+		Active:                true,
+		CreatedAt:             time.Now().UTC(),
 	}
 
 	if err := s.repo.Create(ctx, customer); err != nil {
@@ -140,6 +142,11 @@ type UpdateCustomerInput struct {
 	TaxExempt          *bool
 	TaxExemptionNumber *string
 	TaxExemptionCode   *string
+	// TaxExemptionExpiresAt is applied only when TaxExemptionExpiresAtSet is true
+	// (nil value then clears the expiry); this preserves partial-update semantics
+	// for a nullable field where a bare nil is ambiguous.
+	TaxExemptionExpiresAt    *time.Time
+	TaxExemptionExpiresAtSet bool
 }
 
 // UpdateCustomer applies a partial update. Returns (nil, nil) when the
@@ -206,6 +213,9 @@ func (s *CustomerService) UpdateCustomer(ctx context.Context, input UpdateCustom
 	}
 	if input.TaxExemptionCode != nil {
 		customer.TaxExemptionCode = *input.TaxExemptionCode
+	}
+	if input.TaxExemptionExpiresAtSet {
+		customer.TaxExemptionExpiresAt = input.TaxExemptionExpiresAt
 	}
 
 	if input.Active != nil {
