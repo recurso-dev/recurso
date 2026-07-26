@@ -4,6 +4,7 @@ import { Plus, Save, X, MapPinned } from "lucide-react";
 import { endpoints as api } from "../../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency } from "@/lib/utils";
+import { US_STATES } from "@/lib/usStates";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,28 @@ import {
 
 const NEXUS_TYPES = ["physical", "voluntary", "economic"];
 const REGISTRATION_STATUSES = ["registered", "pending", "not_registered"];
+
+// A validated US-state picker (all 50 + DC) — replaces free-text entry so a
+// nexus/registration row can't hold an invalid code. Native <select> to match
+// the adjacent type/status pickers.
+function StateSelect({ value, onChange, ariaLabel }) {
+  return (
+    <select
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      aria-label={ariaLabel}
+      className="h-9 w-44 rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <option value="">State…</option>
+      {US_STATES.map((s) => (
+        <option key={s.code} value={s.code}>
+          {s.code} — {s.name}
+          {s.noSalesTax ? " (no sales tax)" : ""}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 // US sales-tax nexus: declare where you must collect, and watch economic
 // thresholds per state (crossings auto-establish nexus server-side).
@@ -175,13 +198,10 @@ export default function TaxNexusSettings() {
               )}
               {rows.map((r, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <Input
+                  <StateSelect
                     value={r.state_code}
-                    onChange={(e) => setRow(i, { state_code: e.target.value.toUpperCase() })}
-                    placeholder="CA"
-                    maxLength={2}
-                    className="w-20 font-mono uppercase"
-                    aria-label={`State code ${i + 1}`}
+                    onChange={(v) => setRow(i, { state_code: v })}
+                    ariaLabel={`State ${i + 1}`}
                   />
                   <select
                     value={r.nexus_type}
@@ -400,13 +420,10 @@ export default function TaxNexusSettings() {
           )}
           {regs.map((r, i) => (
             <div key={i} className="flex items-center gap-2">
-              <Input
+              <StateSelect
                 value={r.state_code}
-                onChange={(e) => setRegRow(i, { state_code: e.target.value.toUpperCase() })}
-                placeholder="CA"
-                maxLength={2}
-                className="w-20 font-mono uppercase"
-                aria-label={`Registration state ${i + 1}`}
+                onChange={(v) => setRegRow(i, { state_code: v })}
+                ariaLabel={`Registration state ${i + 1}`}
               />
               <Input
                 value={r.registration_number}
