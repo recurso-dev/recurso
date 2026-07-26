@@ -3258,6 +3258,44 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /portal/api/payment-method/bank-setup-intent:
+    post:
+      operationId: portalStartBankAccountSetup
+      tags: [Customer Portal]
+      summary: Start an ACH bank-account setup (Stripe Financial Connections)
+      description: >
+        Creates a us_bank_account SetupIntent via Stripe Financial Connections
+        for the authenticated portal customer (instant bank verification) and
+        returns the client secret the browser's collectBankAccountForSetup
+        confirms, plus the publishable key. Bank data goes browser→Stripe — none
+        reaches Recurso. The saved account is finalized by
+        /portal/api/payment-method/confirm. 503 where Stripe/ACH is unavailable.
+      security:
+        - portalSession: []
+      responses:
+        '200':
+          description: Bank-account SetupIntent created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      client_secret:
+                        type: string
+                      publishable_key:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          description: Bank (ACH) payments aren't available on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /portal/api/payment-method/confirm:
     post:
       operationId: portalConfirmPaymentMethod

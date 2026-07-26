@@ -1554,6 +1554,7 @@ func main() {
 		portal.GET("/invoices/:id/pdf", pdfHandler.PortalDownloadPDF)
 		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
 		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
+		portal.POST("/payment-method/bank-setup-intent", portalAPIHandler.StartBankAccountSetup) // ACH (Inc 3a)
 		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)
 		portal.POST("/payment-method/mandate", portalAPIHandler.StartMandateReauth)
 		portal.GET("/disputes", portalAPIHandler.GetDisputes)
