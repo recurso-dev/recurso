@@ -1661,6 +1661,7 @@ func main() {
 		analytics.Use(middleware.CacheMiddleware(rdb, 5*time.Minute))
 		{
 			analytics.GET("/mrr", analyticsHandler.GetMRR)
+			analytics.GET("/mrr/by-entity", analyticsHandler.GetMRRByEntity)
 			analytics.GET("/mrr/waterfall", analyticsHandler.GetMRRWaterfall)
 			analytics.GET("/invoice-aging", analyticsHandler.GetInvoiceAging)
 			analytics.GET("/unit-economics", analyticsHandler.GetUnitEconomics)

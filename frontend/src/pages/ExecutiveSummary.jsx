@@ -86,6 +86,17 @@ export default function ExecutiveSummary() {
   });
   const trend = trendQuery.data ?? null;
 
+  // MRR split by legal entity (Multi-Entity Books). Shown only when a tenant
+  // actually has more than one entity; single-entity tenants see nothing extra.
+  const byEntityQuery = useQuery({
+    queryKey: ["executive-summary-mrr-by-entity"],
+    queryFn: async () => (await endpoints.getMRRByEntity()).data?.data ?? null,
+  });
+  const byEntity = byEntityQuery.data ?? null;
+  const entityRows = byEntity?.entities ?? [];
+  const showByEntity = entityRows.length > 1;
+  const maxEntityMRR = entityRows.reduce((mx, e) => Math.max(mx, e.normalized_mrr || 0), 0);
+
   const cur = m?.mrr?.reporting_currency || m?.ue?.reporting_currency || "USD";
   const money = (n) => (n == null ? "—" : formatCurrency(n, cur));
   const pct = (n) => (n == null ? "—" : `${Number(n).toFixed(1)}%`);
@@ -216,6 +227,47 @@ export default function ExecutiveSummary() {
                 </CardContent>
               </Card>
             </div>
+
+            {showByEntity && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">MRR by entity</CardTitle>
+                  <CardDescription>
+                    Each legal entity's contribution to MRR, in {byEntity?.reporting_currency || cur}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ul className="space-y-3">
+                    {entityRows.map((e) => (
+                      <li key={e.entity_id}>
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span className="flex items-center gap-2 text-foreground">
+                            {e.entity_name || "Unnamed entity"}
+                            {e.is_primary && (
+                              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">
+                                primary
+                              </span>
+                            )}
+                          </span>
+                          <span className="tabular-nums text-muted-foreground">
+                            {formatCurrency(e.normalized_mrr, byEntity?.reporting_currency || cur)}
+                            <span className="ml-2 text-xs">({e.subscriptions})</span>
+                          </span>
+                        </div>
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-primary"
+                            style={{
+                              width: `${maxEntityMRR > 0 ? Math.max(2, (e.normalized_mrr / maxEntityMRR) * 100) : 2}%`,
+                            }}
+                          />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            )}
 
             <Section title={`MRR movement (${days} days)`}>
               <StatCard label="New" value={money(m?.wf?.new)} hint="From new subscriptions" to="/finance/mrr-waterfall" />
