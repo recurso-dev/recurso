@@ -74,6 +74,7 @@ const RevenueWaterfall = lazy(() => import('./pages/RevenueWaterfall'))
 const TrialBalance = lazy(() => import('./pages/TrialBalance'))
 const MRRWaterfall = lazy(() => import('./pages/MRRWaterfall'))
 const InvoiceAging = lazy(() => import('./pages/InvoiceAging'))
+const Entities = lazy(() => import('./pages/Entities'))
 const UnitEconomics = lazy(() => import('./pages/UnitEconomics'))
 const ExecutiveSummary = lazy(() => import('./pages/ExecutiveSummary'))
 const RevenueByPlan = lazy(() => import('./pages/RevenueByPlan'))
@@ -160,6 +161,7 @@ function App() {
                             <Route path="/finance/revenue-waterfall" element={<RevenueWaterfall />} />
                             <Route path="/finance/mrr-waterfall" element={<MRRWaterfall />} />
                             <Route path="/finance/invoice-aging" element={<InvoiceAging />} />
+                            <Route path="/finance/entities" element={<Entities />} />
                             <Route path="/finance/unit-economics" element={<UnitEconomics />} />
                             <Route path="/overview" element={<ExecutiveSummary />} />
                             <Route path="/finance/revenue-by-plan" element={<RevenueByPlan />} />
