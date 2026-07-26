@@ -240,6 +240,15 @@ type CollectionsQueueFilter struct {
 	Offset    int
 }
 
+// EntityOutstandingRow is a legal entity's open AR in one currency — the AR side
+// of the multi-entity overview (Multi-Entity Books). EntityID is nil for the
+// rare invoice with no entity_id (resolved to the primary by the service).
+type EntityOutstandingRow struct {
+	EntityID *uuid.UUID
+	Currency string
+	Amount   int64 // sum(amount_remaining), minor units
+}
+
 // CollectionsAtRiskRow aggregates open recovery invoices by status and currency
 // (Collections Intelligence Inc 2) — the raw material for the recovery funnel's
 // "at risk" and "written off" figures before FX normalization.

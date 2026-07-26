@@ -46,6 +46,7 @@ const NAV_GROUPS = [
   {
     label: "Finance",
     items: [
+      { to: "/finance/entities", label: "Entities", icon: Building2 },
       { to: "/ledger", label: "Ledger", icon: Landmark },
       { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
       { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },

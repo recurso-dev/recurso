@@ -835,6 +835,37 @@ func (r *InvoiceRepository) MarkUncollectibleScoped(ctx context.Context, tenantI
 	return n == 1, nil
 }
 
+// GetOutstandingByEntity sums open AR (amount_remaining on open/past_due
+// invoices) per legal entity + currency, for the multi-entity overview. A NULL
+// entity_id (rare — pre-backfill rows) is returned as-is and attributed to the
+// primary by the service. Read-only.
+func (r *InvoiceRepository) GetOutstandingByEntity(ctx context.Context, tenantID uuid.UUID) ([]domain.EntityOutstandingRow, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT entity_id, currency, COALESCE(SUM(amount_remaining), 0)
+		FROM invoices
+		WHERE tenant_id = $1 AND status IN ('open', 'past_due') AND amount_remaining > 0
+		GROUP BY entity_id, currency`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("query outstanding by entity: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.EntityOutstandingRow
+	for rows.Next() {
+		var row domain.EntityOutstandingRow
+		var eid uuid.NullUUID
+		if err := rows.Scan(&eid, &row.Currency, &row.Amount); err != nil {
+			return nil, fmt.Errorf("scan outstanding-by-entity row: %w", err)
+		}
+		if eid.Valid {
+			id := eid.UUID
+			row.EntityID = &id
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // GetCollectionsAtRisk aggregates invoices still owing money in a recovery
 // state, grouped by status + currency (Collections Intelligence Inc 2). The
 // service FX-normalizes these into the recovery-funnel buckets. Read-only.

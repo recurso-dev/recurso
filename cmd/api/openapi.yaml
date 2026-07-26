@@ -2419,6 +2419,36 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/analytics/entities-overview:
+    get:
+      operationId: getEntitiesOverview
+      tags: [Analytics]
+      summary: Multi-entity control tower (MRR + open AR per entity)
+      description: >-
+        Every legal entity with its MRR and open receivables side by side, plus
+        consolidated totals, normalized to the reporting currency. Empty for
+        single-entity tenants (use the consolidated dashboards). Cached up to 5m.
+      responses:
+        '200':
+          description: Per-entity MRR + AR overview.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reporting_currency: { type: string }
+                      total_mrr: { type: integer, format: int64 }
+                      total_ar_outstanding: { type: integer, format: int64 }
+                      entities:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/EntityOverviewRow'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/analytics/mrr/waterfall:
     get:
       operationId: getMRRWaterfall
@@ -9576,6 +9606,18 @@ components:
         is_primary: { type: boolean }
         normalized_mrr: { type: integer, format: int64 }
         arr: { type: integer, format: int64 }
+        subscriptions: { type: integer }
+
+    EntityOverviewRow:
+      type: object
+      description: One legal entity's MRR + open AR, in the reporting currency.
+      properties:
+        entity_id: { type: string, format: uuid }
+        entity_name: { type: string }
+        is_primary: { type: boolean }
+        mrr: { type: integer, format: int64 }
+        arr: { type: integer, format: int64 }
+        ar_outstanding: { type: integer, format: int64 }
         subscriptions: { type: integer }
 
     MRRMetrics:

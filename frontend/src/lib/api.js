@@ -107,6 +107,8 @@ export const endpoints = {
   getMRR: (params = {}) => api.get('/analytics/mrr', { params }),
   // MRR contribution of every legal entity (Multi-Entity Books).
   getMRRByEntity: () => api.get('/analytics/mrr/by-entity'),
+  // Multi-entity control tower: MRR + open AR per legal entity.
+  getEntitiesOverview: () => api.get('/analytics/entities-overview'),
   // MRR movement between two dates (new/expansion/contraction/churned/reactivation).
   // params may carry { entity_id } to scope to one legal entity.
   getMRRWaterfall: (start, end, params = {}) =>

@@ -356,6 +356,80 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 	return result, nil
 }
 
+// EntityOverviewRow is one legal entity's headline health: recurring revenue and
+// open receivables, in the reporting currency (Multi-Entity Books overview).
+type EntityOverviewRow struct {
+	EntityID      uuid.UUID `json:"entity_id"`
+	EntityName    string    `json:"entity_name"`
+	IsPrimary     bool      `json:"is_primary"`
+	MRR           int64     `json:"mrr"`
+	ARR           int64     `json:"arr"`
+	AROutstanding int64     `json:"ar_outstanding"`
+	Subscriptions int       `json:"subscriptions"`
+}
+
+// EntitiesOverview is the multi-entity control tower: every legal entity with its
+// MRR and open AR side by side, plus consolidated totals.
+type EntitiesOverview struct {
+	ReportingCurrency  string              `json:"reporting_currency"`
+	TotalMRR           int64               `json:"total_mrr"`
+	TotalAROutstanding int64               `json:"total_ar_outstanding"`
+	Entities           []EntityOverviewRow `json:"entities"`
+}
+
+// GetEntitiesOverview composes the per-entity MRR breakdown with open AR per
+// entity into one view. Reuses GetMRRByEntity (roster + MRR + subs, sorted by MRR
+// desc) and adds FX-normalized open receivables. Empty when no entity reader is
+// wired (single-entity tenants fall back to the consolidated dashboards).
+func (s *AnalyticsService) GetEntitiesOverview(ctx context.Context, tenantID uuid.UUID) (*EntitiesOverview, error) {
+	byEntity, err := s.GetMRRByEntity(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	reporting := byEntity.ReportingCurrency
+	overview := &EntitiesOverview{ReportingCurrency: reporting, TotalMRR: byEntity.TotalMRR, Entities: []EntityOverviewRow{}}
+
+	// Open AR per entity, normalized to the reporting currency (NULL entity_id →
+	// primary, matching MRR attribution).
+	primaryID := s.primaryEntityID(ctx, tenantID)
+	arRows, err := s.invoiceRepo.GetOutstandingByEntity(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	arByEntity := make(map[uuid.UUID]int64)
+	for _, row := range arRows {
+		eff := effectiveEntityID(row.EntityID, primaryID)
+		if eff == nil {
+			continue
+		}
+		amt := row.Amount
+		if row.Currency != reporting {
+			conv, _, cErr := normalizer.convert(ctx, row.Amount, row.Currency, reporting)
+			if cErr != nil {
+				continue // unconvertible currency excluded from the normalized total
+			}
+			amt = conv
+		}
+		arByEntity[*eff] += amt
+	}
+
+	for _, e := range byEntity.Entities {
+		ar := arByEntity[e.EntityID]
+		overview.TotalAROutstanding += ar
+		overview.Entities = append(overview.Entities, EntityOverviewRow{
+			EntityID:      e.EntityID,
+			EntityName:    e.EntityName,
+			IsPrimary:     e.IsPrimary,
+			MRR:           e.NormalizedMRR,
+			ARR:           e.ARR,
+			AROutstanding: ar,
+			Subscriptions: e.Subscriptions,
+		})
+	}
+	return overview, nil
+}
+
 // resolveReportingCurrency prefers the tenant's base currency when available,
 // falling back to the service-level default (REPORTING_CURRENCY env, "USD").
 func (s *AnalyticsService) resolveReportingCurrency(ctx context.Context, tenantID uuid.UUID) string {

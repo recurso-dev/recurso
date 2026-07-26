@@ -145,3 +145,54 @@ func TestInvoiceAging_PerEntity(t *testing.T) {
 		t.Errorf("consolidated aging = %d/%d, want 7000/3", amt, cnt)
 	}
 }
+
+// TestOutstandingByEntity_Postgres proves the multi-entity AR aggregate: open AR
+// summed per entity + currency, NULL entity_id returned as-is, paid/covered
+// excluded.
+func TestOutstandingByEntity_Postgres(t *testing.T) {
+	repo, conn := openAgingTestDB(t)
+	ctx := context.Background()
+	tenantID, customerID := seedCreditAppTenantCustomer(t, conn)
+	now := time.Now()
+
+	var entB uuid.UUID
+	if err := conn.QueryRowContext(ctx,
+		`INSERT INTO entities (tenant_id, name, is_primary, tb_ledger_id, invoice_prefix) VALUES ($1,'Branch',FALSE,2,$2) RETURNING id`,
+		tenantID, "OBE"+uuid.New().String()[:4]).Scan(&entB); err != nil {
+		t.Fatalf("seed entity B: %v", err)
+	}
+
+	mk := func(total int64, ent *uuid.UUID, status string) {
+		id := uuid.New()
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied, status, invoice_number, entity_id, created_at, due_date)
+			 VALUES ($1,$2,$3,'USD',$4,$4,0,0,$5,$6,$7,NOW(),$8)`,
+			id, tenantID, customerID, total, status, "OBE-"+id.String()[:8], ent, now.Add(-5*24*time.Hour)); err != nil {
+			t.Fatalf("seed invoice: %v", err)
+		}
+	}
+	mk(10000, &entB, "past_due")
+	mk(5000, &entB, "open")
+	mk(3000, nil, "past_due") // NULL entity_id
+	mk(9000, &entB, "paid")   // excluded (paid, amount_remaining 0 since paid sets... actually status paid)
+
+	rows, err := repo.GetOutstandingByEntity(ctx, tenantID)
+	if err != nil {
+		t.Fatalf("GetOutstandingByEntity: %v", err)
+	}
+	var entBAmt, nullAmt int64
+	for _, r := range rows {
+		if r.EntityID != nil && *r.EntityID == entB {
+			entBAmt += r.Amount
+		}
+		if r.EntityID == nil {
+			nullAmt += r.Amount
+		}
+	}
+	if entBAmt != 15000 {
+		t.Errorf("entity B open AR = %d, want 15000", entBAmt)
+	}
+	if nullAmt != 3000 {
+		t.Errorf("NULL-entity open AR = %d, want 3000", nullAmt)
+	}
+}

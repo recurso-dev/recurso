@@ -106,6 +106,23 @@ func (h *AnalyticsHandler) GetMRRByEntity(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": breakdown})
 }
 
+// GetEntitiesOverview returns the multi-entity control tower: MRR + open AR per
+// legal entity, plus consolidated totals. GET /v1/analytics/entities-overview
+func (h *AnalyticsHandler) GetEntitiesOverview(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	overview, err := h.svc.GetEntitiesOverview(ctx, tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to build entities overview")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": overview})
+}
+
 // GetMRRWaterfall returns the MRR movement breakdown between two dates
 // (?start=YYYY-MM-DD&end=YYYY-MM-DD; default = the trailing month).
 func (h *AnalyticsHandler) GetMRRWaterfall(c *gin.Context) {

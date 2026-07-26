@@ -48,6 +48,9 @@ type InvoiceRepository interface {
 	// (Collections Intelligence Inc 2). Read-only.
 	GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error)
 	GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error)
+	// GetOutstandingByEntity sums open AR per legal entity + currency for the
+	// multi-entity overview. Read-only.
+	GetOutstandingByEntity(ctx context.Context, tenantID uuid.UUID) ([]domain.EntityOutstandingRow, error)
 	// Manual collections controls (Collections Intelligence Inc 3): all
 	// tenant-scoped and idempotent, returning whether a row changed.
 	GetRetryEligibility(ctx context.Context, tenantID, invoiceID uuid.UUID) (domain.InvoiceRetryEligibility, error)
