@@ -1,0 +1,98 @@
+package db
+
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/recurso-dev/recurso/internal/core/domain"
+)
+
+// PaymentAttemptRepository persists the async settlement lifecycle of a payment
+// (Inc 3 / ACH), keyed for webhook advancement by PaymentIntent id.
+type PaymentAttemptRepository struct {
+	db *sql.DB
+}
+
+func NewPaymentAttemptRepository(db *sql.DB) *PaymentAttemptRepository {
+	return &PaymentAttemptRepository{db: db}
+}
+
+const paymentAttemptColumns = `id, tenant_id, invoice_id, gateway, method, gateway_payment_intent_id, status, failure_code, amount, created_at, updated_at, settled_at`
+
+func scanPaymentAttempt(row interface{ Scan(...any) error }) (*domain.PaymentAttempt, error) {
+	a := &domain.PaymentAttempt{}
+	var status string
+	if err := row.Scan(&a.ID, &a.TenantID, &a.InvoiceID, &a.Gateway, &a.Method,
+		&a.GatewayPaymentIntentID, &status, &a.FailureCode, &a.Amount,
+		&a.CreatedAt, &a.UpdatedAt, &a.SettledAt); err != nil {
+		return nil, err
+	}
+	a.Status = domain.PaymentAttemptStatus(status)
+	return a, nil
+}
+
+// Create inserts a new attempt (defaults id + status).
+func (r *PaymentAttemptRepository) Create(ctx context.Context, a *domain.PaymentAttempt) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	if a.Status == "" {
+		a.Status = domain.PaymentAttemptInitiated
+	}
+	_, err := r.db.ExecContext(ctx,
+		`INSERT INTO payment_attempts (id, tenant_id, invoice_id, gateway, method, gateway_payment_intent_id, status, failure_code, amount)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		a.ID, a.TenantID, a.InvoiceID, a.Gateway, a.Method, a.GatewayPaymentIntentID, string(a.Status), a.FailureCode, a.Amount)
+	if err != nil {
+		return fmt.Errorf("failed to create payment attempt: %w", err)
+	}
+	return nil
+}
+
+// GetByPaymentIntentID resolves the attempt a webhook is about, or (nil, nil).
+func (r *PaymentAttemptRepository) GetByPaymentIntentID(ctx context.Context, paymentIntentID string) (*domain.PaymentAttempt, error) {
+	if paymentIntentID == "" {
+		return nil, nil
+	}
+	a, err := scanPaymentAttempt(r.db.QueryRowContext(ctx,
+		`SELECT `+paymentAttemptColumns+` FROM payment_attempts WHERE gateway_payment_intent_id = $1`, paymentIntentID))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment attempt: %w", err)
+	}
+	return a, nil
+}
+
+// UpdateStatusByPaymentIntent advances an attempt's status (+ failure_code /
+// settled_at) keyed on its PaymentIntent id — the webhook's idempotent handle.
+func (r *PaymentAttemptRepository) UpdateStatusByPaymentIntent(ctx context.Context, paymentIntentID string, status domain.PaymentAttemptStatus, failureCode string, settledAt *time.Time) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE payment_attempts SET status = $1, failure_code = $2, settled_at = $3, updated_at = NOW()
+		 WHERE gateway_payment_intent_id = $4`,
+		string(status), failureCode, settledAt, paymentIntentID)
+	if err != nil {
+		return fmt.Errorf("failed to update payment attempt: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no payment attempt for intent %s", paymentIntentID)
+	}
+	return nil
+}
+
+// HasInFlightForInvoice reports whether an invoice has an initiated/processing
+// attempt — dunning uses this to skip a settling ACH (Inc 3b).
+func (r *PaymentAttemptRepository) HasInFlightForInvoice(ctx context.Context, invoiceID uuid.UUID) (bool, error) {
+	var n int
+	if err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM payment_attempts WHERE invoice_id = $1 AND status IN ('initiated','processing')`,
+		invoiceID).Scan(&n); err != nil {
+		return false, fmt.Errorf("failed to check in-flight attempts: %w", err)
+	}
+	return n > 0, nil
+}
