@@ -3651,6 +3651,69 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/collections/invoices/{id}/retry-now:
+    post:
+      operationId: collectionsRetryNow
+      tags: [Collections]
+      summary: Retry a failing invoice now
+      description: >
+        Requeue a past-due invoice for an immediate smart-retry attempt. Refused
+        (409) for a paused, mandate, or already-settling invoice; 404 if not found.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Requeued for retry.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/collections/invoices/{id}/pause:
+    post:
+      operationId: collectionsPauseDunning
+      tags: [Collections]
+      summary: Pause or resume automated dunning on an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                paused: { type: boolean }
+      responses:
+        '200':
+          description: Dunning pause state updated.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/collections/invoices/{id}/mark-uncollectible:
+    post:
+      operationId: collectionsMarkUncollectible
+      tags: [Collections]
+      summary: Manually write off an invoice as uncollectible
+      description: >
+        Operator-initiated write-off (status change only, no ledger leg — matching
+        the automated path). Only flips a still-collectible invoice.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Invoice marked uncollectible.
+        '404': { $ref: '#/components/responses/NotFound' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/collections/queue:
     get:
       operationId: getCollectionsQueue

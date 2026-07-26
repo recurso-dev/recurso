@@ -242,6 +242,9 @@ export const endpoints = {
   getCollectionsQueue: (params) => api.get('/collections/queue', { params }),
   getCollectionsFunnel: () => api.get('/analytics/collections/funnel'),
   getCollectionsFailures: () => api.get('/analytics/collections/failures'),
+  collectionsRetryNow: (id) => api.post(`/collections/invoices/${id}/retry-now`),
+  collectionsPauseDunning: (id, paused) => api.post(`/collections/invoices/${id}/pause`, { paused }),
+  collectionsMarkUncollectible: (id) => api.post(`/collections/invoices/${id}/mark-uncollectible`),
 
   // Payment mandates (UPI Autopay)
   getMandates: () => api.get('/mandates'),

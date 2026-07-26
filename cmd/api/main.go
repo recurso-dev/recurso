@@ -1319,9 +1319,13 @@ func main() {
 
 	// Collections Intelligence — operator-facing worklist over the invoice repo,
 	// plus the recovery-funnel / failure-breakdown analytics (fed the invoice-side
-	// aggregates via the recovery service's nil-safe aggregator).
+	// aggregates via the recovery service's nil-safe aggregator) and the Inc 3
+	// manual controls (retry-now / pause / write-off), guarded by the ACH
+	// in-flight checker so a manual retry never stacks on a settling attempt.
 	dunningRecoveryService.SetCollectionsAggregator(invoiceRepo)
-	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo, dunningRecoveryService)
+	collectionsActionService := service.NewCollectionsActionService(invoiceRepo)
+	collectionsActionService.SetInFlightChecker(db.NewPaymentAttemptRepository(database))
+	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo, dunningRecoveryService, collectionsActionService)
 
 	// Phase 2: New Handlers
 	mandateHandler := handler.NewMandateHandler(mandateService)
@@ -1675,6 +1679,10 @@ func main() {
 		// Collections Intelligence — operator worklist of currently-failing
 		// invoices. Uncached: operational data that changes on every retry.
 		v1.GET("/collections/queue", collectionsHandler.GetQueue)
+		// Manual controls (Inc 3). Mutate a single invoice's dunning state only.
+		v1.POST("/collections/invoices/:id/retry-now", collectionsHandler.RetryNow)
+		v1.POST("/collections/invoices/:id/pause", collectionsHandler.PauseDunning)
+		v1.POST("/collections/invoices/:id/mark-uncollectible", collectionsHandler.MarkUncollectible)
 
 		v1.POST("/coupons", couponHandler.CreateCoupon) // P7
 		v1.GET("/coupons", couponHandler.ListCoupons)

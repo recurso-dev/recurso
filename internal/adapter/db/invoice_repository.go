@@ -398,6 +398,7 @@ func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoi
 		  AND next_retry_at IS NOT NULL
 		  AND next_retry_at <= $1
 		  AND dunning_managed_by = 'worker'
+		  AND NOT dunning_paused
 		LIMIT 10
 	`
 	rows, err := r.db.QueryContext(ctx, query, time.Now().UTC())
@@ -426,6 +427,7 @@ func (r *InvoiceRepository) ClaimDueForRetry(ctx context.Context, lease time.Dur
 			  AND next_retry_at IS NOT NULL
 			  AND next_retry_at <= NOW()
 			  AND dunning_managed_by = 'worker'
+			  AND NOT dunning_paused
 			ORDER BY next_retry_at
 			LIMIT $2
 			FOR UPDATE SKIP LOCKED
@@ -591,6 +593,7 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 			AND i.due_date < CURRENT_TIMESTAMP
 			AND (i.next_retry_at IS NULL OR i.next_retry_at <= CURRENT_TIMESTAMP)
 			AND (i.dunning_managed_by = 'scheduler' OR i.dunning_managed_by IS NULL)
+			AND NOT i.dunning_paused
 		ORDER BY i.due_date ASC
 		LIMIT 50
 	`
@@ -695,7 +698,7 @@ func (r *InvoiceRepository) ListCollectionsQueue(ctx context.Context, tenantID u
 			GREATEST(0, DATE_PART('day', NOW() - i.due_date))::int AS days_overdue,
 			i.retry_count, COALESCE(i.last_payment_error, ''), i.next_retry_at,
 			COALESCE(i.dunning_managed_by, 'scheduler'),
-			COALESCE(att.status, '')
+			COALESCE(att.status, ''), i.dunning_paused
 		FROM invoices i
 		JOIN customers c ON c.id = i.customer_id
 		LEFT JOIN LATERAL (
@@ -720,7 +723,7 @@ func (r *InvoiceRepository) ListCollectionsQueue(ctx context.Context, tenantID u
 			&it.ID, &it.CustomerID, &it.CustomerName, &it.CustomerEmail,
 			&it.InvoiceNumber, &it.Status, &it.Currency, &it.AmountRemaining, &it.DueDate,
 			&it.DaysOverdue, &it.RetryCount, &it.LastPaymentError, &it.NextRetryAt,
-			&it.ManagedBy, &it.AttemptStatus,
+			&it.ManagedBy, &it.AttemptStatus, &it.DunningPaused,
 		); err != nil {
 			return nil, fmt.Errorf("scan collections queue row: %w", err)
 		}
@@ -740,6 +743,95 @@ func (r *InvoiceRepository) CountCollectionsQueue(ctx context.Context, tenantID 
 		return 0, fmt.Errorf("count collections queue: %w", err)
 	}
 	return n, nil
+}
+
+// GetRetryEligibility reads the minimal tenant-scoped state a manual "retry now"
+// needs (Collections Intelligence Inc 3) — status, paused flag, and whether it's
+// a mandate — so the service can return a precise reason without hydrating the
+// full invoice. Found=false when no such invoice exists for the tenant.
+func (r *InvoiceRepository) GetRetryEligibility(ctx context.Context, tenantID, invoiceID uuid.UUID) (domain.InvoiceRetryEligibility, error) {
+	var e domain.InvoiceRetryEligibility
+	err := r.db.QueryRowContext(ctx, `
+		SELECT status, dunning_paused, (mandate_cycle_key IS NOT NULL)
+		FROM invoices WHERE id = $1 AND tenant_id = $2`,
+		invoiceID, tenantID).Scan(&e.Status, &e.Paused, &e.IsMandate)
+	if err == sql.ErrNoRows {
+		return domain.InvoiceRetryEligibility{Found: false}, nil
+	}
+	if err != nil {
+		return e, fmt.Errorf("query retry eligibility: %w", err)
+	}
+	e.Found = true
+	return e, nil
+}
+
+// RequeueForRetry hands a failing invoice to the smart-retry worker for an
+// immediate attempt (Collections Intelligence Inc 3, "retry now"): it sets
+// next_retry_at to now and dunning_managed_by='worker' so the next worker tick
+// (≤10s) claims it. The WHERE clause is the safety envelope — it fires only for a
+// tenant-owned, currently-past_due, un-paused, NON-mandate invoice, so a manual
+// retry can never double-charge a UPI mandate (ENG-168) or fight a paused row.
+// The caller separately rejects invoices with an in-flight attempt. Returns true
+// iff a row was requeued.
+func (r *InvoiceRepository) RequeueForRetry(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices
+		SET next_retry_at = NOW(), dunning_managed_by = 'worker', updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2
+		  AND status = 'past_due'
+		  AND NOT dunning_paused
+		  AND mandate_cycle_key IS NULL
+	`, invoiceID, tenantID)
+	if err != nil {
+		return false, fmt.Errorf("failed to requeue invoice for retry: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
+// SetDunningPaused pauses or resumes automated dunning on a single invoice
+// (Collections Intelligence Inc 3). Tenant-scoped; only touches an invoice still
+// in a dunnable/recovery state. Returns true iff a row changed ownership state.
+func (r *InvoiceRepository) SetDunningPaused(ctx context.Context, tenantID, invoiceID uuid.UUID, paused bool) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices
+		SET dunning_paused = $3, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2
+		  AND status IN ('open', 'past_due', 'uncollectible')
+	`, invoiceID, tenantID, paused)
+	if err != nil {
+		return false, fmt.Errorf("failed to set dunning paused: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
+// MarkUncollectibleScoped is the tenant-scoped, operator-initiated write-off
+// (Collections Intelligence Inc 3) — the manual counterpart of the automated
+// MarkAsUncollectible. It only flips a still-collectible invoice, so it can't
+// resurrect a paid one, and (matching the automated path) posts no ledger leg:
+// uncollectible is a status, and AR is excluded from owing reports by status.
+// Returns true iff this call performed the transition.
+func (r *InvoiceRepository) MarkUncollectibleScoped(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices
+		SET status = 'uncollectible', next_retry_at = NULL, updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2 AND status IN ('open', 'past_due')
+	`, invoiceID, tenantID)
+	if err != nil {
+		return false, fmt.Errorf("failed to mark invoice uncollectible: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
 }
 
 // GetCollectionsAtRisk aggregates invoices still owing money in a recovery
