@@ -7,7 +7,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import { Loader2, CheckCircle2 } from "lucide-react";
+import { Loader2, CheckCircle2, CreditCard, Landmark } from "lucide-react";
 
 import {
   Dialog,
@@ -18,10 +18,27 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
-// SetupForm confirms the SetupIntent (card entered in the Payment Element goes
-// browser->Stripe directly), then finalizes server-side so the saved card
-// becomes the customer's default. Must render inside <Elements>.
+// finalize posts the confirmed SetupIntent id to the server, which saves the
+// method as the customer's default. Shared by the card and bank flows.
+async function finalize(apiBase, authHeaders, setupIntentID) {
+  const res = await fetch(`${apiBase}/portal/api/payment-method/confirm`, {
+    method: "POST",
+    credentials: "include",
+    headers: { ...authHeaders, "Content-Type": "application/json" },
+    body: JSON.stringify({ setup_intent_id: setupIntentID }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (res.ok && body.data?.status === "saved") return body.data.card;
+  throw new Error(
+    body?.error?.message || "The payment method was collected but couldn't be saved.",
+  );
+}
+
+// SetupForm confirms a card SetupIntent (Payment Element → Stripe directly),
+// then finalizes server-side. Must render inside <Elements>.
 function SetupForm({ apiBase, authHeaders, onSaved }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -47,20 +64,10 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
     }
 
     if (setupIntent?.status === "succeeded") {
-      const res = await fetch(`${apiBase}/portal/api/payment-method/confirm`, {
-        method: "POST",
-        credentials: "include",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
-        body: JSON.stringify({ setup_intent_id: setupIntent.id }),
-      });
-      const body = await res.json().catch(() => ({}));
-      if (res.ok && body.data?.status === "saved") {
-        onSaved(body.data.card);
-      } else {
-        setError(
-          body?.error?.message ||
-            "Card was collected but couldn't be saved. Please try again."
-        );
+      try {
+        onSaved(await finalize(apiBase, authHeaders, setupIntent.id));
+      } catch (err) {
+        setError(err.message);
       }
     } else {
       setError("Card verification is still processing — please try again shortly.");
@@ -70,9 +77,8 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
 
   return (
     <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-      {/* Billing name + address, attached to the saved card via confirmSetup.
-          Required so the stored payment method can later be charged off-session
-          for India-export (foreign-currency) invoices. */}
+      {/* Billing name + address, attached to the saved card via confirmSetup, so
+          it can be charged off-session later (e.g. India-export invoices). */}
       <AddressElement options={{ mode: "billing" }} />
       <PaymentElement />
       {error && (
@@ -90,9 +96,94 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
   );
 }
 
-// PortalPaymentMethod is the self-serve card-update dialog. On open it requests
-// a SetupIntent, then mounts the Stripe Payment Element. PANs never touch
-// Recurso.
+// BankSetupForm runs the ACH flow: Stripe's Financial Connections modal collects
+// + verifies the bank account (collectBankAccountForSetup), we confirm the
+// mandate (confirmUsBankAccountSetup), then finalize server-side. Bank details
+// go browser→Stripe directly — none reaches Recurso. (US Market Readiness, Inc 3a.)
+function BankSetupForm({ stripePromise, clientSecret, apiBase, authHeaders, onSaved }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const connect = async () => {
+    if (!name.trim() || !email.trim()) {
+      setError("Enter the account holder's name and email.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const stripe = await stripePromise;
+      if (!stripe) throw new Error("Payment library failed to load.");
+
+      // Opens the Financial Connections bank-login modal (instant verification).
+      const collected = await stripe.collectBankAccountForSetup({
+        clientSecret,
+        params: {
+          payment_method_type: "us_bank_account",
+          payment_method_data: {
+            billing_details: { name: name.trim(), email: email.trim() },
+          },
+        },
+        expand: ["payment_method"],
+      });
+      if (collected.error) throw new Error(collected.error.message || "Bank connection was cancelled.");
+
+      let setupIntent = collected.setupIntent;
+      // After collection Stripe requires an explicit mandate confirmation.
+      if (setupIntent?.status === "requires_confirmation") {
+        const confirmed = await stripe.confirmUsBankAccountSetup(clientSecret);
+        if (confirmed.error) throw new Error(confirmed.error.message || "Could not authorize the bank debit.");
+        setupIntent = confirmed.setupIntent;
+      }
+
+      if (setupIntent?.status === "succeeded") {
+        onSaved(await finalize(apiBase, authHeaders, setupIntent.id));
+      } else if (setupIntent?.status === "processing") {
+        // Micro-deposit verification (not the instant path) — not supported yet.
+        setError("This bank needs manual verification, which isn't supported yet. Please use a card.");
+      } else {
+        setError("Bank verification didn't complete — please try again.");
+      }
+    } catch (err) {
+      setError(err.message);
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="ach-name">Account holder name</Label>
+        <Input id="ach-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="ach-email">Email</Label>
+        <Input id="ach-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
+      </div>
+      <p className="text-xs text-stone-500">
+        You'll be taken to your bank to connect it securely — Recurso never sees your
+        bank credentials. By connecting, you authorize ACH debits for your invoices.
+      </p>
+      {error && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+      <DialogFooter>
+        <Button onClick={connect} disabled={saving} className="w-full">
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          Connect bank account
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
+// PortalPaymentMethod is the self-serve payment-method dialog: card (Payment
+// Element) or US bank / ACH (Financial Connections). PANs and bank credentials
+// never touch Recurso.
 export default function PortalPaymentMethod({
   open,
   onOpenChange,
@@ -100,17 +191,13 @@ export default function PortalPaymentMethod({
   authHeaders,
   onSaved,
 }) {
+  const [mode, setMode] = useState("card"); // 'card' | 'bank'
   const [clientSecret, setClientSecret] = useState(null);
   const [publishableKey, setPublishableKey] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Deployment doesn't support self-serve card update (e.g. Razorpay-only —
-  // no Stripe SetupIntent). Distinct from a transient error: nothing to retry.
   const [unavailable, setUnavailable] = useState(false);
   const [done, setDone] = useState(false);
-  // UPI mandate re-authorization (ENG-5 Phase 3a): the alternative on
-  // Razorpay deployments. On success we leave the page for Razorpay's hosted
-  // authorization; activation lands via the token.confirmed webhook.
   const [mandateLoading, setMandateLoading] = useState(false);
   const [mandateError, setMandateError] = useState(null);
 
@@ -127,7 +214,7 @@ export default function PortalPaymentMethod({
       if (!res.ok || !body.data?.auth_url) {
         throw new Error(
           body?.error?.message ||
-            "UPI re-authorization isn't available right now. Please contact the merchant."
+            "UPI re-authorization isn't available right now. Please contact the merchant.",
         );
       }
       window.location.href = body.data.auth_url;
@@ -139,10 +226,11 @@ export default function PortalPaymentMethod({
 
   const stripePromise = useMemo(
     () => (publishableKey ? loadStripe(publishableKey) : null),
-    [publishableKey]
+    [publishableKey],
   );
 
-  // When the dialog opens, reset and request a fresh SetupIntent.
+  // Request a fresh SetupIntent whenever the dialog opens or the method changes.
+  // Card → /setup-intent (Payment Element); bank → /bank-setup-intent (ACH).
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
@@ -152,7 +240,8 @@ export default function PortalPaymentMethod({
     setError(null);
     setUnavailable(false);
     setLoading(true);
-    fetch(`${apiBase}/portal/api/payment-method/setup-intent`, {
+    const path = mode === "bank" ? "bank-setup-intent" : "setup-intent";
+    fetch(`${apiBase}/portal/api/payment-method/${path}`, {
       method: "POST",
       credentials: "include",
       headers: authHeaders,
@@ -163,7 +252,7 @@ export default function PortalPaymentMethod({
           setUnavailable(true);
           return null;
         }
-        if (!res.ok) throw new Error(body?.error?.message || "Could not start card update");
+        if (!res.ok) throw new Error(body?.error?.message || "Could not start setup");
         return body;
       })
       .then((body) => {
@@ -176,7 +265,9 @@ export default function PortalPaymentMethod({
     return () => {
       cancelled = true;
     };
-  }, [open, apiBase]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, mode, apiBase]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const savedMessage = mode === "bank" ? "Your bank account has been saved." : "Your card has been updated.";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -184,20 +275,48 @@ export default function PortalPaymentMethod({
         <DialogHeader>
           <DialogTitle>Update payment method</DialogTitle>
           <DialogDescription>
-            Your card is entered securely with Stripe — Recurso never sees your
-            full card number.
+            Entered securely with Stripe — Recurso never sees your full card
+            number or bank credentials.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Method selector (hidden once done / on the mandate-only fallback). */}
+        {!done && !unavailable && (
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setMode("card")}
+              className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                mode === "card"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                  : "border-stone-200 text-stone-600 hover:bg-stone-50"
+              }`}
+            >
+              <CreditCard className="h-4 w-4" /> Card
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("bank")}
+              className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
+                mode === "bank"
+                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                  : "border-stone-200 text-stone-600 hover:bg-stone-50"
+              }`}
+            >
+              <Landmark className="h-4 w-4" /> US bank (ACH)
+            </button>
+          </div>
+        )}
 
         {done ? (
           <div className="flex flex-col items-center py-6 text-center">
             <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-600" />
-            <p className="text-sm text-stone-600">Your card has been updated.</p>
+            <p className="text-sm text-stone-600">{savedMessage}</p>
           </div>
         ) : unavailable ? (
           <div className="mt-4 space-y-3">
             <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
-              Card update isn't available on this account. If you pay through
+              Self-serve setup isn't available on this account. If you pay through
               UPI Autopay, you can re-authorize your mandate below — you'll be
               taken to a secure Razorpay page to approve it.
             </div>
@@ -206,11 +325,7 @@ export default function PortalPaymentMethod({
                 {mandateError}
               </div>
             )}
-            <Button
-              onClick={startMandateReauth}
-              disabled={mandateLoading}
-              className="w-full"
-            >
+            <Button onClick={startMandateReauth} disabled={mandateLoading} className="w-full">
               {mandateLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               Re-authorize UPI Autopay
             </Button>
@@ -223,6 +338,17 @@ export default function PortalPaymentMethod({
           <div className="flex justify-center py-8">
             <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
           </div>
+        ) : mode === "bank" ? (
+          <BankSetupForm
+            stripePromise={stripePromise}
+            clientSecret={clientSecret}
+            apiBase={apiBase}
+            authHeaders={authHeaders}
+            onSaved={(card) => {
+              setDone(true);
+              onSaved?.(card);
+            }}
+          />
         ) : (
           <Elements stripe={stripePromise} options={{ clientSecret }}>
             <SetupForm
