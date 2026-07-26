@@ -17,6 +17,7 @@ type InvoicePDFHandler struct {
 	pdfService   *service.InvoicePDFService
 	invoiceRepo  port.InvoiceRepository
 	customerRepo port.CustomerRepository
+	seller       sellerJurisdictionResolver // optional; picks the per-tenant regime
 }
 
 // NewInvoicePDFHandler creates a new PDF handler.
@@ -26,6 +27,20 @@ func NewInvoicePDFHandler(pdfService *service.InvoicePDFService, invoiceRepo por
 		invoiceRepo:  invoiceRepo,
 		customerRepo: customerRepo,
 	}
+}
+
+// SetSellerResolver wires the seller-jurisdiction resolver so each invoice
+// renders under its own tenant's regime instead of the PDF service's env-global
+// seller country. Nil-safe: without it the service default (env) is used.
+func (h *InvoicePDFHandler) SetSellerResolver(r sellerJurisdictionResolver) { h.seller = r }
+
+// sellerCountryFor resolves a tenant's seller country, or "" when no resolver is
+// wired (BuildInvoiceDataFor then falls back to the service's env default).
+func (h *InvoicePDFHandler) sellerCountryFor(ctx context.Context, tenantID uuid.UUID) string {
+	if h.seller == nil {
+		return ""
+	}
+	return h.seller.SellerCountry(ctx, tenantID)
 }
 
 // DownloadPDF renders the invoice as printable HTML.
@@ -65,7 +80,7 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 		}
 	}
 
-	data := h.pdfService.BuildInvoiceData(inv, customer)
+	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, tenantID))
 
 	// The e-invoice QR is GST-only — the IRN is set only on e-invoiced invoices.
 	if data.IRN != "" {
@@ -133,7 +148,7 @@ func (h *InvoicePDFHandler) PortalDownloadPDF(c *gin.Context) {
 		}
 	}
 
-	data := h.pdfService.BuildInvoiceData(inv, customer)
+	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, inv.TenantID))
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
 			data.QRCodeData = qr

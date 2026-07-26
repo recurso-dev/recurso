@@ -60,6 +60,14 @@ type Invoice struct {
 	TaxType string `json:"tax_type" db:"tax_type"`
 	Total   int64  `json:"total" db:"total"`
 
+	// TaxRegime is the PRESENTATION regime (how the invoice is displayed, not how
+	// it was taxed): India GST shows GSTIN/HSN/CGST-SGST-IGST/IRN; sales_tax/vat/
+	// plain show a single tax line and hide every GST artifact. Computed at read
+	// time from the seller's jurisdiction and stamped onto the response; never
+	// persisted (db:"-"). Empty until stamped — consumers fall back to
+	// RegimeFallback(). See the US-market-readiness invoice-presentation work.
+	TaxRegime string `json:"tax_regime,omitempty" db:"-"`
+
 	// Compliance P24
 	IGSTAmount           int64      `json:"igst_amount" db:"igst_amount"`
 	CGSTAmount           int64      `json:"cgst_amount" db:"cgst_amount"`
@@ -122,6 +130,30 @@ type Invoice struct {
 	// Each line carries its own HSN/SAC code and GST breakdown; the line
 	// amounts and per-line taxes reconcile exactly to Subtotal/TaxAmount.
 	LineItems []InvoiceItem `json:"line_items,omitempty" db:"-"`
+}
+
+// Invoice presentation regimes — how an invoice is DISPLAYED (PDF + dashboard),
+// independent of the tax math already applied. Stamped onto Invoice.TaxRegime.
+const (
+	TaxRegimeGST      = "gst"       // India: GSTIN, HSN, CGST/SGST/IGST, IRN/e-invoice
+	TaxRegimeSalesTax = "sales_tax" // US: EIN, a single "Sales Tax" line, no GST artifacts
+	TaxRegimeVAT      = "vat"       // EU/UK: VAT id, a single "VAT" line
+	TaxRegimePlain    = "plain"     // elsewhere: a single generic "Tax" line
+)
+
+// RegimeFallback derives a presentation regime from the invoice's OWN data, for
+// when no seller-jurisdiction resolver is wired (or a legacy invoice). A GST
+// split or an INR invoice reads as India GST; anything else reads as plain (no
+// GST artifacts) — the safe default for a non-Indian seller. Prefer stamping
+// TaxRegime from the seller's country (RegimeForCountry); this is the fallback.
+func (inv *Invoice) RegimeFallback() string {
+	if inv.CGSTAmount > 0 || inv.SGSTAmount > 0 || inv.IGSTAmount > 0 {
+		return TaxRegimeGST
+	}
+	if strings.EqualFold(inv.Currency, "INR") {
+		return TaxRegimeGST
+	}
+	return TaxRegimePlain
 }
 
 // InvoiceItem is a single itemized line on an invoice. Amounts are in the

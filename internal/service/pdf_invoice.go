@@ -202,8 +202,19 @@ func NewInvoicePDFService(sellerName, sellerAddress, sellerGSTIN, sellerPAN, sel
 // (single tax line, seller tax id / EIN, no HSN) otherwise — so a US invoice
 // never shows GST fields.
 func (s *InvoicePDFService) BuildInvoiceData(inv *domain.Invoice, cust *domain.Customer) PDFInvoiceData {
+	return s.BuildInvoiceDataFor(inv, cust, s.sellerCountry)
+}
+
+// BuildInvoiceDataFor is BuildInvoiceData with an explicit seller country, so a
+// multi-tenant caller can render each invoice under its own seller's regime
+// (India GST vs a plain sales-tax/VAT invoice) rather than the service-global
+// env default. An empty sellerCountry falls back to the service default.
+func (s *InvoicePDFService) BuildInvoiceDataFor(inv *domain.Invoice, cust *domain.Customer, sellerCountry string) PDFInvoiceData {
+	if sellerCountry == "" {
+		sellerCountry = s.sellerCountry
+	}
 	cur := inv.Currency
-	sellerIN := s.sellerCountry == "" || strings.EqualFold(s.sellerCountry, "IN")
+	sellerIN := sellerCountry == "" || strings.EqualFold(sellerCountry, "IN")
 	hasGSTSplit := inv.CGSTAmount > 0 || inv.SGSTAmount > 0 || inv.IGSTAmount > 0
 	showGST := sellerIN && (hasGSTSplit || strings.EqualFold(cur, "INR"))
 
@@ -270,11 +281,11 @@ func (s *InvoicePDFService) BuildInvoiceData(inv *domain.Invoice, cust *domain.C
 	} else {
 		data.DocTitle = "INVOICE"
 		if s.sellerTaxID != "" {
-			data.SellerTaxLabel = sellerTaxLabel(s.sellerCountry)
+			data.SellerTaxLabel = sellerTaxLabel(sellerCountry)
 			data.SellerTaxID = s.sellerTaxID
 		}
 		if inv.TaxAmount > 0 {
-			data.TaxLineLabel = taxLineLabel(s.sellerCountry)
+			data.TaxLineLabel = taxLineLabel(sellerCountry)
 			data.TaxLineAmount = FormatAmount(inv.TaxAmount, cur)
 			data.TaxLineRate = ratePercent(inv.TaxAmount, inv.Subtotal)
 		}

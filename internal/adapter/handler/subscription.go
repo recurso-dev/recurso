@@ -13,13 +13,26 @@ import (
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
+// sellerJurisdictionResolver reports a tenant's seller ISO-2 country using the
+// same logic as tax resolution, so invoice PRESENTATION matches taxation.
+// Optional and nil-safe; *service.TaxResolver satisfies it.
+type sellerJurisdictionResolver interface {
+	SellerCountry(ctx context.Context, tenantID uuid.UUID) string
+}
+
 type SubscriptionHandler struct {
 	service *service.SubscriptionService
+	seller  sellerJurisdictionResolver // optional; stamps the per-tenant invoice regime
 }
 
 func NewSubscriptionHandler(s *service.SubscriptionService) *SubscriptionHandler {
 	return &SubscriptionHandler{service: s}
 }
+
+// SetSellerResolver wires the seller-jurisdiction resolver so listed invoices
+// carry a tax_regime matching the seller's jurisdiction. Nil-safe: without it,
+// each invoice falls back to RegimeFallback() (its own currency / GST split).
+func (h *SubscriptionHandler) SetSellerResolver(r sellerJurisdictionResolver) { h.seller = r }
 
 type createSubscriptionRequest struct {
 	CustomerID        string    `json:"customer_id" binding:"required,uuid"`
@@ -138,6 +151,22 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	if invs == nil {
 		invs = []*domain.Invoice{}
 	}
+
+	// Stamp the presentation regime so the dashboard hides GST artifacts (HSN,
+	// CGST/SGST/IGST, IRN) for non-Indian sellers. All invoices in this response
+	// share one tenant, so the seller country is resolved once, not per row.
+	regime := ""
+	if h.seller != nil {
+		regime = service.RegimeForCountry(h.seller.SellerCountry(ctx, tenantID))
+	}
+	for _, inv := range invs {
+		if regime != "" {
+			inv.TaxRegime = regime
+		} else {
+			inv.TaxRegime = inv.RegimeFallback()
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{"data": invs})
 }
 

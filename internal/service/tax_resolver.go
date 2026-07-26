@@ -194,6 +194,32 @@ func (r *TaxResolver) sellerJurisdiction(ctx context.Context, tenantID uuid.UUID
 	return country, state, c
 }
 
+// SellerCountry returns the seller's ISO-2 country for a tenant using the same
+// jurisdiction logic as tax resolution (GST config ⇒ IN, else the configured
+// company default). Exposed for invoice PRESENTATION, so the regime an invoice
+// is DISPLAYED under matches the regime it was taxed under.
+func (r *TaxResolver) SellerCountry(ctx context.Context, tenantID uuid.UUID) string {
+	country, _, _ := r.sellerJurisdiction(ctx, tenantID)
+	return country
+}
+
+// RegimeForCountry maps a seller ISO-2 country to an invoice presentation regime
+// (domain.TaxRegime*). Empty or IN ⇒ GST (the India-focused default that mirrors
+// sellerJurisdiction's env fallback); US ⇒ sales tax; an EU/UK country ⇒ VAT;
+// anything else ⇒ plain.
+func RegimeForCountry(country string) string {
+	switch {
+	case country == "" || strings.EqualFold(country, "IN"):
+		return domain.TaxRegimeGST
+	case strings.EqualFold(country, "US"):
+		return domain.TaxRegimeSalesTax
+	case isEUCountry(country):
+		return domain.TaxRegimeVAT
+	default:
+		return domain.TaxRegimePlain
+	}
+}
+
 // resolveIndiaGST applies India GST to INR invoices and zero-rates
 // foreign-currency invoices as exports.
 func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine, cfg *domain.TenantGSTConfig, customer *domain.Customer, currency string, amount int64, lineHSN string) InvoiceTax {

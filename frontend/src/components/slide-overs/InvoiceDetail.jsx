@@ -126,6 +126,22 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
 
   if (!invoice) return null;
 
+  // Presentation regime — the backend stamps invoice.tax_regime from the seller's
+  // jurisdiction; fall back to the invoice's own data (a GST split or an INR
+  // invoice reads as India GST, else plain). Non-GST invoices hide every GST
+  // artifact (HSN, CGST/SGST/IGST, TDS, IRN) and label tax by regime.
+  const taxRegime =
+    invoice.tax_regime ||
+    (invoice.igst_amount > 0 ||
+    invoice.cgst_amount > 0 ||
+    invoice.sgst_amount > 0 ||
+    String(invoice.currency || "").toUpperCase() === "INR"
+      ? "gst"
+      : "plain");
+  const isGST = taxRegime === "gst";
+  const taxLineLabel =
+    taxRegime === "sales_tax" ? "Sales Tax" : taxRegime === "vat" ? "VAT" : "Tax";
+
   const handleEuRetry = async () => {
     setEuRetrying(true);
     setActionMessage(null);
@@ -289,8 +305,13 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
                         </p>
                         <p className="text-xs text-muted-foreground tabular-nums">
                           {li.quantity > 1 ? `${li.quantity} × ` : ""}
-                          {li.hsn_code ? `HSN ${li.hsn_code}` : "—"}
-                          {li.tax_rate ? ` · ${li.tax_rate}% GST` : ""}
+                          {isGST
+                            ? `${li.hsn_code ? `HSN ${li.hsn_code}` : "—"}${
+                                li.tax_rate ? ` · ${li.tax_rate}% GST` : ""
+                              }`
+                            : li.tax_rate
+                              ? `${li.tax_rate}% ${taxLineLabel}`
+                              : ""}
                         </p>
                       </div>
                       <p className="shrink-0 tabular-nums text-sm text-foreground">
@@ -333,7 +354,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
               ) &&
                 invoice.tax_amount > 0 && (
                   <Row
-                    label="Tax"
+                    label={taxLineLabel}
                     value={formatCurrency(invoice.tax_amount, invoice.currency)}
                   />
                 )}
@@ -370,8 +391,8 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
             <Field label="Due date">{formatDate(invoice.due_date)}</Field>
           </dl>
 
-          {/* E-Invoice Section */}
-          {hasEInvoice && (
+          {/* E-Invoice Section — India IRP only; never on a non-GST invoice */}
+          {hasEInvoice && isGST && (
             <>
               <Separator className="my-6" />
               <h3 className="mb-4 text-sm font-semibold text-foreground">E-Invoice</h3>

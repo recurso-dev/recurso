@@ -1096,6 +1096,7 @@ func main() {
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime
 	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
 	// mock can't), so type-assert for the inspector; a nil inspector makes
 	// CheckoutSuccess report status only. subscriptionService is the ledger-path
@@ -1271,6 +1272,7 @@ func main() {
 		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
 	)
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
+	pdfHandler.SetSellerResolver(taxResolver) // render each invoice under its tenant's regime
 	// The concrete invoice repository implements the GSTR-1 read side; assert to
 	// the narrow source interface so the export service stays db-agnostic.
 	var gstrService *service.GSTRService
