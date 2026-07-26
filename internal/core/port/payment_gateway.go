@@ -36,10 +36,15 @@ type SavedCard struct {
 	Status          string // SetupIntent status, e.g. "succeeded"
 	CustomerID      string // Recurso customer id from the intent metadata
 	PaymentMethodID string // pm_* to charge for future invoices
-	Brand           string
-	Last4           string
-	ExpMonth        int
-	ExpYear         int
+	// Type is the saved method: "card" or "us_bank_account" (ACH). Empty on a
+	// non-succeeded intent. For a bank account, Brand/ExpMonth/ExpYear are empty
+	// and BankName + Last4 carry the display.
+	Type     string
+	Brand    string
+	Last4    string
+	ExpMonth int
+	ExpYear  int
+	BankName string // us_bank_account only
 }
 
 // PaymentResult represents the outcome of a payment retry attempt

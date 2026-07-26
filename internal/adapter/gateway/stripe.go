@@ -211,6 +211,43 @@ func (s *StripeGateway) CreateSetupIntent(ctx context.Context, stripeCustomerID 
 	return si.ClientSecret, nil
 }
 
+// CreateBankAccountSetupIntent creates a SetupIntent that collects and saves a
+// reusable US bank account (ACH) against stripeCustomerID via Stripe Financial
+// Connections — the buyer authenticates with their bank (instant verification),
+// which captures the account and the Nacha debit mandate in one flow. Usage is
+// off_session so the saved us_bank_account can be debited for future invoices.
+// Returns the client_secret the browser's collectBankAccountForSetup confirms.
+// (US Market Readiness, Inc 3a; micro-deposit fallback is a later enhancement.)
+func (s *StripeGateway) CreateBankAccountSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error) {
+	params := &stripe.SetupIntentParams{
+		Customer:           stripe.String(stripeCustomerID),
+		Usage:              stripe.String("off_session"),
+		PaymentMethodTypes: stripe.StringSlice([]string{string(stripe.PaymentMethodTypeUSBankAccount)}),
+		PaymentMethodOptions: &stripe.SetupIntentPaymentMethodOptionsParams{
+			USBankAccount: &stripe.SetupIntentPaymentMethodOptionsUSBankAccountParams{
+				// Instant only (Financial Connections). A bank without instant
+				// support fails here rather than dropping to micro-deposits —
+				// that fallback is deferred (see docs/design-us-ach.md).
+				VerificationMethod: stripe.String("instant"),
+				FinancialConnections: &stripe.SetupIntentPaymentMethodOptionsUSBankAccountFinancialConnectionsParams{
+					Permissions: stripe.StringSlice([]string{
+						string(stripe.SetupIntentPaymentMethodOptionsUSBankAccountFinancialConnectionsPermissionPaymentMethod),
+					}),
+				},
+			},
+		},
+	}
+	for k, v := range metadata {
+		params.AddMetadata(k, v)
+	}
+	params.Context = ctx
+	si, err := s.sc.SetupIntents.New(params)
+	if err != nil {
+		return "", fmt.Errorf("stripe create bank-account setup intent failed: %w", err)
+	}
+	return si.ClientSecret, nil
+}
+
 // FinalizeSetupIntent reads back a confirmed SetupIntent, returning the saved
 // payment method's card details and the Recurso customer_id from its metadata.
 // On success it also sets the method as the Stripe Customer's default so future
@@ -231,11 +268,19 @@ func (s *StripeGateway) FinalizeSetupIntent(ctx context.Context, setupIntentID s
 	}
 	out.PaymentMethodID = si.PaymentMethod.ID
 
-	if pm, pmErr := s.sc.PaymentMethods.Get(si.PaymentMethod.ID, nil); pmErr == nil && pm.Card != nil {
-		out.Brand = string(pm.Card.Brand)
-		out.Last4 = pm.Card.Last4
-		out.ExpMonth = int(pm.Card.ExpMonth)
-		out.ExpYear = int(pm.Card.ExpYear)
+	if pm, pmErr := s.sc.PaymentMethods.Get(si.PaymentMethod.ID, nil); pmErr == nil {
+		switch {
+		case pm.Card != nil:
+			out.Type = "card"
+			out.Brand = string(pm.Card.Brand)
+			out.Last4 = pm.Card.Last4
+			out.ExpMonth = int(pm.Card.ExpMonth)
+			out.ExpYear = int(pm.Card.ExpYear)
+		case pm.USBankAccount != nil:
+			out.Type = "us_bank_account"
+			out.BankName = pm.USBankAccount.BankName
+			out.Last4 = pm.USBankAccount.Last4
+		}
 	}
 
 	// Make it the default for future (off-session) invoices. Best-effort — the
