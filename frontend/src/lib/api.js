@@ -240,6 +240,8 @@ export const endpoints = {
 
   // Collections Intelligence — operator worklist of currently-failing invoices.
   getCollectionsQueue: (params) => api.get('/collections/queue', { params }),
+  getCollectionsFunnel: () => api.get('/analytics/collections/funnel'),
+  getCollectionsFailures: () => api.get('/analytics/collections/failures'),
 
   // Payment mandates (UPI Autopay)
   getMandates: () => api.get('/mandates'),

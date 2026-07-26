@@ -43,6 +43,11 @@ type InvoiceRepository interface {
 	// customer, and latest ACH attempt status. Read-only.
 	ListCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) ([]domain.CollectionsQueueItem, error)
 	CountCollectionsQueue(ctx context.Context, tenantID uuid.UUID, f domain.CollectionsQueueFilter) (int, error)
+	// GetCollectionsAtRisk / GetCollectionsFailureBreakdown aggregate the
+	// currently-failing population for the recovery funnel + failure breakdown
+	// (Collections Intelligence Inc 2). Read-only.
+	GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error)
+	GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error)
 	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
 	// the calling worker instance, advancing next_retry_at by `lease` so a

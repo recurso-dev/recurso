@@ -6593,6 +6593,51 @@ paths:
                         count: { type: integer }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/analytics/collections/funnel:
+    get:
+      tags: [Collections]
+      summary: Collections recovery funnel
+      description: >-
+        The failed → resolved journey of billed revenue: past_due (still being
+        chased), uncollectible (written off), and recovered (all-time),
+        FX-normalized to the reporting currency, with a recovery rate over
+        concluded cases. Cached for up to 5 minutes.
+      operationId: getCollectionsFunnel
+      responses:
+        "200":
+          description: Recovery funnel.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CollectionsFunnel'
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/analytics/collections/failures:
+    get:
+      tags: [Collections]
+      summary: Failure-reason breakdown by money at risk
+      description: >-
+        Currently-failing invoices grouped by their last failure code, ranked by
+        the amount of billed revenue at risk (FX-normalized). Cached for up to 5
+        minutes.
+      operationId: getCollectionsFailures
+      responses:
+        "200":
+          description: Failure reasons ranked by money at risk.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CollectionsFailureBucket'
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
   /v1/plans/{id}/entitlements:
     get:
       tags: [Entitlements]
@@ -9604,6 +9649,39 @@ components:
         attempt_status:
           type: string
           description: Status of the latest payment attempt (ACH), if one exists.
+
+    CollectionsBucket:
+      type: object
+      description: One stage of the recovery funnel, in the reporting currency.
+      properties:
+        count: { type: integer }
+        amount:
+          type: integer
+          format: int64
+          description: Minor units, FX-normalized to the reporting currency.
+
+    CollectionsFunnel:
+      type: object
+      description: The failed → resolved journey of billed revenue.
+      properties:
+        reporting_currency: { type: string }
+        past_due: { $ref: '#/components/schemas/CollectionsBucket' }
+        uncollectible: { $ref: '#/components/schemas/CollectionsBucket' }
+        recovered: { $ref: '#/components/schemas/CollectionsBucket' }
+        recovery_rate:
+          type: number
+          description: recovered ÷ (recovered + uncollectible) — over concluded cases.
+
+    CollectionsFailureBucket:
+      type: object
+      description: One failure reason ranked by money at risk.
+      properties:
+        error_code: { type: string }
+        count: { type: integer }
+        amount_at_risk:
+          type: integer
+          format: int64
+          description: Minor units at risk, FX-normalized to the reporting currency.
 
     APIKey:
       type: object

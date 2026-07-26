@@ -35,7 +35,7 @@ func TestCollectionsQueue_ValidFiltersAndShape(t *testing.T) {
 		items: []domain.CollectionsQueueItem{{ID: uuid.New(), Status: "past_due"}},
 		count: 1,
 	}
-	h := NewCollectionsHandler(stub)
+	h := NewCollectionsHandler(stub, nil)
 
 	c, w := jsonCtx(http.MethodGet, "/v1/collections/queue?status=past_due&managed_by=worker&per_page=25", "")
 	c.Set("tenant_id", uuid.New())
@@ -69,7 +69,7 @@ func TestCollectionsQueue_ValidFiltersAndShape(t *testing.T) {
 func TestCollectionsQueue_InvalidFiltersDropped(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &stubQueueLister{}
-	h := NewCollectionsHandler(stub)
+	h := NewCollectionsHandler(stub, nil)
 
 	c, w := jsonCtx(http.MethodGet, "/v1/collections/queue?status=DROP+TABLE&managed_by=hacker", "")
 	c.Set("tenant_id", uuid.New())
@@ -88,7 +88,7 @@ func TestCollectionsQueue_InvalidFiltersDropped(t *testing.T) {
 func TestCollectionsQueue_RejectsNonUUIDTenant(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	stub := &stubQueueLister{}
-	h := NewCollectionsHandler(stub)
+	h := NewCollectionsHandler(stub, nil)
 
 	c, w := jsonCtx(http.MethodGet, "/v1/collections/queue", "")
 	c.Set("tenant_id", "not-a-uuid")
