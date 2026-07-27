@@ -12,18 +12,33 @@ import (
 )
 
 // giftCancelInvoiceRepo stubs the two invoice reads/writes CancelGift uses.
+// payAfterReads simulates a checkout settling mid-cancel: after that many
+// GetByIDPublic calls, the invoice flips open→paid.
 type giftCancelInvoiceRepo struct {
 	port.InvoiceRepository
-	inv        *domain.Invoice
-	voidCalled int
+	inv           *domain.Invoice
+	voidCalled    int
+	reads         int
+	payAfterReads int
 }
 
 func (r *giftCancelInvoiceRepo) GetByIDPublic(_ context.Context, _ uuid.UUID) (*domain.Invoice, error) {
+	r.reads++
 	return r.inv, nil
+}
+
+// settleIfRaced flips open→paid once the pre-check read has happened — the
+// simulated checkout settles between that read and the void.
+func (r *giftCancelInvoiceRepo) settleIfRaced() {
+	if r.payAfterReads > 0 && r.reads >= r.payAfterReads && r.inv != nil &&
+		r.inv.Status == domain.InvoiceStatusOpen {
+		r.inv.Status = domain.InvoiceStatusPaid
+	}
 }
 
 func (r *giftCancelInvoiceRepo) VoidIfOpen(_ context.Context, _, _ uuid.UUID) (bool, error) {
 	r.voidCalled++
+	r.settleIfRaced()
 	if r.inv != nil && r.inv.Status == domain.InvoiceStatusOpen {
 		r.inv.Status = domain.InvoiceStatusVoid
 		return true, nil
@@ -104,6 +119,37 @@ func TestCancelGift_PaidButUnwiredRefused(t *testing.T) {
 	}
 	if g.Status != domain.GiftStatusPurchased {
 		t.Errorf("gift status = %s — a refused cancel must not flip the status", g.Status)
+	}
+}
+
+// A checkout payment can settle BETWEEN the pre-check read (invoice open) and
+// the atomic cancel. The money side must follow the post-cancel truth: the
+// void refuses (invoice now paid) and the buyer must be credited — or, when
+// credit issuance is unwired, the cancel must surface a loud error rather than
+// silently stranding the payment behind invoice_voided=false.
+func TestCancelGift_PaymentRacesCancel(t *testing.T) {
+	repo := newMockGiftRepo()
+	invID := uuid.New()
+	g := seedCancelGift(repo, domain.GiftStatusPurchased, &invID)
+	invRepo := &giftCancelInvoiceRepo{
+		inv: &domain.Invoice{
+			ID: invID, TenantID: g.TenantID, Status: domain.InvoiceStatusOpen, Total: 9900, Currency: "USD",
+		},
+		payAfterReads: 1, // open at the pre-check, paid by the time the void runs
+	}
+	svc := NewGiftService(repo, nil, &InvoiceService{InvoiceRepo: invRepo}, nil, nil) // credit unwired
+
+	_, err := svc.CancelGift(context.Background(), g.TenantID, g.ID, uuid.New(), "admin")
+	if !errors.Is(err, ErrGiftCreditUnwired) {
+		t.Fatalf("raced payment with unwired credit must surface loudly, got %v", err)
+	}
+	if invRepo.inv.Status != domain.InvoiceStatusPaid {
+		t.Fatalf("test setup: invoice should have been paid mid-cancel, is %s", invRepo.inv.Status)
+	}
+	if g.Status != domain.GiftStatusCanceled {
+		// The cancel itself won; only the compensation is outstanding — and the
+		// returned error says exactly that.
+		t.Errorf("gift status = %s, want canceled", g.Status)
 	}
 }
 

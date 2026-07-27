@@ -276,20 +276,17 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 		return nil, ErrGiftAlreadyCanceled
 	}
 
-	// Resolve what the money side WILL be before flipping the status, so we
-	// can refuse (rather than strand) a paid gift when credit issuance isn't
-	// wired. The status flip below remains the race gate.
-	var paidInvoice *domain.Invoice
+	// Fail-closed pre-check: a gift whose purchase is already paid must not be
+	// canceled at all when credit issuance isn't wired — refuse BEFORE the
+	// status flips rather than cancel-and-strand. (The money side itself is
+	// decided AFTER the flip, from the invoice's then-current state.)
 	if gift.InvoiceID != nil && s.invoiceService != nil {
 		inv, err := s.invoiceService.InvoiceRepo.GetByIDPublic(ctx, *gift.InvoiceID)
 		if err != nil {
 			return nil, fmt.Errorf("load gift purchase invoice: %w", err)
 		}
-		if inv != nil && inv.Status == domain.InvoiceStatusPaid {
-			if s.creditNotes == nil {
-				return nil, ErrGiftCreditUnwired
-			}
-			paidInvoice = inv
+		if inv != nil && inv.Status == domain.InvoiceStatusPaid && s.creditNotes == nil {
+			return nil, ErrGiftCreditUnwired
 		}
 	}
 
@@ -308,34 +305,62 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 	gift.Status = domain.GiftStatusCanceled
 
 	result := &GiftCancelResult{Gift: gift}
-	switch {
-	case paidInvoice != nil:
-		cn, err := s.creditNotes.Create(ctx, tenantID, actorID, actorRole, domain.CreateCreditNoteRequest{
-			CustomerID: gift.BuyerCustomerID,
-			InvoiceID:  gift.InvoiceID,
-			Amount:     paidInvoice.Total,
-			Currency:   paidInvoice.Currency,
-			Reason:     fmt.Sprintf("Gift %s canceled — purchase credited", gift.Code),
-			Type:       "adjustment",
-		})
-		if err != nil {
-			// The gift is canceled but the credit failed — surface loudly; the
-			// operator retries via a manual credit note. Never leave this silent.
-			slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
-				"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", paidInvoice.Total, "error", err)
-			return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", err)
-		}
-		result.CreditNote = cn
-	case gift.InvoiceID != nil && s.invoiceService != nil:
-		voided, err := s.invoiceService.InvoiceRepo.VoidIfOpen(ctx, tenantID, *gift.InvoiceID)
-		if err != nil {
-			slog.Error("gift canceled but voiding the open purchase invoice failed",
-				"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
-		}
-		result.InvoiceVoided = voided
-	default:
+	if gift.InvoiceID == nil || s.invoiceService == nil {
 		slog.Warn("gift canceled without a linked purchase invoice — no automatic compensation",
 			"gift_id", gift.ID, "buyer_customer_id", gift.BuyerCustomerID)
+		return result, nil
 	}
+
+	// Money side, decided from the invoice's POST-cancel state — never from the
+	// pre-check read. A checkout payment can settle between that read and the
+	// cancel; acting on the stale read would void-fail silently and strand the
+	// buyer's money. Void first (atomic on status=open), and only what is still
+	// paid after the void refuses gets credited — which also means a payment
+	// that was ACH-reversed back to open is voided, not credited.
+	voided, err := s.invoiceService.InvoiceRepo.VoidIfOpen(ctx, tenantID, *gift.InvoiceID)
+	if err != nil {
+		slog.Error("gift canceled but voiding the purchase invoice failed",
+			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
+		return nil, fmt.Errorf("gift canceled, but resolving the purchase invoice failed: %w", err)
+	}
+	if voided {
+		result.InvoiceVoided = true
+		return result, nil
+	}
+
+	inv, err := s.invoiceService.InvoiceRepo.GetByIDPublic(ctx, *gift.InvoiceID)
+	if err != nil {
+		slog.Error("gift canceled but re-reading the purchase invoice failed — verify the buyer was compensated",
+			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
+		return nil, fmt.Errorf("gift canceled, but resolving the purchase invoice failed: %w", err)
+	}
+	if inv == nil || inv.Status != domain.InvoiceStatusPaid {
+		// Not open (void failed), not paid: already void/canceled — nothing owed.
+		return result, nil
+	}
+
+	if s.creditNotes == nil {
+		// Payment landed after the fail-closed pre-check (cancel raced a
+		// checkout) and credit issuance isn't wired. Never leave this silent.
+		slog.Error("gift canceled but credit issuance is UNWIRED — issue the buyer's credit manually",
+			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total)
+		return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", ErrGiftCreditUnwired)
+	}
+	cn, err := s.creditNotes.Create(ctx, tenantID, actorID, actorRole, domain.CreateCreditNoteRequest{
+		CustomerID: gift.BuyerCustomerID,
+		InvoiceID:  gift.InvoiceID,
+		Amount:     inv.Total,
+		Currency:   inv.Currency,
+		Reason:     fmt.Sprintf("Gift %s canceled — purchase credited", gift.Code),
+		Type:       "adjustment",
+	})
+	if err != nil {
+		// The gift is canceled but the credit failed — surface loudly; the
+		// operator retries via a manual credit note. Never leave this silent.
+		slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
+			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total, "error", err)
+		return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", err)
+	}
+	result.CreditNote = cn
 	return result, nil
 }
