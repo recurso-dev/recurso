@@ -132,6 +132,12 @@ func (h *GiftHandler) CancelGift(c *gin.Context) {
 	case errors.Is(err, service.ErrGiftCreditUnwired):
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, err.Error())
 		return
+	case errors.Is(err, service.ErrGiftCanceledCreditFailed):
+		// Partial success: the cancel took effect but the buyer's credit needs
+		// a manual step. 502 with the explicit message — never a generic 500
+		// that hides the outstanding compensation.
+		respondError(c, http.StatusBadGateway, codeInternalError, err.Error())
+		return
 	case err != nil:
 		respondInternalError(c, err)
 		return
