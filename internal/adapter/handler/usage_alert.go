@@ -15,6 +15,7 @@ import (
 //
 //	POST   /v1/usage-alerts                create an alert
 //	GET    /v1/usage-alerts                list (optional ?subscription_id=)
+//	PUT    /v1/usage-alerts/:id            edit an alert's threshold
 //	DELETE /v1/usage-alerts/:id            delete an alert
 type UsageAlertHandler struct {
 	svc *service.UsageAlertService
@@ -85,6 +86,31 @@ func (h *UsageAlertHandler) List(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": alerts})
+}
+
+// Update re-aims an alert at a new threshold (type + value). Subscription and
+// metric are the alert's identity — to change those, delete and re-create.
+func (h *UsageAlertHandler) Update(c *gin.Context) {
+	tenantID, ctx, ok := alertTenantCtx(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid alert id")
+		return
+	}
+	var in service.UpdateAlertInput
+	if err := c.ShouldBindJSON(&in); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+	a, err := h.svc.UpdateAlert(ctx, tenantID, id, in)
+	if err != nil {
+		respondAlertError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": a})
 }
 
 func (h *UsageAlertHandler) Delete(c *gin.Context) {

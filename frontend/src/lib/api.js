@@ -353,6 +353,8 @@ export const endpoints = {
   getUsageEvents: (params) => api.get('/usage/events', { params }),
   getUsageAlerts: (params) => api.get('/usage-alerts', { params }),
   createUsageAlert: (data) => api.post('/usage-alerts', data),
+  // Edits threshold_type/threshold only; subscription + metric are identity.
+  updateUsageAlert: (id, data) => api.put(`/usage-alerts/${id}`, data),
   deleteUsageAlert: (id) => api.delete(`/usage-alerts/${id}`),
 
   // Audit trail

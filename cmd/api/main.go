@@ -1655,6 +1655,7 @@ func main() {
 		// Usage threshold alerts (Lago-parity B3)
 		v1.POST("/usage-alerts", usageAlertHandler.Create)
 		v1.GET("/usage-alerts", usageAlertHandler.List)
+		v1.PUT("/usage-alerts/:id", usageAlertHandler.Update)
 		v1.DELETE("/usage-alerts/:id", usageAlertHandler.Delete)
 
 		// Append-only audit trail (Lago-parity C2)

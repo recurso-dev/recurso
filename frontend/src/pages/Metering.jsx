@@ -46,6 +46,8 @@ const Metering = () => {
   });
 
   const [alertOpen, setAlertOpen] = useState(false);
+  const [editAlert, setEditAlert] = useState(null); // the alert being edited, or null
+  const [editAlertForm, setEditAlertForm] = useState({ threshold_type: "quantity", threshold: "" });
   const [alertForm, setAlertForm] = useState({
     subscription_id: "",
     metric_code: "",
@@ -172,6 +174,32 @@ const Metering = () => {
       fetchAll();
     } catch {
       /* refetch shows state */
+    }
+  };
+
+  const openEditAlert = (alert) => {
+    setActionError(null);
+    setEditAlert(alert);
+    setEditAlertForm({
+      threshold_type: alert.threshold_type,
+      threshold: String(alert.threshold),
+    });
+  };
+
+  const submitEditAlert = async () => {
+    setActionError(null);
+    setSaving(true);
+    try {
+      await api.updateUsageAlert(editAlert.id, {
+        threshold_type: editAlertForm.threshold_type,
+        threshold: parseInt(editAlertForm.threshold, 10),
+      });
+      setEditAlert(null);
+      fetchAll();
+    } catch (err) {
+      setActionError(err?.response?.data?.error?.message || "Failed to update alert");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -303,6 +331,9 @@ const Metering = () => {
             </div>
             <div className="flex items-center gap-2">
               {a.last_fired_period_start && <Badge variant="success">fired this period</Badge>}
+              <Button size="sm" variant="ghost" aria-label="Edit alert" onClick={() => openEditAlert(a)}>
+                <Pencil className="h-4 w-4 text-muted-foreground" />
+              </Button>
               <Button size="sm" variant="ghost" aria-label="Delete alert" onClick={() => removeAlert(a)}>
                 <Trash2 className="h-4 w-4 text-muted-foreground" />
               </Button>
@@ -518,6 +549,62 @@ const Metering = () => {
               }
             >
               {saving ? "Creating…" : "Create alert"}
+            </Button>
+          </SheetFooter>
+        </SheetContent>
+      </Sheet>
+
+      {/* Edit alert — threshold only; subscription + metric are the alert's identity */}
+      <Sheet open={!!editAlert} onOpenChange={(o) => !o && setEditAlert(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>Edit usage alert</SheetTitle>
+            <SheetDescription>
+              Re-aim the threshold. Editing lets the alert fire again this period against
+              the new line. To change the subscription or metric, delete and re-create.
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+            <div className="rounded-md bg-muted/40 p-3 text-sm">
+              <span className="font-mono">{editAlert?.metric_code}</span>
+              <span className="ml-2 text-xs text-muted-foreground">
+                {(() => {
+                  const s = subscriptions.find((x) => x.id === editAlert?.subscription_id);
+                  return s ? subLabel(s) : editAlert ? `sub ${editAlert.subscription_id.slice(0, 8)}…` : "";
+                })()}
+              </span>
+            </div>
+            <div>
+              <Label>Threshold type</Label>
+              <Select
+                value={editAlertForm.threshold_type}
+                onValueChange={(v) => setEditAlertForm({ ...editAlertForm, threshold_type: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="quantity">Absolute quantity</SelectItem>
+                  <SelectItem value="percent_of_limit">Percent of entitlement limit</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>
+                Threshold{editAlertForm.threshold_type === "percent_of_limit" ? " (%)" : ""}
+              </Label>
+              <Input
+                type="number"
+                min="1"
+                value={editAlertForm.threshold}
+                onChange={(e) => setEditAlertForm({ ...editAlertForm, threshold: e.target.value })}
+              />
+            </div>
+            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+          </div>
+          <SheetFooter>
+            <Button onClick={submitEditAlert} disabled={saving || !editAlertForm.threshold}>
+              {saving ? "Saving…" : "Save changes"}
             </Button>
           </SheetFooter>
         </SheetContent>

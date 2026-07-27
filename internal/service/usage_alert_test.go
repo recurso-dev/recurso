@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"testing"
 	"time"
 
@@ -31,6 +33,18 @@ func (f *fakeAlertRepo) MarkFired(ctx context.Context, id uuid.UUID, periodStart
 	}
 	f.fired[id] = periodStart
 	return true, nil
+}
+
+func (f *fakeAlertRepo) UpdateThreshold(_ context.Context, tenantID, id uuid.UUID, tt domain.UsageAlertThresholdType, threshold int64) error {
+	for i := range f.alerts {
+		if f.alerts[i].ID == id && f.alerts[i].TenantID == tenantID {
+			f.alerts[i].ThresholdType = tt
+			f.alerts[i].Threshold = threshold
+			f.alerts[i].LastFiredPeriodStart = nil // mirror the SQL's dedup reset
+			return nil
+		}
+	}
+	return sql.ErrNoRows
 }
 
 type fakeAlertMetricRepo struct {
@@ -152,5 +166,58 @@ func TestUsageAlertNewPeriodFiresAgain(t *testing.T) {
 	}
 	if !repo.fired[alert.ID].Equal(time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("claimed period = %v, want the current period start", repo.fired[alert.ID])
+	}
+}
+
+// --- UpdateAlert (alert-edit quick-win) ---
+
+// UpdateAlert re-aims an existing alert: threshold changes land, the fired
+// dedup resets (so the new line can fire this period), and the same validation
+// as CreateAlert applies.
+func TestUpdateAlert(t *testing.T) {
+	tenantID, alertID := uuid.New(), uuid.New()
+	fired := time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC)
+	repo := &fakeAlertRepo{alerts: []domain.UsageAlert{{
+		ID: alertID, TenantID: tenantID, SubscriptionID: uuid.New(), MetricCode: "api_calls",
+		ThresholdType: domain.AlertThresholdQuantity, Threshold: 1000,
+		LastFiredPeriodStart: &fired,
+	}}}
+	svc := NewUsageAlertService(repo, nil, nil, nil, nil, nil)
+
+	// Happy path: threshold updated, dedup reset.
+	if _, err := svc.UpdateAlert(context.Background(), tenantID, alertID, UpdateAlertInput{
+		ThresholdType: "quantity", Threshold: 5000,
+	}); err != nil {
+		t.Fatalf("UpdateAlert: %v", err)
+	}
+	if repo.alerts[0].Threshold != 5000 {
+		t.Errorf("threshold = %d, want 5000", repo.alerts[0].Threshold)
+	}
+	if repo.alerts[0].LastFiredPeriodStart != nil {
+		t.Error("editing the threshold must reset the per-period fired dedup")
+	}
+
+	// Validation mirrors CreateAlert.
+	if _, err := svc.UpdateAlert(context.Background(), tenantID, alertID, UpdateAlertInput{
+		ThresholdType: "bogus", Threshold: 5,
+	}); err == nil {
+		t.Error("invalid threshold_type must be rejected")
+	}
+	if _, err := svc.UpdateAlert(context.Background(), tenantID, alertID, UpdateAlertInput{
+		ThresholdType: "percent_of_limit", Threshold: 1500,
+	}); err == nil {
+		t.Error("percent threshold above 1000 must be rejected")
+	}
+
+	// Unknown id (or another tenant's alert) → not found.
+	if _, err := svc.UpdateAlert(context.Background(), tenantID, uuid.New(), UpdateAlertInput{
+		ThresholdType: "quantity", Threshold: 5,
+	}); !errors.Is(err, ErrAlertNotFound) {
+		t.Errorf("unknown alert: got %v, want ErrAlertNotFound", err)
+	}
+	if _, err := svc.UpdateAlert(context.Background(), uuid.New(), alertID, UpdateAlertInput{
+		ThresholdType: "quantity", Threshold: 5,
+	}); !errors.Is(err, ErrAlertNotFound) {
+		t.Errorf("cross-tenant edit: got %v, want ErrAlertNotFound", err)
 	}
 }
