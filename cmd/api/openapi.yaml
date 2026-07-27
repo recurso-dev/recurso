@@ -8520,7 +8520,7 @@ components:
       description: Secret-free projection of a BYO gateway connection.
       properties:
         id: { type: string, format: uuid }
-        provider: { type: string, enum: [stripe, razorpay] }
+        provider: { type: string, enum: [stripe, razorpay, gocardless] }
         mode: { type: string, enum: [test, live] }
         public_key: { type: string }
         has_webhook_secret: { type: boolean }

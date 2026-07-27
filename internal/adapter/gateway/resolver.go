@@ -30,8 +30,9 @@ type GatewayResolver struct {
 
 	// Gateway constructors, injectable so tests can substitute stubs (the real
 	// ones build live SDK clients).
-	buildRazorpay func(keyID, secret string) port.PaymentGateway
-	buildStripe   func(secret string) port.PaymentGateway
+	buildRazorpay   func(keyID, secret string) port.PaymentGateway
+	buildStripe     func(secret string) port.PaymentGateway
+	buildGoCardless func(token, environment string) port.PaymentGateway
 
 	mu    sync.RWMutex
 	cache map[uuid.UUID]cachedRouter
@@ -50,7 +51,10 @@ func NewGatewayResolver(vault ConnectionVault, env *SmartRouter) *GatewayResolve
 		// Webhook secret is used by the per-connection webhook router
 		// (increment 3), not for outbound charges — empty here is fine.
 		buildStripe: func(secret string) port.PaymentGateway { return NewStripeGateway(secret, "") },
-		cache:       map[uuid.UUID]cachedRouter{},
+		buildGoCardless: func(token, environment string) port.PaymentGateway {
+			return NewGoCardlessGateway(token, environment)
+		},
+		cache: map[uuid.UUID]cachedRouter{},
 	}
 }
 
@@ -89,6 +93,7 @@ func (r *GatewayResolver) For(ctx context.Context, tenantID uuid.UUID) *SmartRou
 func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter {
 	razorpay := r.env.Razorpay
 	stripe := r.env.Stripe
+	var gocardless port.PaymentGateway
 
 	for _, conn := range conns {
 		if !conn.HasSecret() {
@@ -103,14 +108,43 @@ func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter 
 			razorpay = r.buildRazorpay(conn.PublicKey, secret)
 		case domain.GatewayStripe:
 			stripe = r.buildStripe(secret)
+		case domain.GatewayGoCardless:
+			// The connection's mode picks the GoCardless environment: a test
+			// connection talks to the sandbox, a live one to production.
+			env := "live"
+			if conn.Mode == domain.GatewayModeTest {
+				env = "sandbox"
+			}
+			gocardless = r.buildGoCardless(secret, env)
 		}
 	}
 
 	router := NewSmartRouter(razorpay, stripe)
 	// Preserve env currency overrides and extra gateways so BYO tenants keep
-	// the same routing rules for currencies they haven't overridden.
-	router.currencyOverrides = r.env.currencyOverrides
-	router.Extra = r.env.Extra
+	// the same routing rules for currencies they haven't overridden. COPY the
+	// maps — the env router's are shared across every tenant build, and a
+	// tenant-specific gateway must never leak into them.
+	overrides := make(map[string]string, len(r.env.currencyOverrides)+2)
+	for c, name := range r.env.currencyOverrides {
+		overrides[c] = name
+	}
+	extra := make(map[string]port.PaymentGateway, len(r.env.Extra)+1)
+	for name, gw := range r.env.Extra {
+		extra[name] = gw
+	}
+	if gocardless != nil {
+		// A tenant connecting GoCardless wants bank debit for the currencies
+		// it serves: default EUR (SEPA) and GBP (Bacs) there unless the
+		// operator already routes them elsewhere.
+		extra["gocardless"] = gocardless
+		for _, c := range []string{"EUR", "GBP"} {
+			if _, taken := overrides[c]; !taken {
+				overrides[c] = "gocardless"
+			}
+		}
+	}
+	router.currencyOverrides = overrides
+	router.Extra = extra
 	return router
 }
 

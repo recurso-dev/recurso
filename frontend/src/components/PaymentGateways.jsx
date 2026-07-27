@@ -53,6 +53,22 @@ const GATEWAYS = [
       urlLabel: "Open Razorpay API keys",
     },
   },
+  {
+    id: "gocardless",
+    name: "GoCardless",
+    // Bank debit is token-only: no publishable key exists.
+    noPublicKey: true,
+    secretPlaceholder: "live_… / sandbox_… access token",
+    guide: {
+      steps: [
+        "Sign in to the GoCardless dashboard (live: manage.gocardless.com; sandbox: manage-sandbox.gocardless.com — separate accounts).",
+        "Open Developers → Create → API access token, with read-write access.",
+        "Copy the token: live_… for Live mode here, sandbox_… for Test mode. EUR (SEPA) and GBP (Bacs) mandates and debits route through this connection.",
+      ],
+      url: "https://manage.gocardless.com/developers",
+      urlLabel: "Open GoCardless developers",
+    },
+  },
 ];
 
 // Webhooks are served at the API origin (not under /v1); API_ROOT strips the
@@ -301,22 +317,24 @@ export default function PaymentGateways() {
                   onChange={(e) => setForm({ ...form, mode: e.target.value })}
                   className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <option value="test">Test</option>
+                  <option value="test">{connectTarget.id === "gocardless" ? "Test (sandbox)" : "Test"}</option>
                   <option value="live">Live</option>
                 </select>
               </div>
+              {!connectTarget.noPublicKey && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="gw-public">{connectTarget.publicLabel}</Label>
+                  <Input
+                    id="gw-public"
+                    value={form.public_key}
+                    onChange={(e) => setForm({ ...form, public_key: e.target.value })}
+                    placeholder={connectTarget.publicPlaceholder}
+                    className="font-mono"
+                  />
+                </div>
+              )}
               <div className="space-y-1.5">
-                <Label htmlFor="gw-public">{connectTarget.publicLabel}</Label>
-                <Input
-                  id="gw-public"
-                  value={form.public_key}
-                  onChange={(e) => setForm({ ...form, public_key: e.target.value })}
-                  placeholder={connectTarget.publicPlaceholder}
-                  className="font-mono"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="gw-secret">Secret key</Label>
+                <Label htmlFor="gw-secret">{connectTarget.noPublicKey ? "Access token" : "Secret key"}</Label>
                 <Input
                   id="gw-secret"
                   type="password"
