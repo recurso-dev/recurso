@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -25,16 +26,30 @@ type GSTConfig struct {
 	HasLUT    bool    `json:"has_lut"` // Letter of Undertaking for exports
 }
 
+// gstPrimaryEntityReader resolves the tenant's primary legal entity so the GSTR
+// seller-GSTIN lookup can map the primary's concrete id back to the tenant/
+// default config row (which is stored under entity_id IS NULL).
+// *db.EntityRepository satisfies it.
+type gstPrimaryEntityReader interface {
+	GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error)
+}
+
 // GSTHandler handles GST configuration endpoints
 type GSTHandler struct {
 	gstConfigRepo *db.GSTConfigRepository
 	gstrSvc       *service.GSTRService
+	entities      gstPrimaryEntityReader // nil-safe
 }
 
 // NewGSTHandler creates a new GST handler
 func NewGSTHandler(gstConfigRepo *db.GSTConfigRepository, gstrSvc *service.GSTRService) *GSTHandler {
 	return &GSTHandler{gstConfigRepo: gstConfigRepo, gstrSvc: gstrSvc}
 }
+
+// SetEntityReader wires the primary-entity lookup used by sellerGSTIN. Nil-safe:
+// without it, filing explicitly for the primary entity falls back to an empty
+// GSTIN when no per-entity config row exists.
+func (h *GSTHandler) SetEntityReader(r gstPrimaryEntityReader) { h.entities = r }
 
 // GetGSTR1 returns the GSTR-1 outward-supply return for a tax period, both as
 // readable sections/totals ("data") and as the GSTN upload JSON ("gov_schema").
@@ -127,17 +142,33 @@ func (h *GSTHandler) GetGSTR3B(c *gin.Context) {
 // sellerGSTIN resolves the GSTIN for the government JSON header, scoped to the
 // requested entity (falling back to the tenant/primary config when no entity is
 // given). Best-effort — empty when unset.
+//
+// Primary-entity subtlety: the primary's GST config is stored under
+// entity_id IS NULL (the tenant/default row — that's what the settings UI
+// writes), so a request that names the primary by its CONCRETE id finds no
+// per-entity row. In that case fall back to the tenant/default config — it IS
+// the primary's config. The fallback is primary-only on purpose: a non-primary
+// entity with no configured GSTIN must yield "" (an obviously-invalid filing),
+// never silently inherit another entity's GSTIN.
 func (h *GSTHandler) sellerGSTIN(c *gin.Context, tenantID uuid.UUID, entityID *uuid.UUID) string {
 	if h.gstConfigRepo == nil {
 		return ""
 	}
+	ctx := c.Request.Context()
 	if entityID != nil {
-		if cfg, err := h.gstConfigRepo.GetByTenantEntity(c.Request.Context(), tenantID, entityID); err == nil && cfg != nil {
+		if cfg, err := h.gstConfigRepo.GetByTenantEntity(ctx, tenantID, entityID); err == nil && cfg != nil {
 			return cfg.GSTIN
+		}
+		if h.entities != nil {
+			if primary, err := h.entities.GetPrimary(ctx, tenantID); err == nil && primary != nil && primary.ID == *entityID {
+				if cfg, err := h.gstConfigRepo.GetByTenantID(ctx, tenantID); err == nil && cfg != nil {
+					return cfg.GSTIN
+				}
+			}
 		}
 		return ""
 	}
-	if cfg, err := h.gstConfigRepo.GetByTenantID(c.Request.Context(), tenantID); err == nil && cfg != nil {
+	if cfg, err := h.gstConfigRepo.GetByTenantID(ctx, tenantID); err == nil && cfg != nil {
 		return cfg.GSTIN
 	}
 	return ""

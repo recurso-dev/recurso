@@ -304,9 +304,17 @@ func (r *DunningCampaignRepository) ClaimDueExecutions(ctx context.Context, now,
 		UPDATE dunning_campaign_executions
 		SET next_step_at = $2
 		WHERE id IN (
-			SELECT id FROM dunning_campaign_executions
-			WHERE status = 'active' AND next_step_at <= $1
-			ORDER BY next_step_at ASC
+			SELECT e.id FROM dunning_campaign_executions e
+			WHERE e.status = 'active' AND e.next_step_at <= $1
+			  -- An operator "pause dunning" (Collections Inc 3) must silence
+			  -- campaign emails/SMS/payment-wall too, not just the retry worker.
+			  -- Skipped rows keep their past-due next_step_at, so un-pausing
+			  -- resumes the campaign on the next tick.
+			  AND NOT EXISTS (
+				SELECT 1 FROM invoices i
+				WHERE i.id = e.invoice_id AND i.dunning_paused
+			  )
+			ORDER BY e.next_step_at ASC
 			LIMIT $3
 			FOR UPDATE SKIP LOCKED
 		)
@@ -333,10 +341,14 @@ func (r *DunningCampaignRepository) ClaimDueExecutions(ctx context.Context, now,
 
 func (r *DunningCampaignRepository) GetDueExecutions(ctx context.Context, now time.Time) ([]*domain.DunningCampaignExecution, error) {
 	query := `
-		SELECT id, tenant_id, invoice_id, campaign_id, current_step_index, status, started_at, next_step_at, completed_at
-		FROM dunning_campaign_executions
-		WHERE status = 'active' AND next_step_at <= $1
-		ORDER BY next_step_at ASC
+		SELECT e.id, e.tenant_id, e.invoice_id, e.campaign_id, e.current_step_index, e.status, e.started_at, e.next_step_at, e.completed_at
+		FROM dunning_campaign_executions e
+		WHERE e.status = 'active' AND e.next_step_at <= $1
+		  AND NOT EXISTS (
+			SELECT 1 FROM invoices i
+			WHERE i.id = e.invoice_id AND i.dunning_paused
+		  )
+		ORDER BY e.next_step_at ASC
 	`
 	rows, err := r.db.QueryContext(ctx, query, now)
 	if err != nil {

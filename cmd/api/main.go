@@ -1294,6 +1294,10 @@ func main() {
 		gstrService = service.NewGSTRService(src)
 	}
 	gstHandler := handler.NewGSTHandler(gstConfigRepo, gstrService)
+	// Filing GSTR for the primary entity by its concrete id must resolve the
+	// tenant/default GST config (stored under entity_id IS NULL) for the seller
+	// GSTIN — the primary lookup makes that mapping possible.
+	gstHandler.SetEntityReader(db.NewEntityRepository(database))
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
