@@ -237,6 +237,19 @@ else
     exit 1
 fi
 
+# 6b. OAuth callback must be PUBLIC: it arrives as a bare browser redirect
+# from the provider (no session, no API key) — the HMAC-signed state is its
+# authentication. Regression for the wiring bug where it sat behind auth
+# middleware and 401'd every real handoff.
+echo "Step 6b: OAuth callback reachable without credentials..."
+CB_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$API_URL/v1/accounting/callback/xero?code=fake&state=forged")
+if [ "$CB_CODE" = "302" ] || [ "$CB_CODE" = "303" ]; then
+    echo -e "${GREEN}  ✅ Callback is public (redirects with $CB_CODE, not 401)${NC}"
+else
+    echo -e "${RED}  ❌ Callback returned $CB_CODE — must redirect (302), never 401${NC}"
+    exit 1
+fi
+
 # 7. Audit-grade gate: after everything above, the ledger must reconcile with
 # ZERO discrepancies — the end-to-end version of the invariant harness. Any
 # invoice-creating flow that forgets its ledger leg fails the whole run here.
