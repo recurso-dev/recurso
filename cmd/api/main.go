@@ -1576,6 +1576,11 @@ func main() {
 	r.POST("/auth/saml/:tenantID/acs", publicLimit, ssoHandler.ACS)
 
 	// Customer Portal Auth (P25)
+	// OAuth callbacks arrive as bare browser redirects from the provider (no
+	// session cookie, no API key) — authentication is the HMAC-signed state
+	// the handler verifies. Locally this was a hard 401; in production it only
+	// worked when the operator's dashboard cookie happened to ride along.
+	r.GET("/v1/accounting/callback/:provider", publicLimit, accountingHandler.OAuthCallback)
 	r.POST("/portal/auth/request", publicLimit, portalAPIHandler.RequestMagicLink)
 	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)
 
@@ -1919,7 +1924,9 @@ func main() {
 		v1.GET("/accounting/connections", accountingHandler.ListConnections)
 		v1.POST("/accounting/connect/:provider", accountingHandler.InitiateOAuth)
 		v1.POST("/accounting/connect-token/:provider", accountingHandler.ConnectTokenBased)
-		v1.GET("/accounting/callback/:provider", accountingHandler.OAuthCallback)
+		// (moved to a public route below — the callback is a browser redirect
+		// from the provider carrying no session; the HMAC-signed state is its
+		// authentication)
 		v1.DELETE("/accounting/connections/:id", accountingHandler.Disconnect)
 		v1.POST("/accounting/sync", accountingHandler.TriggerSync)
 		v1.GET("/accounting/sync/status", accountingHandler.SyncStatus)

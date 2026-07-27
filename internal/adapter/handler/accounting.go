@@ -172,7 +172,12 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 			RedirectURL:  baseURL + "/v1/accounting/callback/xero",
 			AuthURL:      "https://login.xero.com/identity/connect/authorize",
 			TokenURL:     "https://identity.xero.com/connect/token",
-			Scopes:       []string{"openid", "profile", "email", "accounting.transactions", "accounting.contacts"},
+			// Granular scopes (mandatory for Xero apps created after 2 Mar 2026;
+			// the broad accounting.transactions no longer exists for them).
+			// offline_access is required for a refresh token — without it the
+			// connection dies 30 minutes after consent. Items fall under
+			// accounting.settings in the granular scheme.
+			Scopes: []string{"openid", "profile", "email", "offline_access", "accounting.contacts", "accounting.invoices", "accounting.settings"},
 		}
 	default:
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "unsupported provider")
