@@ -51,6 +51,17 @@ func (m *mockRecoveredPaymentRepo) GetMonthlyRecoveries(ctx context.Context, ten
 	return m.monthly, nil
 }
 
+func (m *mockRecoveredPaymentRepo) CountRecoveredSince(_ context.Context, _ uuid.UUID, since time.Time) (int, error) {
+	// Windowed count over the recorded recoveries (mirrors the SQL).
+	n := 0
+	for _, rec := range m.records {
+		if !rec.RecoveredAt.Before(since) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 type mockCampaignLookup struct {
 	exec *domain.DunningCampaignExecution
 	err  error

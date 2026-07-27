@@ -51,6 +51,10 @@ type InvoiceRepository interface {
 	// GetOutstandingByEntity sums open AR per legal entity + currency for the
 	// multi-entity overview. Read-only.
 	GetOutstandingByEntity(ctx context.Context, tenantID uuid.UUID) ([]domain.EntityOutstandingRow, error)
+	// CountUncollectibleSince counts invoices written off in a trailing window
+	// (marked_uncollectible_at) — the written-off side of the windowed
+	// recovery-rate cohort.
+	CountUncollectibleSince(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, error)
 	// Manual collections controls (Collections Intelligence Inc 3): all
 	// tenant-scoped and idempotent, returning whether a row changed.
 	GetRetryEligibility(ctx context.Context, tenantID, invoiceID uuid.UUID) (domain.InvoiceRetryEligibility, error)

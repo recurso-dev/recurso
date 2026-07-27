@@ -9853,7 +9853,12 @@ components:
         recovered: { $ref: '#/components/schemas/CollectionsBucket' }
         recovery_rate:
           type: number
-          description: recovered ÷ (recovered + uncollectible) — over concluded cases.
+          description: >-
+            Windowed concluded cohort — of cases concluded (recovered or written
+            off) in the trailing rate_window_days, the fraction recovered.
+        rate_window_days:
+          type: integer
+          description: Trailing window (days) the recovery_rate is computed over.
 
     CollectionsFailureBucket:
       type: object

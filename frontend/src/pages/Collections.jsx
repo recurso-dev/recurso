@@ -262,7 +262,7 @@ const Collections = () => {
           label="Recovery rate"
           value={funnel ? `${(funnel.recovery_rate * 100).toFixed(1)}%` : "—"}
           icon={Percent}
-          hint="recovered vs written off"
+          hint={`cases concluded, last ${funnel?.rate_window_days || 90} days`}
         />
         <StatCard
           label="Recovered (all-time)"
