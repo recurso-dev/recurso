@@ -39,7 +39,16 @@ const statusVariant = (status) =>
 
 const fmtDate = (v) => (v ? new Date(v).toLocaleDateString() : "—");
 
-const emptyForm = { customer_id: "", vpa: "", max_amount: "", frequency: "monthly", subscription_id: "" };
+const emptyForm = { customer_id: "", currency: "INR", vpa: "", max_amount: "", frequency: "monthly", subscription_id: "" };
+
+// Mandate rails by currency: INR rides UPI (VPA required); EUR/GBP ride
+// SEPA/Bacs bank debit — the customer authorizes on the gateway's hosted
+// page, so no VPA exists.
+const MANDATE_CURRENCIES = [
+  { code: "INR", label: "INR — UPI (India)" },
+  { code: "EUR", label: "EUR — SEPA bank debit" },
+  { code: "GBP", label: "GBP — Bacs bank debit" },
+];
 
 // UPI Autopay mandates: standing authorizations to debit a customer up to a
 // cap per cycle. Amounts are minor units; UPI mandates are INR.
@@ -74,8 +83,21 @@ const Mandates = () => {
 
   const createMutation = useMutation({
     mutationFn: (body) => api.createMandate(body),
-    onSuccess: () => {
-      toast.success("Mandate created.");
+    onSuccess: (res) => {
+      const authUrl = res?.data?.data?.auth_url;
+      if (authUrl) {
+        // Bank-debit mandates need the customer to authorize on the
+        // gateway's hosted page — surface the link, don't bury it.
+        toast.success("Mandate created — send the customer their authorization link.", {
+          duration: 15000,
+          action: {
+            label: "Copy link",
+            onClick: () => navigator.clipboard?.writeText(authUrl),
+          },
+        });
+      } else {
+        toast.success("Mandate created.");
+      }
       setCreateOpen(false);
       setForm(emptyForm);
       queryClient.invalidateQueries({ queryKey: ["mandates"] });
@@ -98,12 +120,14 @@ const Mandates = () => {
   const revoking = revokeMutation.isPending;
 
   const submitCreate = () => {
+    const isUPI = form.currency === "INR";
     const body = {
       customer_id: form.customer_id.trim(),
-      vpa: form.vpa.trim(),
-      max_amount: toMinorUnits(form.max_amount),
+      currency: form.currency,
+      max_amount: toMinorUnits(form.max_amount, form.currency),
       frequency: form.frequency,
     };
+    if (isUPI) body.vpa = form.vpa.trim();
     if (form.subscription_id.trim()) body.subscription_id = form.subscription_id.trim();
     createMutation.mutate(body);
   };
@@ -121,14 +145,23 @@ const Mandates = () => {
     },
     {
       key: "vpa",
-      header: "VPA",
-      cell: (m) => <span className="font-mono text-xs">{m.vpa || "—"}</span>,
+      header: "Method",
+      cell: (m) =>
+        m.vpa ? (
+          <span className="font-mono text-xs">{m.vpa}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">
+            {m.payment_method === "bank_debit" ? "Bank debit" : "—"}
+          </span>
+        ),
     },
     {
       key: "max",
       header: "Max / cycle",
       cell: (m) => (
-        <span className="tabular-nums font-medium">{formatCurrency(m.max_amount, "INR")}</span>
+        <span className="tabular-nums font-medium">
+          {formatCurrency(m.max_amount, m.currency || "INR")}
+        </span>
       ),
     },
     { key: "frequency", header: "Frequency", cell: (m) => <span className="capitalize">{m.frequency}</span> },
@@ -194,9 +227,10 @@ const Mandates = () => {
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
         <SheetContent side="right" className="w-full sm:max-w-md">
           <SheetHeader>
-            <SheetTitle>New UPI mandate</SheetTitle>
+            <SheetTitle>New mandate</SheetTitle>
             <SheetDescription>
-              A standing authorization to debit the customer up to a cap per cycle.
+              A standing authorization to debit the customer up to a cap per cycle — UPI for
+              INR, SEPA/Bacs bank debit for EUR/GBP.
             </SheetDescription>
           </SheetHeader>
           <div className="flex-1 space-y-4 overflow-y-auto px-6">
@@ -209,16 +243,38 @@ const Mandates = () => {
               />
             </div>
             <div>
-              <Label>VPA (UPI ID)</Label>
-              <Input
-                value={form.vpa}
-                onChange={(e) => setForm({ ...form, vpa: e.target.value })}
-                placeholder="customer@upi"
-              />
+              <Label>Currency</Label>
+              <Select value={form.currency} onValueChange={(v) => setForm({ ...form, currency: v })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MANDATE_CURRENCIES.map((c) => (
+                    <SelectItem key={c.code} value={c.code}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
+            {form.currency === "INR" ? (
+              <div>
+                <Label>VPA (UPI ID)</Label>
+                <Input
+                  value={form.vpa}
+                  onChange={(e) => setForm({ ...form, vpa: e.target.value })}
+                  placeholder="customer@upi"
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                The customer authorizes this mandate on the payment provider's hosted page —
+                you'll get the link after creating it.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Max amount (INR)</Label>
+                <Label>Max amount ({form.currency})</Label>
                 <Input
                   type="number"
                   min="0.01"
@@ -276,7 +332,7 @@ const Mandates = () => {
           <SheetFooter>
             <Button
               onClick={submitCreate}
-              disabled={creating || !form.customer_id.trim() || !form.vpa.trim() || !form.max_amount}
+              disabled={creating || !form.customer_id.trim() || (form.currency === "INR" && !form.vpa.trim()) || !form.max_amount}
             >
               {creating ? "Creating…" : "Create mandate"}
             </Button>
