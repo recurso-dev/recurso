@@ -37,6 +37,9 @@ type InvoiceRepository interface {
 	// the `status = 'paid'` guard and returns true only when this call performed
 	// the transition, so a redelivered return webhook can't reopen twice.
 	ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
+	// VoidIfOpen atomically voids a still-open (unpaid) invoice; true only when
+	// this call performed the transition. Paid/void/missing rows are untouched.
+	VoidIfOpen(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
 	// ListCollectionsQueue / CountCollectionsQueue back the operator-facing
 	// collections worklist (Collections Intelligence Inc 1): currently-failing
 	// invoices (past_due/uncollectible, balance owing) with recovery state,
@@ -100,6 +103,14 @@ type GiftRepository interface {
 	// true only for the caller that won the transition. This is the single-redeem
 	// gate: two concurrent redemptions can't both mint a subscription.
 	MarkRedeemed(ctx context.Context, giftID, tenantID, redeemedBy uuid.UUID, at time.Time) (bool, error)
+	// GetByID loads one gift, tenant-scoped (nil when absent).
+	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Gift, error)
+	// SetInvoiceID links the buyer's purchase invoice to the gift.
+	SetInvoiceID(ctx context.Context, giftID, tenantID, invoiceID uuid.UUID) error
+	// Cancel atomically transitions purchased->canceled, returning true only
+	// for the caller that won — the single-cancel gate that prevents a double
+	// credit and loses cleanly to a concurrent redemption.
+	Cancel(ctx context.Context, giftID, tenantID uuid.UUID) (bool, error)
 	// RevertRedemption returns a gift to purchased, used if the subscription
 	// creation fails after the claim so the recipient can retry.
 	RevertRedemption(ctx context.Context, giftID, tenantID uuid.UUID) error

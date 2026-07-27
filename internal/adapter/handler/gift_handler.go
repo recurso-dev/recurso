@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/service"
 )
@@ -100,4 +101,40 @@ func (h *GiftHandler) ListGifts(c *gin.Context) {
 		"data": gifts,
 		"meta": gin.H{"page": pagination.Page, "per_page": pagination.PerPage},
 	})
+}
+
+// CancelGift cancels an unredeemed gift (policy: account credit). The buyer of
+// a PAID purchase receives a spendable adjustment credit note; a still-open
+// purchase invoice is voided instead. POST /v1/gifts/:id/cancel
+func (h *GiftHandler) CancelGift(c *gin.Context) {
+	tenantID, exists := c.Get("tenant_id")
+	if !exists {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	giftID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid gift id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID.(uuid.UUID))
+	actorID := middleware.GetUserID(c)
+	actorRole, _ := middleware.GetUserRole(c)
+
+	res, err := h.giftService.CancelGift(ctx, tenantID.(uuid.UUID), giftID, actorID, actorRole)
+	switch {
+	case errors.Is(err, service.ErrGiftNotFound):
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+		return
+	case errors.Is(err, service.ErrGiftAlreadyRedeemed), errors.Is(err, service.ErrGiftAlreadyCanceled):
+		respondError(c, http.StatusConflict, codeConflict, err.Error())
+		return
+	case errors.Is(err, service.ErrGiftCreditUnwired):
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, err.Error())
+		return
+	case err != nil:
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": res})
 }

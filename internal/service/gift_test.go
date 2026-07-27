@@ -17,6 +17,39 @@ type mockGiftRepo struct {
 	createErr error
 }
 
+func (m *mockGiftRepo) byID(id uuid.UUID) *domain.Gift {
+	for _, g := range m.gifts {
+		if g.ID == id {
+			return g
+		}
+	}
+	return nil
+}
+
+func (m *mockGiftRepo) GetByID(_ context.Context, tenantID, id uuid.UUID) (*domain.Gift, error) {
+	g := m.byID(id)
+	if g == nil || g.TenantID != tenantID {
+		return nil, nil
+	}
+	return g, nil
+}
+
+func (m *mockGiftRepo) SetInvoiceID(_ context.Context, giftID, tenantID, invoiceID uuid.UUID) error {
+	if g := m.byID(giftID); g != nil && g.TenantID == tenantID {
+		g.InvoiceID = &invoiceID
+	}
+	return nil
+}
+
+func (m *mockGiftRepo) Cancel(_ context.Context, giftID, tenantID uuid.UUID) (bool, error) {
+	g := m.byID(giftID)
+	if g == nil || g.TenantID != tenantID || g.Status != domain.GiftStatusPurchased {
+		return false, nil
+	}
+	g.Status = domain.GiftStatusCanceled
+	return true, nil
+}
+
 func newMockGiftRepo() *mockGiftRepo {
 	return &mockGiftRepo{gifts: make(map[string]*domain.Gift)}
 }

@@ -11,6 +11,10 @@ type GiftStatus string
 const (
 	GiftStatusPurchased GiftStatus = "purchased"
 	GiftStatusRedeemed  GiftStatus = "redeemed"
+	// GiftStatusCanceled: the operator canceled an unredeemed gift. If the
+	// buyer had paid, they received spendable account credit; the code can no
+	// longer be redeemed.
+	GiftStatusCanceled GiftStatus = "canceled"
 )
 
 type Gift struct {
@@ -23,7 +27,10 @@ type Gift struct {
 	Status               GiftStatus `json:"status" db:"status"`
 	RedeemedByCustomerID *uuid.UUID `json:"redeemed_by_customer_id" db:"redeemed_by_customer_id"`
 	RedeemedAt           *time.Time `json:"redeemed_at" db:"redeemed_at"`
-	DurationMonths       int        `json:"duration_months" db:"duration_months"` // How long the gift lasts (e.g. 12 months)
-	CreatedAt            time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt            time.Time  `json:"updated_at" db:"updated_at"`
+	// InvoiceID links the buyer's purchase invoice (nil for gifts purchased
+	// before the link existed) — cancellation credits or voids against it.
+	InvoiceID      *uuid.UUID `json:"invoice_id,omitempty" db:"invoice_id"`
+	DurationMonths int        `json:"duration_months" db:"duration_months"` // How long the gift lasts (e.g. 12 months)
+	CreatedAt      time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at" db:"updated_at"`
 }

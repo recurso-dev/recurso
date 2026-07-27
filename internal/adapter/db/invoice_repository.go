@@ -1166,6 +1166,25 @@ func (r *InvoiceRepository) SetGatewayPaymentID(ctx context.Context, tenantID, i
 	return nil
 }
 
+// VoidIfOpen atomically voids a still-open (unpaid) invoice. Returns true only
+// when this call performed the transition — a paid, already-void, or missing
+// invoice is left untouched. Used by gift cancellation: an unpaid purchase
+// invoice is voided rather than credited (no money ever arrived).
+func (r *InvoiceRepository) VoidIfOpen(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE invoices SET status = 'void', updated_at = NOW()
+		WHERE id = $1 AND tenant_id = $2 AND status = 'open'
+	`, invoiceID, tenantID)
+	if err != nil {
+		return false, fmt.Errorf("failed to void invoice: %w", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read rows affected: %w", err)
+	}
+	return n == 1, nil
+}
+
 // MarkAsUncollectible marks an invoice as uncollectible after max retries
 func (r *InvoiceRepository) MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error {
 	query := `

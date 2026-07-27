@@ -30,7 +30,13 @@ type GiftService struct {
 	invoiceService      *InvoiceService
 	planRepo            port.PlanRepository
 	notificationService *NotificationService
+	creditNotes         *CreditNoteService // nil-safe; powers cancel-with-credit
 }
+
+// SetCreditNoteService wires credit issuance for gift cancellation (the buyer
+// of a paid, unredeemed gift gets spendable account credit). Nil-safe: without
+// it, canceling a paid gift is refused rather than silently uncompensated.
+func (s *GiftService) SetCreditNoteService(cn *CreditNoteService) { s.creditNotes = cn }
 
 func NewGiftService(
 	giftRepo port.GiftRepository,
@@ -116,6 +122,12 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 
 		if err := s.invoiceService.InvoiceRepo.Create(ctx, inv); err != nil {
 			slog.Warn("failed to create gift buyer invoice", "error", err, "gift_id", gift.ID)
+		} else if err := s.giftRepo.SetInvoiceID(ctx, gift.ID, tenantID, invID); err != nil {
+			// Best-effort: an unlinked gift can still be canceled, it just
+			// can't be auto-credited (the operator issues credit manually).
+			slog.Warn("failed to link gift purchase invoice", "error", err, "gift_id", gift.ID)
+		} else {
+			gift.InvoiceID = &invID
 		}
 	}
 
@@ -217,4 +229,113 @@ func (s *GiftService) RedeemGift(ctx context.Context, tenantID uuid.UUID, recipi
 
 	// The gift was already marked redeemed by the atomic claim above.
 	return sub, nil
+}
+
+// Gift-cancellation errors; the handler maps them to HTTP statuses.
+var (
+	ErrGiftNotFound        = errors.New("gift not found")
+	ErrGiftAlreadyRedeemed = errors.New("a redeemed gift cannot be canceled")
+	ErrGiftAlreadyCanceled = errors.New("gift is already canceled")
+	ErrGiftCreditUnwired   = errors.New("credit issuance is not configured; cannot cancel a paid gift")
+)
+
+// GiftCancelResult reports what canceling did with the buyer's money.
+type GiftCancelResult struct {
+	Gift *domain.Gift `json:"gift"`
+	// CreditNote is the spendable account credit issued to the buyer when the
+	// purchase invoice was PAID (policy: cancel-with-credit). Nil otherwise.
+	CreditNote *domain.CreditNote `json:"credit_note,omitempty"`
+	// InvoiceVoided is true when the purchase invoice was still open (unpaid)
+	// and was voided instead — no money had arrived, so nothing is credited.
+	InvoiceVoided bool `json:"invoice_voided"`
+}
+
+// CancelGift cancels an unredeemed gift (policy decision: account credit).
+// The atomic purchased→canceled transition is the single-cancel gate: only the
+// winner acts on the money, so a redelivered cancel can't double-credit, and a
+// cancel racing a redemption loses cleanly. What happens to the buyer's money
+// follows the purchase invoice's actual state:
+//   - PAID    → issue a spendable adjustment credit note for the amount paid
+//     (through CreditNoteService.Create, so approval governance and
+//     the GL issuance legs apply exactly as for any manual credit).
+//   - open    → void the invoice; no money arrived, nothing to credit.
+//   - no link → status change only (pre-link gifts); the operator issues any
+//     compensation manually. Logged.
+func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID uuid.UUID, actorRole string) (*GiftCancelResult, error) {
+	gift, err := s.giftRepo.GetByID(ctx, tenantID, giftID)
+	if err != nil {
+		return nil, err
+	}
+	if gift == nil {
+		return nil, ErrGiftNotFound
+	}
+	switch gift.Status {
+	case domain.GiftStatusRedeemed:
+		return nil, ErrGiftAlreadyRedeemed
+	case domain.GiftStatusCanceled:
+		return nil, ErrGiftAlreadyCanceled
+	}
+
+	// Resolve what the money side WILL be before flipping the status, so we
+	// can refuse (rather than strand) a paid gift when credit issuance isn't
+	// wired. The status flip below remains the race gate.
+	var paidInvoice *domain.Invoice
+	if gift.InvoiceID != nil && s.invoiceService != nil {
+		inv, err := s.invoiceService.InvoiceRepo.GetByIDPublic(ctx, *gift.InvoiceID)
+		if err != nil {
+			return nil, fmt.Errorf("load gift purchase invoice: %w", err)
+		}
+		if inv != nil && inv.Status == domain.InvoiceStatusPaid {
+			if s.creditNotes == nil {
+				return nil, ErrGiftCreditUnwired
+			}
+			paidInvoice = inv
+		}
+	}
+
+	won, err := s.giftRepo.Cancel(ctx, giftID, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	if !won {
+		// Lost the race: re-read to report the precise reason.
+		latest, _ := s.giftRepo.GetByID(ctx, tenantID, giftID)
+		if latest != nil && latest.Status == domain.GiftStatusRedeemed {
+			return nil, ErrGiftAlreadyRedeemed
+		}
+		return nil, ErrGiftAlreadyCanceled
+	}
+	gift.Status = domain.GiftStatusCanceled
+
+	result := &GiftCancelResult{Gift: gift}
+	switch {
+	case paidInvoice != nil:
+		cn, err := s.creditNotes.Create(ctx, tenantID, actorID, actorRole, domain.CreateCreditNoteRequest{
+			CustomerID: gift.BuyerCustomerID,
+			InvoiceID:  gift.InvoiceID,
+			Amount:     paidInvoice.Total,
+			Currency:   paidInvoice.Currency,
+			Reason:     fmt.Sprintf("Gift %s canceled — purchase credited", gift.Code),
+			Type:       "adjustment",
+		})
+		if err != nil {
+			// The gift is canceled but the credit failed — surface loudly; the
+			// operator retries via a manual credit note. Never leave this silent.
+			slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
+				"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", paidInvoice.Total, "error", err)
+			return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", err)
+		}
+		result.CreditNote = cn
+	case gift.InvoiceID != nil && s.invoiceService != nil:
+		voided, err := s.invoiceService.InvoiceRepo.VoidIfOpen(ctx, tenantID, *gift.InvoiceID)
+		if err != nil {
+			slog.Error("gift canceled but voiding the open purchase invoice failed",
+				"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
+		}
+		result.InvoiceVoided = voided
+	default:
+		slog.Warn("gift canceled without a linked purchase invoice — no automatic compensation",
+			"gift_id", gift.ID, "buyer_customer_id", gift.BuyerCustomerID)
+	}
+	return result, nil
 }
