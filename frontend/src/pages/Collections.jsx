@@ -251,6 +251,13 @@ const Collections = () => {
         </p>
       )}
 
+      {funnel?.fx_excluded_currencies?.length > 0 && (
+        <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+          Amounts exclude {funnel.fx_excluded_currencies.join(", ")} invoices (no exchange rate
+          available) — the money figures below are understated; counts are complete.
+        </p>
+      )}
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Revenue at risk"

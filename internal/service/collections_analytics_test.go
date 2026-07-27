@@ -98,6 +98,34 @@ func TestGetCollectionsFunnel_NoConcludedCases(t *testing.T) {
 	}
 }
 
+// Unconvertible currencies are excluded from the bucket AMOUNTS (never
+// mis-summed) but their invoices still COUNT — and the exclusion is now
+// FLAGGED on the response instead of silently understating the money.
+func TestGetCollectionsFunnel_FXExclusionIsFlagged(t *testing.T) {
+	svc := NewDunningRecoveryService(newMockRecoveredPaymentRepo(), "")
+	// No FX provider wired → every non-reporting currency is unconvertible.
+	svc.SetCollectionsAggregator(&stubCollectionsAgg{
+		atRisk: []domain.CollectionsAtRiskRow{
+			{Status: "past_due", Currency: "USD", Count: 2, Amount: 10000},
+			{Status: "past_due", Currency: "EUR", Count: 3, Amount: 99999},
+		},
+	})
+
+	funnel, err := svc.GetCollectionsFunnel(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetCollectionsFunnel: %v", err)
+	}
+	if funnel.PastDue.Count != 5 {
+		t.Errorf("count = %d, want 5 (EUR invoices still counted)", funnel.PastDue.Count)
+	}
+	if funnel.PastDue.Amount != 10000 {
+		t.Errorf("amount = %d, want 10000 (EUR amount excluded, not mis-summed)", funnel.PastDue.Amount)
+	}
+	if len(funnel.FXExcludedCurrencies) != 1 || funnel.FXExcludedCurrencies[0] != "EUR" {
+		t.Errorf("fx_excluded_currencies = %v, want [EUR] — the exclusion must be visible", funnel.FXExcludedCurrencies)
+	}
+}
+
 // A nil aggregator (not wired) yields an empty, valid funnel — never an error.
 func TestGetCollectionsFunnel_NilAggregator(t *testing.T) {
 	svc := NewDunningRecoveryService(newMockRecoveredPaymentRepo(), "")
