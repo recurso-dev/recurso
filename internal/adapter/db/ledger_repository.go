@@ -36,10 +36,19 @@ func (r *LedgerRepository) CreateAccount(ctx context.Context, account *domain.Le
 	return nil
 }
 
-func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
-	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
-		 FROM ledger_accounts WHERE tenant_id = $1 ORDER BY code`, tenantID)
+func (r *LedgerRepository) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error) {
+	query := `SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
+		 FROM ledger_accounts WHERE tenant_id = $1 ORDER BY code`
+	args := []interface{}{tenantID}
+	if limit > 0 {
+		query += " LIMIT $2"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET $3"
+			args = append(args, offset)
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ledger accounts: %w", err)
 	}

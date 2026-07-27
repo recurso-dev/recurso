@@ -317,9 +317,20 @@ func (r *CreditNoteRepository) List(ctx context.Context, tenantID uuid.UUID, fil
 	if filter.Status != nil {
 		query += fmt.Sprintf(" AND status = $%d", argIdx)
 		args = append(args, *filter.Status)
+		argIdx++
 	}
 
 	query += ` ORDER BY created_at DESC`
+
+	if filter.Limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIdx)
+		args = append(args, filter.Limit)
+		argIdx++
+	}
+	if filter.Offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argIdx)
+		args = append(args, filter.Offset)
+	}
 
 	var creditNotes []*domain.CreditNote
 	err := r.db.SelectContext(ctx, &creditNotes, query, args...)

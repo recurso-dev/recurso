@@ -67,6 +67,7 @@ func (h *QuoteHandler) ListQuotes(c *gin.Context) {
 		CustomerID: c.Query("customer_id"),
 		Search:     c.Query("search"),
 	}
+	filter.Limit, filter.Offset = parseLimitOffset(c, 1000, 1000)
 
 	quotes, err := h.quoteService.ListQuotes(c.Request.Context(), tenantID, filter)
 	if err != nil {

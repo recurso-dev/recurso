@@ -64,7 +64,7 @@ func (m *disputeMockRepo) ListByCustomerID(ctx context.Context, customerID uuid.
 	return out, nil
 }
 
-func (m *disputeMockRepo) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string) ([]*domain.InvoiceDispute, error) {
+func (m *disputeMockRepo) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error) {
 	out := []*domain.InvoiceDispute{}
 	for _, d := range m.items {
 		if d.TenantID != tenantID {
@@ -243,7 +243,7 @@ func TestDisputeService_ListFiltersByTenantAndStatus(t *testing.T) {
 	}}
 	svc := NewDisputeService(disp)
 
-	all, err := svc.List(context.Background(), tenantA, "")
+	all, err := svc.List(context.Background(), tenantA, "", 0, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestDisputeService_ListFiltersByTenantAndStatus(t *testing.T) {
 		t.Errorf("tenant A all = %d, want 2 (tenant isolation)", len(all))
 	}
 
-	open, err := svc.List(context.Background(), tenantA, "open")
+	open, err := svc.List(context.Background(), tenantA, "open", 0, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

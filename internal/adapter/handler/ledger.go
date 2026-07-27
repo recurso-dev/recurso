@@ -180,7 +180,8 @@ func (h *LedgerHandler) ListAccounts(c *gin.Context) {
 		return
 	}
 
-	accounts, err := h.service.ListAccounts(c.Request.Context(), tenantID.(uuid.UUID))
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	accounts, err := h.service.ListAccounts(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
 	if err != nil {
 		log.Printf("ledger ListAccounts error: %v", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch accounts")

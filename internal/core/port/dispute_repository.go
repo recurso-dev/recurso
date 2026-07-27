@@ -19,7 +19,7 @@ type DisputeRepository interface {
 	// ListByCustomerID returns all disputes raised by a customer (newest first).
 	ListByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.InvoiceDispute, error)
 	// ListByTenant returns tenant-scoped disputes, optionally filtered by status.
-	ListByTenant(ctx context.Context, tenantID uuid.UUID, status string) ([]*domain.InvoiceDispute, error)
+	ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error)
 	// Resolve marks a dispute resolved with an optional note. It is scoped by
 	// tenant and only affects open disputes; returns ErrDisputeNotFound when no
 	// matching open dispute exists for the tenant.

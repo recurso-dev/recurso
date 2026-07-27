@@ -60,6 +60,17 @@ func ParsePagination(c *gin.Context) PaginationParams {
 	}
 }
 
+// parseLimitOffset reads ?limit= and ?offset= and clamps them via
+// clampLimitOffset — the one-liner for list endpoints that take plain
+// limit/offset (the house convention for bounding previously-unbounded
+// lists: def=max=1000, a pure DoS-bound that leaves every realistic
+// caller's results unchanged while capping runaway sets).
+func parseLimitOffset(c *gin.Context, def, max int) (int, int) {
+	limit, _ := strconv.Atoi(c.Query("limit"))
+	offset, _ := strconv.Atoi(c.Query("offset"))
+	return clampLimitOffset(limit, offset, def, max)
+}
+
 // clampLimitOffset bounds ad-hoc limit/offset query params that predate
 // ParsePagination: limit falls back to def when non-positive and is capped
 // at max; offset is floored at 0. Negative values otherwise reach Postgres

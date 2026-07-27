@@ -535,8 +535,8 @@ func (s *MandateService) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*
 	return s.mandateRepo.GetByID(ctx, id, tenantID)
 }
 
-func (s *MandateService) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Mandate, error) {
-	return s.mandateRepo.List(ctx, tenantID)
+func (s *MandateService) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Mandate, error) {
+	return s.mandateRepo.List(ctx, tenantID, limit, offset)
 }
 
 // recurringPrice picks the plan's recurring price (the one billed each cycle),

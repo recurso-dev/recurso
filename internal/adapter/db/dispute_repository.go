@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -87,14 +88,25 @@ func (r *DisputeRepository) ListByCustomerID(ctx context.Context, customerID uui
 	return scanDisputeRows(rows)
 }
 
-func (r *DisputeRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string) ([]*domain.InvoiceDispute, error) {
+func (r *DisputeRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error) {
 	query := `SELECT ` + disputeColumns + ` FROM invoice_disputes WHERE tenant_id = $1`
 	args := []interface{}{tenantID}
+	argIdx := 2
 	if status != "" {
-		query += ` AND status = $2`
+		query += fmt.Sprintf(" AND status = $%d", argIdx)
 		args = append(args, status)
+		argIdx++
 	}
 	query += ` ORDER BY created_at DESC`
+	if limit > 0 {
+		query += fmt.Sprintf(" LIMIT $%d", argIdx)
+		args = append(args, limit)
+		argIdx++
+	}
+	if offset > 0 {
+		query += fmt.Sprintf(" OFFSET $%d", argIdx)
+		args = append(args, offset)
+	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

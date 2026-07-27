@@ -110,4 +110,6 @@ type CreditExpiry struct {
 type CreditNoteFilter struct {
 	CustomerID *uuid.UUID
 	Status     *CreditNoteStatus
+	Limit      int
+	Offset     int
 }

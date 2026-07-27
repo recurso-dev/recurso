@@ -1580,6 +1580,9 @@ paths:
       operationId: listCoupons
       tags: [Coupons]
       summary: List coupons
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
       responses:
         '200':
           description: Coupons for the tenant.
@@ -1824,6 +1827,8 @@ paths:
       tags: [Credit Notes]
       summary: List credit notes
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
         - name: customer_id
           in: query
           description: Filter by customer.
@@ -1933,6 +1938,8 @@ paths:
       tags: [Quotes]
       summary: List quotes
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
         - name: status
           in: query
           schema:
@@ -3572,6 +3579,8 @@ paths:
         Lists disputes for the authenticated tenant. There is no admin dashboard
         UI for disputes yet; this API is the current surface.
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
         - name: status
           in: query
           required: false
@@ -4004,6 +4013,9 @@ paths:
       tags: [Finance]
       summary: List ledger accounts
       description: Double-entry ledger accounts (cash, accounts receivable, revenue, etc.) for the tenant.
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
       responses:
         '200':
           description: Ledger accounts.
@@ -5481,6 +5493,9 @@ paths:
       operationId: listMandates
       tags: [Mandates]
       summary: List mandates
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
       responses:
         '200':
           description: Mandates for the tenant.
@@ -5583,6 +5598,9 @@ paths:
       operationId: listVirtualAccounts
       tags: [Offline Payments]
       summary: List virtual accounts
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
       responses:
         '200':
           description: Virtual accounts for the tenant.
@@ -5661,6 +5679,9 @@ paths:
       operationId: listOfflinePayments
       tags: [Offline Payments]
       summary: List offline payments
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
       responses:
         '200':
           description: Offline payments for the tenant.

@@ -74,7 +74,8 @@ func (h *OfflinePaymentHandler) ListVirtualAccounts(c *gin.Context) {
 		return
 	}
 
-	accounts, err := h.service.ListVirtualAccounts(c.Request.Context(), tenantID)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	accounts, err := h.service.ListVirtualAccounts(c.Request.Context(), tenantID, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -161,7 +162,8 @@ func (h *OfflinePaymentHandler) ListOfflinePayments(c *gin.Context) {
 		return
 	}
 
-	payments, err := h.service.ListOfflinePayments(c.Request.Context(), tenantID)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	payments, err := h.service.ListOfflinePayments(c.Request.Context(), tenantID, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

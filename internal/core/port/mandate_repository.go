@@ -11,7 +11,7 @@ import (
 type MandateRepository interface {
 	Create(ctx context.Context, mandate *domain.Mandate) error
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Mandate, error)
-	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Mandate, error)
+	List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Mandate, error)
 	Update(ctx context.Context, mandate *domain.Mandate) error
 	GetByRazorpayTokenID(ctx context.Context, tokenID string) (*domain.Mandate, error)
 	GetDueForPreNotification(ctx context.Context) ([]*domain.Mandate, error)

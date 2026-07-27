@@ -55,7 +55,7 @@ type ReconciliationRepository interface {
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
 
 	// TigerBeetle comparison inputs (all read-only).
-	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
+	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error)
 	CountLedgerTransactionsByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 	GetLedgerTransactionSummaries(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.LedgerTransactionSummary, error)
 }
@@ -260,7 +260,8 @@ func (s *ReconciliationService) compareTigerBeetle(ctx context.Context, tenantID
 		return
 	}
 
-	accounts, err := s.repo.GetAccountsByTenant(ctx, tenantID)
+	// Reconciliation must see EVERY account — never clamp this read (0 = no LIMIT).
+	accounts, err := s.repo.GetAccountsByTenant(ctx, tenantID, 0, 0)
 	if err != nil {
 		report.TBSkipReason = fmt.Sprintf("listing tenant ledger accounts failed: %v", err)
 		return
