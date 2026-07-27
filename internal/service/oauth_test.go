@@ -68,7 +68,7 @@ func newOAuthTestAuth() (*AuthService, *fakeUserRepo, *fakeOAuthIdentityRepo) {
 func TestLoginWithOAuth_IdentityExists_LogsIn(t *testing.T) {
 	svc, ur, ir := newOAuthTestAuth()
 	// Seed an existing user + identity.
-	reg, err := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", "")
+	reg, err := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", "", "")
 	if err != nil {
 		t.Fatalf("seed register: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestLoginWithOAuth_IdentityExists_LogsIn(t *testing.T) {
 
 func TestLoginWithOAuth_EmailMatch_LinksAndLogsIn(t *testing.T) {
 	svc, ur, ir := newOAuthTestAuth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", "", "")
 
 	user, token, err := svc.LoginWithOAuth(context.Background(), "google",
 		&OAuthUserInfo{ProviderUserID: "sub-999", Email: "Alice@Acme.com", EmailVerified: true}, "ua")

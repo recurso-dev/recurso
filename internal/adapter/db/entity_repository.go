@@ -140,6 +140,22 @@ func (r *EntityRepository) Update(ctx context.Context, e *domain.Entity) error {
 	return nil
 }
 
+// SetPrimaryCountry stamps a country code on the tenant's primary entity —
+// the registration-time hook that makes the declared business country the
+// seller tax jurisdiction from the first invoice.
+func (r *EntityRepository) SetPrimaryCountry(ctx context.Context, tenantID uuid.UUID, countryCode string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE entities SET country_code = $1, updated_at = NOW() WHERE tenant_id = $2 AND is_primary`,
+		countryCode, tenantID)
+	if err != nil {
+		return fmt.Errorf("failed to set primary entity country: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("no primary entity for tenant %s", tenantID)
+	}
+	return nil
+}
+
 // Delete removes a non-primary entity. Callers must guard against deleting the
 // primary or an entity that still owns data.
 func (r *EntityRepository) Delete(ctx context.Context, id, tenantID uuid.UUID) error {

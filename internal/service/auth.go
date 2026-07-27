@@ -75,6 +75,13 @@ type AuthService struct {
 	// the base constructor and existing callers stay unchanged; LoginWithOAuth
 	// guards against nil.
 	oauthIdentities port.OAuthIdentityRepository
+
+	// setPrimaryCountry stamps the registrant's declared business country onto
+	// the tenant's primary entity — that country IS the seller tax jurisdiction
+	// for non-GST tenants, so capturing it at signup means a US tenant is a US
+	// seller from its very first invoice instead of the env default. Nil-safe:
+	// unwired (or failing) it degrades to the historical env-default behavior.
+	setPrimaryCountry func(ctx context.Context, tenantID uuid.UUID, country string) error
 }
 
 func NewAuthService(users port.UserRepository, sessions port.SessionRepository, tenants tenantRegistrar, sessionTTL time.Duration) *AuthService {
@@ -172,10 +179,18 @@ type RegisterResult struct {
 	SessionToken string
 }
 
+// SetPrimaryCountrySetter wires the primary-entity country stamp used at
+// registration (see the field doc). Nil-safe.
+func (s *AuthService) SetPrimaryCountrySetter(fn func(ctx context.Context, tenantID uuid.UUID, country string) error) {
+	s.setPrimaryCountry = fn
+}
+
 // Register creates a tenant (reusing the tenant-creation path), its first user
 // as the owner, and opens a session. The tenant API key is still returned so
-// CLI/dev flows keep a key.
-func (s *AuthService) Register(ctx context.Context, companyName, name, email, password, userAgent string) (*RegisterResult, error) {
+// CLI/dev flows keep a key. country ("" to skip) is the registrant's declared
+// business country (ISO-2); when provided it is stamped on the primary entity
+// so the seller tax jurisdiction is right from the first invoice.
+func (s *AuthService) Register(ctx context.Context, companyName, name, email, password, userAgent, country string) (*RegisterResult, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if len(password) < minPasswordLen {
 		return nil, domain.ErrWeakPassword
@@ -197,6 +212,17 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	tenant, apiKey, err := s.tenants.Register(ctx, companyName, email)
 	if err != nil {
 		return nil, err
+	}
+
+	// Declared business country → primary entity. Best-effort: a failure here
+	// must not fail the signup (the tenant can set it later in settings), but
+	// it is logged — jurisdiction quietly falling back to env defaults is the
+	// exact trap this exists to close.
+	if country = strings.ToUpper(strings.TrimSpace(country)); country != "" && s.setPrimaryCountry != nil {
+		if err := s.setPrimaryCountry(ctx, tenant.ID, country); err != nil {
+			s.logger.Warn("failed to stamp registration country on primary entity; seller jurisdiction falls back to env defaults",
+				"tenant_id", tenant.ID, "country", country, "error", err)
+		}
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcryptCost)

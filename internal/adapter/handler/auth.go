@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,10 @@ type authRegisterRequest struct {
 	Name        string `json:"name" binding:"required"`
 	Email       string `json:"email" binding:"required,email"`
 	Password    string `json:"password" binding:"required,min=8"`
+	// Country is the business's ISO-2 country code (optional). It becomes the
+	// primary entity's country — the seller tax jurisdiction — so a US signup
+	// is a US seller (sales tax, no GST) from its first invoice.
+	Country string `json:"country"`
 }
 
 func (h *AuthHandler) Register(c *gin.Context) {
@@ -78,8 +83,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
+	req.Country = strings.ToUpper(strings.TrimSpace(req.Country))
+	if req.Country != "" && len(req.Country) != 2 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "country must be a 2-letter ISO code")
+		return
+	}
 
-	res, err := h.auth.Register(c.Request.Context(), req.CompanyName, req.Name, req.Email, req.Password, c.GetHeader("User-Agent"))
+	res, err := h.auth.Register(c.Request.Context(), req.CompanyName, req.Name, req.Email, req.Password, c.GetHeader("User-Agent"), req.Country)
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrDuplicateEmail):

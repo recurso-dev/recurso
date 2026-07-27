@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
+import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
@@ -19,24 +20,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Curated business-country list. The code is the ISO 3166-1 alpha-2 stored on
-// the primary entity; it drives the tax regime and invoice format.
-const COUNTRIES = [
-  { code: "US", name: "United States" },
-  { code: "IN", name: "India" },
-  { code: "GB", name: "United Kingdom" },
-  { code: "DE", name: "Germany" },
-  { code: "FR", name: "France" },
-  { code: "ES", name: "Spain" },
-  { code: "IT", name: "Italy" },
-  { code: "NL", name: "Netherlands" },
-  { code: "IE", name: "Ireland" },
-  { code: "CA", name: "Canada" },
-  { code: "AU", name: "Australia" },
-  { code: "SG", name: "Singapore" },
-  { code: "AE", name: "United Arab Emirates" },
-];
-const COUNTRY_NAME = Object.fromEntries(COUNTRIES.map((c) => [c.code, c.name]));
 
 const EU = new Set([
   "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",

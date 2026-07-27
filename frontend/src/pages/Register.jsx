@@ -3,10 +3,18 @@ import { Link, useNavigate } from "react-router-dom";
 import { Layers } from "lucide-react";
 
 import { useAuth } from "@/auth/AuthProvider";
+import { COUNTRIES } from "@/lib/countries";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -16,6 +24,7 @@ export default function Register() {
     name: "",
     email: "",
     password: "",
+    country: "",
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -32,7 +41,9 @@ export default function Register() {
     setLoading(true);
     setError(null);
     try {
-      await registerAccount(formData);
+      // Country is optional — omit it entirely when unset.
+      const { country, ...rest } = formData;
+      await registerAccount(country ? { ...rest, country } : rest);
       navigate("/");
     } catch (err) {
       setError(
@@ -99,6 +110,28 @@ export default function Register() {
                   onChange={handleChange}
                   placeholder="name@company.com"
                 />
+              </FormField>
+
+              <FormField
+                label="Business country"
+                htmlFor="country"
+                description="Sets your tax jurisdiction (US sales tax, India GST, EU VAT). You can change it later in Settings."
+              >
+                <Select
+                  value={formData.country}
+                  onValueChange={(v) => setFormData({ ...formData, country: v })}
+                >
+                  <SelectTrigger id="country">
+                    <SelectValue placeholder="Select country (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </FormField>
 
               <FormField label="Password" htmlFor="password" required>

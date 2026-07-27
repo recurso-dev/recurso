@@ -90,7 +90,7 @@ func (s *DemoService) EnsureBootstrapped(ctx context.Context) (uuid.UUID, error)
 		if _, err := rand.Read(raw); err != nil {
 			return uuid.Nil, err
 		}
-		if _, err := s.auth.Register(ctx, "Demo Co", "Demo User", DemoUserEmail, hex.EncodeToString(raw), "demo-bootstrap"); err != nil {
+		if _, err := s.auth.Register(ctx, "Demo Co", "Demo User", DemoUserEmail, hex.EncodeToString(raw), "demo-bootstrap", ""); err != nil {
 			return uuid.Nil, fmt.Errorf("demo bootstrap register: %w", err)
 		}
 		user, err = s.users.GetByEmail(ctx, DemoUserEmail)

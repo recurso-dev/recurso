@@ -274,9 +274,48 @@ func newTestAuth() (*AuthService, *fakeUserRepo, *fakeSessionRepo) {
 
 // --- tests -----------------------------------------------------------------
 
+// A registration's declared country is stamped on the primary entity (the
+// seller tax jurisdiction), normalized to upper-case; empty skips the stamp,
+// and a stamp failure never fails the signup.
+func TestRegister_StampsPrimaryEntityCountry(t *testing.T) {
+	svc, _, _ := newTestAuth()
+	var gotTenant uuid.UUID
+	var gotCountry string
+	calls := 0
+	svc.SetPrimaryCountrySetter(func(_ context.Context, tenantID uuid.UUID, country string) error {
+		calls++
+		gotTenant, gotCountry = tenantID, country
+		return nil
+	})
+
+	res, err := svc.Register(context.Background(), "Acme US", "Alice", "us@acme.com", "supersecret", "ua", " us ")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if calls != 1 || gotCountry != "US" || gotTenant != res.Tenant.ID {
+		t.Errorf("stamp = %d calls, %q on %s; want 1 call, US on the new tenant", calls, gotCountry, gotTenant)
+	}
+
+	// No country → no stamp.
+	if _, err := svc.Register(context.Background(), "Acme IN", "Bob", "in@acme.com", "supersecret", "ua", ""); err != nil {
+		t.Fatalf("register without country: %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("empty country must skip the stamp (calls = %d)", calls)
+	}
+
+	// A failing stamp degrades to env defaults, never a failed signup.
+	svc.SetPrimaryCountrySetter(func(context.Context, uuid.UUID, string) error {
+		return errors.New("db down")
+	})
+	if _, err := svc.Register(context.Background(), "Acme DE", "Carl", "de@acme.com", "supersecret", "ua", "DE"); err != nil {
+		t.Fatalf("register must survive a stamp failure: %v", err)
+	}
+}
+
 func TestRegister_CreatesTenantOwnerAndSession(t *testing.T) {
 	svc, ur, _ := newTestAuth()
-	res, err := svc.Register(context.Background(), "Acme", "Alice", "Alice@Example.com", "supersecret", "ua")
+	res, err := svc.Register(context.Background(), "Acme", "Alice", "Alice@Example.com", "supersecret", "ua", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -304,10 +343,10 @@ func TestRegister_CreatesTenantOwnerAndSession(t *testing.T) {
 
 func TestRegister_DuplicateEmailRejected(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", ""); err != nil {
 		t.Fatalf("first register: %v", err)
 	}
-	_, err := svc.Register(context.Background(), "Other", "Bob", "A@B.com", "supersecret", "")
+	_, err := svc.Register(context.Background(), "Other", "Bob", "A@B.com", "supersecret", "", "")
 	if !errors.Is(err, domain.ErrDuplicateEmail) {
 		t.Fatalf("err = %v, want ErrDuplicateEmail", err)
 	}
@@ -315,7 +354,7 @@ func TestRegister_DuplicateEmailRejected(t *testing.T) {
 
 func TestRegister_WeakPasswordRejected(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	_, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "short", "")
+	_, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "short", "", "")
 	if !errors.Is(err, domain.ErrWeakPassword) {
 		t.Fatalf("err = %v, want ErrWeakPassword", err)
 	}
@@ -323,7 +362,7 @@ func TestRegister_WeakPasswordRejected(t *testing.T) {
 
 func TestLogin_SuccessAndGenericErrors(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -348,7 +387,7 @@ func TestLogin_SuccessAndGenericErrors(t *testing.T) {
 
 func TestLogout_InvalidatesSession(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	res, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	res, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 
 	if err := svc.Logout(context.Background(), res.SessionToken); err != nil {
 		t.Fatalf("logout: %v", err)
@@ -362,7 +401,7 @@ func TestResolveSession_ExpiredRejected(t *testing.T) {
 	ur := newFakeUserRepo()
 	sr := newFakeSessionRepo()
 	svc := NewAuthService(ur, sr, newFakeTenants(), time.Hour)
-	res, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	res, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 
 	// Force the stored session to be expired.
 	for h, s := range sr.sessions {
@@ -376,8 +415,8 @@ func TestResolveSession_ExpiredRejected(t *testing.T) {
 
 func TestTeam_CreateAndCrossTenantIsolation(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	a, _ := svc.Register(context.Background(), "TenantA", "Alice", "alice@a.com", "supersecret", "")
-	b, _ := svc.Register(context.Background(), "TenantB", "Bob", "bob@b.com", "supersecret", "")
+	a, _ := svc.Register(context.Background(), "TenantA", "Alice", "alice@a.com", "supersecret", "", "")
+	b, _ := svc.Register(context.Background(), "TenantB", "Bob", "bob@b.com", "supersecret", "", "")
 
 	// Alice adds a member to tenant A.
 	m, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "member@a.com", "Mel", domain.RoleMember, "supersecret")
@@ -396,7 +435,7 @@ func TestTeam_CreateAndCrossTenantIsolation(t *testing.T) {
 
 func TestTeam_LastOwnerProtected(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
+	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "", "")
 
 	// Cannot demote the last owner.
 	if _, err := svc.UpdateUserRole(context.Background(), a.Tenant.ID, domain.RoleOwner, a.User.ID, domain.RoleMember); !errors.Is(err, domain.ErrLastOwner) {
@@ -423,7 +462,7 @@ func TestTeam_LastOwnerProtected(t *testing.T) {
 // demote/remove an existing owner. Only an owner may cross that boundary.
 func TestTeam_OwnerBoundary(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
+	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "", "")
 
 	// Alice (owner) provisions an admin and a member.
 	admin, err := svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "admin@a.com", "Addie", domain.RoleAdmin, "supersecret")
@@ -460,7 +499,7 @@ func TestTeam_OwnerBoundary(t *testing.T) {
 
 func TestTeam_SelfLockoutRejected(t *testing.T) {
 	svc, _, _ := newTestAuth()
-	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "")
+	a, _ := svc.Register(context.Background(), "Acme", "Alice", "alice@a.com", "supersecret", "", "")
 	// Add a 2nd owner so the last-owner rule is not what blocks the delete.
 	svc.CreateUser(context.Background(), a.Tenant.ID, domain.RoleOwner, "owner2@a.com", "Ozzy", domain.RoleOwner, "supersecret") //nolint:errcheck
 
