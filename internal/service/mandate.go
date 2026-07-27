@@ -579,8 +579,13 @@ func mandateDebitIdempotencyKey(mandate *domain.Mandate) string {
 	return fmt.Sprintf("md-%s-%d", mandate.ID, last)
 }
 
+// isGatewayPaymentID reports whether id is a real gateway payment identifier
+// (safe to store for refunds): Razorpay pay_*, Stripe pi_*/ch_*, GoCardless
+// PM* (payments). Order/billing-request ids must never pass — refund APIs
+// reject them and a stored one poisons gateway_payment_id.
 func isGatewayPaymentID(id string) bool {
-	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") || strings.HasPrefix(id, "ch_")
+	return strings.HasPrefix(id, "pay_") || strings.HasPrefix(id, "pi_") ||
+		strings.HasPrefix(id, "ch_") || strings.HasPrefix(id, "PM")
 }
 
 func (s *MandateService) Revoke(ctx context.Context, mandateID, tenantID uuid.UUID) error {

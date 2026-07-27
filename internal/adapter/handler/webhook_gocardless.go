@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +25,7 @@ type gcEvent struct {
 		Mandate               string `json:"mandate"`
 		BillingRequest        string `json:"billing_request"`
 		MandateRequestMandate string `json:"mandate_request_mandate"`
+		Payment               string `json:"payment"`
 	} `json:"links"`
 }
 
@@ -110,6 +112,66 @@ func (h *WebhookHandler) handleGoCardlessEvent(c *gin.Context, ev gcEvent) error
 			return err
 		}
 		h.logger.Info("GoCardless mandate event applied", "gc_mandate", ev.Links.Mandate, "action", ev.Action)
+	case "payments":
+		return h.handleGoCardlessPaymentEvent(c, ev)
+	}
+	return nil
+}
+
+// invoiceByGatewayPayment is the optional repo capability the GoCardless
+// settlement path needs; satisfied by *db.InvoiceRepository. Capability
+// assertion instead of widening port.InvoiceRepository, so existing mocks
+// keep compiling.
+type invoiceByGatewayPayment interface {
+	GetByGatewayPaymentIDPublic(ctx context.Context, gatewayPaymentID string) (*domain.Invoice, error)
+}
+
+// handleGoCardlessPaymentEvent settles or flags an invoice on the outcome of
+// an asynchronous bank debit. ExecuteMandateDebit leaves the invoice OPEN and
+// stores the GoCardless payment id (PM...) on it; "confirmed" is the payoff.
+func (h *WebhookHandler) handleGoCardlessPaymentEvent(c *gin.Context, ev gcEvent) error {
+	ctx := c.Request.Context()
+	switch ev.Action {
+	case "confirmed", "paid_out":
+		repo, ok := h.invoiceRepo.(invoiceByGatewayPayment)
+		if !ok {
+			h.logger.Info("invoice repo lacks gateway-payment lookup, ignoring GoCardless payment event", "payment", ev.Links.Payment)
+			return nil
+		}
+		inv, err := repo.GetByGatewayPaymentIDPublic(ctx, ev.Links.Payment)
+		if err != nil {
+			return err // transient lookup failure: leave unprocessed so GoCardless redelivers
+		}
+		if inv == nil {
+			h.logger.Info("no invoice references GoCardless payment, ignoring", "payment", ev.Links.Payment)
+			return nil
+		}
+		if h.subService == nil {
+			h.logger.Info("subscription service not configured, ignoring GoCardless settlement", "payment", ev.Links.Payment)
+			return nil
+		}
+		ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+		transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, inv.ID)
+		if err != nil {
+			return err
+		}
+		h.logger.Info("invoice settled via GoCardless payment event",
+			"invoice_id", inv.ID, "payment", ev.Links.Payment, "action", ev.Action)
+		if transitioned {
+			h.recordDunningSuccess(ctx, inv.ID)
+		}
+	case "failed", "cancelled":
+		// The debit never stuck; its invoice was left OPEN awaiting settlement,
+		// so dunning picks it up — no state change needed here.
+		h.logger.Warn("GoCardless debit did not settle; invoice remains open for dunning",
+			"payment", ev.Links.Payment, "action", ev.Action)
+	case "charged_back", "late_failure":
+		// The SEPA/Bacs equivalent of an ACH late return: money already
+		// settled can be pulled back. Reversal bookkeeping (ledger code 19 +
+		// invoice reopen) is a tracked follow-up — flag loudly for manual
+		// reconciliation instead of guessing at the books.
+		h.logger.Error("GoCardless payment reversed after settlement — BOOKS NEED REVIEW (manual reconciliation)",
+			"payment", ev.Links.Payment, "action", ev.Action)
 	}
 	return nil
 }

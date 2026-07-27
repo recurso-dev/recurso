@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -200,6 +201,27 @@ func (r *InvoiceRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.
 
 // GetByIDPublic fetches invoice without tenant context check (for public pages)
 func (r *InvoiceRepository) GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	return r.getByIDInternal(ctx, id, nil)
+}
+
+// GetByGatewayPaymentIDPublic resolves the invoice a gateway payment settled.
+// Tenant-less by design: async settlement webhooks (GoCardless payments.*)
+// carry only the gateway's payment id. Returns (nil, nil) when no invoice
+// references the id; newest match wins.
+func (r *InvoiceRepository) GetByGatewayPaymentIDPublic(ctx context.Context, gatewayPaymentID string) (*domain.Invoice, error) {
+	if gatewayPaymentID == "" {
+		return nil, nil
+	}
+	var id uuid.UUID
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM invoices WHERE gateway_payment_id = $1 ORDER BY created_at DESC LIMIT 1`,
+		gatewayPaymentID).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
 	return r.getByIDInternal(ctx, id, nil)
 }
 
