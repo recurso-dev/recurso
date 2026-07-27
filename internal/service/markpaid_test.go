@@ -87,6 +87,28 @@ func (m *mockLedgerRepoForMarkPaid) CreateTransaction(ctx context.Context, tx *d
 	return nil
 }
 
+func (m *mockLedgerRepoForMarkPaid) CountTransactionsByReferenceAndCode(_ context.Context, referenceID uuid.UUID, code uint16) (int, error) {
+	n := 0
+	for _, tx := range m.transactions {
+		if tx.ReferenceID == referenceID && tx.Code == code {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *mockLedgerRepoForMarkPaid) GetLatestTransactionByReferenceAndCode(_ context.Context, referenceID uuid.UUID, code uint16) (*domain.LedgerTransaction, error) {
+	var latest *domain.LedgerTransaction
+	for _, tx := range m.transactions {
+		if tx.ReferenceID == referenceID && tx.Code == code {
+			if latest == nil || tx.Occurrence >= latest.Occurrence {
+				latest = tx
+			}
+		}
+	}
+	return latest, nil
+}
+
 func newMarkPaidService(invRepo port.InvoiceRepository, ledgerRepo port.LedgerRepository) *SubscriptionService {
 	return NewSubscriptionService(
 		nil, // subRepo (unused: revrecService is nil)

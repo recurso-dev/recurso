@@ -49,8 +49,38 @@ func (m *mockLedgerRepoForLedger) CreateTransaction(ctx context.Context, tx *dom
 	if m.createTxErr != nil {
 		return m.createTxErr
 	}
+	// Mirror the PG (reference_id, code, occurrence) dedup so idempotency tests
+	// exercise the real semantics.
+	for _, existing := range m.transactions {
+		if existing.ReferenceID == tx.ReferenceID && existing.Code == tx.Code &&
+			existing.Occurrence == tx.Occurrence && existing.ReferenceID != uuid.Nil {
+			return nil
+		}
+	}
 	m.transactions = append(m.transactions, tx)
 	return nil
+}
+
+func (m *mockLedgerRepoForLedger) CountTransactionsByReferenceAndCode(_ context.Context, referenceID uuid.UUID, code uint16) (int, error) {
+	n := 0
+	for _, tx := range m.transactions {
+		if tx.ReferenceID == referenceID && tx.Code == code {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (m *mockLedgerRepoForLedger) GetLatestTransactionByReferenceAndCode(_ context.Context, referenceID uuid.UUID, code uint16) (*domain.LedgerTransaction, error) {
+	var latest *domain.LedgerTransaction
+	for _, tx := range m.transactions {
+		if tx.ReferenceID == referenceID && tx.Code == code {
+			if latest == nil || tx.Occurrence >= latest.Occurrence {
+				latest = tx
+			}
+		}
+	}
+	return latest, nil
 }
 
 // --- RecordInvoice tests ---

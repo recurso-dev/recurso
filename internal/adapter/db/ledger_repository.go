@@ -235,24 +235,27 @@ func (r *LedgerRepository) CreateTransactions(ctx context.Context, txs []*domain
 	return dbtx.Commit()
 }
 
-// applyLedgerTx inserts one transfer (idempotent on reference_id+code) and moves
-// both account balances, WITHIN the caller's transaction. Extracted so a single
-// post and a multi-leg post share identical semantics; the caller owns commit.
+// applyLedgerTx inserts one transfer (idempotent on reference_id+code+occurrence)
+// and moves both account balances, WITHIN the caller's transaction. Extracted so a
+// single post and a multi-leg post share identical semantics; the caller owns commit.
 func applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransaction) error {
 	if tx.Timestamp.IsZero() {
 		tx.Timestamp = time.Now()
 	}
 
-	// Idempotent insert: a duplicate (reference_id, code) for a real reference
-	// (invoice/payment/refund) is a no-op via the partial unique index, so a
-	// replayed or concurrently-lost settle never double-posts. Recognition rows
-	// (zero reference) are excluded from that index and always insert.
+	// Idempotent insert: a duplicate (reference_id, code, occurrence) for a real
+	// reference (invoice/payment/refund) is a no-op via the partial unique index,
+	// so a replayed or concurrently-lost settle never double-posts. Occurrence is
+	// 0 everywhere except the ACH settle→reverse cycle, where it counts completed
+	// reversals so a re-collected invoice posts fresh legs instead of having them
+	// swallowed (docs/design-ledger-occurrence.md). Recognition rows (zero
+	// reference) are excluded from the index and always insert.
 	res, err := dbtx.ExecContext(ctx,
-		`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		 ON CONFLICT DO NOTHING`,
 		tx.ID, tx.DebitAccountID, tx.CreditAccountID, tx.Amount,
-		tx.LedgerID, tx.Code, tx.ReferenceID, tx.Description, tx.Timestamp,
+		tx.LedgerID, tx.Code, tx.ReferenceID, tx.Occurrence, tx.Description, tx.Timestamp,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create ledger transaction: %w", err)
@@ -262,7 +265,8 @@ func applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransacti
 		return fmt.Errorf("failed to read rows affected: %w", err)
 	}
 	if n == 0 {
-		// Already posted for this (reference_id, code) — do not re-apply balances.
+		// Already posted for this (reference_id, code, occurrence) — do not
+		// re-apply balances.
 		return nil
 	}
 
@@ -356,6 +360,45 @@ func (r *LedgerRepository) GetInvoiceLedgerMismatches(ctx context.Context, tenan
 	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
 }
 
+// CountTransactionsByReferenceAndCode counts posted legs of one code for a
+// reference. The settle/reverse posting sites use the invoice's code-19 count
+// as the occurrence (cycle) counter — docs/design-ledger-occurrence.md.
+func (r *LedgerRepository) CountTransactionsByReferenceAndCode(ctx context.Context, referenceID uuid.UUID, code uint16) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id = $1 AND code = $2`,
+		referenceID, code).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count ledger transactions: %w", err)
+	}
+	return n, nil
+}
+
+// GetLatestTransactionByReferenceAndCode returns the highest-occurrence leg of
+// one code for a reference, or nil when none exists. The ACH reversal inverts
+// the ACTUAL latest cash leg (amount and all) rather than recomputing it, so a
+// wallet-part-funded settlement reverses exactly the net cash that was posted.
+func (r *LedgerRepository) GetLatestTransactionByReferenceAndCode(ctx context.Context, referenceID uuid.UUID, code uint16) (*domain.LedgerTransaction, error) {
+	tx := &domain.LedgerTransaction{}
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, created_at
+		 FROM ledger_transactions
+		 WHERE reference_id = $1 AND code = $2
+		 ORDER BY occurrence DESC, created_at DESC
+		 LIMIT 1`,
+		referenceID, code).Scan(
+		&tx.ID, &tx.DebitAccountID, &tx.CreditAccountID, &tx.Amount,
+		&tx.LedgerID, &tx.Code, &tx.ReferenceID, &tx.Occurrence, &tx.Description, &tx.Timestamp,
+	)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to load latest ledger transaction: %w", err)
+	}
+	return tx, nil
+}
+
 // GetPaymentLedgerMismatches returns paid invoices whose payment-side ledger
 // postings are missing or do not sum to amount_paid. At most limit rows are
 // returned; the second return value is the total mismatch count.
@@ -373,14 +416,19 @@ func (r *LedgerRepository) GetInvoiceLedgerMismatches(ctx context.Context, tenan
 // it out. A fully-credit-settled invoice therefore owes zero cash and needs no
 // payment leg, so tx_count=0 is only a genuine "missing payment" when expected>0.
 func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	// Payment-shaped legs (3, 10, 12) add; ACH-return reversals (19) SUBTRACT,
+	// so a settle→reverse→re-settle cycle nets to exactly one settlement
+	// (C − C + C = amount_paid). This also makes the pre-occurrence-fix
+	// corruption visible: a paid invoice whose re-settle leg was swallowed nets
+	// to 0 ≠ amount_paid and is finally reported (docs/design-ledger-occurrence.md).
 	const query = `
 		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
 		FROM (
 			SELECT i.id, COALESCE(i.amount_paid, 0) AS expected,
-			       COALESCE(SUM(t.amount), 0) AS found,
+			       COALESCE(SUM(CASE WHEN t.code = 19 THEN -t.amount::bigint ELSE t.amount::bigint END), 0) AS found,
 			       COUNT(t.id) AS tx_count
 			FROM invoices i
-			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code IN (3, 10, 12)
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code IN (3, 10, 12, 19)
 			WHERE i.tenant_id = $1 AND i.status = 'paid'
 			GROUP BY i.id, i.amount_paid
 		) sub
