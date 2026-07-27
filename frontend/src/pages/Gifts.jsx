@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { usePlans, useCustomers } from "@/lib/useCustomers";
-import { Plus, Gift, CheckCircle2, Clock } from "lucide-react";
+import { Plus, Gift, CheckCircle2, Clock, Ban } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatDate } from "@/lib/utils";
@@ -27,12 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const statusVariant = (status) =>
-  ({ redeemed: "success", purchased: "warning" })[status] || "neutral";
+  ({ redeemed: "success", purchased: "warning", canceled: "neutral" })[status] || "neutral";
 
 function Gifts() {
   const [showCreate, setShowCreate] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelNotice, setCancelNotice] = useState(null);
   const [form, setForm] = useState({
     buyer_customer_id: "",
     plan_id: "",
@@ -72,6 +75,30 @@ function Gifts() {
     },
   });
   const creating = createMutation.isPending;
+
+  // Canceling a purchased gift compensates the buyer: a paid purchase becomes
+  // an account credit, an unpaid invoice is voided.
+  const cancelMutation = useMutation({
+    mutationFn: (id) => endpoints.cancelGift(id),
+    onSuccess: (response) => {
+      const res = response.data?.data;
+      setCancelTarget(null);
+      setCancelNotice(
+        res?.credit_note
+          ? "Gift canceled — the purchase amount was issued to the buyer as an account credit."
+          : res?.invoice_voided
+            ? "Gift canceled — the unpaid purchase invoice was voided."
+            : "Gift canceled.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["gifts"] });
+    },
+    onError: (err) => {
+      setCancelTarget(null);
+      setCancelNotice(
+        err?.response?.data?.error?.message || err?.message || "Failed to cancel gift",
+      );
+    },
+  });
 
   const handleCreate = (e) => {
     e.preventDefault();
@@ -120,6 +147,22 @@ function Gifts() {
       header: "Purchased",
       cell: (g) => <span className="text-muted-foreground">{formatDate(g.created_at)}</span>,
     },
+    {
+      key: "actions",
+      header: "",
+      cell: (g) =>
+        g.status === "purchased" ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-destructive"
+            onClick={() => setCancelTarget(g)}
+          >
+            <Ban className="h-4 w-4" />
+            Cancel
+          </Button>
+        ) : null,
+    },
   ];
 
   return (
@@ -140,6 +183,18 @@ function Gifts() {
         <StatCard label="Redeemed" value={redeemedCount.toLocaleString()} icon={CheckCircle2} />
         <StatCard label="Pending" value={pendingCount.toLocaleString()} icon={Clock} />
       </div>
+
+      {cancelNotice && (
+        <div
+          role="status"
+          className="mb-4 flex items-center justify-between rounded-md border bg-muted/50 px-4 py-3 text-sm text-foreground"
+        >
+          <span>{cancelNotice}</span>
+          <Button variant="ghost" size="sm" onClick={() => setCancelNotice(null)}>
+            Dismiss
+          </Button>
+        </div>
+      )}
 
       <DataTable
         columns={columns}
@@ -228,6 +283,22 @@ function Gifts() {
           </SheetFooter>
         </SheetContent>
       </Sheet>
+
+      {/* Cancel gift — buyer is made whole (credit or void), redemption is blocked */}
+      <ConfirmDialog
+        open={!!cancelTarget}
+        onOpenChange={(open) => !open && setCancelTarget(null)}
+        title="Cancel this gift?"
+        description={
+          cancelTarget
+            ? `Gift ${cancelTarget.code} can no longer be redeemed. If the purchase was paid, the buyer receives the amount back as an account credit; an unpaid purchase invoice is voided.`
+            : ""
+        }
+        confirmLabel="Cancel gift"
+        destructive
+        busy={cancelMutation.isPending}
+        onConfirm={() => cancelMutation.mutate(cancelTarget.id)}
+      />
     </div>
   );
 }

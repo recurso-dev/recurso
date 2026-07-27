@@ -225,6 +225,7 @@ export const endpoints = {
   getGifts: () => api.get('/gifts'),
   purchaseGift: (data) => api.post('/gifts/purchase', data),
   redeemGift: (data) => api.post('/gifts/redeem', data),
+  cancelGift: (id) => api.post(`/gifts/${id}/cancel`),
 
   // Referrals (P25)
   getReferrals: () => api.get('/referrals'),

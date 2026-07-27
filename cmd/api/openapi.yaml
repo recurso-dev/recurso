@@ -5386,6 +5386,39 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/gifts/{id}/cancel:
+    post:
+      operationId: cancelGift
+      tags: [Gifts]
+      summary: Cancel an unredeemed gift (buyer gets account credit)
+      description: >-
+        Cancels a purchased-but-unredeemed gift. If the buyer's purchase
+        invoice was PAID, a spendable adjustment credit note for the amount is
+        issued to the buyer (through the normal credit-note path, so approval
+        governance and ledger postings apply). If the invoice is still open, it
+        is voided instead — no money arrived, nothing is credited. A redeemed
+        gift cannot be canceled (409); a second cancel is refused (409) so the
+        credit can never issue twice.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The canceled gift and what happened to the buyer's money.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      gift: { $ref: '#/components/schemas/Gift' }
+                      credit_note: { $ref: '#/components/schemas/CreditNote' }
+                      invoice_voided: { type: boolean }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/mandates:
     post:
       operationId: createMandate

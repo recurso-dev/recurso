@@ -91,3 +91,41 @@ func (r *GiftRepository) Update(ctx context.Context, gift *domain.Gift) error {
 	_, err := r.db.NamedExecContext(ctx, query, gift)
 	return err
 }
+
+// GetByID loads one gift, tenant-scoped. Nil when absent.
+func (r *GiftRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Gift, error) {
+	var gift domain.Gift
+	err := r.db.GetContext(ctx, &gift, `SELECT * FROM gifts WHERE tenant_id = $1 AND id = $2 LIMIT 1`, tenantID, id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &gift, nil
+}
+
+// SetInvoiceID links the buyer's purchase invoice to the gift (best-effort at
+// purchase time; cancellation acts on the link).
+func (r *GiftRepository) SetInvoiceID(ctx context.Context, giftID, tenantID, invoiceID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE gifts SET invoice_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+		invoiceID, giftID, tenantID)
+	return err
+}
+
+// Cancel atomically flips purchased -> canceled. Returns true only when this
+// call made the transition (WHERE status = 'purchased'), so a concurrent
+// cancel — or a cancel racing a redemption — can't both win, and the winner is
+// the only caller that issues the buyer's credit.
+func (r *GiftRepository) Cancel(ctx context.Context, giftID, tenantID uuid.UUID) (bool, error) {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE gifts SET status = $1, updated_at = NOW()
+		 WHERE id = $2 AND tenant_id = $3 AND status = $4`,
+		domain.GiftStatusCanceled, giftID, tenantID, domain.GiftStatusPurchased)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}

@@ -696,6 +696,9 @@ func main() {
 	// Gift (P43)
 	giftRepo := db.NewGiftRepository(dbx)
 	giftService := service.NewGiftService(giftRepo, subscriptionRepo, invoiceService, planRepo, notificationService)
+	// Gift cancellation (account-credit policy) issues the buyer's credit
+	// through the normal credit-note path — approval governance + GL legs.
+	giftService.SetCreditNoteService(creditNoteService)
 	giftHandler := handler.NewGiftHandler(giftService)
 
 	// 6. Initialize Workers
@@ -1863,6 +1866,7 @@ func main() {
 		// Gift API (P43)
 		v1.POST("/gifts/purchase", giftHandler.PurchaseGift)
 		v1.POST("/gifts/redeem", giftHandler.RedeemGift)
+		v1.POST("/gifts/:id/cancel", giftHandler.CancelGift)
 
 		// Phase 2: UPI Mandates
 		v1.POST("/mandates", mandateHandler.CreateMandate)

@@ -1,0 +1,1 @@
+ALTER TABLE gifts DROP COLUMN IF EXISTS invoice_id;
