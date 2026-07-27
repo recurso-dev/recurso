@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -105,5 +106,43 @@ func TestHubSpotErrorsSurface(t *testing.T) {
 	c.baseURL = srv.URL
 	if _, err := c.UpsertContact(context.Background(), "x@y.com", nil); err == nil {
 		t.Fatal("HTTP 401 must surface as an error")
+	}
+}
+
+// EnsureProperties: creates both custom properties; an already-exists 409 is
+// success; a 403 names the missing scope so the operator knows what to add.
+func TestHubSpotEnsureProperties(t *testing.T) {
+	var paths []string
+	statuses := map[int]int{0: 201, 1: 409} // first creates, second "exists"
+	i := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statuses[i])
+		i++
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	c := NewHubSpotClient("k")
+	c.baseURL = srv.URL
+
+	if err := c.EnsureProperties(context.Background()); err != nil {
+		t.Fatalf("EnsureProperties: %v", err)
+	}
+	if len(paths) != 2 || paths[0] != "/crm/v3/properties/contacts" {
+		t.Fatalf("paths = %v, want two POSTs to /crm/v3/properties/contacts", paths)
+	}
+
+	// Missing schema scope → actionable error naming it.
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"status":"error","category":"MISSING_SCOPES"}`))
+	}))
+	defer srv2.Close()
+	c2 := NewHubSpotClient("k")
+	c2.baseURL = srv2.URL
+	err := c2.EnsureProperties(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "crm.schemas.contacts.write") {
+		t.Fatalf("403 must name the missing scope, got: %v", err)
 	}
 }
