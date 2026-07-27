@@ -260,3 +260,67 @@ func TestStripeFinalizeSetupIntent_BankAccount(t *testing.T) {
 		t.Errorf("customer_id = %q, want cust-1", saved.CustomerID)
 	}
 }
+
+// The public pay endpoints can be hit repeatedly; every CreateOrder for the
+// same invoice+amount+currency must carry the SAME Idempotency-Key so Stripe
+// returns the same PaymentIntent instead of minting a churn of live intents.
+func TestStripeCreateOrder_IdempotencyKey(t *testing.T) {
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"pi_test","amount":9900,"currency":"usd","status":"requires_payment_method"}`))
+	}))
+	defer srv.Close()
+	gw := newTestStripeGateway(t, srv)
+
+	for range 2 {
+		if _, err := gw.CreateOrder(context.Background(), 9900, "USD", "INV-42", "inv-uuid-42"); err != nil {
+			t.Fatalf("CreateOrder: %v", err)
+		}
+	}
+	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+		t.Fatalf("replayed checkout must reuse the idempotency key, got %v", keys)
+	}
+	if keys[0] != "checkout-inv-uuid-42-9900-usd" {
+		t.Errorf("key = %q, want invoice+amount+currency-derived", keys[0])
+	}
+
+	// A different amount (invoice total changed) is a NEW logical checkout.
+	if _, err := gw.CreateOrder(context.Background(), 5000, "USD", "INV-42", "inv-uuid-42"); err != nil {
+		t.Fatalf("CreateOrder: %v", err)
+	}
+	if keys[2] == keys[0] {
+		t.Error("a changed amount must change the idempotency key")
+	}
+}
+
+// The card-only fallback retry must use a DIFFERENT idempotency key than the
+// first attempt — same key with different params is an idempotent-replay
+// mismatch Stripe rejects outright.
+func TestStripeCreateOrder_FallbackRetryNewKey(t *testing.T) {
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		w.Header().Set("Content-Type", "application/json")
+		if len(keys) == 1 {
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":{"type":"invalid_request_error","code":"payment_intent_invalid_parameter","param":"payment_method_types","message":"us_bank_account not activated"}}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"id":"pi_card_only","amount":9900,"currency":"usd","status":"requires_payment_method"}`))
+	}))
+	defer srv.Close()
+	gw := newTestStripeGateway(t, srv)
+
+	order, err := gw.CreateOrder(context.Background(), 9900, "USD", "INV-43", "inv-uuid-43")
+	if err != nil {
+		t.Fatalf("CreateOrder with fallback: %v", err)
+	}
+	if order.ID != "pi_card_only" {
+		t.Fatalf("order.ID = %q, want the card-only retry's intent", order.ID)
+	}
+	if len(keys) != 2 || keys[1] != keys[0]+"-card" {
+		t.Fatalf("retry keys = %v, want second = first + \"-card\"", keys)
+	}
+}

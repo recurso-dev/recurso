@@ -100,13 +100,30 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		},
 	}
 
+	// Same logical checkout → same PaymentIntent. The public pay endpoints can
+	// be hit repeatedly (double-click, refresh, retry) and without a key every
+	// hit mints a fresh intent — churn, plus two live intents a buyer could
+	// pay. Keyed by invoice + amount + currency, a replay within Stripe's 24h
+	// idempotency window returns the SAME intent; an invoice whose total
+	// changed gets a new key and correctly gets a new intent.
+	idemKey := ""
+	if invoiceID != "" {
+		idemKey = fmt.Sprintf("checkout-%s-%d-%s", invoiceID, amount, strings.ToLower(currency))
+		params.SetIdempotencyKey(idemKey)
+	}
+
 	pi, err := s.sc.PaymentIntents.New(params)
 	if err != nil && isInactivePaymentMethodErr(err) {
 		// One of the currency's extra method types (e.g. us_bank_account) isn't
 		// activated on this Stripe account. A card-only checkout beats a dead
 		// one — retry with card and let ops activate the method in the Stripe
-		// dashboard when they want it.
+		// dashboard when they want it. The retry needs its OWN idempotency key:
+		// reusing the first key with different params would be rejected by
+		// Stripe as an idempotent-replay mismatch.
 		params.PaymentMethodTypes = stripe.StringSlice([]string{string(stripe.PaymentMethodTypeCard)})
+		if idemKey != "" {
+			params.SetIdempotencyKey(idemKey + "-card")
+		}
 		pi, err = s.sc.PaymentIntents.New(params)
 	}
 	if err != nil {
