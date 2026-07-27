@@ -42,12 +42,12 @@ Most billing platforms charge a percentage of your revenue and lock you into the
 - Automatic and one-off invoicing with jurisdiction-aware tax and printable/e-invoice-ready PDFs
 - Hosted checkout — real card + ACH collection via the Stripe Payment Element, and UPI/cards/netbanking via Razorpay, with server-verified settlement
 - Customer self-service portal — magic-link login (httpOnly-cookie session), card update (Stripe SetupIntent), UPI mandate re-authorization, invoice history
-- Payments — multi-currency routing (INR → Razorpay, others → Stripe), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay so recurring autopay (renewal, dunning, wallet) settles in *your* account
+- Payments — multi-currency routing (INR → Razorpay, EUR/GBP mandates → GoCardless bank debit, others → Stripe), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay/GoCardless so recurring autopay (renewal, dunning, wallet) settles in *your* account
 - Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution
 - Tax — India GST (Place of Supply, HSN, TDS, e-invoicing via GSP), EU VAT (reverse charge + VIES), US sales tax (TaxJar) with economic-nexus threshold tracking
 - Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes (CPQ)
 - Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation, ASC 606 revenue recognition, and a month-end close pack
-- Real-time FX-normalized MRR, churn scoring, entitlements, commitments, webhook delivery tracking, QuickBooks/Xero/NetSuite/Tally sync
+- Real-time FX-normalized MRR, churn scoring, entitlements, commitments, webhook delivery tracking, QuickBooks/Xero/NetSuite/Tally accounting sync, HubSpot CRM sync
 - Platform — native auth (sessions, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy
 
 ## Project status
