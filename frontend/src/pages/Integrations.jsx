@@ -206,8 +206,12 @@ const Integrations = () => {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      await api.triggerAccountingSync();
-      toast.success("Sync triggered. Activity will update shortly.");
+      const res = await api.triggerAccountingSync();
+      if (res.data?.status === "sync_already_running") {
+        toast.message("A sync is already running — watch Sync activity for progress.");
+      } else {
+        toast.success("Sync started in the background. Activity will update as records push.");
+      }
       fetchLogs();
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Sync failed");

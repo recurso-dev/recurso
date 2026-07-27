@@ -6218,9 +6218,16 @@ paths:
       operationId: triggerAccountingSync
       tags: [Accounting]
       summary: Trigger a sync to connected accounting systems
+      description: |
+        Starts a forced full re-push to every active accounting connection in
+        the background and returns immediately — the sweep can take minutes
+        for large tenants. Progress is observable via the sync-activity log
+        and each connection's sync_status. One manual sync runs per tenant at
+        a time; a request while one is running returns 200 with
+        status=sync_already_running.
       responses:
-        '200':
-          description: Sync started.
+        '202':
+          description: Sync started in the background.
           content:
             application/json:
               schema:
@@ -6229,6 +6236,16 @@ paths:
                   status:
                     type: string
                     const: sync_triggered
+        '200':
+          description: A manual sync is already running for this tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: sync_already_running
         '401':
           $ref: '#/components/responses/Unauthorized'
 
