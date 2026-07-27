@@ -9859,6 +9859,13 @@ components:
         rate_window_days:
           type: integer
           description: Trailing window (days) the recovery_rate is computed over.
+        fx_excluded_currencies:
+          type: array
+          items: { type: string }
+          description: >-
+            Currencies whose amounts could not be converted into the reporting
+            currency and are excluded from the bucket amounts (their invoices
+            still count). Non-empty means the money figures are understated.
 
     CollectionsFailureBucket:
       type: object

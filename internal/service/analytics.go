@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"log/slog"
 	"math"
 	"sort"
 
@@ -304,10 +305,14 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 	perEntityCurrency := make(map[uuid.UUID]map[string]int64)
 	perEntityCount := make(map[uuid.UUID]int)
 	planCache := make(map[uuid.UUID]*domain.Plan)
+	unattributed := 0
 	for _, sub := range subs {
 		eff := effectiveEntityID(sub.EntityID, primaryID)
 		if eff == nil {
-			continue // no entity reader / no primary — can't attribute
+			// No entity reader / no resolvable primary — can't attribute. Count
+			// and warn below so the under-report is observable, not silent.
+			unattributed++
+			continue
 		}
 		plan, ok := planCache[sub.PlanID]
 		if !ok {
@@ -331,9 +336,15 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 		perEntityCurrency[*eff][currency] += monthlyMinorUnits(plan.Prices[0].Amount, plan.IntervalUnit, plan.IntervalCount)
 		perEntityCount[*eff]++
 	}
+	if unattributed > 0 {
+		slog.Warn("MRR-by-entity: subscriptions with no attributable entity excluded from the breakdown",
+			"tenant_id", tenantID, "unattributed_subscriptions", unattributed)
+	}
 
 	normalizer := newFXNormalizer(s.fxProvider, s.fxFallback)
+	rosterIDs := make(map[uuid.UUID]bool, len(entities))
 	for _, ent := range entities {
+		rosterIDs[ent.ID] = true
 		row := MRREntityBreakdown{
 			EntityID:      ent.ID,
 			EntityName:    ent.Name,
@@ -346,9 +357,38 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 			}
 		}
 		row.ARR = row.NormalizedMRR * 12
-		result.TotalMRR += row.NormalizedMRR
 		result.Entities = append(result.Entities, row)
 	}
+	// An accumulated entity missing from the roster (e.g. a hard-deleted entity
+	// a subscription still references) would silently vanish — surface it.
+	for entityID := range perEntityCurrency {
+		if !rosterIDs[entityID] {
+			slog.Warn("MRR-by-entity: subscriptions reference an entity absent from the roster; their MRR is not shown",
+				"tenant_id", tenantID, "entity_id", entityID)
+		}
+	}
+
+	// TotalMRR converts ONCE PER CURRENCY over the tenant-wide sums — exactly
+	// how the consolidated GetMRR rounds — so the two headline figures agree to
+	// the minor unit. Summing the individually-rounded rows instead can drift
+	// by up to (entities−1) minor units per shared foreign currency; the rows
+	// therefore may not sum to the total by a penny, which is the standard
+	// finance-reporting trade-off (each figure is itself correctly rounded).
+	tenantPerCurrency := make(map[string]int64)
+	for entityID, byCurrency := range perEntityCurrency {
+		if !rosterIDs[entityID] {
+			continue // keep the total consistent with the rows shown
+		}
+		for currency, amount := range byCurrency {
+			tenantPerCurrency[currency] += amount
+		}
+	}
+	for currency, amount := range tenantPerCurrency {
+		if converted, _, err := normalizer.convert(ctx, amount, currency, reporting); err == nil {
+			result.TotalMRR += converted
+		}
+	}
+
 	// Highest MRR first — the operator's most valuable entity leads.
 	sort.Slice(result.Entities, func(i, j int) bool {
 		return result.Entities[i].NormalizedMRR > result.Entities[j].NormalizedMRR

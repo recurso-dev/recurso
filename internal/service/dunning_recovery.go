@@ -307,6 +307,12 @@ type CollectionsFunnel struct {
 	Recovered         CollectionsBucket `json:"recovered"`
 	RecoveryRate      float64           `json:"recovery_rate"`
 	RateWindowDays    int               `json:"rate_window_days"`
+	// FXExcludedCurrencies lists currencies whose amounts could NOT be
+	// converted into the reporting currency and were therefore excluded from
+	// the bucket AMOUNTS (their invoices still count in the bucket COUNTS).
+	// Non-empty means the money figures are understated — mirrored from the
+	// MRR pattern of flagged exclusion rather than silent drop.
+	FXExcludedCurrencies []string `json:"fx_excluded_currencies,omitempty"`
 }
 
 // CollectionsFailureBucket is one failure reason ranked by money at risk, in the
@@ -328,16 +334,21 @@ func (s *DunningRecoveryService) GetCollectionsFunnel(ctx context.Context, tenan
 	haveFX := s.fxProvider != nil || s.fxFallback != nil
 
 	// norm converts a per-currency minor-unit amount into the reporting currency,
-	// skipping amounts it can't convert (rather than mis-summing mixed currencies).
+	// skipping amounts it can't convert (rather than mis-summing mixed
+	// currencies) — and RECORDS the skip so the exclusion is visible on the
+	// response instead of silently understating the money figures.
+	excluded := map[string]bool{}
 	norm := func(amt int64, ccy string) (int64, bool) {
 		if ccy == reporting {
 			return amt, true
 		}
 		if !haveFX {
+			excluded[ccy] = true
 			return 0, false
 		}
 		conv, _, err := normalizer.convert(ctx, amt, ccy, reporting)
 		if err != nil {
+			excluded[ccy] = true
 			return 0, false
 		}
 		return conv, true
@@ -395,6 +406,11 @@ func (s *DunningRecoveryService) GetCollectionsFunnel(ctx context.Context, tenan
 			funnel.RecoveryRate = float64(recovered) / float64(concluded)
 		}
 	}
+
+	for ccy := range excluded {
+		funnel.FXExcludedCurrencies = append(funnel.FXExcludedCurrencies, ccy)
+	}
+	sort.Strings(funnel.FXExcludedCurrencies)
 	return funnel, nil
 }
 

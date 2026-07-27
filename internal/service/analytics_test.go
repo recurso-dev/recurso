@@ -264,6 +264,60 @@ func TestGetMRRByEntity(t *testing.T) {
 	}
 }
 
+// TotalMRR must equal the consolidated GetMRR figure even when a foreign
+// currency is shared across entities: both now round ONCE PER CURRENCY over the
+// tenant-wide sums. Individually-rounded rows may not sum to the total by a
+// minor unit — the standard finance-reporting trade-off, asserted here so the
+// behavior is documented rather than accidental.
+func TestGetMRRByEntity_TotalMatchesConsolidatedUnderFXRounding(t *testing.T) {
+	primaryID := uuid.New()
+	entityB := uuid.New()
+
+	// Two entities each with INR 101/mo at rate 0.5: per-row round(50.5)=51
+	// each (rows sum 102), but converted once per currency round(202×0.5)=101.
+	planA := mrrPlan("INR", 101)
+	planB := mrrPlan("INR", 101)
+	planRepo := &mockPlanRepoForMRR{plans: map[uuid.UUID]*domain.Plan{planA.ID: planA, planB.ID: planB}}
+	subRepo := &mockSubRepoForMRR{active: []*domain.Subscription{
+		{ID: uuid.New(), PlanID: planA.ID, EntityID: nil},
+		{ID: uuid.New(), PlanID: planB.ID, EntityID: &entityB},
+	}}
+	fx := &mockFXForMRR{rates: map[string]float64{"INR:USD": 0.5}, source: "live", asOf: time.Now()}
+
+	svc := NewAnalyticsService(subRepo, nil, planRepo, nil)
+	svc.SetFX(fx, nil, "USD")
+	svc.SetEntityReader(&fakeAnalyticsEntityReader{
+		primary: &domain.Entity{ID: primaryID, IsPrimary: true},
+		all: []*domain.Entity{
+			{ID: primaryID, Name: "HQ", IsPrimary: true},
+			{ID: entityB, Name: "Entity B"},
+		},
+	})
+
+	byEntity, err := svc.GetMRRByEntity(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("GetMRRByEntity: %v", err)
+	}
+	consolidated, err := svc.GetMRR(context.Background(), uuid.New(), nil)
+	if err != nil {
+		t.Fatalf("GetMRR: %v", err)
+	}
+	if byEntity.TotalMRR != consolidated.NormalizedMRR {
+		t.Errorf("by-entity total = %d, consolidated = %d — the headline figures must agree",
+			byEntity.TotalMRR, consolidated.NormalizedMRR)
+	}
+	if byEntity.TotalMRR != 101 {
+		t.Errorf("total = %d, want 101 (round once per currency)", byEntity.TotalMRR)
+	}
+	var rowSum int64
+	for _, e := range byEntity.Entities {
+		rowSum += e.NormalizedMRR
+	}
+	if rowSum != 102 {
+		t.Errorf("row sum = %d, want 102 (rows are individually rounded — documented trade-off)", rowSum)
+	}
+}
+
 // Without an entity reader wired, the breakdown is empty (caller falls back to
 // consolidated GetMRR) — never an error.
 func TestGetMRRByEntity_NoReader(t *testing.T) {
