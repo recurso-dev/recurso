@@ -288,8 +288,15 @@ type LedgerTransaction struct {
 	LedgerID        uint32    `json:"ledger_id" db:"ledger_id"`
 	Code            uint16    `json:"code" db:"code"`
 	ReferenceID     uuid.UUID `json:"reference_id" db:"reference_id"` // Invoice/Payment ID
-	Description     string    `json:"description" db:"description"`
-	Timestamp       time.Time `json:"timestamp" db:"created_at"`
+	// Occurrence is the settle→reverse cycle counter in the idempotency key
+	// (reference_id, code, occurrence) — docs/design-ledger-occurrence.md. It is
+	// 0 for every posting outside the ACH settle/reverse cycle (the historical
+	// behavior); the settlement (3/11) and reversal (19) legs derive it from the
+	// invoice's count of prior code-19 reversals, so a re-collected returned
+	// invoice posts fresh legs while same-cycle duplicates still dedup.
+	Occurrence  uint16    `json:"occurrence" db:"occurrence"`
+	Description string    `json:"description" db:"description"`
+	Timestamp   time.Time `json:"timestamp" db:"created_at"`
 }
 
 // Helper struct for uint128 since Go doesn't have it native,

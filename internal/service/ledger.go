@@ -376,6 +376,20 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 	arID := s.arAccountID(ent, invoice.CustomerID)
 	var transfers []*domain.LedgerTransaction
 
+	// Occurrence = completed settle→reverse cycles (the invoice's code-19
+	// count): a re-collected returned invoice posts fresh legs instead of
+	// having them swallowed by the (reference, code, occurrence) dedup, while a
+	// same-cycle duplicate settle computes the same occurrence and still dedups
+	// (docs/design-ledger-occurrence.md). First-time settles get 0 — unchanged.
+	occurrence := uint16(0)
+	if s.pgRepo != nil {
+		n, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodePaymentReversal)
+		if err != nil {
+			return fmt.Errorf("ledger occurrence lookup failed for invoice %s: %w", invoice.ID, err)
+		}
+		occurrence = uint16(n)
+	}
+
 	// TDS leg: the customer withheld this portion and remits it to the
 	// government against the seller's PAN. It settles AR but is recovered
 	// against income tax, not from the customer — so it lands in TDS
@@ -397,6 +411,7 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 			LedgerID:        ent.LedgerID,
 			Code:            domain.LedgerCodeTDSReceivable,
 			ReferenceID:     invoice.ID,
+			Occurrence:      occurrence,
 			Description:     "TDS deducted at source on " + invoice.InvoiceNumber,
 			Timestamp:       time.Now(),
 		})
@@ -424,6 +439,7 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 			LedgerID:        ent.LedgerID,
 			Code:            3, // Payment
 			ReferenceID:     invoice.ID,
+			Occurrence:      occurrence,
 			Description:     "Payment for " + invoice.InvoiceNumber,
 			Timestamp:       time.Now(),
 		})
@@ -452,44 +468,62 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 }
 
 // RecordPaymentReversal reverses a settled payment the bank later clawed back
-// (an ACH return, Inc 3c) — the exact inverse of the Code-3 payment leg:
-// DR Accounts Receivable / CR Cash, so the cash is removed and the receivable
-// reinstated (the invoice reopens for collection). It posts the same collected
-// figure the settlement did (Total − CreditApplied − TDS; TDS is 0 for US ACH).
-// Idempotent via the (reference_id=invoice.ID, code=19) unique index — a
-// redelivered return webhook can't double-reverse. Never fails the caller's
-// business write (ADR-002): a broken posting is caught by reconciliation.
+// (an ACH return, Inc 3c): DR Accounts Receivable / CR Cash, so the cash is
+// removed and the receivable reinstated (the invoice reopens for collection).
+//
+// It inverts the ACTUAL latest Code-3 cash leg — same amount, same two accounts
+// swapped — rather than recomputing a figure from the invoice. That makes it
+// exact by construction: a wallet-part-funded settlement (whose cash leg was
+// net of the wallet drain) reverses only the net cash that was really posted,
+// and a fully credit/wallet-covered invoice (no cash leg) reverses nothing.
+//
+// Occurrence: the reversal INHERITS the occurrence of the cash leg it inverts.
+// A redelivered return in the same cycle finds the same latest cash leg,
+// computes the same occurrence, and dedups on the (reference_id, code,
+// occurrence) unique index; a genuine second return (after a re-collection)
+// finds the re-settle leg at the next occurrence and posts its own reversal.
+// (Deriving it from the code-19 count instead would be self-referential — a
+// duplicate would count its predecessor and land at a higher occurrence.)
+// docs/design-ledger-occurrence.md. Never fails the caller's business write
+// (ADR-002): a broken posting is caught by reconciliation.
 func (s *LedgerService) RecordPaymentReversal(ctx context.Context, invoice *domain.Invoice) error {
-	collected := invoice.Total - invoice.CreditApplied - invoice.TDSAmount
-	if collected <= 0 {
+	if s.pgRepo == nil {
+		return nil // no PG ledger — nothing to invert or post
+	}
+
+	cashLeg, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, 3)
+	if err != nil {
+		return fmt.Errorf("ledger reversal lookup failed for invoice %s: %w", invoice.ID, err)
+	}
+	if cashLeg == nil {
+		// No cash was ever collected (fully covered by account credit and/or a
+		// wallet drain) — there is nothing to claw back.
 		return nil
 	}
-	amount, err := ledgerAmount(collected)
-	if err != nil {
-		return fmt.Errorf("invoice %s: %w", invoice.ID, err)
+
+	// Reversals invert the cash leg only. TDS is never cash (it is withheld by
+	// the customer), and the TDS+reversal combination is unreachable today
+	// (reversals are US-ACH/USD; TDS is India/INR) — warn if that assumption
+	// ever breaks so the books can be reviewed (design non-goal).
+	if n, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeTDSReceivable); err == nil && n > 0 {
+		slog.Warn("payment reversal on a TDS invoice — TDS legs are not reversed; review the books",
+			"invoice_id", invoice.ID, "tds_legs", n)
 	}
-	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
-	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
-	arID := s.arAccountID(ent, invoice.CustomerID)
-	cashAccountID, err := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeCash, "Cash", domain.AccountTypeAsset)
-	if err != nil {
-		return fmt.Errorf("ledger reversal failed for invoice %s: %w", invoice.ID, err)
-	}
+
 	transfer := &domain.LedgerTransaction{
 		ID:              uuid.New(),
-		DebitAccountID:  arID,          // Accounts Receivable — reinstated
-		CreditAccountID: cashAccountID, // Cash — removed
-		Amount:          amount,
-		LedgerID:        ent.LedgerID,
+		DebitAccountID:  cashLeg.CreditAccountID, // Accounts Receivable — reinstated
+		CreditAccountID: cashLeg.DebitAccountID,  // Cash — removed
+		Amount:          cashLeg.Amount,
+		LedgerID:        cashLeg.LedgerID,
 		Code:            domain.LedgerCodePaymentReversal,
 		ReferenceID:     invoice.ID,
+		Occurrence:      cashLeg.Occurrence, // inherit the leg being inverted
 		Description:     "ACH return / payment reversal for " + invoice.InvoiceNumber,
 		Timestamp:       time.Now(),
 	}
-	if s.pgRepo != nil {
-		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			return fmt.Errorf("ledger reversal write failed for invoice %s: %w", invoice.ID, err)
-		}
+	if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
+		return fmt.Errorf("ledger reversal write failed for invoice %s: %w", invoice.ID, err)
 	}
 	if s.tbClient != nil {
 		return s.tbClient.CreateTransfers(ctx, []*domain.LedgerTransaction{transfer})

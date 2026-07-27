@@ -21,6 +21,14 @@ type LedgerRepository interface {
 	// CreateTransactions posts several transfers atomically (one DB transaction),
 	// so a multi-leg posting can't be left half-committed.
 	CreateTransactions(ctx context.Context, txs []*domain.LedgerTransaction) error
+	// CountTransactionsByReferenceAndCode counts posted legs of one code for a
+	// reference. The ACH settle/reverse cycle uses the code-19 count as its
+	// occurrence counter (docs/design-ledger-occurrence.md).
+	CountTransactionsByReferenceAndCode(ctx context.Context, referenceID uuid.UUID, code uint16) (int, error)
+	// GetLatestTransactionByReferenceAndCode returns the highest-occurrence leg
+	// of one code for a reference (nil when none). The ACH reversal inverts the
+	// actual latest cash leg rather than recomputing its amount.
+	GetLatestTransactionByReferenceAndCode(ctx context.Context, referenceID uuid.UUID, code uint16) (*domain.LedgerTransaction, error)
 	GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error)
 	// GetTrialBalanceLines returns each of the tenant's accounts with its posted
 	// debit and credit totals (minor units). Balance/Abnormal are computed by the

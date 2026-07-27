@@ -44,6 +44,10 @@ func TestReverseSettledPayment_ReopensAndPostsReversal(t *testing.T) {
 		},
 		reverseReturns: true,
 	}
+	// The invoice settled earlier — the reversal inverts this actual cash leg.
+	if err := ledger.RecordPaymentWithSettled(context.Background(), repo.inv, 0); err != nil {
+		t.Fatalf("seed settlement: %v", err)
+	}
 	svc := newReversalSubService(repo, ledger)
 
 	reversed, err := svc.ReverseSettledPayment(context.Background(), repo.inv.ID)
@@ -56,8 +60,13 @@ func TestReverseSettledPayment_ReopensAndPostsReversal(t *testing.T) {
 	if repo.reverseCalls != 1 {
 		t.Errorf("ReverseToUnpaid called %d times, want 1", repo.reverseCalls)
 	}
-	if len(ledgerRepo.transactions) != 1 || ledgerRepo.transactions[0].Code != domain.LedgerCodePaymentReversal {
-		t.Fatalf("expected exactly one reversal leg (code 19), got %+v", ledgerRepo.transactions)
+	// Settlement leg + exactly one reversal leg (code 19) inverting it.
+	if len(ledgerRepo.transactions) != 2 {
+		t.Fatalf("expected settlement + one reversal leg, got %d: %+v", len(ledgerRepo.transactions), ledgerRepo.transactions)
+	}
+	rev := ledgerRepo.transactions[1]
+	if rev.Code != domain.LedgerCodePaymentReversal || rev.Amount != 1000 {
+		t.Fatalf("reversal leg = code %d amount %d, want code 19 amount 1000", rev.Code, rev.Amount)
 	}
 }
 
