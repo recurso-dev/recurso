@@ -197,9 +197,12 @@ export default function IntegrationConnections() {
     try {
       const res = await api.syncCRMNow();
       const n = res.data?.data?.contacts_synced ?? 0;
+      const rest = res.data?.data?.contacts_remaining ?? 0;
       toast.success(
         n > 0
-          ? `Synced ${n} contact${n === 1 ? "" : "s"} to your CRM.`
+          ? rest > 0
+            ? `Synced ${n} contacts — ${rest} more will follow in the daily sync.`
+            : `Synced ${n} contact${n === 1 ? "" : "s"} to your CRM.`
           : "Connection works — no contacts with an email to sync yet.",
       );
     } catch (err) {

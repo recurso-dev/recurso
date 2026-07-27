@@ -13,8 +13,15 @@ import (
 
 // crmTenantSyncer is the worker slice this handler needs; *worker.CRMSyncWorker.
 type crmTenantSyncer interface {
-	RunTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	RunTenant(ctx context.Context, tenantID uuid.UUID, maxContacts int) (int, int, error)
 }
+
+// manualSyncBatch caps how many contacts one "Sync now" click pushes. The
+// click exists to VERIFY a connection; an unbounded sweep can outlive the
+// CDN's ~100s proxy timeout on big tenants and the browser sees a bare
+// failure while the server keeps (partially) syncing. The daily sweep is
+// the unbounded backfill.
+const manualSyncBatch = 25
 
 // CRMSyncHandler exposes the manual "sync now" for a tenant's CRM connection —
 // how a fresh HubSpot token gets tested without waiting for the daily sweep.
@@ -38,7 +45,7 @@ func (h *CRMSyncHandler) SyncNow(c *gin.Context) {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "CRM sync is not enabled on this server")
 		return
 	}
-	synced, err := h.syncer.RunTenant(c.Request.Context(), tenantID)
+	synced, remaining, err := h.syncer.RunTenant(c.Request.Context(), tenantID, manualSyncBatch)
 	switch {
 	case errors.Is(err, worker.ErrCRMNotConfigured):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
@@ -49,5 +56,5 @@ func (h *CRMSyncHandler) SyncNow(c *gin.Context) {
 		respondError(c, http.StatusBadGateway, codeInternalError, "CRM sync failed: "+err.Error())
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": gin.H{"contacts_synced": synced}})
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"contacts_synced": synced, "contacts_remaining": remaining}})
 }
