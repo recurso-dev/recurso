@@ -239,3 +239,40 @@ func TestTaxJar_NonExempt_OmitsExemptionType(t *testing.T) {
 		t.Errorf("non-exempt request must omit exemption_type, got %v", gotBody["exemption_type"])
 	}
 }
+
+// Declared nexus states are asserted as nexus_addresses (country+state);
+// without declarations the field is omitted entirely, deferring to the
+// TaxJar account's own nexus configuration.
+func TestTaxJar_NexusAddresses(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(caResponse))
+	}))
+	defer srv.Close()
+	p := NewTaxJarProvider("test-key", srv.URL)
+
+	q := caQuery()
+	q.NexusStates = []string{" tx ", "CA"}
+	if _, err := p.LookupSalesTax(context.Background(), q); err != nil {
+		t.Fatalf("LookupSalesTax: %v", err)
+	}
+	addrs, ok := gotBody["nexus_addresses"].([]any)
+	if !ok || len(addrs) != 2 {
+		t.Fatalf("nexus_addresses = %v, want 2 entries", gotBody["nexus_addresses"])
+	}
+	first := addrs[0].(map[string]any)
+	if first["country"] != "US" || first["state"] != "TX" {
+		t.Errorf("first nexus address = %v, want US/TX (trimmed, uppercased)", first)
+	}
+
+	// No declarations → field omitted (provider-account nexus applies).
+	gotBody = nil
+	if _, err := p.LookupSalesTax(context.Background(), caQuery()); err != nil {
+		t.Fatalf("LookupSalesTax: %v", err)
+	}
+	if _, present := gotBody["nexus_addresses"]; present {
+		t.Error("nexus_addresses must be omitted when no states are declared")
+	}
+}

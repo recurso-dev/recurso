@@ -91,6 +91,18 @@ type taxJarOrderRequest struct {
 	// amount_to_collect 0 (Track D · D2). One of TaxJar's categories:
 	// wholesale, government, marketplace, other, non_exempt.
 	ExemptionType string `json:"exemption_type,omitempty"`
+	// NexusAddresses assert Recurso-declared nexus states. Without them (and
+	// without a from-address) TaxJar falls back to the ACCOUNT's nexus
+	// settings — a fresh account silently computes $0 with has_nexus=false.
+	NexusAddresses []taxJarNexusAddress `json:"nexus_addresses,omitempty"`
+}
+
+// taxJarNexusAddress is one entry of nexus_addresses; country+state suffice
+// (verified against the sandbox: state-only nexus returns the full
+// destination-based combined rate).
+type taxJarNexusAddress struct {
+	Country string `json:"country"`
+	State   string `json:"state"`
 }
 
 // taxJarExemptionType maps a provider-agnostic entity-use code to TaxJar's
@@ -147,6 +159,11 @@ func (p *TaxJarProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQuer
 	}
 	if q.IsExempt() {
 		reqBody.ExemptionType = taxJarExemptionType(q.EntityUseCode)
+	}
+	for _, st := range q.NexusStates {
+		if st = strings.ToUpper(strings.TrimSpace(st)); st != "" {
+			reqBody.NexusAddresses = append(reqBody.NexusAddresses, taxJarNexusAddress{Country: "US", State: st})
+		}
 	}
 	body, err := json.Marshal(reqBody)
 	if err != nil {
