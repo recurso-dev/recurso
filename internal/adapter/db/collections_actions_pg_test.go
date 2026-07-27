@@ -167,3 +167,58 @@ func containsInvoice(invs []*domain.Invoice, id uuid.UUID) bool {
 	}
 	return false
 }
+
+// TestRequeueForRetry_InFlightGuardIsAtomic proves the QA fix for the TOCTOU
+// gap: even when the service-layer pre-check is bypassed entirely (as a webhook
+// racing the eligibility read effectively does), the requeue's own WHERE clause
+// refuses an invoice with an in-flight payment attempt — no second charge can
+// be scheduled on top of a settling ACH debit.
+func TestRequeueForRetry_InFlightGuardIsAtomic(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed atomic in-flight test")
+	}
+	if err := RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx := context.Background()
+	run := uuid.New().String()[:8]
+	repo := NewInvoiceRepository(conn).(*InvoiceRepository)
+
+	tenantID, custID := seedCreditAppTenantCustomer(t, conn)
+	invoiceID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied, status, invoice_number, created_at, due_date)
+		 VALUES ($1,$2,$3,'USD',10000,10000,0,0,'past_due',$4,NOW(),NOW() - INTERVAL '5 days')`,
+		invoiceID, tenantID, custID, "IFA-"+run); err != nil {
+		t.Fatalf("seed invoice: %v", err)
+	}
+	// A processing (in-flight) ACH attempt — exactly what a racing
+	// payment_intent.processing webhook writes.
+	attemptID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO payment_attempts (id, tenant_id, invoice_id, gateway, method, gateway_payment_intent_id, status, amount, created_at)
+		 VALUES ($1,$2,$3,'stripe','us_bank_account',$4,'processing',10000,NOW())`,
+		attemptID, tenantID, invoiceID, "pi_ifa_"+run); err != nil {
+		t.Fatalf("seed attempt: %v", err)
+	}
+
+	// Direct repo call (service guard bypassed) → refused by the SQL itself.
+	if ok, err := repo.RequeueForRetry(ctx, tenantID, invoiceID); err != nil || ok {
+		t.Fatalf("RequeueForRetry with in-flight attempt: ok=%v err=%v, want refused (false, nil)", ok, err)
+	}
+
+	// The attempt settles → requeue is allowed again.
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE payment_attempts SET status='succeeded', settled_at=NOW() WHERE id=$1`, attemptID); err != nil {
+		t.Fatalf("settle attempt: %v", err)
+	}
+	if ok, err := repo.RequeueForRetry(ctx, tenantID, invoiceID); err != nil || !ok {
+		t.Fatalf("RequeueForRetry after settle: ok=%v err=%v, want allowed", ok, err)
+	}
+}

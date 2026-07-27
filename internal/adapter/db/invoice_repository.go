@@ -770,10 +770,13 @@ func (r *InvoiceRepository) GetRetryEligibility(ctx context.Context, tenantID, i
 // immediate attempt (Collections Intelligence Inc 3, "retry now"): it sets
 // next_retry_at to now and dunning_managed_by='worker' so the next worker tick
 // (≤10s) claims it. The WHERE clause is the safety envelope — it fires only for a
-// tenant-owned, currently-past_due, un-paused, NON-mandate invoice, so a manual
-// retry can never double-charge a UPI mandate (ENG-168) or fight a paused row.
-// The caller separately rejects invoices with an in-flight attempt. Returns true
-// iff a row was requeued.
+// tenant-owned, currently-past_due, un-paused, NON-mandate invoice with NO
+// in-flight payment attempt, so a manual retry can never double-charge a UPI
+// mandate (ENG-168), fight a paused row, or stack a second charge on an ACH
+// debit that is still settling. The in-flight check is INSIDE the atomic UPDATE
+// (not just the caller's pre-read) so a payment_intent.processing webhook
+// landing between the eligibility read and this statement still blocks the
+// requeue. Returns true iff a row was requeued.
 func (r *InvoiceRepository) RequeueForRetry(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
@@ -782,6 +785,11 @@ func (r *InvoiceRepository) RequeueForRetry(ctx context.Context, tenantID, invoi
 		  AND status = 'past_due'
 		  AND NOT dunning_paused
 		  AND mandate_cycle_key IS NULL
+		  AND NOT EXISTS (
+			SELECT 1 FROM payment_attempts pa
+			WHERE pa.invoice_id = invoices.id
+			  AND pa.status IN ('initiated', 'processing')
+		  )
 	`, invoiceID, tenantID)
 	if err != nil {
 		return false, fmt.Errorf("failed to requeue invoice for retry: %w", err)
