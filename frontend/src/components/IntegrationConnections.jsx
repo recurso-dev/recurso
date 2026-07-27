@@ -76,9 +76,9 @@ const SECTIONS = [
         ],
         guide: {
           steps: [
-            "In HubSpot, open Settings (gear) → Integrations → Private Apps.",
-            "Create a private app (any name) and grant it the crm.objects.contacts Read and Write scopes.",
-            "Create the app, open its Auth tab, and copy the access token (starts with pat-).",
+            "In HubSpot: Settings (gear) → Integrations → Private Apps. On the new developer platform, they moved: Development → Legacy Apps → Go to Legacy Apps.",
+            "Create the app (any name) and grant it the crm.objects.contacts Read and Write scopes.",
+            "Open the app's Auth tab and copy the access token (starts with pat-). A developer API key will NOT work here.",
           ],
           url: "https://app.hubspot.com/l/private-apps",
           urlLabel: "Open HubSpot private apps",
