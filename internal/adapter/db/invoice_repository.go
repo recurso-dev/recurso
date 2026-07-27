@@ -830,7 +830,7 @@ func (r *InvoiceRepository) SetDunningPaused(ctx context.Context, tenantID, invo
 func (r *InvoiceRepository) MarkUncollectibleScoped(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
-		SET status = 'uncollectible', next_retry_at = NULL, updated_at = NOW()
+		SET status = 'uncollectible', next_retry_at = NULL, marked_uncollectible_at = NOW(), updated_at = NOW()
 		WHERE id = $1 AND tenant_id = $2 AND status IN ('open', 'past_due')
 	`, invoiceID, tenantID)
 	if err != nil {
@@ -872,6 +872,22 @@ func (r *InvoiceRepository) GetOutstandingByEntity(ctx context.Context, tenantID
 		out = append(out, row)
 	}
 	return out, rows.Err()
+}
+
+// CountUncollectibleSince counts invoices written off at-or-after `since` — the
+// written-off side of the windowed recovery-rate cohort (QA finding D). Rows
+// written off before migration 000147 carry a best-effort backfilled timestamp.
+func (r *InvoiceRepository) CountUncollectibleSince(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM invoices
+		WHERE tenant_id = $1 AND status = 'uncollectible'
+		  AND marked_uncollectible_at IS NOT NULL AND marked_uncollectible_at >= $2`,
+		tenantID, since).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count uncollectible since: %w", err)
+	}
+	return n, nil
 }
 
 // GetCollectionsAtRisk aggregates invoices still owing money in a recovery
@@ -1153,8 +1169,8 @@ func (r *InvoiceRepository) SetGatewayPaymentID(ctx context.Context, tenantID, i
 // MarkAsUncollectible marks an invoice as uncollectible after max retries
 func (r *InvoiceRepository) MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error {
 	query := `
-		UPDATE invoices 
-		SET status = 'uncollectible', next_retry_at = NULL
+		UPDATE invoices
+		SET status = 'uncollectible', next_retry_at = NULL, marked_uncollectible_at = NOW()
 		WHERE id = $1
 	`
 	_, err := r.db.ExecContext(ctx, query, invoiceID)

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -11,8 +12,9 @@ import (
 
 // stubCollectionsAgg feeds the funnel + failure breakdown fixed invoice-side rows.
 type stubCollectionsAgg struct {
-	atRisk   []domain.CollectionsAtRiskRow
-	failures []domain.CollectionsFailureRow
+	atRisk          []domain.CollectionsAtRiskRow
+	failures        []domain.CollectionsFailureRow
+	writtenOffSince int // windowed write-off count for the cohort rate
 }
 
 func (s *stubCollectionsAgg) GetCollectionsAtRisk(_ context.Context, _ uuid.UUID) ([]domain.CollectionsAtRiskRow, error) {
@@ -21,22 +23,37 @@ func (s *stubCollectionsAgg) GetCollectionsAtRisk(_ context.Context, _ uuid.UUID
 func (s *stubCollectionsAgg) GetCollectionsFailureBreakdown(_ context.Context, _ uuid.UUID) ([]domain.CollectionsFailureRow, error) {
 	return s.failures, nil
 }
+func (s *stubCollectionsAgg) CountUncollectibleSince(_ context.Context, _ uuid.UUID, _ time.Time) (int, error) {
+	return s.writtenOffSince, nil
+}
 
 // The funnel sums past_due vs uncollectible from the invoice side, recovered from
-// the recovered-payments repo, and computes recovery rate over concluded cases
-// (recovered vs written-off) — in-flight past_due does not dilute the rate.
+// the recovered-payments repo, and computes the recovery rate as a WINDOWED
+// concluded cohort (recoveries vs write-offs in the trailing window) — neither
+// in-flight past_due nor ancient history dilutes it.
 func TestGetCollectionsFunnel(t *testing.T) {
 	repo := newMockRecoveredPaymentRepo()
 	repo.totals = &domain.RecoveryTotals{
 		RecoveredAmountTotal: map[string]int64{"USD": 30000},
 		RecoveredCount:       6,
 	}
+	// 3 recoveries inside the 90-day window, 1 ancient one outside it — the
+	// windowed rate must count only the 3.
+	now := time.Now().UTC()
+	for i := 0; i < 3; i++ {
+		id := uuid.New()
+		repo.records[id] = &domain.RecoveredPayment{InvoiceID: id, RecoveredAt: now.AddDate(0, 0, -7)}
+	}
+	ancient := uuid.New()
+	repo.records[ancient] = &domain.RecoveredPayment{InvoiceID: ancient, RecoveredAt: now.AddDate(-1, 0, 0)}
+
 	svc := NewDunningRecoveryService(repo, "")
 	svc.SetCollectionsAggregator(&stubCollectionsAgg{
 		atRisk: []domain.CollectionsAtRiskRow{
 			{Status: "past_due", Currency: "USD", Count: 4, Amount: 40000},
 			{Status: "uncollectible", Currency: "USD", Count: 2, Amount: 15000},
 		},
+		writtenOffSince: 1, // one write-off concluded inside the window
 	})
 
 	funnel, err := svc.GetCollectionsFunnel(context.Background(), uuid.New())
@@ -50,11 +67,15 @@ func TestGetCollectionsFunnel(t *testing.T) {
 		t.Errorf("uncollectible = %+v, want {2, 15000}", funnel.Uncollectible)
 	}
 	if funnel.Recovered.Count != 6 || funnel.Recovered.Amount != 30000 {
-		t.Errorf("recovered = %+v, want {6, 30000}", funnel.Recovered)
+		t.Errorf("recovered = %+v, want {6, 30000} (all-time bucket unchanged)", funnel.Recovered)
 	}
-	// recovered 6 / (recovered 6 + uncollectible 2) = 0.75
+	// Windowed cohort: 3 in-window recoveries / (3 + 1 write-off) = 0.75 — the
+	// ancient recovery and the all-time bucket count play no part.
 	if funnel.RecoveryRate < 0.749 || funnel.RecoveryRate > 0.751 {
-		t.Errorf("recovery_rate = %f, want 0.75", funnel.RecoveryRate)
+		t.Errorf("recovery_rate = %f, want 0.75 (windowed cohort)", funnel.RecoveryRate)
+	}
+	if funnel.RateWindowDays != 90 {
+		t.Errorf("rate_window_days = %d, want 90", funnel.RateWindowDays)
 	}
 	if funnel.ReportingCurrency != "USD" {
 		t.Errorf("reporting currency = %q, want USD", funnel.ReportingCurrency)

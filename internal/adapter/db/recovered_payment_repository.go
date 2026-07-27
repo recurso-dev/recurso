@@ -3,6 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -32,6 +34,19 @@ func (r *RecoveredPaymentRepository) Insert(ctx context.Context, rec *domain.Rec
 		rec.Attempts, rec.Strategy, rec.CampaignID, rec.DaysToRecover, rec.RecoveredAt,
 	)
 	return err
+}
+
+// CountRecoveredSince counts recoveries at-or-after `since` — the recovered
+// side of the windowed recovery-rate cohort (QA finding D).
+func (r *RecoveredPaymentRepository) CountRecoveredSince(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM recovered_payments WHERE tenant_id = $1 AND recovered_at >= $2`,
+		tenantID, since).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("count recovered since: %w", err)
+	}
+	return n, nil
 }
 
 // GetRecoveryTotals returns tenant-scoped aggregate recovery stats.

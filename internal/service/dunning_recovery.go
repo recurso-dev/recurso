@@ -19,6 +19,9 @@ type RecoveredPaymentRepository interface {
 	Insert(ctx context.Context, rec *domain.RecoveredPayment) error
 	GetRecoveryTotals(ctx context.Context, tenantID uuid.UUID) (*domain.RecoveryTotals, error)
 	GetMonthlyRecoveries(ctx context.Context, tenantID uuid.UUID, months int) ([]domain.RecoveryMonthBucket, error)
+	// CountRecoveredSince counts recoveries in a trailing window — the
+	// recovered side of the windowed recovery-rate cohort.
+	CountRecoveredSince(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, error)
 }
 
 // CampaignExecutionLookup resolves the dunning campaign (if any) driving an
@@ -73,6 +76,9 @@ type DunningRecoveryService struct {
 type collectionsAggregator interface {
 	GetCollectionsAtRisk(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsAtRiskRow, error)
 	GetCollectionsFailureBreakdown(ctx context.Context, tenantID uuid.UUID) ([]domain.CollectionsFailureRow, error)
+	// CountUncollectibleSince counts write-offs in a trailing window — the
+	// written-off side of the windowed recovery-rate cohort.
+	CountUncollectibleSince(ctx context.Context, tenantID uuid.UUID, since time.Time) (int, error)
 }
 
 // NewDunningRecoveryService builds the service. strategy is the tenant-wide
@@ -280,18 +286,27 @@ type CollectionsBucket struct {
 	Amount int64 `json:"amount"`
 }
 
+// recoveryRateWindowDays is the trailing cohort window for RecoveryRate. Long
+// enough to smooth week-to-week noise, short enough that the KPI reflects the
+// CURRENT engine — the old all-time numerator drifted monotonically upward as
+// the business aged (QA finding D).
+const recoveryRateWindowDays = 90
+
 // CollectionsFunnel is the failed → resolved journey of billed revenue
-// (Collections Intelligence Inc 2). PastDue is money still being chased,
-// Uncollectible is written off, Recovered is what the engine clawed back
-// (all-time). RecoveryRate is recovered ÷ (recovered + uncollectible) — of the
-// cases that have *concluded*, the fraction saved — so in-flight past_due
-// doesn't drag it down.
+// (Collections Intelligence Inc 2). PastDue is money still being chased
+// (current snapshot), Uncollectible is written off (current snapshot),
+// Recovered is what the engine clawed back (all-time) — each labeled for what
+// it is. RecoveryRate is a WINDOWED cohort: of the cases that CONCLUDED in the
+// trailing RateWindowDays (recovered or written off, both timestamped), the
+// fraction saved — so it neither drifts with business age nor gets dragged
+// down by in-flight past_due.
 type CollectionsFunnel struct {
 	ReportingCurrency string            `json:"reporting_currency"`
 	PastDue           CollectionsBucket `json:"past_due"`
 	Uncollectible     CollectionsBucket `json:"uncollectible"`
 	Recovered         CollectionsBucket `json:"recovered"`
 	RecoveryRate      float64           `json:"recovery_rate"`
+	RateWindowDays    int               `json:"rate_window_days"`
 }
 
 // CollectionsFailureBucket is one failure reason ranked by money at risk, in the
@@ -360,10 +375,25 @@ func (s *DunningRecoveryService) GetCollectionsFunnel(ctx context.Context, tenan
 		}
 	}
 
-	// Recovery rate over concluded cases only (recovered vs written off).
-	concluded := funnel.Recovered.Count + funnel.Uncollectible.Count
-	if concluded > 0 {
-		funnel.RecoveryRate = float64(funnel.Recovered.Count) / float64(concluded)
+	// Recovery rate = windowed concluded cohort: recoveries vs write-offs that
+	// happened in the trailing window, both sides timestamped (recovered_at /
+	// marked_uncollectible_at). Mixing the all-time recovered count with the
+	// current uncollectible snapshot — the previous formula — made the KPI
+	// drift upward forever as recoveries accumulated (QA finding D).
+	funnel.RateWindowDays = recoveryRateWindowDays
+	if s.repo != nil && s.collectionsAgg != nil {
+		since := s.now().AddDate(0, 0, -recoveryRateWindowDays)
+		recovered, err := s.repo.CountRecoveredSince(ctx, tenantID, since)
+		if err != nil {
+			return nil, err
+		}
+		writtenOff, err := s.collectionsAgg.CountUncollectibleSince(ctx, tenantID, since)
+		if err != nil {
+			return nil, err
+		}
+		if concluded := recovered + writtenOff; concluded > 0 {
+			funnel.RecoveryRate = float64(recovered) / float64(concluded)
+		}
 	}
 	return funnel, nil
 }
