@@ -237,6 +237,11 @@ var (
 	ErrGiftAlreadyRedeemed = errors.New("a redeemed gift cannot be canceled")
 	ErrGiftAlreadyCanceled = errors.New("gift is already canceled")
 	ErrGiftCreditUnwired   = errors.New("credit issuance is not configured; cannot cancel a paid gift")
+	// ErrGiftCanceledCreditFailed marks the partial-success outcome: the gift IS
+	// canceled, but compensating the buyer failed and needs a manual credit
+	// note. Handlers must surface this message verbatim — hiding it behind a
+	// generic 500 would leave the operator unaware a manual step is owed.
+	ErrGiftCanceledCreditFailed = errors.New("gift canceled, but issuing the buyer credit failed — issue a manual credit note")
 )
 
 // GiftCancelResult reports what canceling did with the buyer's money.
@@ -344,7 +349,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 		// checkout) and credit issuance isn't wired. Never leave this silent.
 		slog.Error("gift canceled but credit issuance is UNWIRED — issue the buyer's credit manually",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total)
-		return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", ErrGiftCreditUnwired)
+		return nil, fmt.Errorf("%w (credit issuance is not configured)", ErrGiftCanceledCreditFailed)
 	}
 	cn, err := s.creditNotes.Create(ctx, tenantID, actorID, actorRole, domain.CreateCreditNoteRequest{
 		CustomerID: gift.BuyerCustomerID,
@@ -359,7 +364,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 		// operator retries via a manual credit note. Never leave this silent.
 		slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total, "error", err)
-		return nil, fmt.Errorf("gift canceled, but issuing the buyer credit failed: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrGiftCanceledCreditFailed, err)
 	}
 	result.CreditNote = cn
 	return result, nil

@@ -140,8 +140,8 @@ func TestCancelGift_PaymentRacesCancel(t *testing.T) {
 	svc := NewGiftService(repo, nil, &InvoiceService{InvoiceRepo: invRepo}, nil, nil) // credit unwired
 
 	_, err := svc.CancelGift(context.Background(), g.TenantID, g.ID, uuid.New(), "admin")
-	if !errors.Is(err, ErrGiftCreditUnwired) {
-		t.Fatalf("raced payment with unwired credit must surface loudly, got %v", err)
+	if !errors.Is(err, ErrGiftCanceledCreditFailed) {
+		t.Fatalf("raced payment with unwired credit must surface the partial-success sentinel, got %v", err)
 	}
 	if invRepo.inv.Status != domain.InvoiceStatusPaid {
 		t.Fatalf("test setup: invoice should have been paid mid-cancel, is %s", invRepo.inv.Status)
