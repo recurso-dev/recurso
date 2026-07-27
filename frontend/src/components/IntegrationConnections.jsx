@@ -72,16 +72,21 @@ const SECTIONS = [
         id: "hubspot",
         name: "HubSpot",
         fields: [
-          { key: "access_token", label: "Private-app access token", secret: true, placeholder: "pat-na1-…" },
+          {
+            key: "access_token",
+            label: "Access token (Service Key or private-app token)",
+            secret: true,
+            placeholder: "Service Key or pat-na1-…",
+          },
         ],
         guide: {
           steps: [
-            "In HubSpot: Settings (gear) → Integrations → Private Apps. On the new developer platform, they moved: Development → Legacy Apps → Go to Legacy Apps.",
-            "Create the app (any name) and grant it the crm.objects.contacts Read and Write scopes.",
-            "Open the app's Auth tab and copy the access token (starts with pat-). A developer API key will NOT work here.",
+            "Recommended — Service Key (HubSpot's new path for single-account API access): Development → Keys → Service Keys → Create service key, with the crm.objects.contacts Read and Write scopes.",
+            "Or a private app: Settings → Integrations → Private Apps (new platform: Development → Legacy Apps), same scopes; copy the pat- token from its Auth tab.",
+            "Either credential pastes here — both authenticate the same way. A developer API key will NOT work.",
           ],
           url: "https://app.hubspot.com/l/private-apps",
-          urlLabel: "Open HubSpot private apps",
+          urlLabel: "Open HubSpot developer tools",
         },
       },
     ],

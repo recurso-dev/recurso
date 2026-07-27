@@ -179,6 +179,19 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 		return
 	}
 
+	// Without operator credentials the handoff would reach the provider with
+	// an empty client_id and die on THEIR error page ("Invalid client_id") —
+	// fail here with an actionable message instead.
+	if config.ClientID == "" {
+		envHint := map[string]string{
+			"quickbooks": "QBO_CLIENT_ID / QBO_CLIENT_SECRET",
+			"xero":       "XERO_CLIENT_ID / XERO_CLIENT_SECRET",
+		}[provider]
+		respondError(c, http.StatusServiceUnavailable, codeInternalError,
+			provider+" OAuth is not configured on this server — the operator must register a "+provider+" developer app and set "+envHint)
+		return
+	}
+
 	tenantID, _ := c.MustGet("tenant_id").(uuid.UUID)
 	state := h.generateOAuthState(tenantID, provider)
 
