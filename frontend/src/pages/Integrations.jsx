@@ -235,9 +235,14 @@ const Integrations = () => {
     },
     {
       key: "external_id",
-      header: "External ID",
+      header: "Record",
+      // Success rows show the provider's id; error rows fall back to the
+      // INTERNAL entity id, so the operator can find which invoice/customer
+      // failed (an error row with "—" was un-actionable).
       cell: (l) => (
-        <span className="font-mono text-xs text-muted-foreground">{l.external_id || "—"}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {l.external_id || (l.entity_id ? `${String(l.entity_id).slice(0, 8)}… (internal)` : "—")}
+        </span>
       ),
     },
     {
