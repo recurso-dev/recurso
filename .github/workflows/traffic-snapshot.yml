@@ -15,12 +15,23 @@ jobs:
     steps:
       - name: Fetch traffic + repo stats
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The traffic API requires push access; if the default token is
+          # refused, add a classic PAT with repo scope as TRAFFIC_TOKEN.
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           day=$(date -u +%F)
-          api() { curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO$1"; }
+          api() {
+            local out code
+            out=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO$1")
+            code=${out##*$'\n'}
+            if [ "$code" != "200" ]; then
+              echo "::error::GET $1 returned $code — if 403, add a TRAFFIC_TOKEN secret (classic PAT, repo scope)" >&2
+              return 1
+            fi
+            printf '%s' "${out%$'\n'*}"
+          }
           jq -n \
             --arg date "$day" \
             --argjson clones    "$(api /traffic/clones)" \
