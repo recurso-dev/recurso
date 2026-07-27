@@ -166,12 +166,37 @@ func (h *WebhookHandler) handleGoCardlessPaymentEvent(c *gin.Context, ev gcEvent
 		h.logger.Warn("GoCardless debit did not settle; invoice remains open for dunning",
 			"payment", ev.Links.Payment, "action", ev.Action)
 	case "charged_back", "late_failure":
-		// The SEPA/Bacs equivalent of an ACH late return: money already
-		// settled can be pulled back. Reversal bookkeeping (ledger code 19 +
-		// invoice reopen) is a tracked follow-up — flag loudly for manual
-		// reconciliation instead of guessing at the books.
-		h.logger.Error("GoCardless payment reversed after settlement — BOOKS NEED REVIEW (manual reconciliation)",
-			"payment", ev.Links.Payment, "action", ev.Action)
+		// The SEPA/Bacs equivalent of an ACH late return: money that already
+		// settled is pulled back by the bank. Unlike Stripe (where returns
+		// arrive dressed as refunds and need classification guards, #210),
+		// GoCardless models merchant refunds as a separate resource — a
+		// payments.charged_back/late_failure is unambiguously involuntary.
+		repo, ok := h.invoiceRepo.(invoiceByGatewayPayment)
+		if !ok || h.subService == nil {
+			h.logger.Error("GoCardless payment reversed after settlement but reversal path not configured — BOOKS NEED REVIEW",
+				"payment", ev.Links.Payment, "action", ev.Action)
+			return nil
+		}
+		inv, err := repo.GetByGatewayPaymentIDPublic(ctx, ev.Links.Payment)
+		if err != nil {
+			return err // transient: leave unprocessed so GoCardless redelivers
+		}
+		if inv == nil {
+			h.logger.Warn("GoCardless payment reversed but no invoice references it — ignoring",
+				"payment", ev.Links.Payment, "action", ev.Action)
+			return nil
+		}
+		// ReverseSettledPayment is idempotent on the paid guard: it reopens
+		// (paid -> past_due) and posts the inverse cash leg (code 19,
+		// occurrence-aware) only on the transitioning delivery. The reopened
+		// invoice re-enters dunning on its normal cadence.
+		ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+		reversed, err := h.subService.ReverseSettledPayment(ctxWithTenant, inv.ID)
+		if err != nil {
+			return err
+		}
+		h.logger.Warn("GoCardless payment clawed back — settlement reversed",
+			"payment", ev.Links.Payment, "action", ev.Action, "invoice_id", inv.ID, "reversed", reversed)
 	}
 	return nil
 }

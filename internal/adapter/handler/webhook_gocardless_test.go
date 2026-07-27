@@ -149,3 +149,62 @@ func TestGoCardlessWebhook_FailedPaymentLeavesInvoiceOpen(t *testing.T) {
 		t.Fatalf("failed payment: got %d want 200", got)
 	}
 }
+
+// gcReturnRepo serves the gateway-payment lookup AND the reads
+// ReverseSettledPayment makes, so the chargeback chain runs in memory.
+type gcReturnRepo struct {
+	port.InvoiceRepository
+	inv          *domain.Invoice
+	reverseCalls int
+}
+
+func (r *gcReturnRepo) GetByGatewayPaymentIDPublic(_ context.Context, id string) (*domain.Invoice, error) {
+	if id == "PM_CB" {
+		return r.inv, nil
+	}
+	return nil, nil
+}
+func (r *gcReturnRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Invoice, error) {
+	return r.inv, nil
+}
+func (r *gcReturnRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID) (bool, error) {
+	r.reverseCalls++
+	r.inv.Status = domain.InvoiceStatusPastDue
+	return true, nil
+}
+
+func TestGoCardlessWebhook_ChargebackReversesSettlement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOCARDLESS_WEBHOOK_SECRET", "whsec")
+	repo := &gcReturnRepo{inv: &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), Status: domain.InvoiceStatusPaid, Total: 5000,
+	}}
+	subSvc := service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := &WebhookHandler{
+		logger:         slog.Default(),
+		mandateService: &service.MandateService{},
+		invoiceRepo:    repo,
+		subService:     subSvc,
+	}
+
+	body := []byte(`{"events":[{"id":"EVCB1","resource_type":"payments","action":"charged_back","links":{"payment":"PM_CB"}}]}`)
+	if got := postGoCardless(h, body, gcSign("whsec", body), "").Code; got != http.StatusOK {
+		t.Fatalf("chargeback: got %d want 200", got)
+	}
+	if repo.reverseCalls != 1 {
+		t.Fatalf("ReverseToUnpaid calls = %d, want 1", repo.reverseCalls)
+	}
+	if repo.inv.Status != domain.InvoiceStatusPastDue {
+		t.Fatalf("invoice status = %s, want past_due", repo.inv.Status)
+	}
+
+	// Redelivery (fresh event id so dedup doesn't shortcut): invoice already
+	// past_due — the paid guard stops a second reversal.
+	body2 := []byte(`{"events":[{"id":"EVCB2","resource_type":"payments","action":"charged_back","links":{"payment":"PM_CB"}}]}`)
+	if got := postGoCardless(h, body2, gcSign("whsec", body2), "").Code; got != http.StatusOK {
+		t.Fatalf("chargeback redelivery: got %d want 200", got)
+	}
+	if repo.reverseCalls != 1 {
+		t.Fatalf("redelivery re-reversed: calls = %d, want 1", repo.reverseCalls)
+	}
+}

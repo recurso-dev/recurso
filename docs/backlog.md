@@ -8,7 +8,6 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 1 | **GoCardless `charged_back`/`late_failure` reversal bookkeeping** | HIGH — settled money pulled back with no ledger reversal or invoice reopen; currently only a `BOOKS NEED REVIEW` error log | MED | ACH-parity: reuse the occurrence-aware ledger reversal (#209, `docs/design-ledger-occurrence.md`) + reopen semantics from `handleACHReturn` (#199/#210). Design first — same class of problem that needed a design doc for ACH. |
 | 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync | — | **founder** fixes the email in the dashboard; #236 shows record ids on error rows. |
 
 ## P1 — verification & parity (mostly founder-blocked)
@@ -43,8 +42,9 @@ founder can provide; everything else is engineering-ready.
 ## Recently closed (context for the ranking)
 
 - BYO GoCardless from the dashboard (#237), mandate activation webhooks
-  (#238), payment settlement webhooks (#240), currency-aware mandate UI —
-  overnight 2026-07-27/28.
+  (#238), payment settlement webhooks (#240), currency-aware mandate UI
+  (#241), chargeback/late-failure settlement reversal (ACH-parity, reusing
+  the #209 occurrence-aware ledger machinery) — overnight 2026-07-27/28.
 - Manual accounting sync async + single-flight (#239) — last known
   Cloudflare-timeout landmine.
 - QA sweep of #199–#207: all findings closed (#208–#212).
