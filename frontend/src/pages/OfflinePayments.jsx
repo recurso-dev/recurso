@@ -5,7 +5,7 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
+import { formatCurrency, toMinorUnits, fromMinorUnits, shortId } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,6 @@ const PAYMENT_TYPES = [
   { value: "cheque", label: "Cheque" },
 ];
 
-const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 
 const emptyPayment = {

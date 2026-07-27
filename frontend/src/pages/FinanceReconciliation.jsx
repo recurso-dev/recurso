@@ -1,3 +1,4 @@
+import { shortId } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldCheck } from "lucide-react";
 
@@ -32,7 +33,6 @@ const DISCREPANCY_LABELS = {
   tb_amount_mismatch: "TigerBeetle amount mismatch",
 };
 
-const shortId = (id) => (id ? `${id.substring(0, 8)}…` : "—");
 
 // Discrepancy amounts are minor units (cents/paise); the report carries no
 // currency, so render them as plain integers rather than guessing a symbol.

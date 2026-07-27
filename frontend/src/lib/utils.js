@@ -70,3 +70,10 @@ export function formatDate(input, options = { month: "short", day: "numeric", ye
   if (Number.isNaN(d.getTime())) return "—";
   return d.toLocaleDateString("en-US", options);
 }
+
+// shortId renders the first 8 characters of a UUID for tables where the full
+// id is noise — one canonical form ("abcd1234…", em-dash when absent) so every
+// page truncates ids the same way.
+export function shortId(id) {
+  return id ? `${String(id).slice(0, 8)}…` : "—";
+}

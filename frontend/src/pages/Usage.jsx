@@ -1,3 +1,4 @@
+import { shortId } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart } from "@tremor/react";
 import { Activity, Download, Gauge, Layers, RefreshCw, Users } from "lucide-react";
@@ -21,7 +22,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const shortId = (id) => (id ? `${id.substring(0, 8)}...` : "Unknown");
 
 export default function Usage() {
   const [usageStats, setUsageStats] = useState([]);
