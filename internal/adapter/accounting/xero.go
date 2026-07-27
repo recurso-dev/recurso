@@ -263,13 +263,53 @@ func xeroItemCode(code string) string {
 	return code
 }
 
-// xeroAPIError is an HTTP-level failure from the Xero API.
+// xeroAPIError is an HTTP-level failure from the Xero API. detail carries
+// Xero's own validation messages — without them a sync-activity row reads
+// "status 400" and the operator can't tell an unmapped account code from an
+// unsubscribed currency (live founder finding).
 type xeroAPIError struct {
 	status int
+	detail string
 }
 
 func (e *xeroAPIError) Error() string {
+	if e.detail != "" {
+		return fmt.Sprintf("xero API error: status %d: %s", e.status, e.detail)
+	}
 	return fmt.Sprintf("xero API error: status %d", e.status)
+}
+
+// xeroErrorDetail extracts the human-readable reasons from Xero's error JSON
+// (per-element ValidationErrors first, then the top-level Message), falling
+// back to the truncated raw body for non-JSON responses.
+func xeroErrorDetail(raw []byte) string {
+	var parsed struct {
+		Message  string `json:"Message"`
+		Elements []struct {
+			ValidationErrors []struct {
+				Message string `json:"Message"`
+			} `json:"ValidationErrors"`
+		} `json:"Elements"`
+	}
+	if json.Unmarshal(raw, &parsed) == nil {
+		var msgs []string
+		for _, el := range parsed.Elements {
+			for _, ve := range el.ValidationErrors {
+				msgs = append(msgs, ve.Message)
+			}
+		}
+		if len(msgs) > 0 {
+			return strings.Join(msgs, "; ")
+		}
+		if parsed.Message != "" {
+			return parsed.Message
+		}
+	}
+	s := strings.TrimSpace(string(raw))
+	if len(s) > 300 {
+		s = s[:300] + "..."
+	}
+	return s
 }
 
 // isXeroGone reports whether the error is Xero saying the object referenced
@@ -301,7 +341,8 @@ func (a *XeroAdapter) post(ctx context.Context, path string, payload interface{}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode >= 400 {
-		return nil, &xeroAPIError{status: resp.StatusCode}
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+		return nil, &xeroAPIError{status: resp.StatusCode, detail: xeroErrorDetail(raw)}
 	}
 
 	respBody, err := io.ReadAll(resp.Body)

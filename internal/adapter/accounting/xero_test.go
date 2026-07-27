@@ -215,3 +215,31 @@ func TestXeroItemCodeTruncatedTo30Chars(t *testing.T) {
 		t.Errorf("xeroItemCode should leave short codes untouched")
 	}
 }
+
+// Xero 400s must surface Xero's own validation messages — "status 400" alone
+// left the operator unable to tell an account-code problem from a currency
+// one (live founder finding on the Sync activity table).
+func TestXeroErrorDetail(t *testing.T) {
+	body := []byte(`{"Message":"A validation exception occurred","Elements":[{"ValidationErrors":[{"Message":"Account code '200' is not a valid code for this document."},{"Message":"The currency USD has not been subscribed to."}]}]}`)
+	got := xeroErrorDetail(body)
+	if !strings.Contains(got, "Account code '200'") || !strings.Contains(got, "currency USD") {
+		t.Fatalf("detail = %q, want both validation messages", got)
+	}
+
+	if got := xeroErrorDetail([]byte(`{"Message":"Top level only"}`)); got != "Top level only" {
+		t.Fatalf("top-level fallback = %q", got)
+	}
+
+	long := make([]byte, 1000)
+	for i := range long {
+		long[i] = 'x'
+	}
+	if got := xeroErrorDetail(long); len(got) > 310 {
+		t.Fatalf("raw fallback must truncate, got %d chars", len(got))
+	}
+
+	e := &xeroAPIError{status: 400, detail: "The currency USD has not been subscribed to."}
+	if !strings.Contains(e.Error(), "USD has not been subscribed") {
+		t.Fatalf("Error() = %q", e.Error())
+	}
+}
