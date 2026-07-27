@@ -177,3 +177,104 @@ func TestNilResolverAlwaysEnv(t *testing.T) {
 		t.Fatalf("nil resolver: got %q want env-direct", got)
 	}
 }
+
+func mandateGateway(t *testing.T, gw port.PaymentGateway, ctx context.Context, currency string) string {
+	t.Helper()
+	m, err := gw.CreateMandate(ctx, "a@b.c", "", "", 5000, "monthly", currency)
+	if err != nil {
+		t.Fatalf("CreateMandate(%s): %v", currency, err)
+	}
+	return m.TokenID
+}
+
+func TestResolverBuildsTenantGoCardless(t *testing.T) {
+	tenant := uuid.New()
+	vault := &fakeVault{conns: map[uuid.UUID][]*domain.GatewayConnection{
+		tenant: {
+			{ID: uuid.New(), Provider: domain.GatewayGoCardless, Mode: domain.GatewayModeTest, SecretKeyEnc: "sandbox_tok", Active: true, UpdatedAt: time.Unix(1, 0)},
+		},
+	}}
+	resolver := newTestResolver(vault)
+	resolver.buildGoCardless = func(token, environment string) port.PaymentGateway {
+		return &stubGateway{name: "byo-gocardless:" + token + ":" + environment}
+	}
+	tg := NewTenantGateway(resolver, resolver.env)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenant)
+
+	// EUR and GBP mandates route to the tenant's GoCardless, in the sandbox
+	// environment because the connection is in test mode.
+	for _, c := range []string{"EUR", "GBP"} {
+		if got := mandateGateway(t, tg, ctx, c); got != "byo-gocardless:sandbox_tok:sandbox" {
+			t.Fatalf("%s mandate: got %q want tenant gocardless", c, got)
+		}
+	}
+	// INR mandates keep the Razorpay default.
+	if got := mandateGateway(t, tg, ctx, "INR"); got != "env-razorpay" {
+		t.Fatalf("INR mandate: got %q want env-razorpay", got)
+	}
+	// Card orders are untouched by a GoCardless connection.
+	if got := orderGateway(t, tg, ctx, "USD"); got != "env-stripe" {
+		t.Fatalf("USD order: got %q want env-stripe", got)
+	}
+}
+
+func TestResolverGoCardlessLiveModeAndEnvIsolation(t *testing.T) {
+	tenant := uuid.New()
+	vault := &fakeVault{conns: map[uuid.UUID][]*domain.GatewayConnection{
+		tenant: {
+			{ID: uuid.New(), Provider: domain.GatewayGoCardless, Mode: domain.GatewayModeLive, SecretKeyEnc: "live_tok", Active: true, UpdatedAt: time.Unix(1, 0)},
+		},
+	}}
+	resolver := newTestResolver(vault)
+	resolver.buildGoCardless = func(token, environment string) port.PaymentGateway {
+		return &stubGateway{name: "byo-gocardless:" + environment}
+	}
+	tg := NewTenantGateway(resolver, resolver.env)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenant)
+
+	if got := mandateGateway(t, tg, ctx, "EUR"); got != "byo-gocardless:live" {
+		t.Fatalf("EUR mandate: got %q want live-mode tenant gocardless", got)
+	}
+
+	// The env router must be untouched by the tenant build: no leaked EUR
+	// override, no leaked extra gateway (a second tenant without GoCardless
+	// would otherwise debit through this tenant's account).
+	if _, leaked := resolver.env.currencyOverrides["EUR"]; leaked {
+		t.Fatal("tenant build leaked EUR override into the shared env router")
+	}
+	if _, leaked := resolver.env.Extra["gocardless"]; leaked {
+		t.Fatal("tenant build leaked gocardless gateway into the shared env router")
+	}
+	// And a mandate for a different tenant still routes to env Razorpay.
+	other := context.WithValue(context.Background(), domain.TenantIDKey, uuid.New())
+	if got := mandateGateway(t, tg, other, "EUR"); got != "env-razorpay" {
+		t.Fatalf("other-tenant EUR mandate: got %q want env-razorpay", got)
+	}
+}
+
+func TestResolverKeepsExplicitEnvOverride(t *testing.T) {
+	tenant := uuid.New()
+	vault := &fakeVault{conns: map[uuid.UUID][]*domain.GatewayConnection{
+		tenant: {
+			{ID: uuid.New(), Provider: domain.GatewayGoCardless, Mode: domain.GatewayModeTest, SecretKeyEnc: "tok", Active: true, UpdatedAt: time.Unix(1, 0)},
+		},
+	}}
+	resolver := newTestResolver(vault)
+	resolver.buildGoCardless = func(token, environment string) port.PaymentGateway {
+		return &stubGateway{name: "byo-gocardless"}
+	}
+	// Operator explicitly routes EUR elsewhere (e.g. Adyen): that wins.
+	resolver.env.RegisterGateway("adyen", &stubGateway{name: "env-adyen"})
+	resolver.env.currencyOverrides = map[string]string{"EUR": "adyen"}
+
+	tg := NewTenantGateway(resolver, resolver.env)
+	ctx := context.WithValue(context.Background(), domain.TenantIDKey, tenant)
+
+	if got := mandateGateway(t, tg, ctx, "EUR"); got != "env-adyen" {
+		t.Fatalf("EUR mandate: got %q want env-adyen (explicit override wins)", got)
+	}
+	// GBP has no explicit override, so it defaults to the tenant's GoCardless.
+	if got := mandateGateway(t, tg, ctx, "GBP"); got != "byo-gocardless" {
+		t.Fatalf("GBP mandate: got %q want byo-gocardless", got)
+	}
+}

@@ -75,6 +75,16 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 	if provider == domain.GatewayRazorpay && publicKey == "" {
 		return nil, GatewayConnectionValidationError("key_id is required for Razorpay")
 	}
+	if provider == domain.GatewayGoCardless {
+		// GoCardless sandbox and live are separate accounts with prefixed
+		// tokens; a mismatch only surfaces later as 401s at mandate time.
+		if mode == domain.GatewayModeTest && strings.HasPrefix(secret, "live_") {
+			return nil, GatewayConnectionValidationError("this is a live_ token — switch mode to live, or create a sandbox token at manage-sandbox.gocardless.com")
+		}
+		if mode == domain.GatewayModeLive && strings.HasPrefix(secret, "sandbox_") {
+			return nil, GatewayConnectionValidationError("this is a sandbox_ token — switch mode to test, or create a live token at manage.gocardless.com")
+		}
+	}
 
 	secretEnc, err := s.vault.Seal(secret)
 	if err != nil {

@@ -164,6 +164,8 @@ func TestConnectValidation(t *testing.T) {
 		{"missing secret", ConnectInput{Provider: "stripe", SecretKey: ""}},
 		{"razorpay needs key_id", ConnectInput{Provider: "razorpay", SecretKey: "x"}},
 		{"bad mode", ConnectInput{Provider: "stripe", SecretKey: "x", Mode: "sandbox"}},
+		{"gocardless live token in test mode", ConnectInput{Provider: "gocardless", SecretKey: "live_abc", Mode: "test"}},
+		{"gocardless sandbox token in live mode", ConnectInput{Provider: "gocardless", SecretKey: "sandbox_abc", Mode: "live"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,6 +173,22 @@ func TestConnectValidation(t *testing.T) {
 				t.Fatalf("want validation error, got %v", err)
 			}
 		})
+	}
+}
+
+func TestConnectGoCardlessTokenOnly(t *testing.T) {
+	svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+	tenant := uuid.New()
+
+	// No public key exists for GoCardless — the access token alone connects.
+	conn, err := svc.Connect(context.Background(), tenant, ConnectInput{
+		Provider: "gocardless", SecretKey: "sandbox_tok_123", Mode: "test",
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if conn.Provider != domain.GatewayGoCardless || conn.PublicKey != "" {
+		t.Fatalf("unexpected connection: %+v", conn)
 	}
 }
 
