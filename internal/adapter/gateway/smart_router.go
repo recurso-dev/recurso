@@ -135,16 +135,48 @@ func (r *SmartRouter) RetryPayment(ctx context.Context, invoiceID string, amount
 }
 
 // Mandate operations always route to Razorpay (UPI is India-only)
-func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
-	return r.Razorpay.CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency)
+// Mandates route by currency exactly like orders: INR (and the historical
+// empty currency) reaches Razorpay UPI AutoPay; an override such as
+// EUR=gocardless reaches the bank-debit gateway. Before this, every mandate
+// call was hardwired to Razorpay and the GoCardless adapter was UNREACHABLE
+// (found in live sandbox verification).
+func (r *SmartRouter) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, currency string) (*port.MandateResult, error) {
+	gw, err := r.mandateGatewayFor(currency)
+	if err != nil {
+		return nil, err
+	}
+	return gw.CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency, currency)
 }
 
 func (r *SmartRouter) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
-	return r.Razorpay.ExecuteMandateDebit(ctx, req)
+	gw, err := r.mandateGatewayFor(req.Currency)
+	if err != nil {
+		return nil, err
+	}
+	return gw.ExecuteMandateDebit(ctx, req)
 }
 
-func (r *SmartRouter) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
-	return r.Razorpay.RevokeMandate(ctx, customerID, tokenID)
+func (r *SmartRouter) RevokeMandate(ctx context.Context, customerID, tokenID, currency string) error {
+	gw, err := r.mandateGatewayFor(currency)
+	if err != nil {
+		return err
+	}
+	return gw.RevokeMandate(ctx, customerID, tokenID, currency)
+}
+
+// mandateGatewayFor picks the mandate gateway: an overridden currency routes
+// to its configured gateway; everything else (including the historical empty
+// currency) stays on Razorpay, the UPI AutoPay rail. Deliberately NOT
+// gatewayFor: its non-INR default is Stripe, which has no mandate surface.
+func (r *SmartRouter) mandateGatewayFor(currency string) (port.PaymentGateway, error) {
+	c := strings.ToUpper(strings.TrimSpace(currency))
+	if name, ok := r.currencyOverrides[c]; ok {
+		if gw, exists := r.Extra[name]; exists {
+			return gw, nil
+		}
+		return nil, fmt.Errorf("gateway %q for currency %s is not configured", name, c)
+	}
+	return r.Razorpay, nil
 }
 
 func (r *SmartRouter) CancelSubscription(ctx context.Context, subscriptionID string) error {

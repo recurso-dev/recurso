@@ -91,13 +91,16 @@ type PaymentGateway interface {
 	VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
 	CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error)
 	RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*PaymentResult, error)
-	CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*MandateResult, error)
+	// CreateMandate registers a recurring-debit authorization. currency picks
+	// the rail (INR → UPI AutoPay via Razorpay; EUR/GBP → bank debit via an
+	// override-routed gateway such as GoCardless).
+	CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, currency string) (*MandateResult, error)
 	ExecuteMandateDebit(ctx context.Context, req MandateDebitRequest) (*PaymentResult, error)
 	// RevokeMandate deletes the recurring-payment token at the gateway.
 	// customerID is the gateway-side customer id (required by Razorpay's
 	// DELETE /v1/customers/{customer_id}/tokens/{token_id} API).
 	// Implementations must treat an already-deleted token as success.
-	RevokeMandate(ctx context.Context, customerID, tokenID string) error
+	RevokeMandate(ctx context.Context, customerID, tokenID, currency string) error
 	CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*VirtualAccountResult, error)
 	CancelSubscription(ctx context.Context, subscriptionID string) error
 	// Refund returns money for a previously captured payment. paymentID is the

@@ -1,0 +1,1 @@
+ALTER TABLE mandates DROP COLUMN IF EXISTS currency;

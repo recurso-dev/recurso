@@ -121,7 +121,7 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 // method "upi" (not "emandate", which demands full bank details), a customer
 // contact number (Razorpay rejects recurring links without one), and a minimum
 // ₹1 authorization charge on the link itself.
-func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, _ string) (*port.MandateResult, error) {
 	data := map[string]interface{}{
 		"type":        "link",
 		"amount":      100, // ₹1 token-authorization charge — Razorpay's minimum for a registration link
@@ -235,7 +235,7 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 	return &port.PaymentResult{Success: true, PaymentID: paymentID}, nil
 }
 
-func (g *RazorpayGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (g *RazorpayGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	if tokenID == "" {
 		return fmt.Errorf("razorpay revoke mandate: token id is required")
 	}

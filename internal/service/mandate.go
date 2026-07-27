@@ -91,6 +91,17 @@ type CreateMandateInput struct {
 	VPA            string
 	MaxAmount      int64
 	Frequency      string
+	// Currency routes the mandate (empty defaults to INR / UPI AutoPay).
+	Currency string
+}
+
+// mandatePaymentMethod names the rail on the mandate record: UPI for INR,
+// bank debit for override-routed currencies.
+func mandatePaymentMethod(currency string) string {
+	if currency == "INR" {
+		return "upi"
+	}
+	return "bank_debit"
 }
 
 type CreateMandateOutput struct {
@@ -104,13 +115,24 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 		return nil, fmt.Errorf("customer not found: %w", err)
 	}
 
-	// Razorpay requires a contact number on recurring registration links —
-	// fail with a typed error so handlers can explain what's missing.
-	if customer.Phone == "" {
-		return nil, ErrCustomerPhoneRequired
+	currency := strings.ToUpper(strings.TrimSpace(input.Currency))
+	if currency == "" {
+		currency = "INR"
+	}
+	// UPI-only requirements: Razorpay needs a contact number on recurring
+	// registration links, and a VPA to register against. Bank-debit mandates
+	// (EUR/GBP via GoCardless) need neither — the buyer authorizes on the
+	// gateway's hosted page. Both were live-verification findings.
+	if currency == "INR" {
+		if customer.Phone == "" {
+			return nil, ErrCustomerPhoneRequired
+		}
+		if strings.TrimSpace(input.VPA) == "" {
+			return nil, fmt.Errorf("vpa is required for a UPI mandate")
+		}
 	}
 
-	result, err := s.gateway.CreateMandate(ctx, customer.Email, customer.Phone, input.VPA, input.MaxAmount, input.Frequency)
+	result, err := s.gateway.CreateMandate(ctx, customer.Email, customer.Phone, input.VPA, input.MaxAmount, input.Frequency, currency)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mandate with gateway: %w", err)
 	}
@@ -122,8 +144,9 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 		CustomerID:             input.CustomerID,
 		SubscriptionID:         input.SubscriptionID,
 		MandateType:            "recurring",
-		PaymentMethod:          "upi",
+		PaymentMethod:          mandatePaymentMethod(currency),
 		VPA:                    input.VPA,
+		Currency:               currency,
 		RazorpayTokenID:        result.TokenID,
 		RazorpaySubscriptionID: result.SubscriptionID,
 		RazorpayCustomerID:     result.CustomerID,
@@ -519,7 +542,7 @@ func (s *MandateService) Revoke(ctx context.Context, mandateID, tenantID uuid.UU
 	}
 
 	if mandate.RazorpayTokenID != "" {
-		if err := s.gateway.RevokeMandate(ctx, mandate.RazorpayCustomerID, mandate.RazorpayTokenID); err != nil {
+		if err := s.gateway.RevokeMandate(ctx, mandate.RazorpayCustomerID, mandate.RazorpayTokenID, mandate.Currency); err != nil {
 			return fmt.Errorf("failed to revoke mandate at gateway: %w", err)
 		}
 	}

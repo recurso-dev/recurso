@@ -56,7 +56,7 @@ func (g *MockGateway) CreateSubscription(ctx context.Context, planID string, tot
 	return "sub_mock_" + uuid.New().String(), nil
 }
 
-func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (g *MockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, _ string) (*port.MandateResult, error) {
 	return &port.MandateResult{
 		TokenID:        "tok_mock_" + uuid.New().String(),
 		SubscriptionID: "sub_mock_" + uuid.New().String(),
@@ -73,7 +73,7 @@ func (g *MockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateD
 	}, nil
 }
 
-func (g *MockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (g *MockGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	g.revokeCalls = append(g.revokeCalls, MockRevokeCall{CustomerID: customerID, TokenID: tokenID})

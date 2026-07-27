@@ -238,3 +238,70 @@ func TestSmartRouterOverridesRejectUnknownGateway(t *testing.T) {
 		t.Fatalf("empty spec is valid: %v", err)
 	}
 }
+
+// mandateProbe records which gateway a mandate call landed on.
+type mandateProbe struct {
+	MockGateway
+	created []string // currencies seen by CreateMandate
+}
+
+func (p *mandateProbe) CreateMandate(_ context.Context, _, _, _ string, _ int64, _, currency string) (*port.MandateResult, error) {
+	p.created = append(p.created, currency)
+	return &port.MandateResult{TokenID: "probe", Status: "created"}, nil
+}
+
+// Mandates must route by currency like orders: an overridden currency reaches
+// its gateway, everything else (including the historical empty currency)
+// stays on Razorpay. Before this, ALL mandate calls were hardwired to
+// Razorpay and the GoCardless adapter was unreachable (live-verified gap).
+func TestSmartRouter_MandateRoutesByCurrency(t *testing.T) {
+	rzp := &mandateProbe{}
+	gc := &mandateProbe{}
+	r := NewSmartRouter(rzp, NewMockGateway())
+	r.RegisterGateway("gocardless", gc)
+	if err := r.SetCurrencyOverrides("EUR=gocardless"); err != nil {
+		t.Fatalf("overrides: %v", err)
+	}
+
+	if _, err := r.CreateMandate(context.Background(), "e@x.com", "+1", "", 1000, "monthly", "EUR"); err != nil {
+		t.Fatalf("EUR mandate: %v", err)
+	}
+	if len(gc.created) != 1 || len(rzp.created) != 0 {
+		t.Fatalf("EUR mandate must reach gocardless (gc=%v rzp=%v)", gc.created, rzp.created)
+	}
+
+	// INR and the historical empty currency stay on the UPI rail.
+	for _, cur := range []string{"INR", ""} {
+		if _, err := r.CreateMandate(context.Background(), "e@x.com", "+1", "v@upi", 1000, "monthly", cur); err != nil {
+			t.Fatalf("%q mandate: %v", cur, err)
+		}
+	}
+	if len(rzp.created) != 2 {
+		t.Fatalf("INR/empty mandates must reach razorpay, got %v", rzp.created)
+	}
+
+	// Debit routes by the request currency the same way.
+	if _, err := r.ExecuteMandateDebit(context.Background(), port.MandateDebitRequest{TokenID: "MD1", Amount: 500, Currency: "EUR"}); err != nil {
+		t.Fatalf("EUR debit: %v", err)
+	}
+
+	// An override naming an unconfigured gateway is rejected at CONFIG time
+	// (boot fails fast), so a mandate can never silently reach the wrong rail.
+	r2 := NewSmartRouter(&mandateProbe{}, NewMockGateway())
+	if err := r2.SetCurrencyOverrides("EUR=gocardless"); err == nil {
+		t.Fatal("override naming an unregistered gateway must be rejected")
+	}
+}
+
+// GoCardless picks the direct-debit scheme from the mandate currency.
+func TestGoCardlessSchemeForCurrency(t *testing.T) {
+	if got := schemeForCurrency("EUR"); got != "sepa_core" {
+		t.Errorf("EUR scheme = %q", got)
+	}
+	if got := schemeForCurrency("gbp"); got != "bacs" {
+		t.Errorf("GBP scheme = %q", got)
+	}
+	if got := schemeForCurrency("USD"); got != "sepa_core" {
+		t.Errorf("USD default scheme = %q", got)
+	}
+}

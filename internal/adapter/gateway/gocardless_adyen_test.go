@@ -106,7 +106,7 @@ func TestGoCardlessCreateMandateFlow(t *testing.T) {
 	defer srv.Close()
 	g := testGoCardless(srv.URL)
 
-	res, err := g.CreateMandate(context.Background(), "c@example.com", "+44123", "", 500000, "monthly")
+	res, err := g.CreateMandate(context.Background(), "c@example.com", "+44123", "", 500000, "monthly", "EUR")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestGoCardlessRevokeMandateAlreadyCancelled(t *testing.T) {
 		`{"error":{"message":"Mandate is already cancelled","type":"invalid_state","code":422}}`)
 	g := testGoCardless(srv.URL)
 
-	if err := g.RevokeMandate(context.Background(), "", "MD001"); err != nil {
+	if err := g.RevokeMandate(context.Background(), "", "MD001", "EUR"); err != nil {
 		t.Fatalf("already-cancelled mandate must be treated as success, got %v", err)
 	}
 }

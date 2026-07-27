@@ -106,7 +106,16 @@ func (g *GoCardlessGateway) do(ctx context.Context, method, path string, body an
 // customer visits to authorise the debit. vpa is ignored (UPI-specific);
 // frequency/maxAmount ride the metadata for operator reference — bank
 // debit schemes authorise open-ended mandates.
-func (g *GoCardlessGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+// schemeForCurrency maps the mandate currency to the GoCardless direct-debit
+// scheme: EUR rides SEPA, GBP rides Bacs; anything else defaults to SEPA.
+func schemeForCurrency(currency string) string {
+	if strings.EqualFold(currency, "GBP") {
+		return "bacs"
+	}
+	return "sepa_core"
+}
+
+func (g *GoCardlessGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, currency string) (*port.MandateResult, error) {
 	var br struct {
 		BillingRequests struct {
 			ID string `json:"id"`
@@ -114,7 +123,7 @@ func (g *GoCardlessGateway) CreateMandate(ctx context.Context, customerEmail, cu
 	}
 	_, err := g.do(ctx, http.MethodPost, "/billing_requests", map[string]any{
 		"billing_requests": map[string]any{
-			"mandate_request": map[string]any{"scheme": "sepa_core"},
+			"mandate_request": map[string]any{"scheme": schemeForCurrency(currency)},
 			"metadata": map[string]string{
 				"email":      customerEmail,
 				"max_amount": fmt.Sprintf("%d", maxAmount),
@@ -179,7 +188,7 @@ func (g *GoCardlessGateway) ExecuteMandateDebit(ctx context.Context, req port.Ma
 
 // RevokeMandate cancels the mandate. An already-cancelled mandate reports
 // success, matching the port contract.
-func (g *GoCardlessGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (g *GoCardlessGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	status, err := g.do(ctx, http.MethodPost, "/mandates/"+tokenID+"/actions/cancel", map[string]any{}, "", nil)
 	if err != nil {
 		// 422 cancellation_failed on an already-cancelled mandate = success.

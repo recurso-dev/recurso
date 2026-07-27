@@ -470,7 +470,7 @@ func (s *StripeGateway) RetryPayment(ctx context.Context, invoiceID string, amou
 
 var ErrNotSupported = fmt.Errorf("operation not supported by this gateway")
 
-func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (s *StripeGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, _ string) (*port.MandateResult, error) {
 	return nil, ErrNotSupported
 }
 
@@ -478,7 +478,7 @@ func (s *StripeGateway) ExecuteMandateDebit(ctx context.Context, req port.Mandat
 	return nil, ErrNotSupported
 }
 
-func (s *StripeGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (s *StripeGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	return ErrNotSupported
 }
 

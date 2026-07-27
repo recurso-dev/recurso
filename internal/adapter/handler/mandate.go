@@ -23,9 +23,14 @@ func NewMandateHandler(s *service.MandateService) *MandateHandler {
 type createMandateRequest struct {
 	CustomerID     string `json:"customer_id" binding:"required"`
 	SubscriptionID string `json:"subscription_id"`
-	VPA            string `json:"vpa" binding:"required"`
-	MaxAmount      int64  `json:"max_amount" binding:"required,gt=0"`
-	Frequency      string `json:"frequency" binding:"required,oneof=weekly monthly quarterly yearly"`
+	// VPA is required for UPI (INR) mandates only; bank-debit mandates
+	// authorize on the gateway's hosted page. The service enforces it.
+	VPA       string `json:"vpa"`
+	MaxAmount int64  `json:"max_amount" binding:"required,gt=0"`
+	Frequency string `json:"frequency" binding:"required,oneof=weekly monthly quarterly yearly"`
+	// Currency routes the mandate rail: empty/INR = Razorpay UPI AutoPay;
+	// an overridden currency (e.g. EUR) = bank debit via GoCardless.
+	Currency string `json:"currency" binding:"omitempty,len=3"`
 }
 
 func (h *MandateHandler) CreateMandate(c *gin.Context) {
@@ -53,6 +58,7 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 		VPA:        req.VPA,
 		MaxAmount:  req.MaxAmount,
 		Frequency:  req.Frequency,
+		Currency:   req.Currency,
 	}
 
 	if req.SubscriptionID != "" {

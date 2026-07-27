@@ -58,16 +58,16 @@ func (g *TenantGateway) RetryPayment(ctx context.Context, invoiceID string, amou
 	return g.route(ctx).RetryPayment(ctx, invoiceID, amount, currency)
 }
 
-func (g *TenantGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
-	return g.route(ctx).CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency)
+func (g *TenantGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, currency string) (*port.MandateResult, error) {
+	return g.route(ctx).CreateMandate(ctx, customerEmail, customerContact, vpa, maxAmount, frequency, currency)
 }
 
 func (g *TenantGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return g.route(ctx).ExecuteMandateDebit(ctx, req)
 }
 
-func (g *TenantGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
-	return g.route(ctx).RevokeMandate(ctx, customerID, tokenID)
+func (g *TenantGateway) RevokeMandate(ctx context.Context, customerID, tokenID, currency string) error {
+	return g.route(ctx).RevokeMandate(ctx, customerID, tokenID, currency)
 }
 
 func (g *TenantGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {
