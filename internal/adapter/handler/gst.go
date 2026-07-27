@@ -39,6 +39,9 @@ type GSTHandler struct {
 	gstConfigRepo *db.GSTConfigRepository
 	gstrSvc       *service.GSTRService
 	entities      gstPrimaryEntityReader // nil-safe
+	// invalidateSellerCache drops the tax resolver's cached seller jurisdiction
+	// after a GST-config write (nil-safe; the cache TTL is the fallback).
+	invalidateSellerCache func(uuid.UUID)
 }
 
 // NewGSTHandler creates a new GST handler
@@ -50,6 +53,12 @@ func NewGSTHandler(gstConfigRepo *db.GSTConfigRepository, gstrSvc *service.GSTRS
 // without it, filing explicitly for the primary entity falls back to an empty
 // GSTIN when no per-entity config row exists.
 func (h *GSTHandler) SetEntityReader(r gstPrimaryEntityReader) { h.entities = r }
+
+// SetSellerJurisdictionInvalidator wires the tax resolver's cache invalidation
+// so a GST-config change is reflected on the next invoice immediately.
+func (h *GSTHandler) SetSellerJurisdictionInvalidator(fn func(uuid.UUID)) {
+	h.invalidateSellerCache = fn
+}
 
 // GetGSTR1 returns the GSTR-1 outward-supply return for a tax period, both as
 // readable sections/totals ("data") and as the GSTN upload JSON ("gov_schema").
@@ -267,6 +276,9 @@ func (h *GSTHandler) UpdateConfig(c *gin.Context) {
 		if err := h.gstConfigRepo.Upsert(c.Request.Context(), tenantID, entityID, dbConfig); err != nil {
 			respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to save GST configuration")
 			return
+		}
+		if h.invalidateSellerCache != nil {
+			h.invalidateSellerCache(tenantID)
 		}
 	}
 
