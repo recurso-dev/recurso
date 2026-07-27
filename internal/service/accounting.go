@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,10 @@ type AccountingService struct {
 
 	// adapterFactory overrides real adapter construction (used by tests).
 	adapterFactory func(*domain.AccountingConnection) port.AccountingGateway
+
+	// syncInFlight guards manual syncs: one background full re-push per
+	// tenant at a time (keys are tenant uuid.UUIDs).
+	syncInFlight sync.Map
 }
 
 func NewAccountingService(
@@ -388,6 +393,31 @@ func (s *AccountingService) markConnectionError(ctx context.Context, conn *domai
 // successful sync (source updated_at not after the mapping's last-synced
 // timestamp) are skipped unless force is set — the manual sync endpoint
 // forces a full re-push, the daily worker does not.
+// TriggerSyncAsync starts a forced full re-push for the tenant in the
+// background and reports whether it started. A false return means a manual
+// sync is already running for this tenant. Rationale: the sweep is O(all
+// customers + invoices) against a third-party API (~85s observed on a small
+// production tenant) while Cloudflare kills proxied requests around 100s —
+// the same failure mode the CRM manual sync hit. Progress is observable via
+// the sync-activity log and each connection's sync_status.
+func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID) bool {
+	if _, running := s.syncInFlight.LoadOrStore(tenantID, struct{}{}); running {
+		return false
+	}
+	go func() {
+		defer s.syncInFlight.Delete(tenantID)
+		// Detached from the HTTP request: the client navigating away must not
+		// cancel a half-done books push. Bounded so a wedged provider cannot
+		// hold the single-flight slot forever.
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
+		defer cancel()
+		if err := s.SyncAllForTenant(ctx, tenantID, true); err != nil {
+			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "error", err)
+		}
+	}()
+	return true
+}
+
 func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.UUID, force bool) error {
 	if s.connRepo == nil {
 		return fmt.Errorf("accounting connection repository not configured")
@@ -418,6 +448,10 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 		if adapter == nil {
 			continue
 		}
+
+		// Surface progress on the connection row while the sweep runs.
+		conn.SyncStatus = "syncing"
+		_ = s.connRepo.Update(ctx, conn)
 
 		var synced, skipped int
 

@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -351,15 +350,15 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 		return
 	}
 
-	// Manual syncs force a full re-push: the merchant is explicitly asking
-	// for everything to be reconciled, so the dirty-tracking skip is bypassed.
-	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
-	if err := h.accountingService.SyncAllForTenant(ctx, tenantID, true); err != nil {
-		respondInternalError(c, err)
+	// Manual syncs force a full re-push in the BACKGROUND: the sweep can run
+	// minutes against a third-party API, far past what a proxied request
+	// survives. Single-flight per tenant; progress lands in the sync log.
+	if !h.accountingService.TriggerSyncAsync(tenantID) {
+		c.JSON(http.StatusOK, gin.H{"status": "sync_already_running"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "sync_triggered"})
+	c.JSON(http.StatusAccepted, gin.H{"status": "sync_triggered"})
 }
 
 func (h *AccountingHandler) SyncStatus(c *gin.Context) {
