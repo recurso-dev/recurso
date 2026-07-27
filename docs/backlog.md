@@ -1,6 +1,9 @@
 # Engineering backlog
 
-Ranked by ROI (impact ÷ effort). Updated 2026-07-27 (overnight session).
+Ranked by ROI (impact ÷ effort). Updated 2026-07-28 (overnight session).
+Struck as already-shipped on re-audit: per-entity GSTR-1/3B (`?entity_id=` +
+primary-aware GSTIN, #205/#208) and per-entity MRR UI (ExecutiveSummary +
+Entities pages).
 Items marked **founder** are blocked on credentials/infrastructure only the
 founder can provide; everything else is engineering-ready.
 
@@ -25,8 +28,6 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 9 | Per-entity GSTR-1/GSTR-3B exports | MED — multi-entity Indian tenants file per GSTIN | MED | Follow-up from multi-entity epic (#144–#158); consolidated exports exist. |
-| 10 | Per-entity MRR on dashboard | LOW-MED | LOW | Backend endpoint exists (#204); needs a dashboard surface. |
 | 11 | Gift-subscription cancel + wallet-close UI edge cases | LOW | LOW | Deferred from roadmap run 2026-07-20. |
 | 12 | Dunning alert edit UI | LOW | LOW | Deferred from roadmap run 2026-07-20. |
 
@@ -34,6 +35,7 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
+| 12b | React 19 + react-router 8 upgrade | MED — clears the Trivy-ignored RSC advisory (GHSA-qwww-vcr4-c8h2, not exploitable in this SPA) and unblocks future deps | MED | react-router 8.3.0 needs React >=19.2; remove `.trivyignore` entry when done. |
 | 13 | Pagination consistency on list endpoints | MED — silent truncation has bitten twice (CLAUDE.md) | MED | A few endpoints default `limit=10`, some 50/100/200, many unbounded. Normalize on `ParsePagination` + document defaults in OpenAPI. |
 | 14 | Interface-embedding test mocks | LOW-MED — every port widening breaks/panics mocks (`mockLedgerRepoFor*`, `stubCollectionsAgg`, …) | MED | Either generate mocks or convert to narrow per-test interfaces (capability-assertion pattern used by webhook/CRM paths is the house style now). |
 | 15 | Dunning-campaign + cancel-flow responses are unwrapped (no `{data:}`) | LOW — known API quirk, clients must stay tolerant | LOW | Breaking change; batch with a future v2 or additive alias. |
