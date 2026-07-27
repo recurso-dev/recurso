@@ -267,7 +267,10 @@ fi
 
 # An EUR mandate needs no VPA/phone (bank debit); the gateway (mock in CI,
 # sandbox locally) returns the token the webhook will reference.
-MANDATE_RES=$(post_json "$API_URL/v1/mandates" "{"customer_id": "$CUST_ID_USD", "currency": "EUR", "max_amount": 5000, "frequency": "monthly"}" "$API_KEY")
+MANDATE_RES=$(post_json "$API_URL/v1/mandates" "$(jq -n \
+  --arg customer_id "$CUST_ID_USD" \
+  '{customer_id: $customer_id, currency: "EUR", max_amount: 5000, frequency: "monthly"}')" \
+  "$API_KEY")
 MANDATE_ID=$(echo "$MANDATE_RES" | jq -r '.data.mandate.id')
 MANDATE_TOKEN=$(echo "$MANDATE_RES" | jq -r '.data.mandate.razorpay_token_id')
 if [ -z "$MANDATE_ID" ] || [ "$MANDATE_ID" = "null" ]; then
@@ -276,7 +279,8 @@ if [ -z "$MANDATE_ID" ] || [ "$MANDATE_ID" = "null" ]; then
     exit 1
 fi
 
-GC_BODY="{"events":[{"id":"EV_E2E_FULFIL","resource_type":"billing_requests","action":"fulfilled","links":{"billing_request":"$MANDATE_TOKEN","mandate_request_mandate":"MD_E2E_1"}}]}"
+GC_BODY=$(jq -nc --arg brq "$MANDATE_TOKEN" \
+  '{events: [{id: "EV_E2E_FULFIL", resource_type: "billing_requests", action: "fulfilled", links: {billing_request: $brq, mandate_request_mandate: "MD_E2E_1"}}]}')
 GC_SIG=$(printf '%s' "$GC_BODY" | openssl dgst -sha256 -hmac "$GC_SECRET" -hex | sed 's/^.*= //')
 GC_RES=$(curl -s -X POST "$API_URL/webhooks/gocardless"     -H 'Content-Type: application/json' -H "Webhook-Signature: $GC_SIG" -d "$GC_BODY")
 PROCESSED=$(echo "$GC_RES" | jq -r '.processed')
