@@ -187,6 +187,54 @@ func (s *MandateService) HandleAuthorization(ctx context.Context, tokenID, razor
 	return s.mandateRepo.Update(ctx, mandate)
 }
 
+// HandleGoCardlessFulfilment activates a bank-debit mandate when GoCardless
+// reports the billing request fulfilled. The row was created holding the
+// billing-request id (BRQ...) in the token column; the event carries the real
+// mandate id (MD...), which is what every future debit must reference, so the
+// token column is rewritten to it here.
+func (s *MandateService) HandleGoCardlessFulfilment(ctx context.Context, billingRequestID, gcMandateID string) error {
+	mandate, err := s.mandateRepo.GetByRazorpayTokenID(ctx, billingRequestID)
+	if err != nil {
+		return fmt.Errorf("mandate not found for billing request %s: %w", billingRequestID, err)
+	}
+
+	now := time.Now()
+	mandate.Status = domain.MandateStatusActive
+	mandate.AuthorizedAt = &now
+	mandate.ActivatedAt = &now
+	if gcMandateID != "" {
+		mandate.RazorpayTokenID = gcMandateID
+	}
+	return s.mandateRepo.Update(ctx, mandate)
+}
+
+// HandleGoCardlessMandateEvent applies a GoCardless mandate lifecycle event to
+// the local row (looked up by the MD... id the fulfilment handler stored).
+// "active" re-activation is idempotent; terminal actions revoke the mandate so
+// the debit worker stops claiming it.
+func (s *MandateService) HandleGoCardlessMandateEvent(ctx context.Context, gcMandateID, action string) error {
+	mandate, err := s.mandateRepo.GetByRazorpayTokenID(ctx, gcMandateID)
+	if err != nil {
+		return fmt.Errorf("mandate not found for %s: %w", gcMandateID, err)
+	}
+
+	now := time.Now()
+	switch action {
+	case "active", "reinstated":
+		mandate.Status = domain.MandateStatusActive
+		if mandate.ActivatedAt == nil {
+			mandate.AuthorizedAt = &now
+			mandate.ActivatedAt = &now
+		}
+	case "cancelled", "expired", "failed", "consumed":
+		mandate.Status = domain.MandateStatusRevoked
+		mandate.RevokedAt = &now
+	default:
+		return nil // submitted/created/etc — nothing to change locally
+	}
+	return s.mandateRepo.Update(ctx, mandate)
+}
+
 // ExecuteDebit charges a fixed amount with no tax split. It is the low-level
 // primitive (and legacy entry point) — the recurring scheduler uses
 // DebitSubscription, which resolves the real amount. `amount` is treated as the
