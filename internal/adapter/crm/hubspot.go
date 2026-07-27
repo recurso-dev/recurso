@@ -121,3 +121,42 @@ func (c *HubSpotClient) UpsertContact(ctx context.Context, email string, propert
 	}
 	return id, nil
 }
+
+// recursoContactProperties are the custom contact properties the sync writes.
+// HubSpot rejects writes to undefined properties (PROPERTY_DOESNT_EXIST), so
+// EnsureProperties creates them idempotently before a sweep.
+var recursoContactProperties = []map[string]any{
+	{
+		"name":      "recurso_customer_id",
+		"label":     "Recurso customer ID",
+		"type":      "string",
+		"fieldType": "text",
+		"groupName": "contactinformation",
+	},
+	{
+		"name":      "recurso_subscription_state",
+		"label":     "Recurso subscription state",
+		"type":      "string",
+		"fieldType": "text",
+		"groupName": "contactinformation",
+	},
+}
+
+// EnsureProperties creates Recurso's custom contact properties if they don't
+// exist. Idempotent: an already-exists conflict (409) is success. Requires the
+// crm.schemas.contacts.write scope — a 403 comes back as an actionable error
+// naming it, so the operator knows exactly what to add to their credential.
+func (c *HubSpotClient) EnsureProperties(ctx context.Context) error {
+	for _, prop := range recursoContactProperties {
+		status, err := c.do(ctx, http.MethodPost, "/crm/v3/properties/contacts", prop, nil)
+		switch {
+		case status == http.StatusConflict:
+			// Already defined — exactly what we want.
+		case status == http.StatusForbidden:
+			return fmt.Errorf("creating the %q contact property needs the crm.schemas.contacts.write scope on your HubSpot credential: %w", prop["name"], err)
+		case err != nil:
+			return err
+		}
+	}
+	return nil
+}

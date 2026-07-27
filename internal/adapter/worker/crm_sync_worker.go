@@ -153,6 +153,15 @@ func (w *CRMSyncWorker) RunTenant(ctx context.Context, tenantID uuid.UUID, maxCo
 		slog.Warn("crm sync: active counts unavailable", "tenant_id", tenantID, "error", err)
 		active = map[uuid.UUID]int{}
 	}
+	// Bootstrap the custom contact properties the sweep writes — HubSpot
+	// rejects writes to undefined properties (PROPERTY_DOESNT_EXIST, seen
+	// live). Optional capability: mocks and other CRMs skip it; a failure is
+	// THE sync error (it names the missing scope, which is actionable).
+	if bootstrapper, ok := crmClient.(interface{ EnsureProperties(context.Context) error }); ok {
+		if err := bootstrapper.EnsureProperties(tctx); err != nil {
+			return 0, 0, fmt.Errorf("crm property bootstrap: %w", err)
+		}
+	}
 	synced, remaining := 0, 0
 	var lastErr error
 	for _, customer := range customers {
