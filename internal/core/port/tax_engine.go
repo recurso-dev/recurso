@@ -22,6 +22,11 @@ type TaxRequest struct {
 	TaxExempt          bool
 	TaxExemptionNumber string
 	TaxExemptionCode   string
+	// NexusStates are US states where the seller has DECLARED nexus in
+	// Recurso (Settings → Tax nexus). Asserted to the sales-tax provider as
+	// nexus addresses, so a correct rate comes back even when the provider
+	// ACCOUNT has no nexus configured. Empty defers to the provider account.
+	NexusStates []string
 	// FallbackRate is the GST rate (as a fraction, e.g. 0.18) to use when the
 	// HSNCode isn't in the engine's rate map — the tenant's configured
 	// gst_rate. Zero means "use the engine's built-in default".

@@ -3,6 +3,7 @@ package tax
 import (
 	"context"
 	"math"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +40,11 @@ type SalesTaxQuery struct {
 	Exempt        bool   // buyer is tax-exempt for this sale
 	ExemptionNo   string // exemption / resale certificate number (optional)
 	EntityUseCode string // provider entity-use / customer-usage code (optional)
+
+	// NexusStates: US states the seller declared nexus in (Recurso-side).
+	// Passed to the provider as nexus addresses; empty defers to the
+	// provider account's own nexus configuration.
+	NexusStates []string
 }
 
 // IsExempt reports whether this query carries a buyer exemption.
@@ -160,5 +166,11 @@ func (c *CachedSalesTaxProvider) evictExpiredLocked() {
 // where the sale lands (destination-sourced in most states), so (state, zip)
 // is the right granularity; amount is deliberately excluded.
 func salesTaxCacheKey(q *SalesTaxQuery) string {
-	return strings.ToUpper(strings.TrimSpace(q.ToState)) + "|" + strings.TrimSpace(q.ToZip)
+	// Asserted nexus changes the answer (has_nexus gates the rate), so it is
+	// part of the key — tenants with and without declared nexus sharing one
+	// provider must not serve each other's cached result.
+	nexus := append([]string(nil), q.NexusStates...)
+	sort.Strings(nexus)
+	return strings.ToUpper(strings.TrimSpace(q.ToState)) + "|" + strings.TrimSpace(q.ToZip) +
+		"|" + strings.ToUpper(strings.Join(nexus, ","))
 }

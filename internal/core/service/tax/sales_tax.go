@@ -134,5 +134,6 @@ func (e *USSalesTaxEngine) queryFor(req *port.TaxRequest, amount int64) *SalesTa
 		Exempt:        req.TaxExempt,
 		ExemptionNo:   strings.TrimSpace(req.TaxExemptionNumber),
 		EntityUseCode: strings.TrimSpace(req.TaxExemptionCode),
+		NexusStates:   req.NexusStates,
 	}
 }

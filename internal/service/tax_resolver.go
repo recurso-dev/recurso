@@ -423,6 +423,7 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 	// Opt-in nexus gating: only once the tenant has declared nexus states do we
 	// gate. A tenant with zero declared nexus is never gated (today's behaviour).
 	// Where nexus IS declared but not in the buyer's state, collect nothing.
+	var nexusStates []string
 	if r.nexusRepo != nil {
 		declaredAny, inState, err := r.nexusRepo.NexusFor(ctx, tenantID, buyerState)
 		if err != nil {
@@ -434,6 +435,12 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 				TaxType: "no_nexus",
 				Note:    "No sales-tax nexus in " + buyerState + " — not collected",
 			}
+		} else if declaredAny && inState {
+			// The tenant DECLARED nexus in the buyer's state — assert it to the
+			// provider so the rate comes back even when the provider account has
+			// no nexus configured (TaxJar computes $0 with has_nexus=false
+			// otherwise). No declarations defers to the provider account.
+			nexusStates = []string{buyerState}
 		}
 	}
 
@@ -452,6 +459,7 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 		TaxExempt:          exemptForCustomer(r.logger, customer),
 		TaxExemptionNumber: customer.TaxExemptionNumber,
 		TaxExemptionCode:   customer.TaxExemptionCode,
+		NexusStates:        nexusStates,
 	})
 	if err != nil || calc == nil {
 		// Only the provider-backed engine can error (the stub never does).

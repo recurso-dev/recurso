@@ -336,3 +336,19 @@ func TestCachedSalesTaxProvider_ExemptBypassesCache(t *testing.T) {
 		t.Fatalf("exempt served from cache: calls=%d, want 4", fake.calls)
 	}
 }
+
+// The (state, zip) rate cache must not serve a with-nexus result to a
+// without-nexus query (or vice versa): asserted nexus changes the answer.
+func TestSalesTaxCacheKey_NexusDistinct(t *testing.T) {
+	base := &SalesTaxQuery{ToState: "TX", ToZip: "78701"}
+	withNexus := &SalesTaxQuery{ToState: "TX", ToZip: "78701", NexusStates: []string{"TX"}}
+	if salesTaxCacheKey(base) == salesTaxCacheKey(withNexus) {
+		t.Fatal("cache key must differ when nexus is asserted")
+	}
+	// Order-insensitive: the same declared set is the same key.
+	a := &SalesTaxQuery{ToState: "TX", ToZip: "78701", NexusStates: []string{"CA", "TX"}}
+	b := &SalesTaxQuery{ToState: "TX", ToZip: "78701", NexusStates: []string{"TX", "CA"}}
+	if salesTaxCacheKey(a) != salesTaxCacheKey(b) {
+		t.Fatal("cache key must be order-insensitive over nexus states")
+	}
+}
