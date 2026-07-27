@@ -1,0 +1,55 @@
+# Archives GitHub traffic stats daily. GitHub's traffic API only retains a
+# rolling 14 days — without snapshots the history evaporates. Each run writes
+# snapshots/YYYY-MM-DD.json to the `traffic-history` branch (never main, so
+# the working history stays clean).
+name: Traffic snapshot
+on:
+  schedule:
+    - cron: "23 2 * * *" # daily, off the top of the hour
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch traffic + repo stats
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          day=$(date -u +%F)
+          api() { curl -sf -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" "https://api.github.com/repos/$REPO$1"; }
+          jq -n \
+            --arg date "$day" \
+            --argjson clones    "$(api /traffic/clones)" \
+            --argjson views     "$(api /traffic/views)" \
+            --argjson referrers "$(api /traffic/popular/referrers)" \
+            --argjson paths     "$(api /traffic/popular/paths)" \
+            --argjson repo      "$(api '' | jq '{stargazers_count, forks_count, open_issues_count, subscribers_count}')" \
+            '{date: $date, repo: $repo, clones: $clones, views: $views, referrers: $referrers, paths: $paths}' \
+            > snapshot.json
+          cat snapshot.json | jq -c '{date, clones: .clones.count, unique_cloners: .clones.uniques, views: .views.count, stars: .repo.stargazers_count}'
+      - name: Commit to traffic-history branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          day=$(date -u +%F)
+          git init -q history
+          cd history
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          if git fetch -q --depth 1 origin traffic-history 2>/dev/null; then
+            git checkout -q traffic-history
+          else
+            git checkout -q --orphan traffic-history
+          fi
+          mkdir -p snapshots
+          cp ../snapshot.json "snapshots/${day}.json"
+          git add snapshots
+          git diff --cached --quiet && { echo "no changes"; exit 0; }
+          git commit -q -m "traffic snapshot ${day}"
+          git push -q origin traffic-history
