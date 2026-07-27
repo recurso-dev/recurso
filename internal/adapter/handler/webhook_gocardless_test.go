@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -13,6 +14,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/service"
 )
 
 func gcSign(secret string, body []byte) string {
@@ -96,5 +99,53 @@ func TestGoCardlessWebhook_PerConnectionSecretVerifies(t *testing.T) {
 	// Signed with the wrong secret: rejected.
 	if got := postGoCardless(h, body, gcSign("other", body), id.String()).Code; got != http.StatusUnauthorized {
 		t.Fatalf("wrong secret: got %d want 401", got)
+	}
+}
+
+// fakeInvoiceByPayment provides only the gateway-payment lookup capability.
+type fakeInvoiceByPayment struct {
+	port.InvoiceRepository // embedded nil: only the methods below may be called
+	inv                    *domain.Invoice
+}
+
+func (f *fakeInvoiceByPayment) GetByGatewayPaymentIDPublic(_ context.Context, id string) (*domain.Invoice, error) {
+	if f.inv != nil && id == "PM123" {
+		return f.inv, nil
+	}
+	return nil, nil
+}
+
+func TestGoCardlessWebhook_PaymentEventUnknownPaymentIsBenign(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOCARDLESS_WEBHOOK_SECRET", "whsec")
+	dedup := &mapDedup{}
+	h := &WebhookHandler{
+		logger:         slog.Default(),
+		inboundDedup:   dedup,
+		mandateService: &service.MandateService{}, // non-nil so events are processed
+		invoiceRepo:    &fakeInvoiceByPayment{},   // lookup misses
+	}
+	body := []byte(`{"events":[{"id":"EVP1","resource_type":"payments","action":"confirmed","links":{"payment":"PM_UNKNOWN"}}]}`)
+	w := postGoCardless(h, body, gcSign("whsec", body), "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("unknown payment: got %d want 200 (body %s)", w.Code, w.Body.String())
+	}
+	// Benign miss is still marked processed so redeliveries don't loop.
+	if dedup.marks != 1 {
+		t.Fatalf("marks = %d, want 1", dedup.marks)
+	}
+}
+
+func TestGoCardlessWebhook_FailedPaymentLeavesInvoiceOpen(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	t.Setenv("GOCARDLESS_WEBHOOK_SECRET", "whsec")
+	h := &WebhookHandler{
+		logger:         slog.Default(),
+		mandateService: &service.MandateService{},
+		invoiceRepo:    &fakeInvoiceByPayment{inv: &domain.Invoice{ID: uuid.New(), Status: "open"}},
+	}
+	body := []byte(`{"events":[{"id":"EVP2","resource_type":"payments","action":"failed","links":{"payment":"PM123"}}]}`)
+	if got := postGoCardless(h, body, gcSign("whsec", body), "").Code; got != http.StatusOK {
+		t.Fatalf("failed payment: got %d want 200", got)
 	}
 }

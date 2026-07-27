@@ -137,3 +137,20 @@ func TestHandleGoCardlessMandateEventLifecycle(t *testing.T) {
 		t.Fatal("no-op action changed status")
 	}
 }
+
+func TestIsGatewayPaymentIDAcceptsGoCardless(t *testing.T) {
+	for id, want := range map[string]bool{
+		"pay_abc":  true,  // Razorpay payment
+		"pi_abc":   true,  // Stripe payment intent
+		"ch_abc":   true,  // Stripe charge
+		"PM000X":   true,  // GoCardless payment
+		"order_ab": false, // Razorpay order — poisons refunds
+		"BRQ0005":  false, // GoCardless billing request
+		"MD0001":   false, // GoCardless mandate
+		"":         false,
+	} {
+		if got := isGatewayPaymentID(id); got != want {
+			t.Errorf("isGatewayPaymentID(%q) = %v, want %v", id, got, want)
+		}
+	}
+}
