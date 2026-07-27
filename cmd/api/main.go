@@ -1317,6 +1317,14 @@ func main() {
 	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
 	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
+	// Manual CRM sync ("test my HubSpot connection"). Typed-nil trap: only hand
+	// the worker to the handler when it actually exists.
+	var crmSyncHandler *handler.CRMSyncHandler
+	if crmWorker != nil {
+		crmSyncHandler = handler.NewCRMSyncHandler(crmWorker)
+	} else {
+		crmSyncHandler = handler.NewCRMSyncHandler(nil)
+	}
 	entityService := service.NewEntityService(db.NewEntityRepository(database))
 	// The primary entity's country is the seller jurisdiction for non-GST
 	// tenants — an entity update must drop the resolver's cache too (#186).
@@ -1838,6 +1846,7 @@ func main() {
 		// EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
 		v1.GET("/settings/eu-einvoice", euConfigHandler.GetEUConfig)
 		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
+		v1.POST("/crm/sync", crmSyncHandler.SyncNow)
 		v1.GET("/settings/tax/us", usTaxConfigHandler.GetUSTaxConfig)
 		v1.PUT("/settings/tax/us", usTaxConfigHandler.UpdateUSTaxConfig)
 		// EU e-invoicing per invoice (Track C inc 2): inspect the generated UBL +

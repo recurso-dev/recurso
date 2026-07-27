@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ProviderGuide } from "@/components/patterns/ProviderGuide";
 import {
   Sheet,
   SheetContent,
@@ -30,16 +31,35 @@ const SECTIONS = [
       {
         id: "taxjar",
         name: "TaxJar",
-        fields: [{ key: "api_key", label: "API key", secret: true }],
+        fields: [{ key: "api_key", label: "API key", secret: true, placeholder: "Live API token" }],
+        guide: {
+          steps: [
+            "Sign in to TaxJar and open Account → TaxJar API.",
+            "Copy your Live API token (API access requires TaxJar's Professional plan).",
+            "Paste it here. Sandbox tokens won't work — this connection calls TaxJar's production API.",
+          ],
+          url: "https://app.taxjar.com/account#api-access",
+          urlLabel: "Open TaxJar API settings",
+        },
       },
       {
         id: "avalara",
         name: "Avalara AvaTax",
         fields: [
-          { key: "account_id", label: "Account ID" },
-          { key: "license_key", label: "License key", secret: true },
-          { key: "company_code", label: "Company code" },
+          { key: "account_id", label: "Account ID", placeholder: "e.g. 2001234567" },
+          { key: "license_key", label: "License key", secret: true, placeholder: "Shown once at generation" },
+          { key: "company_code", label: "Company code", placeholder: "e.g. DEFAULT" },
         ],
+        guide: {
+          steps: [
+            "Sign in to the AvaTax admin console.",
+            "Settings → License and API keys — generate or copy your License key (it is shown only once).",
+            "Your Account ID appears in the console header and on the same page.",
+            "Company code: Settings → Manage companies (a fresh account's is usually DEFAULT).",
+          ],
+          url: "https://admin.avalara.com/",
+          urlLabel: "Open AvaTax console",
+        },
       },
     ],
   },
@@ -51,7 +71,18 @@ const SECTIONS = [
       {
         id: "hubspot",
         name: "HubSpot",
-        fields: [{ key: "access_token", label: "Private-app access token", secret: true }],
+        fields: [
+          { key: "access_token", label: "Private-app access token", secret: true, placeholder: "pat-na1-…" },
+        ],
+        guide: {
+          steps: [
+            "In HubSpot, open Settings (gear) → Integrations → Private Apps.",
+            "Create a private app (any name) and grant it the crm.objects.contacts Read and Write scopes.",
+            "Create the app, open its Auth tab, and copy the access token (starts with pat-).",
+          ],
+          url: "https://app.hubspot.com/l/private-apps",
+          urlLabel: "Open HubSpot private apps",
+        },
       },
     ],
   },
@@ -64,13 +95,25 @@ const SECTIONS = [
         id: "s3",
         name: "Amazon S3 / MinIO / R2",
         fields: [
-          { key: "bucket", label: "Bucket" },
-          { key: "region", label: "Region" },
+          { key: "bucket", label: "Bucket", placeholder: "e.g. acme-ledger-exports" },
+          { key: "region", label: "Region", placeholder: "e.g. us-east-1 (R2: auto)" },
           { key: "access_key_id", label: "Access key ID" },
           { key: "secret_access_key", label: "Secret access key", secret: true },
-          { key: "endpoint", label: "Endpoint (MinIO/R2)", optional: true },
-          { key: "prefix", label: "Key prefix", optional: true },
+          {
+            key: "endpoint",
+            label: "Endpoint (MinIO/R2)",
+            optional: true,
+            placeholder: "https://<account-id>.r2.cloudflarestorage.com",
+          },
+          { key: "prefix", label: "Key prefix", optional: true, placeholder: "e.g. recurso/ledger/" },
         ],
+        guide: {
+          steps: [
+            "Amazon S3: IAM → Users → Security credentials → Create access key, for a user allowed s3:PutObject on your bucket. Region is the bucket's region; leave Endpoint empty.",
+            "Cloudflare R2: R2 → Manage API Tokens → Create API Token (Object Read & Write). Endpoint is https://<account-id>.r2.cloudflarestorage.com; use auto as the region.",
+            "MinIO: create an access key in the MinIO console; Endpoint is your MinIO server URL.",
+          ],
+        },
       },
     ],
   },
@@ -86,6 +129,7 @@ export default function IntegrationConnections() {
   const [saving, setSaving] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [crmSyncing, setCrmSyncing] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -138,6 +182,25 @@ export default function IntegrationConnections() {
       toast.error(err?.response?.data?.error?.message || "Failed to connect");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Test a fresh CRM connection immediately instead of waiting for the
+  // daily sweep. Surfaces the provider's own rejection (bad token / scopes).
+  const syncCRM = async () => {
+    setCrmSyncing(true);
+    try {
+      const res = await api.syncCRMNow();
+      const n = res.data?.data?.contacts_synced ?? 0;
+      toast.success(
+        n > 0
+          ? `Synced ${n} contact${n === 1 ? "" : "s"} to your CRM.`
+          : "Connection works — no contacts with an email to sync yet.",
+      );
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "CRM sync failed");
+    } finally {
+      setCrmSyncing(false);
     }
   };
 
@@ -216,6 +279,11 @@ export default function IntegrationConnections() {
                             </p>
                           )}
                           <div className="flex gap-2">
+                            {section.category === "crm" && (
+                              <Button size="sm" onClick={syncCRM} disabled={crmSyncing}>
+                                {crmSyncing ? "Syncing…" : "Sync now"}
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
@@ -269,6 +337,7 @@ export default function IntegrationConnections() {
 
           {connectTarget && (
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
+              <ProviderGuide guide={connectTarget.provider.guide} />
               {connectTarget.provider.fields.map((f) => (
                 <div key={f.key} className="space-y-1.5">
                   <Label htmlFor={`f-${f.key}`}>
@@ -282,6 +351,7 @@ export default function IntegrationConnections() {
                     type={f.secret ? "password" : "text"}
                     value={form[f.key] || ""}
                     onChange={(e) => setForm({ ...form, [f.key]: e.target.value })}
+                    placeholder={f.placeholder}
                     className="font-mono"
                   />
                 </div>

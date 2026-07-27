@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -111,44 +112,67 @@ func (w *CRMSyncWorker) RunOnce(ctx context.Context) (int, error) {
 	}
 	synced := 0
 	for _, tenant := range tenants {
-		tctx := context.WithValue(ctx, domain.TenantIDKey, tenant.ID)
-		// Resolve this tenant's CRM client (their own BYO account, else env).
-		// A tenant with neither configured is skipped.
-		crmClient := w.crmForTenant(tctx, tenant.ID)
-		if crmClient == nil {
+		n, err := w.RunTenant(ctx, tenant.ID)
+		if err != nil {
+			slog.Error("crm sync: tenant sweep failed", "tenant_id", tenant.ID, "error", err)
 			continue
 		}
-		customers, err := w.customers.List(tctx, tenant.ID, domain.CustomerFilter{Limit: 10000})
-		if err != nil {
-			slog.Error("crm sync: customer list failed", "tenant_id", tenant.ID, "error", err)
-			continue
-		}
-		active, err := w.subs.CountActiveByCustomer(tctx, tenant.ID)
-		if err != nil {
-			slog.Warn("crm sync: active counts unavailable", "tenant_id", tenant.ID, "error", err)
-			active = map[uuid.UUID]int{}
-		}
-		for _, customer := range customers {
-			if customer.Email == "" {
-				continue
-			}
-			status := "churned"
-			if active[customer.ID] > 0 {
-				status = "active"
-			}
-			_, err := crmClient.UpsertContact(tctx, customer.Email, map[string]string{
-				"recurso_customer_id":        customer.ID.String(),
-				"recurso_subscription_state": status,
-			})
-			if err != nil {
-				slog.Warn("crm sync: contact upsert failed", "customer_id", customer.ID, "error", err)
-				continue
-			}
-			synced++
-		}
+		synced += n
 	}
 	if synced > 0 {
 		slog.Info("crm sync sweep complete", "contacts", synced)
+	}
+	return synced, nil
+}
+
+// ErrCRMNotConfigured marks a manual sync for a tenant with no CRM connected
+// (neither BYO nor env). Handlers map it to a client error, not a 500.
+var ErrCRMNotConfigured = errors.New("no CRM connected for this workspace")
+
+// RunTenant syncs ONE tenant's customers to its CRM — the daily sweep's
+// per-tenant body, exposed so the dashboard's "Sync now" can test a fresh
+// connection without waiting for the 24h tick.
+func (w *CRMSyncWorker) RunTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	// Resolve this tenant's CRM client (their own BYO account, else env).
+	crmClient := w.crmForTenant(tctx, tenantID)
+	if crmClient == nil {
+		return 0, ErrCRMNotConfigured
+	}
+	customers, err := w.customers.List(tctx, tenantID, domain.CustomerFilter{Limit: 10000})
+	if err != nil {
+		return 0, fmt.Errorf("crm sync: customer list: %w", err)
+	}
+	active, err := w.subs.CountActiveByCustomer(tctx, tenantID)
+	if err != nil {
+		slog.Warn("crm sync: active counts unavailable", "tenant_id", tenantID, "error", err)
+		active = map[uuid.UUID]int{}
+	}
+	synced := 0
+	var lastErr error
+	for _, customer := range customers {
+		if customer.Email == "" {
+			continue
+		}
+		status := "churned"
+		if active[customer.ID] > 0 {
+			status = "active"
+		}
+		_, err := crmClient.UpsertContact(tctx, customer.Email, map[string]string{
+			"recurso_customer_id":        customer.ID.String(),
+			"recurso_subscription_state": status,
+		})
+		if err != nil {
+			slog.Warn("crm sync: contact upsert failed", "customer_id", customer.ID, "error", err)
+			lastErr = err
+			continue
+		}
+		synced++
+	}
+	// A sync that upserted NOTHING and errored is a failed sync (bad token,
+	// missing scopes) — surface the provider's error instead of "0 synced".
+	if synced == 0 && lastErr != nil {
+		return 0, lastErr
 	}
 	return synced, nil
 }

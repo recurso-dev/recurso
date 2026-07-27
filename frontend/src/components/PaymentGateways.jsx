@@ -5,6 +5,7 @@ import { endpoints as api, API_ROOT } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ProviderGuide } from "@/components/patterns/ProviderGuide";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,6 +26,16 @@ const GATEWAYS = [
     publicLabel: "Publishable key",
     publicPlaceholder: "pk_live_…",
     secretPlaceholder: "sk_live_…",
+    guide: {
+      steps: [
+        "Sign in to the Stripe Dashboard.",
+        "Open Developers → API keys.",
+        "Copy the Publishable key (pk_…), then Reveal and copy the Secret key (sk_…).",
+        "Match the mode: test keys (pk_test_/sk_test_) with Test mode here, live keys with Live.",
+      ],
+      url: "https://dashboard.stripe.com/apikeys",
+      urlLabel: "Open Stripe API keys",
+    },
   },
   {
     id: "razorpay",
@@ -32,6 +43,15 @@ const GATEWAYS = [
     publicLabel: "Key ID",
     publicPlaceholder: "rzp_live_…",
     secretPlaceholder: "Key secret",
+    guide: {
+      steps: [
+        "Sign in to the Razorpay Dashboard.",
+        "Open Account & Settings → API Keys.",
+        "Generate (or regenerate) a key — copy the Key ID (rzp_…) and the Key Secret (shown only once).",
+      ],
+      url: "https://dashboard.razorpay.com/app/keys",
+      urlLabel: "Open Razorpay API keys",
+    },
   },
 ];
 
@@ -272,6 +292,7 @@ export default function PaymentGateways() {
 
           {connectTarget && (
             <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-6 py-6">
+              <ProviderGuide guide={connectTarget.guide} />
               <div className="space-y-1.5">
                 <Label htmlFor="gw-mode">Mode</Label>
                 <select

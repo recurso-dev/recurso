@@ -4834,6 +4834,33 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/crm/sync:
+    post:
+      operationId: syncCRMNow
+      tags: [Integrations]
+      summary: Sync this workspace's customers to its connected CRM now
+      description: >
+        Runs the CRM sweep for the calling workspace synchronously — the way to
+        test a freshly connected HubSpot token instead of waiting for the daily
+        sweep. Returns how many contacts were upserted. 400 when no CRM is
+        connected; 502 carries the provider's own rejection (bad token, missing
+        scopes).
+      responses:
+        '200':
+          description: Sweep completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      contacts_synced: { type: integer }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '502':
+          description: The CRM provider rejected the sync (e.g. invalid token).
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /v1/settings/tax/us:
     get:
       operationId: getUSTaxConfig
