@@ -1,3 +1,4 @@
+import { shortId } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileQuestion } from "lucide-react";
@@ -24,7 +25,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 
 const textareaClass =

@@ -3,7 +3,7 @@ import { Plus, Building2, Trash2, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, shortId } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,6 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 
-const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
 
 // Multi-tenant admin: group tenants under an organization and see
 // consolidated MRR across them.

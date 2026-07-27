@@ -1,3 +1,4 @@
+import { shortId } from "@/lib/utils";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, ArrowUpRight } from "lucide-react";
 
@@ -15,7 +16,6 @@ const riskVariant = (level) =>
   ({ critical: "destructive", high: "destructive", medium: "warning", low: "neutral" })[level] ||
   "neutral";
 
-const shortId = (id) => (id ? String(id).slice(0, 8) : "—");
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 
 const Churn = () => {
