@@ -545,6 +545,40 @@ func (h *WebhookHandler) handleACHReturn(ctx context.Context, ref *stripe.Refund
 		return nil
 	}
 
+	// Classification guards (QA finding B): "succeeded refund with no credit
+	// note" alone is too loose — a merchant refunding directly in the Stripe
+	// Dashboard (bypassing Recurso's credit-note flow) produces the same
+	// signature, and treating THAT as a bank return would reopen the invoice
+	// and dun the customer for money the merchant deliberately gave back.
+	// Every guard fails SAFE: skip the reopen (invoice stays paid; an operator
+	// can reconcile a skipped genuine return by hand — the reverse mistake,
+	// dunning a refunded customer, is not recoverable by us).
+
+	// (1) Only bank debits can bounce after settling. An attempt on any other
+	// method with a stray refund is not a return.
+	if attempt.Method != "" && attempt.Method != "us_bank_account" {
+		h.logger.Warn("refund with no credit note on a non-bank-debit attempt — not a bank return; ignoring",
+			"refund_id", ref.ID, "payment_intent_id", piID, "method", attempt.Method)
+		return nil
+	}
+	// (2) Merchant-initiated refunds carry a merchant-set reason; involuntary
+	// bank returns are Stripe-initiated and don't. Books note: the merchant
+	// refunded out-of-band, so no credit note exists — flag for review.
+	switch ref.Reason {
+	case stripe.RefundReasonRequestedByCustomer, stripe.RefundReasonDuplicate, stripe.RefundReasonFraudulent:
+		h.logger.Warn("merchant-initiated refund with no credit note on an ACH invoice — NOT a bank return; invoice stays paid. Refund issued outside Recurso: books need a credit note for this refund",
+			"refund_id", ref.ID, "payment_intent_id", piID, "invoice_id", attempt.InvoiceID, "reason", ref.Reason)
+		return nil
+	}
+	// (3) A genuine ACH return is always for the FULL debited amount; a partial
+	// refund can only be merchant-initiated.
+	if attempt.Amount > 0 && ref.Amount > 0 && ref.Amount != attempt.Amount {
+		h.logger.Warn("partial refund with no credit note on an ACH invoice — NOT a bank return (returns are always full); invoice stays paid",
+			"refund_id", ref.ID, "payment_intent_id", piID, "invoice_id", attempt.InvoiceID,
+			"refund_amount", ref.Amount, "attempt_amount", attempt.Amount)
+		return nil
+	}
+
 	returnCode := string(ref.FailureReason)
 	if returnCode == "" {
 		returnCode = "ach_return"

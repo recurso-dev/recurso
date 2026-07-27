@@ -225,3 +225,90 @@ func TestACHWebhook_ReturnWithNoAttemptIsSwallowed(t *testing.T) {
 		t.Errorf("no invoice must be reopened when no attempt matches, got %d calls", repo.reverseCalls)
 	}
 }
+
+// --- QA finding B: refund-vs-return classification guards ---
+
+// classificationFixture seeds a settled us_bank_account attempt (amount 10000)
+// on a paid invoice and returns the handler + spies.
+func classificationFixture() (*WebhookHandler, *memAttempts, *returnStubRepo) {
+	tenantID, invoiceID := uuid.New(), uuid.New()
+	attempts := newMemAttempts()
+	attempts.byPI["pi_cls"] = &domain.PaymentAttempt{
+		GatewayPaymentIntentID: "pi_cls", Status: domain.PaymentAttemptSucceeded,
+		Method: "us_bank_account", InvoiceID: invoiceID, TenantID: tenantID, Amount: 10000,
+	}
+	repo := &returnStubRepo{inv: &domain.Invoice{
+		ID: invoiceID, TenantID: tenantID, Status: domain.InvoiceStatusPaid, Total: 10000,
+	}}
+	subSvc := service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return &WebhookHandler{logger: slog.Default(), paymentAttempts: attempts, subService: subSvc}, attempts, repo
+}
+
+// A merchant-initiated refund (dashboard refund carrying a merchant-set reason)
+// must NOT be treated as a bank return: the invoice stays paid and the customer
+// is never re-dunned for money the merchant gave back.
+func TestACHWebhook_MerchantReasonRefundIsNotAReturn(t *testing.T) {
+	h, attempts, repo := classificationFixture()
+	ref := refundEvt("pi_cls", stripe.RefundStatusSucceeded)
+	ref.Amount = 10000
+	ref.Reason = stripe.RefundReasonRequestedByCustomer
+
+	if err := h.handleACHReturn(context.Background(), ref); err != nil {
+		t.Fatalf("handleACHReturn: %v", err)
+	}
+	if attempts.byPI["pi_cls"].Status != domain.PaymentAttemptSucceeded {
+		t.Error("merchant refund must not mark the attempt returned")
+	}
+	if repo.reverseCalls != 0 || repo.inv.Status != domain.InvoiceStatusPaid {
+		t.Errorf("merchant refund must not reopen the invoice: calls=%d status=%s", repo.reverseCalls, repo.inv.Status)
+	}
+}
+
+// A PARTIAL refund can only be merchant-initiated — genuine ACH returns are
+// always for the full debited amount. Must not reopen.
+func TestACHWebhook_PartialRefundIsNotAReturn(t *testing.T) {
+	h, attempts, repo := classificationFixture()
+	ref := refundEvt("pi_cls", stripe.RefundStatusSucceeded)
+	ref.Amount = 2500 // partial
+
+	if err := h.handleACHReturn(context.Background(), ref); err != nil {
+		t.Fatalf("handleACHReturn: %v", err)
+	}
+	if attempts.byPI["pi_cls"].Status != domain.PaymentAttemptSucceeded || repo.reverseCalls != 0 {
+		t.Errorf("partial refund must not be treated as a return: status=%s calls=%d",
+			attempts.byPI["pi_cls"].Status, repo.reverseCalls)
+	}
+}
+
+// An attempt on a non-bank-debit method can never be a bank return.
+func TestACHWebhook_NonBankMethodIsNotAReturn(t *testing.T) {
+	h, attempts, repo := classificationFixture()
+	attempts.byPI["pi_cls"].Method = "card"
+	ref := refundEvt("pi_cls", stripe.RefundStatusSucceeded)
+	ref.Amount = 10000
+
+	if err := h.handleACHReturn(context.Background(), ref); err != nil {
+		t.Fatalf("handleACHReturn: %v", err)
+	}
+	if attempts.byPI["pi_cls"].Status != domain.PaymentAttemptSucceeded || repo.reverseCalls != 0 {
+		t.Error("a card attempt's refund must not be treated as a bank return")
+	}
+}
+
+// The genuine article still processes: full amount, Stripe-initiated (no
+// merchant reason), us_bank_account — attempt returned + invoice reopened.
+func TestACHWebhook_GenuineFullReturnStillProcesses(t *testing.T) {
+	h, attempts, repo := classificationFixture()
+	ref := refundEvt("pi_cls", stripe.RefundStatusSucceeded)
+	ref.Amount = 10000 // full, no Reason set
+
+	if err := h.handleACHReturn(context.Background(), ref); err != nil {
+		t.Fatalf("handleACHReturn: %v", err)
+	}
+	if attempts.byPI["pi_cls"].Status != domain.PaymentAttemptReturned {
+		t.Errorf("attempt status = %s, want returned", attempts.byPI["pi_cls"].Status)
+	}
+	if repo.reverseCalls != 1 || repo.inv.Status != domain.InvoiceStatusPastDue {
+		t.Errorf("genuine return must reopen: calls=%d status=%s", repo.reverseCalls, repo.inv.Status)
+	}
+}
