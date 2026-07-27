@@ -1301,6 +1301,9 @@ func main() {
 	// tenant/default GST config (stored under entity_id IS NULL) for the seller
 	// GSTIN — the primary lookup makes that mapping possible.
 	gstHandler.SetEntityReader(db.NewEntityRepository(database))
+	// A GST-config write changes the seller jurisdiction — drop the resolver's
+	// per-tenant cache so the next invoice sees it immediately (#186).
+	gstHandler.SetSellerJurisdictionInvalidator(taxResolver.InvalidateSellerJurisdiction)
 	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
 	taxNexusHandler.SetStatusService(nexusStatusService)
 	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
@@ -1310,7 +1313,11 @@ func main() {
 	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
 	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
-	entityHandler := handler.NewEntityHandler(service.NewEntityService(db.NewEntityRepository(database)))
+	entityService := service.NewEntityService(db.NewEntityRepository(database))
+	// The primary entity's country is the seller jurisdiction for non-GST
+	// tenants — an entity update must drop the resolver's cache too (#186).
+	entityService.SetSellerJurisdictionInvalidator(taxResolver.InvalidateSellerJurisdiction)
+	entityHandler := handler.NewEntityHandler(entityService)
 
 	// Consent Service & Handler (P30 - RBI compliance)
 	consentRepo := db.NewConsentRepository(database)

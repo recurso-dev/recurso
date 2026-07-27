@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -67,6 +68,26 @@ type TaxResolver struct {
 	// Optional; nil keeps the historical env fallback.
 	primaryEntityCountry func(ctx context.Context, tenantID uuid.UUID) string
 	logger               *slog.Logger
+
+	// sellerCache memoizes sellerJurisdiction per tenant. ResolveInvoiceTax runs
+	// per line item, so without it every line of a multi-line invoice re-reads
+	// the GST config (and, for non-GST tenants, the primary entity) — the N+1 in
+	// issue #186. Writes to either source invalidate explicitly
+	// (InvalidateSellerJurisdiction); the short TTL is the backstop.
+	sellerCacheMu sync.Mutex
+	sellerCache   map[uuid.UUID]sellerCacheEntry
+}
+
+// sellerJurisdictionTTL bounds how long a cached seller jurisdiction can serve
+// after the explicit invalidation hooks are missed (e.g. a config write from a
+// path that doesn't know about the resolver).
+const sellerJurisdictionTTL = 30 * time.Second
+
+type sellerCacheEntry struct {
+	country string
+	state   string
+	cfg     *domain.TenantGSTConfig
+	expires time.Time
 }
 
 // NexusProvider tells the resolver which US states a tenant has declared
@@ -90,6 +111,7 @@ func NewTaxResolver(gstConfigs GSTConfigProvider, defaultCountry, defaultState s
 		defaultCountry: strings.ToUpper(strings.TrimSpace(defaultCountry)),
 		defaultState:   strings.ToUpper(strings.TrimSpace(defaultState)),
 		logger:         slog.Default().With("service", "tax_resolver"),
+		sellerCache:    make(map[uuid.UUID]sellerCacheEntry),
 	}
 }
 
@@ -192,6 +214,49 @@ func (r *TaxResolver) ResolveInvoiceTax(ctx context.Context, tenantID uuid.UUID,
 // propagate. Unset entity country ("") falls through to env — existing tenants
 // are unchanged.
 func (r *TaxResolver) sellerJurisdiction(ctx context.Context, tenantID uuid.UUID) (country, state string, cfg *domain.TenantGSTConfig) {
+	if tenantID == uuid.Nil {
+		return r.resolveSellerJurisdiction(ctx, tenantID)
+	}
+
+	r.sellerCacheMu.Lock()
+	if e, ok := r.sellerCache[tenantID]; ok && time.Now().Before(e.expires) {
+		r.sellerCacheMu.Unlock()
+		return e.country, e.state, e.cfg
+	}
+	r.sellerCacheMu.Unlock()
+
+	country, state, cfg = r.resolveSellerJurisdiction(ctx, tenantID)
+
+	r.sellerCacheMu.Lock()
+	// Bound the map: entries expire logically but are only deleted here, so
+	// sweep the stale ones once the cache grows past any realistic tenant count.
+	if len(r.sellerCache) >= 4096 {
+		now := time.Now()
+		for id, e := range r.sellerCache {
+			if now.After(e.expires) {
+				delete(r.sellerCache, id)
+			}
+		}
+	}
+	r.sellerCache[tenantID] = sellerCacheEntry{
+		country: country, state: state, cfg: cfg,
+		expires: time.Now().Add(sellerJurisdictionTTL),
+	}
+	r.sellerCacheMu.Unlock()
+	return country, state, cfg
+}
+
+// InvalidateSellerJurisdiction drops a tenant's cached seller jurisdiction.
+// Called by the GST-config and entity write paths so a jurisdiction change
+// takes effect on the next invoice rather than after the TTL.
+func (r *TaxResolver) InvalidateSellerJurisdiction(tenantID uuid.UUID) {
+	r.sellerCacheMu.Lock()
+	delete(r.sellerCache, tenantID)
+	r.sellerCacheMu.Unlock()
+}
+
+// resolveSellerJurisdiction is the uncached lookup behind sellerJurisdiction.
+func (r *TaxResolver) resolveSellerJurisdiction(ctx context.Context, tenantID uuid.UUID) (country, state string, cfg *domain.TenantGSTConfig) {
 	// 1. GST registration wins — a real GSTIN means an Indian seller.
 	if r.gstConfigs != nil && tenantID != uuid.Nil {
 		c, err := r.gstConfigs.GetByTenantID(ctx, tenantID)

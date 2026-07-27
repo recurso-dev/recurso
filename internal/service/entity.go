@@ -29,10 +29,21 @@ type entityStore interface {
 // EntityService manages a tenant's legal entities (Multi-Entity Books, Inc 1).
 type EntityService struct {
 	repo entityStore
+	// invalidateSellerCache drops the tax resolver's cached seller jurisdiction
+	// after an entity update — the primary entity's country_code is the seller
+	// country for non-GST tenants (nil-safe; the cache TTL is the fallback).
+	invalidateSellerCache func(uuid.UUID)
 }
 
 func NewEntityService(repo entityStore) *EntityService {
 	return &EntityService{repo: repo}
+}
+
+// SetSellerJurisdictionInvalidator wires the tax resolver's cache invalidation
+// so a country change on the primary entity is reflected on the next invoice
+// immediately.
+func (s *EntityService) SetSellerJurisdictionInvalidator(fn func(uuid.UUID)) {
+	s.invalidateSellerCache = fn
 }
 
 func (s *EntityService) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Entity, error) {
@@ -112,6 +123,9 @@ func (s *EntityService) Update(ctx context.Context, tenantID, id uuid.UUID, in C
 			return nil, fmt.Errorf("%w: invoice prefix %q is already used by another entity", ErrEntityValidation, e.InvoicePrefix)
 		}
 		return nil, err
+	}
+	if s.invalidateSellerCache != nil && e.IsPrimary {
+		s.invalidateSellerCache(tenantID)
 	}
 	return e, nil
 }
