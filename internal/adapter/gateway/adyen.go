@@ -193,7 +193,7 @@ func (g *AdyenGateway) CreateSubscription(ctx context.Context, planID string, to
 	return "", fmt.Errorf("gateway-managed subscriptions are not supported by adyen adapter (Recurso owns the cycle)")
 }
 
-func (g *AdyenGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (g *AdyenGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, _ string) (*port.MandateResult, error) {
 	return nil, fmt.Errorf("UPI mandates are not supported by adyen")
 }
 
@@ -201,7 +201,7 @@ func (g *AdyenGateway) ExecuteMandateDebit(ctx context.Context, req port.Mandate
 	return nil, fmt.Errorf("UPI mandate debits are not supported by adyen")
 }
 
-func (g *AdyenGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (g *AdyenGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	return fmt.Errorf("UPI mandates are not supported by adyen")
 }
 

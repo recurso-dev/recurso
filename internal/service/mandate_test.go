@@ -84,7 +84,7 @@ func (f *fakeCreditApplier) ApplyAdjustmentCredits(ctx context.Context, tenantID
 	return applied, nil
 }
 
-func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (m *mandateMockGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	m.revokeCalls = append(m.revokeCalls, mandateRevokeCall{customerID: customerID, tokenID: tokenID})
 	return m.revokeErr
 }

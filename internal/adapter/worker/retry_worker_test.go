@@ -94,13 +94,13 @@ func (m *mockGateway) VerifyPayment(ctx context.Context, orderID, paymentID, sig
 func (m *mockGateway) CreateSubscription(ctx context.Context, planID string, totalCount int, customerEmail string, startAt *int64, currency string) (string, error) {
 	return "", nil
 }
-func (m *mockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency string) (*port.MandateResult, error) {
+func (m *mockGateway) CreateMandate(ctx context.Context, customerEmail, customerContact, vpa string, maxAmount int64, frequency, _ string) (*port.MandateResult, error) {
 	return nil, nil
 }
 func (m *mockGateway) ExecuteMandateDebit(ctx context.Context, req port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return nil, nil
 }
-func (m *mockGateway) RevokeMandate(ctx context.Context, customerID, tokenID string) error {
+func (m *mockGateway) RevokeMandate(ctx context.Context, customerID, tokenID, _ string) error {
 	return nil
 }
 func (m *mockGateway) CreateVirtualAccount(ctx context.Context, customerID, invoiceID string, amount int64, description string) (*port.VirtualAccountResult, error) {

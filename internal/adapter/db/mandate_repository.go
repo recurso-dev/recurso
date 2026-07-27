@@ -19,14 +19,14 @@ func NewMandateRepository(db *sql.DB) *MandateRepository {
 
 func (r *MandateRepository) Create(ctx context.Context, mandate *domain.Mandate) error {
 	query := `INSERT INTO mandates (id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
-		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status, next_debit_at, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`
+		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status, next_debit_at, created_at, updated_at, currency)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`
 	_, err := r.db.ExecContext(ctx, query,
 		mandate.ID, mandate.TenantID, mandate.CustomerID, mandate.SubscriptionID,
 		mandate.MandateType, mandate.PaymentMethod, mandate.VPA,
 		mandate.RazorpayTokenID, mandate.RazorpaySubscriptionID, mandate.RazorpayCustomerID,
 		mandate.MaxAmount, mandate.Frequency, mandate.Status,
-		mandate.NextDebitAt, mandate.CreatedAt, mandate.UpdatedAt,
+		mandate.NextDebitAt, mandate.CreatedAt, mandate.UpdatedAt, mandate.Currency,
 	)
 	return err
 }
@@ -35,7 +35,7 @@ func (r *MandateRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID)
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-		pre_debit_notified, created_at, updated_at
+		pre_debit_notified, created_at, updated_at, currency
 		FROM mandates WHERE id = $1 AND tenant_id = $2`
 	row := r.db.QueryRowContext(ctx, query, id, tenantID)
 	return r.scanMandate(row)
@@ -45,7 +45,7 @@ func (r *MandateRepository) GetByRazorpayTokenID(ctx context.Context, tokenID st
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-		pre_debit_notified, created_at, updated_at
+		pre_debit_notified, created_at, updated_at, currency
 		FROM mandates WHERE razorpay_token_id = $1`
 	row := r.db.QueryRowContext(ctx, query, tokenID)
 	return r.scanMandate(row)
@@ -55,7 +55,7 @@ func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID, limit,
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-		pre_debit_notified, created_at, updated_at
+		pre_debit_notified, created_at, updated_at, currency
 		FROM mandates WHERE tenant_id = $1 ORDER BY created_at DESC`
 	args := []interface{}{tenantID}
 	if limit > 0 {
@@ -108,7 +108,7 @@ func (r *MandateRepository) GetDueForPreNotification(ctx context.Context) ([]*do
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-		pre_debit_notified, created_at, updated_at
+		pre_debit_notified, created_at, updated_at, currency
 		FROM mandates
 		WHERE status = 'active'
 		AND pre_debit_notified = FALSE
@@ -138,7 +138,7 @@ func (r *MandateRepository) GetReadyForDebit(ctx context.Context) ([]*domain.Man
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-		pre_debit_notified, created_at, updated_at
+		pre_debit_notified, created_at, updated_at, currency
 		FROM mandates
 		WHERE status = 'active'
 		AND pre_debit_notified = TRUE
@@ -193,7 +193,7 @@ func (r *MandateRepository) ClaimDueForDebit(ctx context.Context, claimWindow ti
 		RETURNING id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 			razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 			authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
-			pre_debit_notified, created_at, updated_at`
+			pre_debit_notified, created_at, updated_at, currency`
 	rows, err := r.db.QueryContext(ctx, query, mins)
 	if err != nil {
 		return nil, err
@@ -225,7 +225,7 @@ func (r *MandateRepository) scanMandate(row *sql.Row) (*domain.Mandate, error) {
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,
-		&m.PreDebitNotified, &m.CreatedAt, &m.UpdatedAt,
+		&m.PreDebitNotified, &m.CreatedAt, &m.UpdatedAt, &m.Currency,
 	)
 	if err != nil {
 		return nil, err
@@ -251,7 +251,7 @@ func (r *MandateRepository) scanMandateRow(rows *sql.Rows) (*domain.Mandate, err
 		&m.MaxAmount, &m.Frequency, &m.Status,
 		&m.AuthorizedAt, &m.ActivatedAt, &m.RevokedAt,
 		&m.LastDebitAt, &m.NextDebitAt,
-		&m.PreDebitNotified, &m.CreatedAt, &m.UpdatedAt,
+		&m.PreDebitNotified, &m.CreatedAt, &m.UpdatedAt, &m.Currency,
 	)
 	if err != nil {
 		return nil, err

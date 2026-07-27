@@ -25,13 +25,13 @@ func (s *stubGateway) CreateSubscription(context.Context, string, int, string, *
 func (s *stubGateway) RetryPayment(context.Context, string, int64, string) (*port.PaymentResult, error) {
 	return &port.PaymentResult{PaymentID: s.name}, nil
 }
-func (s *stubGateway) CreateMandate(context.Context, string, string, string, int64, string) (*port.MandateResult, error) {
+func (s *stubGateway) CreateMandate(context.Context, string, string, string, int64, string, string) (*port.MandateResult, error) {
 	return &port.MandateResult{TokenID: s.name}, nil
 }
 func (s *stubGateway) ExecuteMandateDebit(context.Context, port.MandateDebitRequest) (*port.PaymentResult, error) {
 	return &port.PaymentResult{PaymentID: s.name}, nil
 }
-func (s *stubGateway) RevokeMandate(context.Context, string, string) error { return nil }
+func (s *stubGateway) RevokeMandate(context.Context, string, string, string) error { return nil }
 func (s *stubGateway) CreateVirtualAccount(context.Context, string, string, int64, string) (*port.VirtualAccountResult, error) {
 	return &port.VirtualAccountResult{VAID: s.name}, nil
 }

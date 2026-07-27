@@ -5482,8 +5482,13 @@ paths:
           application/json:
             schema:
               type: object
-              required: [customer_id, vpa, max_amount, frequency]
+              required: [customer_id, max_amount, frequency]
               properties:
+                currency:
+                  type: string
+                  minLength: 3
+                  maxLength: 3
+                  description: Mandate rail. Empty/INR = Razorpay UPI AutoPay; an overridden currency (e.g. EUR) = bank debit via GoCardless. VPA is only required for INR.
                 customer_id:
                   type: string
                   format: uuid
