@@ -108,7 +108,8 @@ func (h *CouponHandler) ListCoupons(c *gin.Context) {
 		return
 	}
 
-	coupons, err := h.repo.List(c.Request.Context(), tenantID)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	coupons, err := h.repo.List(c.Request.Context(), tenantID, limit, offset)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to list coupons")
 		return

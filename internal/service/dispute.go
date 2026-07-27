@@ -21,8 +21,8 @@ func NewDisputeService(repo port.DisputeRepository) *DisputeService {
 
 // List returns tenant-scoped disputes, optionally filtered by status
 // ("open" or "resolved"); an empty status returns all.
-func (s *DisputeService) List(ctx context.Context, tenantID uuid.UUID, status string) ([]*domain.InvoiceDispute, error) {
-	return s.repo.ListByTenant(ctx, tenantID, status)
+func (s *DisputeService) List(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error) {
+	return s.repo.ListByTenant(ctx, tenantID, status, limit, offset)
 }
 
 // Resolve marks an open dispute resolved with an optional note. It is

@@ -967,9 +967,9 @@ func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity
 }
 
 // ListAccounts returns all ledger accounts for a tenant.
-func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
+func (s *LedgerService) ListAccounts(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error) {
 	if s.pgRepo != nil {
-		return s.pgRepo.GetAccountsByTenant(ctx, tenantID)
+		return s.pgRepo.GetAccountsByTenant(ctx, tenantID, limit, offset)
 	}
 	return nil, nil
 }

@@ -76,6 +76,7 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 	}
 
 	// Status filter logic can be added later
+	filter.Limit, filter.Offset = parseLimitOffset(c, 1000, 1000)
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	cns, err := h.service.List(ctx, tenantID, filter)

@@ -32,7 +32,8 @@ func (h *DisputeHandler) ListDisputes(c *gin.Context) {
 		return
 	}
 
-	disputes, err := h.service.List(c.Request.Context(), tenantID, status)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	disputes, err := h.service.List(c.Request.Context(), tenantID, status, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

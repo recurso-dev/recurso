@@ -84,7 +84,7 @@ func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenan
 	return m.trialBalanceLines, nil
 }
 
-func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error) {
+func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error) {
 	if m.accountsErr != nil {
 		return nil, m.accountsErr
 	}

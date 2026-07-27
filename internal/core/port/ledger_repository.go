@@ -12,7 +12,7 @@ import (
 // Used as the primary store (PostgreSQL) with optional TigerBeetle dual-write.
 type LedgerRepository interface {
 	CreateAccount(ctx context.Context, account *domain.LedgerAccount) error
-	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID) ([]*domain.LedgerAccount, error)
+	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error)
 	GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error)
 	// GetAccountByEntityAndCode resolves a GL account scoped to a legal entity
 	// (Multi-Entity Books). Nil when the entity has no such account yet.

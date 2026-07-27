@@ -198,10 +198,10 @@ func (s *OfflinePaymentService) RecordOfflinePayment(ctx context.Context, input 
 	return payment, nil
 }
 
-func (s *OfflinePaymentService) ListVirtualAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.VirtualAccount, error) {
-	return s.repo.ListVirtualAccounts(ctx, tenantID)
+func (s *OfflinePaymentService) ListVirtualAccounts(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.VirtualAccount, error) {
+	return s.repo.ListVirtualAccounts(ctx, tenantID, limit, offset)
 }
 
-func (s *OfflinePaymentService) ListOfflinePayments(ctx context.Context, tenantID uuid.UUID) ([]*domain.OfflinePayment, error) {
-	return s.repo.ListOfflinePayments(ctx, tenantID)
+func (s *OfflinePaymentService) ListOfflinePayments(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.OfflinePayment, error) {
+	return s.repo.ListOfflinePayments(ctx, tenantID, limit, offset)
 }

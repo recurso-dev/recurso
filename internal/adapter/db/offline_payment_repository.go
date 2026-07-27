@@ -44,11 +44,20 @@ func (r *OfflinePaymentRepository) GetVirtualAccountByRazorpayID(ctx context.Con
 	return r.scanVA(row)
 }
 
-func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tenantID uuid.UUID) ([]*domain.VirtualAccount, error) {
+func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.VirtualAccount, error) {
 	query := `SELECT id, tenant_id, customer_id, invoice_id, account_number, ifsc_code,
 		bank_name, beneficiary_name, razorpay_va_id, status, amount_expected, amount_received, closed_at, created_at
 		FROM virtual_accounts WHERE tenant_id = $1 ORDER BY created_at DESC`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	args := []interface{}{tenantID}
+	if limit > 0 {
+		query += " LIMIT $2"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET $3"
+			args = append(args, offset)
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -109,11 +118,20 @@ func (r *OfflinePaymentRepository) CreateOfflinePayment(ctx context.Context, pay
 	return err
 }
 
-func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tenantID uuid.UUID) ([]*domain.OfflinePayment, error) {
+func (r *OfflinePaymentRepository) ListOfflinePayments(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.OfflinePayment, error) {
 	query := `SELECT id, tenant_id, customer_id, invoice_id, payment_type, amount,
 		tds_amount, currency, reference_number, notes, recorded_by, recorded_at
 		FROM offline_payments WHERE tenant_id = $1 ORDER BY recorded_at DESC`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	args := []interface{}{tenantID}
+	if limit > 0 {
+		query += " LIMIT $2"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET $3"
+			args = append(args, offset)
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

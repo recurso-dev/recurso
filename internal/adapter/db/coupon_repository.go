@@ -101,14 +101,23 @@ func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 	return &c, nil
 }
 
-func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Coupon, error) {
+func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Coupon, error) {
 	query := `
 		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at
 		FROM coupons
 		WHERE tenant_id = $1
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	args := []interface{}{tenantID}
+	if limit > 0 {
+		query += " LIMIT $2"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET $3"
+			args = append(args, offset)
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -81,7 +81,8 @@ func (h *MandateHandler) ListMandates(c *gin.Context) {
 		return
 	}
 
-	mandates, err := h.service.List(c.Request.Context(), tenantID)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	mandates, err := h.service.List(c.Request.Context(), tenantID, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

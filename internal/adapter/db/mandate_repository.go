@@ -51,13 +51,22 @@ func (r *MandateRepository) GetByRazorpayTokenID(ctx context.Context, tokenID st
 	return r.scanMandate(row)
 }
 
-func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Mandate, error) {
+func (r *MandateRepository) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Mandate, error) {
 	query := `SELECT id, tenant_id, customer_id, subscription_id, mandate_type, payment_method, vpa,
 		razorpay_token_id, razorpay_subscription_id, razorpay_customer_id, max_amount, frequency, status,
 		authorized_at, activated_at, revoked_at, last_debit_at, next_debit_at,
 		pre_debit_notified, created_at, updated_at
 		FROM mandates WHERE tenant_id = $1 ORDER BY created_at DESC`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	args := []interface{}{tenantID}
+	if limit > 0 {
+		query += " LIMIT $2"
+		args = append(args, limit)
+		if offset > 0 {
+			query += " OFFSET $3"
+			args = append(args, offset)
+		}
+	}
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
