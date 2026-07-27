@@ -4857,6 +4857,9 @@ paths:
                     type: object
                     properties:
                       contacts_synced: { type: integer }
+                      contacts_remaining:
+                        type: integer
+                        description: Eligible contacts not pushed this call (manual sync is capped; the daily sweep finishes them).
         '400': { $ref: '#/components/responses/BadRequest' }
         '502':
           description: The CRM provider rejected the sync (e.g. invalid token).

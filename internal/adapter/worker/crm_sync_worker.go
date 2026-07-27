@@ -112,7 +112,7 @@ func (w *CRMSyncWorker) RunOnce(ctx context.Context) (int, error) {
 	}
 	synced := 0
 	for _, tenant := range tenants {
-		n, err := w.RunTenant(ctx, tenant.ID)
+		n, _, err := w.RunTenant(ctx, tenant.ID, 0)
 		if err != nil {
 			slog.Error("crm sync: tenant sweep failed", "tenant_id", tenant.ID, "error", err)
 			continue
@@ -131,27 +131,36 @@ var ErrCRMNotConfigured = errors.New("no CRM connected for this workspace")
 
 // RunTenant syncs ONE tenant's customers to its CRM — the daily sweep's
 // per-tenant body, exposed so the dashboard's "Sync now" can test a fresh
-// connection without waiting for the 24h tick.
-func (w *CRMSyncWorker) RunTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+// connection without waiting for the 24h tick. maxContacts caps how many
+// contacts are pushed this call (0 = unbounded, the daily sweep's mode):
+// the manual sync must answer within proxy timeouts (Cloudflare kills the
+// request at ~100s and the browser sees a bare failure), so it verifies the
+// connection on a fast batch and reports what the sweep will finish.
+// Returns (synced, remaining-eligible, err).
+func (w *CRMSyncWorker) RunTenant(ctx context.Context, tenantID uuid.UUID, maxContacts int) (int, int, error) {
 	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
 	// Resolve this tenant's CRM client (their own BYO account, else env).
 	crmClient := w.crmForTenant(tctx, tenantID)
 	if crmClient == nil {
-		return 0, ErrCRMNotConfigured
+		return 0, 0, ErrCRMNotConfigured
 	}
 	customers, err := w.customers.List(tctx, tenantID, domain.CustomerFilter{Limit: 10000})
 	if err != nil {
-		return 0, fmt.Errorf("crm sync: customer list: %w", err)
+		return 0, 0, fmt.Errorf("crm sync: customer list: %w", err)
 	}
 	active, err := w.subs.CountActiveByCustomer(tctx, tenantID)
 	if err != nil {
 		slog.Warn("crm sync: active counts unavailable", "tenant_id", tenantID, "error", err)
 		active = map[uuid.UUID]int{}
 	}
-	synced := 0
+	synced, remaining := 0, 0
 	var lastErr error
 	for _, customer := range customers {
 		if customer.Email == "" {
+			continue
+		}
+		if maxContacts > 0 && synced >= maxContacts {
+			remaining++
 			continue
 		}
 		status := "churned"
@@ -172,7 +181,7 @@ func (w *CRMSyncWorker) RunTenant(ctx context.Context, tenantID uuid.UUID) (int,
 	// A sync that upserted NOTHING and errored is a failed sync (bad token,
 	// missing scopes) — surface the provider's error instead of "0 synced".
 	if synced == 0 && lastErr != nil {
-		return 0, lastErr
+		return 0, 0, lastErr
 	}
-	return synced, nil
+	return synced, remaining, nil
 }
