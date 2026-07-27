@@ -1,0 +1,20 @@
+# Recurso telemetry receiver — Cloudflare Worker + D1.
+# Deploy (once, from this directory):
+#   1. npx wrangler d1 create recurso-telemetry     # paste the database_id below
+#   2. npx wrangler d1 execute recurso-telemetry --remote --file schema.sql
+#   3. npx wrangler secret put STATS_TOKEN          # any long random string
+#   4. npx wrangler deploy
+# The custom domain below binds telemetry.recurso.dev automatically (the zone
+# already lives on this Cloudflare account).
+name = "recurso-telemetry"
+main = "src/worker.js"
+compatibility_date = "2026-07-01"
+
+routes = [
+  { pattern = "telemetry.recurso.dev", custom_domain = true }
+]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "recurso-telemetry"
+database_id = "REPLACE_AFTER_D1_CREATE"
