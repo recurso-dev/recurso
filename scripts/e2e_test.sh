@@ -250,6 +250,55 @@ else
     exit 1
 fi
 
+# 6c. GoCardless webhook chain: signature verification must fail closed, and a
+# signed billing_requests.fulfilled delivery must activate the mandate and swap
+# the stored billing-request id for the gateway mandate id (the id every future
+# debit references). Regression for the "mandate stays created forever" gap.
+echo "Step 6c: GoCardless webhook chain..."
+GC_SECRET="e2e_gc_webhook_secret"
+
+BAD_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$API_URL/webhooks/gocardless"     -H 'Content-Type: application/json' -H 'Webhook-Signature: deadbeef' -d '{"events":[]}')
+if [ "$BAD_CODE" = "401" ]; then
+    echo -e "${GREEN}  ✅ Bad webhook signature rejected (401)${NC}"
+else
+    echo -e "${RED}  ❌ Bad signature returned $BAD_CODE, want 401${NC}"
+    exit 1
+fi
+
+# An EUR mandate needs no VPA/phone (bank debit); the gateway (mock in CI,
+# sandbox locally) returns the token the webhook will reference.
+MANDATE_RES=$(post_json "$API_URL/v1/mandates" "$(jq -n \
+  --arg customer_id "$CUST_ID_USD" \
+  '{customer_id: $customer_id, currency: "EUR", max_amount: 5000, frequency: "monthly"}')" \
+  "$API_KEY")
+MANDATE_ID=$(echo "$MANDATE_RES" | jq -r '.data.mandate.id')
+MANDATE_TOKEN=$(echo "$MANDATE_RES" | jq -r '.data.mandate.razorpay_token_id')
+if [ -z "$MANDATE_ID" ] || [ "$MANDATE_ID" = "null" ]; then
+    echo -e "${RED}  ❌ EUR mandate creation failed${NC}"
+    echo "Response: $MANDATE_RES"
+    exit 1
+fi
+
+GC_BODY=$(jq -nc --arg brq "$MANDATE_TOKEN" \
+  '{events: [{id: "EV_E2E_FULFIL", resource_type: "billing_requests", action: "fulfilled", links: {billing_request: $brq, mandate_request_mandate: "MD_E2E_1"}}]}')
+GC_SIG=$(printf '%s' "$GC_BODY" | openssl dgst -sha256 -hmac "$GC_SECRET" -hex | sed 's/^.*= //')
+GC_RES=$(curl -s -X POST "$API_URL/webhooks/gocardless"     -H 'Content-Type: application/json' -H "Webhook-Signature: $GC_SIG" -d "$GC_BODY")
+PROCESSED=$(echo "$GC_RES" | jq -r '.processed')
+if [ "$PROCESSED" != "1" ]; then
+    echo -e "${RED}  ❌ Fulfilment webhook not processed: $GC_RES${NC}"
+    exit 1
+fi
+
+MANDATE_AFTER=$(get_json "$API_URL/v1/mandates/$MANDATE_ID" "$API_KEY")
+M_STATUS=$(echo "$MANDATE_AFTER" | jq -r '.data.status')
+M_TOKEN=$(echo "$MANDATE_AFTER" | jq -r '.data.razorpay_token_id')
+if [ "$M_STATUS" = "active" ] && [ "$M_TOKEN" = "MD_E2E_1" ]; then
+    echo -e "${GREEN}  ✅ Fulfilment webhook activated mandate and swapped token to MD_E2E_1${NC}"
+else
+    echo -e "${RED}  ❌ Mandate after webhook: status=$M_STATUS token=$M_TOKEN (want active / MD_E2E_1)${NC}"
+    exit 1
+fi
+
 # 7. Audit-grade gate: after everything above, the ledger must reconcile with
 # ZERO discrepancies — the end-to-end version of the invariant harness. Any
 # invoice-creating flow that forgets its ledger leg fails the whole run here.

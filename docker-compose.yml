@@ -24,6 +24,9 @@ services:
       - SMTP_USERNAME=
       - SMTP_PASSWORD=
       - SMTP_FROM=noreply@recurso.dev
+      # Deterministic secret so the E2E suite can sign GoCardless webhook
+      # deliveries (step 6c). Overrides any real secret from .env.
+      - GOCARDLESS_WEBHOOK_SECRET=e2e_gc_webhook_secret
     restart: unless-stopped
     depends_on:
       postgres:
