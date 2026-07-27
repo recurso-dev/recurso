@@ -2942,6 +2942,103 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /webhooks/gocardless:
+    post:
+      operationId: handleGoCardlessWebhook
+      tags: [Inbound Webhooks]
+      summary: GoCardless webhook receiver (platform account)
+      description: |
+        Receives GoCardless webhook deliveries for the platform's own
+        GoCardless account. Each delivery batches multiple events; billing
+        request fulfilment activates the corresponding mandate and mandate
+        lifecycle events keep local status in sync. The raw body is verified
+        against the `Webhook-Signature` HMAC before any event is trusted.
+        Called by GoCardless, not by API consumers.
+      security: []
+      parameters:
+        - name: Webhook-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 hex signature of the raw request body.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw GoCardless events payload.
+      responses:
+        '200':
+          description: Batch processed (individual events may be ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  processed:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /webhooks/gocardless/{connID}:
+    post:
+      operationId: handleGoCardlessWebhookForConnection
+      tags: [Inbound Webhooks]
+      summary: GoCardless webhook receiver (per-connection, BYO)
+      description: |
+        Per-connection variant of the GoCardless webhook receiver for tenants
+        who connected their own GoCardless account. The batch is verified with
+        THAT connection's own signing secret (resolved from `connID`) before
+        any event is trusted. Called by GoCardless, not by API consumers.
+      security: []
+      parameters:
+        - name: connID
+          in: path
+          required: true
+          description: The tenant's GoCardless gateway-connection id.
+          schema:
+            type: string
+            format: uuid
+        - name: Webhook-Signature
+          in: header
+          required: true
+          description: HMAC-SHA256 hex signature of the raw request body.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Raw GoCardless events payload.
+      responses:
+        '200':
+          description: Batch processed (individual events may be ignored).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, ignored]
+                  processed:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /webhooks/razorpay/{connID}:
     post:
       operationId: handleRazorpayWebhookForConnection

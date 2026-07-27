@@ -1544,6 +1544,8 @@ func main() {
 	// signing secret (looked up by :connID) before trusting the payload.
 	r.POST("/webhooks/razorpay/:connID", webhookHandler.HandleRazorpay)
 	r.POST("/webhooks/stripe/:connID", webhookHandler.HandleStripe)
+	r.POST("/webhooks/gocardless", webhookHandler.HandleGoCardless)
+	r.POST("/webhooks/gocardless/:connID", webhookHandler.HandleGoCardless)
 	// Dashboard auth (public): register creates tenant + owner user + session;
 	// login/logout/me operate purely on the recurso_session cookie.
 	r.POST("/auth/register", publicLimit, authHandler.Register)
