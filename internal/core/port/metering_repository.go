@@ -29,6 +29,10 @@ type UsageAlertRepository interface {
 	ListBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]domain.UsageAlert, error)
 	ListByTenant(ctx context.Context, tenantID uuid.UUID) ([]domain.UsageAlert, error)
 	Delete(ctx context.Context, tenantID, id uuid.UUID) error
+	// UpdateThreshold changes an alert's threshold (type + value), resetting
+	// the per-period fired dedup so the edited alert can fire against its new
+	// line in the current period. sql.ErrNoRows when absent for the tenant.
+	UpdateThreshold(ctx context.Context, tenantID, id uuid.UUID, thresholdType domain.UsageAlertThresholdType, threshold int64) error
 	// ListAll returns alerts across tenants for the sweep.
 	ListAll(ctx context.Context, limit int) ([]domain.UsageAlert, error)
 	// MarkFired claims the (alert, period) firing: returns true when THIS

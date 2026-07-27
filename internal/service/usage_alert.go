@@ -120,6 +120,38 @@ func (s *UsageAlertService) CreateAlert(ctx context.Context, tenantID uuid.UUID,
 	return a, nil
 }
 
+// UpdateAlertInput edits an alert's threshold. Subscription and metric are the
+// alert's identity — changing those is delete + create, not an update.
+type UpdateAlertInput struct {
+	ThresholdType string `json:"threshold_type" binding:"required"`
+	Threshold     int64  `json:"threshold" binding:"required,gt=0"`
+}
+
+// UpdateAlert re-aims an existing alert at a new threshold. The same validation
+// as CreateAlert applies; the repository resets the per-period fired dedup so
+// the edited alert can fire against its new line in the current period.
+func (s *UsageAlertService) UpdateAlert(ctx context.Context, tenantID, id uuid.UUID, in UpdateAlertInput) (*domain.UsageAlert, error) {
+	tt := domain.UsageAlertThresholdType(in.ThresholdType)
+	if tt != domain.AlertThresholdQuantity && tt != domain.AlertThresholdPercentOfLimit {
+		return nil, MeteringValidationError("threshold_type must be quantity or percent_of_limit")
+	}
+	if in.Threshold <= 0 || (tt == domain.AlertThresholdPercentOfLimit && in.Threshold > 1000) {
+		return nil, MeteringValidationError("threshold must be positive (percent thresholds at most 1000)")
+	}
+
+	err := s.alerts.UpdateThreshold(ctx, tenantID, id, tt, in.Threshold)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrAlertNotFound
+	}
+	if err != nil {
+		if db.IsUniqueViolation(err) {
+			return nil, ErrAlertExists
+		}
+		return nil, err
+	}
+	return &domain.UsageAlert{ID: id, TenantID: tenantID, ThresholdType: tt, Threshold: in.Threshold}, nil
+}
+
 func (s *UsageAlertService) ListAlerts(ctx context.Context, tenantID uuid.UUID, subscriptionID *uuid.UUID) ([]domain.UsageAlert, error) {
 	var (
 		alerts []domain.UsageAlert

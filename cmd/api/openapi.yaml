@@ -7162,6 +7162,41 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/usage-alerts/{id}:
+    put:
+      tags: [Metering]
+      summary: Edit a usage alert's threshold
+      description: >-
+        Re-aims an existing alert at a new threshold (type and value).
+        Subscription and metric are the alert's identity — to change those,
+        delete and re-create. Editing resets the per-period fired dedup so the
+        new threshold can fire in the current billing period.
+      operationId: updateUsageAlert
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [threshold_type, threshold]
+              properties:
+                threshold_type: { type: string, enum: [quantity, percent_of_limit] }
+                threshold: { type: integer, format: int64, exclusiveMinimum: 0 }
+      responses:
+        "200":
+          description: The updated alert
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { $ref: "#/components/schemas/UsageAlert" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: An identical alert already exists for the subscription + metric.
+        "401": { $ref: "#/components/responses/Unauthorized" }
     delete:
       tags: [Metering]
       summary: Delete a usage alert

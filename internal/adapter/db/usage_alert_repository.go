@@ -92,6 +92,27 @@ func (r *UsageAlertRepository) Delete(ctx context.Context, tenantID, id uuid.UUI
 	return nil
 }
 
+// UpdateThreshold changes an alert's threshold (type + value) and RESETS the
+// per-period fired dedup, so an alert you just re-aimed can fire against its
+// new line in the current period instead of staying silenced by the old one's
+// firing. Tenant-scoped; sql.ErrNoRows when the alert doesn't exist for the
+// tenant. A duplicate (subscription, metric, type, threshold) surfaces the
+// unique violation for the service to map.
+func (r *UsageAlertRepository) UpdateThreshold(ctx context.Context, tenantID, id uuid.UUID, thresholdType domain.UsageAlertThresholdType, threshold int64) error {
+	res, err := r.db.ExecContext(ctx, `
+		UPDATE usage_alerts
+		SET threshold_type = $3, threshold = $4, last_fired_period_start = NULL, updated_at = NOW()
+		WHERE tenant_id = $1 AND id = $2`,
+		tenantID, id, thresholdType, threshold)
+	if err != nil {
+		return fmt.Errorf("failed to update usage alert: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+}
+
 func (r *UsageAlertRepository) MarkFired(ctx context.Context, id uuid.UUID, periodStart time.Time) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE usage_alerts SET last_fired_period_start = $2, updated_at = NOW()
