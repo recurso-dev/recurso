@@ -6,9 +6,18 @@ gates) unless marked open.
 
 ## Completed
 
-- **#245 (open, CI running)** — E2E step 6c: GoCardless webhook chain
-  (fail-closed signature + fulfilment activates mandate and swaps BRQ→MD id).
-  Compose gains a deterministic `GOCARDLESS_WEBHOOK_SECRET`.
+- **SDK sync (all three repos, merged)** — go #8 (mandate `Currency`,
+  VPA omitempty), node #10 (schema regen), python #10 (full regen, 1.7.0,
+  smoke 21/21): mandate currency rails, `gocardless` provider enum, async
+  accounting-sync responses.
+- **#245** — E2E step 6c: GoCardless webhook chain (fail-closed signature +
+  fulfilment activates mandate and swaps BRQ→MD id). Compose gains a
+  deterministic `GOCARDLESS_WEBHOOK_SECRET`. First run failed on
+  heredoc-mangled JSON escapes — rebuilt with `jq -n` and re-verified against
+  a local mock-gateway boot before repush.
+- **Dependabot hygiene** — 3 alerts cleared by #243; the remaining
+  react-router RSC-only advisory dismissed with justification (mirrors
+  `.trivyignore`).
 - **#244** — GoCardless `charged_back`/`late_failure` now reverse settlements
   via `ReverseSettledPayment` (paid→past_due + occurrence-aware code-19 leg,
   #209 machinery). No classification guards needed — GoCardless models
@@ -57,7 +66,6 @@ double-reverse; bad signature → 401.
 
 ## Open / next steps
 
-- **#245** merge on green (E2E GC chain).
 - **Founder (morning)**: QuickBooks app creds (see `docs/backlog.md` P1.3);
   GoCardless webhook endpoint + `GOCARDLESS_WEBHOOK_SECRET` on Cloud Run
   (P1.4); telemetry deploy; `TRAFFIC_TOKEN`; demo-sandbox hosting; fix
