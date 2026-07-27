@@ -228,6 +228,7 @@ func (s *seeder) purge() {
 	demoSub := `SELECT id FROM subscriptions WHERE customer_id IN (` + demoCust + `)`
 	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`
 	stmts := []string{
+		`DELETE FROM payment_attempts WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoInv + `)`,
 		`DELETE FROM invoice_items WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM recovered_payments WHERE invoice_id IN (` + demoInv + `)`,
@@ -259,6 +260,8 @@ func (s *seeder) purge() {
 		`DELETE FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`,
 		`DELETE FROM coupons WHERE tenant_id=$1 AND code LIKE 'DEMO-%'`,
 		`DELETE FROM webhook_endpoints WHERE tenant_id=$1 AND url LIKE '%` + demoDomain + `%'`,
+		`DELETE FROM entity_invoice_sequences WHERE entity_id IN (SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO')`,
+		`DELETE FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'`,
 	}
 	for _, q := range stmts {
 		s.exec(q, t)
@@ -307,6 +310,8 @@ func (s *seeder) run() {
 	step("referrals", func() { s.seedReferrals(custs) })
 	step("gifts", func() { s.seedGifts(custs) })
 	step("events", func() { s.seedEvents(custs, subs) })
+	step("collections extras (paused / write-offs / ACH attempts)", s.seedCollectionsExtras)
+	step("second legal entity + book split", s.seedSecondEntity)
 	step("ledger balances", s.recomputeLedgerBalances)
 	log.Println("  · finalizing…")
 }
@@ -694,17 +699,29 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 	if c.india && status == "paid" {
 		eStatus = "GENERATED"
 	}
+	// Past-due invoices carry the real recovery vocabulary: an owning engine
+	// (scheduler|worker|campaign — the values the Collections page filters on)
+	// and a plausible last decline code, so the worklist's Owner and Last
+	// failure columns demo with substance instead of blanks.
+	var managedBy, lastErr any
+	if status == "past_due" {
+		managedBy = []string{"worker", "worker", "campaign", "scheduler"}[s.rng.Intn(4)]
+		lastErr = []string{
+			"card_declined", "insufficient_funds", "expired_card",
+			"do_not_honor", "authentication_required",
+		}[s.rng.Intn(5)]
+	}
 	s.exec(`INSERT INTO invoices
 		(id, tenant_id, customer_id, subscription_id, status, currency, subtotal, tax_amount, total,
 		 amount_paid, due_date, paid_at, created_at, updated_at, invoice_number,
 		 igst_amount, cgst_amount, sgst_amount, hsn_code, tds_amount, e_invoice_status, retry_count, next_retry_at,
-		 dunning_managed_by)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),$14,$15,$16,$17,$18,0,$19,$20,$21,$22)
+		 dunning_managed_by, last_payment_error)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now(),$14,$15,$16,$17,$18,0,$19,$20,$21,$22,$23)
 		ON CONFLICT DO NOTHING`,
 		invID, s.tenantID, c.id, sub.id, status, c.ccy, subtotal, tax, total,
 		amountPaid, dueDate, paidAt, p.start, invNum,
 		igst, cgst, sgst, "9983", eStatus, retryCount, nextRetry,
-		nullIf(status == "past_due", "smart_dunning"))
+		managedBy, lastErr)
 	s.bump("invoices", 1)
 
 	// line item
@@ -787,7 +804,10 @@ func (s *seeder) recordDunning(invID, campaignID uuid.UUID, sub *subscription, a
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.tenantID, invID, fmt.Sprintf("ctx_%s", sub.cust.ccy),
 			fmt.Sprintf("retry_%dd", 1<<a), (1 << a), outcome, boolToReward(outcome == "success"),
-			s.now.AddDate(0, 0, -(attempts-a)))
+			// Spread firings across hours of day — successes biased into
+			// business hours — so the best-time-to-retry card has real
+			// buckets to rank instead of one hot hour.
+			s.now.AddDate(0, 0, -(attempts-a)).Add(time.Duration(s.timingHour(outcome == "success"))*time.Hour))
 		s.bump("dunning_history", 1)
 	}
 	if recovered {
@@ -969,10 +989,12 @@ func (s *seeder) seedStandaloneCreditNotes(custs []*customer) {
 		c := custs[s.rng.Intn(len(custs))]
 		s.cnSeq++
 		amt := int64(2000 + s.rng.Intn(40000))
-		status, refundStatus := "open", "none"
+		// Status vocabulary follows the credit-note lifecycle (ledger-backed
+		// credits): 'issued' spendable, 'used' fully drawn down.
+		status, refundStatus := "issued", "none"
 		bal := amt
 		if s.rng.Intn(100) < 50 {
-			status, refundStatus, bal = "applied", "processed", 0
+			status, refundStatus, bal = "used", "processed", 0
 		}
 		s.exec(`INSERT INTO credit_notes (id, tenant_id, customer_id, reference, amount, balance, currency, status, reason, type, refund_status, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'adjustment',$10,$11,now()) ON CONFLICT DO NOTHING`,
@@ -1082,12 +1104,88 @@ func boolToReward(b bool) float64 {
 	}
 	return 0.0
 }
-func nullIf(cond bool, v string) any {
-	if cond {
-		return v
+
+// timingHour picks an hour-of-day for a dunning firing: successes cluster in
+// business hours (9-17), failures spread across the clock — giving the
+// best-time-to-retry insight a credible signal.
+func (s *seeder) timingHour(success bool) int {
+	if success {
+		return 9 + s.rng.Intn(9)
 	}
-	return nil
+	return s.rng.Intn(24)
 }
+
+// seedCollectionsExtras layers on the operator-facing recovery states shipped
+// with Collections Intelligence: a paused invoice, manual write-offs (one
+// inside the 90-day rate window, one ancient), and ACH payment attempts — one
+// still settling and one returned by the bank — so the Collections page's
+// chips, badges, and funnel all demo with substance.
+func (s *seeder) seedCollectionsExtras() {
+	// Pause one past-due invoice (operator negotiating with the customer).
+	s.exec(`UPDATE invoices SET dunning_paused = TRUE
+		WHERE id = (SELECT id FROM invoices WHERE tenant_id=$1 AND status='past_due'
+		            AND invoice_number LIKE 'INV-DEMO-%' ORDER BY invoice_number LIMIT 1)`, s.tenantID)
+
+	// Two write-offs: one concluded inside the 90-day cohort window, one
+	// ancient — the recovery-rate denominator counts only the recent one.
+	s.exec(`UPDATE invoices SET status='uncollectible', next_retry_at=NULL,
+			marked_uncollectible_at = now() - interval '12 days'
+		WHERE id = (SELECT id FROM invoices WHERE tenant_id=$1 AND status='past_due'
+		            AND invoice_number LIKE 'INV-DEMO-%' ORDER BY invoice_number DESC LIMIT 1)`, s.tenantID)
+	s.exec(`UPDATE invoices SET status='uncollectible', next_retry_at=NULL,
+			marked_uncollectible_at = now() - interval '200 days'
+		WHERE id = (SELECT id FROM invoices WHERE tenant_id=$1 AND status='past_due'
+		            AND invoice_number LIKE 'INV-DEMO-%' ORDER BY invoice_number DESC OFFSET 1 LIMIT 1)`, s.tenantID)
+
+	// ACH attempts: a debit still settling on an open invoice (the Collections
+	// "settling" chip + dunning's in-flight guard), and a bank return (R01,
+	// insufficient funds) on a past-due one (the "returned" chip).
+	s.exec(`INSERT INTO payment_attempts (id, tenant_id, invoice_id, gateway, method, gateway_payment_intent_id, status, amount, created_at)
+		SELECT $2, tenant_id, id, 'stripe', 'us_bank_account', 'pi_demo_settling', 'processing', total, now() - interval '1 day'
+		FROM invoices WHERE tenant_id=$1 AND status='open' AND invoice_number LIKE 'INV-DEMO-%' AND currency='USD'
+		ORDER BY invoice_number LIMIT 1 ON CONFLICT DO NOTHING`, s.tenantID, uuid.New())
+	s.exec(`WITH target AS (
+			SELECT id, tenant_id, total FROM invoices
+			WHERE tenant_id=$1 AND status='past_due' AND invoice_number LIKE 'INV-DEMO-%'
+			  AND currency='USD' AND NOT dunning_paused
+			ORDER BY invoice_number OFFSET 1 LIMIT 1
+		), att AS (
+			INSERT INTO payment_attempts (id, tenant_id, invoice_id, gateway, method, gateway_payment_intent_id, status, failure_code, amount, created_at)
+			SELECT $2, tenant_id, id, 'stripe', 'us_bank_account', 'pi_demo_returned', 'returned', 'R01', total, now() - interval '3 days'
+			FROM target ON CONFLICT DO NOTHING
+		)
+		UPDATE invoices SET last_payment_error='R01' WHERE id IN (SELECT id FROM target)`, s.tenantID, uuid.New())
+	s.bump("payment_attempts", 2)
+}
+
+// seedSecondEntity creates a second legal entity and moves a slice of the US
+// book onto it, so the Entities control tower, MRR-by-entity, and the
+// per-entity report scopes demo a real split instead of a single row.
+func (s *seeder) seedSecondEntity() {
+	euID := uuid.New()
+	s.exec(`INSERT INTO entities (id, tenant_id, name, legal_name, is_primary, tb_ledger_id, invoice_prefix, country_code, created_at, updated_at)
+		VALUES ($1,$2,'Recurso Europe','Recurso Europe B.V.',FALSE,
+			(SELECT COALESCE(MAX(tb_ledger_id),1)+1 FROM entities WHERE tenant_id=$2),
+			'EU-DEMO','NL', now(), now())
+		ON CONFLICT DO NOTHING`, euID, s.tenantID)
+	s.exec(`INSERT INTO entity_invoice_sequences (entity_id, next_number)
+		SELECT id, 1 FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'
+		ON CONFLICT DO NOTHING`, s.tenantID)
+	// Reassign roughly a third of the non-India book (subscriptions + their
+	// invoices) to the new entity.
+	s.exec(`UPDATE subscriptions SET entity_id = (SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO')
+		WHERE id IN (
+			SELECT sub.id FROM subscriptions sub
+			JOIN customers c ON c.id = sub.customer_id
+			WHERE c.tenant_id=$1 AND c.email LIKE '%@`+demoDomain+`' AND c.country <> 'IN'
+			ORDER BY sub.id LIMIT 3)`, s.tenantID)
+	s.exec(`UPDATE invoices SET entity_id = (SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO')
+		WHERE subscription_id IN (
+			SELECT id FROM subscriptions
+			WHERE entity_id = (SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'))`, s.tenantID)
+	s.bump("entities", 1)
+}
+
 func intFromCode(s string) int {
 	n := 0
 	for _, r := range s {
@@ -1151,9 +1249,25 @@ func (s *seeder) seedMetering(custs []*customer, subs []*subscription) {
 		if !c.india {
 			continue
 		}
-		wid := s.queryID(`INSERT INTO wallets (id, tenant_id, customer_id, currency, balance, created_at, updated_at)
-			VALUES ($1,$2,$3,'INR',0, now(), now())
-			ON CONFLICT (tenant_id, customer_id, currency) DO UPDATE SET updated_at=now() RETURNING id`,
+		// The wallets unique key gained entity_id with Multi-Entity Books
+		// (tenant, customer, entity, currency) — and entity_id is NULL for
+		// primary-entity wallets, so an ON CONFLICT upsert never matches.
+		// Lookup-or-create instead.
+		wid := s.queryID(`WITH primary_entity AS (
+				SELECT id FROM entities WHERE tenant_id=$2 AND is_primary LIMIT 1
+			), ins AS (
+				INSERT INTO wallets (id, tenant_id, customer_id, entity_id, currency, balance, created_at, updated_at)
+				SELECT $1,$2,$3,(SELECT id FROM primary_entity),'INR',0, now(), now()
+				WHERE NOT EXISTS (SELECT 1 FROM wallets
+					WHERE tenant_id=$2 AND customer_id=$3 AND currency='INR'
+					  AND entity_id = (SELECT id FROM primary_entity))
+				RETURNING id)
+			SELECT id FROM ins
+			UNION ALL
+			SELECT w.id FROM wallets w
+			WHERE w.tenant_id=$2 AND w.customer_id=$3 AND w.currency='INR'
+			  AND w.entity_id = (SELECT id FROM primary_entity)
+			LIMIT 1`,
 			uuid.New(), s.tenantID, c.id)
 		var txCount int
 		_ = s.tx.QueryRowContext(s.ctx, `SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id=$1`, wid).Scan(&txCount)
