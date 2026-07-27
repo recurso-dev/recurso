@@ -172,7 +172,7 @@ func newPhase2Fixture() *phase2Fixture {
 
 func (f *phase2Fixture) register(t *testing.T, email string) *service.RegisterResult {
 	t.Helper()
-	res, err := f.svc.Register(context.Background(), "Acme", "Alice", email, "supersecret", "ua")
+	res, err := f.svc.Register(context.Background(), "Acme", "Alice", email, "supersecret", "ua", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}

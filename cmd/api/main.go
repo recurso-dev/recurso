@@ -455,6 +455,10 @@ func main() {
 		sessionTTLHours = 168
 	}
 	authService := service.NewAuthService(userRepo, sessionRepo, tenantService, time.Duration(sessionTTLHours)*time.Hour)
+	// A registration's declared country lands on the primary entity, which is
+	// the seller tax jurisdiction for non-GST tenants — so a US signup invoices
+	// under US sales tax from day one instead of the env default.
+	authService.SetPrimaryCountrySetter(db.NewEntityRepository(database).SetPrimaryCountry)
 	// Phase 2 auth: password reset + TOTP MFA. The reset link points at the
 	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
 	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)

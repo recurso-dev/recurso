@@ -190,7 +190,7 @@ func tokenFromURL(t *testing.T, raw string) string {
 
 func TestRequestPasswordReset_RealAccountEmailsAndCreatesToken(t *testing.T) {
 	svc, reset, _, _, mailer, _ := newPhase2Auth()
-	if _, err := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "Acme", "Alice", "alice@acme.com", "supersecret", "", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
@@ -220,7 +220,7 @@ func TestRequestPasswordReset_UnknownAccountNoEnumeration(t *testing.T) {
 
 func TestRequestPasswordReset_EmailFailureStillSucceeds(t *testing.T) {
 	svc, _, _, _, mailer, _ := newPhase2Auth()
-	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	mailer.failNext = true
@@ -231,7 +231,7 @@ func TestRequestPasswordReset_EmailFailureStillSucceeds(t *testing.T) {
 
 func TestResetPassword_ChangesPasswordAndKillsAllSessions(t *testing.T) {
 	svc, _, _, _, mailer, sr := newPhase2Auth()
-	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", ""); err != nil {
+	if _, err := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", ""); err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	// Register already opened one session; open two more for the user.
@@ -272,8 +272,8 @@ func TestResetPassword_ChangesPasswordAndKillsAllSessions(t *testing.T) {
 
 func TestResetPassword_TokenSingleUse(t *testing.T) {
 	svc, _, _, _, mailer, _ := newPhase2Auth()
-	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "") //nolint:errcheck
-	svc.RequestPasswordReset(context.Background(), "a@b.com")                         //nolint:errcheck
+	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "") //nolint:errcheck
+	svc.RequestPasswordReset(context.Background(), "a@b.com")                             //nolint:errcheck
 	rawTok := tokenFromURL(t, mailer.lastURL)
 
 	if err := svc.ResetPassword(context.Background(), rawTok, "brandnewpass"); err != nil {
@@ -287,7 +287,7 @@ func TestResetPassword_TokenSingleUse(t *testing.T) {
 
 func TestResetPassword_ExpiredAndInvalidRejected(t *testing.T) {
 	svc, reset, _, _, mailer, _ := newPhase2Auth()
-	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "") //nolint:errcheck
+	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "") //nolint:errcheck
 
 	// Invalid/unknown token.
 	if err := svc.ResetPassword(context.Background(), "totally-bogus", "brandnewpass"); !errors.Is(err, domain.ErrInvalidResetToken) {
@@ -307,8 +307,8 @@ func TestResetPassword_ExpiredAndInvalidRejected(t *testing.T) {
 
 func TestResetPassword_WeakPasswordRejected(t *testing.T) {
 	svc, _, _, _, mailer, _ := newPhase2Auth()
-	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "") //nolint:errcheck
-	svc.RequestPasswordReset(context.Background(), "a@b.com")                         //nolint:errcheck
+	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "") //nolint:errcheck
+	svc.RequestPasswordReset(context.Background(), "a@b.com")                             //nolint:errcheck
 	rawTok := tokenFromURL(t, mailer.lastURL)
 	if err := svc.ResetPassword(context.Background(), rawTok, "short"); !errors.Is(err, domain.ErrWeakPassword) {
 		t.Fatalf("weak password err = %v, want ErrWeakPassword", err)
@@ -337,7 +337,7 @@ func enableMFA(t *testing.T, svc *AuthService, tenantID, userID uuid.UUID) (secr
 
 func TestMFA_SetupVerifyEnablesAndIssuesBackupCodes(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 
 	setup, err := svc.SetupMFA(context.Background(), reg.Tenant.ID, reg.User.ID)
 	if err != nil {
@@ -369,7 +369,7 @@ func TestMFA_SetupVerifyEnablesAndIssuesBackupCodes(t *testing.T) {
 
 func TestMFA_DisableRequiresValidCode(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	secret, backup := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 
 	// Wrong code cannot disable.
@@ -393,7 +393,7 @@ func TestMFA_DisableRequiresValidCode(t *testing.T) {
 
 func TestLogin_MFAUserReturnsChallengeNoSession(t *testing.T) {
 	svc, _, _, mfaTok, _, sr := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 
 	before := len(sr.sessions)
@@ -417,7 +417,7 @@ func TestLogin_MFAUserReturnsChallengeNoSession(t *testing.T) {
 
 func TestLoginMFA_ValidTOTPOpensSession(t *testing.T) {
 	svc, _, _, _, _, sr := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	secret, _ := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 
 	ch, _ := svc.Login(context.Background(), "a@b.com", "supersecret", "ua")
@@ -448,7 +448,7 @@ func TestLoginMFA_ValidTOTPOpensSession(t *testing.T) {
 // with ErrAccountLocked until the window passes.
 func TestLogin_PerAccountLockout(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	_, _ = svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	_, _ = svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 
 	for i := 0; i < maxFailedLogins; i++ {
 		if _, err := svc.Login(context.Background(), "a@b.com", "wrongpass", "ua"); !errors.Is(err, domain.ErrInvalidCredentials) {
@@ -465,7 +465,7 @@ func TestLogin_PerAccountLockout(t *testing.T) {
 // login, so failures don't accumulate forever across sessions.
 func TestLogin_FailuresResetOnSuccess(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	_, _ = svc.Register(context.Background(), "Acme", "Bob", "b@b.com", "supersecret", "")
+	_, _ = svc.Register(context.Background(), "Acme", "Bob", "b@b.com", "supersecret", "", "")
 
 	// Below-threshold failures, then a success clears the counter.
 	for i := 0; i < maxFailedLogins-2; i++ {
@@ -489,7 +489,7 @@ func TestLogin_FailuresResetOnSuccess(t *testing.T) {
 // validity window — the consumed timestep is remembered and rejected.
 func TestLoginMFA_TOTPSingleUse_ReplayRejected(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	secret, _ := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 
 	code, _ := totp.GenerateCode(secret, time.Now())
@@ -509,7 +509,7 @@ func TestLoginMFA_TOTPSingleUse_ReplayRejected(t *testing.T) {
 
 func TestLoginMFA_BackupCodeWorksOnceThenConsumed(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	_, backup := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 	backupCode := backup[0]
 
@@ -528,7 +528,7 @@ func TestLoginMFA_BackupCodeWorksOnceThenConsumed(t *testing.T) {
 
 func TestLoginMFA_ExpiredChallengeRejected(t *testing.T) {
 	svc, _, _, mfaTok, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	secret, _ := enableMFA(t, svc, reg.Tenant.ID, reg.User.ID)
 
 	ch, _ := svc.Login(context.Background(), "a@b.com", "supersecret", "ua")
@@ -544,7 +544,7 @@ func TestLoginMFA_ExpiredChallengeRejected(t *testing.T) {
 
 func TestLogin_NoMFAStillOneStep(t *testing.T) {
 	svc, _, _, _, _, sr := newPhase2Auth()
-	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "") //nolint:errcheck
+	svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "") //nolint:errcheck
 
 	res, err := svc.Login(context.Background(), "a@b.com", "supersecret", "ua")
 	if err != nil {
@@ -563,7 +563,7 @@ func TestLogin_NoMFAStillOneStep(t *testing.T) {
 
 func TestSessions_ListShowsCurrentFlag(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	current := reg.SessionToken
 	// A second, different session.
 	svc.Login(context.Background(), "a@b.com", "supersecret", "other") //nolint:errcheck
@@ -588,8 +588,8 @@ func TestSessions_ListShowsCurrentFlag(t *testing.T) {
 
 func TestSessions_RevokeOneOnlyAffectsOwnSession(t *testing.T) {
 	svc, _, _, _, _, sr := newPhase2Auth()
-	a, _ := svc.Register(context.Background(), "TenantA", "Alice", "alice@a.com", "supersecret", "")
-	b, _ := svc.Register(context.Background(), "TenantB", "Bob", "bob@b.com", "supersecret", "")
+	a, _ := svc.Register(context.Background(), "TenantA", "Alice", "alice@a.com", "supersecret", "", "")
+	b, _ := svc.Register(context.Background(), "TenantB", "Bob", "bob@b.com", "supersecret", "", "")
 
 	// Find Bob's session ID.
 	var bobSessionID uuid.UUID
@@ -625,7 +625,7 @@ func TestSessions_RevokeOneOnlyAffectsOwnSession(t *testing.T) {
 
 func TestSessions_RevokeOthersKeepsCurrent(t *testing.T) {
 	svc, _, _, _, _, sr := newPhase2Auth()
-	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "")
+	reg, _ := svc.Register(context.Background(), "Acme", "Alice", "a@b.com", "supersecret", "", "")
 	current := reg.SessionToken
 	// Two more sessions.
 	svc.Login(context.Background(), "a@b.com", "supersecret", "phone")  //nolint:errcheck

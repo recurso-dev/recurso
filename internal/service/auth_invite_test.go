@@ -16,7 +16,7 @@ func TestInviteUser_CreatesUnusableAccountThenAcceptEnablesLogin(t *testing.T) {
 	svc, reset, _, _, mailer, _ := newPhase2Auth()
 	ctx := context.Background()
 
-	reg, err := svc.Register(ctx, "Acme", "Owner", "owner@acme.com", "ownerpassword", "")
+	reg, err := svc.Register(ctx, "Acme", "Owner", "owner@acme.com", "ownerpassword", "", "")
 	if err != nil {
 		t.Fatalf("register owner: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestInviteUser_RejectsOwnerFromNonOwner(t *testing.T) {
 	svc, _, _, _, _, _ := newPhase2Auth()
 	ctx := context.Background()
 
-	reg, err := svc.Register(ctx, "Acme", "Owner", "owner@acme.com", "ownerpassword", "")
+	reg, err := svc.Register(ctx, "Acme", "Owner", "owner@acme.com", "ownerpassword", "", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
