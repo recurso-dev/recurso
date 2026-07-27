@@ -53,7 +53,11 @@ func (h *CRMSyncHandler) SyncNow(c *gin.Context) {
 	case err != nil:
 		// The provider's own rejection (401 bad token, 403 missing scopes) is
 		// exactly what the operator needs to see when testing a connection.
-		respondError(c, http.StatusBadGateway, codeInternalError, "CRM sync failed: "+err.Error())
+		// 424, NOT 502: Cloudflare fronts the API and REPLACES origin 502/504
+		// responses with its own HTML error page — the JSON detail would never
+		// reach the browser (live-diagnosed: the toast fell back to a generic
+		// message while the real error died at the edge).
+		respondError(c, http.StatusFailedDependency, codeInternalError, "CRM sync failed: "+err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"contacts_synced": synced, "contacts_remaining": remaining}})

@@ -134,9 +134,11 @@ func (h *GiftHandler) CancelGift(c *gin.Context) {
 		return
 	case errors.Is(err, service.ErrGiftCanceledCreditFailed):
 		// Partial success: the cancel took effect but the buyer's credit needs
-		// a manual step. 502 with the explicit message — never a generic 500
-		// that hides the outstanding compensation.
-		respondError(c, http.StatusBadGateway, codeInternalError, err.Error())
+		// a manual step. Explicit message, and 424 NOT 502 — Cloudflare fronts
+		// the API and replaces origin 502s with its own HTML page, which would
+		// hide the "manual credit owed" outcome (the exact thing this error
+		// exists to surface).
+		respondError(c, http.StatusFailedDependency, codeInternalError, err.Error())
 		return
 	case err != nil:
 		respondInternalError(c, err)

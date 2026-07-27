@@ -4861,8 +4861,8 @@ paths:
                         type: integer
                         description: Eligible contacts not pushed this call (manual sync is capped; the daily sweep finishes them).
         '400': { $ref: '#/components/responses/BadRequest' }
-        '502':
-          description: The CRM provider rejected the sync (e.g. invalid token).
+        '424':
+          description: The CRM provider rejected the sync (e.g. invalid token); the message carries the provider's error.
         '401': { $ref: '#/components/responses/Unauthorized' }
   /v1/settings/tax/us:
     get:
