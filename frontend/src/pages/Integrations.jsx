@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { ProviderGuide } from "@/components/patterns/ProviderGuide";
 
 // QuickBooks/Xero use the browser OAuth flow (main.go InitiateOAuth);
 // NetSuite takes a pasted SuiteTalk token, Tally is a local JSONL export.
@@ -43,6 +44,15 @@ const PROVIDERS = [
     name: "NetSuite",
     description: "Sync to NetSuite via the SuiteTalk REST API (experimental).",
     mode: "token",
+    guide: {
+      steps: [
+        "In NetSuite: Setup → Integration → Manage Integrations → New; enable OAuth 2.0 (client credentials).",
+        "Obtain an access token for that integration (Setup → Users/Roles → Access Tokens, or your OAuth 2.0 flow).",
+        "Account ID: Setup → Company → Company Information — e.g. 1234567, or 1234567_SB1 for a sandbox.",
+      ],
+      url: "https://system.netsuite.com/",
+      urlLabel: "Open NetSuite",
+    },
   },
   {
     id: "tally",
@@ -391,6 +401,7 @@ const Integrations = () => {
           <div className="flex-1 space-y-4 overflow-y-auto px-6">
             {tokenProvider?.mode === "token" && (
               <>
+                <ProviderGuide guide={tokenProvider.guide} />
                 <div>
                   <Label>Account ID</Label>
                   <Input

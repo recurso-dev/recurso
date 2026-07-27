@@ -418,6 +418,7 @@ export const endpoints = {
   // BYO tax/CRM/storage integrations — per-tenant credentials.
   getIntegrationConnections: () => api.get('/integration-connections'),
   connectIntegration: (body) => api.post('/integration-connections', body),
+  syncCRMNow: () => api.post('/crm/sync'),
   disconnectIntegration: (category, provider) =>
     api.delete(`/integration-connections/${category}/${provider}`),
 };
