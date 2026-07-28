@@ -251,3 +251,35 @@ func TestDisconnect(t *testing.T) {
 		t.Fatalf("want ErrGatewayConnectionNotFound, got %v", err)
 	}
 }
+
+func TestConnectSanitizesPastedSecrets(t *testing.T) {
+	svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+	tenant := uuid.New()
+	ctx := context.Background()
+
+	// A zero-width space smuggled in by copy/paste is silently stripped —
+	// stored secrets must be exactly what the provider issued (observed live:
+	// GoCardless rejects the resulting Authorization header as non-ASCII).
+	conn, err := svc.Connect(ctx, tenant, ConnectInput{
+		Provider: "gocardless", Mode: "test",
+		SecretKey: "sandbox_tok_abc\u200b ",
+	})
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	secret, err := svc.OpenSecret(conn)
+	if err != nil {
+		t.Fatalf("OpenSecret: %v", err)
+	}
+	if secret != "sandbox_tok_abc" {
+		t.Fatalf("stored secret = %q, want the cleaned token", secret)
+	}
+
+	// A genuinely non-ASCII secret (not just invisible padding) is rejected
+	// with a validation error, not stored to fail later provider-side.
+	if _, err := svc.Connect(ctx, tenant, ConnectInput{
+		Provider: "gocardless", Mode: "test", SecretKey: "sandbox_tökén",
+	}); err == nil || !IsGatewayConnectionValidationError(err) {
+		t.Fatalf("non-ASCII secret: want validation error, got %v", err)
+	}
+}

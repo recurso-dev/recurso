@@ -71,3 +71,13 @@ scoping, ledger posting semantics, claim-based workers, one-off recognition,
 layered caching, token-based accounting connections). Read the relevant ADR
 before re-deciding any of those areas; supersede with a new ADR rather than
 editing history.
+
+## Autonomous overnight mode
+
+When the founder invokes overnight/autonomous mode, follow
+`docs/autonomous-mode.md` (their standing directive) — in short: act as the
+whole engineering org, never stop after one task, work highest-ROI first,
+self-review after every task, keep `docs/backlog.md` and `progress.md`
+current, ship each increment as its own green-CI PR, and leave complete
+handoff notes before stopping. Success = how much better the repo is when
+the founder wakes up.

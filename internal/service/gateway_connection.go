@@ -39,6 +39,31 @@ func (s *GatewayConnectionService) VaultReady() bool { return s.vault != nil }
 
 // ConnectInput is the caller-facing shape for connecting a gateway. Secrets are
 // plaintext here (submitted once by the tenant) and never stored as-is.
+// sanitizeCredential prepares a pasted credential for storage: it strips
+// surrounding whitespace AND the invisible Unicode characters that ride along
+// with copy/paste (zero-width spaces, BOM, non-breaking space, word joiner),
+// then rejects anything still outside printable ASCII. Every provider secret
+// we accept is ASCII by construction; a single smuggled character survives
+// sealing byte-for-byte and only surfaces later as a baffling provider-side
+// failure (observed live: GoCardless invalid_api_usage "non US-ASCII
+// character in header" from a pasted access token).
+func sanitizeCredential(field, raw string) (string, error) {
+	cleaned := strings.Map(func(r rune) rune {
+		switch r {
+		case '\u200b', '\u200c', '\u200d', '\ufeff', '\u00a0', '\u2060':
+			return -1
+		}
+		return r
+	}, raw)
+	cleaned = strings.TrimSpace(cleaned)
+	for _, r := range cleaned {
+		if r < 0x21 || r > 0x7e {
+			return "", GatewayConnectionValidationError(field + " contains a non-ASCII or control character — re-copy it from the provider dashboard")
+		}
+	}
+	return cleaned, nil
+}
+
 type ConnectInput struct {
 	Provider      string
 	Mode          string
@@ -67,11 +92,17 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 		return nil, GatewayConnectionValidationError("mode must be 'test' or 'live'")
 	}
 
-	secret := strings.TrimSpace(in.SecretKey)
+	secret, err := sanitizeCredential("secret key", in.SecretKey)
+	if err != nil {
+		return nil, err
+	}
 	if secret == "" {
 		return nil, GatewayConnectionValidationError("secret key is required")
 	}
-	publicKey := strings.TrimSpace(in.PublicKey)
+	publicKey, err := sanitizeCredential("public key", in.PublicKey)
+	if err != nil {
+		return nil, err
+	}
 	if provider == domain.GatewayRazorpay && publicKey == "" {
 		return nil, GatewayConnectionValidationError("key_id is required for Razorpay")
 	}
@@ -90,7 +121,11 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 	if err != nil {
 		return nil, err
 	}
-	webhookEnc, err := s.vault.Seal(strings.TrimSpace(in.WebhookSecret))
+	webhookSecret, err := sanitizeCredential("webhook secret", in.WebhookSecret)
+	if err != nil {
+		return nil, err
+	}
+	webhookEnc, err := s.vault.Seal(webhookSecret)
 	if err != nil {
 		return nil, err
 	}
@@ -139,9 +174,13 @@ func (s *GatewayConnectionService) SetWebhookSecret(ctx context.Context, tenantI
 	}
 	p := domain.GatewayProvider(strings.ToLower(strings.TrimSpace(provider)))
 	if !domain.ValidGatewayProvider(p) {
-		return GatewayConnectionValidationError("provider must be one of: stripe, razorpay")
+		return GatewayConnectionValidationError("provider must be one of: stripe, razorpay, gocardless")
 	}
-	sealed, err := s.vault.Seal(strings.TrimSpace(secret))
+	cleaned, err := sanitizeCredential("webhook secret", secret)
+	if err != nil {
+		return err
+	}
+	sealed, err := s.vault.Seal(cleaned)
 	if err != nil {
 		return err
 	}
