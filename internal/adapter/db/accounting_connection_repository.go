@@ -185,9 +185,12 @@ func (r *AccountingConnectionRepository) CreateSyncLog(ctx context.Context, log 
 }
 
 func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenantID uuid.UUID, limit int) ([]*domain.AccountingSyncLog, error) {
-	query := `SELECT id, tenant_id, connection_id, entity_type, entity_id,
-		COALESCE(external_id,''), action, status, COALESCE(error_message,''), synced_at
-		FROM accounting_sync_log WHERE tenant_id = $1 ORDER BY synced_at DESC LIMIT $2`
+	query := `SELECT l.id, l.tenant_id, l.connection_id, COALESCE(c.provider, ''),
+		l.entity_type, l.entity_id,
+		COALESCE(l.external_id,''), l.action, l.status, COALESCE(l.error_message,''), l.synced_at
+		FROM accounting_sync_log l
+		LEFT JOIN accounting_connections c ON c.id = l.connection_id
+		WHERE l.tenant_id = $1 ORDER BY l.synced_at DESC LIMIT $2`
 	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
 	if err != nil {
 		return nil, err
@@ -197,7 +200,7 @@ func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenan
 	var logs []*domain.AccountingSyncLog
 	for rows.Next() {
 		var l domain.AccountingSyncLog
-		err := rows.Scan(&l.ID, &l.TenantID, &l.ConnectionID, &l.EntityType, &l.EntityID,
+		err := rows.Scan(&l.ID, &l.TenantID, &l.ConnectionID, &l.Provider, &l.EntityType, &l.EntityID,
 			&l.ExternalID, &l.Action, &l.Status, &l.ErrorMessage, &l.SyncedAt)
 		if err != nil {
 			return nil, err

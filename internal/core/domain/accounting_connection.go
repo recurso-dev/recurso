@@ -25,6 +25,9 @@ type AccountingSyncLog struct {
 	ID           uuid.UUID `json:"id" db:"id"`
 	TenantID     uuid.UUID `json:"tenant_id" db:"tenant_id"`
 	ConnectionID uuid.UUID `json:"connection_id" db:"connection_id"`
+	// Provider is denormalized from the connection at read time so the
+	// dashboard can say WHICH integration a row belongs to.
+	Provider     string    `json:"provider,omitempty" db:"provider"`
 	EntityType   string    `json:"entity_type" db:"entity_type"`
 	EntityID     uuid.UUID `json:"entity_id" db:"entity_id"`
 	ExternalID   string    `json:"external_id,omitempty" db:"external_id"`
