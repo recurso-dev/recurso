@@ -9730,7 +9730,10 @@ components:
           description: Price per unit in the lowest currency unit.
         amount:
           type: integer
-          description: quantity x unit_price, in the lowest currency unit.
+          description: >-
+            Line total in the lowest currency unit. Computed as
+            quantity x unit_price for itemized lines; for a lump-sum line send
+            `amount` directly with quantity/unit_price omitted.
 
     CreateQuoteRequest:
       type: object

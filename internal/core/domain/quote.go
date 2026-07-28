@@ -70,8 +70,14 @@ func (q *Quote) CanConvertToInvoice() bool {
 func (q *Quote) CalculateTotals() {
 	q.Subtotal = 0
 	for i := range q.LineItems {
-		q.LineItems[i].Amount = q.LineItems[i].Quantity * q.LineItems[i].UnitPrice
-		q.Subtotal += q.LineItems[i].Amount
+		li := &q.LineItems[i]
+		// Itemized lines derive their amount from quantity * unit_price. A
+		// lump-sum line can instead send a direct `amount` (quantity/unit_price
+		// left 0) — honor it rather than silently zeroing the quote.
+		if computed := li.Quantity * li.UnitPrice; computed != 0 {
+			li.Amount = computed
+		}
+		q.Subtotal += li.Amount
 	}
 	q.Total = q.Subtotal + q.TaxAmount - q.DiscountAmount
 }
