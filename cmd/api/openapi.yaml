@@ -6229,7 +6229,10 @@ paths:
         - name: provider
           in: query
           required: false
-          description: Scope the sweep to one connection (omit = all active connections).
+          description: >-
+            Scope the sweep to one connection. Scoped syncs run INCREMENTALLY
+            (unchanged records are skipped); omitting provider sweeps all
+            active connections with a forced full re-push.
           schema: { type: string, enum: [quickbooks, xero, netsuite, tally] }
       responses:
         '202':
