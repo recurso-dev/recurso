@@ -32,6 +32,13 @@ describe('Sidebar (redesign)', () => {
         });
     });
 
+    it('links to the documentation site', () => {
+        renderWithRouter(<Sidebar />);
+        const docsLink = screen.getByText('Documentation').closest('a');
+        expect(docsLink).toHaveAttribute('href', 'https://docs.recurso.dev');
+        expect(docsLink).toHaveAttribute('target', '_blank');
+    });
+
     it('applies the emerald active style to the current route', () => {
         renderWithRouter(<Sidebar />, { route: '/customers' });
 

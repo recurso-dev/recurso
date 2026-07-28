@@ -3,6 +3,7 @@ import { Building2, TrendingUp, CircleDollarSign } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { docsUrlFor } from "@/lib/docsLinks";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -62,6 +63,8 @@ export default function Entities() {
               icon={Building2}
               title="Single-entity account"
               description="This view compares multiple legal entities. Your account has one entity, so the consolidated dashboards (Overview, Invoice Aging, MRR) already show the full picture."
+              learnMoreHref={docsUrlFor("/finance/entities")}
+              learnMoreLabel="Set up multiple entities"
             />
           </CardContent>
         </Card>

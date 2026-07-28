@@ -1,4 +1,4 @@
-import { Inbox } from "lucide-react";
+import { Inbox, ArrowUpRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -6,16 +6,21 @@ import { cn } from "@/lib/utils";
  * EmptyState — shown when a list/section has no data.
  *
  * Props:
- *  - icon:        lucide icon component (defaults to Inbox)
- *  - title:       string
- *  - description: string
- *  - action:      ReactNode (e.g. a <Button>)
+ *  - icon:           lucide icon component (defaults to Inbox)
+ *  - title:          string
+ *  - description:    string
+ *  - action:         ReactNode (e.g. a <Button>)
+ *  - learnMoreHref:  docs.recurso.dev URL — renders a "Read the guide" link so
+ *                    users get help right where they hit an empty screen.
+ *  - learnMoreLabel: label for that link (defaults to "Read the guide")
  */
 export function EmptyState({
   icon: Icon = Inbox,
   title = "Nothing here yet",
   description,
   action,
+  learnMoreHref,
+  learnMoreLabel = "Read the guide",
   className,
 }) {
   return (
@@ -33,6 +38,17 @@ export function EmptyState({
         <p className="mt-1 max-w-sm text-sm text-muted-foreground">{description}</p>
       )}
       {action && <div className="mt-5">{action}</div>}
+      {learnMoreHref && (
+        <a
+          href={learnMoreHref}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 transition-colors hover:text-emerald-800"
+        >
+          {learnMoreLabel}
+          <ArrowUpRight className="h-3.5 w-3.5" />
+        </a>
+      )}
     </div>
   );
 }
