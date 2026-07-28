@@ -362,10 +362,13 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 		return
 	}
 
-	// Manual syncs force a full re-push in the BACKGROUND: the sweep can run
-	// minutes against a third-party API, far past what a proxied request
-	// survives. Single-flight per tenant; progress lands in the sync log.
-	if !h.accountingService.TriggerSyncAsync(tenantID, provider) {
+	// Manual syncs run in the BACKGROUND: the sweep can run minutes against a
+	// third-party API, far past what a proxied request survives. The
+	// all-provider button is the explicit "reconcile everything" action and
+	// forces a full re-push; a provider-scoped (card) sync is routine and
+	// runs incrementally — dirty-tracking skips unchanged records.
+	force := provider == ""
+	if !h.accountingService.TriggerSyncAsync(tenantID, provider, force) {
 		c.JSON(http.StatusOK, gin.H{"status": "sync_already_running"})
 		return
 	}

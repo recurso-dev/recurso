@@ -239,7 +239,9 @@ const Integrations = () => {
       if (res.data?.status === "sync_already_running") {
         toast.message("A sync is already running — watch Sync activity for progress.");
       } else if (provider) {
-        toast.success(`${provider.charAt(0).toUpperCase() + provider.slice(1)} sync started in the background.`);
+        toast.success(
+          `${provider.charAt(0).toUpperCase() + provider.slice(1)} sync started — changed records only.`,
+        );
       } else {
         toast.success("Sync started in the background. Activity will update as records push.");
       }

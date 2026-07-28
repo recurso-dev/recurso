@@ -403,8 +403,13 @@ func (s *AccountingService) markConnectionError(ctx context.Context, conn *domai
 // provider "" sweeps every active connection; a provider name scopes the
 // sweep to that one connection. Single-flight stays PER TENANT regardless of
 // scope: a provider-scoped sync running concurrently with an all-provider
-// sync would double-push the overlapping connection.
-func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string) bool {
+// sync would double-push the overlapping connection. force bypasses
+// dirty-tracking (full re-push): right for the explicit reconcile-everything
+// button, wildly wasteful for a routine card-level sync — a forced full
+// re-push (~3 provider calls per invoice) exceeded the 15-minute budget on a
+// real tenant, while an incremental pass skips unchanged records and
+// finishes in seconds.
+func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string, force bool) bool {
 	if _, running := s.syncInFlight.LoadOrStore(tenantID, struct{}{}); running {
 		return false
 	}
@@ -415,7 +420,7 @@ func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string
 		// hold the single-flight slot forever.
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		if err := s.syncForTenant(ctx, tenantID, true, provider); err != nil {
+		if err := s.syncForTenant(ctx, tenantID, force, provider); err != nil {
 			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "provider", provider, "error", err)
 		}
 	}()
