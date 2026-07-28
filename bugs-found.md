@@ -14,6 +14,29 @@ Each entry: severity, repro, root cause, fix, verification.
 - **Verification**: frontend lint/build/vitest green; grep confirms every
   `size="icon"` and row-action icon button now has an accessible name.
 
+### BUG-008 — Charts stack (968 kB) loaded on EVERY page, not just analytics (MED / perf)
+- **Repro**: build the frontend; `dist/index.html` `<link rel=modulepreload>`s
+  `charts-*.js` and the entry statically imports React from it — so every page
+  (login, checkout, customers) downloads the 968 kB charting bundle.
+- **Root cause**: Vite 8 bundles with **rolldown**, whose Rollup-compat
+  `manualChunks` shim mis-places shared vendor code: React, clsx, tailwind-
+  merge, @floating-ui, @headlessui, and prop-types all landed INSIDE the
+  `charts` chunk. Since `cn()` (every component) needs clsx, and Radix/Stripe
+  need @floating-ui/prop-types, and everything needs React, every page
+  statically imported the charts chunk. `manualChunks` edits had no effect
+  (rolldown ignores it for shared-vendor placement).
+- **Fix (this PR)**: replaced `manualChunks` with rolldown's native
+  `advancedChunks.groups`, ordered so React and the shared UI vendor libs are
+  claimed BEFORE `charts`, plus a catch-all `vendor` group. Verified via
+  unminified builds tracing each leaked symbol.
+- **Result**: charts is no longer modulepreloaded; **0 non-analytics chunks
+  import it** (full-sweep verified); it shrank 968 kB → 617 kB (vendor libs
+  de-duplicated into shared chunks). The 617 kB charting stack now loads only
+  on analytics routes.
+- **Verification**: `grep charts- dist/index.html` shows no modulepreload;
+  frontend lint/build/vitest green.
+- **Credit**: performance investigation.
+
 ## 2026-07-28 — money-path correctness audit
 
 ### BUG-005 — Wallet auto-recharge double-credits under concurrent sweeps (HIGH)
