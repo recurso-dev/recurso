@@ -1,7 +1,8 @@
 import { NavLink } from "react-router";
-import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck, Inbox } from "lucide-react";
+import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck, Inbox, BookOpen, ArrowUpRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { DOCS_HOME } from "@/lib/docsLinks";
 
 // Grouped navigation. Each item: { to, label, icon, end? }.
 // `end` forces exact matching (used for Home so it isn't active everywhere).
@@ -133,6 +134,20 @@ export function Sidebar() {
           </div>
         ))}
       </nav>
+
+      {/* Docs — a persistent link to the guides, always in reach. */}
+      <div className="shrink-0 border-t border-border p-3">
+        <a
+          href={DOCS_HOME}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
+        >
+          <BookOpen className="h-4 w-4 shrink-0 text-stone-400 group-hover:text-stone-600" />
+          <span className="flex-1 truncate">Documentation</span>
+          <ArrowUpRight className="h-3.5 w-3.5 text-stone-300 group-hover:text-stone-500" />
+        </a>
+      </div>
     </aside>
   );
 }
