@@ -16,7 +16,7 @@ integrations). Scores are 1–10; anything below 10 lists what's missing.
 | Accessibility | 6 | Semantic components, keyboard-navigable Radix primitives. Gap: no axe-core pass, focus-management audit, or contrast check across pages. |
 | Scalability | 8 | Multi-tenant row-level, per-tenant gateway routing, async sweeps, distributed locks (Redis). Gap: pagination inconsistency risks silent truncation at scale; no horizontal-scale load test. |
 | Reliability | 9 | Fail-closed webhooks, terminal sync statuses, idempotent money path (now incl. wallet auto-recharge), occurrence-aware ledger, reconciliation gate, currency-exponent-correct exports. Gap: no chaos/timeout test suite; monitoring/alerting deploy pending (telemetry #215). |
-| UX | 9 | Consistent Sheet/DataTable/StatCard patterns, money-precision-aware, empty/loading/error states, honest integration matrix. Gap: mobile-responsive audit; a few flows still surface generic errors. |
+| UX | 9 | Consistent Sheet/DataTable/StatCard patterns, money-precision-aware, empty/loading/error states, honest integration matrix. **Premium chart layer (branded tooltip + shared palette + gradient area fills) across all four chart surfaces; live browser audit fixed five defects (loss-in-green bars, mixed money precision, wrapping badge, dual-currency axis, bare month labels).** Gap: mobile-responsive audit; a few flows still surface generic errors. |
 
 ## Overall: 8.5 / 10 — shippable, with a clear hardening path
 
