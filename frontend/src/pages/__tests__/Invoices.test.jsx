@@ -123,4 +123,31 @@ describe('Invoices Page', () => {
             expect(screen.getByText('No invoices yet')).toBeInTheDocument();
         });
     });
+
+    it('filters by status chip', async () => {
+        endpoints.getInvoices.mockResolvedValue({ data: { data: mockInvoices } });
+
+        render(<Invoices />, { wrapper });
+
+        await waitFor(() => {
+            expect(screen.getByText('INV-001')).toBeInTheDocument();
+        });
+
+        // Click the "Paid" status chip — only the paid invoice remains.
+        await userEvent.click(screen.getByRole('button', { name: 'Paid' }));
+        expect(screen.getByText('INV-001')).toBeInTheDocument(); // paid
+        expect(screen.queryByText('INV-002')).not.toBeInTheDocument(); // open
+        expect(screen.queryByText('INV-003')).not.toBeInTheDocument(); // void
+    });
+
+    it('offers a CSV export action', async () => {
+        endpoints.getInvoices.mockResolvedValue({ data: { data: mockInvoices } });
+
+        render(<Invoices />, { wrapper });
+
+        await waitFor(() => {
+            expect(screen.getByText('INV-001')).toBeInTheDocument();
+        });
+        expect(screen.getByRole('button', { name: /export csv/i })).toBeEnabled();
+    });
 });

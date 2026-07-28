@@ -1,16 +1,56 @@
 import { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router";
-import { FileText } from "lucide-react";
+import { FileText, Download } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
 import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
-import { formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+// Status filter chips. "past_due" folds overdue + past_due into one bucket.
+const STATUS_FILTERS = [
+  { key: "all", label: "All" },
+  { key: "paid", label: "Paid" },
+  { key: "open", label: "Open" },
+  { key: "past_due", label: "Past due" },
+  { key: "void", label: "Void" },
+  { key: "draft", label: "Draft" },
+];
+
+const matchesStatus = (inv, key) => {
+  if (key === "all") return true;
+  if (key === "past_due") return inv.status === "past_due" || inv.status === "overdue";
+  return inv.status === key;
+};
+
+function toCSV(rows) {
+  if (rows.length === 0) return "";
+  const cols = Object.keys(rows[0]);
+  const esc = (v) =>
+    v == null
+      ? ""
+      : /[",\n]/.test(String(v))
+        ? `"${String(v).replace(/"/g, '""')}"`
+        : String(v);
+  return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+}
+
+function downloadCSV(text, name) {
+  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5_000);
+}
 
 // Map an invoice status to a Badge variant.
 const invoiceStatusVariant = (status) =>
@@ -40,6 +80,7 @@ function EInvoiceBadge({ status }) {
 
 const Invoices = () => {
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [selectedInvoice, setSelectedInvoice] = useState(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const location = useLocation();
@@ -82,6 +123,7 @@ const Invoices = () => {
   }, [loading, invoices]);
 
   const filteredInvoices = invoices.filter((inv) => {
+    if (!matchesStatus(inv, statusFilter)) return false;
     if (!search) return true;
     const s = search.toLowerCase();
     return (
@@ -90,6 +132,19 @@ const Invoices = () => {
       inv.status?.toLowerCase().includes(s)
     );
   });
+
+  const exportCsv = () => {
+    const rows = filteredInvoices.map((inv) => ({
+      number: inv.invoice_number || "",
+      customer: customerNames[inv.customer_id] || inv.customer_id || "",
+      amount: formatCurrency(inv.total, inv.currency),
+      currency: inv.currency || "",
+      status: inv.status || "",
+      e_invoice: inv.e_invoice_status || "",
+      date: inv.created_at ? formatDate(inv.created_at) : "",
+    }));
+    downloadCSV(toCSV(rows), `invoices-${new Date().toISOString().slice(0, 10)}.csv`);
+  };
 
   const handleRowClick = (invoice) => {
     setSelectedInvoice(invoice);
@@ -152,7 +207,21 @@ const Invoices = () => {
 
   return (
     <div>
-      <PageHeader title="Invoices" description="View and manage customer invoices." />
+      <PageHeader
+        title="Invoices"
+        description="View and manage customer invoices."
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={exportCsv}
+            disabled={filteredInvoices.length === 0}
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        }
+      />
 
       <DataTable
         columns={columns}
@@ -166,10 +235,32 @@ const Invoices = () => {
           onChange: setSearch,
           placeholder: "Search invoices...",
         }}
+        toolbar={
+          <div className="flex flex-wrap gap-1.5">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setStatusFilter(f.key)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                  statusFilter === f.key
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        }
         empty={{
           icon: FileText,
-          title: "No invoices yet",
-          description: "Invoices will appear here once subscriptions are billed.",
+          title: statusFilter === "all" ? "No invoices yet" : "No invoices match this filter",
+          description:
+            statusFilter === "all"
+              ? "Invoices will appear here once subscriptions are billed."
+              : "Try a different status filter.",
         }}
       />
 
