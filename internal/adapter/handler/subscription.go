@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -103,19 +102,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("q")
 
-	limit := 10
-	if l := c.Query("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			limit = v
-		}
-	}
-
-	offset := 0
-	if p := c.Query("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
-			offset = (v - 1) * limit
-		}
-	}
+	limit, offset := parsePageLimit(c)
 
 	filter := domain.SubscriptionFilter{
 		Status: status,

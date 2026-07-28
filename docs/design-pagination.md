@@ -1,6 +1,9 @@
 # Design: pagination consistency
 
-Status: proposed (inventory done, no behavior changed yet).
+Status: in progress. Step 3 (tier-1 default 10->50 + max cap 1000, shared
+parsePageLimit helper) shipped for customers/subscriptions/plans; the shared
+OpenAPI `Limit` param now documents default/cap. Steps 1 (annotate every list
+op), 4 (add optional pagination to unbounded endpoints) remain.
 Backlog: `docs/backlog.md` P3.13. Silent truncation has bitten twice
 (CLAUDE.md), so this is a design doc first — changing list defaults changes
 behavior for existing clients.
