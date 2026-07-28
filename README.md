@@ -42,12 +42,15 @@ Most billing platforms charge a percentage of your revenue and lock you into the
 - Automatic and one-off invoicing with jurisdiction-aware tax and printable/e-invoice-ready PDFs
 - Hosted checkout — real card + ACH collection via the Stripe Payment Element, and UPI/cards/netbanking via Razorpay, with server-verified settlement
 - Customer self-service portal — magic-link login (httpOnly-cookie session), card update (Stripe SetupIntent), UPI mandate re-authorization, invoice history
-- Payments — multi-currency routing (INR → Razorpay, EUR/GBP mandates → GoCardless bank debit, others → Stripe), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay/GoCardless so recurring autopay (renewal, dunning, wallet) settles in *your* account
-- Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution
-- Tax — India GST (Place of Supply, HSN, TDS, e-invoicing via GSP), EU VAT (reverse charge + VIES), US sales tax (TaxJar) with economic-nexus threshold tracking
+- Payments — multi-currency routing (INR → Razorpay, EUR/GBP mandates → GoCardless bank debit, US ACH → Stripe, others → Stripe or Adyen), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay/GoCardless so recurring autopay (renewal, dunning, wallet) settles in *your* account
+- Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution, with a **Collections Intelligence** operator layer (worklist, analytics, manual controls, timing) on top
+- Disputes & chargebacks — provider-webhook-driven dispute lifecycle with automatic ledger reversal on chargeback
+- Tax & e-invoicing — India GST (Place of Supply, HSN, TDS, IRN e-invoicing via GSP), EU VAT (reverse charge + VIES) with **EN 16931 / UBL e-invoice export**, US sales tax (TaxJar/Avalara) with economic-nexus threshold tracking
 - Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes (CPQ)
 - Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation, ASC 606 revenue recognition, and a month-end close pack
+- **Multi-entity books** — multiple legal entities under one tenant, each with its own gapless invoice series, tax identity, per-entity ledger, and consolidated reporting
 - Real-time FX-normalized MRR, churn scoring, entitlements, commitments, webhook delivery tracking, QuickBooks/Xero/NetSuite/Tally accounting sync, HubSpot CRM sync
+- **MCP server** — agent-operable billing: drive the API from an LLM/agent over the Model Context Protocol, with RBAC-scoped tools
 - Platform — native auth (sessions, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy
 
 ## Project status
@@ -79,7 +82,7 @@ with [Going to Production](https://docs.recurso.dev/going-to-production).
 | **Tax Compliance** | India GST + e-invoicing, EU VAT, US nexus | Partial | Limited |
 | **Financial Ledger** | Double-entry (Postgres; optional TigerBeetle mirror) | None | None |
 | **Smart Dunning** | Built-in AI retries | Add-on | Basic |
-| **Bring Your Own Gateway** | Yes (Stripe + Razorpay, autopay to your account) | No | N/A |
+| **Bring Your Own Gateway** | Yes (Stripe + Razorpay + GoCardless, autopay to your account) | No | N/A |
 | **Data Ownership** | Full (your infrastructure) | Vendor-hosted | Vendor-hosted |
 
 ## Architecture
@@ -87,10 +90,12 @@ with [Going to Production](https://docs.recurso.dev/going-to-production).
 ```
 Go (Gin) API  -->  PostgreSQL (state + authoritative double-entry ledger)
       |
-      +--> Stripe / Razorpay (payments)
+      +--> Stripe / Razorpay / GoCardless / Adyen (payments)
+      +--> Accounting sync (QuickBooks / Xero / NetSuite / Tally) + HubSpot CRM
       +--> Email notifications
-      +--> Webhooks
-      +--> Background workers (dunning, metering)
+      +--> Webhooks (inbound provider events + outbound delivery tracking)
+      +--> Background workers (dunning, metering, e-invoice, settlement)
+      +--> MCP server (agent-operable billing)
       +--> TigerBeetle (optional ledger mirror; PG stays authoritative)
 ```
 
