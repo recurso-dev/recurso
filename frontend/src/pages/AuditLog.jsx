@@ -5,6 +5,9 @@ import { endpoints as api } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+
+const PAGE_SIZE = 100;
 
 // Append-only audit trail (Lago-parity C2): every successful config-grade
 // mutation, immutable at the database level.
@@ -13,13 +16,18 @@ const AuditLog = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [entityFilter, setEntityFilter] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [page, setPage] = useState(0); // 0-based
 
   const fetchLogs = async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = { limit: 200 };
+      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       if (entityFilter) params.entity_type = entityFilter;
+      if (from) params.from = new Date(`${from}T00:00:00`).toISOString();
+      if (to) params.to = new Date(`${to}T23:59:59`).toISOString();
       const res = await api.getAuditLogs(params);
       setLogs(res.data.data || []);
     } catch (err) {
@@ -32,7 +40,12 @@ const AuditLog = () => {
   useEffect(() => {
     fetchLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityFilter]);
+  }, [entityFilter, from, to, page]);
+
+  // Reset to the first page whenever a filter changes.
+  useEffect(() => {
+    setPage(0);
+  }, [entityFilter, from, to]);
 
   const entityTypes = [...new Set(logs.map((l) => l.entity_type))].sort();
 
@@ -77,6 +90,8 @@ const AuditLog = () => {
     },
   ];
 
+  const filtered = Boolean(entityFilter || from || to);
+
   return (
     <div>
       <PageHeader
@@ -91,22 +106,46 @@ const AuditLog = () => {
         error={error}
         onRetry={fetchLogs}
         toolbar={
-          <select
-            className="rounded-md border border-border bg-white px-3 py-1.5 text-sm"
-            value={entityFilter}
-            onChange={(e) => setEntityFilter(e.target.value)}
-          >
-            <option value="">All entities</option>
-            {entityTypes.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              className="rounded-md border border-border bg-white px-3 py-1.5 text-sm"
+              value={entityFilter}
+              onChange={(e) => setEntityFilter(e.target.value)}
+              aria-label="Entity type"
+            >
+              <option value="">All entities</option>
+              {entityTypes.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <Input
+              type="date"
+              value={from}
+              onChange={(e) => setFrom(e.target.value)}
+              className="w-40"
+              aria-label="From date"
+            />
+            <span className="text-sm text-muted-foreground">to</span>
+            <Input
+              type="date"
+              value={to}
+              onChange={(e) => setTo(e.target.value)}
+              className="w-40"
+              aria-label="To date"
+            />
+          </div>
         }
+        pagination={{
+          page: page + 1,
+          onPrev: () => setPage((p) => Math.max(0, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext: logs.length === PAGE_SIZE,
+        }}
         empty={{
           icon: ShieldCheck,
-          title: "No audit entries yet",
+          title: page > 0 || filtered ? "No entries match these filters" : "No audit entries yet",
           description: "Config-grade mutations (plans, metrics, wallets, webhooks, team, ...) appear here.",
         }}
       />
