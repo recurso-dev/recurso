@@ -8602,10 +8602,16 @@ components:
     Limit:
       name: limit
       in: query
-      description: Maximum number of records to return.
+      description: >-
+        Maximum records to return. Defaults to 50 when omitted and is capped
+        at 1000 (a larger request returns the cap, not an error). Pass an
+        explicit limit when you need the full set — omitting it silently
+        returns only the first page.
       schema:
         type: integer
         minimum: 1
+        default: 50
+        maximum: 1000
     Page:
       name: page
       in: query

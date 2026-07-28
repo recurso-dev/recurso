@@ -84,3 +84,35 @@ func clampLimitOffset(limit, offset, def, max int) (int, int) {
 	}
 	return limit, offset
 }
+
+// Tier-1 list endpoints (customers, subscriptions, plans) use page + limit
+// query params. These constants centralize the shared default and cap.
+const (
+	// defaultPageLimit is returned when the caller omits limit. 50 (raised
+	// from the historical 10) makes silent truncation less likely for API
+	// callers who forget the param; every dashboard consumer already passes
+	// an explicit limit, so the default is invisible to the UI.
+	defaultPageLimit = 50
+	// maxPageLimit bounds one page so a caller cannot request an unbounded
+	// scan. 1000 matches the largest limit any current consumer requests.
+	maxPageLimit = 1000
+)
+
+// parsePageLimit reads `page` (1-based) and `limit` query params and returns a
+// SQL limit/offset. limit falls back to defaultPageLimit when absent/invalid
+// and is CAPPED at maxPageLimit (a caller asking for more gets the cap, not a
+// surprise downgrade). page < 1 is treated as page 1.
+func parsePageLimit(c *gin.Context) (limit, offset int) {
+	limit = defaultPageLimit
+	if v, err := strconv.Atoi(c.Query("limit")); err == nil && v > 0 {
+		limit = v
+	}
+	if limit > maxPageLimit {
+		limit = maxPageLimit
+	}
+	page := 1
+	if v, err := strconv.Atoi(c.Query("page")); err == nil && v > 1 {
+		page = v
+	}
+	return limit, (page - 1) * limit
+}
