@@ -37,6 +37,12 @@ founder can provide; everything else is engineering-ready.
 |---|------|--------|--------|-------|
 | S1 | Card-level accounting Sync should be incremental (force=false) | HIGH — forced full re-push exceeds the 15-min budget on real tenants | LOW | Keep force=true only on the header Sync-now; dirty-tracking already exists. |
 
+## P2c — performance (investigated 2026-07-28)
+
+| # | Item | Impact | Effort | Notes |
+|---|------|--------|--------|-------|
+| P1 | Charts chunk (968 kB) `modulepreload`ed on every page | MED — idle-priority bandwidth on first load for users who never open an analytics page; NOT render-blocking | MED-HIGH | **Diagnosed, not yet fixed.** The built entry chunk *statically* imports 3 symbols from `charts-*.js` (`import{b,v,y}from"./charts-…"`), so Vite emits a `<link rel=modulepreload>` for it. Root cause is chunk-assignment, not a source import: no shared component statically imports recharts/@tremor (Sidebar/command-palette use lucide *icons* named PieChart/BarChart3, not charts). Build uses **rolldown-vite** (experimental) — standard `manualChunks` edits (splitting cva/clsx/tailwind-merge and `lib/utils` into a `ui-utils` chunk) left the charts hash byte-identical, so rolldown ignores them differently than Rollup. Fix needs a rolldown-aware approach: identify what exports b/v/y in the charts chunk (likely a shared util rolldown co-located there) and pin it out, or set `build.modulePreload.resolveDependencies` to drop charts from the preload list. Verify with `grep -c charts- dist/index.html` (want 0) after. |
+
 ## P3 — engineering hygiene
 
 | # | Item | Impact | Effort | Notes |
