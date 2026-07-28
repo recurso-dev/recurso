@@ -87,6 +87,12 @@ const Integrations = () => {
   const [logs, setLogs] = useState([]);
   const [logsLoading, setLogsLoading] = useState(true);
   const [logsError, setLogsError] = useState(null);
+  const [logTotal, setLogTotal] = useState(0);
+  const [logOffset, setLogOffset] = useState(0);
+  const [logProvider, setLogProvider] = useState("all");
+  const [logStatus, setLogStatus] = useState("all");
+  const [logSearch, setLogSearch] = useState("");
+  const [logSearchInput, setLogSearchInput] = useState("");
   const [connecting, setConnecting] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
@@ -108,12 +114,21 @@ const Integrations = () => {
     }
   };
 
-  const fetchLogs = async () => {
+  const LOG_PAGE_SIZE = 25;
+
+  const fetchLogs = async (offset = logOffset) => {
     setLogsLoading(true);
     setLogsError(null);
     try {
-      const res = await api.getAccountingSyncStatus();
+      const res = await api.getAccountingSyncStatus({
+        limit: LOG_PAGE_SIZE,
+        offset,
+        ...(logProvider !== "all" && { provider: logProvider }),
+        ...(logStatus !== "all" && { status: logStatus }),
+        ...(logSearch && { search: logSearch }),
+      });
       setLogs(res.data.data || []);
+      setLogTotal(res.data.total ?? (res.data.data || []).length);
     } catch (err) {
       setLogsError(err?.response?.data?.error?.message || "Failed to load sync activity");
     } finally {
@@ -123,8 +138,22 @@ const Integrations = () => {
 
   useEffect(() => {
     fetchConnections();
-    fetchLogs();
   }, []);
+
+  // Refetch one page whenever a filter, the search, or the page changes;
+  // filter/search changes reset to the first page.
+  useEffect(() => {
+    fetchLogs(logOffset);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logProvider, logStatus, logSearch, logOffset]);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setLogOffset(0);
+      setLogSearch(logSearchInput.trim());
+    }, 400);
+    return () => clearTimeout(t);
+  }, [logSearchInput]);
 
   // The OAuth callback lands back here with ?connected=<provider> or
   // ?error=<code> — surface it as a toast once, then clean the URL.
@@ -203,32 +232,24 @@ const Integrations = () => {
     }
   };
 
-  const handleSync = async () => {
+  const handleSync = async (provider) => {
     setSyncing(true);
     try {
-      const res = await api.triggerAccountingSync();
+      const res = await api.triggerAccountingSync(provider);
       if (res.data?.status === "sync_already_running") {
         toast.message("A sync is already running — watch Sync activity for progress.");
+      } else if (provider) {
+        toast.success(`${provider.charAt(0).toUpperCase() + provider.slice(1)} sync started in the background.`);
       } else {
         toast.success("Sync started in the background. Activity will update as records push.");
       }
-      fetchLogs();
+      fetchLogs(0);
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Sync failed");
     } finally {
       setSyncing(false);
     }
   };
-
-  const [logProvider, setLogProvider] = useState("all");
-  const [logStatus, setLogStatus] = useState("all");
-
-  const logProviders = [...new Set(logs.map((l) => l.provider).filter(Boolean))];
-  const filteredLogs = logs.filter(
-    (l) =>
-      (logProvider === "all" || l.provider === logProvider) &&
-      (logStatus === "all" || l.status === logStatus),
-  );
 
   const logColumns = [
     {
@@ -283,7 +304,7 @@ const Integrations = () => {
         description="Connect your payment gateways and accounting systems."
         actions={
           hasActiveConnection && (
-            <Button onClick={handleSync} disabled={syncing}>
+            <Button onClick={() => handleSync()} disabled={syncing}>
               <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
               {syncing ? "Syncing..." : "Sync now"}
             </Button>
@@ -360,13 +381,22 @@ const Integrations = () => {
 
                 <div className="mt-auto">
                   {conn ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDisconnectTarget(conn)}
-                    >
-                      Disconnect
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleSync(p.id)}
+                        disabled={syncing || conn.sync_status === "syncing"}
+                      >
+                        {conn.sync_status === "syncing" ? "Syncing…" : "Sync"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDisconnectTarget(conn)}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
                   ) : (
                     <Button
                       size="sm"
@@ -386,25 +416,36 @@ const Integrations = () => {
       <div className="mt-8">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-foreground">Sync activity</h2>
-          <div className="flex items-center gap-2">
-            {logProviders.length > 1 && (
-              <select
-                value={logProvider}
-                onChange={(e) => setLogProvider(e.target.value)}
-                className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label="Filter by integration"
-              >
-                <option value="all">All integrations</option>
-                {logProviders.map((pv) => (
-                  <option key={pv} value={pv} className="capitalize">
-                    {pv}
-                  </option>
-                ))}
-              </select>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              value={logSearchInput}
+              onChange={(e) => setLogSearchInput(e.target.value)}
+              placeholder="Search record id…"
+              className="h-8 w-44 text-xs"
+              aria-label="Search sync records"
+            />
+            <select
+              value={logProvider}
+              onChange={(e) => {
+                setLogOffset(0);
+                setLogProvider(e.target.value);
+              }}
+              className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Filter by integration"
+            >
+              <option value="all">All integrations</option>
+              {PROVIDERS.map((pv) => (
+                <option key={pv.id} value={pv.id}>
+                  {pv.name}
+                </option>
+              ))}
+            </select>
             <select
               value={logStatus}
-              onChange={(e) => setLogStatus(e.target.value)}
+              onChange={(e) => {
+                setLogOffset(0);
+                setLogStatus(e.target.value);
+              }}
               className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               aria-label="Filter by status"
             >
@@ -416,7 +457,7 @@ const Integrations = () => {
         </div>
         <DataTable
           columns={logColumns}
-          data={filteredLogs}
+          data={logs}
           loading={logsLoading}
           error={logsError}
           onRetry={fetchLogs}
@@ -427,6 +468,31 @@ const Integrations = () => {
             description: "Connect a provider and run a sync to see records here.",
           }}
         />
+        {logTotal > LOG_PAGE_SIZE && (
+          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+            <span>
+              {logOffset + 1}–{Math.min(logOffset + LOG_PAGE_SIZE, logTotal)} of {logTotal}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={logOffset === 0 || logsLoading}
+                onClick={() => setLogOffset(Math.max(0, logOffset - LOG_PAGE_SIZE))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={logOffset + LOG_PAGE_SIZE >= logTotal || logsLoading}
+                onClick={() => setLogOffset(logOffset + LOG_PAGE_SIZE)}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       <ConfirmDialog

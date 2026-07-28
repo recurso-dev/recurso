@@ -405,8 +405,9 @@ export const endpoints = {
   // NetSuite (account_id + access_token) and Tally (empty body) — no OAuth redirect.
   connectAccountingToken: (provider, body) => api.post(`/accounting/connect-token/${provider}`, body),
   disconnectAccounting: (id) => api.delete(`/accounting/connections/${id}`),
-  triggerAccountingSync: () => api.post('/accounting/sync'),
-  getAccountingSyncStatus: () => api.get('/accounting/sync/status'),
+  triggerAccountingSync: (provider) =>
+    api.post('/accounting/sync', null, { params: provider ? { provider } : {} }),
+  getAccountingSyncStatus: (params) => api.get('/accounting/sync/status', { params }),
 
   // BYO payment gateways (Stripe / Razorpay) — per-tenant credentials.
   getGatewayConnections: () => api.get('/gateway-connections'),

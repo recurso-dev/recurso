@@ -400,7 +400,11 @@ func (s *AccountingService) markConnectionError(ctx context.Context, conn *domai
 // production tenant) while Cloudflare kills proxied requests around 100s —
 // the same failure mode the CRM manual sync hit. Progress is observable via
 // the sync-activity log and each connection's sync_status.
-func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID) bool {
+// provider "" sweeps every active connection; a provider name scopes the
+// sweep to that one connection. Single-flight stays PER TENANT regardless of
+// scope: a provider-scoped sync running concurrently with an all-provider
+// sync would double-push the overlapping connection.
+func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string) bool {
 	if _, running := s.syncInFlight.LoadOrStore(tenantID, struct{}{}); running {
 		return false
 	}
@@ -411,14 +415,19 @@ func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID) bool {
 		// hold the single-flight slot forever.
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
-		if err := s.SyncAllForTenant(ctx, tenantID, true); err != nil {
-			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "error", err)
+		if err := s.syncForTenant(ctx, tenantID, true, provider); err != nil {
+			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "provider", provider, "error", err)
 		}
 	}()
 	return true
 }
 
 func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.UUID, force bool) error {
+	return s.syncForTenant(ctx, tenantID, force, "")
+}
+
+// syncForTenant is SyncAllForTenant optionally scoped to one provider.
+func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUID, force bool, provider string) error {
 	if s.connRepo == nil {
 		return fmt.Errorf("accounting connection repository not configured")
 	}
@@ -435,6 +444,9 @@ func (s *AccountingService) SyncAllForTenant(ctx context.Context, tenantID uuid.
 
 	for _, conn := range conns {
 		if !conn.IsActive {
+			continue
+		}
+		if provider != "" && conn.Provider != provider {
 			continue
 		}
 

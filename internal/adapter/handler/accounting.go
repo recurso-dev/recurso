@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -14,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/accounting"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
@@ -350,15 +352,25 @@ func (h *AccountingHandler) TriggerSync(c *gin.Context) {
 		return
 	}
 
+	// Optional ?provider= scopes the sweep to one connection (e.g. re-push
+	// only Xero after fixing a bad record, without re-running QuickBooks).
+	provider := strings.TrimSpace(c.Query("provider"))
+	switch provider {
+	case "", "quickbooks", "xero", "netsuite", "tally":
+	default:
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "unknown provider")
+		return
+	}
+
 	// Manual syncs force a full re-push in the BACKGROUND: the sweep can run
 	// minutes against a third-party API, far past what a proxied request
 	// survives. Single-flight per tenant; progress lands in the sync log.
-	if !h.accountingService.TriggerSyncAsync(tenantID) {
+	if !h.accountingService.TriggerSyncAsync(tenantID, provider) {
 		c.JSON(http.StatusOK, gin.H{"status": "sync_already_running"})
 		return
 	}
 
-	c.JSON(http.StatusAccepted, gin.H{"status": "sync_triggered"})
+	c.JSON(http.StatusAccepted, gin.H{"status": "sync_triggered", "provider": provider})
 }
 
 func (h *AccountingHandler) SyncStatus(c *gin.Context) {
@@ -368,17 +380,42 @@ func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 		return
 	}
 
-	logs, err := h.connRepo.ListSyncLogs(c.Request.Context(), tenantID, 50)
+	// Filterable + paginated when the repo supports it (capability assertion
+	// keeps port.AccountingConnectionRepository — and its mocks — untouched).
+	type syncLogLister interface {
+		ListSyncLogsFiltered(ctx context.Context, tenantID uuid.UUID, f db.SyncLogFilter) ([]*domain.AccountingSyncLog, int, error)
+	}
+	lister, ok := h.connRepo.(syncLogLister)
+	if !ok {
+		logs, err := h.connRepo.ListSyncLogs(c.Request.Context(), tenantID, 50)
+		if err != nil {
+			respondInternalError(c, err)
+			return
+		}
+		if logs == nil {
+			logs = []*domain.AccountingSyncLog{}
+		}
+		c.JSON(http.StatusOK, gin.H{"data": logs})
+		return
+	}
+
+	limit, offset := parseLimitOffset(c, 200, 25)
+	logs, total, err := lister.ListSyncLogsFiltered(c.Request.Context(), tenantID, db.SyncLogFilter{
+		Provider: strings.TrimSpace(c.Query("provider")),
+		Status:   strings.TrimSpace(c.Query("status")),
+		Search:   strings.TrimSpace(c.Query("search")),
+		Limit:    limit,
+		Offset:   offset,
+	})
 	if err != nil {
 		respondInternalError(c, err)
 		return
 	}
-
 	if logs == nil {
 		logs = []*domain.AccountingSyncLog{}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": logs})
+	c.JSON(http.StatusOK, gin.H{"data": logs, "total": total, "limit": limit, "offset": offset})
 }
 
 // generateOAuthState produces an HMAC-signed state: "tenantID:provider:signature"

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/secretbox"
@@ -182,6 +183,67 @@ func (r *AccountingConnectionRepository) CreateSyncLog(ctx context.Context, log 
 		log.ExternalID, log.Action, log.Status, log.ErrorMessage, log.SyncedAt,
 	)
 	return err
+}
+
+// SyncLogFilter narrows and pages the sync-activity listing.
+type SyncLogFilter struct {
+	Provider string // "" = all
+	Status   string // "" = all ("success"/"error")
+	Search   string // matches external_id or the internal entity id (prefix/substring)
+	Limit    int
+	Offset   int
+}
+
+// ListSyncLogsFiltered returns one page of sync activity plus the total row
+// count for the same filter, so the dashboard can paginate.
+func (r *AccountingConnectionRepository) ListSyncLogsFiltered(ctx context.Context, tenantID uuid.UUID, f SyncLogFilter) ([]*domain.AccountingSyncLog, int, error) {
+	where := `FROM accounting_sync_log l
+		LEFT JOIN accounting_connections c ON c.id = l.connection_id
+		WHERE l.tenant_id = $1`
+	args := []interface{}{tenantID}
+	if f.Provider != "" {
+		args = append(args, f.Provider)
+		where += fmt.Sprintf(" AND c.provider = $%d", len(args))
+	}
+	if f.Status != "" {
+		args = append(args, f.Status)
+		where += fmt.Sprintf(" AND l.status = $%d", len(args))
+	}
+	if f.Search != "" {
+		args = append(args, "%"+f.Search+"%")
+		where += fmt.Sprintf(" AND (l.external_id ILIKE $%d OR l.entity_id::text ILIKE $%d)", len(args), len(args))
+	}
+
+	var total int
+	if err := r.db.QueryRowContext(ctx, "SELECT COUNT(*) "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `SELECT l.id, l.tenant_id, l.connection_id, COALESCE(c.provider, ''),
+		l.entity_type, l.entity_id,
+		COALESCE(l.external_id,''), l.action, l.status, COALESCE(l.error_message,''), l.synced_at ` +
+		where + fmt.Sprintf(" ORDER BY l.synced_at DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
+	args = append(args, f.Limit, f.Offset)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var logs []*domain.AccountingSyncLog
+	for rows.Next() {
+		var l domain.AccountingSyncLog
+		if err := rows.Scan(&l.ID, &l.TenantID, &l.ConnectionID, &l.Provider, &l.EntityType, &l.EntityID,
+			&l.ExternalID, &l.Action, &l.Status, &l.ErrorMessage, &l.SyncedAt); err != nil {
+			return nil, 0, err
+		}
+		logs = append(logs, &l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return logs, total, nil
 }
 
 func (r *AccountingConnectionRepository) ListSyncLogs(ctx context.Context, tenantID uuid.UUID, limit int) ([]*domain.AccountingSyncLog, error) {
