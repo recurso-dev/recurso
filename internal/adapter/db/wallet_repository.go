@@ -130,18 +130,21 @@ func (r *WalletRepository) UpdateAutoRecharge(ctx context.Context, tenantID, id 
 	return nil
 }
 
-func (r *WalletRepository) TopUp(ctx context.Context, wtx *domain.WalletTransaction) error {
+func (r *WalletRepository) TopUp(ctx context.Context, wtx *domain.WalletTransaction) (bool, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// FOR UPDATE serializes concurrent top-ups of the same wallet; the
+	// idempotency-key unique index then rejects the second insert, so a
+	// double sweep credits at most once.
 	var balance int64
 	if err := tx.QueryRowContext(ctx,
 		`SELECT balance FROM wallets WHERE tenant_id = $1 AND id = $2 FOR UPDATE`,
 		wtx.TenantID, wtx.WalletID).Scan(&balance); err != nil {
-		return fmt.Errorf("failed to lock wallet for top-up: %w", err)
+		return false, fmt.Errorf("failed to lock wallet for top-up: %w", err)
 	}
 
 	balance += wtx.Amount
@@ -149,20 +152,31 @@ func (r *WalletRepository) TopUp(ctx context.Context, wtx *domain.WalletTransact
 	remaining := wtx.Amount
 	wtx.Remaining = &remaining
 
-	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, invoice_id, expires_at, created_at)
-		VALUES ($1, $2, $3, 'top_up', $4, $5, $6, $7, $8, $9, $10)`,
+	var idemKey interface{}
+	if wtx.IdempotencyKey != "" {
+		idemKey = wtx.IdempotencyKey
+	}
+	res, err := tx.ExecContext(ctx, `
+		INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, invoice_id, expires_at, idempotency_key, created_at)
+		VALUES ($1, $2, $3, 'top_up', $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
 		wtx.ID, wtx.TenantID, wtx.WalletID, wtx.Source, wtx.Amount, remaining,
-		balance, wtx.InvoiceID, wtx.ExpiresAt, wtx.CreatedAt,
-	); err != nil {
-		return fmt.Errorf("failed to insert wallet top-up: %w", err)
+		balance, wtx.InvoiceID, wtx.ExpiresAt, idemKey, wtx.CreatedAt,
+	)
+	if err != nil {
+		return false, fmt.Errorf("failed to insert wallet top-up: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// A top-up with this idempotency key already applied — no-op, and the
+		// caller must NOT post a second ledger leg.
+		return false, nil
 	}
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE wallets SET balance = $3, updated_at = NOW() WHERE tenant_id = $1 AND id = $2`,
 		wtx.TenantID, wtx.WalletID, balance); err != nil {
-		return fmt.Errorf("failed to update wallet balance: %w", err)
+		return false, fmt.Errorf("failed to update wallet balance: %w", err)
 	}
-	return tx.Commit()
+	return true, tx.Commit()
 }
 
 // Close settles and closes a wallet in one transaction: it zeroes every open

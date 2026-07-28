@@ -69,7 +69,7 @@ func TestWalletExpiry_PostsLedgerLeg_Postgres(t *testing.T) {
 	}
 	// Promotional top-up that already expired.
 	past := now.Add(-time.Hour)
-	if err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
+	if _, err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
 		ID: uuid.New(), TenantID: tenantID, WalletID: wallet.ID, Type: domain.WalletTxTopUp,
 		Source: domain.WalletSourcePromotional, Amount: 15000, ExpiresAt: &past, CreatedAt: now,
 	}); err != nil {
