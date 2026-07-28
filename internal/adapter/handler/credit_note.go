@@ -188,3 +188,34 @@ func (h *CreditNoteHandler) RejectCreditNote(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": cn})
 }
+
+// VoidCreditNote cancels an issued account-credit note and writes off its
+// unspent balance. Restricted to admins/owners, mirroring approve/reject.
+// POST /v1/credit-notes/:id/void
+func (h *CreditNoteHandler) VoidCreditNote(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	cnID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+	userID := middleware.GetUserID(c)
+	userRole, _ := middleware.GetUserRole(c)
+
+	if userRole != "" && userRole != string(domain.RoleAdmin) && userRole != string(domain.RoleOwner) {
+		respondError(c, http.StatusForbidden, codeValidationFailed, "only admins and owners can void credit notes")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, err := h.service.Void(ctx, tenantID, cnID, userID)
+	if err != nil {
+		status := http.StatusInternalServerError
+		if errors.Is(err, service.ErrCreditNoteValidation) {
+			status = http.StatusBadRequest
+		}
+		respondErrorStatus(c, status, err.Error())
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": cn})
+}

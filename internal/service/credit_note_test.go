@@ -141,6 +141,10 @@ func (m *mockCreditNoteRepo) ClaimExpiredCredits(ctx context.Context, now time.T
 	return nil, nil
 }
 
+func (m *mockCreditNoteRepo) VoidAdjustmentCredit(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditExpiry, error) {
+	return nil, nil
+}
+
 func (m *mockCreditNoteRepo) ApplyAdjustmentCredits(ctx context.Context, tenantID, customerID uuid.UUID, entityID *uuid.UUID, currency string, invoiceID uuid.UUID, invoiceTotal int64) (int64, error) {
 	return 0, nil
 }

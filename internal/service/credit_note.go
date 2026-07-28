@@ -67,6 +67,10 @@ type CreditNoteRepository interface {
 	ClaimExpiredCredits(ctx context.Context, now time.Time, limit int) ([]domain.CreditExpiry, error)
 	GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, oldStatus, newStatus domain.CreditNoteStatus, approverID uuid.UUID, approvedAt time.Time) (bool, error)
+	// VoidAdjustmentCredit atomically voids an issued adjustment credit with an
+	// unspent balance, returning the written-off amount for the GL reversal, or
+	// (nil, nil) when the note isn't voidable.
+	VoidAdjustmentCredit(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditExpiry, error)
 }
 
 // creditNoteCustomerReader is the slice of the customer repository we use.
@@ -763,6 +767,57 @@ func (s *CreditNoteService) Reject(ctx context.Context, tenantID, cnID, approver
 	// BUT wait, when a refund was inserted in Create, its refund_status was RefundStatusNone.
 	// RefundStatusNone is NOT in (Pending, Processed, ManualRequired). So it's already excluded from Sum!
 
+	return cn, nil
+}
+
+// Void cancels an issued account-credit note and writes off its unspent
+// balance. It applies only to adjustment credits: a refund note moved money at
+// the gateway, so it can't be undone with a ledger entry. The balance is zeroed
+// atomically in the repo claim; the GL reversal (DR Customer Credit / CR Credits
+// & Adjustments) is posted best-effort and logged for reconciliation on failure,
+// matching the expiry-sweep idiom — the money state (balance 0, status void) is
+// already committed, so a failed post must not fail the request.
+func (s *CreditNoteService) Void(ctx context.Context, tenantID, cnID, actorID uuid.UUID) (*domain.CreditNote, error) {
+	cn, err := s.repo.GetByID(ctx, cnID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get credit note: %w", err)
+	}
+	if cn == nil {
+		return nil, fmt.Errorf("%w: credit note not found", ErrCreditNoteValidation)
+	}
+	if cn.Status == domain.CreditNoteStatusVoid {
+		return cn, nil // idempotent
+	}
+	if cn.Type != domain.CreditNoteTypeAdjustment {
+		return nil, fmt.Errorf("%w: only account-credit notes can be voided; a refund is reversed through the payment gateway", ErrCreditNoteValidation)
+	}
+	if cn.Status != domain.CreditNoteStatusIssued {
+		return nil, fmt.Errorf("%w: only an issued credit note can be voided (status is %q)", ErrCreditNoteValidation, cn.Status)
+	}
+
+	written, err := s.repo.VoidAdjustmentCredit(ctx, cn.ID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to void credit note: %w", err)
+	}
+	if written == nil {
+		// Raced (spent down to zero or voided by someone else). Return the
+		// note's current state rather than a misleading error.
+		if latest, gerr := s.repo.GetByID(ctx, cn.ID, tenantID); gerr == nil && latest != nil {
+			return latest, nil
+		}
+		return cn, nil
+	}
+
+	if s.ledger != nil {
+		if _, lErr := s.ledger.RecordCreditVoid(ctx, written.TenantID, written.EntityID, written.CreditNoteID, written.Amount,
+			"Account credit voided"); lErr != nil {
+			s.logger.Error("credit void ledger post failed — reconciliation needed",
+				"credit_note_id", written.CreditNoteID, "amount", written.Amount, "actor_id", actorID, "error", lErr)
+		}
+	}
+
+	cn.Status = domain.CreditNoteStatusVoid
+	cn.Balance = 0
 	return cn, nil
 }
 

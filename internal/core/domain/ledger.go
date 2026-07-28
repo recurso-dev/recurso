@@ -207,6 +207,13 @@ const LedgerCodeCreditExpiry uint16 = 18
 // merchant-initiated return of funds, not an involuntary claw-back.
 const LedgerCodePaymentReversal uint16 = 19
 
+// LedgerCodeCreditVoid books an account credit note voided by an operator before
+// its balance was spent: DR Customer Credit / CR Credits & Adjustments — the
+// same reversal-of-issuance legs as an expiry write-off (code 18), but distinct
+// so the ledger tells a manual void apart from an automatic lapse. Only the
+// unspent balance is reversed; any already-applied portion stays real.
+const LedgerCodeCreditVoid uint16 = 20
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

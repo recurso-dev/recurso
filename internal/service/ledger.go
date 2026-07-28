@@ -934,6 +934,28 @@ func (s *LedgerService) RecordCreditExpiry(ctx context.Context, tenantID uuid.UU
 	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeCreditExpiry, creditNoteID, description)
 }
 
+// RecordCreditVoid reverses the unspent balance of an adjustment credit note
+// that an operator voided: DR Customer Credit / CR Credits & Adjustments — the
+// same legs as an expiry write-off, discharging the liability, but under a
+// distinct code (20) so a manual void is auditable apart from an automatic
+// lapse. Idempotent per (credit_note_id, code).
+func (s *LedgerService) RecordCreditVoid(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("credit void %s: %w", creditNoteID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	expenseAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCreditsIssued, "Credits & Adjustments", domain.AccountTypeExpense)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, creditAccountID, expenseAccountID, amt, domain.LedgerCodeCreditVoid, creditNoteID, description)
+}
+
 // postEntityTransfer writes a single ledger transfer (PG always; TigerBeetle
 // when connected) on a specific entity's ledger, surfacing PG failures for
 // retry/reconciliation. For the primary entity (LedgerID 1) the postings are
