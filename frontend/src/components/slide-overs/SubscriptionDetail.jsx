@@ -22,6 +22,13 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 export default function SubscriptionDetail({
   subscription,
@@ -51,6 +58,15 @@ export default function SubscriptionDetail({
   const [billingBusy, setBillingBusy] = useState(false);
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDesc, setChargeDesc] = useState("");
+  const [pendingCharges, setPendingCharges] = useState(null);
+
+  // Cancel-with-reason flow (the API requires a reason).
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelFeedback, setCancelFeedback] = useState("");
+  const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(true);
+  const [reasons, setReasons] = useState([]);
+  const [cancelBusy, setCancelBusy] = useState(false);
   // Live usage-amount preview (accrued metered charges for the running period).
   const [usageAmount, setUsageAmount] = useState(null);
   const [billingUsage, setBillingUsage] = useState(false);
@@ -144,6 +160,24 @@ export default function SubscriptionDetail({
       .finally(() => setPreviewLoading(false));
   }, [newPlanId, subscription]);
 
+  // Load the cancellation-reason catalog the first time the cancel dialog opens.
+  useEffect(() => {
+    if (!cancelOpen || reasons.length > 0) return;
+    endpoints
+      .getCancellationReasons()
+      .then((res) => setReasons(res.data?.data || []))
+      .catch(() => setReasons([]));
+  }, [cancelOpen, reasons.length]);
+
+  // Load the already-added unbilled charges when the charge panel opens.
+  useEffect(() => {
+    if (billingPanel !== "charge" || !subscription?.id) return;
+    endpoints
+      .getSubscriptionCharges(subscription.id)
+      .then((res) => setPendingCharges(res.data?.data || []))
+      .catch(() => setPendingCharges([]));
+  }, [billingPanel, subscription?.id]);
+
   if (!subscription) return null;
 
   const startChange = () => {
@@ -207,14 +241,6 @@ export default function SubscriptionDetail({
       run: () => endpoints.resumeSubscription(subscription.id),
       failure: "Failed to resume subscription",
     },
-    cancel: {
-      title: "Cancel this subscription?",
-      description: "The subscription ends and no further invoices are generated. This can't be undone from here.",
-      confirmLabel: "Cancel subscription",
-      destructive: true,
-      run: () => endpoints.cancelSubscription(subscription.id),
-      failure: "Failed to cancel subscription",
-    },
     reactivate: {
       title: "Reactivate this subscription?",
       description: "Billing restarts on the current plan from the next cycle.",
@@ -237,6 +263,32 @@ export default function SubscriptionDetail({
       toast.error(err?.response?.data?.error?.message || action.failure);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const selectedReason = reasons.find((r) => r.id === cancelReason);
+
+  const submitCancel = async () => {
+    if (!cancelReason) return;
+    setCancelBusy(true);
+    try {
+      await endpoints.cancelSubscription(subscription.id, {
+        reason: cancelReason,
+        feedback: cancelFeedback.trim() || undefined,
+        cancel_at_period_end: cancelAtPeriodEnd,
+        immediately: !cancelAtPeriodEnd,
+      });
+      setCancelOpen(false);
+      setCancelReason("");
+      setCancelFeedback("");
+      toast.success(
+        cancelAtPeriodEnd ? "Subscription set to cancel at period end." : "Subscription canceled."
+      );
+      onRefresh?.();
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to cancel subscription");
+    } finally {
+      setCancelBusy(false);
     }
   };
 
@@ -313,7 +365,7 @@ export default function SubscriptionDetail({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => setConfirmAction("cancel")}
+                onClick={() => setCancelOpen(true)}
                 disabled={loading}
                 className="text-red-600 hover:text-red-700"
               >
@@ -497,9 +549,13 @@ export default function SubscriptionDetail({
                         description: chargeDesc.trim(),
                       });
                       toast.success("One-off charge added to the next invoice.");
-                      setBillingPanel(null);
                       setChargeAmount("");
                       setChargeDesc("");
+                      // Refresh the pending list in place so it's visible.
+                      endpoints
+                        .getSubscriptionCharges(subscription.id)
+                        .then((res) => setPendingCharges(res.data?.data || []))
+                        .catch(() => {});
                       onRefresh?.();
                     } catch (err) {
                       toast.error(
@@ -513,6 +569,34 @@ export default function SubscriptionDetail({
                   {billingBusy ? "Adding…" : "Add charge"}
                 </Button>
               </div>
+
+              {/* Charges already queued for the next invoice. */}
+              {pendingCharges != null && (
+                <div className="border-t border-border pt-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Pending on next invoice
+                  </p>
+                  {pendingCharges.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No pending one-off charges.</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {pendingCharges.map((ch, i) => (
+                        <li
+                          key={ch.id || i}
+                          className="flex items-center justify-between gap-3 text-sm"
+                        >
+                          <span className="truncate text-foreground">
+                            {ch.description || "One-off charge"}
+                          </span>
+                          <span className="shrink-0 tabular-nums font-medium">
+                            {formatCurrency(ch.amount, ch.currency || currency)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -606,6 +690,62 @@ export default function SubscriptionDetail({
             onConfirm={runLifecycleAction}
             {...(lifecycle[confirmAction] || {})}
           />
+
+          <Dialog open={cancelOpen} onOpenChange={(o) => !o && setCancelOpen(false)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Cancel subscription</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label>Reason for cancellation</Label>
+                  <Select value={cancelReason} onValueChange={setCancelReason}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a reason…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reasons.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedReason?.allows_feedback && (
+                  <div>
+                    <Label>Feedback (optional)</Label>
+                    <Input
+                      value={cancelFeedback}
+                      onChange={(e) => setCancelFeedback(e.target.value)}
+                      placeholder="What could we have done better?"
+                    />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-emerald-600"
+                    checked={cancelAtPeriodEnd}
+                    onChange={(e) => setCancelAtPeriodEnd(e.target.checked)}
+                  />
+                  Cancel at period end (uncheck to cancel immediately)
+                </label>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelBusy}>
+                  Keep subscription
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={submitCancel}
+                  disabled={cancelBusy || !cancelReason}
+                >
+                  {cancelBusy ? "Canceling…" : "Cancel subscription"}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
 
           {/* Change-plan flow with proration preview */}
           {changing && (
