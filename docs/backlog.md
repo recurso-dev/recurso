@@ -11,7 +11,7 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync | — | **founder** fixes the email in the dashboard; #236 shows record ids on error rows. |
+| 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync (QuickBooks rejects it too) | — | **founder** fixes the email in the dashboard; sync rows now show the customer name + id. |
 
 ## P1 — verification & parity (mostly founder-blocked)
 

@@ -282,9 +282,16 @@ const Integrations = () => {
       // INTERNAL entity id, so the operator can find which invoice/customer
       // failed (an error row with "—" was un-actionable).
       cell: (l) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {l.external_id || (l.entity_id ? `${String(l.entity_id).slice(0, 8)}… (internal)` : "—")}
-        </span>
+        <div className="min-w-0">
+          {l.entity_name && (
+            <p className="truncate text-sm font-medium" title={l.entity_name}>
+              {l.entity_name}
+            </p>
+          )}
+          <span className="font-mono text-xs text-muted-foreground">
+            {l.external_id || (l.entity_id ? `${String(l.entity_id).slice(0, 8)}… (internal)` : "—")}
+          </span>
+        </div>
       ),
     },
     {
