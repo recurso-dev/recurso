@@ -59,9 +59,16 @@ had tests at start).
 - `pages/__tests__/Referrals.test.jsx` (3) — renders referral codes, Qualify
   fires for a pending referral, empty state.
 
+### Batch 7 — auth / session provider (security-critical)
+- `auth/__tests__/AuthProvider.test.jsx` (6) — session resolution via /auth/me:
+  authenticated success, **401 = definitive logout (no retry)**, **transient
+  (503) retry-with-backoff then success**, login sets user, logout clears user +
+  key + calls the API, and legacy API-key mode stays authenticated. Uses fake
+  timers to exercise the backoff path deterministically.
+
 ## Running totals
-- Frontend tests: 183 → 260 (+77). Test files: 29 → 44.
-- Shipped as 5 green-CI PRs (#292–#295, + this).
+- Frontend tests: 183 → 266 (+83). Test files: 29 → 45.
+- Shipped as 7 green-CI PRs (#292–#297, + this).
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
