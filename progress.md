@@ -92,3 +92,13 @@ double-reverse; bad signature → 401.
 - Engineering-ready: pagination-consistency sweep (design first — changing
   unbounded defaults silently truncates existing clients), interface-embedding
   mock cleanup, React 19 + react-router 8.
+
+## Full-product verification (2026-07-28, gym-time sweep)
+
+All six repos' gates green; 32-area fresh-boot API journey: 27 PASS, 3
+findings fixed in this PR (EU e-invoice tenant-ctx 500, mandate guard 500→400,
+Quotes raw-UUID customers), 4 PARTIALs backlogged (S1–S5 in docs/backlog.md).
+Prod dashboard sweep clean (zero console errors). All seven third-party
+integrations live-verified, incl. BYO GoCardless end-to-end (mandate
+authorized on hosted page → webhook flipped it active). Full evidence:
+docs/verification-2026-07-28.md.

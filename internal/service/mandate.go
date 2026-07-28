@@ -84,6 +84,10 @@ func NewMandateService(
 // links without one.
 var ErrCustomerPhoneRequired = errors.New("customer phone number is required for a UPI mandate")
 
+// ErrVPARequired is returned when an INR (UPI) mandate is requested without a
+// VPA to register against.
+var ErrVPARequired = errors.New("vpa is required for a UPI mandate")
+
 type CreateMandateInput struct {
 	TenantID       uuid.UUID
 	CustomerID     uuid.UUID
@@ -128,7 +132,7 @@ func (s *MandateService) CreateMandate(ctx context.Context, input CreateMandateI
 			return nil, ErrCustomerPhoneRequired
 		}
 		if strings.TrimSpace(input.VPA) == "" {
-			return nil, fmt.Errorf("vpa is required for a UPI mandate")
+			return nil, ErrVPARequired
 		}
 	}
 

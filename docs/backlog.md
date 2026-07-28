@@ -31,6 +31,16 @@ founder can provide; everything else is engineering-ready.
 | 11 | Gift-subscription cancel + wallet-close UI edge cases | LOW | LOW | Deferred from roadmap run 2026-07-20. |
 | 12 | Dunning alert edit UI | LOW | LOW | Deferred from roadmap run 2026-07-20. |
 
+## P2b — smoke-sweep findings (2026-07-28, see docs/verification-2026-07-28.md)
+
+| # | Item | Impact | Effort | Notes |
+|---|------|--------|--------|-------|
+| S1 | Card-level accounting Sync should be incremental (force=false) | HIGH — forced full re-push exceeds the 15-min budget on real tenants | LOW | Keep force=true only on the header Sync-now; dirty-tracking already exists. |
+| S2 | Nested `billing_address` silently ignored on customer create/update | MED — silent data loss for API users | LOW | Accept nested (map to flat) or reject with 400. |
+| S3 | No `GET /v1/subscriptions/:id` | MED — API-completeness gap | LOW | Add route + OpenAPI; SDKs regenerate. |
+| S4 | Quote totals stay 0 when created with line items via API | MED — CPQ math broken for API path (UI path computes) | MED | Compute totals server-side on create/update. |
+| S5 | Entity create ignores `country` in request/response | LOW-MED | LOW | Bind + persist + echo country_code. |
+
 ## P3 — engineering hygiene
 
 | # | Item | Impact | Effort | Notes |

@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { CustomerName } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import QuoteDetail from "../components/slide-overs/QuoteDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -28,6 +30,7 @@ const quoteStatusVariant = (status) =>
   })[status] || "neutral";
 
 const Quotes = () => {
+  const { names: customerNames } = useCustomers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [selectedQuote, setSelectedQuote] = useState(null);
@@ -111,11 +114,7 @@ const Quotes = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (q) => (
-        <span className="font-mono text-xs text-muted-foreground">
-          {q.customer_id ? `${q.customer_id.substring(0, 8)}…` : "—"}
-        </span>
-      ),
+      cell: (q) => <CustomerName id={q.customer_id} names={customerNames} />,
     },
     {
       key: "amount",
