@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
-import { AreaChart } from "@tremor/react";
+import { AreaChart, DonutChart } from "@tremor/react";
 import {
   DollarSign,
   Users,
@@ -45,6 +45,8 @@ import {
 const revenueFormatter = (v) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v);
 const revenueTooltip = makeChartTooltip(revenueFormatter);
+// Donut hover shows a subscription count, not money.
+const subMixTooltip = makeChartTooltip((v) => `${v.toLocaleString()} subscriptions`);
 
 // Map an invoice status to a Badge variant.
 const invoiceStatusVariant = (status) =>
@@ -56,6 +58,26 @@ const invoiceStatusVariant = (status) =>
     draft: "neutral",
   })[status] || "neutral";
 
+// Subscription-mix donut: current (non-canceled) statuses, healthiest first.
+// Tremor color names must stay in the Tailwind safelist; the hex twins drive
+// the custom legend swatches so donut and legend agree exactly.
+const SUB_STATUS = [
+  { key: "active", label: "Active", color: "emerald", hex: "#10b981" },
+  { key: "trialing", label: "Trialing", color: "blue", hex: "#3b82f6" },
+  { key: "past_due", label: "Past due", color: "amber", hex: "#f59e0b" },
+  { key: "paused", label: "Paused", color: "zinc", hex: "#a1a1aa" },
+];
+
+// AR aging bands, oldest-money-is-reddest. Labels/colors for the receivables
+// widget; hex is inline (not a Tailwind class) so arbitrary bucket hues are ok.
+const AGING_BANDS = [
+  { key: "current", label: "Current", hex: "#10b981" },
+  { key: "1-30", label: "1–30 days", hex: "#f59e0b" },
+  { key: "31-60", label: "31–60 days", hex: "#f97316" },
+  { key: "61-90", label: "61–90 days", hex: "#ef4444" },
+  { key: "90+", label: "90+ days", hex: "#dc2626" },
+];
+
 export default function Dashboard() {
   const navigate = useNavigate();
 
@@ -65,15 +87,17 @@ export default function Dashboard() {
   const { data, isLoading: loading } = useQuery({
     queryKey: ["dashboard-overview"],
     queryFn: async () => {
-      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes] = await Promise.all([
-        endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
-        endpoints.getInvoices({ limit: 1000 }).catch(() => null),
-        endpoints.getCustomers({ limit: 1000 }).catch(() => null),
-        endpoints.getMRR().catch(() => null),
-        endpoints.getDunningRecovered().catch(() => null),
-        endpoints.getDisputes("open").catch(() => null),
-        endpoints.getChurnAlerts().catch(() => null),
-      ]);
+      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes] =
+        await Promise.all([
+          endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
+          endpoints.getInvoices({ limit: 1000 }).catch(() => null),
+          endpoints.getCustomers({ limit: 1000 }).catch(() => null),
+          endpoints.getMRR().catch(() => null),
+          endpoints.getDunningRecovered().catch(() => null),
+          endpoints.getDisputes("open").catch(() => null),
+          endpoints.getChurnAlerts().catch(() => null),
+          endpoints.getInvoiceAging().catch(() => null),
+        ]);
       const names = {};
       (custRes?.data?.data || []).forEach((c) => {
         names[c.id] = c.name;
@@ -92,6 +116,9 @@ export default function Dashboard() {
         recoveredCurrency: rec?.reporting_currency || "USD",
         openDisputes: (dispRes?.data?.data || []).length,
         churnAlerts: (churnRes?.data?.data || []).length,
+        // Receivables aging, already normalized server-side into the reporting
+        // currency (so buckets are summable, unlike raw per-invoice amounts).
+        aging: agingRes?.data?.data ?? agingRes?.data ?? null,
       };
     },
   });
@@ -179,9 +206,45 @@ export default function Dashboard() {
     () =>
       [...invoices]
         .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-        .slice(0, 8),
+        .slice(0, 6),
     [invoices]
   );
+
+  // Subscription mix — current (non-canceled) subs by status. Count-based, so
+  // it needs no FX and is honest across currencies.
+  const subMix = useMemo(() => {
+    const counts = {};
+    subscriptions.forEach((s) => {
+      if (s.status === "canceled") return;
+      counts[s.status] = (counts[s.status] || 0) + 1;
+    });
+    return SUB_STATUS.filter((s) => counts[s.key]).map((s) => ({
+      name: s.label,
+      value: counts[s.key],
+      color: s.color,
+      hex: s.hex,
+    }));
+  }, [subscriptions]);
+  const totalCurrentSubs = useMemo(
+    () => subMix.reduce((sum, s) => sum + s.value, 0),
+    [subMix]
+  );
+
+  // Receivables aging, in the reporting currency. Buckets are pre-normalized.
+  const aging = data?.aging ?? null;
+  const agingCur = aging?.reporting_currency || "USD";
+  const agingTotal = aging?.total_outstanding ?? 0;
+  const agingRows = useMemo(() => {
+    const byLabel = {};
+    (aging?.buckets || []).forEach((b) => {
+      byLabel[b.label] = b;
+    });
+    return AGING_BANDS.map((band) => ({
+      ...band,
+      amount: byLabel[band.key]?.amount ?? 0,
+      count: byLabel[band.key]?.count ?? 0,
+    }));
+  }, [aging]);
 
   return (
     <div>
@@ -307,9 +370,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Chart + recent invoices */}
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
+      {/* Charts row: revenue trend (wide) + live subscription mix */}
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <Card className="lg:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Revenue over time</CardTitle>
             {revenueCurrencies.length > 1 && (
@@ -335,11 +398,11 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <Skeleton className="h-72 w-full" />
+              <Skeleton className="h-80 w-full" />
             ) : revenueSeries.length > 0 && revenueCur ? (
               <AreaChart
                 {...chartDefaults}
-                className="h-72"
+                className="h-80"
                 data={revenueSeries}
                 index="date"
                 categories={[revenueCur]}
@@ -362,7 +425,68 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        {/* Subscription mix — a live donut of who's paying you right now */}
+        <Card className="lg:col-span-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Subscription mix</CardTitle>
+            <Link
+              to="/subscriptions"
+              className="text-sm font-medium text-emerald-700 hover:underline"
+            >
+              View all
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-80 w-full" />
+            ) : subMix.length === 0 ? (
+              <EmptyState
+                icon={Users}
+                title="No active subscriptions"
+                description="Active, trialing, and past-due subscriptions appear here."
+              />
+            ) : (
+              <div>
+                <DonutChart
+                  {...chartDefaults}
+                  className="mx-auto h-44"
+                  data={subMix}
+                  category="value"
+                  index="name"
+                  colors={subMix.map((s) => s.color)}
+                  valueFormatter={(v) => v.toLocaleString()}
+                  customTooltip={subMixTooltip}
+                  showLabel
+                  label={`${totalCurrentSubs.toLocaleString()}`}
+                />
+                <dl className="mt-6 space-y-2.5">
+                  {subMix.map((s) => (
+                    <div key={s.name} className="flex items-center justify-between text-sm">
+                      <dt className="flex items-center gap-2 text-muted-foreground">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: s.hex }}
+                        />
+                        {s.name}
+                      </dt>
+                      <dd className="font-medium tabular-nums text-foreground">
+                        {s.value.toLocaleString()}
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          {Math.round((s.value / totalCurrentSubs) * 100)}%
+                        </span>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Operational row: latest activity + where the money is stuck */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+        <Card className="lg:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Recent invoices</CardTitle>
             <Link to="/invoices" className="text-sm font-medium text-emerald-700 hover:underline">
@@ -425,6 +549,61 @@ export default function Dashboard() {
                   ))}
                 </TableBody>
               </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Receivables aging — how much is owed and how stale it's getting */}
+        <Card className="lg:col-span-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Receivables</CardTitle>
+            <Link
+              to="/finance/invoice-aging"
+              className="text-sm font-medium text-emerald-700 hover:underline"
+            >
+              Aging
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <Skeleton className="h-56 w-full" />
+            ) : agingTotal === 0 ? (
+              <EmptyState
+                icon={CheckCircle2}
+                title="Nothing outstanding"
+                description="Open invoice balances appear here as they age."
+              />
+            ) : (
+              <div>
+                <p className="text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+                  {formatCurrencyHeadline(agingTotal, agingCur)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Outstanding across {aging?.total_count ?? 0} open invoice
+                  {(aging?.total_count ?? 0) === 1 ? "" : "s"}
+                </p>
+                <div className="mt-5 space-y-3">
+                  {agingRows.map((band) => {
+                    const pct = agingTotal ? (band.amount / agingTotal) * 100 : 0;
+                    return (
+                      <div key={band.key}>
+                        <div className="flex items-baseline justify-between text-sm">
+                          <span className="text-muted-foreground">{band.label}</span>
+                          <span className="font-medium tabular-nums text-foreground">
+                            {formatCurrencyHeadline(band.amount, agingCur)}
+                          </span>
+                        </div>
+                        <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, backgroundColor: band.hex }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
