@@ -10408,7 +10408,8 @@ components:
         name: { type: string }
         legal_name: { type: string }
         invoice_prefix: { type: string, description: Optional; defaults to a slug of the name. }
-        country_code: { type: string, minLength: 2, maxLength: 2 }
+        country_code: { type: string, minLength: 2, maxLength: 2, description: "ISO 3166-1 alpha-2. `country` is accepted as an alias; country_code wins if both are sent." }
+        country: { type: string, minLength: 2, maxLength: 2, description: "Alias for country_code (the field /auth/register uses)." }
     MCPSettings:
       type: object
       description: A tenant's MCP server opt-in.

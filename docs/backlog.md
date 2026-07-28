@@ -37,7 +37,6 @@ founder can provide; everything else is engineering-ready.
 |---|------|--------|--------|-------|
 | S1 | Card-level accounting Sync should be incremental (force=false) | HIGH — forced full re-push exceeds the 15-min budget on real tenants | LOW | Keep force=true only on the header Sync-now; dirty-tracking already exists. |
 | S4 | Quote totals stay 0 when created with line items via API | MED — CPQ math broken for API path (UI path computes) | MED | Compute totals server-side on create/update. |
-| S5 | Entity create ignores `country` in request/response | LOW-MED | LOW | Bind + persist + echo country_code. |
 
 ## P3 — engineering hygiene
 

@@ -36,14 +36,22 @@ type entityRequest struct {
 	LegalName     string `json:"legal_name"`
 	InvoicePrefix string `json:"invoice_prefix"`
 	CountryCode   string `json:"country_code"`
+	// Country is an accepted alias for country_code, matching the field name
+	// /auth/register uses — so a caller familiar with one endpoint isn't
+	// tripped up by the other. country_code wins when both are sent.
+	Country string `json:"country"`
 }
 
 func (r entityRequest) toInput() service.CreateEntityInput {
+	country := r.CountryCode
+	if country == "" {
+		country = r.Country
+	}
 	return service.CreateEntityInput{
 		Name:          r.Name,
 		LegalName:     r.LegalName,
 		InvoicePrefix: r.InvoicePrefix,
-		CountryCode:   r.CountryCode,
+		CountryCode:   country,
 	}
 }
 
