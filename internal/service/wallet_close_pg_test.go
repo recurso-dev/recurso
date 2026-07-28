@@ -69,13 +69,13 @@ func TestWalletClose_RefundForfeitAndLedger_Postgres(t *testing.T) {
 		t.Fatalf("create wallet: %v", err)
 	}
 	// 50000 paid (refundable) + 20000 promotional (forfeit).
-	if err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
+	if _, err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
 		ID: uuid.New(), TenantID: tenantID, WalletID: wallet.ID, Type: domain.WalletTxTopUp,
 		Source: domain.WalletSourceManual, Amount: 50000, CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("manual top-up: %v", err)
 	}
-	if err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
+	if _, err := walletRepo.TopUp(ctx, &domain.WalletTransaction{
 		ID: uuid.New(), TenantID: tenantID, WalletID: wallet.ID, Type: domain.WalletTxTopUp,
 		Source: domain.WalletSourcePromotional, Amount: 20000, CreatedAt: now,
 	}); err != nil {

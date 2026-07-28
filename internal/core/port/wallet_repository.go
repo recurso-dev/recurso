@@ -53,7 +53,10 @@ type WalletRepository interface {
 
 	// TopUp appends a top_up transaction (with residue) and increases the
 	// balance atomically.
-	TopUp(ctx context.Context, tx *domain.WalletTransaction) error
+	// TopUp appends a top_up transaction and increases the balance. Returns
+	// applied=false (no error) when the transaction's IdempotencyKey already
+	// exists — the caller must then skip any follow-on side effects (ledger).
+	TopUp(ctx context.Context, tx *domain.WalletTransaction) (applied bool, err error)
 	// Drain consumes up to maxAmount from the wallet's open, non-expired
 	// residues (oldest expiry first), appends one drain transaction linked
 	// to invoiceID, and decreases the balance — all atomically. Returns the

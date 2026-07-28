@@ -318,7 +318,7 @@ func (s *WalletService) TopUp(ctx context.Context, tenantID, walletID uuid.UUID,
 		ExpiresAt: in.ExpiresAt,
 		CreatedAt: s.now(),
 	}
-	if err := s.wallets.TopUp(ctx, wtx); err != nil {
+	if _, err := s.wallets.TopUp(ctx, wtx); err != nil {
 		return nil, err
 	}
 
@@ -512,17 +512,29 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	}
 
 	wtx := &domain.WalletTransaction{
-		ID:        uuid.New(),
-		TenantID:  w.TenantID,
-		WalletID:  w.ID,
-		Type:      domain.WalletTxTopUp,
-		Source:    domain.WalletSourceAutoRecharge,
-		Amount:    amount,
-		CreatedAt: s.now(),
+		ID:       uuid.New(),
+		TenantID: w.TenantID,
+		WalletID: w.ID,
+		Type:     domain.WalletTxTopUp,
+		Source:   domain.WalletSourceAutoRecharge,
+		Amount:   amount,
+		// Same key the gateway charge used: a concurrent Redis-less sweep that
+		// read the same balance produces the same key, so the second credit
+		// conflicts and no-ops — the card was charged once, the wallet is
+		// credited once.
+		IdempotencyKey: idemKey,
+		CreatedAt:      s.now(),
 	}
-	if err := s.wallets.TopUp(ctx, wtx); err != nil {
+	applied, err := s.wallets.TopUp(ctx, wtx)
+	if err != nil {
 		slog.Error("wallet auto-recharge charged but top-up record failed — reconcile manually",
 			"wallet_id", w.ID, "amount", amount, "payment_id", result.PaymentID, "error", err)
+		return false
+	}
+	if !applied {
+		// Another sweep already credited this recharge — the gateway
+		// idempotency key also deduped the charge, so this is a clean no-op.
+		slog.Info("wallet auto-recharge already applied by a concurrent sweep — skipping", "wallet_id", w.ID)
 		return false
 	}
 	s.postTopUpLedger(ctx, w.TenantID, w.EntityID, wtx, domain.WalletSourceManual) // cash received
