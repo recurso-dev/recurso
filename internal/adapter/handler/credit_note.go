@@ -14,10 +14,53 @@ import (
 
 type CreditNoteHandler struct {
 	service *service.CreditNoteService
+	pdf     *service.InvoicePDFService
 }
 
 func NewCreditNoteHandler(service *service.CreditNoteService) *CreditNoteHandler {
 	return &CreditNoteHandler{service: service}
+}
+
+// SetPDFService wires the shared PDF renderer so credit notes print with the
+// same seller letterhead as invoices. Nil-safe: without it, DownloadPDF 404s.
+func (h *CreditNoteHandler) SetPDFService(pdf *service.InvoicePDFService) { h.pdf = pdf }
+
+// DownloadPDF renders the credit note as printable HTML (the browser's
+// print-to-PDF produces the document), mirroring the invoice PDF flow.
+// GET /v1/credit-notes/:id/pdf (session or API key; tenant-scoped)
+func (h *CreditNoteHandler) DownloadPDF(c *gin.Context) {
+	if h.pdf == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "credit note documents are not enabled")
+		return
+	}
+	tenantID := middleware.GetTenantID(c)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, cust, invoiceNumber, err := h.service.GetForDocument(ctx, tenantID, id)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if cn == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "credit note not found")
+		return
+	}
+
+	data := h.pdf.BuildCreditNoteData(cn, cust, invoiceNumber)
+	html, err := h.pdf.GenerateCreditNoteHTML(data)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to generate credit note")
+		return
+	}
+
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.Header("Content-Disposition", "inline; filename=\"credit-note-"+data.CreditNoteNumber+".html\"")
+	c.String(http.StatusOK, html)
 }
 
 // GetCreditStatement returns a customer's consolidated account-credit statement:

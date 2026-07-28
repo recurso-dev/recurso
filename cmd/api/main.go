@@ -1293,7 +1293,8 @@ func main() {
 		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
 	)
 	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
-	pdfHandler.SetSellerResolver(taxResolver) // render each invoice under its tenant's regime
+	pdfHandler.SetSellerResolver(taxResolver)   // render each invoice under its tenant's regime
+	creditNoteHandler.SetPDFService(pdfService) // credit notes print on the same letterhead
 	// The concrete invoice repository implements the GSTR-1 read side; assert to
 	// the narrow source interface so the export service stays db-agnostic.
 	var gstrService *service.GSTRService
@@ -1796,6 +1797,7 @@ func main() {
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
+		v1.GET("/credit-notes/:id/pdf", creditNoteHandler.DownloadPDF)
 		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
 		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
 
