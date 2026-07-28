@@ -86,3 +86,43 @@ func TestTriggerSyncAsyncProviderScopeSharesSingleFlight(t *testing.T) {
 	}
 	close(repo.release)
 }
+
+func TestSweepDeadContextLeavesTerminalStatusNotSyncing(t *testing.T) {
+	tenant := uuid.New()
+	conn := acctSyncConn(tenant, "quickbooks", 2*time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{}, &acctSyncInvoiceRepo{}, &acctSyncPlanRepo{})
+
+	// The async runner's 15-minute budget expiring mid-sweep is a cancelled
+	// context. The leg must still end in a TERMINAL status — a row stuck on
+	// "syncing" reads as an eternal in-flight sync (observed live).
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := svc.SyncAllForTenant(ctx, tenant, true); err != nil {
+		t.Fatalf("SyncAllForTenant: %v", err)
+	}
+
+	if conn.SyncStatus != "error" {
+		t.Fatalf("sync_status = %q, want error (never a stuck 'syncing')", conn.SyncStatus)
+	}
+	if conn.LastError == "" {
+		t.Fatal("last_error should say why the sweep aborted")
+	}
+	if conn.LastSyncAt == nil {
+		t.Fatal("last_sync_at should be stamped even on an aborted leg")
+	}
+}
+
+func TestSweepCleanRunEndsSynced(t *testing.T) {
+	tenant := uuid.New()
+	conn := acctSyncConn(tenant, "quickbooks", 2*time.Hour, true)
+	connRepo := &acctSyncConnRepo{conns: []*domain.AccountingConnection{conn}}
+	svc := newAcctSyncService(connRepo, &acctSyncCustomerRepo{}, &acctSyncInvoiceRepo{}, &acctSyncPlanRepo{})
+
+	if err := svc.SyncAllForTenant(context.Background(), tenant, true); err != nil {
+		t.Fatalf("SyncAllForTenant: %v", err)
+	}
+	if conn.SyncStatus != "synced" || conn.LastError != "" || conn.LastSyncAt == nil {
+		t.Fatalf("clean run: status=%q lastErr=%q lastSync=%v", conn.SyncStatus, conn.LastError, conn.LastSyncAt)
+	}
+}

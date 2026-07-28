@@ -481,6 +481,9 @@ func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUI
 			}
 
 			for _, customer := range customers {
+				if ctx.Err() != nil {
+					break // sweep budget exhausted: stop, don't spray dead calls
+				}
 				if !force && s.unchangedSinceLastSync(ctx, conn, "customer", customer.ID, customer.UpdatedAt) {
 					skipped++
 					continue
@@ -496,34 +499,62 @@ func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUI
 		}
 
 		// Sync invoices
+		var legErr error
 		invoices, err := s.invoiceRepo.List(ctx, tenantID)
 		if err != nil {
 			slog.Error("failed to list invoices for sync", "error", err)
-			continue
-		}
-
-		for _, invoice := range invoices {
-			if !force && s.unchangedSinceLastSync(ctx, conn, "invoice", invoice.ID, invoice.UpdatedAt) {
-				skipped++
-				continue
+			legErr = fmt.Errorf("list invoices: %w", err)
+		} else {
+			for _, invoice := range invoices {
+				if ctx.Err() != nil {
+					break
+				}
+				if !force && s.unchangedSinceLastSync(ctx, conn, "invoice", invoice.ID, invoice.UpdatedAt) {
+					skipped++
+					continue
+				}
+				_ = s.syncInvoiceToConnection(ctx, conn, adapter, invoice)
+				synced++
 			}
-			_ = s.syncInvoiceToConnection(ctx, conn, adapter, invoice)
-			synced++
+		}
+		if legErr == nil && ctx.Err() != nil {
+			legErr = fmt.Errorf("sync aborted: %w", ctx.Err())
 		}
 
-		slog.Info("accounting sync completed for connection",
-			"connection_id", conn.ID, "provider", conn.Provider, "tenant_id", tenantID,
-			"force", force, "synced", synced, "skipped_unchanged", skipped)
-
-		// Update connection status
-		now := time.Now()
-		conn.LastSyncAt = &now
-		conn.SyncStatus = "synced"
-		conn.LastError = ""
-		_ = s.connRepo.Update(ctx, conn)
+		s.finishSyncLeg(conn, tenantID, force, synced, skipped, legErr)
 	}
 
 	return nil
+}
+
+// finishSyncLeg records the terminal state of one connection's sweep leg. It
+// writes with its OWN short-lived context: the sweep's context may already be
+// dead (async syncs run under a 15-minute cap), and a leg that dies mid-flight
+// must never leave sync_status stuck on "syncing" — observed live: a capped
+// sweep left the row "syncing" forever, which read as an eternal in-flight
+// sync on the dashboard.
+func (s *AccountingService) finishSyncLeg(conn *domain.AccountingConnection, tenantID uuid.UUID, force bool, synced, skipped int, legErr error) {
+	wctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	now := time.Now()
+	conn.LastSyncAt = &now
+	if legErr != nil {
+		conn.SyncStatus = "error"
+		conn.LastError = legErr.Error()
+		slog.Warn("accounting sync leg ended with error",
+			"connection_id", conn.ID, "provider", conn.Provider, "tenant_id", tenantID,
+			"force", force, "synced", synced, "skipped_unchanged", skipped, "error", legErr)
+	} else {
+		conn.SyncStatus = "synced"
+		conn.LastError = ""
+		slog.Info("accounting sync completed for connection",
+			"connection_id", conn.ID, "provider", conn.Provider, "tenant_id", tenantID,
+			"force", force, "synced", synced, "skipped_unchanged", skipped)
+	}
+	if err := s.connRepo.Update(wctx, conn); err != nil {
+		slog.Error("failed to record sync terminal status", "connection_id", conn.ID, "error", err)
+	}
 }
 
 // unchangedSinceLastSync reports whether the entity can be skipped on a bulk
