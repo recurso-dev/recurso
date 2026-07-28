@@ -23,47 +23,58 @@ This roadmap outlines the strategic execution to build **Recurso**, aiming for f
 | **Offline Payments** | Virtual Accounts (NEFT/IMPS reconciliation), Cash logging. | ✅ Superior |
 | **Compliance** | **Data Residency (India/Global Split)**, Tokenization (CoF). | ✅ Superior |
 
-## Phase 3: "Everything Chargebee" (Feature Parity Expansion)
+## Phase 3: "Everything Chargebee" (Feature Parity Expansion) — ✅ shipped
 **Goal:** Close the gap on standard features expected by mature SaaS teams.
 
 ### 3.1 Marketing & Sales Enablement
-- [ ] **Coupons & Promotions:** Fixed amount, percentage, "forever" vs "once".
-- [ ] **Gift Subscriptions:** Buy for a friend.
-- [ ] **Quotes:** Generate PDF quotes that convert to Invoices upon acceptance.
-- [ ] **Referral System:** Credits for referring new users.
+- [x] **Coupons & Promotions:** Fixed amount, percentage, "forever" vs "once". (Coupons page)
+- [x] **Gift Subscriptions:** Buy for a friend. (Gifts page, incl. cancel #218)
+- [x] **Quotes:** Generate PDF quotes that convert to Invoices upon acceptance. (Quotes page)
+- [x] **Referral System:** Credits for referring new users. (Referrals page)
 
 ### 3.2 Advanced Billing Logic
-- [ ] **Calendar Billing:** Align all customers to bill on the 1st of the month.
-- [ ] **Unbilled Charges:** Accumulate charges to bill at end of period.
-- [ ] **Advance Invoicing:** Bill for N months ahead.
-- [ ] **Net D Terms:** Net-15, Net-30 payment terms for enterprise.
+- [x] **Calendar Billing:** Align all customers to bill on the 1st of the month. (`billing_anchor_type=first_of_month`, month-end anchor restoration)
+- [x] **Unbilled Charges:** Accumulate charges to bill at end of period. (`unbilled_charge` domain + advanced-billing service)
+- [x] **Advance Invoicing:** Bill for N months ahead. (`pay_in_advance` + progressive-billing scheduler)
+- [x] **Net D Terms:** Net-15, Net-30 payment terms for enterprise. (`payment_terms` on subscription + invoice)
 
 ### 3.3 Customer Experience
-- [ ] **Hosted Checkout Pages:** No-code, branded payment pages.
-- [ ] **Customer Self-Service Portal:** Allow users to download invoices, update cards, pause subscriptions.
-- [ ] **Email Notifications:** Transactional emails for "Payment Succeeded", "Payment Failed", "Card Expiring".
+- [x] **Hosted Checkout Pages:** No-code, branded payment pages. (`/checkout/:id` SPA + pay-link)
+- [x] **Customer Self-Service Portal:** magic-link login, download invoices, update cards, autopay mandates, pause.
+- [x] **Email Notifications:** Transactional emails (Brevo) for payment succeeded/failed, portal magic-links, dunning.
 
-## Phase 4: The AI Advantage (Innovation)
+## Phase 4: The AI Advantage (Innovation) — ✅ shipped
 **Goal:** Leapfrog incumbents using GenAI and Reinforcement Learning.
 
-| Feature Area | Recurso Implementation | Competitive Advantage |
+| Feature Area | Recurso Implementation | Status |
 | :--- | :--- | :--- |
-| **Smart Dunning** | **RL (Bandits)** to optimize retry timing based on bank/error code. | 🚀 Dynamic vs Static Rules |
-| **Analytics** | **Text-to-SQL (GenAI)**. "What is my Churn Rate?". | 🚀 Conversational vs Dashboards |
-| **Churn Prevention** | ML-based "Propensity to Churn" scoring triggered workflows. | 🚀 Predictive vs Reactive |
+| **Smart Dunning** | **RL (Bandits)** to optimize retry timing based on bank/error code, plus a Collections Intelligence operator layer (worklist, analytics, manual controls). | ✅ shipped (Dunning page) |
+| **Analytics** | **Text-to-SQL (GenAI)**. "What is my Churn Rate?". | ✅ shipped (Ask AI page) |
+| **Churn Prevention** | ML-based "Propensity to Churn" scoring triggered workflows. | ✅ shipped (Churn Risk page) |
 
-## Phase 5: Finance & Ops (The CFO Suite)
+## Phase 5: Finance & Ops (The CFO Suite) — ✅ shipped
 **Goal:** Make Recurso the favorite tool of the Finance team.
 
-- [ ] **Revenue Recognition:** ASC 606 / IFRS 15 compliant reporting.
-- [ ] **Third-party Accounting Sync:** QuickBooks Online, Xero, NetSuite integrations.
-- [ ] **GST E-Invoicing:** Automated IRN generation and QR code embedding (India).
-- [ ] **Multi-Entity:** Manage multiple business units under one login.
+- [x] **Revenue Recognition:** ASC 606 / IFRS 15 compliant reporting. (Revenue Waterfall, deferred rollforward)
+- [x] **Third-party Accounting Sync:** QuickBooks Online, Xero, NetSuite, Tally integrations. (Xero + HubSpot live-verified; QBO adapter built, live OAuth verification pending founder creds — see docs/backlog.md P1)
+- [x] **GST E-Invoicing:** Automated IRN generation and QR code embedding (India). (per-entity GSTR-1/3B, GSP connect)
+- [x] **Multi-Entity:** Manage multiple business units under one login. (per-entity ledger, gapless invoice series, per-entity tax identity, consolidated reporting)
 
-## Execution Timeline (Visual)
+## Beyond the original roadmap — also shipped
 
-- **Months 1-2:** Phase 1 (Core Ledger, Subscriptions)
-- **Months 3-4:** Phase 2 (Payments, India Stack)
-- **Months 5-7:** Phase 3 (Parity: Coupons, Portal, Quotes)
-- **Months 8-9:** Phase 4 (AI Layer)
-- **Months 10+:** Phase 5 (ERP Integrations, RevRec)
+These weren't in the initial plan but are live:
+
+- **US ACH bank-debit** (capture → settle → dunning → late-return) and **GoCardless SEPA** (BYO mandates, webhooks, settlement, chargeback reversal — webhook registration pending founder infra).
+- **BYO payment gateways** — per-tenant Stripe/Razorpay/GoCardless credentials.
+- **EU e-invoicing** — EN 16931 / UBL export (real Peppol AP pending founder creds).
+- **Collections Intelligence** — operator worklist + analytics over the dunning engine.
+- **MCP server** — agent-operable billing with RBAC.
+- **Three published SDKs** — Go, Node, Python (synced to the v1 API).
+
+## Execution status
+
+All five phases are shipped. Remaining work is **not new features** — it is
+founder-blocked verification/infra (QuickBooks live OAuth, GoCardless webhook
+registration, Peppol AP creds, telemetry deploy — see docs/backlog.md) plus a
+short engineering-hygiene list (React 19 upgrade, pagination consistency, test-mock
+refactor).
