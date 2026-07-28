@@ -102,3 +102,17 @@ Prod dashboard sweep clean (zero console errors). All seven third-party
 integrations live-verified, incl. BYO GoCardless end-to-end (mandate
 authorized on hosted page → webhook flipped it active). Full evidence:
 docs/verification-2026-07-28.md.
+
+## Hardening continued (2026-07-28)
+
+Security audit clean; money-path audit → 2 fixes (#260 wallet double-credit
+HIGH, #261 accounting currency-exponent MED). All five smoke findings closed:
+S1 incremental card sync (#256), S2 nested billing_address (#259), S3 GET
+subscription by id (#258), S4 lump-sum quote line (#264), S5 entity country
+alias (#263). SDKs synced (node/go/python). Scorecard 8.5/10
+(production-readiness.md); bugs BUG-001..006 in bugs-found.md.
+
+Remaining backlog: pagination-consistency sweep (docs/design-pagination.md —
+start with documenting actual defaults in OpenAPI, zero behavior risk),
+accessibility pass (axe-core; lowest score 6), performance baseline + charts
+lazy-load, telemetry deploy (#215, founder), mock-widening cleanup, React 19.
