@@ -512,6 +512,35 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 // and a per-currency rollup. The spendable balance uses the exact predicate the
 // credit applier does — type=adjustment, status=issued, balance>0 — so the
 // statement can never disagree with what the customer can actually spend.
+// GetForDocument loads a credit note plus the data needed to render its
+// printable document: the customer (buyer block) and, when the note is tied to
+// an invoice, that invoice's human number. Customer/invoice lookups are
+// best-effort — the document is still valid without them. Returns (nil, ...)
+// when the note doesn't exist for this tenant.
+func (s *CreditNoteService) GetForDocument(ctx context.Context, tenantID, id uuid.UUID) (*domain.CreditNote, *domain.Customer, string, error) {
+	cn, err := s.repo.GetByID(ctx, id, tenantID)
+	if err != nil {
+		return nil, nil, "", fmt.Errorf("load credit note: %w", err)
+	}
+	if cn == nil {
+		return nil, nil, "", nil
+	}
+
+	var cust *domain.Customer
+	if s.customerRepo != nil {
+		cust, _ = s.customerRepo.GetByID(ctx, cn.CustomerID)
+	}
+
+	var invoiceNumber string
+	if cn.InvoiceID != nil && s.invoiceRepo != nil {
+		if inv, ierr := s.invoiceRepo.GetByIDPublic(ctx, *cn.InvoiceID); ierr == nil && inv != nil && inv.TenantID == tenantID {
+			invoiceNumber = inv.InvoiceNumber
+		}
+	}
+
+	return cn, cust, invoiceNumber, nil
+}
+
 func (s *CreditNoteService) GetCreditStatement(ctx context.Context, tenantID, customerID uuid.UUID) (*domain.CreditStatement, error) {
 	grants, err := s.repo.List(ctx, tenantID, domain.CreditNoteFilter{CustomerID: &customerID})
 	if err != nil {

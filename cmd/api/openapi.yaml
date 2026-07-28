@@ -1868,6 +1868,37 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/credit-notes/{id}/pdf:
+    get:
+      operationId: downloadCreditNotePDF
+      tags: [Credit Notes]
+      summary: Download a printable credit note
+      description: >
+        Returns a print-ready HTML rendering of the credit note, tenant-scoped.
+        Requires authentication (API key or dashboard session): the document
+        carries the customer's legal name and address, so it is never publicly
+        fetchable by UUID.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Print-ready credit note document.
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
   /v1/credit-notes/{id}/approve:
     post:
       operationId: approveCreditNote

@@ -185,6 +185,7 @@ export const endpoints = {
 
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
+  getCreditNotePdf: (id) => api.get(`/credit-notes/${id}/pdf`, { responseType: 'blob' }),
   createCreditNote: (data) => api.post('/credit-notes', data),
   approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),
   rejectCreditNote: (id) => api.post(`/credit-notes/${id}/reject`),

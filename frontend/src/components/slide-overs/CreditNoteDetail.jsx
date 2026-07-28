@@ -1,12 +1,13 @@
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { endpoints } from "../../lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Check, X } from "lucide-react";
+import { Check, X, Download, Copy } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -28,6 +29,30 @@ const Field = ({ label, children, mono }) => (
 const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    try {
+      const res = await endpoints.getCreditNotePdf(creditNote.id);
+      const url = URL.createObjectURL(res.data);
+      window.open(url, "_blank", "noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Failed to open credit note document.");
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleCopyId = async () => {
+    try {
+      await navigator.clipboard.writeText(creditNote.id);
+      toast.success("Credit note ID copied.");
+    } catch {
+      toast.error("Couldn't copy to clipboard.");
+    }
+  };
 
   const approveMutation = useMutation({
     mutationFn: () => endpoints.approveCreditNote(creditNote.id),
@@ -147,6 +172,24 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
               {creditNote.created_at ? formatDate(creditNote.created_at) : "—"}
             </Field>
           </dl>
+
+          <Separator />
+
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDownload}
+              disabled={downloading}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {downloading ? "Opening…" : "Download document"}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleCopyId}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copy ID
+            </Button>
+          </div>
         </div>
       </SheetContent>
     </Sheet>
