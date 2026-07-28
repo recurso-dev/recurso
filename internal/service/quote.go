@@ -33,10 +33,14 @@ func validateQuoteAmounts(lineItems []domain.LineItem, taxAmount, discountAmount
 	}
 	subtotal := 0
 	for _, li := range lineItems {
-		if li.Quantity < 0 || li.UnitPrice < 0 {
+		if li.Quantity < 0 || li.UnitPrice < 0 || li.Amount < 0 {
 			return ErrInvalidQuoteAmount
 		}
-		subtotal += li.Quantity * li.UnitPrice
+		lineTotal := li.Quantity * li.UnitPrice
+		if lineTotal == 0 {
+			lineTotal = li.Amount // lump-sum line
+		}
+		subtotal += lineTotal
 	}
 	if discountAmount > subtotal+taxAmount {
 		return ErrInvalidQuoteAmount
