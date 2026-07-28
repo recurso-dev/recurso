@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Dashboard from '../Dashboard';
@@ -16,12 +16,14 @@ vi.mock('../../lib/api', () => ({
         getDunningRecovered: vi.fn(),
         getDisputes: vi.fn(),
         getChurnAlerts: vi.fn(),
+        getInvoiceAging: vi.fn(),
     }
 }));
 
-// Tremor's AreaChart needs ResizeObserver; stub it in jsdom.
+// Tremor charts need ResizeObserver; stub the ones the page uses in jsdom.
 vi.mock('@tremor/react', () => ({
     AreaChart: () => <div data-testid="area-chart" />,
+    DonutChart: () => <div data-testid="donut-chart" />,
 }));
 
 const renderDashboard = () =>
@@ -41,6 +43,9 @@ describe('Dashboard (redesign)', () => {
         endpoints.getDunningRecovered.mockResolvedValue({ data: { recovered: 0 } });
         endpoints.getDisputes.mockResolvedValue({ data: { data: [] } });
         endpoints.getChurnAlerts.mockResolvedValue({ data: { data: [] } });
+        endpoints.getInvoiceAging.mockResolvedValue({
+            data: { data: { reporting_currency: 'USD', buckets: [], total_outstanding: 0, total_count: 0 } },
+        });
     });
 
     it('renders the KPI cards after loading', async () => {
@@ -65,8 +70,11 @@ describe('Dashboard (redesign)', () => {
             // Headline KPI formatting drops the ".00" tail on whole amounts.
             expect(screen.getByText('$1,000')).toBeInTheDocument();
         });
-        // 2 active subscriptions.
-        expect(screen.getByText('2')).toBeInTheDocument();
+        // 2 active subscriptions — assert via the KPI tile (the subscription-mix
+        // legend also shows "2", so scope the match to the "Active Subscriptions"
+        // card rather than a bare getByText).
+        const activeCard = screen.getByText('Active Subscriptions').closest('a');
+        expect(within(activeCard).getByText('2')).toBeInTheDocument();
         // Churn = 1 canceled / 3 total = 33.3%.
         expect(screen.getByText('33.3%')).toBeInTheDocument();
     });
