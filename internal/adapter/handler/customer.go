@@ -40,19 +40,44 @@ func NewCustomerHandler(s *service.CustomerService, subs port.SubscriptionReposi
 	return &CustomerHandler{service: s, subs: subs}
 }
 
+// billingAddress is the nested address shape some clients send instead of the
+// flat line1/city/state/zip/country fields. Accepted as an alias so a nested
+// object is no longer silently dropped (verification finding S2). Flat fields
+// win when both are present; postal_code and zip are synonyms.
+type billingAddress struct {
+	Line1      string `json:"line1"`
+	Line2      string `json:"line2"`
+	City       string `json:"city"`
+	State      string `json:"state"`
+	Zip        string `json:"zip"`
+	PostalCode string `json:"postal_code"`
+	Country    string `json:"country"`
+}
+
+// coalesce returns the first non-empty argument.
+func coalesce(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
 type createCustomerRequest struct {
-	Email         string `json:"email" binding:"required,email"`
-	Name          string `json:"name" binding:"required"`
-	Phone         string `json:"phone"`
-	TaxID         string `json:"tax_id"`
-	GSTIN         string `json:"gstin"`           // P24
-	TaxType       string `json:"tax_type"`        // P25
-	PlaceOfSupply string `json:"place_of_supply"` // P24
-	Line1         string `json:"line1"`
-	City          string `json:"city"`
-	State         string `json:"state"`
-	Zip           string `json:"zip"`
-	Country       string `json:"country" binding:"omitempty,len=2"` // Allow empty or iso code
+	Email          string          `json:"email" binding:"required,email"`
+	Name           string          `json:"name" binding:"required"`
+	Phone          string          `json:"phone"`
+	TaxID          string          `json:"tax_id"`
+	GSTIN          string          `json:"gstin"`           // P24
+	TaxType        string          `json:"tax_type"`        // P25
+	PlaceOfSupply  string          `json:"place_of_supply"` // P24
+	Line1          string          `json:"line1"`
+	City           string          `json:"city"`
+	State          string          `json:"state"`
+	Zip            string          `json:"zip"`
+	Country        string          `json:"country" binding:"omitempty,len=2"` // Allow empty or iso code
+	BillingAddress *billingAddress `json:"billing_address"`                   // nested alias for the flat fields
 	// US sales-tax exemption (D2)
 	TaxExempt             bool   `json:"tax_exempt"`
 	TaxExemptionNumber    string `json:"tax_exemption_number"`
@@ -77,6 +102,15 @@ func (h *CustomerHandler) CreateCustomer(c *gin.Context) {
 	if err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
+	}
+
+	// Fold a nested billing_address into the flat fields (flat wins).
+	if a := req.BillingAddress; a != nil {
+		req.Line1 = coalesce(req.Line1, a.Line1)
+		req.City = coalesce(req.City, a.City)
+		req.State = coalesce(req.State, a.State)
+		req.Zip = coalesce(req.Zip, a.Zip, a.PostalCode)
+		req.Country = coalesce(req.Country, a.Country)
 	}
 
 	input := service.CreateCustomerInput{
@@ -188,19 +222,20 @@ func (h *CustomerHandler) GetCustomer(c *gin.Context) {
 // updateCustomerRequest is a partial update: nil fields are left unchanged, so
 // the same endpoint edits contact/tax details or archives (active=false).
 type updateCustomerRequest struct {
-	Name          *string `json:"name"`
-	Email         *string `json:"email" binding:"omitempty,email"`
-	Phone         *string `json:"phone"`
-	TaxID         *string `json:"tax_id"`
-	GSTIN         *string `json:"gstin"`
-	TaxType       *string `json:"tax_type" binding:"omitempty,oneof=business consumer"`
-	PlaceOfSupply *string `json:"place_of_supply"`
-	Line1         *string `json:"line1"`
-	City          *string `json:"city"`
-	State         *string `json:"state"`
-	Zip           *string `json:"zip"`
-	Country       *string `json:"country" binding:"omitempty,len=2"`
-	Active        *bool   `json:"active"`
+	Name           *string         `json:"name"`
+	Email          *string         `json:"email" binding:"omitempty,email"`
+	Phone          *string         `json:"phone"`
+	TaxID          *string         `json:"tax_id"`
+	GSTIN          *string         `json:"gstin"`
+	TaxType        *string         `json:"tax_type" binding:"omitempty,oneof=business consumer"`
+	PlaceOfSupply  *string         `json:"place_of_supply"`
+	Line1          *string         `json:"line1"`
+	City           *string         `json:"city"`
+	State          *string         `json:"state"`
+	Zip            *string         `json:"zip"`
+	Country        *string         `json:"country" binding:"omitempty,len=2"`
+	BillingAddress *billingAddress `json:"billing_address"` // nested alias for the flat fields
+	Active         *bool           `json:"active"`
 	// US sales-tax exemption (D2)
 	TaxExempt             *bool   `json:"tax_exempt"`
 	TaxExemptionNumber    *string `json:"tax_exemption_number"`
@@ -226,6 +261,29 @@ func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
+	}
+
+	// Fold a nested billing_address into the flat pointer fields, but only
+	// where the caller didn't set the flat field (flat wins). A nested field
+	// only overlays when non-empty, so this never clears an unset flat field.
+	if a := req.BillingAddress; a != nil {
+		if req.Line1 == nil && a.Line1 != "" {
+			req.Line1 = &a.Line1
+		}
+		if req.City == nil && a.City != "" {
+			req.City = &a.City
+		}
+		if req.State == nil && a.State != "" {
+			req.State = &a.State
+		}
+		if req.Zip == nil {
+			if z := coalesce(a.Zip, a.PostalCode); z != "" {
+				req.Zip = &z
+			}
+		}
+		if req.Country == nil && a.Country != "" {
+			req.Country = &a.Country
+		}
 	}
 
 	// Partial: only touch the exemption expiry when the field is present.

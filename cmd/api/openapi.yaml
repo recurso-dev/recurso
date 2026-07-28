@@ -9186,12 +9186,24 @@ components:
           minLength: 2
           maxLength: 2
           description: ISO 3166-1 alpha-2 code.
+        billing_address:
+          allOf:
+            - $ref: '#/components/schemas/BillingAddress'
+          description: >-
+            Nested address, accepted as an alias for the flat line1/city/state/
+            zip/country fields. A flat field wins when both are supplied;
+            postal_code and zip are synonyms.
 
     BillingAddress:
       type: object
       properties:
         line1:
           type: string
+        line2:
+          type: string
+        postal_code:
+          type: string
+          description: Synonym for zip.
         city:
           type: string
         state:
