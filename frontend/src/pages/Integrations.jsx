@@ -392,7 +392,7 @@ const Integrations = () => {
                       <Button
                         size="sm"
                         onClick={() => handleSync(p.id)}
-                        disabled={syncing || conn.sync_status === "syncing"}
+                        disabled={syncing}
                       >
                         {conn.sync_status === "syncing" ? "Syncing…" : "Sync"}
                       </Button>
