@@ -86,5 +86,9 @@ type WalletTransaction struct {
 	InvoiceID *uuid.UUID `json:"invoice_id,omitempty"`
 	// ExpiresAt dates a top-up's residue (promotional credits).
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
-	CreatedAt time.Time  `json:"created_at"`
+	// IdempotencyKey, when set, makes the top-up at-most-once: a second
+	// TopUp with the same key is a no-op (unique index). Used by auto-recharge
+	// so concurrent Redis-less sweeps can't double-credit one card charge.
+	IdempotencyKey string    `json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
 }
