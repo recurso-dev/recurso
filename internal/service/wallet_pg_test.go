@@ -63,7 +63,7 @@ func TestWalletDrainFIFOAndExpiry_Postgres(t *testing.T) {
 			Type: domain.WalletTxTopUp, Source: domain.WalletSourcePromotional,
 			Amount: amount, ExpiresAt: expires, CreatedAt: time.Now().UTC(),
 		}
-		if err := repo.TopUp(ctx, wtx); err != nil {
+		if _, err := repo.TopUp(ctx, wtx); err != nil {
 			t.Fatalf("top-up: %v", err)
 		}
 		return wtx.ID

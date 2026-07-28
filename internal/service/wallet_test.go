@@ -41,9 +41,16 @@ func (f *fakeWalletRepo) GetByCustomerEntityAndCurrency(ctx context.Context, ten
 	return nil, nil
 }
 
-func (f *fakeWalletRepo) TopUp(ctx context.Context, wtx *domain.WalletTransaction) error {
+func (f *fakeWalletRepo) TopUp(ctx context.Context, wtx *domain.WalletTransaction) (bool, error) {
+	if wtx.IdempotencyKey != "" {
+		for _, prior := range f.topUps {
+			if prior.IdempotencyKey == wtx.IdempotencyKey {
+				return false, nil // duplicate — already applied
+			}
+		}
+	}
 	f.topUps = append(f.topUps, wtx)
-	return nil
+	return true, nil
 }
 
 func (f *fakeWalletRepo) Drain(ctx context.Context, tenantID, walletID uuid.UUID, maxAmount int64, invoiceID uuid.UUID, now time.Time) (int64, error) {
@@ -332,6 +339,38 @@ func TestWalletAutoRecharge(t *testing.T) {
 	}
 	if len(ledger.topUps) != 1 || ledger.topUps[0] != 50000 {
 		t.Fatalf("ledger legs = %v, want the cash top-up", ledger.topUps)
+	}
+}
+
+// TestWalletAutoRecharge_ConcurrentSweepCreditsOnce proves the double-credit
+// fix: two sweeps that read the SAME wallet balance produce the same
+// idempotency key, so the card is charged once and the wallet is credited
+// once — even without the Redis lock (which is a no-op in single-node dev).
+// The fakeWalletRepo honors IdempotencyKey exactly as the unique index does.
+func TestWalletAutoRecharge_ConcurrentSweepCreditsOnce(t *testing.T) {
+	svc, repo, ledger, w := walletFixture(500)
+	th, amt := int64(10000), int64(50000)
+	w.AutoRechargeThreshold, w.AutoRechargeAmount = &th, &amt
+	repo.dueList = []domain.Wallet{*w}
+
+	charger := &fakeRenewalCharger{result: &port.PaymentResult{Success: true, PaymentID: "pay_w1"}}
+	svc.SetSavedMethodCharging(charger, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1"})
+
+	// Two sweeps fire back-to-back before either recharge drops the balance.
+	if _, err := svc.ProcessAutoRecharges(context.Background()); err != nil {
+		t.Fatalf("first sweep: %v", err)
+	}
+	repo.dueList = []domain.Wallet{*w} // still due at the same balance
+	if _, err := svc.ProcessAutoRecharges(context.Background()); err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+
+	// One credit, one ledger leg — never two.
+	if len(repo.topUps) != 1 {
+		t.Fatalf("top-ups recorded = %d, want exactly 1 (no double-credit)", len(repo.topUps))
+	}
+	if len(ledger.topUps) != 1 {
+		t.Fatalf("ledger legs = %d, want exactly 1 (no double-post)", len(ledger.topUps))
 	}
 }
 
