@@ -5,6 +5,15 @@ Each entry: severity, repro, root cause, fix, verification.
 
 ---
 
+### BUG-007 — Icon-only buttons without an accessible name (LOW / a11y)
+- **Repro**: a screen reader on the Developers page (delete-endpoint,
+  refresh-events, refresh-deliveries) and the Quotes row menu announces an
+  unlabeled button — the `title` attribute is not reliably read.
+- **Root cause**: four icon-only buttons carried only `title`, no `aria-label`.
+- **Fix**: `aria-label` added to each (matching the title).
+- **Verification**: frontend lint/build/vitest green; grep confirms every
+  `size="icon"` and row-action icon button now has an accessible name.
+
 ## 2026-07-28 — money-path correctness audit
 
 ### BUG-005 — Wallet auto-recharge double-credits under concurrent sweeps (HIGH)
