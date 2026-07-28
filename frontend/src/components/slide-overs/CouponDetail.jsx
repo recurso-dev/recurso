@@ -1,5 +1,12 @@
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Power, PowerOff } from "lucide-react";
+
+import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -32,8 +39,27 @@ const durationLabel = (coupon) =>
     : coupon.duration || "—";
 
 const CouponDetail = ({ coupon, isOpen, onClose }) => {
+  const queryClient = useQueryClient();
+  // Optimistic local active state so the badge and button flip in place without
+  // reopening the sheet. Reset whenever a different coupon is opened.
+  const [activeOverride, setActiveOverride] = useState(null);
+  useEffect(() => setActiveOverride(null), [coupon?.id]);
+
+  const toggleMutation = useMutation({
+    mutationFn: (next) => endpoints.setCouponActive(coupon.id, next),
+    onSuccess: (_data, next) => {
+      setActiveOverride(next);
+      queryClient.invalidateQueries({ queryKey: ["coupons"] });
+      toast.success(next ? "Coupon reactivated." : "Coupon deactivated.");
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to update coupon.");
+    },
+  });
+
   if (!coupon) return null;
 
+  const isActive = activeOverride ?? coupon.active;
   const hasCap = coupon.max_redemptions != null && coupon.max_redemptions > 0;
   const progress = hasCap
     ? Math.round(((coupon.redemptions || 0) / coupon.max_redemptions) * 100)
@@ -43,9 +69,12 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-3">
+          <SheetTitle className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-lg">{coupon.code}</span>
-            <Badge variant="success">{discountLabel(coupon)}</Badge>
+            <Badge variant="neutral">{discountLabel(coupon)}</Badge>
+            <Badge variant={isActive ? "success" : "neutral"} className="capitalize">
+              {isActive ? "active" : "inactive"}
+            </Badge>
           </SheetTitle>
         </SheetHeader>
 
@@ -84,6 +113,33 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
               <Field label="Times redeemed">{coupon.redemptions}</Field>
             )}
           </dl>
+
+          <Separator />
+
+          <div>
+            {isActive ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                disabled={toggleMutation.isPending}
+                onClick={() => toggleMutation.mutate(false)}
+              >
+                <PowerOff className="mr-2 h-4 w-4" />
+                Deactivate coupon
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={toggleMutation.isPending}
+                onClick={() => toggleMutation.mutate(true)}
+              >
+                <Power className="mr-2 h-4 w-4" />
+                Reactivate coupon
+              </Button>
+            )}
+          </div>
         </div>
       </SheetContent>
     </Sheet>
