@@ -60,6 +60,14 @@ const Field = ({ label, children, mono }) => (
   </div>
 );
 
+// One churn-driver stat (label + value) for the drill-in grid.
+const ChurnStat = ({ label, value }) => (
+  <div className="flex items-center justify-between gap-2">
+    <dt className="text-muted-foreground">{label}</dt>
+    <dd className="font-medium tabular-nums text-foreground">{value ?? "—"}</dd>
+  </div>
+);
+
 // A titled group of fields, rendered only when it has at least one value.
 const Section = ({ title, children }) => (
   <div className="space-y-4">
@@ -107,6 +115,7 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
   const [revokingId, setRevokingId] = useState(null);
   const [credit, setCredit] = useState(null);
   const [entitlements, setEntitlements] = useState([]);
+  const [churn, setChurn] = useState(null);
 
   const custId = customer?.id;
   useEffect(() => {
@@ -118,6 +127,12 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
       .then((res) => !cancelled && setConsents(res.data?.data || []))
       .catch(() => !cancelled && setConsents([]))
       .finally(() => !cancelled && setConsentsLoading(false));
+    // Per-customer churn score + drivers.
+    setChurn(null);
+    endpoints
+      .getCustomerChurn(custId)
+      .then((res) => !cancelled && setChurn(res.data?.data || null))
+      .catch(() => !cancelled && setChurn(null));
     // Account-credit statement (ledger-backed credits).
     setCredit(null);
     endpoints
@@ -422,12 +437,59 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   </Field>
                 )}
                 <Field label="Active subscriptions">{activeSubs}</Field>
+                {customer.card_last4 && (
+                  <Field label="Payment method">
+                    <span className="capitalize">{customer.card_brand || "Card"}</span> ••••{" "}
+                    {customer.card_last4}
+                    {customer.card_exp_month && customer.card_exp_year && (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        · exp {String(customer.card_exp_month).padStart(2, "0")}/
+                        {String(customer.card_exp_year).slice(-2)}
+                      </span>
+                    )}
+                  </Field>
+                )}
                 {customer.referral_code && (
                   <Field label="Referral code" mono>
                     {customer.referral_code}
                   </Field>
                 )}
               </Section>
+
+              {/* Churn drivers — the score's contributing signals */}
+              {churn?.features && (
+                <>
+                  <Separator />
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Churn risk
+                      </p>
+                      <Badge variant={riskVariant(churn.score)}>
+                        {churn.score} · {churn.risk_level}
+                      </Badge>
+                    </div>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <ChurnStat label="Failed invoices (90d)" value={churn.features.failed_invoices_90d} />
+                      <ChurnStat
+                        label="Payment failure rate"
+                        value={`${Math.round((churn.features.payment_failure_rate || 0) * 100)}%`}
+                      />
+                      <ChurnStat
+                        label="Avg days to pay"
+                        value={Math.round(churn.features.avg_days_to_pay || 0)}
+                      />
+                      <ChurnStat label="Plan downgrades" value={churn.features.plan_downgrades} />
+                      <ChurnStat label="Months active" value={churn.features.months_active} />
+                      <ChurnStat
+                        label="Usage trend"
+                        value={`${churn.features.usage_trend > 0 ? "+" : ""}${Math.round((churn.features.usage_trend || 0) * 100)}%`}
+                      />
+                    </dl>
+                  </div>
+                </>
+              )}
 
               {/* Account credit (ledger-backed credits) */}
               {credit && ((credit.balances?.length || 0) > 0 || (credit.grants?.length || 0) > 0) && (

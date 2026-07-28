@@ -274,6 +274,7 @@ export const endpoints = {
   createVirtualAccount: (data) => api.post('/virtual-accounts', data),
 
   // Churn risk
+  getCustomerChurn: (id) => api.get(`/customers/${id}/churn`),
   getChurnAlerts: () => api.get('/churn/alerts'),
   acknowledgeChurnAlert: (id) => api.post(`/churn/alerts/${id}/ack`),
   getHighRiskCustomers: (threshold) =>
