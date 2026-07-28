@@ -27,10 +27,13 @@ type AccountingSyncLog struct {
 	ConnectionID uuid.UUID `json:"connection_id" db:"connection_id"`
 	// Provider is denormalized from the connection at read time so the
 	// dashboard can say WHICH integration a row belongs to.
-	Provider     string    `json:"provider,omitempty" db:"provider"`
-	EntityType   string    `json:"entity_type" db:"entity_type"`
-	EntityID     uuid.UUID `json:"entity_id" db:"entity_id"`
-	ExternalID   string    `json:"external_id,omitempty" db:"external_id"`
+	Provider   string    `json:"provider,omitempty" db:"provider"`
+	EntityType string    `json:"entity_type" db:"entity_type"`
+	EntityID   uuid.UUID `json:"entity_id" db:"entity_id"`
+	ExternalID string    `json:"external_id,omitempty" db:"external_id"`
+	// EntityName is a human label resolved at read time (customer name,
+	// invoice number); empty when the source row no longer exists.
+	EntityName   string    `json:"entity_name,omitempty" db:"entity_name"`
 	Action       string    `json:"action" db:"action"`
 	Status       string    `json:"status" db:"status"`
 	ErrorMessage string    `json:"error_message,omitempty" db:"error_message"`

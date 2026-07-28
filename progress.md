@@ -1,5 +1,24 @@
 # Progress log — overnight 2026-07-27 → 28
 
+## Morning session (after founder wake-up)
+
+- **QuickBooks verified live on prod** (sandbox company): OAuth → Connected →
+  bulk customers + invoices pushed with QBO ids. Intuit gotcha: redirect-URI
+  lists are **per keys tab** (Development vs Production) — the URI had been
+  saved under Production while the creds are Development keys. Zero adapter
+  code changes needed. `QBO_SANDBOX=true` picks the sandbox host.
+- **#249** — GoCardless connect 500 fixed (provider CHECK constraint from
+  000107 predated the third provider; migration 000150) + sync rows carry
+  their provider, Integration column, filters, full error text.
+- **#250** — provider rate limits honored (Xero 429 storm from the forced
+  re-push): `doWithRateLimitRetry` waits Retry-After (capped), replays POST
+  bodies, bounded retries; Xero + QuickBooks routed through it.
+- **#251** — per-integration Sync buttons, server-side pagination (25/page),
+  integration/status filters, debounced record-id search.
+- **This PR** — sync rows resolve a human name (customer name / invoice
+  number) at read time; search matches names too.
+
+
 Running log of the autonomous overnight session. Newest first. Every item
 merged on fully green CI (invariant harness + E2E + OpenAPI drift + frontend
 gates) unless marked open.

@@ -211,7 +211,10 @@ func (r *AccountingConnectionRepository) ListSyncLogsFiltered(ctx context.Contex
 	}
 	if f.Search != "" {
 		args = append(args, "%"+f.Search+"%")
-		where += fmt.Sprintf(" AND (l.external_id ILIKE $%d OR l.entity_id::text ILIKE $%d)", len(args), len(args))
+		where += fmt.Sprintf(` AND (l.external_id ILIKE $%d OR l.entity_id::text ILIKE $%d
+			OR (l.entity_type = 'customer' AND EXISTS (SELECT 1 FROM customers cu WHERE cu.id = l.entity_id AND cu.name ILIKE $%d))
+			OR (l.entity_type = 'invoice' AND EXISTS (SELECT 1 FROM invoices inv WHERE inv.id = l.entity_id AND inv.invoice_number ILIKE $%d)))`,
+			len(args), len(args), len(args), len(args))
 	}
 
 	var total int
@@ -221,7 +224,12 @@ func (r *AccountingConnectionRepository) ListSyncLogsFiltered(ctx context.Contex
 
 	query := `SELECT l.id, l.tenant_id, l.connection_id, COALESCE(c.provider, ''),
 		l.entity_type, l.entity_id,
-		COALESCE(l.external_id,''), l.action, l.status, COALESCE(l.error_message,''), l.synced_at ` +
+		COALESCE(l.external_id,''),
+		COALESCE(CASE l.entity_type
+			WHEN 'customer' THEN (SELECT cu.name FROM customers cu WHERE cu.id = l.entity_id)
+			WHEN 'invoice' THEN (SELECT inv.invoice_number FROM invoices inv WHERE inv.id = l.entity_id)
+		END, ''),
+		l.action, l.status, COALESCE(l.error_message,''), l.synced_at ` +
 		where + fmt.Sprintf(" ORDER BY l.synced_at DESC LIMIT $%d OFFSET $%d", len(args)+1, len(args)+2)
 	args = append(args, f.Limit, f.Offset)
 
@@ -235,7 +243,7 @@ func (r *AccountingConnectionRepository) ListSyncLogsFiltered(ctx context.Contex
 	for rows.Next() {
 		var l domain.AccountingSyncLog
 		if err := rows.Scan(&l.ID, &l.TenantID, &l.ConnectionID, &l.Provider, &l.EntityType, &l.EntityID,
-			&l.ExternalID, &l.Action, &l.Status, &l.ErrorMessage, &l.SyncedAt); err != nil {
+			&l.ExternalID, &l.EntityName, &l.Action, &l.Status, &l.ErrorMessage, &l.SyncedAt); err != nil {
 			return nil, 0, err
 		}
 		logs = append(logs, &l)
