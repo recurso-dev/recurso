@@ -25,8 +25,24 @@ had tests at start).
 - `lib/__tests__/countries.test.js` (3 tests) — ISO-3166 shape, unique codes,
   `COUNTRY_NAME` lookup completeness.
 
+### Batch 2 — money-display components + a list page (PR #293)
+- `components/ui/__tests__/money.test.jsx` (7) — `Money` renders minor units per
+  currency exponent, negatives, the styled symbol span, className, nullish → $0.
+- `components/patterns/__tests__/StatCard.test.jsx` (6) — label/value/hint,
+  loading skeleton, delta colors, danger tone, link vs non-link tile.
+- `pages/__tests__/Coupons.test.jsx` (5) — render, status filter, direct
+  reactivate, deactivate-behind-confirm, empty state.
+
+### Batch 3 — money-path slide-overs
+- `slide-overs/__tests__/CreditNoteDetail.test.jsx` (7) — the Void money-path
+  guards: Void offered only for an issued adjustment with a balance; hidden for
+  refunds, zero-balance, and non-admins; requires confirmation. Plus
+  approve/reject visibility for pending notes.
+- `slide-overs/__tests__/CouponDetail.test.jsx` (4) — status badge, activate /
+  deactivate toggle calls, redemption progress bar.
+
 ## Running totals
-- Frontend tests: 183 → 216 (+33).
+- Frontend tests: 183 → 244 (+61).
 
 ## Method
 - Behavioral assertions over implementation details.
