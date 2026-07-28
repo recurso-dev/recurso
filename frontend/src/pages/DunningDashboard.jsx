@@ -3,7 +3,10 @@ import { Link } from "react-router-dom";
 import { BarChart } from "@tremor/react";
 import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3, Settings2 } from "lucide-react";
 
+import { useMemo } from "react";
+
 import { endpoints } from "../lib/api";
+import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { Button } from "@/components/ui/button";
 import { formatNumber, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -140,6 +143,11 @@ const DunningDashboard = () => {
       return `${primaryCurrency} ${v}`;
     }
   };
+  // Rebuilt only when the currency changes so hover doesn't remount the tooltip.
+  const chartTooltip = useMemo(
+    () => makeChartTooltip(currencyFormatter),
+    [primaryCurrency] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   return (
     <div>
@@ -212,12 +220,14 @@ const DunningDashboard = () => {
               />
             ) : (
               <BarChart
+                {...chartDefaults}
                 className="h-72"
                 data={chartData}
                 index="month"
                 categories={["Recovered"]}
-                colors={["emerald"]}
+                colors={chartCategoryColors}
                 valueFormatter={currencyFormatter}
+                customTooltip={chartTooltip}
                 showLegend={false}
                 showGridLines
                 yAxisWidth={64}

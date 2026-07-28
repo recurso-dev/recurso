@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { cn, formatCurrency, formatDate, fromMinorUnits } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -32,6 +33,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+
+// Revenue axis/tooltip share one formatter so both read identically. Values are
+// already in major units, so this is a plain thousands-grouped integer.
+const revenueFormatter = (v) =>
+  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v);
+const revenueTooltip = makeChartTooltip(revenueFormatter);
 
 // Map an invoice status to a Badge variant.
 const invoiceStatusVariant = (status) =>
@@ -295,16 +302,17 @@ export default function Dashboard() {
               <Skeleton className="h-72 w-full" />
             ) : revenueSeries.length > 0 ? (
               <AreaChart
+                {...chartDefaults}
                 className="h-72"
                 data={revenueSeries}
                 index="date"
                 categories={revenueCurrencies}
-                colors={["emerald", "blue", "amber", "violet"]}
-                valueFormatter={(v) =>
-                  new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v)
-                }
+                colors={chartCategoryColors}
+                valueFormatter={revenueFormatter}
+                customTooltip={revenueTooltip}
                 showLegend={revenueCurrencies.length > 1}
-                showGridLines
+                showGradient
+                startEndOnly
                 curveType="monotone"
                 yAxisWidth={64}
               />
