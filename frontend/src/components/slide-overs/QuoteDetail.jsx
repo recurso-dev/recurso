@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Check, X, ArrowRight } from "lucide-react";
+import { Send, Check, X, ArrowRight, Trash2 } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -41,9 +42,11 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
   // whenever a different quote is opened.
   const [statusOverride, setStatusOverride] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => {
     setStatusOverride(null);
     setActionError(null);
+    setConfirmDelete(false);
   }, [quote?.id]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
@@ -91,6 +94,19 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
     },
     onError: onActionError("convert"),
   });
+  const deleteMutation = useMutation({
+    mutationFn: (id) => endpoints.deleteQuote(id),
+    onSuccess: () => {
+      invalidate();
+      onChanged?.();
+      setConfirmDelete(false);
+      onClose();
+    },
+    onError: (err) => {
+      setConfirmDelete(false);
+      onActionError("delete")(err);
+    },
+  });
 
   if (!quote) return null;
 
@@ -104,11 +120,15 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
     sendMutation.isPending ||
     acceptMutation.isPending ||
     declineMutation.isPending ||
-    convertMutation.isPending;
+    convertMutation.isPending ||
+    deleteMutation.isPending;
   const canSend = status === "draft" || status === "sent";
   const canDecide = status === "sent";
   const canConvert = status === "accepted" && !quote.invoice_id;
-  const hasActions = canSend || canDecide || canConvert;
+  // A quote that never became an invoice can be deleted; accepted/converted
+  // ones are kept for the audit trail.
+  const canDelete = status === "draft" || status === "declined";
+  const hasActions = canSend || canDecide || canConvert || canDelete;
 
   return (
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
@@ -272,10 +292,32 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 )}
+                {canDelete && (
+                  <Button
+                    variant="ghost"
+                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                    disabled={busy}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                )}
               </div>
             </div>
           )}
         </div>
+
+        <ConfirmDialog
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          title="Delete this quote?"
+          description={`Quote ${quote.quote_number || ""} will be permanently removed. This can't be undone.`}
+          confirmLabel="Delete quote"
+          destructive
+          busy={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate(quote.id)}
+        />
       </SheetContent>
     </Sheet>
   );
