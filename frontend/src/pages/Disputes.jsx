@@ -1,7 +1,7 @@
 import { shortId } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FileQuestion } from "lucide-react";
+import { FileQuestion, Check, X } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -30,12 +30,23 @@ const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 const textareaClass =
   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
-// Customer-raised invoice disputes; admins close them with an optional note.
+const statusVariant = (s) =>
+  ({ open: "warning", resolved: "success", rejected: "destructive" })[s] || "neutral";
+
+// Customer-raised invoice disputes; admins accept (optionally issuing a credit)
+// or reject them.
 const Disputes = () => {
   const [statusFilter, setStatusFilter] = useState("open");
   const [resolveTarget, setResolveTarget] = useState(null);
   const [note, setNote] = useState("");
+  const [issueCredit, setIssueCredit] = useState(false);
   const queryClient = useQueryClient();
+
+  const openReview = (d) => {
+    setNote("");
+    setIssueCredit(false);
+    setResolveTarget(d);
+  };
 
   // Server-driven by status: each filter is its own cache entry.
   const {
@@ -53,21 +64,33 @@ const Disputes = () => {
     : null;
 
   const resolveMutation = useMutation({
-    mutationFn: ({ id, note }) => api.resolveDispute(id, note),
-    onSuccess: () => {
-      toast.success("Dispute resolved.");
+    mutationFn: ({ id, body }) => api.resolveDispute(id, body),
+    onSuccess: (res, { body }) => {
+      toast.success(
+        body.outcome === "reject"
+          ? "Dispute rejected."
+          : res?.data?.credit_note
+            ? "Dispute accepted — credit note issued."
+            : "Dispute accepted."
+      );
       setResolveTarget(null);
-      setNote("");
       queryClient.invalidateQueries({ queryKey: ["disputes"] });
+      if (res?.data?.credit_note) {
+        queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+      }
     },
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to resolve dispute"),
   });
   const resolving = resolveMutation.isPending;
 
-  const submitResolve = () => {
+  const submit = (outcome) => {
     if (!resolveTarget) return;
-    resolveMutation.mutate({ id: resolveTarget.id, note: note.trim() });
+    const body = { outcome, note: note.trim() };
+    // Credit defaults server-side to the invoice's amount due (full disputed
+    // amount) — a partial credit can be issued from the Credit Notes page.
+    if (outcome === "accept" && issueCredit) body.issue_credit = true;
+    resolveMutation.mutate({ id: resolveTarget.id, body });
   };
 
   const columns = [
@@ -95,7 +118,7 @@ const Disputes = () => {
       header: "Status",
       cell: (d) => (
         <div>
-          <Badge variant={d.status === "open" ? "warning" : "success"}>{d.status}</Badge>
+          <Badge variant={statusVariant(d.status)}>{d.status}</Badge>
           {d.note && (
             <p className="mt-1 max-w-xs truncate text-xs text-muted-foreground" title={d.note}>
               {d.note}
@@ -120,11 +143,10 @@ const Disputes = () => {
             variant="outline"
             onClick={(e) => {
               e.stopPropagation();
-              setNote("");
-              setResolveTarget(d);
+              openReview(d);
             }}
           >
-            Resolve
+            Review
           </Button>
         ),
     },
@@ -151,6 +173,7 @@ const Disputes = () => {
             <SelectContent>
               <SelectItem value="open">Open</SelectItem>
               <SelectItem value="resolved">Resolved</SelectItem>
+              <SelectItem value="rejected">Rejected</SelectItem>
               <SelectItem value="all">All</SelectItem>
             </SelectContent>
           </Select>
@@ -165,27 +188,56 @@ const Disputes = () => {
       <Dialog open={!!resolveTarget} onOpenChange={(o) => !o && setResolveTarget(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Resolve dispute</DialogTitle>
+            <DialogTitle>Review dispute</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
               Invoice <span className="font-mono">{shortId(resolveTarget?.invoice_id)}</span> —{" "}
               {resolveTarget?.reason}
             </p>
+
+            <label className="flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-emerald-600"
+                checked={issueCredit}
+                onChange={(e) => setIssueCredit(e.target.checked)}
+              />
+              <span>
+                <span className="font-medium text-foreground">
+                  Issue a credit note on accept
+                </span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">
+                  Adds an account credit for the invoice&apos;s outstanding amount. Leave
+                  unchecked to accept without a credit.
+                </span>
+              </span>
+            </label>
+
             <div>
-              <Label>Resolution note (optional)</Label>
+              <Label>Note (optional)</Label>
               <textarea
                 className={textareaClass}
                 rows={3}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="What was done about it — visible to the team."
+                placeholder="What was decided — visible to the team."
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button onClick={submitResolve} disabled={resolving}>
-              {resolving ? "Resolving…" : "Mark resolved"}
+          <DialogFooter className="gap-2 sm:justify-between">
+            <Button
+              variant="outline"
+              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              onClick={() => submit("reject")}
+              disabled={resolving}
+            >
+              <X className="h-4 w-4" />
+              Reject
+            </Button>
+            <Button onClick={() => submit("accept")} disabled={resolving}>
+              <Check className="h-4 w-4" />
+              {resolving ? "Working…" : issueCredit ? "Accept & credit" : "Accept"}
             </Button>
           </DialogFooter>
         </DialogContent>
