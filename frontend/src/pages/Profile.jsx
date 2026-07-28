@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { KeyRound, Pencil } from "lucide-react";
 
 import { endpoints } from "@/lib/api";

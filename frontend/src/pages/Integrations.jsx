@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router";
 import { Landmark, RefreshCw, Check } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";

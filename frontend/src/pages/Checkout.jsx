@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useParams } from "react-router";
 import { CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import { loadStripe } from "@stripe/stripe-js";
 import {

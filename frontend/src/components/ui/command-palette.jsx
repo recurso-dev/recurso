@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import {
   Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
   Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,

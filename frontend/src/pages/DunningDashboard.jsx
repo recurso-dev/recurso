@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { BarChart } from "@tremor/react";
 import { RotateCcw, RefreshCw, CheckCircle2, Percent, BarChart3, Settings2 } from "lucide-react";
 

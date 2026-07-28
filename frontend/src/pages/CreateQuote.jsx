@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCustomers } from "@/lib/useCustomers";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";

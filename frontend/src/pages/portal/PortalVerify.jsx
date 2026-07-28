@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { Loader2 } from "lucide-react";
 
 import { API_ROOT as API_BASE } from "../../lib/api";

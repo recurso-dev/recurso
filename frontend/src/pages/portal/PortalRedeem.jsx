@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { ArrowLeft, Gift, Loader2 } from "lucide-react";
 
 import { API_ROOT as API_BASE } from "../../lib/api";

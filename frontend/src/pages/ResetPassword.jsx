@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Layers, KeyRound, ArrowLeft, AlertTriangle } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
