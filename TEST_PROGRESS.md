@@ -53,8 +53,14 @@ had tests at start).
 - `pages/__tests__/Plans.test.jsx` (2) — renders each plan's first-price money
   (per currency exponent) and the empty state.
 
+### Batch 6 — growth list pages (lifecycle actions)
+- `pages/__tests__/Gifts.test.jsx` (4) — renders gift codes, Cancel offered only
+  for a purchased (unredeemed) gift, cancel-behind-confirm, empty state.
+- `pages/__tests__/Referrals.test.jsx` (3) — renders referral codes, Qualify
+  fires for a pending referral, empty state.
+
 ## Running totals
-- Frontend tests: 183 → 253 (+70). Test files: 29 → 42.
+- Frontend tests: 183 → 260 (+77). Test files: 29 → 44.
 - Shipped as 5 green-CI PRs (#292–#295, + this).
 
 ## What this run hardened (behavioral, not coverage padding)
