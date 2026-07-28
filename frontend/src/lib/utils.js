@@ -55,6 +55,23 @@ export function formatCurrency(amountMinor, currency = "USD") {
 }
 
 /**
+ * formatCurrencyHeadline — formatCurrency for KPI tiles and other headline
+ * numerals: a whole amount drops its ".00" tail ($18,675 not $18,675.00),
+ * while non-zero cents are kept so small amounts (−$0.82) stay visible.
+ * Table cells should keep formatCurrency/Money — mixed precision there breaks
+ * column alignment.
+ */
+export function formatCurrencyHeadline(amountMinor, currency = "USD") {
+  const major = fromMinorUnits(amountMinor, currency);
+  const isWhole = Number.isInteger(major);
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: currency || "USD",
+    ...(isWhole ? { maximumFractionDigits: 0 } : {}),
+  }).format(major);
+}
+
+/**
  * formatNumber — compact/grouped number formatting for metrics.
  */
 export function formatNumber(value, options = {}) {

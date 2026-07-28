@@ -54,7 +54,7 @@ describe('Dashboard (redesign)', () => {
     });
 
     it('shows formatted MRR, active subs and churn from the API', async () => {
-        endpoints.getMRR.mockResolvedValue({ data: { mrr: 100000 } }); // $1,000.00
+        endpoints.getMRR.mockResolvedValue({ data: { mrr: 100000 } }); // $1,000
         endpoints.getSubscriptions.mockResolvedValue({
             data: { data: [{ status: 'active' }, { status: 'active' }, { status: 'canceled' }] },
         });
@@ -62,8 +62,8 @@ describe('Dashboard (redesign)', () => {
         renderDashboard();
 
         await waitFor(() => {
-            // KPI values render as plain formatted text (consistent with Overview).
-            expect(screen.getByText('$1,000.00')).toBeInTheDocument();
+            // Headline KPI formatting drops the ".00" tail on whole amounts.
+            expect(screen.getByText('$1,000')).toBeInTheDocument();
         });
         // 2 active subscriptions.
         expect(screen.getByText('2')).toBeInTheDocument();

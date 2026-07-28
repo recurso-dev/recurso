@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { AreaChart } from "@tremor/react";
@@ -15,8 +15,14 @@ import {
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
-import { cn, formatCurrency, formatDate, fromMinorUnits } from "@/lib/utils";
+import { makeChartTooltip, chartDefaults } from "@/components/charts/ChartTooltip";
+import {
+  cn,
+  formatCurrency,
+  formatCurrencyHeadline,
+  formatDate,
+  fromMinorUnits,
+} from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -133,20 +139,21 @@ export default function Dashboard() {
   // Revenue-over-time, one series per currency: different currencies cannot be
   // summed into one line without FX, so each gets its own (₹ and $ don't add).
   // Windowed to the trailing 90 days — a year of daily bars is unreadable.
+  // Currencies are ordered by window total so [0] is the dominant one.
   const { revenueSeries, revenueCurrencies } = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 90);
     const byDay = {};
-    const currencies = new Set();
+    const totals = {};
     invoices.forEach((inv) => {
       if (!inv.created_at || new Date(inv.created_at) < cutoff) return;
       const key = new Date(inv.created_at).toISOString().slice(0, 10);
       const cur = (inv.currency || "USD").toUpperCase();
-      currencies.add(cur);
+      totals[cur] = (totals[cur] || 0) + (inv.total || 0);
       byDay[key] = byDay[key] || {};
       byDay[key][cur] = (byDay[key][cur] || 0) + (inv.total || 0);
     });
-    const curs = [...currencies].sort();
+    const curs = Object.keys(totals).sort((a, b) => totals[b] - totals[a]);
     const series = Object.keys(byDay)
       .sort()
       .map((day) => {
@@ -158,6 +165,15 @@ export default function Dashboard() {
       });
     return { revenueSeries: series, revenueCurrencies: curs };
   }, [invoices]);
+
+  // One currency at a time: axes can't honestly hold ₹ and $ together, and a
+  // large series flattens the others into noise. Default to the dominant one.
+  const [revenueCur, setRevenueCur] = useState(null);
+  useEffect(() => {
+    if (revenueCurrencies.length > 0 && !revenueCurrencies.includes(revenueCur)) {
+      setRevenueCur(revenueCurrencies[0]);
+    }
+  }, [revenueCurrencies, revenueCur]);
 
   const recentInvoices = useMemo(
     () =>
@@ -262,7 +278,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={mrr != null ? formatCurrency(mrr, "USD") : "—"}
+            value={mrr != null ? formatCurrencyHeadline(mrr, "USD") : "—"}
             icon={DollarSign}
             hint="Monthly recurring revenue"
             to="/overview"
@@ -283,7 +299,7 @@ export default function Dashboard() {
           />
           <StatCard
             label="Recovered Revenue"
-            value={recovered != null ? formatCurrency(recovered, recoveredCurrency) : "—"}
+            value={recovered != null ? formatCurrencyHeadline(recovered, recoveredCurrency) : "—"}
             icon={RotateCcw}
             hint="Via smart dunning"
             to="/dunning"
@@ -294,23 +310,43 @@ export default function Dashboard() {
       {/* Chart + recent invoices */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Revenue over time</CardTitle>
+            {revenueCurrencies.length > 1 && (
+              <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5" role="group" aria-label="Chart currency">
+                {revenueCurrencies.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setRevenueCur(c)}
+                    aria-pressed={revenueCur === c}
+                    className={cn(
+                      "rounded-md px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      revenueCur === c
+                        ? "bg-white text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            )}
           </CardHeader>
           <CardContent>
             {loading ? (
               <Skeleton className="h-72 w-full" />
-            ) : revenueSeries.length > 0 ? (
+            ) : revenueSeries.length > 0 && revenueCur ? (
               <AreaChart
                 {...chartDefaults}
                 className="h-72"
                 data={revenueSeries}
                 index="date"
-                categories={revenueCurrencies}
-                colors={chartCategoryColors}
+                categories={[revenueCur]}
+                colors={["emerald"]}
                 valueFormatter={revenueFormatter}
                 customTooltip={revenueTooltip}
-                showLegend={revenueCurrencies.length > 1}
+                showLegend={false}
                 showGradient
                 startEndOnly
                 curveType="monotone"
