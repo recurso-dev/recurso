@@ -16,7 +16,8 @@ type DisputeStatus string
 
 const (
 	DisputeStatusOpen     DisputeStatus = "open"
-	DisputeStatusResolved DisputeStatus = "resolved"
+	DisputeStatusResolved DisputeStatus = "resolved" // accepted / closed in the customer's favor
+	DisputeStatusRejected DisputeStatus = "rejected" // reviewed and declined
 )
 
 // InvoiceDispute is a customer-raised query/dispute against one of their own

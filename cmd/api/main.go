@@ -1275,6 +1275,9 @@ func main() {
 	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
 	// lives on the portal handler above.
 	disputeService := service.NewDisputeService(disputeRepo)
+	// Accepting a dispute can issue a resolution credit via the (already
+	// ledgered) credit-note path.
+	disputeService.SetCreditIssuer(creditNoteService, invoiceRepo)
 	disputeHandler := handler.NewDisputeHandler(disputeService)
 
 	// Quotes (P27)

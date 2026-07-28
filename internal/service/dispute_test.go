@@ -79,9 +79,13 @@ func (m *disputeMockRepo) ListByTenant(ctx context.Context, tenantID uuid.UUID, 
 }
 
 func (m *disputeMockRepo) Resolve(ctx context.Context, tenantID, id uuid.UUID, note string) error {
+	return m.Close(ctx, tenantID, id, domain.DisputeStatusResolved, note)
+}
+
+func (m *disputeMockRepo) Close(ctx context.Context, tenantID, id uuid.UUID, status domain.DisputeStatus, note string) error {
 	for _, d := range m.items {
 		if d.ID == id && d.TenantID == tenantID && d.Status == domain.DisputeStatusOpen {
-			d.Status = domain.DisputeStatusResolved
+			d.Status = status
 			if note != "" {
 				n := note
 				d.Note = &n
@@ -298,5 +302,80 @@ func TestDisputeService_Resolve_TenantIsolation(t *testing.T) {
 	}
 	if disp.items[0].Status != domain.DisputeStatusOpen {
 		t.Errorf("dispute was modified across tenants")
+	}
+}
+
+func TestDisputeService_ResolveWithOutcome_Reject(t *testing.T) {
+	tenant := uuid.New()
+	id := uuid.New()
+	disp := &disputeMockRepo{items: []*domain.InvoiceDispute{
+		{ID: id, TenantID: tenant, Status: domain.DisputeStatusOpen},
+	}}
+	svc := NewDisputeService(disp)
+
+	credit, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
+		DisputeResolution{Accept: false, Note: "not a valid claim"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if credit != nil {
+		t.Errorf("reject should not issue a credit")
+	}
+	if disp.items[0].Status != domain.DisputeStatusRejected {
+		t.Errorf("status = %q, want rejected", disp.items[0].Status)
+	}
+}
+
+func TestDisputeService_ResolveWithOutcome_AcceptNoCredit(t *testing.T) {
+	tenant := uuid.New()
+	id := uuid.New()
+	disp := &disputeMockRepo{items: []*domain.InvoiceDispute{
+		{ID: id, TenantID: tenant, Status: domain.DisputeStatusOpen},
+	}}
+	svc := NewDisputeService(disp)
+
+	credit, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
+		DisputeResolution{Accept: true, Note: "goodwill"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if credit != nil {
+		t.Errorf("no credit was requested")
+	}
+	if disp.items[0].Status != domain.DisputeStatusResolved {
+		t.Errorf("status = %q, want resolved", disp.items[0].Status)
+	}
+}
+
+func TestDisputeService_ResolveWithOutcome_CreditWithoutIssuerErrors(t *testing.T) {
+	tenant := uuid.New()
+	id := uuid.New()
+	disp := &disputeMockRepo{items: []*domain.InvoiceDispute{
+		{ID: id, TenantID: tenant, Status: domain.DisputeStatusOpen},
+	}}
+	svc := NewDisputeService(disp) // no SetCreditIssuer
+
+	if _, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
+		DisputeResolution{Accept: true, IssueCredit: true}); err == nil {
+		t.Fatalf("expected an error when credit issuance isn't wired")
+	}
+	// The dispute must stay open — credit is issued before the close, so a
+	// failure leaves nothing half-done.
+	if disp.items[0].Status != domain.DisputeStatusOpen {
+		t.Errorf("dispute should remain open on a failed credit issuance, got %q", disp.items[0].Status)
+	}
+}
+
+func TestDisputeService_ResolveWithOutcome_NonOpenRejected(t *testing.T) {
+	tenant := uuid.New()
+	id := uuid.New()
+	disp := &disputeMockRepo{items: []*domain.InvoiceDispute{
+		{ID: id, TenantID: tenant, Status: domain.DisputeStatusResolved},
+	}}
+	svc := NewDisputeService(disp)
+
+	if _, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
+		DisputeResolution{Accept: false}); err != domain.ErrDisputeNotFound {
+		t.Fatalf("err = %v, want ErrDisputeNotFound for an already-closed dispute", err)
 	}
 }

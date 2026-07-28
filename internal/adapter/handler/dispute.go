@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/service"
 )
@@ -27,8 +28,11 @@ func (h *DisputeHandler) ListDisputes(c *gin.Context) {
 	tenantID := c.MustGet("tenant_id").(uuid.UUID)
 
 	status := c.Query("status")
-	if status != "" && status != string(domain.DisputeStatusOpen) && status != string(domain.DisputeStatusResolved) {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, "status must be 'open' or 'resolved'")
+	if status != "" &&
+		status != string(domain.DisputeStatusOpen) &&
+		status != string(domain.DisputeStatusResolved) &&
+		status != string(domain.DisputeStatusRejected) {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "status must be 'open', 'resolved' or 'rejected'")
 		return
 	}
 
@@ -44,9 +48,18 @@ func (h *DisputeHandler) ListDisputes(c *gin.Context) {
 
 type resolveDisputeRequest struct {
 	Note string `json:"note"`
+	// Outcome is "accept" (default — closes in the customer's favor) or
+	// "reject". Omitted/empty keeps the pre-outcome behavior (accept).
+	Outcome string `json:"outcome"`
+	// IssueCredit (accept only) issues an adjustment credit note against the
+	// disputed invoice. CreditAmount is minor units; 0 = the invoice's amount due.
+	IssueCredit  bool  `json:"issue_credit"`
+	CreditAmount int64 `json:"credit_amount"`
 }
 
-// ResolveDispute handles POST /v1/disputes/:id/resolve (tenant-scoped).
+// ResolveDispute handles POST /v1/disputes/:id/resolve (tenant-scoped): records
+// the operator's decision (accept/reject) and, on accept, optionally issues a
+// resolution credit note.
 func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 	tenantID := c.MustGet("tenant_id").(uuid.UUID)
 
@@ -56,14 +69,28 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 		return
 	}
 
-	// The note is optional, so an empty body is allowed.
+	// The body is optional, so an empty body is allowed (defaults to accept).
 	var req resolveDisputeRequest
 	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
+	if req.Outcome != "" && req.Outcome != "accept" && req.Outcome != "reject" {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "outcome must be 'accept' or 'reject'")
+		return
+	}
 
-	if err := h.service.Resolve(c.Request.Context(), tenantID, id, req.Note); err != nil {
+	credit, err := h.service.ResolveWithOutcome(
+		c.Request.Context(), tenantID, middleware.GetUserID(c), func() string {
+			r, _ := middleware.GetUserRole(c)
+			return r
+		}(), id, service.DisputeResolution{
+			Accept:       req.Outcome != "reject",
+			Note:         req.Note,
+			IssueCredit:  req.IssueCredit,
+			CreditAmount: req.CreditAmount,
+		})
+	if err != nil {
 		if err == domain.ErrDisputeNotFound {
 			respondError(c, http.StatusNotFound, codeNotFound, "dispute not found")
 			return
@@ -72,5 +99,13 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "resolved"})
+	status := "resolved"
+	if req.Outcome == "reject" {
+		status = "rejected"
+	}
+	resp := gin.H{"status": status}
+	if credit != nil {
+		resp["credit_note"] = credit
+	}
+	c.JSON(http.StatusOK, resp)
 }

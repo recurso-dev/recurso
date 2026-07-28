@@ -24,4 +24,8 @@ type DisputeRepository interface {
 	// tenant and only affects open disputes; returns ErrDisputeNotFound when no
 	// matching open dispute exists for the tenant.
 	Resolve(ctx context.Context, tenantID, id uuid.UUID, note string) error
+	// Close transitions an open dispute to a terminal status (resolved or
+	// rejected) with an optional note. Scoped by tenant, only affects open
+	// disputes; returns ErrDisputeNotFound when none matches.
+	Close(ctx context.Context, tenantID, id uuid.UUID, status domain.DisputeStatus, note string) error
 }

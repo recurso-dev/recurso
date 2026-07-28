@@ -117,15 +117,25 @@ func (r *DisputeRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID
 }
 
 func (r *DisputeRepository) Resolve(ctx context.Context, tenantID, id uuid.UUID, note string) error {
+	return r.Close(ctx, tenantID, id, domain.DisputeStatusResolved, note)
+}
+
+// Close transitions an open dispute to a terminal status (resolved or rejected)
+// with an optional note. Only 'open' rows are affected, so re-closing a
+// terminal dispute is a no-op that returns ErrDisputeNotFound.
+func (r *DisputeRepository) Close(ctx context.Context, tenantID, id uuid.UUID, status domain.DisputeStatus, note string) error {
+	if status != domain.DisputeStatusResolved && status != domain.DisputeStatusRejected {
+		return fmt.Errorf("invalid terminal dispute status %q", status)
+	}
 	var noteArg interface{}
 	if note != "" {
 		noteArg = note
 	}
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE invoice_disputes
-			SET status = 'resolved', note = $1, resolved_at = NOW()
-			WHERE id = $2 AND tenant_id = $3 AND status = 'open'`,
-		noteArg, id, tenantID,
+			SET status = $1, note = $2, resolved_at = NOW()
+			WHERE id = $3 AND tenant_id = $4 AND status = 'open'`,
+		string(status), noteArg, id, tenantID,
 	)
 	if err != nil {
 		return err
