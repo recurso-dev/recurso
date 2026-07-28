@@ -135,6 +135,29 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": subs})
 }
 
+// GetSubscription returns one subscription by id, scoped to the caller's
+// tenant. A subscription owned by another tenant (or a missing one) is a flat
+// 404 — never leak existence across tenants.
+func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	sub, err := h.service.GetByID(ctx, tenantID, subID)
+	if err != nil || sub == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "subscription not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": sub})
+}
+
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

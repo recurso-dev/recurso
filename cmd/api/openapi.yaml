@@ -917,6 +917,24 @@ paths:
           $ref: '#/components/responses/Unauthorized'
 
   /v1/subscriptions/{id}:
+    get:
+      operationId: getSubscription
+      tags: [Subscriptions]
+      summary: Get a subscription by id
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The subscription.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       operationId: updateSubscription
       tags: [Subscriptions]
