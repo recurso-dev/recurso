@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import {
   Inbox, RefreshCw, AlertTriangle, Ban, CircleDollarSign, Clock, Percent, RotateCcw,
   MoreHorizontal, Play, Pause,

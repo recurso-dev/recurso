@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink } from "react-router";
 import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck, Inbox } from "lucide-react";
 
 import { cn } from "@/lib/utils";

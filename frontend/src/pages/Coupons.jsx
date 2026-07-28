@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Plus, BadgePercent } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";

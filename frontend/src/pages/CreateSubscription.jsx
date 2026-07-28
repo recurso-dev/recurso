@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useCustomers, usePlans } from "@/lib/useCustomers";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 import { endpoints } from "../lib/api";
 import { queryClient } from "@/lib/queryClient";

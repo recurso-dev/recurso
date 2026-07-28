@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 
 import { endpoints } from "../lib/api";

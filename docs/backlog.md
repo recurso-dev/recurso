@@ -41,7 +41,7 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 12b | React 19 + react-router 8 upgrade | MED — clears the Trivy-ignored RSC advisory (GHSA-qwww-vcr4-c8h2, not exploitable in this SPA) and unblocks future deps | MED | react-router 8.3.0 needs React >=19.2; remove `.trivyignore` entry when done. |
+| ~~12b~~ | ~~React 19 + react-router 8 upgrade~~ | — | — | **DONE** — React 18.2 → 19.2.8, react-router-dom 7 → react-router 8.3.0 (v8 dropped the -dom package; 51 imports renamed), Tremor/lucide React-18 peers overridden to a single React 19, `.trivyignore` (GHSA-qwww-vcr4-c8h2) removed. lint/build/161 tests green. |
 | 13 | Pagination consistency on list endpoints | MED — silent truncation has bitten twice (CLAUDE.md) | MED | A few endpoints default `limit=10`, some 50/100/200, many unbounded. Normalize on `ParsePagination` + document defaults in OpenAPI. |
 | 14 | Interface-embedding test mocks | LOW-MED — every port widening breaks/panics mocks (`mockLedgerRepoFor*`, `stubCollectionsAgg`, …) | MED | Either generate mocks or convert to narrow per-test interfaces (capability-assertion pattern used by webhook/CRM paths is the house style now). |
 | 15 | Dunning-campaign + cancel-flow responses are unwrapped (no `{data:}`) | LOW — known API quirk, clients must stay tolerant | LOW | Breaking change; batch with a future v2 or additive alias. |

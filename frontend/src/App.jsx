@@ -1,5 +1,5 @@
 import ErrorBoundary from './components/ErrorBoundary'
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet } from 'react-router'
 import { lazy, Suspense } from 'react'
 import Login from './pages/Login'
 import DashboardLayout from "./components/layout/DashboardLayout"

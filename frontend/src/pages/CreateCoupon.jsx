@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { Sparkles } from "lucide-react";
 
 import { endpoints } from "../lib/api";

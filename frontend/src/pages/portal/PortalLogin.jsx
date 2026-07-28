@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router";
 import { CheckCircle2, Loader2, Mail } from "lucide-react";
 
 import { API_ROOT as API_BASE } from "../../lib/api";

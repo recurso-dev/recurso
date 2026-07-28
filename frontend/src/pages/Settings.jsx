@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";

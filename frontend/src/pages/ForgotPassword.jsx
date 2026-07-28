@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "react-router";
 import { Layers, Mail, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";

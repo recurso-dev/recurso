@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate, Link } from "react-router-dom";
+import { Outlet, useLocation, useNavigate, Link } from "react-router";
 import { Search, Bell, LogOut, User, ChevronDown, FlaskConical } from "lucide-react";
 
 import { useAuth } from "../../auth/AuthProvider";
