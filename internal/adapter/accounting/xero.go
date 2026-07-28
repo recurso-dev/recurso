@@ -334,7 +334,7 @@ func (a *XeroAdapter) post(ctx context.Context, path string, payload interface{}
 
 	a.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +368,7 @@ func (a *XeroAdapter) findContactByEmail(ctx context.Context, email string) (str
 	}
 	a.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -409,7 +409,7 @@ func (a *XeroAdapter) findItemByName(ctx context.Context, name string) (string, 
 	}
 	a.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}

@@ -321,7 +321,7 @@ func (a *QuickBooksAdapter) post(ctx context.Context, objectType string, payload
 // responses become a *qboAPIError carrying the status and any QBO fault
 // codes so callers can classify stale-token and object-gone failures.
 func (a *QuickBooksAdapter) do(req *http.Request) ([]byte, error) {
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(req.Context(), req)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +429,7 @@ func (a *QuickBooksAdapter) findCustomerByEmail(ctx context.Context, email strin
 	}
 	a.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}
@@ -472,7 +472,7 @@ func (a *QuickBooksAdapter) findItemByName(ctx context.Context, name string) (st
 	}
 	a.setHeaders(req)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := doWithRateLimitRetry(ctx, req)
 	if err != nil {
 		return "", err
 	}
