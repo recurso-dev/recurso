@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -139,5 +141,35 @@ func TestRetryEUEInvoice_NotOptedIn(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &resp)
 	if resp.Data != nil || resp.Message == "" {
 		t.Fatalf("expected data:null + a message, got data=%+v msg=%q", resp.Data, resp.Message)
+	}
+}
+
+// tenantCtxCheckingOwner fails the lookup unless the context carries the
+// tenant — mirroring the real tenant-scoped invoice repository, which fails
+// closed without it. Regression for the live 500 on every GetEUEInvoice call.
+type tenantCtxCheckingOwner struct{ inv *domain.Invoice }
+
+func (f *tenantCtxCheckingOwner) GetByID(ctx context.Context, _ uuid.UUID) (*domain.Invoice, error) {
+	if _, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID); !ok {
+		return nil, errors.New("tenant_id missing from context")
+	}
+	return f.inv, nil
+}
+
+func TestOwnedInvoiceInjectsTenantContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: tenantID}
+	h := NewEUEInvoiceHandler(&fakeEUInvoiceReader{}, &tenantCtxCheckingOwner{inv: inv}, &fakeEUCustomer{}, nil)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/invoices/"+inv.ID.String()+"/eu-einvoice", nil)
+	c.Params = gin.Params{{Key: "id", Value: inv.ID.String()}}
+	c.Set("tenant_id", tenantID)
+
+	h.GetEUEInvoice(c)
+	if w.Code != http.StatusOK {
+		t.Fatalf("GetEUEInvoice = %d, want 200 (tenant context must reach the invoice repo); body: %s", w.Code, w.Body.String())
 	}
 }

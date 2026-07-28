@@ -177,7 +177,11 @@ func (h *EUEInvoiceHandler) ownedInvoice(c *gin.Context) (*domain.Invoice, uuid.
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
 		return nil, uuid.Nil, false
 	}
-	inv, err := h.invoices.GetByID(c.Request.Context(), invoiceID)
+	// The invoice repo is tenant-scoped and fails closed on a missing tenant
+	// (tenant-context bug class): inject the authenticated tenant. Live
+	// finding: this endpoint 500'd on every call without it.
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	inv, err := h.invoices.GetByID(ctx, invoiceID)
 	if err != nil {
 		respondInternalError(c, err)
 		return nil, uuid.Nil, false

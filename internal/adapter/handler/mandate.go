@@ -73,6 +73,12 @@ func (h *MandateHandler) CreateMandate(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	result, err := h.service.CreateMandate(ctx, input)
 	if err != nil {
+		// Guard failures are the caller's to fix — surface them as 400s with
+		// their message instead of a generic 500 (live smoke finding).
+		if errors.Is(err, service.ErrCustomerPhoneRequired) || errors.Is(err, service.ErrVPARequired) {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+			return
+		}
 		respondInternalError(c, err)
 		return
 	}
