@@ -6225,6 +6225,12 @@ paths:
         and each connection's sync_status. One manual sync runs per tenant at
         a time; a request while one is running returns 200 with
         status=sync_already_running.
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          description: Scope the sweep to one connection (omit = all active connections).
+          schema: { type: string, enum: [quickbooks, xero, netsuite, tally] }
       responses:
         '202':
           description: Sync started in the background.
@@ -6253,6 +6259,29 @@ paths:
     get:
       operationId: getAccountingSyncStatus
       tags: [Accounting]
+      parameters:
+        - name: provider
+          in: query
+          required: false
+          description: Only rows for this integration.
+          schema: { type: string }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [success, error] }
+        - name: search
+          in: query
+          required: false
+          description: Substring match on the provider-side or internal record id.
+          schema: { type: string }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, default: 25, maximum: 200 }
+        - name: offset
+          in: query
+          required: false
+          schema: { type: integer, default: 0 }
       summary: Recent accounting sync log
       description: The 50 most recent per-entity sync results.
       responses:
