@@ -171,7 +171,9 @@ export const endpoints = {
   addSubscriptionAddon: (id, data) => api.post(`/subscriptions/${id}/addons`, data),
   removeSubscriptionAddon: (id, addonId) =>
     api.delete(`/subscriptions/${id}/addons/${addonId}`),
-  cancelSubscription: (id) => api.post(`/subscriptions/${id}/cancel`),
+  // body: { reason (required), feedback?, cancel_at_period_end?, immediately?, revoke_consent? }
+  cancelSubscription: (id, body) => api.post(`/subscriptions/${id}/cancel`, body),
+  getCancellationReasons: () => api.get(`/cancellation-reasons`),
   pauseSubscription: (id) => api.post(`/subscriptions/${id}/pause`),
   resumeSubscription: (id) => api.post(`/subscriptions/${id}/resume`),
   reactivateSubscription: (id) => api.post(`/subscriptions/${id}/reactivate`),
