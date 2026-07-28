@@ -66,9 +66,17 @@ had tests at start).
   key + calls the API, and legacy API-key mode stays authenticated. Uses fake
   timers to exercise the backoff path deterministically.
 
+### Batch 8 — customer detail + subscriptions list
+- `slide-overs/__tests__/CustomerDetail.test.jsx` (5) — name/email render, the
+  **payment-method-on-file** display (present with a card, omitted without), the
+  **churn drill-in** (score + risk + drivers when a score is available), and the
+  edit → `updateCustomer` save path.
+- `pages/__tests__/Subscriptions.test.jsx` (3) — status badges render, row-click
+  opens the detail sheet with the right subscription, empty state.
+
 ## Running totals
-- Frontend tests: 183 → 266 (+83). Test files: 29 → 45.
-- Shipped as 7 green-CI PRs (#292–#297, + this).
+- Frontend tests: 183 → 274 (+91). Test files: 29 → 47.
+- Shipped as 8 green-CI PRs (#292–#298, + this).
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
