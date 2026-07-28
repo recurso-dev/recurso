@@ -1,6 +1,8 @@
+import { useLocation } from "react-router";
 import { Search } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { docsUrlFor } from "@/lib/docsLinks";
 import {
   Table,
   TableBody,
@@ -30,7 +32,9 @@ import { TableSkeleton } from "./LoadingSkeleton";
  *  - getRowId(row)                 (defaults to row.id)
  *  - search: { value, onChange, placeholder }   (omit to hide search box)
  *  - toolbar: ReactNode            (filter chips / selects, rendered right of search)
- *  - empty: { icon, title, description, action }
+ *  - empty: { icon, title, description, action, learnMoreHref? }
+ *  - docsLink: false to suppress the auto "Read the guide" link on the
+ *    getting-started empty state (it's shown only when no search is active)
  *  - pagination: { page, onPrev, onNext, hasNext, total? }
  */
 export function DataTable({
@@ -44,9 +48,11 @@ export function DataTable({
   search,
   toolbar,
   empty = {},
+  docsLink = true,
   pagination,
   className,
 }) {
+  const { pathname } = useLocation();
   const alignClass = {
     left: "text-left",
     right: "text-right",
@@ -54,6 +60,13 @@ export function DataTable({
   };
 
   const showToolbar = Boolean(search || toolbar);
+
+  // Contextual guide link on the "nothing here yet" state — but not while the
+  // user is filtering (a search that returns nothing isn't a getting-started
+  // moment). An explicit empty.learnMoreHref always wins.
+  const searching = Boolean(search?.value);
+  const learnMoreHref =
+    empty.learnMoreHref ?? (docsLink && !searching ? docsUrlFor(pathname) : undefined);
 
   return (
     <div className={cn("space-y-4", className)}>
@@ -86,6 +99,8 @@ export function DataTable({
             title={empty.title || "No results"}
             description={empty.description}
             action={empty.action}
+            learnMoreHref={learnMoreHref}
+            learnMoreLabel={empty.learnMoreLabel}
           />
         ) : (
           <Table>
