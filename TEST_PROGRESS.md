@@ -41,8 +41,16 @@ had tests at start).
 - `slide-overs/__tests__/CouponDetail.test.jsx` (4) — status badge, activate /
   deactivate toggle calls, redemption progress bar.
 
+### Batch 4 — shared data hooks + a payments list page
+- `lib/__tests__/useCustomers.test.jsx` (4) — `useCustomers`/`usePlans`/
+  `useSubscriptions`: id→name maps, best-effort empty on failure, and the
+  **anti-truncation guard** (asserts each hook requests `limit: 1000` so name
+  resolution never silently drops past the API's default page).
+- `pages/__tests__/Mandates.test.jsx` (3) — renders max/cycle money + method,
+  revoke-behind-confirm (payload = mandate id), empty state.
+
 ## Running totals
-- Frontend tests: 183 → 244 (+61).
+- Frontend tests: 183 → 251 (+68). Test files: 29 → 41.
 
 ## Method
 - Behavioral assertions over implementation details.
