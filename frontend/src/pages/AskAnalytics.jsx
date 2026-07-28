@@ -1,12 +1,22 @@
-import { useState } from "react";
-import { Sparkles, Send } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { AreaChart, BarChart } from "@tremor/react";
+import {
+  Sparkles,
+  Send,
+  Download,
+  RotateCw,
+  Trash2,
+  Table2,
+  BarChart3,
+  Code2,
+} from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -15,69 +25,318 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  makeChartTooltip,
+  chartCategoryColors,
+  chartDefaults,
+} from "@/components/charts/ChartTooltip";
+import { docsUrlFor } from "@/lib/docsLinks";
 
 const EXAMPLES = [
   "What was my MRR growth over the last 3 months?",
   "Which plan has the most active subscriptions?",
   "How many invoices are overdue, and for how much?",
+  "Top 10 customers by revenue",
 ];
 
-// Render an arbitrary array-of-objects result as a table; scalars as text.
-function ResultView({ data }) {
-  if (data == null) return null;
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
-    const cols = Object.keys(data[0]);
-    return (
-      <div className="overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {cols.map((c) => (
-                <TableHead key={c} className="whitespace-nowrap font-mono text-xs">
-                  {c}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row, i) => (
-              <TableRow key={i}>
-                {cols.map((c) => (
-                  <TableCell key={c} className="whitespace-nowrap text-sm">
-                    {row[c] == null ? "—" : String(row[c])}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
+const HISTORY_KEY = "recurso.ask.history.v1";
+const HISTORY_CAP = 25;
+
+// ---- helpers --------------------------------------------------------------
+
+// Group integers/decimals for readability; leave strings alone.
+function formatCell(v) {
+  if (v == null) return "—";
+  if (typeof v === "number") {
+    return Number.isInteger(v)
+      ? v.toLocaleString()
+      : v.toLocaleString(undefined, { maximumFractionDigits: 2 });
   }
-  return (
-    <pre className="overflow-x-auto rounded-md bg-muted p-4 font-mono text-xs text-foreground">
-      {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
-    </pre>
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  return String(v);
+}
+
+const isNumericCol = (rows, col) =>
+  rows.every((r) => r[col] == null || typeof r[col] === "number");
+
+// Decide whether a result is worth charting and how. Returns null when a table
+// is the honest representation (too many rows, no clear label+measure shape).
+function inferChart(rows) {
+  if (!Array.isArray(rows) || rows.length < 2 || rows.length > 60) return null;
+  const first = rows[0];
+  if (!first || typeof first !== "object") return null;
+  const cols = Object.keys(first);
+  const numeric = cols.filter((c) => isNumericCol(rows, c));
+  const labels = cols.filter((c) => !numeric.includes(c));
+  if (labels.length === 0 || numeric.length === 0) return null;
+
+  const index = labels[0];
+  // Distinct-ish labels only — charting a column that's the same value every
+  // row (or all unique ids) is noise.
+  const distinct = new Set(rows.map((r) => String(r[index]))).size;
+  if (distinct < 2) return null;
+
+  const categories = numeric.slice(0, 4);
+  const timeLike =
+    /date|month|day|period|week|year|time|quarter/i.test(index) ||
+    rows.every((r) => typeof r[index] === "string" && /^\d{4}-\d{2}/.test(r[index]));
+  return { type: timeLike ? "area" : "bar", index, categories };
+}
+
+function toCSV(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return "";
+  const cols = Object.keys(rows[0]);
+  const esc = (v) =>
+    v == null
+      ? ""
+      : /[",\n]/.test(String(v))
+        ? `"${String(v).replace(/"/g, '""')}"`
+        : String(v);
+  return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n");
+}
+
+function downloadCSV(rows, name) {
+  const blob = new Blob([toCSV(rows)], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${name}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5_000);
+}
+
+const chartNumberFmt = (v) => (typeof v === "number" ? v.toLocaleString() : v);
+
+// ---- result rendering -----------------------------------------------------
+
+function ResultChart({ rows, spec }) {
+  const tooltip = useMemo(() => makeChartTooltip(chartNumberFmt), []);
+  const common = {
+    data: rows,
+    index: spec.index,
+    categories: spec.categories,
+    colors: chartCategoryColors,
+    customTooltip: tooltip,
+    valueFormatter: chartNumberFmt,
+    showLegend: spec.categories.length > 1,
+    yAxisWidth: 56,
+    className: "h-64",
+    ...chartDefaults,
+  };
+  return spec.type === "area" ? (
+    <AreaChart {...common} showGradient />
+  ) : (
+    <BarChart {...common} />
   );
 }
 
-// Natural-language analytics: the backend translates the question to a
-// tenant-scoped SQL query and returns the rows plus the query it ran.
+function ResultTable({ rows }) {
+  const cols = Object.keys(rows[0]);
+  return (
+    <div className="max-h-80 overflow-auto rounded-md border border-border">
+      <Table>
+        <TableHeader className="sticky top-0 bg-muted/60 backdrop-blur">
+          <TableRow>
+            {cols.map((c) => (
+              <TableHead
+                key={c}
+                className={`whitespace-nowrap font-mono text-xs ${
+                  isNumericCol(rows, c) ? "text-right" : ""
+                }`}
+              >
+                {c}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row, i) => (
+            <TableRow key={i}>
+              {cols.map((c) => (
+                <TableCell
+                  key={c}
+                  className={`whitespace-nowrap text-sm ${
+                    isNumericCol(rows, c) ? "text-right tabular-nums" : ""
+                  }`}
+                >
+                  {formatCell(row[c])}
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function ResultBody({ data }) {
+  const isTabular =
+    Array.isArray(data) &&
+    data.length > 0 &&
+    typeof data[0] === "object" &&
+    data[0] !== null;
+
+  const chart = useMemo(() => (isTabular ? inferChart(data) : null), [data, isTabular]);
+  const [view, setView] = useState(chart ? "chart" : "table");
+  useEffect(() => setView(chart ? "chart" : "table"), [chart]);
+
+  if (data == null || (Array.isArray(data) && data.length === 0)) {
+    return <p className="text-sm text-muted-foreground">No rows matched that question.</p>;
+  }
+
+  if (!isTabular) {
+    return (
+      <pre className="overflow-x-auto rounded-md bg-muted p-4 font-mono text-xs text-foreground">
+        {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+      </pre>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      {chart && (
+        <div className="flex items-center gap-1">
+          <Button
+            variant={view === "chart" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setView("chart")}
+          >
+            <BarChart3 className="mr-1.5 h-3.5 w-3.5" />
+            Chart
+          </Button>
+          <Button
+            variant={view === "table" ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setView("table")}
+          >
+            <Table2 className="mr-1.5 h-3.5 w-3.5" />
+            Table
+          </Button>
+        </div>
+      )}
+      {view === "chart" && chart ? (
+        <ResultChart rows={data} spec={chart} />
+      ) : (
+        <ResultTable rows={data} />
+      )}
+    </div>
+  );
+}
+
+function ResultCard({ entry, onRerun, onRemove }) {
+  const [showSql, setShowSql] = useState(false);
+  const rowCount = Array.isArray(entry.data) ? entry.data.length : null;
+  return (
+    <Card>
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Sparkles className="h-4 w-4 shrink-0 text-emerald-600" />
+              <span className="truncate">{entry.question}</span>
+            </p>
+            {rowCount != null && (
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {rowCount} {rowCount === 1 ? "row" : "rows"}
+              </p>
+            )}
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={() => onRerun(entry.question)} title="Ask again">
+              <RotateCw className="h-3.5 w-3.5" />
+            </Button>
+            {Array.isArray(entry.data) && entry.data.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => downloadCSV(entry.data, "recurso-answer")}
+                title="Download CSV"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-stone-400 hover:text-red-600"
+              onClick={() => onRemove(entry.id)}
+              title="Remove"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
+
+        <ResultBody data={entry.data} />
+
+        {entry.query && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowSql((s) => !s)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              {showSql ? "Hide SQL" : "Show the SQL it ran"}
+            </button>
+            {showSql && (
+              <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs">
+                {entry.query}
+              </pre>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ---- persistent history ---------------------------------------------------
+
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// ---- page -----------------------------------------------------------------
+
 const AskAnalytics = () => {
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
-  const [result, setResult] = useState(null); // { question, data, query }
   const [error, setError] = useState(null);
+  const [history, setHistory] = useState(loadHistory);
+
+  // Persist the thread so a reload (or coming back later) keeps the answers.
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {
+      /* quota / privacy mode — history just won't persist */
+    }
+  }, [history]);
 
   const ask = async (q) => {
     const text = (q ?? question).trim();
-    if (!text) return;
+    if (!text || asking) return;
     setAsking(true);
     setError(null);
-    setResult(null);
     try {
       const res = await api.askAnalytics(text);
-      setResult({ question: text, data: res.data.data, query: res.data.query });
+      const entry = {
+        id: `${Date.now()}-${Math.round(Math.random() * 1e6)}`,
+        question: text,
+        data: res.data.data,
+        query: res.data.query,
+        ts: Date.now(),
+      };
+      setHistory((h) => [entry, ...h].slice(0, HISTORY_CAP));
+      setQuestion("");
     } catch (err) {
       setError(
         err?.response?.status === 503
@@ -90,11 +349,22 @@ const AskAnalytics = () => {
     }
   };
 
+  const removeEntry = (id) => setHistory((h) => h.filter((e) => e.id !== id));
+  const clearAll = () => setHistory([]);
+
   return (
     <div>
       <PageHeader
         title="Ask your data"
-        description="Ask billing questions in plain language — answered from your own tenant's data."
+        description="Ask billing questions in plain language — answered from your own tenant's data as read-only, tenant-scoped queries."
+        actions={
+          history.length > 0 ? (
+            <Button variant="outline" size="sm" onClick={clearAll}>
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              Clear history
+            </Button>
+          ) : null
+        }
       />
 
       <form
@@ -109,6 +379,7 @@ const AskAnalytics = () => {
           onChange={(e) => setQuestion(e.target.value)}
           placeholder="e.g. Which customers churned last month?"
           aria-label="Question"
+          autoFocus
         />
         <Button type="submit" disabled={asking || !question.trim()}>
           <Send className="h-4 w-4" />
@@ -121,45 +392,47 @@ const AskAnalytics = () => {
           <button
             key={ex}
             type="button"
-            onClick={() => {
-              setQuestion(ex);
-              ask(ex);
-            }}
-            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            disabled={asking}
+            onClick={() => ask(ex)}
+            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
           >
             {ex}
           </button>
         ))}
       </div>
 
-      <div className="mt-8">
-        {error ? (
-          <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>
-        ) : result ? (
+      {error && (
+        <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+          {error}
+        </p>
+      )}
+
+      <div className="mt-6 space-y-4">
+        {asking && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base">{result.question}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <ResultView data={result.data} />
-              {result.query && (
-                <details className="text-xs text-muted-foreground">
-                  <summary className="cursor-pointer select-none">Show the SQL it ran</summary>
-                  <pre className="mt-2 overflow-x-auto rounded-md bg-muted p-3 font-mono">
-                    {result.query}
-                  </pre>
-                </details>
-              )}
+            <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
+              <Sparkles className="h-4 w-4 animate-pulse text-emerald-600" />
+              Translating your question into a query…
             </CardContent>
           </Card>
+        )}
+
+        {history.length === 0 && !asking && !error ? (
+          <EmptyState
+            icon={Sparkles}
+            title="Ask anything about your billing data"
+            description="Answers appear here and are kept as a running history on this device. Try an example above."
+            learnMoreHref={docsUrlFor("/ask")}
+          />
         ) : (
-          !asking && (
-            <EmptyState
-              icon={Sparkles}
-              title="Ask anything about your billing data"
-              description="Questions run as read-only, tenant-scoped queries. Try one of the examples above."
+          history.map((entry) => (
+            <ResultCard
+              key={entry.id}
+              entry={entry}
+              onRerun={ask}
+              onRemove={removeEntry}
             />
-          )
+          ))
         )}
       </div>
     </div>
