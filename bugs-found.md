@@ -29,6 +29,22 @@ Each entry: severity, repro, root cause, fix, verification.
 - **Credit**: found by the money-path correctness audit; three seeded leads
   (wallet drainer, credit applier, rev-rec) were checked and cleared.
 
+### BUG-006 — Accounting export hardcodes /100, corrupting JPY/KWD/BHD in customers' books (MED)
+- **Repro**: sync a JPY invoice (Total 10000 = ¥10,000, exponent 0) to
+  QuickBooks/Xero/NetSuite/Tally → exports as `100.00` (understated 100×).
+  A KWD invoice (10000 = KWD 10.000, exponent 3) → `100.00` (overstated 10×).
+- **Root cause**: 13 sites across the four accounting adapters converted
+  int64 minor units with a literal `float64(x)/100`, ignoring the currency
+  exponent. The internal ledger is correctly exponent-agnostic, so this was
+  isolated to the export boundary — but wrote wrong numbers into external
+  books.
+- **Fix (this PR)**: shared `minorToMajor(amount, currency)` +
+  `currencyExponent` helper (ISO-4217 zero/three-decimal tables); all 13
+  sites use it. Default 2 preserves existing behavior for the common case.
+- **Verification**: table test across USD/EUR/JPY/KRW/KWD/BHD + case-
+  insensitivity + unknown-code default.
+- **Credit**: money-path correctness audit.
+
 ## 2026-07-28 — full-product verification sweep
 
 ### BUG-001 — EU e-invoice endpoints 500 on every call (HIGH)
