@@ -127,7 +127,11 @@ const DunningDashboard = () => {
     monthlyByMonth[b.month].count += b.count;
   });
   const chartData = months.map((m) => ({
-    month: m.slice(5),
+    // "2026-07" → "Jul" — bare month numbers on the axis read as data noise.
+    month: new Date(`${m}-01T00:00:00Z`).toLocaleString("en-US", {
+      month: "short",
+      timeZone: "UTC",
+    }),
     Recovered: fromMinorUnits(monthlyByMonth[m]?.amount || 0, primaryCurrency),
   }));
   const hasRecovered = (recovered?.recovered_count || 0) > 0;

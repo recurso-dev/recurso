@@ -17,14 +17,18 @@
  */
 export function makeChartTooltip(valueFormatter = (v) => v) {
   function ChartTooltip({ active, payload, label }) {
-    if (!active || !payload?.length) return null;
+    // Rows in sparse multi-series data (e.g. gains/losses split into two
+    // categories) carry only their own key; drop the absent series instead of
+    // rendering a NaN line.
+    const items = (payload || []).filter((p) => p.value != null);
+    if (!active || items.length === 0) return null;
     return (
       <div className="min-w-[9rem] rounded-lg border border-border bg-white px-3 py-2 shadow-lg shadow-black/[0.06]">
         {label != null && (
           <p className="mb-1.5 text-xs font-medium text-muted-foreground">{label}</p>
         )}
         <div className="space-y-1">
-          {payload.map((item, i) => (
+          {items.map((item, i) => (
             <div
               key={`${item.dataKey ?? item.name ?? i}`}
               className="flex items-center justify-between gap-6"

@@ -4,7 +4,7 @@ import { AreaChart, BarChart } from "@tremor/react";
 
 import { endpoints } from "../lib/api";
 import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
-import { cn, formatCurrency, fromMinorUnits } from "@/lib/utils";
+import { cn, formatCurrency, formatCurrencyHeadline, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -99,10 +99,11 @@ export default function ExecutiveSummary() {
   const maxEntityMRR = entityRows.reduce((mx, e) => Math.max(mx, e.normalized_mrr || 0), 0);
 
   const cur = m?.mrr?.reporting_currency || m?.ue?.reporting_currency || "USD";
-  const money = (n) => (n == null ? "—" : formatCurrency(n, cur));
+  // Headline formatting: whole amounts drop the ".00" tail; real cents stay.
+  const money = (n) => (n == null ? "—" : formatCurrencyHeadline(n, cur));
   const pct = (n) => (n == null ? "—" : `${Number(n).toFixed(1)}%`);
   const signed = (n) =>
-    n == null ? "—" : `${n >= 0 ? "+" : "−"}${formatCurrency(Math.abs(n), cur)}`;
+    n == null ? "—" : `${n >= 0 ? "+" : "−"}${formatCurrencyHeadline(Math.abs(n), cur)}`;
   const chartMoney = (v) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(v);
   // Rebuilt only when the reporting currency changes, so hovering doesn't churn
@@ -122,12 +123,15 @@ export default function ExecutiveSummary() {
   const churnExceedsGrowth =
     m?.wf != null && (m.wf.churned || 0) > (m.wf.new || 0) + (m.wf.expansion || 0);
 
+  // Gains and losses are separate stacked categories so each bar carries its
+  // meaning in color — growth in emerald, shrinkage in red. Each row fills only
+  // one of the two, so the "stack" renders as a single full-width colored bar.
   const movementData = m?.wf
     ? [
-        { name: "New", Amount: fromMinorUnits(m.wf.new || 0, cur) },
-        { name: "Expansion", Amount: fromMinorUnits(m.wf.expansion || 0, cur) },
-        { name: "Contraction", Amount: -fromMinorUnits(m.wf.contraction || 0, cur) },
-        { name: "Churned", Amount: -fromMinorUnits(m.wf.churned || 0, cur) },
+        { name: "New", Gained: fromMinorUnits(m.wf.new || 0, cur) },
+        { name: "Expansion", Gained: fromMinorUnits(m.wf.expansion || 0, cur) },
+        { name: "Contraction", Lost: -fromMinorUnits(m.wf.contraction || 0, cur) },
+        { name: "Churned", Lost: -fromMinorUnits(m.wf.churned || 0, cur) },
       ]
     : [];
 
@@ -227,8 +231,9 @@ export default function ExecutiveSummary() {
                     className="h-56"
                     data={movementData}
                     index="name"
-                    categories={["Amount"]}
-                    colors={chartCategoryColors}
+                    categories={["Gained", "Lost"]}
+                    colors={["emerald", "red"]}
+                    stack
                     valueFormatter={chartMoney}
                     customTooltip={chartTooltip}
                     showLegend={false}
@@ -284,13 +289,13 @@ export default function ExecutiveSummary() {
               <StatCard label="Expansion" value={money(m?.wf?.expansion)} hint="Upgrades" to="/finance/mrr-waterfall" />
               <StatCard
                 label="Contraction"
-                value={m?.wf ? `−${formatCurrency(m.wf.contraction || 0, cur)}` : "—"}
+                value={m?.wf ? `−${formatCurrencyHeadline(m.wf.contraction || 0, cur)}` : "—"}
                 hint="Downgrades"
                 to="/finance/mrr-waterfall"
               />
               <StatCard
                 label="Churned"
-                value={m?.wf ? `−${formatCurrency(m.wf.churned || 0, cur)}` : "—"}
+                value={m?.wf ? `−${formatCurrencyHeadline(m.wf.churned || 0, cur)}` : "—"}
                 hint="Cancellations"
                 tone={churnExceedsGrowth ? "danger" : undefined}
                 to="/churn"
