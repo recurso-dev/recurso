@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import QuoteDetail from "../QuoteDetail";
@@ -10,6 +11,7 @@ vi.mock("../../../lib/api", () => ({
     acceptQuote: vi.fn(),
     declineQuote: vi.fn(),
     convertQuoteToInvoice: vi.fn(),
+    deleteQuote: vi.fn(),
   },
 }));
 
@@ -28,7 +30,9 @@ const renderQuote = (quote, onClose = () => {}) => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <QuoteDetail quote={quote} isOpen={true} onClose={onClose} />
+      <MemoryRouter>
+        <QuoteDetail quote={quote} isOpen={true} onClose={onClose} />
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 };
@@ -74,9 +78,11 @@ describe("QuoteDetail actions", () => {
     );
   });
 
-  it("shows only Send on a draft quote", () => {
+  it("shows Send / Edit / Delete on a draft quote, not Accept or Convert", () => {
     renderQuote({ ...baseQuote, status: "draft" });
     expect(screen.getByRole("button", { name: /^send$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^edit$/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /convert to invoice/i })).not.toBeInTheDocument();
   });

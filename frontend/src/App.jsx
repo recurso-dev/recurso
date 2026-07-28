@@ -170,6 +170,7 @@ function App() {
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
+                            <Route path="/quotes/:id/edit" element={<CreateQuote />} />
                             <Route path="/settings" element={<Settings />} />
                             <Route path="/security" element={<Security />} />
                             <Route path="/team" element={<Team />} />

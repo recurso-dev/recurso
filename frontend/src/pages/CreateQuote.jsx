@@ -1,7 +1,7 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCustomers } from "@/lib/useCustomers";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -31,6 +31,8 @@ const CreateQuote = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { customers } = useCustomers();
+  const { id } = useParams();
+  const isEdit = Boolean(id);
   const [error, setError] = useState(null);
   const [errors, setErrors] = useState({});
 
@@ -45,16 +47,53 @@ const CreateQuote = () => {
     line_items: [{ description: "", quantity: 1, unit_price: 0 }],
   });
 
-  const createMutation = useMutation({
-    mutationFn: (payload) => endpoints.createQuote(payload),
+  // In edit mode, load the quote and pre-fill the form once.
+  const { data: existing, isLoading: loadingQuote } = useQuery({
+    queryKey: ["quote", id],
+    queryFn: async () => (await endpoints.getQuote(id)).data?.data ?? (await endpoints.getQuote(id)).data,
+    enabled: isEdit,
+  });
+  useEffect(() => {
+    if (!existing) return;
+    const items = Array.isArray(existing.line_items) ? existing.line_items : [];
+    setFormData({
+      customer_id: existing.customer_id || "",
+      currency: existing.currency || "USD",
+      notes: existing.notes || "",
+      terms: existing.terms || "",
+      tax_amount: existing.tax_amount || 0,
+      discount_amount: existing.discount_amount || 0,
+      valid_until: existing.valid_until ? existing.valid_until.slice(0, 10) : "",
+      line_items:
+        items.length > 0
+          ? items.map((it) => ({
+              description: it.description || "",
+              quantity: it.quantity || 1,
+              unit_price: it.unit_price || 0,
+            }))
+          : [{ description: "", quantity: 1, unit_price: 0 }],
+    });
+  }, [existing]);
+
+  // Only draft quotes are editable (the backend enforces this too).
+  const notEditable = isEdit && existing && existing.status !== "draft";
+
+  const saveMutation = useMutation({
+    mutationFn: (payload) =>
+      isEdit ? endpoints.updateQuote(id, payload) : endpoints.createQuote(payload),
     onSuccess: () => {
-      // The quotes list caches for 60s — invalidate so the new quote shows.
+      // The quotes list caches for 60s — invalidate so the change shows.
       queryClient.invalidateQueries({ queryKey: ["quotes"] });
+      if (isEdit) queryClient.invalidateQueries({ queryKey: ["quote", id] });
       navigate("/quotes");
     },
-    onError: (err) => setError(err.response?.data?.error?.message || "Failed to create quote"),
+    onError: (err) =>
+      setError(
+        err.response?.data?.error?.message ||
+          `Failed to ${isEdit ? "update" : "create"} quote`
+      ),
   });
-  const loading = createMutation.isPending;
+  const loading = saveMutation.isPending;
 
   const close = () => navigate("/quotes");
 
@@ -106,9 +145,10 @@ const CreateQuote = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (notEditable) return;
     if (!validate()) return;
     setError(null);
-    createMutation.mutate({
+    saveMutation.mutate({
       customer_id: formData.customer_id,
       currency: formData.currency,
       notes: formData.notes,
@@ -131,8 +171,12 @@ const CreateQuote = () => {
     <Sheet open onOpenChange={(open) => !open && close()}>
       <SheetContent side="right" className="w-full sm:max-w-2xl">
         <SheetHeader>
-          <SheetTitle>Create quote</SheetTitle>
-          <SheetDescription>Create a new quote for a customer.</SheetDescription>
+          <SheetTitle>{isEdit ? "Edit quote" : "Create quote"}</SheetTitle>
+          <SheetDescription>
+            {isEdit
+              ? "Update the details of this draft quote."
+              : "Create a new quote for a customer."}
+          </SheetDescription>
         </SheetHeader>
 
         <form
@@ -144,6 +188,17 @@ const CreateQuote = () => {
             <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
               {error}
             </div>
+          )}
+
+          {notEditable && (
+            <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+              This quote is {existing.status} and can no longer be edited. Only
+              draft quotes are editable.
+            </div>
+          )}
+
+          {isEdit && loadingQuote && (
+            <p className="text-sm text-muted-foreground">Loading quote…</p>
           )}
 
           {/* Quote details */}
@@ -361,8 +416,18 @@ const CreateQuote = () => {
           <Button type="button" variant="outline" onClick={close}>
             Cancel
           </Button>
-          <Button type="submit" form="create-quote-form" disabled={loading}>
-            {loading ? "Creating..." : "Create quote"}
+          <Button
+            type="submit"
+            form="create-quote-form"
+            disabled={loading || notEditable || (isEdit && loadingQuote)}
+          >
+            {loading
+              ? isEdit
+                ? "Saving..."
+                : "Creating..."
+              : isEdit
+                ? "Save changes"
+                : "Create quote"}
           </Button>
         </SheetFooter>
       </SheetContent>
