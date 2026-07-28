@@ -220,7 +220,24 @@ const Integrations = () => {
     }
   };
 
+  const [logProvider, setLogProvider] = useState("all");
+  const [logStatus, setLogStatus] = useState("all");
+
+  const logProviders = [...new Set(logs.map((l) => l.provider).filter(Boolean))];
+  const filteredLogs = logs.filter(
+    (l) =>
+      (logProvider === "all" || l.provider === logProvider) &&
+      (logStatus === "all" || l.status === logStatus),
+  );
+
   const logColumns = [
+    {
+      key: "provider",
+      header: "Integration",
+      cell: (l) => (
+        <span className="text-sm font-medium capitalize">{l.provider || "—"}</span>
+      ),
+    },
     { key: "entity_type", header: "Entity" },
     { key: "action", header: "Action" },
     {
@@ -230,7 +247,7 @@ const Integrations = () => {
         <div>
           <Badge variant={syncStatusVariant(l.status)}>{l.status}</Badge>
           {l.error_message && (
-            <p className="mt-1 max-w-xs truncate text-xs text-red-600" title={l.error_message}>
+            <p className="mt-1 max-w-md whitespace-normal break-words text-xs text-red-600">
               {l.error_message}
             </p>
           )}
@@ -367,10 +384,39 @@ const Integrations = () => {
       </div>
 
       <div className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold text-foreground">Sync activity</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-foreground">Sync activity</h2>
+          <div className="flex items-center gap-2">
+            {logProviders.length > 1 && (
+              <select
+                value={logProvider}
+                onChange={(e) => setLogProvider(e.target.value)}
+                className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground capitalize focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Filter by integration"
+              >
+                <option value="all">All integrations</option>
+                {logProviders.map((pv) => (
+                  <option key={pv} value={pv} className="capitalize">
+                    {pv}
+                  </option>
+                ))}
+              </select>
+            )}
+            <select
+              value={logStatus}
+              onChange={(e) => setLogStatus(e.target.value)}
+              className="h-8 rounded-md border border-input bg-transparent px-2 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label="Filter by status"
+            >
+              <option value="all">All statuses</option>
+              <option value="success">Success only</option>
+              <option value="error">Errors only</option>
+            </select>
+          </div>
+        </div>
         <DataTable
           columns={logColumns}
-          data={logs}
+          data={filteredLogs}
           loading={logsLoading}
           error={logsError}
           onRetry={fetchLogs}
