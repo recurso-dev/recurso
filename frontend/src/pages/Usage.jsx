@@ -4,6 +4,7 @@ import { BarChart } from "@tremor/react";
 import { Activity, Download, Gauge, Layers, RefreshCw, Users } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -22,6 +23,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Axis and tooltip share one formatter so they read identically.
+const unitsFormatter = (v) => v.toLocaleString();
+const unitsTooltip = makeChartTooltip(unitsFormatter);
 
 export default function Usage() {
   const [usageStats, setUsageStats] = useState([]);
@@ -308,12 +312,14 @@ export default function Usage() {
             <Skeleton className="h-72 w-full" />
           ) : byDimension.length > 0 ? (
             <BarChart
+              {...chartDefaults}
               className="h-72"
               data={byDimension}
               index="dimension"
               categories={["Units"]}
-              colors={["emerald"]}
-              valueFormatter={(v) => v.toLocaleString()}
+              colors={chartCategoryColors}
+              valueFormatter={unitsFormatter}
+              customTooltip={unitsTooltip}
               showLegend={false}
               showGridLines
               yAxisWidth={64}

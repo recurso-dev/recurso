@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AreaChart, BarChart } from "@tremor/react";
 
 import { endpoints } from "../lib/api";
+import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { cn, formatCurrency, fromMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -104,6 +105,9 @@ export default function ExecutiveSummary() {
     n == null ? "—" : `${n >= 0 ? "+" : "−"}${formatCurrency(Math.abs(n), cur)}`;
   const chartMoney = (v) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(v);
+  // Rebuilt only when the reporting currency changes, so hovering doesn't churn
+  // a fresh tooltip component every render.
+  const chartTooltip = useMemo(() => makeChartTooltip(chartMoney), [cur]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const mrrVal = m?.mrr?.normalized_mrr ?? m?.mrr?.mrr ?? null;
   const netChange = m?.wf ? (m.wf.ending_mrr || 0) - (m.wf.starting_mrr || 0) : null;
@@ -196,13 +200,17 @@ export default function ExecutiveSummary() {
                     </p>
                   ) : (
                     <AreaChart
+                      {...chartDefaults}
                       className="h-56"
                       data={trend}
                       index="month"
                       categories={["MRR"]}
-                      colors={["emerald"]}
+                      colors={chartCategoryColors}
                       valueFormatter={chartMoney}
+                      customTooltip={chartTooltip}
                       showLegend={false}
+                      showGradient
+                      curveType="monotone"
                       yAxisWidth={72}
                     />
                   )}
@@ -215,12 +223,14 @@ export default function ExecutiveSummary() {
                 </CardHeader>
                 <CardContent>
                   <BarChart
+                    {...chartDefaults}
                     className="h-56"
                     data={movementData}
                     index="name"
                     categories={["Amount"]}
-                    colors={["emerald"]}
+                    colors={chartCategoryColors}
                     valueFormatter={chartMoney}
+                    customTooltip={chartTooltip}
                     showLegend={false}
                     yAxisWidth={72}
                   />
