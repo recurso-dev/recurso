@@ -1800,6 +1800,7 @@ func main() {
 		v1.GET("/credit-notes/:id/pdf", creditNoteHandler.DownloadPDF)
 		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
 		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
+		v1.POST("/credit-notes/:id/void", creditNoteHandler.VoidCreditNote)
 
 		// Webhooks & Events (P24)
 		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)

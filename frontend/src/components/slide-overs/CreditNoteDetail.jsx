@@ -7,7 +7,8 @@ import { toast } from "sonner";
 import { endpoints } from "../../lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Check, X, Download, Copy } from "lucide-react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Check, X, Download, Copy, Ban } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -30,6 +31,20 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [downloading, setDownloading] = useState(false);
+  const [confirmVoid, setConfirmVoid] = useState(false);
+
+  const voidMutation = useMutation({
+    mutationFn: () => endpoints.voidCreditNote(creditNote.id),
+    onSuccess: () => {
+      toast.success("Credit note voided.");
+      queryClient.invalidateQueries(["credit-notes"]);
+      setConfirmVoid(false);
+      onClose();
+    },
+    onError: (err) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to void credit note.");
+    },
+  });
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -85,6 +100,13 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
   const amount = creditNote.amount ?? creditNote.total ?? 0;
   const isPending = creditNote.status === "pending_approval";
   const canApprove = user?.role === "admin" || user?.role === "owner";
+  // Void applies only to an issued account-credit with an unspent balance; a
+  // refund moved money at the gateway and can't be undone with a ledger entry.
+  const canVoid =
+    canApprove &&
+    creditNote.type === "adjustment" &&
+    creditNote.status === "issued" &&
+    (creditNote.balance ?? 0) > 0;
 
   return (
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
@@ -189,8 +211,33 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
               <Copy className="mr-2 h-4 w-4" />
               Copy ID
             </Button>
+            {canVoid && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                onClick={() => setConfirmVoid(true)}
+              >
+                <Ban className="mr-2 h-4 w-4" />
+                Void
+              </Button>
+            )}
           </div>
         </div>
+
+        <ConfirmDialog
+          open={confirmVoid}
+          onOpenChange={setConfirmVoid}
+          title="Void this credit note?"
+          description={`This cancels the credit and writes off the remaining ${formatCurrency(
+            creditNote.balance,
+            currency
+          )} balance. Already-applied credit is not affected. This can't be undone.`}
+          confirmLabel="Void credit note"
+          destructive
+          busy={voidMutation.isPending}
+          onConfirm={() => voidMutation.mutate()}
+        />
       </SheetContent>
     </Sheet>
   );

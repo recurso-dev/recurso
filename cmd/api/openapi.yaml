@@ -1957,6 +1957,40 @@ paths:
         '403':
           $ref: '#/components/responses/Forbidden'
 
+  /v1/credit-notes/{id}/void:
+    post:
+      operationId: voidCreditNote
+      tags: [Credit Notes]
+      summary: Void an issued account-credit note
+      description: >
+        Cancels an issued adjustment (account-credit) note and writes off its
+        unspent balance, posting the GL reversal. Only the unspent portion is
+        reversed; any already-applied credit stays real. Refund notes cannot be
+        voided (the money left through the payment gateway). Admins/owners only.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Credit note voided.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreditNote'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
   /v1/quotes:
     post:
       operationId: createQuote

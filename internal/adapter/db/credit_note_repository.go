@@ -419,6 +419,47 @@ func (r *CreditNoteRepository) ClaimExpiredCredits(ctx context.Context, now time
 	return out, rows.Err()
 }
 
+// VoidAdjustmentCredit atomically voids a single issued adjustment credit note
+// with an unspent balance: it flips status to 'void', zeroes the balance, and
+// returns the amount written off (the pre-void balance) for the GL reversal.
+// The WHERE guard makes this a no-op — returning (nil, nil) — for a note that
+// is the wrong type/status, already spent, not this tenant's, or voided
+// concurrently, so the caller never double-posts the reversal. Only the unspent
+// balance is reversed; any already-applied portion is left as real revenue
+// offset.
+func (r *CreditNoteRepository) VoidAdjustmentCredit(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditExpiry, error) {
+	var e domain.CreditExpiry
+	var entityID sql.NullString
+	err := r.db.QueryRowxContext(ctx, `
+		WITH target AS (
+			SELECT id, tenant_id, entity_id, balance, currency
+			FROM credit_notes
+			WHERE id = $1 AND tenant_id = $2
+			  AND type = 'adjustment' AND status = 'issued' AND balance > 0
+			FOR UPDATE
+		)
+		UPDATE credit_notes c
+		   SET balance = 0, status = 'void', updated_at = NOW()
+		  FROM target
+		 WHERE c.id = target.id
+		 RETURNING c.id, target.tenant_id, target.entity_id, target.balance, target.currency`,
+		id, tenantID).Scan(&e.CreditNoteID, &e.TenantID, &entityID, &e.Amount, &e.Currency)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil // not voidable (wrong type/status, no balance, or gone)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to void credit note: %w", err)
+	}
+	if entityID.Valid {
+		eid, perr := uuid.Parse(entityID.String)
+		if perr != nil {
+			return nil, fmt.Errorf("parse entity id: %w", perr)
+		}
+		e.EntityID = &eid
+	}
+	return &e, nil
+}
+
 func (r *CreditNoteRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.CreditNote, error) {
 	var cn domain.CreditNote
 	err := r.db.GetContext(ctx, &cn, `SELECT * FROM credit_notes WHERE id = $1 AND tenant_id = $2`, id, tenantID)
