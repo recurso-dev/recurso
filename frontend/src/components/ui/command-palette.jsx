@@ -3,11 +3,12 @@ import { useNavigate } from "react-router";
 import {
   Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
   Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,
-  Settings, ShieldCheck, UserCog, Plus, Search, PieChart, Globe,
+  Settings, ShieldCheck, UserCog, Plus, Search, PieChart, Globe, BookOpen, Library, ExternalLink,
 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { DOCS_HOME, DOCS_GUIDES, DOCS_API_REFERENCE } from "@/lib/docsLinks";
 
 const DESTINATIONS = [
   { group: "Go to", label: "Home", to: "/", icon: Home },
@@ -40,6 +41,9 @@ const DESTINATIONS = [
   { group: "Create", label: "New plan", to: "/plans/new", icon: Plus },
   { group: "Create", label: "New subscription", to: "/subscriptions/new", icon: Plus },
   { group: "Create", label: "New coupon", to: "/coupons/new", icon: Plus },
+  { group: "Help", label: "Documentation", href: DOCS_HOME, icon: BookOpen },
+  { group: "Help", label: "Dashboard guides", href: DOCS_GUIDES, icon: Library },
+  { group: "Help", label: "API reference", href: DOCS_API_REFERENCE, icon: Code2 },
 ];
 
 // CommandPalette is the dashboard's keyboard-first navigator (⌘K / Ctrl-K).
@@ -66,6 +70,10 @@ export function CommandPalette({ open, onOpenChange }) {
 
   const go = (item) => {
     onOpenChange(false);
+    if (item.href) {
+      window.open(item.href, "_blank", "noopener,noreferrer");
+      return;
+    }
     navigate(item.to);
   };
 
@@ -130,7 +138,8 @@ export function CommandPalette({ open, onOpenChange }) {
                   )}
                 >
                   <Icon className="h-4 w-4 text-stone-400" />
-                  {item.label}
+                  <span className="flex-1">{item.label}</span>
+                  {item.href && <ExternalLink className="h-3.5 w-3.5 text-stone-300" />}
                 </button>
               </div>
             );

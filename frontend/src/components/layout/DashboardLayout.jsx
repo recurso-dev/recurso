@@ -5,6 +5,7 @@ import { Search, Bell, LogOut, User, ChevronDown, FlaskConical } from "lucide-re
 import { useAuth } from "../../auth/AuthProvider";
 import { API_ROOT } from "../../lib/api";
 import Sidebar from "./Sidebar";
+import DocsHelpMenu from "./DocsHelpMenu";
 import { CommandPalette } from "@/components/ui/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -143,6 +144,8 @@ export function DashboardLayout() {
               <span className="flex-1 text-left">Search…</span>
               <kbd>⌘K</kbd>
             </button>
+
+            <DocsHelpMenu pageTitle={title} />
 
             <Link
               to="/notifications"
