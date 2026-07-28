@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Send, Check, X, ArrowRight, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router";
+import { Send, Check, X, ArrowRight, Trash2, Pencil } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -37,6 +38,7 @@ const Field = ({ label, children, mono }) => (
 
 const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   // Optimistic local status so acting on a quote updates the badge and reveals
   // the next action (e.g. Accept → Convert) without reopening the sheet. Reset
   // whenever a different quote is opened.
@@ -125,10 +127,12 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
   const canSend = status === "draft" || status === "sent";
   const canDecide = status === "sent";
   const canConvert = status === "accepted" && !quote.invoice_id;
+  // Only a draft quote can be edited (matches the backend's IsEditable).
+  const canEdit = status === "draft";
   // A quote that never became an invoice can be deleted; accepted/converted
   // ones are kept for the audit trail.
   const canDelete = status === "draft" || status === "declined";
-  const hasActions = canSend || canDecide || canConvert || canDelete;
+  const hasActions = canSend || canDecide || canConvert || canEdit || canDelete;
 
   return (
     <Sheet open={isOpen} onOpenChange={(o) => !o && onClose()}>
@@ -253,6 +257,19 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
                 </p>
               )}
               <div className="flex flex-wrap gap-2">
+                {canEdit && (
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => {
+                      onClose();
+                      navigate(`/quotes/${quote.id}/edit`);
+                    }}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </Button>
+                )}
                 {canSend && (
                   <Button
                     variant="outline"
