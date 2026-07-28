@@ -540,6 +540,7 @@ export default function Developers() {
                         onClick={() => setDeleteWebhookTarget(hook.id)}
                         className="text-stone-400 hover:text-red-600"
                         title="Delete endpoint"
+                        aria-label="Delete endpoint"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -577,6 +578,7 @@ export default function Developers() {
                 size="icon"
                 onClick={() => refetchEvents()}
                 title="Refresh events"
+                aria-label="Refresh events"
               >
                 <RefreshCw className="h-4 w-4" />
               </Button>
@@ -853,6 +855,7 @@ export default function Developers() {
               size="icon"
               onClick={() => refetchEndpointDeliveries()}
               title="Refresh deliveries"
+              aria-label="Refresh deliveries"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>

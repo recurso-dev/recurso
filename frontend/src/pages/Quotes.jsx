@@ -170,6 +170,7 @@ const Quotes = () => {
             }}
             className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-900"
             title="View details"
+            aria-label="View quote details"
           >
             <MoreHorizontal className="h-4 w-4" />
           </button>
