@@ -49,8 +49,25 @@ had tests at start).
 - `pages/__tests__/Mandates.test.jsx` (3) — renders max/cycle money + method,
   revoke-behind-confirm (payload = mandate id), empty state.
 
+### Batch 5 — plan pricing list
+- `pages/__tests__/Plans.test.jsx` (2) — renders each plan's first-price money
+  (per currency exponent) and the empty state.
+
 ## Running totals
-- Frontend tests: 183 → 251 (+68). Test files: 29 → 41.
+- Frontend tests: 183 → 253 (+70). Test files: 29 → 42.
+- Shipped as 5 green-CI PRs (#292–#295, + this).
+
+## What this run hardened (behavioral, not coverage padding)
+- **Money display end-to-end**: `utils` exponent math + the `Money` component —
+  the layer every currency amount passes through (USD/JPY/KWD/BHD).
+- **Money-path UI guards**: credit-note **Void** is provably gated (issued
+  adjustment + balance + admin + confirm) and mandate **revoke** requires confirm.
+- **Security contract**: the API key is never persisted to localStorage.
+- **Silent-truncation guard**: shared name-resolution hooks always request the
+  full set (`limit:1000`).
+- **List-page contracts**: render / status-filter / empty across representative
+  pages (Coupons, Mandates, Plans) on top of the pages already covered earlier
+  (Invoices, Audit Log, Disputes, Ask AI, Dashboard).
 
 ## Method
 - Behavioral assertions over implementation details.
