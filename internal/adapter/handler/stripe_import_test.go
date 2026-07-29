@@ -37,17 +37,29 @@ func (f *fakeImportCatalog) CreatePlan(_ context.Context, in service.CreatePlanI
 	return p, nil
 }
 
-type fakeRefRepo struct{ ids map[string]bool }
+type fakeImportSubs struct{ created []*domain.Subscription }
+
+func (f *fakeImportSubs) Create(_ context.Context, sub *domain.Subscription) error {
+	f.created = append(f.created, sub)
+	return nil
+}
+
+type fakeRefRepo struct{ refs []*domain.ImportExternalRef }
 
 func (f *fakeRefRepo) Create(_ context.Context, ref *domain.ImportExternalRef) error {
-	if f.ids == nil {
-		f.ids = map[string]bool{}
-	}
-	f.ids[ref.ExternalID] = true
+	cp := *ref
+	f.refs = append(f.refs, &cp)
 	return nil
 }
 func (f *fakeRefRepo) ListExternalIDs(_ context.Context, _ uuid.UUID, _ string) (map[string]bool, error) {
-	return f.ids, nil
+	out := map[string]bool{}
+	for _, r := range f.refs {
+		out[r.ExternalID] = true
+	}
+	return out, nil
+}
+func (f *fakeRefRepo) ListRefs(_ context.Context, _ uuid.UUID, _ string) ([]*domain.ImportExternalRef, error) {
+	return f.refs, nil
 }
 
 func newStripeImportHandler(existingEmail string) *StripeImportHandler {
@@ -55,7 +67,7 @@ func newStripeImportHandler(existingEmail string) *StripeImportHandler {
 	if existingEmail != "" {
 		cust.existing = []*domain.Customer{{Email: existingEmail}}
 	}
-	svc := service.NewStripeImportService(cust, &fakeImportCatalog{}, &fakeRefRepo{ids: map[string]bool{}})
+	svc := service.NewStripeImportService(cust, &fakeImportCatalog{}, &fakeImportSubs{}, &fakeRefRepo{})
 	return NewStripeImportHandler(svc)
 }
 

@@ -53,3 +53,25 @@ func (r *ImportRefRepository) ListExternalIDs(ctx context.Context, tenantID uuid
 	}
 	return out, rows.Err()
 }
+
+func (r *ImportRefRepository) ListRefs(ctx context.Context, tenantID uuid.UUID, source string) ([]*domain.ImportExternalRef, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, tenant_id, source, kind, external_id, recurso_id, created_at
+		 FROM import_external_refs WHERE tenant_id = $1 AND source = $2`,
+		tenantID, source,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*domain.ImportExternalRef
+	for rows.Next() {
+		var ref domain.ImportExternalRef
+		if err := rows.Scan(&ref.ID, &ref.TenantID, &ref.Source, &ref.Kind, &ref.ExternalID, &ref.RecursoID, &ref.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, &ref)
+	}
+	return out, rows.Err()
+}

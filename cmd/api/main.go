@@ -1120,7 +1120,7 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
-	stripeImportService := service.NewStripeImportService(customerService, catalogService, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
+	stripeImportService := service.NewStripeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
 	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime

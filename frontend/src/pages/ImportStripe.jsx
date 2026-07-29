@@ -148,7 +148,8 @@ export default function ImportStripe() {
             <p className="text-sm text-muted-foreground">
               Export your Stripe data as JSON (customers, products, prices,
               subscriptions) and upload it here, or paste it below. Subscriptions
-              and payment methods are shown in the preview but not imported yet.
+              import in their current billing state — no re-billing. Card payment
+              methods can't be migrated from an export and are skipped.
             </p>
 
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-stone-50 px-4 py-8 text-center transition-colors hover:border-stone-300">

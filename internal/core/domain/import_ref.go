@@ -18,8 +18,9 @@ const (
 
 // Import object kinds (the `kind` column).
 const (
-	ImportKindCustomer = "customer"
-	ImportKindPlan     = "plan"
+	ImportKindCustomer     = "customer"
+	ImportKindPlan         = "plan"
+	ImportKindSubscription = "subscription"
 )
 
 // ImportExternalRef maps a source system's object id (e.g. a Stripe customer or
