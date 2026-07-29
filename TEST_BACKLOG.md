@@ -42,13 +42,33 @@ Frontend is the coverage gap. Ranked highest-value first.
 - [ ] `Ledger` page — coupled accounts+entries queries with account selection
 - [ ] `SubscriptionDetail`, `CancelFlowDetail`, `PricingSimulator` slide-overs
 
+## P4 — backend handler validation (DB-free RBAC/input guards)
+- [x] dispute, credit-note, team, tax-nexus, organization, tenant handlers —
+      done batches 25–28 (15 tests). Pattern: construct the handler with nil/empty
+      service deps, `jsonCtx(...)`, set `tenant_id`/`user_role` on the context,
+      call the method, assert 400/403 (these paths return before the service).
+- [ ] Remaining write handlers to sweep the same way: gateway_connection (has a
+      test already), integration_connection (has test), sso (has test), plus
+      coupon/plan/subscription/quote create handlers' binding validation.
+
 ## Recommended next execution order (for the next session)
-1. `Developers` (API-key revoke = security-relevant) + `OfflinePayments` (money).
-2. `Metering`/`Usage` (usage-based billing surface).
-3. `Organizations` (multi-tenant), `Security`/`Profile` (account settings).
-4. Remaining finance reports (RevenueRecognition, MonthEndClose, GSTReturns).
-5. `SubscriptionDetail` dedicated suite (cancel-reason flow, plan-change preview).
-6. Pattern components + `lib/queryClient.js`.
+1. **Coverage tooling decision** — add `@vitest/coverage-v8` (frontend) + a CI
+   coverage gate. This is the single highest-value item: it converts "file
+   presence" into measured line/branch coverage and pinpoints true gaps. Requires
+   a package.json/lockfile change (deferred here to avoid an unreviewed dep bump).
+2. More backend handler-validation (coupon/plan/subscription create binding
+   paths) — cheap, DB-free, same pattern as batches 25–28.
+3. Backend service-layer edge tests behind the invariant harness (PG-gated).
+4. Low-value frontend remainder (settings/create-form pages) — only if pursuing
+   a coverage-% target; otherwise skip (PageSmoke already mounts them).
+5. E2E flows beyond the existing harness (infra-gated).
+
+## Decisions recorded this run
+- Skipped installing coverage tooling mid-run (lockfile/CI change needs review).
+- Kept every batch DB-free where possible so tests are fast + deterministic.
+- Fixed defects when safe (cancel-400, x/text CVE, Register autofill) and
+  de-flaked one test (AskAnalytics localStorage race), each with a regression
+  assertion. See BUGS_FOUND.md.
 
 ## P4 — backend edges (already strong; targeted gaps only)
 - [ ] Handler validation paths that lack a table-driven test (400s, oneof enums)
