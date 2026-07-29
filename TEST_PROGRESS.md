@@ -176,10 +176,19 @@ had tests at start).
 - `pages/__tests__/DunningCampaigns.test.jsx` (2) — campaigns render with active
   state; empty state.
 
+### Batch 23 — subscription detail (core money-path slide-over)
+- `slide-overs/__tests__/SubscriptionDetail.test.jsx` (3) — renders the
+  subscription; the Cancel button opens the cancel dialog and loads the reason
+  catalog; and the confirm stays **disabled until a reason is chosen** — the
+  #290 cancel-with-reason guard, now verified directly in the component (not just
+  via the endpoint payload).
+
 ## Running totals (updated)
-- Run total: **183 → 335 (+152) across 22 test PRs**, plus a HIGH-CVE fix and an
-  autofill form fix. Test files: 29 → 71.
-- Pages tested: ~45/57. Slide-overs: 9/12. lib: 9/9.
+- Run total: **183 → 338 (+155) across 23 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 72.
+- Pages tested: ~45/57. Slide-overs: 10/12. lib: 9/9.
+- Remaining slide-overs: CancelFlowDetail, CancelFlowStepConfig, PricingSimulator
+  (all config/simulation UI, low money-risk).
 - Remaining pages (lower-risk): ExecutiveSummary, Integrations, Profile, Security,
   Usage, RevenueRecognition, MonthEndClose, AcceptInvite, Create{Coupon,CreditNote,
   Plan}. Slide-overs: CancelFlowDetail, CancelFlowStepConfig, PricingSimulator,
