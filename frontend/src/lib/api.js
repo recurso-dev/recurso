@@ -60,7 +60,10 @@ export const endpoints = {
   // cookie-less); resendVerification re-issues a link to the logged-in user.
   verifyEmail: (token) =>
     axios.post(`${API_ROOT}/auth/verify-email`, { token }),
-  resendVerification: () => api.post('/auth/verify-email/resend'),
+  // Root path (registered on r, not the /v1 group) — like logout/verifyEmail —
+  // so it must use API_ROOT, not the /v1 `api` instance. axios.defaults sends
+  // the session cookie. (Using api.post here 404'd on /v1/auth/verify-email/resend.)
+  resendVerification: () => axios.post(`${API_ROOT}/auth/verify-email/resend`),
   // --- Migration: import from Stripe ---
   // Preview is a dry run (no writes); commit creates customers + plans and is
   // idempotent. Both take the Stripe export JSON as the body.

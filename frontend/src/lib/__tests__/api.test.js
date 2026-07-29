@@ -23,6 +23,8 @@ vi.mock("axios", () => {
 vi.mock("../authToken", () => ({ getApiKey: () => "" }));
 
 const { endpoints } = await import("../api");
+// The mocked default export — used for ROOT (non-/v1) endpoints.
+const rootAxios = (await import("axios")).default;
 
 const lastCall = (spy) => spy.mock.calls.at(-1);
 
@@ -75,5 +77,31 @@ describe("api endpoint contracts", () => {
     endpoints.getSubscriptions({ limit: 25, status: "active" });
     expect(lastCall(inst.get)[0]).toBe("/subscriptions");
     expect(lastCall(inst.get)[1]).toMatchObject({ params: { limit: 25, status: "active" } });
+  });
+});
+
+describe("root (non-/v1) auth endpoint routing", () => {
+  beforeEach(() => {
+    inst.post.mockClear();
+    rootAxios.post.mockClear();
+  });
+
+  // Regression: resendVerification once used the /v1 `api` instance, so it hit
+  // /v1/auth/verify-email/resend (404) while the route is registered at root.
+  it("resendVerification uses the root /auth path, not the /v1 instance", () => {
+    endpoints.resendVerification();
+    expect(inst.post).not.toHaveBeenCalled();
+    expect(rootAxios.post).toHaveBeenCalledTimes(1);
+    const url = lastCall(rootAxios.post)[0];
+    expect(url).toMatch(/\/auth\/verify-email\/resend$/);
+    expect(url).not.toContain("/v1/");
+  });
+
+  it("verifyEmail posts the token to the root /auth path", () => {
+    endpoints.verifyEmail("tok_123");
+    const [url, body] = lastCall(rootAxios.post);
+    expect(url).toMatch(/\/auth\/verify-email$/);
+    expect(url).not.toContain("/v1/");
+    expect(body).toEqual({ token: "tok_123" });
   });
 });
