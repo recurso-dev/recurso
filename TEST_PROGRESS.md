@@ -216,6 +216,16 @@ had tests at start).
   Wrapped the read in `waitFor` (#319). App behavior was correct. See BUGS_FOUND.
 - Backend test files: 321 → 322.
 
+### Batch 27 — more backend RBAC/validation (tax-nexus + organizations)
+- `tax_nexus_validation_test.go` (1) — SetRegistrations 403s a non-manager
+  (US-tax nexus registrations are owner/admin-only).
+- `organization_validation_test.go` (2) — GetOrganization and AddTenant 400 on
+  an invalid org id. All validate before the service → no DB.
+- Backend handler-validation tests now span 5 handlers (dispute, credit-note,
+  team, tax-nexus, organization) — 13 tests, all DB-free, covering the RBAC +
+  input-validation guards on the money/compliance/admin write paths.
+- Backend test files: 322 → 324.
+
 ## Honest assessment (end of run)
 The remaining untested files are **low-risk, low-incremental-value**: settings/
 account pages (Profile, Security, Integrations, ExecutiveSummary), on-demand
