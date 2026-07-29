@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	sentry "github.com/getsentry/sentry-go"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -97,6 +98,21 @@ func main() {
 	// log via slog, so make the default handler emit JSON to stdout for
 	// machine-parseable, queryable logs in any deployment.
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+
+	// Error tracking (Sentry): inert unless SENTRY_DSN is set — sentry calls are
+	// no-ops without a configured client, so this is safe to leave wired.
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         dsn,
+			Environment: getEnvDefault("APP_ENV", "production"),
+			Release:     version,
+		}); err != nil {
+			log.Printf("Sentry init failed: %v", err)
+		} else {
+			log.Println("Sentry error tracking enabled")
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
 
 	// 1. Initialize DB
 	dbURL := os.Getenv("DATABASE_URL")
@@ -1427,6 +1443,8 @@ func main() {
 	}
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
+	// Report panics + 5xx to Sentry (inert unless SENTRY_DSN is set).
+	r.Use(middleware.SentryMiddleware())
 	// Prometheus metrics: record every request (method/route/status + latency).
 	httpMetrics := metrics.NewHTTPMetrics()
 	r.Use(middleware.MetricsMiddleware(httpMetrics))

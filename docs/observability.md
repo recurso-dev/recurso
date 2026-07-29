@@ -59,11 +59,25 @@ Health-check alerting (component up/down via a webhook) already exists
 independently — see `docs/spec_incident_alerting.md` and the
 `ALERT_WEBHOOK_URL` env.
 
-## Error tracking (Sentry) — planned
+## Error tracking (Sentry)
 
-Application error tracking (stack traces, release health) is the remaining
-observability piece. It will be wired **guarded by a `SENTRY_DSN` env** — inert
-when unset, active when a DSN is provided — mirroring how SMTP is gated by
-`SMTP_HOST`. Tracked as a follow-up because it adds an SDK dependency and needs a
-DSN (an external credential). Until then, structured request logs + the metrics
-above cover the operational surface.
+Application error tracking is wired on both the API and the dashboard, **gated by
+a DSN** — inert when unset, active when provided (mirroring how SMTP is gated by
+`SMTP_HOST`):
+
+```bash
+# API (server): captures panics + 5xx handler errors
+SENTRY_DSN=https://...ingest.sentry.io/...
+# Dashboard (build-time): captures unhandled client errors
+VITE_SENTRY_DSN=https://...ingest.sentry.io/...
+```
+
+- **API** — `middleware.SentryMiddleware` sits inside gin's Recovery: a panic is
+  reported to Sentry and then re-raised so the request still returns a 500;
+  handler errors that produce a 5xx are captured too. Errors are tagged with the
+  route template + method. Events flush on shutdown.
+- **Dashboard** — `Sentry.init` in `main.jsx` runs only when `VITE_SENTRY_DSN`
+  is set at build time.
+
+Both default to **errors only** (no tracing/replay); turn those on later if
+wanted. Combined with the metrics above, this covers the operational surface.
