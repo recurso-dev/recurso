@@ -124,11 +124,17 @@ had tests at start).
   movement (+$200 from the mocked deltas); requests the default trailing-month
   range (two date args).
 
+### Batch 15 — churn ops + revenue-recognition waterfall
+- `pages/__tests__/Churn.test.jsx` (3) — high-risk customers render with score;
+  **acknowledge** an alert calls acknowledgeChurnAlert(id); no-alerts state.
+- `pages/__tests__/RevenueWaterfall.test.jsx` (1) — total recognized renders
+  from the recognition curve (dual-query page; rollforward stubbed).
+
 ## Running totals
-- Frontend tests: 183 → 305 (+122). Test files: 29 → 58.
-- Shipped as 14 green-CI test PRs (#292–#299, #302–#306, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 309 (+126). Test files: 29 → 60.
+- Shipped as 15 green-CI test PRs (#292–#299, #302–#307, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
-- **305 frontend tests.** Backend remains at 319 test files + invariant harness.
+- **309 frontend tests across 60 files.** Backend: 319 test files + harness.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
