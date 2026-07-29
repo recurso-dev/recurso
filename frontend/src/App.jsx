@@ -87,6 +87,7 @@ const EUEInvoiceSettings = lazy(() => import('./pages/settings/EUEInvoiceSetting
 const USTaxSettings = lazy(() => import('./pages/settings/USTaxSettings'))
 const MCPSettings = lazy(() => import('./pages/settings/MCPSettings'))
 const EntitiesSettings = lazy(() => import('./pages/settings/EntitiesSettings'))
+const ImportStripe = lazy(() => import('./pages/ImportStripe'))
 const Organizations = lazy(() => import('./pages/Organizations'))
 const GSTReturns = lazy(() => import('./pages/GSTReturns'))
 const AskAnalytics = lazy(() => import('./pages/AskAnalytics'))
@@ -195,6 +196,7 @@ function App() {
                             <Route path="/settings/tax-us" element={<USTaxSettings />} />
                             <Route path="/settings/mcp" element={<MCPSettings />} />
                             <Route path="/settings/entities" element={<EntitiesSettings />} />
+                            <Route path="/settings/import-stripe" element={<ImportStripe />} />
                             <Route path="/organizations" element={<Organizations />} />
                             <Route path="/finance/gst-returns" element={<GSTReturns />} />
                             <Route path="/ask" element={<AskAnalytics />} />

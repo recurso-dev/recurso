@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2 } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
@@ -149,6 +149,12 @@ export default function Settings() {
       icon: Building2,
       title: "Legal entities",
       description: "Bill under multiple legal entities with per-entity books and invoice series.",
+    },
+    {
+      to: "/settings/import-stripe",
+      icon: ArrowDownToLine,
+      title: "Import from Stripe",
+      description: "Migrate your customers and plans from a Stripe export — preview before importing.",
     },
   ];
   // Float the region-relevant tax setups to the top, keeping everything else in
