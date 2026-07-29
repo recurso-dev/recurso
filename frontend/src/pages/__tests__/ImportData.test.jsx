@@ -10,6 +10,8 @@ vi.mock("@/lib/api", () => ({
     stripeImportCommit: vi.fn(),
     chargebeeImportPreview: vi.fn(),
     chargebeeImportCommit: vi.fn(),
+    revenuecatImportPreview: vi.fn(),
+    revenuecatImportCommit: vi.fn(),
   },
 }));
 vi.mock("@/components/ui/sonner", () => ({
@@ -56,11 +58,27 @@ const chargebeePreview = {
 describe("ImportData wizard", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("shows a source picker first", () => {
+  it("shows a source picker first (Stripe, Chargebee, RevenueCat)", () => {
     renderPage();
     expect(screen.getByText(/where are you migrating from/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /stripe/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /chargebee/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /revenuecat/i })).toBeInTheDocument();
+  });
+
+  it("routes RevenueCat to the RevenueCat endpoints (not Stripe/Chargebee)", async () => {
+    endpoints.revenuecatImportPreview.mockResolvedValue({
+      data: { items: [{ kind: "plan", revenuecat_id: "monthly", label: "Pro", action: "create" }], summary: { "plan.create": 1 }, warnings: [] },
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /revenuecat/i }));
+    fireEvent.change(screen.getByLabelText(/paste the json/i), { target: { value: '{"products":[{"id":"monthly"}]}' } });
+    fireEvent.click(screen.getByRole("button", { name: /preview import/i }));
+
+    expect(await screen.findByText(/nothing has been imported yet/i)).toBeInTheDocument();
+    expect(endpoints.revenuecatImportPreview).toHaveBeenCalledTimes(1);
+    expect(endpoints.stripeImportPreview).not.toHaveBeenCalled();
+    expect(endpoints.chargebeeImportPreview).not.toHaveBeenCalled();
   });
 
   it("routes Stripe through preview → commit", async () => {
