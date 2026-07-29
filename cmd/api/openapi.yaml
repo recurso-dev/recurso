@@ -4289,6 +4289,36 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/billing/plans:
+    get:
+      operationId: getBillingPlans
+      tags: [Account]
+      summary: Managed-cloud plan catalog
+      description: The available managed-cloud plans (mirrors recurso.dev/pricing).
+      responses:
+        '200':
+          description: Plan catalog.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tier: { type: string }
+                        name: { type: string }
+                        price: { type: string }
+                        period: { type: string }
+                        free_note: { type: string }
+                        features: { type: array, items: { type: string } }
+                        cta: { type: string }
+                        recommended: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/account:
     get:
       operationId: getAccount

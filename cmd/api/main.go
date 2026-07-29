@@ -1847,8 +1847,9 @@ func main() {
 		// Account (Tenant) Management
 		v1.GET("/account", tenantHandler.GetAccount)
 		v1.PUT("/account", tenantHandler.UpdateAccount)
-		// Managed-cloud billing/trial status (read-only in this increment).
+		// Managed-cloud billing/trial status + plan catalog (read-only).
 		v1.GET("/billing/status", billingHandler.Status)
+		v1.GET("/billing/plans", billingHandler.Plans)
 
 		// Quotes (P27)
 		v1.POST("/quotes", quoteHandler.CreateQuote)

@@ -55,6 +55,48 @@ func TestBillingStatus_TrialingTenant(t *testing.T) {
 	}
 }
 
+func TestBillingPlans_ReturnsCatalog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewBillingHandler(&fakeTenantGetter{t: &domain.Tenant{}})
+
+	c, w := jsonCtx(http.MethodGet, "/v1/billing/plans", "")
+	c.Set("tenant_id", uuid.New())
+	h.Plans(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	var v struct {
+		Plans []struct {
+			Tier        string `json:"tier"`
+			Name        string `json:"name"`
+			Recommended bool   `json:"recommended"`
+		} `json:"plans"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(v.Plans) < 3 {
+		t.Fatalf("expected >=3 plans, got %d", len(v.Plans))
+	}
+	// Exactly one recommended plan, and the Cloud tier is present.
+	rec, hasCloud := 0, false
+	for _, p := range v.Plans {
+		if p.Recommended {
+			rec++
+		}
+		if p.Tier == "cloud" {
+			hasCloud = true
+		}
+	}
+	if rec != 1 {
+		t.Errorf("want exactly 1 recommended plan, got %d", rec)
+	}
+	if !hasCloud {
+		t.Error("catalog should include the cloud tier")
+	}
+}
+
 func TestBillingStatus_ActiveTenantHasNoTrial(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := NewBillingHandler(&fakeTenantGetter{t: &domain.Tenant{

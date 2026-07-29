@@ -36,6 +36,53 @@ type billingStatusView struct {
 	TrialExpired  bool    `json:"trial_expired"`
 }
 
+// PlatformPlan is one managed-cloud plan tenants can be on. Values MIRROR the
+// public pricing at recurso.dev/pricing — the founder-authored source of truth —
+// so the dashboard and the marketing site never disagree. Cloud is usage-metered
+// (free below the threshold, then a % of tracked volume).
+type PlatformPlan struct {
+	Tier        string   `json:"tier"`
+	Name        string   `json:"name"`
+	Price       string   `json:"price"`     // display string, e.g. "$0" / "0.4% of volume" / "Custom"
+	Period      string   `json:"period"`    // e.g. "forever" / "to start" / ""
+	FreeNote    string   `json:"free_note"` // e.g. "Free to $10k tracked revenue/mo"
+	Features    []string `json:"features"`
+	CTA         string   `json:"cta"`
+	Recommended bool     `json:"recommended"`
+}
+
+// platformPlans mirrors recurso.dev/pricing. Kept as data so pricing changes are
+// a one-line edit; the checkout/metering that ENFORCE these land once the
+// managed-cloud gateway credentials are provided (business/infra dependency).
+var platformPlans = []PlatformPlan{
+	{
+		Tier: "self_hosted", Name: "Self-Hosted", Price: "Free", Period: "forever",
+		FreeNote: "Unlimited — run it yourself",
+		Features: []string{"Every feature, no paywalled add-ons", "All gateways + GST/EU/US tax", "Community support", "MIT licensed"},
+		CTA:      "Get started on GitHub",
+	},
+	{
+		Tier: "cloud", Name: "Cloud", Price: "0.4% of volume", Period: "usage-based",
+		FreeNote:    "Free to $10k tracked revenue / mo",
+		Features:    []string{"Managed hosting + auto-scaling", "Daily backups", "99.9% uptime SLA", "Email support"},
+		CTA:         "Start free",
+		Recommended: true,
+	},
+	{
+		Tier: "enterprise", Name: "Enterprise", Price: "Custom", Period: "",
+		FreeNote: "Volume pricing + SOC 2",
+		Features: []string{"Priority support + SLA", "99.99% uptime", "SOC 2", "On-prem option"},
+		CTA:      "Talk to us",
+	},
+}
+
+// Plans returns the managed-cloud plan catalog.
+//
+// GET /v1/billing/plans
+func (h *BillingHandler) Plans(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"plans": platformPlans})
+}
+
 // Status returns the caller tenant's billing lifecycle state.
 //
 // GET /v1/billing/status
