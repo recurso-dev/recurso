@@ -50,9 +50,11 @@ Most billing platforms charge a percentage of your revenue and lock you into the
 - Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation, ASC 606 revenue recognition, and a month-end close pack
 - **Multi-entity books** — multiple legal entities under one tenant, each with its own gapless invoice series, tax identity, per-entity ledger, and consolidated reporting
 - Real-time FX-normalized MRR, churn scoring, entitlements, commitments, webhook delivery tracking, QuickBooks/Xero/NetSuite/Tally accounting sync, HubSpot CRM sync
+- **Migration** — import customers, plans, and subscriptions from **Stripe** and **Chargebee**: a dry-run preview shows exactly what will import (create / link-existing-by-email / skip / conflict), then an idempotent commit brings subscriptions over in their *current* billing state — no re-billing — via a guided dashboard wizard (or the API)
+- **Operations** — automated backups + a tested-restore runbook (with a double-entry ledger-balance integrity check), a Prometheus `/metrics` endpoint with a Grafana dashboard and alert rules, health checks with webhook alerting, and a public status page
 - **MCP server** — agent-operable billing: drive the API from an LLM/agent over the Model Context Protocol, with RBAC-scoped tools
 - **Ask AI** — natural-language analytics: ask billing questions in plain English, answered as read-only tenant-scoped queries, with auto-charts, CSV export, and a saved query history
-- Platform — native auth (sessions, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy, and in-dashboard contextual documentation links
+- Platform — native auth (sessions, email verification, TOTP MFA, OAuth, SAML SSO), teams/roles, full OpenAPI 3.1, Node/Python/Go SDKs, row-level multi-tenancy, and in-dashboard contextual documentation links
 
 ## Project status
 
@@ -75,16 +77,21 @@ with [Going to Production](https://docs.recurso.dev/going-to-production).
 
 ## Recurso vs. Alternatives
 
+These are all capable, mature products — Chargebee in particular ships
+usage-based billing, ML-powered dunning, connected gateways, and its own MCP
+server. The table below sticks to the differences that are actually *structural*,
+not feature checkboxes both sides can tick.
+
 | | **Recurso** | **Chargebee** | **Stripe Billing** |
 |---|---|---|---|
-| **Pricing** | Free (self-hosted) | From $599/mo | 0.5%–0.8% of revenue |
-| **Source Code** | Open (MIT) | Closed | Closed |
-| **Usage-Based Billing** | 8 aggregations · 7 charge models · progressive/advance · exact math | Add-on | Metered (basic) |
-| **Tax Compliance** | India GST + e-invoicing, EU VAT, US nexus | Partial | Limited |
-| **Financial Ledger** | Double-entry (Postgres; optional TigerBeetle mirror) | None | None |
-| **Smart Dunning** | Built-in AI retries | Add-on | Basic |
-| **Bring Your Own Gateway** | Yes (Stripe + Razorpay + GoCardless, autopay to your account) | No | N/A |
-| **Data Ownership** | Full (your infrastructure) | Vendor-hosted | Vendor-hosted |
+| **Pricing** | Free (self-hosted); usage-based on managed cloud | From ~$599/mo | 0.5%–0.8% of revenue |
+| **Source code** | Open (MIT) — self-host, fork, extend | Closed | Closed |
+| **Data ownership** | Full (runs on your infrastructure) | Vendor-hosted | Vendor-hosted |
+| **Financial ledger** | Built-in double-entry (Postgres; optional TigerBeetle mirror), reconciled + ASC 606 rev-rec | Not a ledger | Not a ledger |
+| **Usage-based billing** | 8 aggregations · 7 charge models · exact rational math · posted to the ledger | Yes (usage + hybrid) | Metered (basic) |
+| **Dunning** | Bandit-retry engine + Collections operator layer | ML-powered retries | Basic retries |
+| **India GST depth** | Place of Supply, HSN, TDS, IRN e-invoicing via GSP — built in | Partial | Limited |
+| **Migrate in** | Self-serve importers from Stripe + Chargebee (preview → commit, no re-billing) | — | — |
 
 ## Architecture
 
