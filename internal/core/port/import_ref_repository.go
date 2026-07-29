@@ -17,4 +17,8 @@ type ImportRefRepository interface {
 	// ListExternalIDs returns the set of external ids already imported for the
 	// tenant + source (used to build the idempotency skip-set before a run).
 	ListExternalIDs(ctx context.Context, tenantID uuid.UUID, source string) (map[string]bool, error)
+	// ListRefs returns the full mappings for the tenant + source, so a later
+	// stage can resolve an external id to the Recurso record it created (e.g. a
+	// subscription resolving its customer/plan imported in a prior run).
+	ListRefs(ctx context.Context, tenantID uuid.UUID, source string) ([]*domain.ImportExternalRef, error)
 }

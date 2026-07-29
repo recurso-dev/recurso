@@ -111,11 +111,27 @@ func TestBuildPlan_SubscriptionConflictWhenPriceUnsupported(t *testing.T) {
 
 func TestBuildPlan_PaymentMethodActions(t *testing.T) {
 	p := BuildPlan(sampleExport(), Existing{})
-	if got := findItem(p, "pm_card").Action; got != ActionCreate {
-		t.Errorf("card pm: want create, got %s", got)
+	// Cards can't be migrated from a static export (the PAN/token lives at the
+	// gateway), so both card and non-card methods are unsupported-for-import.
+	if got := findItem(p, "pm_card").Action; got != ActionUnsupported {
+		t.Errorf("card pm: want unsupported (can't migrate from export), got %s", got)
 	}
 	if got := findItem(p, "pm_bank").Action; got != ActionUnsupported {
 		t.Errorf("bank pm: want unsupported, got %s", got)
+	}
+}
+
+func TestMapSubStatus(t *testing.T) {
+	importable := map[string]string{"active": "active", "trialing": "trialing", "past_due": "past_due", "paused": "paused"}
+	for in, want := range importable {
+		if got, ok := MapSubStatus(in); !ok || got != want {
+			t.Errorf("MapSubStatus(%q) = (%q,%v), want (%q,true)", in, got, ok, want)
+		}
+	}
+	for _, in := range []string{"canceled", "incomplete", "incomplete_expired", "unpaid", "weird"} {
+		if _, ok := MapSubStatus(in); ok {
+			t.Errorf("MapSubStatus(%q) should be non-importable", in)
+		}
 	}
 }
 
@@ -158,7 +174,8 @@ func TestBuildPlan_SummaryAndWarnings(t *testing.T) {
 		t.Error("expected warnings (conflicts + unsupported present in the sample)")
 	}
 	cc := p.CreateCounts()
-	if cc[KindCustomer] != 1 || cc[KindPlan] != 1 || cc[KindSubscription] != 1 || cc[KindPaymentMethod] != 1 {
+	// Payment methods are never "create" (can't migrate cards from an export).
+	if cc[KindCustomer] != 1 || cc[KindPlan] != 1 || cc[KindSubscription] != 1 || cc[KindPaymentMethod] != 0 {
 		t.Errorf("unexpected create counts: %v", cc)
 	}
 }

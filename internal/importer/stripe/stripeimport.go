@@ -65,11 +65,14 @@ type Recurring struct {
 }
 
 type Subscription struct {
-	ID                string            `json:"id"`
-	Customer          string            `json:"customer"`
-	Status            string            `json:"status"`
-	CancelAtPeriodEnd bool              `json:"cancel_at_period_end"`
-	Items             SubscriptionItems `json:"items"`
+	ID                 string            `json:"id"`
+	Customer           string            `json:"customer"`
+	Status             string            `json:"status"`
+	CancelAtPeriodEnd  bool              `json:"cancel_at_period_end"`
+	CurrentPeriodStart int64             `json:"current_period_start"` // unix seconds
+	CurrentPeriodEnd   int64             `json:"current_period_end"`   // unix seconds
+	TrialEnd           int64             `json:"trial_end"`            // unix seconds; 0 = none
+	Items              SubscriptionItems `json:"items"`
 }
 
 // SubscriptionItems mirrors Stripe's nested `items: { data: [...] }`.
@@ -257,6 +260,32 @@ func MapCustomer(c Customer) CustomerMapping {
 	}
 }
 
+// PlanCode is the deterministic Recurso plan code for a Stripe price. Exposed so
+// the committer can resolve an already-created plan by code.
+func PlanCode(pr Price) string { return planCode(pr) }
+
+// SubscriptionPriceID returns the (single) price id a subscription is on, or "".
+func SubscriptionPriceID(s Subscription) string { return subscriptionPriceID(s) }
+
+// MapSubStatus maps a Stripe subscription status to the Recurso status a commit
+// should import it as. ok is false for statuses that are not migrated (terminal
+// or incomplete) — the same predicate BuildPlan uses to skip them.
+func MapSubStatus(stripeStatus string) (recursoStatus string, ok bool) {
+	switch stripeStatus {
+	case "active":
+		return "active", true
+	case "trialing":
+		return "trialing", true
+	case "past_due":
+		return "past_due", true
+	case "paused":
+		return "paused", true
+	default:
+		// incomplete, incomplete_expired, canceled, unpaid → not migrated.
+		return "", false
+	}
+}
+
 // BuildPlan computes the dry-run outcome of importing exp into a tenant whose
 // current state is described by existing. It has no side effects.
 //
@@ -379,8 +408,11 @@ func BuildPlan(exp *Export, existing Existing) *Plan {
 			p.add(Item{Kind: KindPaymentMethod, StripeID: pm.ID, Label: pm.ID, Action: ActionConflict, Detail: "payment method's customer is not in this import"})
 			continue
 		}
+		// A card can't be migrated from a static export — the PAN/token lives at
+		// the gateway, not in the JSON. Honest signal: not importable this way
+		// (gateway-side PM migration / re-collection is required).
 		label := fmt.Sprintf("%s •••• %s", pm.Card.Brand, pm.Card.Last4)
-		p.add(Item{Kind: KindPaymentMethod, StripeID: pm.ID, Label: label, Action: ActionCreate})
+		p.add(Item{Kind: KindPaymentMethod, StripeID: pm.ID, Label: label, Action: ActionUnsupported, Detail: "card details can't be migrated from an export; re-collect or use gateway-side migration"})
 	}
 
 	// Account-level warnings, deterministically ordered.

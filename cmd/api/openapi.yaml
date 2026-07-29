@@ -821,14 +821,17 @@ paths:
     post:
       operationId: commitStripeImport
       tags: [Migration]
-      summary: Import a Stripe export (customers + plans)
+      summary: Import a Stripe export (customers, plans, subscriptions)
       description: >
-        Imports the uploaded Stripe export, creating customers and plans and
-        recording an idempotency mapping for each. Re-running is safe:
-        already-imported ids and customers/plans that already exist (by email
-        or plan code) are skipped. Per-object failures are returned in the
-        response rather than aborting the whole import. Subscriptions and
-        payment methods are not created by this endpoint.
+        Imports the uploaded Stripe export, creating customers, plans, and
+        subscriptions and recording an idempotency mapping for each. Re-running
+        is safe: already-imported ids and records that already exist (by email
+        or plan code) are skipped. Subscriptions are imported in their current
+        billing state via a direct insert — no invoice, charge, or ledger entry
+        is generated, so Recurso takes over at the next renewal instead of
+        re-billing the current cycle. Per-object failures are returned in the
+        response rather than aborting the whole import. Card payment methods are
+        NOT imported — card data can't be migrated from a static export.
       requestBody:
         required: true
         description: The Stripe export JSON (same shape as the preview endpoint).
