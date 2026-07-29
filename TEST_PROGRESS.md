@@ -97,9 +97,16 @@ had tests at start).
   update so browser-autofill batched field changes don't drop earlier fields
   (see BUGS_FOUND.md). One-line, behavior-preserving for normal typing.
 
+### Batch 11 — prepaid wallets + trial balance (ledger invariant)
+- `pages/__tests__/Wallets.test.jsx` (2) — renders a wallet balance (money),
+  empty state.
+- `pages/__tests__/TrialBalance.test.jsx` (2) — the **double-entry invariant in
+  the UI**: a balanced book shows "Books balance" + debit/credit totals +
+  "Balanced"; an out-of-balance book shows "Out of balance" + "Unbalanced".
+
 ## Running totals
-- Frontend tests: 183 → 289 (+106). Test files: 29 → 50.
-- Shipped as 10 green-CI test PRs (#292–#299, #302, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 293 (+110). Test files: 29 → 52.
+- Shipped as 11 green-CI test PRs (#292–#299, #302, #303, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
 
 ## What this run hardened (behavioral, not coverage padding)
