@@ -28,6 +28,14 @@ Issues surfaced during the test-engineering run. Fixed bugs link to their PR.
   asserts the full payload reaches `registerAccount`. (Login was unaffected — it
   uses separate `useState` per field.)
 
+- **Flaky test: AskAnalytics history-persistence.** `AskAnalytics.test.jsx`
+  read `localStorage` synchronously right after the render assertion, but the
+  write happens in a `useEffect` keyed on the history state — which can flush
+  *after* the render. Passed locally, intermittently failed the CI **Frontend**
+  job ("expected [] to have length 1"). Fixed by polling the localStorage read
+  inside `waitFor`. Verified: 5/5 green locally after the fix. Class: test flake
+  (not an app bug — the app persists correctly; the test raced the effect).
+
 ## Open / under investigation
 _(none — every failing check discovered so far has been triaged and resolved:
 the cancel-reason app bug (#290) and the x/text CVE (#300). Test failures during
