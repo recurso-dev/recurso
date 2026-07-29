@@ -206,6 +206,16 @@ had tests at start).
   handler-layer authorization + request-validation guards on the money-path
   endpoints added this session.
 
+### Batch 26 — team-management RBAC + a de-flake
+- `internal/adapter/handler/team_validation_test.go` (3) — InviteUser and
+  CreateUser 403 a non-manager (owner/admin-only); a manager with a malformed
+  invite body gets 400. requireManager runs before the service → no DB.
+- **De-flake:** `AskAnalytics.test.jsx` read localStorage synchronously after the
+  render assertion, but the persist runs in a `useEffect` that can flush later —
+  it intermittently failed the CI Frontend job (surfaced on backend-only #318).
+  Wrapped the read in `waitFor` (#319). App behavior was correct. See BUGS_FOUND.
+- Backend test files: 321 → 322.
+
 ## Honest assessment (end of run)
 The remaining untested files are **low-risk, low-incremental-value**: settings/
 account pages (Profile, Security, Integrations, ExecutiveSummary), on-demand
