@@ -61,6 +61,11 @@ export const endpoints = {
   verifyEmail: (token) =>
     axios.post(`${API_ROOT}/auth/verify-email`, { token }),
   resendVerification: () => api.post('/auth/verify-email/resend'),
+  // --- Migration: import from Stripe ---
+  // Preview is a dry run (no writes); commit creates customers + plans and is
+  // idempotent. Both take the Stripe export JSON as the body.
+  stripeImportPreview: (exportData) => api.post('/import/stripe/preview', exportData),
+  stripeImportCommit: (exportData) => api.post('/import/stripe/commit', exportData),
   // --- MFA management (authed, session-scoped) ---
   mfaSetup: () => api.post('/auth/mfa/setup'),
   mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
