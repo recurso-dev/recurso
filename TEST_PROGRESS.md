@@ -117,11 +117,18 @@ had tests at start).
 - `pages/__tests__/RevenueByPlan.test.jsx` (2) — total MRR + per-plan segments
   (money + labels); empty state when there's no plan revenue.
 
+### Batch 14 — revenue-by-geography + MRR waterfall
+- `pages/__tests__/RevenueByGeography.test.jsx` (2) — total MRR + per-country
+  segments, empty state.
+- `pages/__tests__/MRRWaterfall.test.jsx` (2) — starting/ending MRR + net
+  movement (+$200 from the mocked deltas); requests the default trailing-month
+  range (two date args).
+
 ## Running totals
-- Frontend tests: 183 → 301 (+118). Test files: 29 → 56.
-- Shipped as 13 green-CI test PRs (#292–#299, #302–#305, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 305 (+122). Test files: 29 → 58.
+- Shipped as 14 green-CI test PRs (#292–#299, #302–#306, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
-- **300+ frontend tests.** Backend remains at 319 test files + invariant harness.
+- **305 frontend tests.** Backend remains at 319 test files + invariant harness.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
