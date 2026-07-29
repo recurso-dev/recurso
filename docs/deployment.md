@@ -81,6 +81,47 @@ ALERT_WEBHOOK_FORMAT=slack   # json (default) | slack
 
 When an alert fires, follow **[docs/incident-runbook.md](incident-runbook.md)** — severity definitions, first commands, and the SEV1 money-movement procedure.
 
+## Email delivery (SMTP)
+
+Recurso sends transactional email — **email verification, password reset,
+team invites, and invoice/dunning notices**. Without an SMTP provider
+configured, the API falls back to a **console sender**: it logs the message
+(including the link) but **sends nothing**. So verification/reset requests
+return `200` ("sent") while no email actually arrives.
+
+Set these to enable real delivery (any provider — Resend, SES, Postmark,
+Mailgun, SendGrid SMTP, etc.):
+
+```bash
+SMTP_HOST=smtp.provider.com      # presence of this switches on real SMTP
+SMTP_PORT=587                    # default 587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM=noreply@yourdomain.com # the From address (set up SPF/DKIM for it)
+```
+
+**Quick test:** trigger "Forgot password" — it uses the same transport, so if
+that email arrives, verification emails will too. If neither arrives, `SMTP_*`
+isn't set in the deployed environment.
+
+Also set the dashboard host so the links point at your SPA, not the API:
+
+```bash
+DASHBOARD_URL=https://app.yourdomain.com   # verify/reset links; also PORTAL_URL for the customer portal
+```
+
+## Metrics & status access
+
+```bash
+METRICS_TOKEN=...   # optional: bearer-gate GET /metrics (open when unset — keep it off the public internet either way)
+CORS_ORIGIN=https://app.recurso.dev,https://recurso.dev
+                    # comma-separated allowlist. Add your marketing origin if the
+                    # public status page should probe /health cross-origin.
+```
+
+See **[docs/observability.md](observability.md)** for the `/metrics` schema,
+Grafana dashboard, and alert rules.
+
 ## Kubernetes
 
 Manifests live in `k8s/` (namespace, deployment, service, ingress, configmap, secret, RBAC, network policy). They deploy the **API only** — bring your own managed PostgreSQL (set `DATABASE_URL` in `recurso-secrets`) and, optionally, serve the frontend image behind your ingress.
