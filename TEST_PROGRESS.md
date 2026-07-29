@@ -74,9 +74,22 @@ had tests at start).
 - `pages/__tests__/Subscriptions.test.jsx` (3) — status badges render, row-click
   opens the detail sheet with the right subscription, empty state.
 
+### Security fix (surfaced by the run's CI gates)
+- **PR #300** — Trivy Security Scan flagged **CVE-2026-56852** (golang.org/x/text
+  v0.38.0, HIGH, norm.Iter infinite loop). It was blocking *every* merge; bumped
+  the indirect dep to v0.39.0. See BUGS_FOUND.md.
+
+### Batch 9 — auth login flow + credit-notes list
+- `pages/__tests__/Login.test.jsx` (4) — renders the form, logs in and navigates
+  home, **advances to the 2FA step on mfa_required then loginMfa + navigate**,
+  and surfaces an error (no navigate) on invalid credentials.
+- `pages/__tests__/CreditNotes.test.jsx` (4) — renders reference + amount, opens
+  the detail sheet on row-click, filters by customer via search, empty state.
+
 ## Running totals
-- Frontend tests: 183 → 274 (+91). Test files: 29 → 47.
-- Shipped as 8 green-CI PRs (#292–#298, + this).
+- Frontend tests: 183 → 282 (+99). Test files: 29 → 49.
+- Shipped as 9 green-CI test PRs (#292–#299, + this) plus a HIGH-CVE security
+  fix (#300) the run's own CI gate caught.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
