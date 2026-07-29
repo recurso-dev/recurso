@@ -111,10 +111,17 @@ had tests at start).
   by id and renders its steps + active state; deactivate calls
   updateDunningCampaign with `{ is_active: false }`.
 
+### Batch 13 — unit economics + revenue-by-plan reports
+- `pages/__tests__/UnitEconomics.test.jsx` (2) — ARPA/ARPU/LTV render from the
+  API; LTV shows "—" when `has_ltv` is false.
+- `pages/__tests__/RevenueByPlan.test.jsx` (2) — total MRR + per-plan segments
+  (money + labels); empty state when there's no plan revenue.
+
 ## Running totals
-- Frontend tests: 183 → 297 (+114). Test files: 29 → 54.
-- Shipped as 12 green-CI test PRs (#292–#299, #302–#304, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 301 (+118). Test files: 29 → 56.
+- Shipped as 13 green-CI test PRs (#292–#299, #302–#305, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
+- **300+ frontend tests.** Backend remains at 319 test files + invariant harness.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
