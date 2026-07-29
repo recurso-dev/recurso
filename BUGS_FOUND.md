@@ -9,9 +9,20 @@ Issues surfaced during the test-engineering run. Fixed bugs link to their PR.
   Severity: high (core lifecycle action unusable). Verified: dashboard now sends
   the reason; frontend test asserts the payload.
 
+## Fixed (during this test-engineering run)
+- **HIGH: `golang.org/x/text` v0.38.0 — CVE-2026-56852** (`norm.Iter` can enter
+  an infinite loop on crafted input). Surfaced by the **Security Scan (Trivy)**
+  CI gate, which began failing on every open PR the moment the CVE hit the vuln
+  DB — blocking *all* merges. Fixed by bumping the indirect dependency to
+  **v0.39.0** (PR #300). `go build ./...` green; Security Scan clears. Severity:
+  high (DoS via infinite loop on attacker-influenced text normalization).
+  Verification: the same Trivy gate now passes.
+
 ## Open / under investigation
-_(none yet from the test run — this file is updated as failing tests are triaged
-into app-bug vs test-bug vs wrong-assumption.)_
+_(none — every failing check discovered so far has been triaged and resolved:
+the cancel-reason app bug (#290) and the x/text CVE (#300). Test failures during
+authoring were all incorrect-assumption/selector issues in the new tests, fixed
+before commit.)_
 
 ## Triage protocol
 For each failing test discovered:
