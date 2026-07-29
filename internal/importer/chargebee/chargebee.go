@@ -25,12 +25,17 @@ type Export struct {
 }
 
 type Customer struct {
-	ID        string `json:"id"`
-	Email     string `json:"email"`
-	FirstName string `json:"first_name"`
-	LastName  string `json:"last_name"`
-	Company   string `json:"company"`
-	Deleted   bool   `json:"deleted"`
+	ID             string         `json:"id"`
+	Email          string         `json:"email"`
+	FirstName      string         `json:"first_name"`
+	LastName       string         `json:"last_name"`
+	Company        string         `json:"company"`
+	BillingAddress BillingAddress `json:"billing_address"`
+	Deleted        bool           `json:"deleted"`
+}
+
+type BillingAddress struct {
+	Country string `json:"country"`
 }
 
 // Name assembles a display name from the Chargebee name parts / company.
@@ -53,10 +58,13 @@ type Plan struct {
 }
 
 type Subscription struct {
-	ID         string `json:"id"`
-	CustomerID string `json:"customer_id"`
-	PlanID     string `json:"plan_id"`
-	Status     string `json:"status"` // active | in_trial | non_renewing | cancelled | paused | future
+	ID               string `json:"id"`
+	CustomerID       string `json:"customer_id"`
+	PlanID           string `json:"plan_id"`
+	Status           string `json:"status"`             // active | in_trial | non_renewing | cancelled | paused | future
+	CurrentTermStart int64  `json:"current_term_start"` // unix seconds
+	CurrentTermEnd   int64  `json:"current_term_end"`   // unix seconds
+	TrialEnd         int64  `json:"trial_end"`          // unix seconds; 0 = none
 }
 
 // Parse decodes a Chargebee export from JSON (unknown fields ignored).
@@ -148,6 +156,56 @@ func (p *ImportPlan) CreateCounts() map[Kind]int {
 
 // PlanCode is the deterministic Recurso plan code for a Chargebee plan.
 func PlanCode(id string) string { return "chargebee_" + id }
+
+// CustomerMapping / PlanMapping are the Recurso create fields derived from a
+// Chargebee object — the mapping lives in one place, shared by preview + commit.
+type CustomerMapping struct {
+	Email   string
+	Name    string
+	Country string
+}
+
+func MapCustomer(c Customer) CustomerMapping {
+	return CustomerMapping{
+		Email:   strings.ToLower(strings.TrimSpace(c.Email)),
+		Name:    c.Name(),
+		Country: strings.ToUpper(strings.TrimSpace(c.BillingAddress.Country)),
+	}
+}
+
+type PlanMapping struct {
+	Name          string
+	Code          string
+	IntervalUnit  string
+	IntervalCount int
+	Amount        int64
+	Currency      string
+}
+
+// MapPlan derives Recurso plan-create params from a Chargebee plan. ok=false
+// when the plan has no Recurso equivalent (unsupported period unit).
+func MapPlan(pl Plan) (PlanMapping, bool) {
+	unit, count, ok := mappedInterval(pl.PeriodUnit, pl.Period)
+	if !ok {
+		return PlanMapping{}, false
+	}
+	name := pl.Name
+	if name == "" {
+		name = pl.ID
+	}
+	return PlanMapping{
+		Name:          name,
+		Code:          PlanCode(pl.ID),
+		IntervalUnit:  unit,
+		IntervalCount: count,
+		Amount:        pl.Price,
+		Currency:      strings.ToUpper(strings.TrimSpace(pl.CurrencyCode)),
+	}, true
+}
+
+// MapSubStatus maps a Chargebee subscription status to the Recurso status a
+// commit imports it as. ok=false for statuses that are not migrated.
+func MapSubStatus(status string) (string, bool) { return importableSubStatus(status) }
 
 func mappedInterval(unit string, period int) (string, int, bool) {
 	switch unit {

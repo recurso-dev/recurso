@@ -886,6 +886,53 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/chargebee/commit:
+    post:
+      operationId: commitChargebeeImport
+      tags: [Migration]
+      summary: Import a Chargebee export (customers, plans, subscriptions)
+      description: >
+        Imports the uploaded Chargebee export idempotently — creating customers,
+        plans, and subscriptions and recording an idempotency mapping for each.
+        Subscriptions are imported in their current billing state via a direct
+        insert (no invoice/charge/ledger side effect). Re-running is safe;
+        per-object failures are returned rather than aborting the import.
+      requestBody:
+        required: true
+        description: The Chargebee export JSON (same shape as the preview endpoint).
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customers: { type: array, items: { type: object } }
+                plans: { type: array, items: { type: object } }
+                subscriptions: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The commit result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: object }
+                  created:
+                    type: object
+                    additionalProperties: { type: integer }
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        stripe_id: { type: string }
+                        error: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/import/stripe/commit:
     post:
       operationId: commitStripeImport
