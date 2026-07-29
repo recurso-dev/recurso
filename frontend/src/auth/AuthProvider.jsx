@@ -86,6 +86,18 @@ export const AuthProvider = ({ children }) => {
         setApiKeyState(key)
     }
 
+    // Re-resolve the current user from /auth/me (e.g. after email verification
+    // so the verify banner clears). Best-effort: a failure leaves state as-is.
+    const refreshUser = async () => {
+        try {
+            const res = await endpoints.authMe()
+            setUser(res.data?.user || null)
+            return res.data?.user || null
+        } catch {
+            return user
+        }
+    }
+
     const logout = async () => {
         try {
             await endpoints.authLogout()
@@ -101,7 +113,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider
-            value={{ user, apiKey, isAuthenticated, loading, login, loginMfa, registerAccount, loginWithApiKey, logout }}
+            value={{ user, apiKey, isAuthenticated, loading, login, loginMfa, registerAccount, loginWithApiKey, logout, refreshUser }}
         >
             {children}
         </AuthContext.Provider>
