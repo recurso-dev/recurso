@@ -194,6 +194,18 @@ had tests at start).
 - Pages tested: ~45/57. Slide-overs: **11/12** (only PricingSimulator +
   CancelFlowStepConfig config helpers remain). lib: 9/9.
 
+### Batch 25 — backend handler-validation (money-path RBAC + input guards)
+- `internal/adapter/handler/dispute_validation_test.go` (4) — ResolveDispute
+  rejects a bad id (400) and an outcome outside accept/reject (400); a valid
+  'reject' passes validation; ListDisputes rejects an unknown status (400).
+- `internal/adapter/handler/credit_note_validation_test.go` (3) — VoidCreditNote
+  rejects a bad id (400) and a non-admin (403); ApproveCreditNote is
+  admin/owner-only (403). All validate BEFORE the service, so they run with nil
+  service deps and **no database** — fast, deterministic RBAC/guard coverage.
+- Backend test files: 319 → 321. These are the first tests to directly cover the
+  handler-layer authorization + request-validation guards on the money-path
+  endpoints added this session.
+
 ## Honest assessment (end of run)
 The remaining untested files are **low-risk, low-incremental-value**: settings/
 account pages (Profile, Security, Integrations, ExecutiveSummary), on-demand
