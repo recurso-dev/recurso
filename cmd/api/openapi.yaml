@@ -764,6 +764,59 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/stripe/preview:
+    post:
+      operationId: previewStripeImport
+      tags: [Migration]
+      summary: Dry-run preview of a Stripe export
+      description: >
+        Parses an uploaded Stripe export (customers, products, prices,
+        subscriptions, payment methods) and returns a plan describing exactly
+        what a commit would create, link to an existing record, skip, or refuse
+        — with NO side effects. Existing customers are matched by email and
+        linked rather than duplicated.
+      requestBody:
+        required: true
+        description: The Stripe export JSON.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+                prices: { type: array, items: { type: object } }
+                subscriptions: { type: array, items: { type: object } }
+                payment_methods: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The dry-run import plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [customer, plan, subscription, payment_method] }
+                        stripe_id: { type: string }
+                        label: { type: string }
+                        action: { type: string, enum: [create, link_existing, skip_already_imported, conflict, unsupported] }
+                        detail: { type: string }
+                  summary:
+                    type: object
+                    additionalProperties: { type: integer }
+                  warnings:
+                    type: array
+                    items: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/customers:
     post:
       operationId: createCustomer
