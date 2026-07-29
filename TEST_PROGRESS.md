@@ -171,10 +171,21 @@ had tests at start).
 - `pages/__tests__/GSTReturns.test.jsx` (2) — build-return action present;
   building GSTR-1 calls getGSTR1 and shows the result payload.
 
+### Batch 22 — quotes + dunning campaigns lists
+- `pages/__tests__/Quotes.test.jsx` (2) — quotes render with number + status; empty.
+- `pages/__tests__/DunningCampaigns.test.jsx` (2) — campaigns render with active
+  state; empty state.
+
 ## Running totals (updated)
-- Run total: **183 → 331 (+148) across 21 test PRs**, plus a HIGH-CVE fix and an
-  autofill form fix. Test files: 29 → 69.
-- Pages tested: ~43/57. Slide-overs: 9/12. lib: 9/9.
+- Run total: **183 → 335 (+152) across 22 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 71.
+- Pages tested: ~45/57. Slide-overs: 9/12. lib: 9/9.
+- Remaining pages (lower-risk): ExecutiveSummary, Integrations, Profile, Security,
+  Usage, RevenueRecognition, MonthEndClose, AcceptInvite, Create{Coupon,CreditNote,
+  Plan}. Slide-overs: CancelFlowDetail, CancelFlowStepConfig, PricingSimulator,
+  SubscriptionDetail (SubscriptionDetail is the highest-value remaining — complex,
+  multi-endpoint; its cancel-with-reason flow is verified indirectly via the
+  #290 payload but a dedicated suite is worthwhile).
 - NOTE: line-coverage tooling (`@vitest/coverage-v8`) is not installed — a hard
   coverage % isn't measured. Adding it (+ a CI coverage gate) is a follow-up
   (deferred to avoid a lockfile change mid-run). Confidence is tracked by
