@@ -40,7 +40,7 @@ code nice."* Anything ≤5 is a first-customer blocker.
 | 14 | Monitoring | **4** | Health + alert webhook only. No `/metrics`, no Prometheus/Grafana, no tracing, no log aggregation, no error tracking. |
 | 15 | Self Hosting | **9** | One-command compose, k8s, one-click Railway/Render. Genuinely strong. |
 | 16 | Cloud SaaS | **2** | **Recurso does not bill itself.** No self-serve tenant provisioning, no trial, no paywall, no per-tenant metering/billing. A customer cannot buy the hosted product. This is the single biggest business gap. |
-| 17 | Migration | **1** | **Nothing exists.** The `import` at repo root is a stray 8 MB compiled binary, not tooling. No path off Stripe/Chargebee/RevenueCat. Highest switching-cost blocker. |
+| 17 | Migration | **1→(building)** | Was **nothing**; the `import` at repo root is a stray (gitignored, untracked) 8 MB build artifact, not tooling. **Increment 1 shipped**: a Stripe-export **dry-run preview** engine + `POST /v1/import/stripe/preview` (maps customers/plans/subscriptions/PMs, links existing by email, flags conflicts/unsupported). Idempotent commit + Chargebee/RevenueCat still to come. |
 | 18 | Import/Export | **3** | CSV *exports* exist (invoices, reports). No bulk *import*; no full-account/GDPR export. |
 | 19 | API | **9** | OpenAPI 3.1, drift-gated, versioned, keys + RBAC. |
 | 20 | SDKs | **8** | Go/Node/Python, synced to API. To 10: publish creds + a language-idiomatic quickstart each. |
@@ -200,7 +200,7 @@ Ordered by **(customer-unblock × trust) ÷ effort**, with external dependencies
 
 | # | Work | Why it's the buy path | Blocked? |
 |---|---|---|:--:|
-| 0 | **Repo hygiene**: delete stray `import` binary + `" 2"/" 3"` dupes + one `bugs-found.md`. | Credibility; a buyer *will* look at the repo. | no |
+| 0 | **Repo hygiene**: the stray `import` binary + `" 2"/" 3"` dupes are already gitignored/untracked; only two lowercase legacy report files (`bugs-found.md`, `production-readiness.md`) are tracked — dedupe in a careful pass (case-insensitive FS). | Credibility; a buyer *will* look at the repo. | no |
 | 1 | **Email verification** (token issue + verify endpoint + UI + tests). | Closes signup trust/abuse hole; table-stakes. | no |
 | 2 | **Import from Stripe** (customers→plans→subscriptions→PMs, dry-run + report + tests). | The switching-cost killer. Highest single "can I actually adopt this" unlock. | no (build against fixtures) |
 | 3 | **Backups + tested restore runbook** + **public status page** + **legal pages** (Privacy/Terms/DPA). | Trust table-stakes before anyone wires revenue. | partly (legal review) |
