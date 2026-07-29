@@ -837,6 +837,55 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/chargebee/preview:
+    post:
+      operationId: previewChargebeeImport
+      tags: [Migration]
+      summary: Dry-run preview of a Chargebee export
+      description: >
+        Parses an uploaded Chargebee export (customers, plans, subscriptions)
+        and returns a plan of what a commit would create, link, skip, or refuse
+        — with NO side effects. Existing customers are matched by email.
+      requestBody:
+        required: true
+        description: The Chargebee export JSON.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customers: { type: array, items: { type: object } }
+                plans: { type: array, items: { type: object } }
+                subscriptions: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The dry-run import plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string, enum: [customer, plan, subscription] }
+                        chargebee_id: { type: string }
+                        label: { type: string }
+                        action: { type: string, enum: [create, link_existing, skip_already_imported, conflict, unsupported] }
+                        detail: { type: string }
+                  summary:
+                    type: object
+                    additionalProperties: { type: integer }
+                  warnings:
+                    type: array
+                    items: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/import/stripe/commit:
     post:
       operationId: commitStripeImport

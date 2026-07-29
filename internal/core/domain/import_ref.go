@@ -13,7 +13,8 @@ var ErrDuplicateImportRef = errors.New("import reference already exists")
 
 // Import source identifiers (the `source` column of import_external_refs).
 const (
-	ImportSourceStripe = "stripe"
+	ImportSourceStripe    = "stripe"
+	ImportSourceChargebee = "chargebee"
 )
 
 // Import object kinds (the `kind` column).
