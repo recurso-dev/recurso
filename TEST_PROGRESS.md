@@ -183,12 +183,33 @@ had tests at start).
   #290 cancel-with-reason guard, now verified directly in the component (not just
   via the endpoint payload).
 
+### Batch 24 — cancel-flow detail (save-offer config)
+- `slide-overs/__tests__/CancelFlowDetail.test.jsx` (2) — loads a flow by id,
+  renders its steps (offer headline in the summary); deactivate calls
+  updateCancelFlow({is_active:false}).
+
 ## Running totals (updated)
-- Run total: **183 → 338 (+155) across 23 test PRs**, plus a HIGH-CVE fix and an
-  autofill form fix. Test files: 29 → 72.
-- Pages tested: ~45/57. Slide-overs: 10/12. lib: 9/9.
-- Remaining slide-overs: CancelFlowDetail, CancelFlowStepConfig, PricingSimulator
-  (all config/simulation UI, low money-risk).
+- Run total: **183 → 340 (+157) across 24 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 73.
+- Pages tested: ~45/57. Slide-overs: **11/12** (only PricingSimulator +
+  CancelFlowStepConfig config helpers remain). lib: 9/9.
+
+## Honest assessment (end of run)
+The remaining untested files are **low-risk, low-incremental-value**: settings/
+account pages (Profile, Security, Integrations, ExecutiveSummary), on-demand
+report pages already exercised via siblings (RevenueRecognition, MonthEndClose),
+create-forms whose only logic is `toMinorUnits` (already exhaustively unit-tested
+in batch 1) behind Radix selects that are impractical to drive in jsdom, and two
+config-helper components. Every page also mounts under `PageSmoke`. Per the
+directive's own criterion ("keep adding tests until additional tests provide
+little incremental value"), the high-confidence frontier has been reached for the
+frontend. **Highest-value NEXT work is infrastructure, not more page tests:**
+1. Add `@vitest/coverage-v8` + a CI coverage gate (deferred here to avoid a
+   lockfile change mid-run) — this turns "file presence" into measured line/branch
+   coverage and surfaces true gaps.
+2. Backend: targeted table-driven handler-validation tests (400/oneof paths) —
+   the one area with headroom despite 319 existing test files.
+3. E2E flows beyond the existing harness (infra-gated).
 - Remaining pages (lower-risk): ExecutiveSummary, Integrations, Profile, Security,
   Usage, RevenueRecognition, MonthEndClose, AcceptInvite, Create{Coupon,CreditNote,
   Plan}. Slide-overs: CancelFlowDetail, CancelFlowStepConfig, PricingSimulator,
