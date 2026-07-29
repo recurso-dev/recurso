@@ -104,9 +104,16 @@ had tests at start).
   the UI**: a balanced book shows "Books balance" + debit/credit totals +
   "Balanced"; an out-of-balance book shows "Out of balance" + "Unbalanced".
 
+### Batch 12 — invoice aging report + dunning campaign detail
+- `pages/__tests__/InvoiceAging.test.jsx` (2) — outstanding total + aging bucket
+  labels render; all-clear empty state when nothing is outstanding.
+- `slide-overs/__tests__/DunningCampaignDetail.test.jsx` (2) — loads a campaign
+  by id and renders its steps + active state; deactivate calls
+  updateDunningCampaign with `{ is_active: false }`.
+
 ## Running totals
-- Frontend tests: 183 → 293 (+110). Test files: 29 → 52.
-- Shipped as 11 green-CI test PRs (#292–#299, #302, #303, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 297 (+114). Test files: 29 → 54.
+- Shipped as 12 green-CI test PRs (#292–#299, #302–#304, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
 
 ## What this run hardened (behavioral, not coverage padding)
