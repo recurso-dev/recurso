@@ -1,4 +1,4 @@
-.PHONY: build run dev fmt hooks seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status
+.PHONY: build run dev fmt hooks seed demo test test-e2e test-verify clean docker-up docker-down lint docker-build k8s-deploy k8s-status backup restore verify-backup
 
 BINARY_NAME=main
 IMAGE_NAME=ghcr.io/recurso-dev/recurso
@@ -73,6 +73,22 @@ test-e2e:
 test-verify:
 	@chmod +x scripts/verify/*.sh
 	@for s in scripts/verify/verify_p*.sh; do echo "== $$s =="; $$s || exit 1; done
+
+# Backups & disaster recovery (see docs/backups-and-dr.md).
+# backup:        DATABASE_URL=… make backup
+# restore:       TARGET_DATABASE_URL=… make restore DUMP=path/to.dump
+# verify-backup: SCRATCH_DATABASE_URL=… make verify-backup DUMP=path/to.dump
+backup:
+	@chmod +x scripts/backup.sh
+	./scripts/backup.sh $(OUT_DIR)
+
+restore:
+	@chmod +x scripts/restore.sh
+	./scripts/restore.sh $(DUMP)
+
+verify-backup:
+	@chmod +x scripts/verify_backup.sh
+	./scripts/verify_backup.sh $(DUMP)
 
 clean:
 	go clean
