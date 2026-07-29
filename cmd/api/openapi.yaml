@@ -8043,6 +8043,56 @@ paths:
                   message: { type: string }
         '400': { $ref: '#/components/responses/BadRequest' }
 
+  /auth/verify-email:
+    post:
+      operationId: verifyEmail
+      tags: [Auth]
+      summary: Confirm an account's email with a token
+      description: >
+        Consumes a single-use verification token from the emailed link and marks
+        the account's email address confirmed. Invalid/expired/used tokens return
+        a generic 400 so the endpoint is not a token oracle.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: Email verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /auth/verify-email/resend:
+    post:
+      operationId: resendVerification
+      tags: [Auth]
+      summary: Resend the verification link
+      description: >
+        Re-sends the email-verification link to the logged-in user. Always
+        answers 200 (including when the address is already verified) so it
+        reveals nothing and is safe to call idempotently.
+      responses:
+        '200':
+          description: Generic acknowledgement.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/auth/mfa/setup:
     post:
       operationId: mfaSetup

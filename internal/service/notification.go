@@ -180,6 +180,11 @@ type PasswordResetData struct {
 	ResetURL string
 }
 
+// EmailVerificationData backs the email-verification email.
+type EmailVerificationData struct {
+	VerifyURL string
+}
+
 // TeamInviteData backs the team-invite email.
 type TeamInviteData struct {
 	Name      string
@@ -200,6 +205,26 @@ func (s *NotificationService) SendInvite(ctx context.Context, toEmail, name, inv
 	return s.emailSender.Send(ctx, port.EmailMessage{
 		To:       toEmail,
 		Subject:  "You've been invited to Recurso",
+		HTMLBody: html,
+	})
+}
+
+// SendVerification emails an email-verification link to a dashboard user. The
+// link already embeds the single-use token.
+func (s *NotificationService) SendVerification(ctx context.Context, toEmail, verifyURL string) error {
+	content, err := s.renderTemplate(email.EmailVerificationTemplate, EmailVerificationData{VerifyURL: verifyURL})
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Confirm your email", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       toEmail,
+		Subject:  "Confirm your Recurso email",
 		HTMLBody: html,
 	})
 }

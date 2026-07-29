@@ -448,6 +448,7 @@ func main() {
 	userRepo := db.NewUserRepository(database)
 	sessionRepo := db.NewSessionRepository(database)
 	passwordResetRepo := db.NewPasswordResetRepository(database)
+	emailVerificationRepo := db.NewEmailVerificationRepository(database)
 	mfaBackupRepo := db.NewMFABackupCodeRepository(database)
 	mfaLoginTokenRepo := db.NewMFALoginTokenRepository(database)
 	sessionTTLHours, _ := strconv.Atoi(getEnvDefault("SESSION_TTL_HOURS", "168")) // default 7 days
@@ -463,6 +464,9 @@ func main() {
 	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
 	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)
 	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, dashboardURL)
+	// Email verification reuses the dashboard host (set above) for its verify
+	// link, so it must be configured after ConfigurePasswordReset.
+	authService.ConfigureEmailVerification(emailVerificationRepo, notificationService)
 	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
@@ -1565,6 +1569,10 @@ func main() {
 	// reset itself consumes a single-use emailed token.
 	r.POST("/auth/forgot-password", publicLimit, authHandler.ForgotPassword)
 	r.POST("/auth/reset-password", publicLimit, authHandler.ResetPassword)
+	// Email verification: verify-email consumes the emailed token (public);
+	// resend re-issues a link to the logged-in user (session-gated).
+	r.POST("/auth/verify-email", publicLimit, authHandler.VerifyEmail)
+	r.POST("/auth/verify-email/resend", sessionLimit, authHandler.ResendVerification)
 
 	// OAuth social login (public). /providers reflects which providers are
 	// configured; /start issues the CSRF-state + PKCE cookie and redirects to

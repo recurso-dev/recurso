@@ -54,13 +54,22 @@ type User struct {
 	// FailedLoginAttempts / LockedUntil back the per-account lockout (ENG-151).
 	FailedLoginAttempts int        `json:"-" db:"failed_login_attempts"`
 	LockedUntil         *time.Time `json:"-" db:"locked_until"`
-	CreatedAt           time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt           time.Time  `json:"updated_at" db:"updated_at"`
+	// EmailVerifiedAt is set once the user confirms ownership of their email via
+	// a verification link. NULL means unverified — the dashboard shows a
+	// verify-your-email banner and (later) gates going-live actions.
+	EmailVerifiedAt *time.Time `json:"email_verified_at,omitempty" db:"email_verified_at"`
+	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at" db:"updated_at"`
 }
 
 // IsLocked reports whether the account is currently within a lockout window.
 func (u *User) IsLocked(now time.Time) bool {
 	return u.LockedUntil != nil && u.LockedUntil.After(now)
+}
+
+// IsEmailVerified reports whether the user has confirmed ownership of their email.
+func (u *User) IsEmailVerified() bool {
+	return u.EmailVerifiedAt != nil
 }
 
 // Session is an opaque, server-side login session. Only the SHA-256 hash of the
@@ -83,6 +92,18 @@ const SessionCookieName = "recurso_session"
 // PasswordResetToken is a single-use, short-lived credential emailed to a user
 // to authorize a password change. Only the SHA-256 hash is stored server-side.
 type PasswordResetToken struct {
+	ID        uuid.UUID  `db:"id"`
+	TokenHash string     `db:"token_hash"`
+	UserID    uuid.UUID  `db:"user_id"`
+	ExpiresAt time.Time  `db:"expires_at"`
+	UsedAt    *time.Time `db:"used_at"`
+	CreatedAt time.Time  `db:"created_at"`
+}
+
+// EmailVerificationToken is a single-use, short-lived credential emailed to a
+// user to confirm ownership of their email address. Like PasswordResetToken,
+// only its SHA-256 hash is persisted.
+type EmailVerificationToken struct {
 	ID        uuid.UUID  `db:"id"`
 	TokenHash string     `db:"token_hash"`
 	UserID    uuid.UUID  `db:"user_id"`
@@ -134,6 +155,9 @@ var (
 	// Password reset. Deliberately coarse so a caller cannot tell a bad token
 	// from an expired or already-used one.
 	ErrInvalidResetToken = errors.New("invalid or expired reset token")
+
+	// Email verification. Coarse for the same reason as the reset token.
+	ErrInvalidVerificationToken = errors.New("invalid or expired verification token")
 
 	// MFA. Login/challenge errors are coarse to avoid oracles.
 	ErrMFANotConfigured  = errors.New("mfa setup has not been started")

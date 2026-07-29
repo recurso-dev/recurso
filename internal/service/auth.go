@@ -54,6 +54,14 @@ type passwordResetEmailer interface {
 	SendInvite(ctx context.Context, toEmail, name, inviteURL string) error
 }
 
+// verificationEmailer sends the email-verification link. Kept separate from
+// passwordResetEmailer so wiring email verification does not force every
+// existing passwordResetEmailer fake (in tests) to grow a method.
+// *NotificationService satisfies it.
+type verificationEmailer interface {
+	SendVerification(ctx context.Context, toEmail, verifyURL string) error
+}
+
 // AuthService owns dashboard user accounts, sessions, and team management.
 type AuthService struct {
 	users      port.UserRepository
@@ -64,12 +72,14 @@ type AuthService struct {
 	// Phase 2 dependencies (password reset, TOTP MFA). Configured via the
 	// setters below so the base constructor — and every existing caller/test —
 	// stays unchanged. Methods that need them guard against nil.
-	resetTokens port.PasswordResetRepository
-	backupCodes port.MFABackupCodeRepository
-	mfaTokens   port.MFALoginTokenRepository
-	mailer      passwordResetEmailer
-	appBaseURL  string
-	logger      *slog.Logger
+	resetTokens  port.PasswordResetRepository
+	backupCodes  port.MFABackupCodeRepository
+	mfaTokens    port.MFALoginTokenRepository
+	mailer       passwordResetEmailer
+	verifyTokens port.EmailVerificationRepository
+	verifyMailer verificationEmailer
+	appBaseURL   string
+	logger       *slog.Logger
 
 	// Phase 3 dependency (OAuth social login). Configured via ConfigureOAuth so
 	// the base constructor and existing callers stay unchanged; LoginWithOAuth
@@ -103,6 +113,16 @@ func (s *AuthService) ConfigurePasswordReset(resetTokens port.PasswordResetRepos
 	s.resetTokens = resetTokens
 	s.mailer = mailer
 	s.appBaseURL = strings.TrimRight(appBaseURL, "/")
+}
+
+// ConfigureEmailVerification wires the email-verification dependencies. It
+// reuses appBaseURL (the dashboard host) for the verify link, so it must be
+// called after ConfigurePasswordReset (or it will fall back to appBaseURL as
+// set by that call). Nil-safe: the verify methods degrade gracefully when
+// unwired.
+func (s *AuthService) ConfigureEmailVerification(verifyTokens port.EmailVerificationRepository, mailer verificationEmailer) {
+	s.verifyTokens = verifyTokens
+	s.verifyMailer = mailer
 }
 
 // ConfigureMFA wires the TOTP MFA dependencies.
@@ -248,6 +268,16 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	if err != nil {
 		return nil, err
 	}
+
+	// Kick off email verification: the account is usable immediately but
+	// unverified (the dashboard shows a banner). Best-effort — a failure here
+	// must never turn a successful signup into an error; the user can resend.
+	if s.verifyTokens != nil {
+		if err := s.issueEmailVerification(ctx, user); err != nil {
+			s.logger.Warn("failed to issue email verification at signup", "user_id", user.ID, "error", err)
+		}
+	}
+
 	return &RegisterResult{Tenant: tenant, APIKey: apiKey, User: user, SessionToken: token}, nil
 }
 
