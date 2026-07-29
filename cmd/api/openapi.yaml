@@ -837,6 +837,77 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/revenuecat/preview:
+    post:
+      operationId: previewRevenueCatImport
+      tags: [Migration]
+      summary: Dry-run preview of a RevenueCat export
+      description: >
+        Parses an uploaded RevenueCat export (subscribers + their subscriptions,
+        and products) and returns a plan of what a commit would do — no side
+        effects. Note: RevenueCat identifies subscribers by app_user_id; those
+        without an email surface as conflicts (Recurso requires one).
+      requestBody:
+        required: true
+        description: The RevenueCat export JSON.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscribers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The dry-run import plan.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items: { type: array, items: { type: object } }
+                  summary: { type: object, additionalProperties: { type: integer } }
+                  warnings: { type: array, items: { type: string } }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/import/revenuecat/commit:
+    post:
+      operationId: commitRevenueCatImport
+      tags: [Migration]
+      summary: Import a RevenueCat export (customers, plans, active subscriptions)
+      description: >
+        Imports the uploaded RevenueCat export idempotently — creating customers
+        (subscribers with an email), plans (products), and active subscriptions
+        via a direct insert (no billing side effect). Re-running is safe;
+        per-object failures are returned rather than aborting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscribers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The commit result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: object }
+                  created: { type: object, additionalProperties: { type: integer } }
+                  failures: { type: array, items: { type: object } }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/import/chargebee/preview:
     post:
       operationId: previewChargebeeImport

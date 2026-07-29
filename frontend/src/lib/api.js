@@ -71,6 +71,8 @@ export const endpoints = {
   stripeImportCommit: (exportData) => api.post('/import/stripe/commit', exportData),
   chargebeeImportPreview: (exportData) => api.post('/import/chargebee/preview', exportData),
   chargebeeImportCommit: (exportData) => api.post('/import/chargebee/commit', exportData),
+  revenuecatImportPreview: (exportData) => api.post('/import/revenuecat/preview', exportData),
+  revenuecatImportCommit: (exportData) => api.post('/import/revenuecat/commit', exportData),
   // --- MFA management (authed, session-scoped) ---
   mfaSetup: () => api.post('/auth/mfa/setup'),
   mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),

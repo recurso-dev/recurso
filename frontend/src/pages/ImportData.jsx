@@ -45,6 +45,15 @@ const SOURCES = {
       "Export your Chargebee data as JSON (customers, plans, subscriptions). Subscriptions import in their current billing state — no re-billing.",
     placeholder: '{"customers":[…],"plans":[…],"subscriptions":[…]}',
   },
+  revenuecat: {
+    label: "RevenueCat",
+    preview: endpoints.revenuecatImportPreview,
+    commit: endpoints.revenuecatImportCommit,
+    idField: "revenuecat_id",
+    blurb:
+      "Export your RevenueCat data as JSON (subscribers + their subscriptions, and products). Active subscriptions import in their current state. Note: RevenueCat identifies subscribers by app_user_id — subscribers without an email can't become customers (add emails to migrate them).",
+    placeholder: '{"subscribers":[…],"products":[…]}',
+  },
 };
 
 // Semantic colour per plan action (kept separate from the brand accent).
