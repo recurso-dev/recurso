@@ -1124,6 +1124,8 @@ func main() {
 	billingHandler := handler.NewBillingHandler(tenantService)                                                                                    // Phase B: managed-cloud trial/billing status
 	stripeImportService := service.NewStripeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
 	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
+	chargebeeImportService := service.NewChargebeeImportService(customerService, catalogService, db.NewImportRefRepository(database)) // migration: Chargebee → Recurso (preview)
+	chargebeeImportHandler := handler.NewChargebeeImportHandler(chargebeeImportService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime
 	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
@@ -1665,6 +1667,8 @@ func main() {
 		// Migration: dry-run preview (no writes) then idempotent commit.
 		v1.POST("/import/stripe/preview", stripeImportHandler.Preview)
 		v1.POST("/import/stripe/commit", stripeImportHandler.Commit)
+		// Chargebee migration: dry-run preview (commit is a follow-up).
+		v1.POST("/import/chargebee/preview", chargebeeImportHandler.Preview)
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
