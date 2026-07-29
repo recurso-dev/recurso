@@ -202,6 +202,61 @@ func planCode(pr Price) string {
 	return "stripe_" + pr.ID
 }
 
+// PlanMapping is the set of Recurso plan-create fields derived from a Stripe
+// product + price. The committer feeds these straight into plan creation, so
+// the mapping lives in exactly one place (here) — not duplicated in the service.
+type PlanMapping struct {
+	Name          string
+	Code          string
+	IntervalUnit  string
+	IntervalCount int
+	Amount        int64  // minor units (copied straight from Stripe unit_amount)
+	Currency      string // ISO 3-letter, upper-cased
+}
+
+// MapPlan derives Recurso plan-create params from a Stripe product+price. ok is
+// false when the price has no Recurso plan equivalent (one-time price or an
+// unsupported billing interval) — the same predicate BuildPlan uses to mark the
+// item unsupported/conflict.
+func MapPlan(prod Product, pr Price) (PlanMapping, bool) {
+	unit, count, ok := mappedInterval(pr.Recurring)
+	if !ok {
+		return PlanMapping{}, false
+	}
+	name := prod.Name
+	if pr.Nickname != "" {
+		name = fmt.Sprintf("%s (%s)", prod.Name, pr.Nickname)
+	}
+	if name == "" {
+		name = pr.ID
+	}
+	return PlanMapping{
+		Name:          name,
+		Code:          planCode(pr),
+		IntervalUnit:  unit,
+		IntervalCount: count,
+		Amount:        pr.UnitAmount,
+		Currency:      strings.ToUpper(strings.TrimSpace(pr.Currency)),
+	}, true
+}
+
+// CustomerMapping is the set of Recurso customer-create fields derived from a
+// Stripe customer.
+type CustomerMapping struct {
+	Email   string
+	Name    string
+	Country string
+}
+
+// MapCustomer derives Recurso customer-create params from a Stripe customer.
+func MapCustomer(c Customer) CustomerMapping {
+	return CustomerMapping{
+		Email:   strings.ToLower(strings.TrimSpace(c.Email)),
+		Name:    c.Name,
+		Country: strings.ToUpper(strings.TrimSpace(c.Address.Country)),
+	}
+}
+
 // BuildPlan computes the dry-run outcome of importing exp into a tenant whose
 // current state is described by existing. It has no side effects.
 //
