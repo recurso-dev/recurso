@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import InvoiceDetail from "../InvoiceDetail";
 import { endpoints } from "../../../lib/api";
@@ -78,5 +78,38 @@ describe("InvoiceDetail tax regime presentation", () => {
     expect(screen.getByText("CGST")).toBeInTheDocument();
     expect(screen.getByText("SGST")).toBeInTheDocument();
     expect(screen.getByText(/HSN 998314/)).toBeInTheDocument();
+  });
+});
+
+// jsdom lacks these; the PDF download path uses them.
+vi.stubGlobal("URL", { createObjectURL: vi.fn(() => "blob:x"), revokeObjectURL: vi.fn() });
+window.open = vi.fn();
+
+describe("InvoiceDetail money-path actions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    endpoints.getEUEInvoice.mockResolvedValue({ data: { data: null } });
+    endpoints.getInvoicePdf.mockResolvedValue({ data: new Blob(["pdf"]) });
+    endpoints.sendInvoice.mockResolvedValue({ data: { message: "sent" } });
+    endpoints.getInvoicePreview.mockResolvedValue({ data: "<html>invoice</html>" });
+  });
+
+  it("downloads the PDF for the invoice", async () => {
+    renderDetail({ ...baseInvoice, currency: "usd" });
+    fireEvent.click(screen.getByRole("button", { name: /download pdf/i }));
+    await waitFor(() => expect(endpoints.getInvoicePdf).toHaveBeenCalledWith("inv-1"));
+    expect(window.open).toHaveBeenCalled();
+  });
+
+  it("sends the invoice to the customer", async () => {
+    renderDetail({ ...baseInvoice, currency: "usd" });
+    fireEvent.click(screen.getByRole("button", { name: /send invoice to customer/i }));
+    await waitFor(() => expect(endpoints.sendInvoice).toHaveBeenCalledWith("inv-1"));
+  });
+
+  it("loads the printable preview", async () => {
+    renderDetail({ ...baseInvoice, currency: "usd" });
+    fireEvent.click(screen.getByRole("button", { name: /^preview$/i }));
+    await waitFor(() => expect(endpoints.getInvoicePreview).toHaveBeenCalledWith("inv-1"));
   });
 });

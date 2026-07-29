@@ -86,10 +86,21 @@ had tests at start).
 - `pages/__tests__/CreditNotes.test.jsx` (4) — renders reference + amount, opens
   the detail sheet on row-click, filters by customer via search, empty state.
 
+### Batch 10 — invoice money-path actions + register (with a real fix)
+- `slide-overs/__tests__/InvoiceDetail.test.jsx` (+3) — extended the existing
+  tax-regime suite with the money-path actions: **Download PDF**, **Send invoice
+  to customer**, **Preview** all call the right endpoint.
+- `pages/__tests__/Register.test.jsx` (4) — form render, register → navigate,
+  too-short-password blocks the API call, and an API error shows without
+  navigating.
+- **Fix:** `Register.jsx` `handleChange` switched to a functional `setFormData`
+  update so browser-autofill batched field changes don't drop earlier fields
+  (see BUGS_FOUND.md). One-line, behavior-preserving for normal typing.
+
 ## Running totals
-- Frontend tests: 183 → 282 (+99). Test files: 29 → 49.
-- Shipped as 9 green-CI test PRs (#292–#299, + this) plus a HIGH-CVE security
-  fix (#300) the run's own CI gate caught.
+- Frontend tests: 183 → 289 (+106). Test files: 29 → 50.
+- Shipped as 10 green-CI test PRs (#292–#299, #302, + this) plus a HIGH-CVE
+  security fix (#300) and a batched-autofill form fix.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
