@@ -3,12 +3,26 @@ package service
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
+
+// defaultTrialDays is the managed-cloud trial length; override with TRIAL_DAYS.
+const defaultTrialDays = 14
+
+func trialDays() int {
+	if v := os.Getenv("TRIAL_DAYS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultTrialDays
+}
 
 type TenantService struct {
 	repo *db.TenantRepository
@@ -20,12 +34,18 @@ func NewTenantService(repo *db.TenantRepository) *TenantService {
 
 func (s *TenantService) Register(ctx context.Context, name, email string) (*domain.Tenant, *domain.APIKey, error) {
 	tenantID := uuid.New()
+	now := time.Now()
+	trialEnd := now.Add(time.Duration(trialDays()) * 24 * time.Hour)
 	tenant := &domain.Tenant{
 		ID:        tenantID,
 		Name:      name,
 		Email:     email,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		CreatedAt: now,
+		UpdatedAt: now,
+		// New signups start a managed-cloud trial.
+		TrialEndsAt:   &trialEnd,
+		BillingStatus: domain.BillingStatusTrialing,
+		PlanTier:      domain.PlanTierTrial,
 	}
 
 	// New tenants get a test-mode key by default — safe to develop against,

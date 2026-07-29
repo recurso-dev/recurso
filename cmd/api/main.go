@@ -1121,6 +1121,7 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
+	billingHandler := handler.NewBillingHandler(tenantService)                                                                                    // Phase B: managed-cloud trial/billing status
 	stripeImportService := service.NewStripeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
 	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
@@ -1846,6 +1847,8 @@ func main() {
 		// Account (Tenant) Management
 		v1.GET("/account", tenantHandler.GetAccount)
 		v1.PUT("/account", tenantHandler.UpdateAccount)
+		// Managed-cloud billing/trial status (read-only in this increment).
+		v1.GET("/billing/status", billingHandler.Status)
 
 		// Quotes (P27)
 		v1.POST("/quotes", quoteHandler.CreateQuote)

@@ -7,6 +7,7 @@ import { API_ROOT } from "../../lib/api";
 import Sidebar from "./Sidebar";
 import DocsHelpMenu from "./DocsHelpMenu";
 import VerifyEmailBanner from "./VerifyEmailBanner";
+import TrialBanner from "./TrialBanner";
 import { CommandPalette } from "@/components/ui/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -125,6 +126,7 @@ export function DashboardLayout() {
           </div>
         )}
         <VerifyEmailBanner />
+        <TrialBanner />
         {/* Top bar */}
         <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-white/80 px-6 backdrop-blur">
           <h1 className="text-sm font-semibold text-foreground">{title}</h1>

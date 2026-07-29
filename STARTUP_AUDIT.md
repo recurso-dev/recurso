@@ -39,7 +39,7 @@ code nice."* Anything ≤5 is a first-customer blocker.
 | 13 | Documentation | **9** | Mintlify (dashboard/setup/SDK guides), ADRs, in-app doc links. |
 | 14 | Monitoring | **4→7** | Health + alert webhook **plus a Prometheus `/metrics` endpoint** (HTTP request/latency + runtime gauges), a Grafana dashboard, and alert rules (`deploy/observability/`). To 10: error tracking (Sentry, guarded follow-up) + tracing + log aggregation. |
 | 15 | Self Hosting | **9** | One-command compose, k8s, one-click Railway/Render. Genuinely strong. |
-| 16 | Cloud SaaS | **2** | **Recurso does not bill itself.** No self-serve tenant provisioning, no trial, no paywall, no per-tenant metering/billing. A customer cannot buy the hosted product. This is the single biggest business gap. |
+| 16 | Cloud SaaS | **2→4 (building)** | Signup now starts a **14-day trial** (tenant billing lifecycle: trialing/active/past_due/canceled + `GET /v1/billing/status` + dashboard trial banner). Still to come (needs pricing decision): self-serve checkout, paywall enforcement, per-tenant metering — Recurso billing itself. |
 | 17 | Migration | **1→(building)** | Was **nothing**; the `import` at repo root is a stray (gitignored, untracked) 8 MB build artifact, not tooling. **Increment 1 shipped**: a Stripe-export **dry-run preview** engine + `POST /v1/import/stripe/preview` (maps customers/plans/subscriptions/PMs, links existing by email, flags conflicts/unsupported). Idempotent commit + Chargebee/RevenueCat still to come. |
 | 18 | Import/Export | **3** | CSV *exports* exist (invoices, reports). No bulk *import*; no full-account/GDPR export. |
 | 19 | API | **9** | OpenAPI 3.1, drift-gated, versioned, keys + RBAC. |
@@ -94,7 +94,7 @@ revenue. **The gap is not quality; it's the last mile to "buyable and trustworth
 |---|:--:|---|
 | Discover us | ✅ | Website + pricing page + CTA + docs + SDKs. |
 | Sign up | ✅ | `Register.jsx` + `auth.go`. |
-| Start a trial | ❌ | No trial concept for Recurso itself; product doesn't bill tenants. |
+| Start a trial | ✅ | Signup starts a 14-day trial; status + days-left surfaced via `/v1/billing/status` + a dashboard banner. (Self-serve *paid* conversion pending pricing.) |
 | Verify email | ❌ | No verification flow in auth handlers. |
 | Create an organization | ✅ | Tenant creation on signup. |
 | Invite teammates | ✅ | Team handler + invites + RBAC. |

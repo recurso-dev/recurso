@@ -34,8 +34,22 @@ func NewTenantRepository(db *sql.DB) *TenantRepository {
 }
 
 func (r *TenantRepository) CreateTenant(ctx context.Context, tenant *domain.Tenant) error {
-	query := `INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1, $2, $3, $4, $5)`
-	_, err := r.db.ExecContext(ctx, query, tenant.ID, tenant.Name, tenant.Email, tenant.CreatedAt, tenant.UpdatedAt)
+	// billing_status/plan_tier fall back to the column defaults when unset (so
+	// non-signup callers that don't populate them still get a valid row).
+	status := tenant.BillingStatus
+	if status == "" {
+		status = domain.BillingStatusActive
+	}
+	tier := tenant.PlanTier
+	if tier == "" {
+		tier = domain.PlanTierFree
+	}
+	query := `INSERT INTO tenants (id, name, email, created_at, updated_at, trial_ends_at, billing_status, plan_tier)
+	          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+	_, err := r.db.ExecContext(ctx, query,
+		tenant.ID, tenant.Name, tenant.Email, tenant.CreatedAt, tenant.UpdatedAt,
+		tenant.TrialEndsAt, status, tier,
+	)
 	return err
 }
 
@@ -148,11 +162,15 @@ func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) 
 }
 
 func (r *TenantRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Tenant, error) {
-	query := `SELECT id, name, email, created_at, updated_at FROM tenants WHERE id = $1`
+	query := `SELECT id, name, email, created_at, updated_at, trial_ends_at, billing_status, plan_tier FROM tenants WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, query, id)
 	var t domain.Tenant
-	if err := row.Scan(&t.ID, &t.Name, &t.Email, &t.CreatedAt, &t.UpdatedAt); err != nil {
+	var trialEndsAt sql.NullTime
+	if err := row.Scan(&t.ID, &t.Name, &t.Email, &t.CreatedAt, &t.UpdatedAt, &trialEndsAt, &t.BillingStatus, &t.PlanTier); err != nil {
 		return nil, err
+	}
+	if trialEndsAt.Valid {
+		t.TrialEndsAt = &trialEndsAt.Time
 	}
 	return &t, nil
 }
