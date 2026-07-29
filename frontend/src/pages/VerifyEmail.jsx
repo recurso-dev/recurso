@@ -15,31 +15,42 @@ export default function VerifyEmail() {
   const token = searchParams.get("token") || "";
   const navigate = useNavigate();
   const { refreshUser } = useAuth() || {};
+  // Hold refreshUser in a ref. Its identity changes whenever AuthProvider
+  // re-renders (e.g. the moment its /auth/me bootstrap resolves) — if the verify
+  // effect depended on it, that re-render would re-run the effect mid-request,
+  // its cleanup would flip `active` to false, and the in-flight verification
+  // would resolve into a dead closure that never sets status → spinner forever.
+  const refreshRef = useRef(refreshUser);
+  refreshRef.current = refreshUser;
 
   const [status, setStatus] = useState(token ? "verifying" : "invalid");
-  // Guard against React 18 StrictMode double-invoking the effect (which would
-  // fire the single-use token twice and flip a valid verification to "invalid").
-  const ran = useRef(false);
+  // Fire the single-use token exactly once (started), and gate state updates on
+  // whether the component is still mounted (mounted) — NOT on a per-run flag, so
+  // an effect re-run can never discard a result that's already in flight. This
+  // also covers React 18 StrictMode's double-invoke of mount effects.
+  const started = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
-    if (!token || ran.current) return;
-    ran.current = true;
-    let active = true;
+    if (!token || started.current) return;
+    started.current = true;
     (async () => {
       try {
         await endpoints.verifyEmail(token);
-        if (!active) return;
-        setStatus("success");
+        if (mounted.current) setStatus("success");
         // Clear the banner for a logged-in user; harmless if unauthenticated.
-        if (refreshUser) await refreshUser();
+        if (refreshRef.current) await refreshRef.current();
       } catch {
-        if (active) setStatus("invalid");
+        if (mounted.current) setStatus("invalid");
       }
     })();
-    return () => {
-      active = false;
-    };
-  }, [token, refreshUser]);
+  }, [token]);
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-stone-50 px-4 py-12">
