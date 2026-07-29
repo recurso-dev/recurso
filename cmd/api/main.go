@@ -1120,7 +1120,8 @@ func main() {
 	catalogHandler := handler.NewCatalogHandler(catalogService)
 	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
 	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
-	stripeImportHandler := handler.NewStripeImportHandler(customerService, catalogService) // migration: Stripe → Recurso (preview)
+	stripeImportService := service.NewStripeImportService(customerService, catalogService, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
+	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime
 	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
@@ -1643,8 +1644,9 @@ func main() {
 		v1.POST("/customers", customerHandler.CreateCustomer)
 		v1.GET("/customers", customerHandler.ListCustomers)
 
-		// Migration: dry-run preview of a Stripe export (no writes).
+		// Migration: dry-run preview (no writes) then idempotent commit.
 		v1.POST("/import/stripe/preview", stripeImportHandler.Preview)
+		v1.POST("/import/stripe/commit", stripeImportHandler.Commit)
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)

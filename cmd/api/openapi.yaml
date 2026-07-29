@@ -817,6 +817,56 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/stripe/commit:
+    post:
+      operationId: commitStripeImport
+      tags: [Migration]
+      summary: Import a Stripe export (customers + plans)
+      description: >
+        Imports the uploaded Stripe export, creating customers and plans and
+        recording an idempotency mapping for each. Re-running is safe:
+        already-imported ids and customers/plans that already exist (by email
+        or plan code) are skipped. Per-object failures are returned in the
+        response rather than aborting the whole import. Subscriptions and
+        payment methods are not created by this endpoint.
+      requestBody:
+        required: true
+        description: The Stripe export JSON (same shape as the preview endpoint).
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+                prices: { type: array, items: { type: object } }
+                subscriptions: { type: array, items: { type: object } }
+                payment_methods: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The commit result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { type: object }
+                  created:
+                    type: object
+                    additionalProperties: { type: integer }
+                  failures:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        stripe_id: { type: string }
+                        error: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/customers:
     post:
       operationId: createCustomer
