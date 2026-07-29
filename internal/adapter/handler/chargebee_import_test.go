@@ -16,7 +16,7 @@ func newChargebeeImportHandler(existingEmail string) *ChargebeeImportHandler {
 	if existingEmail != "" {
 		cust.existing = []*domain.Customer{{Email: existingEmail}}
 	}
-	svc := service.NewChargebeeImportService(cust, &fakeImportCatalog{}, &fakeRefRepo{})
+	svc := service.NewChargebeeImportService(cust, &fakeImportCatalog{}, &fakeImportSubs{}, &fakeRefRepo{})
 	return NewChargebeeImportHandler(svc)
 }
 
@@ -51,6 +51,29 @@ func TestChargebeeImportPreview_HappyPath(t *testing.T) {
 	}
 	if plan.Summary["plan.create"] != 1 || plan.Summary["subscription.create"] != 1 {
 		t.Errorf("plan/subscription summary wrong: %v", plan.Summary)
+	}
+}
+
+func TestChargebeeImportCommit_HappyPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newChargebeeImportHandler("existing@acme.com")
+
+	c, w := jsonCtx(http.MethodPost, "/v1/import/chargebee/commit", chargebeeBody)
+	c.Set("tenant_id", uuid.New())
+	h.Commit(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d body=%s, want 200", w.Code, w.Body.String())
+	}
+	var res struct {
+		Created map[string]int `json:"created"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// cb_new created; cb_dupe links; pro plan created; sub_1 created.
+	if res.Created["customer"] != 1 || res.Created["plan"] != 1 || res.Created["subscription"] != 1 {
+		t.Errorf("commit created wrong: %v", res.Created)
 	}
 }
 
