@@ -32,6 +32,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/gsp"
 	"github.com/recurso-dev/recurso/internal/adapter/handler"
 	"github.com/recurso-dev/recurso/internal/adapter/memory"
+	"github.com/recurso-dev/recurso/internal/adapter/metrics"
 	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/adapter/notification"
 	redisAdapter "github.com/recurso-dev/recurso/internal/adapter/redis"
@@ -1421,6 +1422,9 @@ func main() {
 	}
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
+	// Prometheus metrics: record every request (method/route/status + latency).
+	httpMetrics := metrics.NewHTTPMetrics()
+	r.Use(middleware.MetricsMiddleware(httpMetrics))
 	// Rate limit (per key/IP): RATE_LIMIT_PER_MINUTE, default 500.
 	rateLimit, _ := strconv.Atoi(getEnvDefault("RATE_LIMIT_PER_MINUTE", "500"))
 	if rateLimit <= 0 {
@@ -1460,6 +1464,19 @@ func main() {
 	})
 
 	r.LoadHTMLGlob("internal/adapter/templates/*.html")
+
+	// Prometheus scrape endpoint. Optionally bearer-gated via METRICS_TOKEN so it
+	// can be exposed without leaking internal metrics; open when unset (scrape
+	// from a trusted network).
+	metricsToken := os.Getenv("METRICS_TOKEN")
+	r.GET("/metrics", func(c *gin.Context) {
+		if metricsToken != "" && c.GetHeader("Authorization") != "Bearer "+metricsToken {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		httpMetrics.WriteProm(c.Writer)
+	})
 
 	r.GET("/health", func(c *gin.Context) {
 		status := "ok"
