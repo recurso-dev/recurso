@@ -1,0 +1,19 @@
+# Example Prometheus scrape config for the Recurso API.
+# Merge the `scrape_configs` entry into your prometheus.yml.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - prometheus-alerts.yml
+
+scrape_configs:
+  - job_name: recurso-api
+    metrics_path: /metrics
+    scheme: https
+    static_configs:
+      - targets: ["api.recurso.dev"]
+    # If METRICS_TOKEN is set on the API, supply it here:
+    # authorization:
+    #   type: Bearer
+    #   credentials: "<METRICS_TOKEN>"

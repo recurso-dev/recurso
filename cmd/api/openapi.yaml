@@ -106,6 +106,26 @@ paths:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
 
+  /metrics:
+    get:
+      operationId: getMetrics
+      tags: [System]
+      summary: Prometheus metrics
+      description: >
+        Prometheus text-format metrics: HTTP request counts + latency
+        histograms (by method/route/status) and Go runtime gauges. Optionally
+        bearer-gated via the METRICS_TOKEN env; open when unset (scrape from a
+        trusted network).
+      responses:
+        '200':
+          description: Metrics in Prometheus text exposition format.
+          content:
+            text/plain:
+              schema:
+                type: string
+        '401':
+          description: METRICS_TOKEN is set and the bearer token did not match.
+
   /version:
     get:
       operationId: getVersion

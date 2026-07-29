@@ -1,0 +1,53 @@
+# Prometheus alerting rules for the Recurso API.
+# Load via prometheus.yml: `rule_files: [ "prometheus-alerts.yml" ]`.
+# Metrics are exposed at /metrics (see docs/observability.md).
+groups:
+  - name: recurso-api
+    rules:
+      - alert: RecursoAPIDown
+        expr: up{job="recurso-api"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Recurso API target is down"
+          description: "Prometheus cannot scrape {{ $labels.instance }} for 2m."
+
+      - alert: RecursoHighErrorRate
+        # 5xx as a share of all requests, over 5m.
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            /
+          clamp_min(sum(rate(http_requests_total[5m])), 1e-9) > 0.05
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "API 5xx error ratio > 5%"
+          description: "More than 5% of requests are failing (5xx) over the last 5m."
+
+      - alert: RecursoHighLatencyP95
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "API p95 latency > 1s"
+          description: "95th-percentile request latency has exceeded 1s for 10m."
+
+      - alert: RecursoGoroutineSpike
+        expr: go_goroutines > 5000
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Goroutine count high (possible leak)"
+          description: "go_goroutines={{ $value }} on {{ $labels.instance }} for 10m."
+
+      - alert: RecursoMemoryHigh
+        expr: go_memstats_alloc_bytes > 1.5e9
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "Heap allocation high (>1.5GB)"
+          description: "Sustained high heap usage on {{ $labels.instance }}."

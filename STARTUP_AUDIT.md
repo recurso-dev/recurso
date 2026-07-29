@@ -37,7 +37,7 @@ code nice."* Anything ≤5 is a first-customer blocker.
 | 11 | Scalability | **7** | Row-level multi-tenancy, per-entity ledgers, batched claim-based workers. Several list endpoints unbounded (e.g. `ListInvoices`). |
 | 12 | Deployment | **8** | Docker, docker-compose (dev/prod/demo), **k8s manifests**, `railway.json`, `render.yaml`, Cloud Build → Cloud Run, CF Workers. Excellent for self-host. |
 | 13 | Documentation | **9** | Mintlify (dashboard/setup/SDK guides), ADRs, in-app doc links. |
-| 14 | Monitoring | **4** | Health + alert webhook only. No `/metrics`, no Prometheus/Grafana, no tracing, no log aggregation, no error tracking. |
+| 14 | Monitoring | **4→7** | Health + alert webhook **plus a Prometheus `/metrics` endpoint** (HTTP request/latency + runtime gauges), a Grafana dashboard, and alert rules (`deploy/observability/`). To 10: error tracking (Sentry, guarded follow-up) + tracing + log aggregation. |
 | 15 | Self Hosting | **9** | One-command compose, k8s, one-click Railway/Render. Genuinely strong. |
 | 16 | Cloud SaaS | **2** | **Recurso does not bill itself.** No self-serve tenant provisioning, no trial, no paywall, no per-tenant metering/billing. A customer cannot buy the hosted product. This is the single biggest business gap. |
 | 17 | Migration | **1→(building)** | Was **nothing**; the `import` at repo root is a stray (gitignored, untracked) 8 MB build artifact, not tooling. **Increment 1 shipped**: a Stripe-export **dry-run preview** engine + `POST /v1/import/stripe/preview` (maps customers/plans/subscriptions/PMs, links existing by email, flags conflicts/unsupported). Idempotent commit + Chargebee/RevenueCat still to come. |
@@ -49,7 +49,7 @@ code nice."* Anything ≤5 is a first-customer blocker.
 | 23 | Support | **2** | No in-app support, help widget, ticketing, email queue, or SLA. A stuck trial user has nowhere to go. |
 | 24 | Disaster Recovery | **3** | No documented RTO/RPO, no tested restore, no failover story. |
 | 25 | Backups | **3** | PG is authoritative but no automated backup/PITR/verification in the repo. For a money system this is a red line. |
-| 26 | Observability | **4** | See Monitoring. Health-check level only; no metrics/tracing/error tracking. |
+| 26 | Observability | **4→7** | Prometheus `/metrics` (request/latency/runtime) + Grafana dashboard + alert rules now shipped. To 10: error tracking (Sentry) + distributed tracing. |
 
 **Weighted read:** the *engineering median* is ~8. The *business-surface* items
 (16 Cloud SaaS, 17 Migration, 23 Support, 24 DR, 25 Backups, 14/26 Monitoring/Obs)
