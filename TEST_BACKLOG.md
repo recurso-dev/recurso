@@ -20,20 +20,35 @@ Frontend is the coverage gap. Ranked highest-value first.
 - [x] `QuoteDetail` — lifecycle actions — done (feature work)
 
 ## P2 — list pages (filter/search/empty/error/row-click)
-- [x] Coupons, Mandates, Plans — done batches 2/4/5
+- [x] Coupons, Mandates, Plans, Gifts, Referrals, Subscriptions, CreditNotes,
+      Wallets, Churn, Team — done (batches 2–17)
 - [x] Invoices, Audit Log, Disputes, Ask AI — done (feature work)
-- [ ] Wallets, Metering, Gifts, Referrals, Organizations, OfflinePayments,
-      CreditNotes, Ledger, Usage, Churn, DunningCampaigns, Quotes
-- [ ] Finance report pages (MRRWaterfall, RevenueByPlan/Geography, TrialBalance,
-      InvoiceAging, UnitEconomics, RevenueRecognition/Waterfall, MonthEndClose,
-      FinanceReconciliation, GSTReturns)
+- [ ] Metering, Organizations, OfflinePayments, Ledger, Usage, DunningCampaigns,
+      Quotes, Integrations, Security, Notifications, Profile
+- [x] Finance reports done: TrialBalance, InvoiceAging, UnitEconomics,
+      RevenueByPlan, RevenueByGeography, MRRWaterfall, RevenueWaterfall
+- [ ] Finance reports remaining: RevenueRecognition, MonthEndClose, GSTReturns,
+      FinanceReconciliation (has a test already), ExecutiveSummary
 
 ## P3 — hooks / infra
-- [x] `lib/useCustomers.js` (usePlans/useSubscriptions/useCustomers) — done batch 4
+- [x] `lib/useCustomers.js` — done batch 4
 - [x] `components/patterns/StatCard` — done batch 2
+- [x] `auth/AuthProvider` — done batch 7 (+Login/Register/Forgot/Reset in 9/10/17)
 - [ ] `lib/queryClient.js` — retry/gcTime config
-- [ ] `auth/AuthProvider` — login/logout/session-restore
-- [ ] `components/patterns/*` (FormField, LoadingSkeleton, ErrorState)
+- [ ] `components/patterns/*` (FormField, LoadingSkeleton, ErrorState, DataTable
+      pagination controls)
+- [ ] `Developers` page — webhooks + API-key create/revoke + deliveries (complex,
+      multi-endpoint; security-relevant — good next target)
+- [ ] `Ledger` page — coupled accounts+entries queries with account selection
+- [ ] `SubscriptionDetail`, `CancelFlowDetail`, `PricingSimulator` slide-overs
+
+## Recommended next execution order (for the next session)
+1. `Developers` (API-key revoke = security-relevant) + `OfflinePayments` (money).
+2. `Metering`/`Usage` (usage-based billing surface).
+3. `Organizations` (multi-tenant), `Security`/`Profile` (account settings).
+4. Remaining finance reports (RevenueRecognition, MonthEndClose, GSTReturns).
+5. `SubscriptionDetail` dedicated suite (cancel-reason flow, plan-change preview).
+6. Pattern components + `lib/queryClient.js`.
 
 ## P4 — backend edges (already strong; targeted gaps only)
 - [ ] Handler validation paths that lack a table-driven test (400s, oneof enums)
