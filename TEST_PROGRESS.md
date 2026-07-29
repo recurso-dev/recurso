@@ -134,11 +134,24 @@ had tests at start).
 - `pages/__tests__/Team.test.jsx` (3) — members + roles render; the **Add member**
   action is shown to an owner/admin and **hidden from a plain member** (RBAC gate).
 
+### Batch 17 — password-reset auth flows
+- `pages/__tests__/ForgotPassword.test.jsx` (2) — submits the email + shows the
+  generic sent confirmation, and **still shows success on a request error**
+  (no account-enumeration — a security property).
+- `pages/__tests__/ResetPassword.test.jsx` (2) — resets with the URL token then
+  redirects to /login; shows the invalid-link state when the token is missing.
+
 ## Running totals
-- Frontend tests: 183 → 312 (+129). Test files: 29 → 61.
-- Shipped as 16 green-CI test PRs (#292–#299, #302–#308, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 316 (+133). Test files: 29 → 63.
+- Shipped as 17 green-CI test PRs (#292–#299, #302–#309, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
-- **312 frontend tests across 61 files.** Backend: 319 test files + harness.
+- **316 frontend tests across 63 files.** Backend: 319 test files + harness.
+
+## Auth surface — now fully covered
+AuthProvider (session/retry/401) · Login (+2FA) · Register (+autofill fix) ·
+ForgotPassword (no-enumeration) · ResetPassword (token flow) · Team RBAC gate ·
+API-key-never-in-localStorage. This was the single highest-risk untested area at
+the start of the run.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
