@@ -166,9 +166,15 @@ had tests at start).
 - `pages/__tests__/OfflinePayments.test.jsx` (2) — renders a recorded offline
   payment amount (money); empty state.
 
+### Batch 21 — organizations + GST returns
+- `pages/__tests__/Organizations.test.jsx` (2) — renders orgs; empty state.
+- `pages/__tests__/GSTReturns.test.jsx` (2) — build-return action present;
+  building GSTR-1 calls getGSTR1 and shows the result payload.
+
 ## Running totals (updated)
-- Run total: **183 → 327 (+144) across 20 test PRs**, plus a HIGH-CVE fix and an
-  autofill form fix. Test files: 29 → 67.
+- Run total: **183 → 331 (+148) across 21 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 69.
+- Pages tested: ~43/57. Slide-overs: 9/12. lib: 9/9.
 - NOTE: line-coverage tooling (`@vitest/coverage-v8`) is not installed — a hard
   coverage % isn't measured. Adding it (+ a CI coverage gate) is a follow-up
   (deferred to avoid a lockfile change mid-run). Confidence is tracked by
