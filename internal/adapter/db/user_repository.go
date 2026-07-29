@@ -43,7 +43,8 @@ func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	var role string
 	var mfaSecret sql.NullString
 	var lockedUntil sql.NullTime
-	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.MFALastTimestep, &u.FailedLoginAttempts, &lockedUntil, &u.CreatedAt, &u.UpdatedAt); err != nil {
+	var emailVerifiedAt sql.NullTime
+	if err := row.Scan(&u.ID, &u.TenantID, &u.Email, &u.PasswordHash, &u.Name, &role, &u.MFAEnabled, &mfaSecret, &u.MFALastTimestep, &u.FailedLoginAttempts, &lockedUntil, &emailVerifiedAt, &u.CreatedAt, &u.UpdatedAt); err != nil {
 		return nil, err
 	}
 	u.Role = domain.Role(role)
@@ -53,10 +54,13 @@ func scanUser(row interface{ Scan(...any) error }) (*domain.User, error) {
 	if lockedUntil.Valid {
 		u.LockedUntil = &lockedUntil.Time
 	}
+	if emailVerifiedAt.Valid {
+		u.EmailVerifiedAt = &emailVerifiedAt.Time
+	}
 	return &u, nil
 }
 
-const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, mfa_last_timestep, failed_login_attempts, locked_until, created_at, updated_at`
+const userSelectCols = `id, tenant_id, email, password_hash, name, role, mfa_enabled, mfa_secret, mfa_last_timestep, failed_login_attempts, locked_until, email_verified_at, created_at, updated_at`
 
 func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT ` + userSelectCols + ` FROM users WHERE lower(email) = lower($1)`
@@ -232,6 +236,24 @@ func (r *UserRepository) ClearMFA(ctx context.Context, tenantID, id uuid.UUID) e
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE users SET mfa_enabled = FALSE, mfa_secret = NULL, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
 		id, tenantID,
+	)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// MarkEmailVerified stamps email_verified_at = NOW(). Idempotent: re-confirming
+// an already-verified account is a no-op that still returns nil (the token was
+// valid; the row exists), so a double-clicked link never surfaces an error.
+func (r *UserRepository) MarkEmailVerified(ctx context.Context, id uuid.UUID) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW()), updated_at = NOW() WHERE id = $1`,
+		id,
 	)
 	if err != nil {
 		return err

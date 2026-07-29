@@ -46,6 +46,21 @@ type UserRepository interface {
 	ClearFailedLogins(ctx context.Context, id uuid.UUID) error
 	// ClearMFA disables MFA and wipes the stored secret.
 	ClearMFA(ctx context.Context, tenantID, id uuid.UUID) error
+	// MarkEmailVerified stamps email_verified_at = NOW() for the user, keyed by
+	// id alone (a verification link carries no tenant context). Idempotent.
+	MarkEmailVerified(ctx context.Context, id uuid.UUID) error
+}
+
+// EmailVerificationRepository persists single-use email-verification tokens
+// keyed by the SHA-256 hash of the raw token (mirrors PasswordResetRepository).
+type EmailVerificationRepository interface {
+	Create(ctx context.Context, token *domain.EmailVerificationToken) error
+	// GetByTokenHash returns the token for the given hash, or
+	// ErrInvalidVerificationToken if none exists.
+	GetByTokenHash(ctx context.Context, tokenHash string) (*domain.EmailVerificationToken, error)
+	// MarkUsed atomically stamps used_at only if it was NULL, returning true when
+	// this call is the one that consumed the token (single-use gate).
+	MarkUsed(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
 // SessionRepository persists opaque login sessions keyed by the SHA-256 hash

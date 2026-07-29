@@ -40,22 +40,24 @@ func (h *AuthHandler) clearSessionCookie(c *gin.Context) {
 
 // userView is the safe, serialized shape of a user (no password hash).
 type userView struct {
-	ID         string `json:"id"`
-	Email      string `json:"email"`
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	MFAEnabled bool   `json:"mfa_enabled"`
-	CreatedAt  string `json:"created_at"`
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	Name          string `json:"name"`
+	Role          string `json:"role"`
+	MFAEnabled    bool   `json:"mfa_enabled"`
+	EmailVerified bool   `json:"email_verified"`
+	CreatedAt     string `json:"created_at"`
 }
 
 func toUserView(u *domain.User) userView {
 	return userView{
-		ID:         u.ID.String(),
-		Email:      u.Email,
-		Name:       u.Name,
-		Role:       string(u.Role),
-		MFAEnabled: u.MFAEnabled,
-		CreatedAt:  u.CreatedAt.Format(time.RFC3339),
+		ID:            u.ID.String(),
+		Email:         u.Email,
+		Name:          u.Name,
+		Role:          string(u.Role),
+		MFAEnabled:    u.MFAEnabled,
+		EmailVerified: u.IsEmailVerified(),
+		CreatedAt:     u.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -242,6 +244,56 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	default:
 		respondInternalError(c, err)
 	}
+}
+
+// --- POST /auth/verify-email ---
+
+type verifyEmailRequest struct {
+	Token string `json:"token" binding:"required"`
+}
+
+// VerifyEmail (public) consumes a single-use verification token from the emailed
+// link and marks the account's email confirmed. Invalid/expired/used tokens get
+// a generic 400 so the endpoint is not a token oracle.
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	var req verifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		return
+	}
+
+	err := h.auth.VerifyEmail(c.Request.Context(), req.Token)
+	switch {
+	case err == nil:
+		c.JSON(http.StatusOK, gin.H{"message": "email verified"})
+	case errors.Is(err, domain.ErrInvalidVerificationToken):
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid or expired verification token")
+	default:
+		respondInternalError(c, err)
+	}
+}
+
+// --- POST /auth/verify-email/resend ---
+
+// ResendVerification (authenticated) re-sends the verification link to the
+// logged-in user. It always answers 200 — including when the address is already
+// verified — so it reveals nothing and is safe to call idempotently.
+func (h *AuthHandler) ResendVerification(c *gin.Context) {
+	token, err := c.Cookie(domain.SessionCookieName)
+	if err != nil || token == "" {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "not authenticated")
+		return
+	}
+	user, _, err := h.auth.Me(c.Request.Context(), token)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "not authenticated")
+		return
+	}
+	if err := h.auth.RequestEmailVerification(c.Request.Context(), user); err != nil {
+		// Log-worthy infra failure, but the client still gets the generic answer.
+		slog.Default().Error("resend verification failed", "error", err)
+	}
+	c.JSON(http.StatusOK, gin.H{"message": "If your email is unverified, a verification link has been sent."})
 }
 
 // --- POST /auth/logout ---

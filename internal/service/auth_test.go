@@ -136,6 +136,18 @@ func (r *fakeUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error
 	return nil
 }
 
+func (r *fakeUserRepo) MarkEmailVerified(_ context.Context, id uuid.UUID) error {
+	u, ok := r.users[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	if u.EmailVerifiedAt == nil {
+		now := time.Now().UTC()
+		u.EmailVerifiedAt = &now
+	}
+	return nil
+}
+
 func (r *fakeUserRepo) ListByTenant(_ context.Context, tenantID uuid.UUID) ([]*domain.User, error) {
 	var out []*domain.User
 	for _, u := range r.users {

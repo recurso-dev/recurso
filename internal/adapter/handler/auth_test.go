@@ -114,6 +114,16 @@ func (r *memUserRepo) ClearMFA(_ context.Context, tenantID, id uuid.UUID) error 
 	}
 	return domain.ErrUserNotFound
 }
+func (r *memUserRepo) MarkEmailVerified(_ context.Context, id uuid.UUID) error {
+	if u, ok := r.users[id]; ok {
+		if u.EmailVerifiedAt == nil {
+			now := time.Now().UTC()
+			u.EmailVerifiedAt = &now
+		}
+		return nil
+	}
+	return domain.ErrUserNotFound
+}
 func (r *memUserRepo) ListByTenant(_ context.Context, tenantID uuid.UUID) ([]*domain.User, error) {
 	var out []*domain.User
 	for _, u := range r.users {
@@ -241,6 +251,33 @@ func jsonCtx(method, target, body string) (*gin.Context, *httptest.ResponseRecor
 }
 
 // --- auth endpoint tests ---
+
+func TestVerifyEmailHandler_MissingTokenIs400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewAuthHandler(newTestAuthService(), false)
+
+	// Empty body → the required `token` binding fails before the service is
+	// touched, so this holds even without email verification configured.
+	c, w := jsonCtx(http.MethodPost, "/auth/verify-email", `{}`)
+	h.VerifyEmail(c)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d body=%s, want 400", w.Code, w.Body.String())
+	}
+}
+
+func TestResendVerificationHandler_UnauthenticatedIs401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := NewAuthHandler(newTestAuthService(), false)
+
+	// No session cookie → 401 before any service work.
+	c, w := jsonCtx(http.MethodPost, "/auth/verify-email/resend", ``)
+	h.ResendVerification(c)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d body=%s, want 401", w.Code, w.Body.String())
+	}
+}
 
 func TestRegisterHandler_SetsCookieAndReturnsKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)

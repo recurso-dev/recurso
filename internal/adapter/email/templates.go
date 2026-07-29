@@ -250,6 +250,19 @@ const PasswordResetTemplate = `
 <p style="font-size: 14px; color: #64748b;">This link will expire in 1 hour. If you didn't request a password reset, you can safely ignore this email — your password will not change.</p>
 `
 
+// EmailVerificationTemplate confirms ownership of a new account's email.
+const EmailVerificationTemplate = `
+<h1>Confirm your email</h1>
+<p>Hello,</p>
+<p>Welcome to Recurso. Confirm this is your email address to secure your account and unlock going live.</p>
+
+<p style="text-align: center;">
+    <a href="{{.VerifyURL}}" class="btn">Verify Email</a>
+</p>
+
+<p style="font-size: 14px; color: #64748b;">This link will expire in 24 hours. If you didn't create a Recurso account, you can safely ignore this email.</p>
+`
+
 // TeamInviteTemplate invites a new teammate to set their own password.
 const TeamInviteTemplate = `
 <h1>You've been invited to Recurso</h1>

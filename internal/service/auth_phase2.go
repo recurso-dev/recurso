@@ -170,6 +170,89 @@ func (s *AuthService) ResetPassword(ctx context.Context, rawToken, newPassword s
 	return s.sessions.DeleteByUser(ctx, tok.UserID)
 }
 
+// --- Email verification ----------------------------------------------------
+
+// emailVerificationTTL is how long an emailed verification link stays valid.
+const emailVerificationTTL = 24 * time.Hour
+
+// issueEmailVerification creates a single-use verification token for the user
+// and emails a verify link. Best-effort on the email send (the token still
+// exists; the user can request a resend).
+func (s *AuthService) issueEmailVerification(ctx context.Context, user *domain.User) error {
+	if s.verifyTokens == nil {
+		return fmt.Errorf("email verification is not configured")
+	}
+	raw, tokenHash, err := newSessionToken()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	if err := s.verifyTokens.Create(ctx, &domain.EmailVerificationToken{
+		ID:        uuid.New(),
+		TokenHash: tokenHash,
+		UserID:    user.ID,
+		ExpiresAt: now.Add(emailVerificationTTL),
+		CreatedAt: now,
+	}); err != nil {
+		return err
+	}
+
+	link := fmt.Sprintf("%s/verify-email?token=%s", s.appBaseURL, raw)
+	if s.verifyMailer != nil {
+		if err := s.verifyMailer.SendVerification(ctx, user.Email, link); err != nil {
+			// Best-effort: the token exists, so log the failure but don't leak it.
+			s.logger.Error("failed to send verification email", "error", err)
+		}
+	}
+	return nil
+}
+
+// RequestEmailVerification (re)sends a verification link to the given user. It
+// is a no-op success when the address is already verified, so the caller need
+// not special-case that.
+func (s *AuthService) RequestEmailVerification(ctx context.Context, user *domain.User) error {
+	if user == nil {
+		return domain.ErrUserRequired
+	}
+	if user.IsEmailVerified() {
+		return nil
+	}
+	return s.issueEmailVerification(ctx, user)
+}
+
+// VerifyEmail validates a verification token (unused and unexpired) and marks
+// the user's email verified. The token is consumed via the atomic MarkUsed
+// claim so it is strictly single-use. Any bad/expired/used token yields the
+// same generic ErrInvalidVerificationToken.
+func (s *AuthService) VerifyEmail(ctx context.Context, rawToken string) error {
+	if s.verifyTokens == nil {
+		return fmt.Errorf("email verification is not configured")
+	}
+	if rawToken == "" {
+		return domain.ErrInvalidVerificationToken
+	}
+
+	tok, err := s.verifyTokens.GetByTokenHash(ctx, hashToken(rawToken))
+	if err != nil {
+		return domain.ErrInvalidVerificationToken
+	}
+	if tok.UsedAt != nil || time.Now().UTC().After(tok.ExpiresAt) {
+		return domain.ErrInvalidVerificationToken
+	}
+
+	// Consume the token atomically BEFORE marking verified: MarkUsed returns
+	// true only for the request that wins the claim, so two concurrent clicks of
+	// the same link can't both pass.
+	claimed, err := s.verifyTokens.MarkUsed(ctx, tok.ID)
+	if err != nil {
+		return err
+	}
+	if !claimed {
+		return domain.ErrInvalidVerificationToken
+	}
+	return s.users.MarkEmailVerified(ctx, tok.UserID)
+}
+
 // --- TOTP MFA --------------------------------------------------------------
 
 // MFASetupResult carries the provisioning data for a new TOTP secret. MFA is
