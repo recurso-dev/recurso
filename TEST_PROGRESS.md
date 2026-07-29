@@ -161,9 +161,14 @@ had tests at start).
   (revokeKey(id)). All the page's other reads (webhooks/events/deliveries) are
   stubbed empty so the keys tab renders in isolation.
 
+### Batch 20 — metering + offline payments
+- `pages/__tests__/Metering.test.jsx` (2) — renders billable metrics; empty state.
+- `pages/__tests__/OfflinePayments.test.jsx` (2) — renders a recorded offline
+  payment amount (money); empty state.
+
 ## Running totals (updated)
-- Run total: **183 → 323 (+140) across 19 test PRs**, plus a HIGH-CVE fix and an
-  autofill form fix. Test files: 29 → 65.
+- Run total: **183 → 327 (+144) across 20 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 67.
 - NOTE: line-coverage tooling (`@vitest/coverage-v8`) is not installed — a hard
   coverage % isn't measured. Adding it (+ a CI coverage gate) is a follow-up
   (deferred to avoid a lockfile change mid-run). Confidence is tracked by
