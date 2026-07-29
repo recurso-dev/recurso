@@ -130,11 +130,15 @@ had tests at start).
 - `pages/__tests__/RevenueWaterfall.test.jsx` (1) — total recognized renders
   from the recognition curve (dual-query page; rollforward stubbed).
 
+### Batch 16 — team RBAC gate
+- `pages/__tests__/Team.test.jsx` (3) — members + roles render; the **Add member**
+  action is shown to an owner/admin and **hidden from a plain member** (RBAC gate).
+
 ## Running totals
-- Frontend tests: 183 → 309 (+126). Test files: 29 → 60.
-- Shipped as 15 green-CI test PRs (#292–#299, #302–#307, + this) plus a HIGH-CVE
+- Frontend tests: 183 → 312 (+129). Test files: 29 → 61.
+- Shipped as 16 green-CI test PRs (#292–#299, #302–#308, + this) plus a HIGH-CVE
   security fix (#300) and a batched-autofill form fix.
-- **309 frontend tests across 60 files.** Backend: 319 test files + harness.
+- **312 frontend tests across 61 files.** Backend: 319 test files + harness.
 
 ## What this run hardened (behavioral, not coverage padding)
 - **Money display end-to-end**: `utils` exponent math + the `Money` component —
