@@ -226,6 +226,15 @@ had tests at start).
   input-validation guards on the money/compliance/admin write paths.
 - Backend test files: 322 → 324.
 
+### Batch 28 — tenant/API-key RBAC (closes the handler-validation sweep)
+- `tenant_validation_test.go` (2) — CreateKey 403s a non-manager (API-key
+  creation is owner/admin-only); Register 400s a malformed email at the binding
+  layer.
+- **Backend handler-validation sweep complete** for the write/RBAC surfaces:
+  6 handlers (dispute, credit-note, team, tax-nexus, organization, tenant),
+  15 DB-free tests, covering the authorization + input-validation guards on the
+  money / compliance / admin / API-key write paths. Backend test files: 324 → 325.
+
 ## Honest assessment (end of run)
 The remaining untested files are **low-risk, low-incremental-value**: settings/
 account pages (Profile, Security, Integrations, ExecutiveSummary), on-demand
