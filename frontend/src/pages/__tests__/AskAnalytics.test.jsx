@@ -59,10 +59,15 @@ describe("AskAnalytics", () => {
     );
     // 2 rows in the result.
     expect(screen.getByText(/2 rows/)).toBeInTheDocument();
-    // Persisted to localStorage so a reload keeps it.
-    const stored = JSON.parse(localStorage.getItem("recurso.ask.history.v1"));
-    expect(stored).toHaveLength(1);
-    expect(stored[0].question).toBe("Customers and plans");
+    // Persisted to localStorage so a reload keeps it. The write happens in a
+    // useEffect keyed on the history state, so poll for it rather than reading
+    // synchronously (the effect can flush after the render assertion — this was
+    // a CI flake).
+    await waitFor(() => {
+      const stored = JSON.parse(localStorage.getItem("recurso.ask.history.v1") || "[]");
+      expect(stored).toHaveLength(1);
+      expect(stored[0].question).toBe("Customers and plans");
+    });
   });
 
   it("restores history from localStorage on mount", () => {
