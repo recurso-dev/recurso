@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine, CreditCard } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
@@ -155,6 +155,12 @@ export default function Settings() {
       icon: ArrowDownToLine,
       title: "Import from Stripe",
       description: "Migrate your customers and plans from a Stripe export — preview before importing.",
+    },
+    {
+      to: "/settings/billing",
+      icon: CreditCard,
+      title: "Billing & plan",
+      description: "Your managed-cloud plan, trial status, and the options available.",
     },
   ];
   // Float the region-relevant tax setups to the top, keeping everything else in

@@ -95,8 +95,9 @@ export const endpoints = {
   getPlans: (params) => api.get('/plans', { params }),
   getAccount: () => api.get('/account'),
   updateAccount: (data) => api.put('/account', data),
-  // Managed-cloud trial/billing status (read-only).
+  // Managed-cloud trial/billing status + plan catalog (read-only).
   getBillingStatus: () => api.get('/billing/status'),
+  getBillingPlans: () => api.get('/billing/plans'),
   getCustomers: (params) => api.get('/customers', { params }),
   getCustomer: (id) => api.get(`/customers/${id}`),
   // Partial update; { active: false } archives (blocked while subscriptions
