@@ -147,6 +147,18 @@ had tests at start).
   security fix (#300) and a batched-autofill form fix.
 - **316 frontend tests across 63 files.** Backend: 319 test files + harness.
 
+### Batch 18 — API client contract
+- `lib/__tests__/api.test.js` (4) — locks the HTTP method + URL for critical
+  endpoints (mocks axios, asserts the sent path): resource URLs
+  (`/customers/:id`, `/invoices/:id/pdf` as a blob), money-path mutations
+  (credit-note void/pdf, subscription cancel body, dispute resolve), lifecycle
+  actions (approve, quote delete, coupon toggle, mandate revoke), and list
+  query-param pass-through. Catches endpoint path typos — a real bug class.
+
+## Running totals (updated)
+- Frontend tests: 316 → 320 (+4). Test files: 63 → 64. Run total: **183 → 320
+  (+137) across 18 test PRs**, plus a HIGH-CVE fix and an autofill form fix.
+
 ## Auth surface — now fully covered
 AuthProvider (session/retry/401) · Login (+2FA) · Register (+autofill fix) ·
 ForgotPassword (no-enumeration) · ResetPassword (token flow) · Team RBAC gate ·
