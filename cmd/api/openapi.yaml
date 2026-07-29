@@ -4264,6 +4264,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/billing/status:
+    get:
+      operationId: getBillingStatus
+      tags: [Account]
+      summary: Get the tenant's managed-cloud billing/trial status
+      description: >
+        Returns the tenant's billing lifecycle: status (trialing/active/
+        past_due/canceled), plan tier, trial end, days left, and whether the
+        trial has expired. Read-only in this increment.
+      responses:
+        '200':
+          description: Billing status.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  billing_status: { type: string, enum: [trialing, active, past_due, canceled] }
+                  plan_tier: { type: string }
+                  trial_ends_at: { type: string, format: date-time }
+                  trial_days_left: { type: integer }
+                  trial_expired: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/account:
     get:
       operationId: getAccount
