@@ -30,6 +30,7 @@ const CreatePlan = lazy(() => import('./pages/CreatePlan'))
 const Register = lazy(() => import('./pages/Register'))
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
 const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
 const Security = lazy(() => import('./pages/Security'))
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
@@ -122,6 +123,7 @@ function App() {
                     <Route path="/register" element={!isAuthenticated ? <Register /> : <Navigate to="/" />} /> {/* Added Register Route */}
                     <Route path="/forgot-password" element={!isAuthenticated ? <ForgotPassword /> : <Navigate to="/" />} />
                     <Route path="/reset-password" element={<ResetPassword />} />
+                    <Route path="/verify-email" element={<VerifyEmail />} />
                     <Route path="/accept-invite" element={<AcceptInvite />} />
 
                     {/* Hosted Checkout (public) */}

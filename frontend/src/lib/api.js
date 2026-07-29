@@ -56,6 +56,11 @@ export const endpoints = {
     axios.post(`${API_ROOT}/auth/forgot-password`, { email }),
   resetPassword: (token, password) =>
     axios.post(`${API_ROOT}/auth/reset-password`, { token, password }),
+  // Email verification: verifyEmail consumes the emailed token (public,
+  // cookie-less); resendVerification re-issues a link to the logged-in user.
+  verifyEmail: (token) =>
+    axios.post(`${API_ROOT}/auth/verify-email`, { token }),
+  resendVerification: () => api.post('/auth/verify-email/resend'),
   // --- MFA management (authed, session-scoped) ---
   mfaSetup: () => api.post('/auth/mfa/setup'),
   mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
