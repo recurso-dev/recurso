@@ -24,6 +24,11 @@ type InvoiceRepository interface {
 	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
 	GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error)
 	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error)
+	// ListPaginated returns one page of invoices (newest first); CountByTenant
+	// gives the total for pagination metadata. The API list path uses these so a
+	// large account can't return every invoice in one response.
+	ListPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
+	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
 	Update(ctx context.Context, invoice *domain.Invoice) error
 	// MarkPaid atomically transitions an invoice to paid only if it is not
 	// already paid, in a single conditional UPDATE. It returns true when this

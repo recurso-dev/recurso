@@ -153,7 +153,10 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	}
 
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
-	invs, err := h.service.ListInvoices(ctx, tenantID)
+	// Server-side pagination: a large account must not return every invoice in
+	// one response. Defaults page=1/per_page=50, capped at 250 (ParsePagination).
+	p := ParsePagination(c)
+	invs, total, err := h.service.ListInvoicesPaginated(ctx, tenantID, p.PerPage, p.Offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -177,7 +180,16 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 		}
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": invs})
+	totalPages := (total + p.PerPage - 1) / p.PerPage
+	c.JSON(http.StatusOK, gin.H{
+		"data": invs,
+		"pagination": gin.H{
+			"page":        p.Page,
+			"per_page":    p.PerPage,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
 }
 
 type updateSubscriptionRequest struct {

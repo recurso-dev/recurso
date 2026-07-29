@@ -523,6 +523,21 @@ func (s *SubscriptionService) ListInvoices(ctx context.Context, tenantID uuid.UU
 	return s.invoiceRepo.List(ctx, tenantID)
 }
 
+// ListInvoicesPaginated returns one page of the tenant's invoices plus the total
+// count (for pagination metadata). The API list endpoint uses this instead of
+// the unbounded List.
+func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {
+	invs, err := s.invoiceRepo.ListPaginated(ctx, tenantID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.invoiceRepo.CountByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return invs, total, nil
+}
+
 // GetByID retrieves a subscription by ID
 func (s *SubscriptionService) GetByID(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)

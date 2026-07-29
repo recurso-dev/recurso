@@ -553,25 +553,18 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 	return invoices, nil
 }
 
-func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error) {
-	query := `
-		SELECT 
-			id, tenant_id, subscription_id, customer_id, invoice_number, status,
-			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
-			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
-			signed_qr_code, e_invoice_status, tds_amount,
-			created_at, updated_at, due_date, paid_at, next_retry_at, retry_count,
-			COALESCE(billing_reason, '')
-		FROM invoices
-		WHERE tenant_id = $1
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, query, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch invoices: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
+// invoiceListColumns is the shared SELECT column list for tenant invoice lists,
+// so List and ListPaginated can never diverge in shape.
+const invoiceListColumns = `
+	id, tenant_id, subscription_id, customer_id, invoice_number, status,
+	currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
+	igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
+	signed_qr_code, e_invoice_status, tds_amount,
+	created_at, updated_at, due_date, paid_at, next_retry_at, retry_count,
+	COALESCE(billing_reason, '')`
 
+// scanInvoiceList scans rows (selected via invoiceListColumns) into invoices.
+func scanInvoiceList(rows *sql.Rows) ([]*domain.Invoice, error) {
 	var invoices []*domain.Invoice
 	for rows.Next() {
 		inv := &domain.Invoice{}
@@ -595,10 +588,56 @@ func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*do
 		setInvoiceAmounts(inv, amountPaid, creditApplied)
 		invoices = append(invoices, inv)
 	}
+	return invoices, rows.Err()
+}
+
+// List returns ALL of a tenant's invoices (unbounded). Used by internal batch
+// paths (e.g. accounting sync). API list endpoints must use ListPaginated.
+func (r *InvoiceRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error) {
+	query := `SELECT ` + invoiceListColumns + ` FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC`
+	rows, err := r.db.QueryContext(ctx, query, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	invoices, err := scanInvoiceList(rows)
+	if err != nil {
+		return nil, err
+	}
 	if err := r.hydrateLineItems(ctx, invoices); err != nil {
 		return nil, err
 	}
 	return invoices, nil
+}
+
+// ListPaginated returns one page of a tenant's invoices (newest first), bounded
+// by limit/offset — the API list path, so a huge account can't return every
+// invoice in one response.
+func (r *InvoiceRepository) ListPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	query := `SELECT ` + invoiceListColumns + ` FROM invoices WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	invoices, err := scanInvoiceList(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
+	return invoices, nil
+}
+
+// CountByTenant returns the tenant's total invoice count (for pagination
+// metadata).
+func (r *InvoiceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM invoices WHERE tenant_id = $1`, tenantID).Scan(&n)
+	return n, err
 }
 
 // GetOverdueInvoices returns unpaid invoices that are past due

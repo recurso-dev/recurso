@@ -97,7 +97,10 @@ const Invoices = () => {
   } = useQuery({
     queryKey: ["invoices", "all"],
     queryFn: async () => {
-      const res = await endpoints.getInvoices();
+      // The endpoint is now server-paginated (bounded ≤250/page). The dashboard
+      // requests the max page and lets DataTable paginate client-side; a
+      // full page-through UI for very large accounts is a follow-up.
+      const res = await endpoints.getInvoices({ per_page: 250 });
       return res?.data?.data || [];
     },
   });
