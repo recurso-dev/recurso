@@ -155,9 +155,19 @@ had tests at start).
   actions (approve, quote delete, coupon toggle, mandate revoke), and list
   query-param pass-through. Catches endpoint path typos — a real bug class.
 
+### Batch 19 — developer API keys (security)
+- `pages/__tests__/Developers.test.jsx` (3) — lists API keys by prefix, creates
+  a new key (createKey), and **revokes a key only after confirmation**
+  (revokeKey(id)). All the page's other reads (webhooks/events/deliveries) are
+  stubbed empty so the keys tab renders in isolation.
+
 ## Running totals (updated)
-- Frontend tests: 316 → 320 (+4). Test files: 63 → 64. Run total: **183 → 320
-  (+137) across 18 test PRs**, plus a HIGH-CVE fix and an autofill form fix.
+- Run total: **183 → 323 (+140) across 19 test PRs**, plus a HIGH-CVE fix and an
+  autofill form fix. Test files: 29 → 65.
+- NOTE: line-coverage tooling (`@vitest/coverage-v8`) is not installed — a hard
+  coverage % isn't measured. Adding it (+ a CI coverage gate) is a follow-up
+  (deferred to avoid a lockfile change mid-run). Confidence is tracked by
+  risk-weighted surface coverage above, not a %.
 
 ## Auth surface — now fully covered
 AuthProvider (session/retry/401) · Login (+2FA) · Register (+autofill fix) ·
