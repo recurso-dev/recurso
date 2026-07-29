@@ -151,10 +151,10 @@ export default function Settings() {
       description: "Bill under multiple legal entities with per-entity books and invoice series.",
     },
     {
-      to: "/settings/import-stripe",
+      to: "/settings/import",
       icon: ArrowDownToLine,
-      title: "Import from Stripe",
-      description: "Migrate your customers and plans from a Stripe export — preview before importing.",
+      title: "Import data",
+      description: "Migrate customers, plans, and subscriptions from Stripe or Chargebee — preview before importing.",
     },
     {
       to: "/settings/billing",

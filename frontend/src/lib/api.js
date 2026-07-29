@@ -69,6 +69,8 @@ export const endpoints = {
   // idempotent. Both take the Stripe export JSON as the body.
   stripeImportPreview: (exportData) => api.post('/import/stripe/preview', exportData),
   stripeImportCommit: (exportData) => api.post('/import/stripe/commit', exportData),
+  chargebeeImportPreview: (exportData) => api.post('/import/chargebee/preview', exportData),
+  chargebeeImportCommit: (exportData) => api.post('/import/chargebee/commit', exportData),
   // --- MFA management (authed, session-scoped) ---
   mfaSetup: () => api.post('/auth/mfa/setup'),
   mfaVerify: (code) => api.post('/auth/mfa/verify', { code }),
