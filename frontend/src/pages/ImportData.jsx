@@ -24,7 +24,30 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Visual treatment per plan action. Semantic colour, not the brand accent.
+// Source registry: the wizard is source-agnostic — each entry supplies the
+// endpoints, the id field the plan uses, and source-specific copy.
+const SOURCES = {
+  stripe: {
+    label: "Stripe",
+    preview: endpoints.stripeImportPreview,
+    commit: endpoints.stripeImportCommit,
+    idField: "stripe_id",
+    blurb:
+      "Export your Stripe data as JSON (customers, products, prices, subscriptions). Subscriptions import in their current billing state — no re-billing. Card payment methods can't be migrated from an export and are skipped.",
+    placeholder: '{"customers":[…],"products":[…],"prices":[…]}',
+  },
+  chargebee: {
+    label: "Chargebee",
+    preview: endpoints.chargebeeImportPreview,
+    commit: endpoints.chargebeeImportCommit,
+    idField: "chargebee_id",
+    blurb:
+      "Export your Chargebee data as JSON (customers, plans, subscriptions). Subscriptions import in their current billing state — no re-billing.",
+    placeholder: '{"customers":[…],"plans":[…],"subscriptions":[…]}',
+  },
+};
+
+// Semantic colour per plan action (kept separate from the brand accent).
 const ACTION_STYLE = {
   create: { label: "Create", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
   link_existing: { label: "Link existing", cls: "bg-sky-50 text-sky-700 border-sky-200" },
@@ -42,7 +65,6 @@ function ActionBadge({ action }) {
   );
 }
 
-// createCount sums the plan summary for a given action across all kinds.
 function actionTotal(summary, action) {
   return Object.entries(summary || {}).reduce(
     (n, [key, count]) => (key.endsWith(`.${action}`) ? n + count : n),
@@ -50,8 +72,9 @@ function actionTotal(summary, action) {
   );
 }
 
-export default function ImportStripe() {
-  const [step, setStep] = useState("input"); // input | preview | done
+export default function ImportData() {
+  const [source, setSource] = useState(null); // null → source picker
+  const [step, setStep] = useState("source"); // source | input | preview | done
   const [raw, setRaw] = useState("");
   const [fileName, setFileName] = useState("");
   const [exportData, setExportData] = useState(null);
@@ -60,15 +83,13 @@ export default function ImportStripe() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  const cfg = source ? SOURCES[source] : null;
+
   const summaryStats = useMemo(() => {
     if (!plan) return [];
-    return [
-      { action: "create", n: actionTotal(plan.summary, "create") },
-      { action: "link_existing", n: actionTotal(plan.summary, "link_existing") },
-      { action: "skip_already_imported", n: actionTotal(plan.summary, "skip_already_imported") },
-      { action: "conflict", n: actionTotal(plan.summary, "conflict") },
-      { action: "unsupported", n: actionTotal(plan.summary, "unsupported") },
-    ].filter((s) => s.n > 0);
+    return ["create", "link_existing", "skip_already_imported", "conflict", "unsupported"]
+      .map((action) => ({ action, n: actionTotal(plan.summary, action) }))
+      .filter((s) => s.n > 0);
   }, [plan]);
 
   const onFile = (e) => {
@@ -80,18 +101,23 @@ export default function ImportStripe() {
     reader.readAsText(file);
   };
 
+  const pickSource = (key) => {
+    setSource(key);
+    setStep("input");
+  };
+
   const runPreview = async () => {
     setError(null);
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch {
-      setError("That doesn't look like valid JSON. Export your Stripe data as JSON and try again.");
+      setError(`That doesn't look like valid JSON. Export your ${cfg.label} data as JSON and try again.`);
       return;
     }
     setBusy(true);
     try {
-      const res = await endpoints.stripeImportPreview(parsed);
+      const res = await cfg.preview(parsed);
       setExportData(parsed);
       setPlan(res.data);
       setStep("preview");
@@ -105,7 +131,7 @@ export default function ImportStripe() {
   const runCommit = async () => {
     setBusy(true);
     try {
-      const res = await endpoints.stripeImportCommit(exportData);
+      const res = await cfg.commit(exportData);
       setResult(res.data);
       setStep("done");
       toast.success("Import complete.");
@@ -117,7 +143,8 @@ export default function ImportStripe() {
   };
 
   const reset = () => {
-    setStep("input");
+    setSource(null);
+    setStep("source");
     setRaw("");
     setFileName("");
     setExportData(null);
@@ -131,39 +158,61 @@ export default function ImportStripe() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Import from Stripe"
-        description="Migrate your customers and plans from a Stripe export. Preview everything before anything is written."
+        title="Import data"
+        description="Migrate your customers, plans, and subscriptions from another billing system. Preview everything before anything is written."
       />
 
+      {/* Step 0 — source */}
+      {step === "source" && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Where are you migrating from?</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {Object.entries(SOURCES).map(([key, s]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => pickSource(key)}
+                  className="flex flex-col items-start gap-2 rounded-lg border border-border bg-white p-5 text-left transition-colors hover:border-primary hover:shadow-sm"
+                >
+                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <ArrowDownToLine className="h-4 w-4" />
+                  </span>
+                  <span className="font-semibold text-foreground">{s.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    Customers, plans{key === "stripe" ? "/prices" : ""}, and subscriptions.
+                  </span>
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Step 1 — upload */}
-      {step === "input" && (
+      {step === "input" && cfg && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ArrowDownToLine className="h-4 w-4 text-primary" />
-              Upload your Stripe export
+              Upload your {cfg.label} export
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <p className="text-sm text-muted-foreground">
-              Export your Stripe data as JSON (customers, products, prices,
-              subscriptions) and upload it here, or paste it below. Subscriptions
-              import in their current billing state — no re-billing. Card payment
-              methods can't be migrated from an export and are skipped.
-            </p>
+            <p className="text-sm text-muted-foreground">{cfg.blurb}</p>
 
             <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-stone-50 px-4 py-8 text-center transition-colors hover:border-stone-300">
               <UploadCloud className="h-7 w-7 text-stone-400" />
-              <span className="text-sm font-medium text-foreground">
-                {fileName || "Choose a JSON file"}
-              </span>
+              <span className="text-sm font-medium text-foreground">{fileName || "Choose a JSON file"}</span>
               <span className="text-xs text-muted-foreground">or drag it onto this box</span>
               <input
                 type="file"
                 accept="application/json,.json"
                 className="sr-only"
                 onChange={onFile}
-                aria-label="Stripe export JSON file"
+                aria-label={`${cfg.label} export JSON file`}
               />
             </label>
 
@@ -177,7 +226,7 @@ export default function ImportStripe() {
                 onChange={(e) => setRaw(e.target.value)}
                 rows={6}
                 spellCheck={false}
-                placeholder='{"customers":[…],"products":[…],"prices":[…]}'
+                placeholder={cfg.placeholder}
                 className="w-full rounded-md border border-border bg-white px-3 py-2 font-mono text-xs text-foreground shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               />
             </div>
@@ -189,7 +238,11 @@ export default function ImportStripe() {
               </p>
             )}
 
-            <div className="flex justify-end">
+            <div className="flex items-center justify-between">
+              <Button variant="outline" onClick={reset}>
+                <ArrowLeft className="h-4 w-4" />
+                Change source
+              </Button>
               <Button onClick={runPreview} disabled={busy || raw.trim() === ""}>
                 {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson className="h-4 w-4" />}
                 {busy ? "Previewing…" : "Preview import"}
@@ -243,10 +296,8 @@ export default function ImportStripe() {
                   </TableHeader>
                   <TableBody>
                     {plan.items.map((it, i) => (
-                      <TableRow key={`${it.stripe_id}-${i}`}>
-                        <TableCell className="capitalize text-muted-foreground">
-                          {it.kind.replace("_", " ")}
-                        </TableCell>
+                      <TableRow key={`${it[cfg.idField] || it.stripe_id || it.chargebee_id}-${i}`}>
+                        <TableCell className="capitalize text-muted-foreground">{it.kind.replace("_", " ")}</TableCell>
                         <TableCell className="font-medium">{it.label}</TableCell>
                         <TableCell><ActionBadge action={it.action} /></TableCell>
                         <TableCell className="text-xs text-muted-foreground">{it.detail}</TableCell>
@@ -300,9 +351,7 @@ export default function ImportStripe() {
 
             {result.failures?.length > 0 && (
               <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
-                <p className="text-xs font-semibold text-amber-900">
-                  {result.failures.length} item(s) couldn't be imported:
-                </p>
+                <p className="text-xs font-semibold text-amber-900">{result.failures.length} item(s) couldn't be imported:</p>
                 {result.failures.map((f, i) => (
                   <p key={i} className="text-xs text-amber-900">
                     <span className="font-medium capitalize">{f.kind}</span> {f.stripe_id}: {f.error}
@@ -312,7 +361,7 @@ export default function ImportStripe() {
             )}
 
             <div className="flex justify-center gap-3">
-              <Button variant="outline" onClick={reset}>Import another</Button>
+              <Button variant="outline" onClick={reset}>Import more</Button>
               <Button asChild>
                 <Link to="/customers">View customers</Link>
               </Button>
