@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { endpoints } from '../lib/api'
 import { getApiKey, setApiKey as storeApiKey, clearApiKey } from '../lib/authToken'
 
@@ -57,48 +57,59 @@ export const AuthProvider = ({ children }) => {
         }
     }, [])
 
+    // All auth actions are useCallback-stable and the context value is memoized
+    // (see the `value` useMemo below). This keeps the context reference constant
+    // across unrelated re-renders, so an effect that depends on one of these
+    // functions can't be re-run mid-request — the root cause of the verify-email
+    // spinner hang (#342). Behaviour is otherwise unchanged.
+
     // Email/password login → httpOnly session cookie.
-    const login = async (email, password) => {
+    const login = useCallback(async (email, password) => {
         const res = await endpoints.authLogin(email, password)
         setUser(res.data?.user || null)
         return res.data
-    }
+    }, [])
 
     // Second step of two-step login: exchange the mfa_token + code for a
     // session cookie. Bad codes throw (401) for the caller to surface.
-    const loginMfa = async (mfaToken, code) => {
+    const loginMfa = useCallback(async (mfaToken, code) => {
         const res = await endpoints.loginMfa(mfaToken, code)
         setUser(res.data?.user || null)
         return res.data
-    }
+    }, [])
 
     // Register a new tenant + owner user; the server opens a session.
-    const registerAccount = async (data) => {
+    const registerAccount = useCallback(async (data) => {
         const res = await endpoints.authRegister(data)
         setUser(res.data?.user || null)
         return res.data
-    }
+    }, [])
 
     // Legacy: authenticate by pasting a tenant API key (Bearer). Held in memory
     // only — not persisted to localStorage (XSS hardening).
-    const loginWithApiKey = (key) => {
+    const loginWithApiKey = useCallback((key) => {
         storeApiKey(key)
         setApiKeyState(key)
-    }
+    }, [])
+
+    // userRef mirrors the latest user so refreshUser can stay useCallback-stable
+    // while still returning the current user on a best-effort failure.
+    const userRef = useRef(user)
+    userRef.current = user
 
     // Re-resolve the current user from /auth/me (e.g. after email verification
     // so the verify banner clears). Best-effort: a failure leaves state as-is.
-    const refreshUser = async () => {
+    const refreshUser = useCallback(async () => {
         try {
             const res = await endpoints.authMe()
             setUser(res.data?.user || null)
             return res.data?.user || null
         } catch {
-            return user
+            return userRef.current
         }
-    }
+    }, [])
 
-    const logout = async () => {
+    const logout = useCallback(async () => {
         try {
             await endpoints.authLogout()
         } catch {
@@ -107,17 +118,25 @@ export const AuthProvider = ({ children }) => {
         clearApiKey()
         setApiKeyState('')
         setUser(null)
-    }
+    }, [])
 
-    const isAuthenticated = !!user || !!apiKey
-
-    return (
-        <AuthContext.Provider
-            value={{ user, apiKey, isAuthenticated, loading, login, loginMfa, registerAccount, loginWithApiKey, logout, refreshUser }}
-        >
-            {children}
-        </AuthContext.Provider>
+    const value = useMemo(
+        () => ({
+            user,
+            apiKey,
+            isAuthenticated: !!user || !!apiKey,
+            loading,
+            login,
+            loginMfa,
+            registerAccount,
+            loginWithApiKey,
+            logout,
+            refreshUser,
+        }),
+        [user, apiKey, loading, login, loginMfa, registerAccount, loginWithApiKey, logout, refreshUser]
     )
+
+    return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => useContext(AuthContext)
