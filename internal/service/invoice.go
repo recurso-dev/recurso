@@ -55,6 +55,18 @@ type InvoiceService struct {
 	// itself (DR AR / CR Revenue) — satisfied by *LedgerService.
 	ProgressiveRepo port.ProgressiveBillingRepository
 	LedgerPoster    invoiceLedgerPoster
+	// RevRecScheduler creates the revenue-recognition schedule for an invoice that
+	// becomes fully PAID during generation (wallet drain / account credit covering
+	// the whole total). Such an invoice never flows through MarkInvoicePaid — which
+	// is the only other place a schedule is created — so without this its funded
+	// Deferred would never be recognized. nil-safe. Satisfied by *RevRecService
+	// (CreateScheduleForInvoice is idempotent per invoice).
+	RevRecScheduler revrecScheduler
+}
+
+// revrecScheduler creates the recognition schedule for a fully-paid invoice.
+type revrecScheduler interface {
+	CreateScheduleForInvoice(ctx context.Context, invoice *domain.Invoice, sub *domain.Subscription) error
 }
 
 // invoiceLedgerPoster is the slice of *LedgerService that billProgressive needs
@@ -503,6 +515,19 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 				inv.Status = domain.InvoiceStatusPaid
 			}
 			slog.Info("applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)
+		}
+	}
+
+	// If the wallet drain / account credit fully covered the invoice, it is Paid
+	// here and will NOT flow through MarkInvoicePaid (which is where a schedule is
+	// normally created). Create the recognition schedule now so the Deferred this
+	// invoice funded is actually recognized — otherwise it sits forever and
+	// revenue is understated. Idempotent per invoice; best-effort (a failure is
+	// logged for reconciliation, never fails generation).
+	if inv.Status == domain.InvoiceStatusPaid && s.RevRecScheduler != nil {
+		if err := s.RevRecScheduler.CreateScheduleForInvoice(ctx, inv, sub); err != nil {
+			slog.Error("failed to create revrec schedule for a wallet/credit-covered invoice",
+				"invoice_id", inv.ID, "error", err)
 		}
 	}
 

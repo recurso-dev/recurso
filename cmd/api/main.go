@@ -517,6 +517,9 @@ func main() {
 	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
 	// Unwind deferred revenue when a refund is issued (ENG-147).
 	creditNoteService.SetRevRecService(revrecService)
+	// Recognize revenue for an invoice fully covered by wallet/credit at
+	// generation (it never reaches MarkInvoicePaid, which normally schedules it).
+	invoiceService.RevRecScheduler = revrecService
 
 	subscriptionService := service.NewSubscriptionService(
 		subscriptionRepo,
