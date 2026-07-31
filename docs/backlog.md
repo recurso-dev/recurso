@@ -13,6 +13,8 @@ founder can provide; everything else is engineering-ready.
 |---|------|--------|--------|-------|
 | 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync (QuickBooks rejects it too) | — | **founder** fixes the email in the dashboard; sync rows now show the customer name + id. |
 | B2 | Downgrade credit note lacks a CGST/SGST/IGST breakdown | LOW — the credit note **amount** is already correct (audit B1, #357); only the printed itemized GST split is missing, a compliance-doc nicety for India | MED | Needs a schema migration: `domain.CreditNote` has **no** tax columns (subtotal/tax/IGST/CGST/SGST). Add columns + populate from the proration `taxRes` in `persistPlanChange` + render on the credit-note PDF. Deferred from the 2026-07-31 exponent audit as a feature, not a fix. |
+| W2 | TDS portion is dropped from a payment-reversal's retained amount and the TDS leg (code 10) is never reversed | LOW — **unreachable today** (TDS is INR-only; chargeback/return paths are USD-ACH + EUR/GBP GoCardless), but the code's "reversals are USD-only" invariant is already stale now that GC SEPA/Bacs chargebacks are wired | MED | `subscription_payment.go:143` excludes `TDSAmount` from `retainPaid`; `ledger.go` `RecordPaymentReversal` only inverts the code-3 cash leg, `slog.Warn`s on TDS. If any INR mandate-chargeback path is ever added this becomes a silent over-collect + AR imbalance. Fix when an INR reversal path lands: retain+reverse the TDS leg too, with a PG oracle. From wallet audit 2026-07-31. |
+| W3 | GoCardless chargeback path is thinner than the ACH path | LOW — mostly by-design | LOW | `webhook_gocardless.go:168` calls `ReverseSettledPayment` without the ACH path's payment-attempt state update; reopened GC invoices are mandates → scheduler routes them email-only (not auto-re-debited), so a GC chargeback isn't actively re-collected (documented mandate choice). Narrow double-reverse edge if the invoice is re-settled between `charged_back` and `late_failure` (distinct event ids), guarded in practice by the paid-guard + `gateway_payment_id` keying. From wallet audit 2026-07-31. |
 
 ## P1 — verification & parity (mostly founder-blocked)
 
@@ -50,6 +52,13 @@ founder can provide; everything else is engineering-ready.
 
 ## Recently closed (context for the ranking)
 
+- **Metering + wallet/dunning audit (2026-07-31, sweep 3)** — two adversarial
+  agents. Metering: progressive sweep double-billed pay-in-advance charges (#362,
+  HIGH), pay-in-advance rejected with period-cumulative clamps + excluded from
+  the usage preview (#363). Wallet re-collect: the settle→return→re-collect cycle
+  is correct post-#348/#349; fixed the reversal error-fallback to fail closed
+  instead of reopening with retainPaid=0 (#364). W2/W3 above are the LOW residuals
+  (latent/by-design). Each fix has an oracle test failing on old code.
 - **Currency-exponent + proration-tax audit (2026-07-31)** — two adversarial
   audit agents → 6 fixes shipped: proration tax now uses each plan's own HSN
   rate, not one rate on the net (#357, hits India); exponent-aware
