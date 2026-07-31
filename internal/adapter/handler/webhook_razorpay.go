@@ -261,7 +261,7 @@ func (h *WebhookHandler) handleRazorpayRefundEvent(c *gin.Context, body []byte, 
 			payload.Payload.Refund.Entity.PaymentID, payload.Payload.Refund.Entity.Status)
 	}
 
-	if err := h.creditNoteService.ProcessGatewayRefundEvent(c.Request.Context(), refundID, succeeded, reason); err != nil {
+	if err := h.creditNoteService.ProcessGatewayRefundEvent(c.Request.Context(), refundID, succeeded, reason, webhookConnTenant(c.Request.Context())); err != nil {
 		if errors.Is(err, service.ErrRefundNotFound) {
 			h.logger.Info("razorpay refund event ignored — no matching credit note", "refund_id", refundID)
 			c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown refund_id"})
