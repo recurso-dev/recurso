@@ -5,7 +5,7 @@ import { Plus, Users, DollarSign, Clock, Share2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, toMinorUnits } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -37,7 +37,7 @@ function Referrals() {
   const [form, setForm] = useState({
     referrer_id: "",
     referred_id: "",
-    reward_amount: 500,
+    reward_amount: "5.00",
     currency: "USD",
   });
 
@@ -65,7 +65,7 @@ function Referrals() {
     mutationFn: (payload) => endpoints.createReferral(payload),
     onSuccess: () => {
       setShowCreate(false);
-      setForm({ referrer_id: "", referred_id: "", reward_amount: 500, currency: "USD" });
+      setForm({ referrer_id: "", referred_id: "", reward_amount: "5.00", currency: "USD" });
       queryClient.invalidateQueries({ queryKey: ["referrals"] });
     },
     onError: (err) => {
@@ -93,7 +93,7 @@ function Referrals() {
     createMutation.mutate({
       referrer_id: form.referrer_id,
       referred_id: form.referred_id,
-      reward_amount: parseInt(form.reward_amount),
+      reward_amount: toMinorUnits(form.reward_amount, form.currency),
       currency: form.currency,
     });
   };
@@ -246,15 +246,16 @@ function Referrals() {
             </FormField>
 
             <FormField
-              label="Reward amount (cents)"
+              label={`Reward amount (${form.currency})`}
               htmlFor="reward_amount"
               required
-              description="500 = $5.00"
+              description="Amount paid to the referrer once the referral qualifies."
             >
               <Input
                 id="reward_amount"
                 type="number"
                 min="0"
+                step="0.01"
                 required
                 value={form.reward_amount}
                 onChange={(e) => setForm({ ...form, reward_amount: e.target.value })}
