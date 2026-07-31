@@ -122,12 +122,20 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 
 		if err := s.invoiceService.InvoiceRepo.Create(ctx, inv); err != nil {
 			slog.Warn("failed to create gift buyer invoice", "error", err, "gift_id", gift.ID)
-		} else if err := s.giftRepo.SetInvoiceID(ctx, gift.ID, tenantID, invID); err != nil {
-			// Best-effort: an unlinked gift can still be canceled, it just
-			// can't be auto-credited (the operator issues credit manually).
-			slog.Warn("failed to link gift purchase invoice", "error", err, "gift_id", gift.ID)
 		} else {
-			gift.InvoiceID = &invID
+			// Post the buyer invoice's double-entry leg, like every other
+			// invoice-creating path. A gift purchase is a one-off (no
+			// subscription), so this books DR AR / CR Revenue immediately.
+			// Without it the buyer's payment posts a cash leg (CR AR) with no
+			// originating debit → AR negative, gift revenue never recognized.
+			s.invoiceService.recordInvoiceLeg(ctx, inv)
+			if err := s.giftRepo.SetInvoiceID(ctx, gift.ID, tenantID, invID); err != nil {
+				// Best-effort: an unlinked gift can still be canceled, it just
+				// can't be auto-credited (the operator issues credit manually).
+				slog.Warn("failed to link gift purchase invoice", "error", err, "gift_id", gift.ID)
+			} else {
+				gift.InvoiceID = &invID
+			}
 		}
 	}
 

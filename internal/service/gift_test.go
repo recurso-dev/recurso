@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
 // --- Mock GiftRepository ---
@@ -205,6 +206,54 @@ func TestPurchaseGift_Success(t *testing.T) {
 	}
 	if gift.RecipientEmail != "recipient@example.com" {
 		t.Errorf("recipient_email = %q, want recipient@example.com", gift.RecipientEmail)
+	}
+}
+
+// giftMockLedger records buyer-invoice legs posted on gift purchase.
+type giftMockLedger struct{ posted []*domain.Invoice }
+
+func (m *giftMockLedger) RecordInvoice(_ context.Context, inv *domain.Invoice) error {
+	m.posted = append(m.posted, inv)
+	return nil
+}
+
+// giftMockInvoiceRepo accepts the buyer invoice.
+type giftMockInvoiceRepo struct {
+	port.InvoiceRepository
+	created *domain.Invoice
+}
+
+func (m *giftMockInvoiceRepo) Create(_ context.Context, inv *domain.Invoice) error {
+	m.created = inv
+	return nil
+}
+
+// TestPurchaseGift_PostsBuyerInvoiceLedgerLeg proves the buyer's gift-purchase
+// invoice gets its double-entry Code-1 leg (AR → Revenue). Before the fix the
+// gift service created the buyer invoice via a raw InvoiceRepo.Create and never
+// posted a leg, so the buyer's payment posted a cash leg with no originating AR
+// debit — AR negative, gift revenue never recognized (the same class as the
+// quote-conversion bug).
+func TestPurchaseGift_PostsBuyerInvoiceLedgerLeg(t *testing.T) {
+	giftRepo := newMockGiftRepo()
+	planID := uuid.New()
+	planRepo := &mockPlanRepoForGift{plan: testPlan(planID)}
+	led := &giftMockLedger{}
+	invSvc := &InvoiceService{InvoiceRepo: &giftMockInvoiceRepo{}, LedgerPoster: led}
+	svc := NewGiftService(giftRepo, &mockSubRepoForGift{}, invSvc, planRepo, nil)
+
+	// testPlan price is 1000/month; a 3-month gift bills 3000.
+	if _, err := svc.PurchaseGift(context.Background(), uuid.New(), uuid.New(), planID, "", 3); err != nil {
+		t.Fatalf("PurchaseGift: %v", err)
+	}
+	if len(led.posted) != 1 {
+		t.Fatalf("buyer-invoice legs posted = %d, want 1 (gift purchase must post AR→Revenue)", len(led.posted))
+	}
+	if led.posted[0].Total != 3000 {
+		t.Errorf("posted invoice Total = %d, want 3000 (1000 × 3 months)", led.posted[0].Total)
+	}
+	if led.posted[0].SubscriptionID != nil {
+		t.Error("gift purchase invoice must have no subscription (one-off revenue)")
 	}
 }
 
