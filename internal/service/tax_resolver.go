@@ -103,7 +103,12 @@ func NewTaxResolver(gstConfigs GSTConfigProvider, defaultCountry, defaultState s
 	if strings.TrimSpace(defaultCountry) == "" {
 		defaultCountry = "IN"
 	}
-	if strings.TrimSpace(defaultState) == "" {
+	// Only default the sub-national state to an Indian state (TN) when the seller
+	// country is India. A US/EU seller with no state configured must NOT inherit
+	// "TN" — it would send an invalid Indian state to the US/EU tax path (breaking
+	// origin sourcing / from-address nexus). Their state stays empty, which the
+	// providers resolve from the from-zip.
+	if strings.TrimSpace(defaultState) == "" && strings.EqualFold(strings.TrimSpace(defaultCountry), "IN") {
 		defaultState = "TN"
 	}
 	return &TaxResolver{

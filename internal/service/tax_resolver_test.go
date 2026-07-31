@@ -572,3 +572,26 @@ func TestNormalizeCountry(t *testing.T) {
 		}
 	}
 }
+
+// TestNewTaxResolver_StateDefaultOnlyForIndia proves the "TN" seller-state
+// default is applied only when the seller country is India — a US/EU seller
+// with no state configured must not inherit an invalid Indian state (T3).
+func TestNewTaxResolver_StateDefaultOnlyForIndia(t *testing.T) {
+	if r := NewTaxResolver(nil, "US", ""); r.defaultState != "" {
+		t.Errorf("US seller, no state → defaultState = %q, want \"\" (not the Indian TN default)", r.defaultState)
+	}
+	if r := NewTaxResolver(nil, "GB", ""); r.defaultState != "" {
+		t.Errorf("GB seller, no state → defaultState = %q, want \"\"", r.defaultState)
+	}
+	// India (explicit or via the empty-country default) keeps the TN default.
+	if r := NewTaxResolver(nil, "IN", ""); r.defaultState != "TN" {
+		t.Errorf("IN seller, no state → defaultState = %q, want TN (preserved)", r.defaultState)
+	}
+	if r := NewTaxResolver(nil, "", ""); r.defaultCountry != "IN" || r.defaultState != "TN" {
+		t.Errorf("empty → %q/%q, want IN/TN (preserved)", r.defaultCountry, r.defaultState)
+	}
+	// An explicit US state is respected.
+	if r := NewTaxResolver(nil, "US", "CA"); r.defaultState != "CA" {
+		t.Errorf("US/CA → defaultState = %q, want CA", r.defaultState)
+	}
+}
