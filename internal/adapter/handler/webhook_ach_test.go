@@ -157,7 +157,7 @@ type returnStubRepo struct {
 func (r *returnStubRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Invoice, error) {
 	return r.inv, nil
 }
-func (r *returnStubRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID) (bool, error) {
+func (r *returnStubRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID, _ int64) (bool, error) {
 	r.reverseCalls++
 	r.inv.Status = domain.InvoiceStatusPastDue // reflect the transition for redelivery
 	return true, nil

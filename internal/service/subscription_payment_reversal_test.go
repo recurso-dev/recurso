@@ -22,7 +22,7 @@ func (r *reverseStubInvoiceRepo) GetByID(_ context.Context, _ uuid.UUID) (*domai
 	return r.inv, nil
 }
 
-func (r *reverseStubInvoiceRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID) (bool, error) {
+func (r *reverseStubInvoiceRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID, _ int64) (bool, error) {
 	r.reverseCalls++
 	return r.reverseReturns, nil
 }

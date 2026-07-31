@@ -381,15 +381,17 @@ func (r *InvoiceRepository) MarkPaid(ctx context.Context, tenantID, invoiceID uu
 // `AND status = 'paid'` guard makes it idempotent and safe against a
 // redelivered return webhook — only a currently-paid row transitions, and it
 // lands in 'past_due' so dunning picks it back up (the in-flight guard has
-// already cleared because the attempt is now 'returned'). amount_paid resets to
-// 0 and paid_at to NULL so the invoice reads as fully outstanding again.
-// Returns true iff this call performed the transition.
-func (r *InvoiceRepository) ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error) {
+// already cleared because the attempt is now 'returned'). amount_paid is set to
+// retainPaid — the NON-cash portion (wallet/credit/TDS) that was NOT returned —
+// and paid_at to NULL, so the invoice reads as owing only the clawed-back cash.
+// (Zeroing amount_paid here would double-book the wallet portion as cash on
+// re-collect and drive AR negative.) Returns true iff this call transitioned.
+func (r *InvoiceRepository) ReverseToUnpaid(ctx context.Context, tenantID, invoiceID uuid.UUID, retainPaid int64) (bool, error) {
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE invoices
-		SET status = 'past_due', amount_paid = 0, paid_at = NULL, updated_at = NOW()
+		SET status = 'past_due', amount_paid = $3, paid_at = NULL, updated_at = NOW()
 		WHERE id = $1 AND tenant_id = $2 AND status = 'paid'
-	`, invoiceID, tenantID)
+	`, invoiceID, tenantID, retainPaid)
 	if err != nil {
 		return false, fmt.Errorf("failed to reverse invoice to unpaid: %w", err)
 	}

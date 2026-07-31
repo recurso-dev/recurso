@@ -128,7 +128,26 @@ func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoice
 		return false, nil
 	}
 
-	reversed, err = s.invoiceRepo.ReverseToUnpaid(ctx, inv.TenantID, invoiceID)
+	// The bank returned the CASH payment; the wallet/credit/TDS portion was not
+	// clawed back. Reconstruct that non-cash portion from the actual cash leg
+	// (non-cash = Total − CreditApplied − TDSAmount − cashLeg) and retain it as
+	// paid on reopen — otherwise re-collect posts the cash leg on the full Total
+	// and drives AR negative (and dunning over-collects the wallet portion again).
+	// Best-effort: if the ledger lookup fails we retain 0 (pre-fix behaviour) and
+	// log for reconciliation.
+	var retainPaid int64
+	if s.ledger != nil {
+		if cashAmt, cerr := s.ledger.LatestSettledCashAmount(ctx, invoiceID); cerr != nil {
+			s.logger.Error("reversal: cash-leg lookup failed; retaining 0 non-cash (reconciliation needed)", "error", cerr, "invoice_id", invoiceID)
+		} else {
+			retainPaid = inv.Total - inv.CreditApplied - inv.TDSAmount - cashAmt
+			if retainPaid < 0 {
+				retainPaid = 0
+			}
+		}
+	}
+
+	reversed, err = s.invoiceRepo.ReverseToUnpaid(ctx, inv.TenantID, invoiceID, retainPaid)
 	if err != nil {
 		return false, err
 	}
@@ -137,7 +156,7 @@ func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoice
 	}
 	inv.Status = domain.InvoiceStatusPastDue
 	inv.PaidAt = nil
-	inv.AmountPaid = 0
+	inv.AmountPaid = retainPaid
 
 	// Reverse the settlement cash leg. Non-fatal per ADR-002: a failed posting is
 	// caught by reconciliation, and the invoice is already correctly reopened.

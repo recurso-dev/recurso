@@ -173,3 +173,102 @@ func TestLedgerResettlementCycle_Postgres(t *testing.T) {
 		t.Fatal("the swallowed-re-settle corruption shape was not flagged — the reconciler is still blind to it")
 	}
 }
+
+// TestLedgerResettlement_WalletFunded_Postgres proves the wallet-funded
+// settle→return→re-collect cycle keeps AR correct (audit finding A-ledger). A
+// prepaid wallet drain settles part of the invoice at generation; the card
+// settles the rest. When an ACH/card RETURN reverses only the cash, the reopened
+// invoice must RETAIN the wallet portion as paid — reconstructed exactly as
+// ReverseSettledPayment now does, via LatestSettledCashAmount — so re-collection
+// posts the cash leg on (Total − wallet), not the full Total. Passing 0 (the
+// pre-fix behaviour, from ReverseToUnpaid zeroing amount_paid) would post cash on
+// the full Total and drive AR to −wallet.
+func TestLedgerResettlement_WalletFunded_Postgres(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed wallet resettlement test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	conn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ctx := context.Background()
+
+	tenantID := seedRevRecTenant(t, conn)
+	run := uuid.New().String()[:8]
+	customerID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, ledger_account_id, created_at, updated_at)
+		 VALUES ($1, $2, $3, 'Acme', $4, NOW(), NOW())`,
+		customerID, tenantID, "wal-"+run+"@t.com", uuid.New()); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+
+	ledger := NewLedgerService(nil, db.NewLedgerRepository(conn))
+
+	const total = int64(100000)
+	const wallet = int64(30000)
+	const cash = total - wallet // 70000
+
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID,
+		InvoiceNumber: "WAL-" + run, Total: total, Currency: "USD",
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		 VALUES ($1,$2,$3,'USD',$4,$5,$5,'paid',$6,NOW(),NOW())`,
+		inv.ID, tenantID, customerID, total, wallet, inv.InvoiceNumber); err != nil {
+		t.Fatalf("seed invoice: %v", err)
+	}
+	if err := ledger.RecordInvoice(ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice: %v", err)
+	}
+	// Wallet drain at generation relieves AR by the wallet portion.
+	if _, err := ledger.RecordWalletDrain(ctx, tenantID, nil, customerID, inv.ID, wallet, "wallet drain"); err != nil {
+		t.Fatalf("RecordWalletDrain: %v", err)
+	}
+
+	// Settle #1: the card covers the remainder (cash = total − wallet).
+	if err := ledger.RecordPaymentWithSettled(ctx, inv, wallet); err != nil {
+		t.Fatalf("settle 1: %v", err)
+	}
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeAR); b != 0 {
+		t.Fatalf("after settle: AR = %d, want 0", b)
+	}
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeCash); b != cash {
+		t.Fatalf("after settle: Cash = %d, want %d", b, cash)
+	}
+
+	// Bank returns the cash payment: reversal reinstates AR, removes Cash.
+	if err := ledger.RecordPaymentReversal(ctx, inv); err != nil {
+		t.Fatalf("reverse: %v", err)
+	}
+
+	// THE FIX: reconstruct the retained non-cash (wallet) portion from the actual
+	// reversed cash leg — exactly what ReverseSettledPayment now does.
+	cashAmt, err := ledger.LatestSettledCashAmount(ctx, inv.ID)
+	if err != nil {
+		t.Fatalf("LatestSettledCashAmount: %v", err)
+	}
+	retain := inv.Total - inv.CreditApplied - inv.TDSAmount - cashAmt
+	if retain != wallet {
+		t.Fatalf("reconstructed retained non-cash = %d, want %d (the wallet portion)", retain, wallet)
+	}
+
+	// Re-collect using the retained wallet portion: the cash leg posts on
+	// (total − wallet), so AR nets back to 0. Passing 0 here — the pre-fix
+	// behaviour — would post cash on the full total and leave AR at −wallet.
+	if err := ledger.RecordPaymentWithSettled(ctx, inv, retain); err != nil {
+		t.Fatalf("re-settle: %v", err)
+	}
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeAR); b != 0 {
+		t.Errorf("after re-collect: AR = %d, want 0 (the pre-fix bug drives it to -%d)", b, wallet)
+	}
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeCash); b != cash {
+		t.Errorf("after re-collect: Cash = %d, want %d (one net settlement of the card portion)", b, cash)
+	}
+}
