@@ -125,3 +125,49 @@ func TestReverseSettledPayment_LostRacePostsNoLedger(t *testing.T) {
 		t.Errorf("the loser must not post the ledger reversal, got %d legs", len(ledgerRepo.transactions))
 	}
 }
+
+// cashLookupErrLedgerRepo errors on the cash-leg lookup LatestSettledCashAmount
+// makes, so ReverseSettledPayment's reconstruction of the retained non-cash
+// amount fails.
+type cashLookupErrLedgerRepo struct {
+	port.LedgerRepository
+}
+
+func (cashLookupErrLedgerRepo) GetLatestTransactionByReferenceAndCode(context.Context, uuid.UUID, uint16) (*domain.LedgerTransaction, error) {
+	return nil, errCashLookup
+}
+
+var errCashLookup = &cashLookupError{}
+
+type cashLookupError struct{}
+
+func (*cashLookupError) Error() string { return "cash-leg lookup failed (db down)" }
+
+// TestReverseSettledPayment_FailsClosedOnCashLookupError proves the reversal
+// FAILS CLOSED when it can't reconstruct the retained non-cash amount: it must
+// NOT reopen the invoice with retainPaid=0 (which would make re-collect post the
+// cash leg on the full Total → AR negative, wallet double-charged). Instead it
+// returns an error so the webhook is retried.
+func TestReverseSettledPayment_FailsClosedOnCashLookupError(t *testing.T) {
+	ledger := NewLedgerService(nil, cashLookupErrLedgerRepo{})
+	repo := &reverseStubInvoiceRepo{
+		inv: &domain.Invoice{
+			ID: uuid.New(), TenantID: uuid.New(), CustomerID: uuid.New(),
+			InvoiceNumber: "INV-ACH-ERR", Status: domain.InvoiceStatusPaid,
+			Total: 10000, AmountPaid: 3000, // 3000 wallet-settled, 7000 cash
+		},
+		reverseReturns: true,
+	}
+	svc := newReversalSubService(repo, ledger)
+
+	reversed, err := svc.ReverseSettledPayment(context.Background(), repo.inv.ID)
+	if err == nil {
+		t.Fatal("expected an error (fail closed) when the cash-leg lookup fails")
+	}
+	if reversed {
+		t.Error("must not report reversed=true when it failed closed")
+	}
+	if repo.reverseCalls != 0 {
+		t.Errorf("ReverseToUnpaid called %d times, want 0 — must NOT reopen with retainPaid=0 on a lookup error", repo.reverseCalls)
+	}
+}

@@ -133,17 +133,20 @@ func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoice
 	// (non-cash = Total − CreditApplied − TDSAmount − cashLeg) and retain it as
 	// paid on reopen — otherwise re-collect posts the cash leg on the full Total
 	// and drives AR negative (and dunning over-collects the wallet portion again).
-	// Best-effort: if the ledger lookup fails we retain 0 (pre-fix behaviour) and
-	// log for reconciliation.
 	var retainPaid int64
 	if s.ledger != nil {
-		if cashAmt, cerr := s.ledger.LatestSettledCashAmount(ctx, invoiceID); cerr != nil {
-			s.logger.Error("reversal: cash-leg lookup failed; retaining 0 non-cash (reconciliation needed)", "error", cerr, "invoice_id", invoiceID)
-		} else {
-			retainPaid = inv.Total - inv.CreditApplied - inv.TDSAmount - cashAmt
-			if retainPaid < 0 {
-				retainPaid = 0
-			}
+		cashAmt, cerr := s.ledger.LatestSettledCashAmount(ctx, invoiceID)
+		if cerr != nil {
+			// Fail CLOSED: reopening with retainPaid=0 would discard the non-cash
+			// portion and make re-collect post the cash leg on the full Total — the
+			// pre-#349 double-charge + negative-AR bug. Leave the invoice paid and
+			// return the error; the webhook is retried (non-2xx) until the ledger
+			// read succeeds, so the reversal is retried, never corrupted.
+			return false, fmt.Errorf("reversal: cash-leg lookup failed for invoice %s: %w", invoiceID, cerr)
+		}
+		retainPaid = inv.Total - inv.CreditApplied - inv.TDSAmount - cashAmt
+		if retainPaid < 0 {
+			retainPaid = 0
 		}
 	}
 
