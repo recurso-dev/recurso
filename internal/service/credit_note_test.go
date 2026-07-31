@@ -488,7 +488,7 @@ func pendingRefundNote(status domain.CreditNoteRefundStatus, refundID string) (*
 func TestCreditNote_RefundWebhook_SuccessAdvancesPendingToProcessed(t *testing.T) {
 	f, cn := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_1")
 
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_1", true, ""); err != nil {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_1", true, "", uuid.Nil); err != nil {
 		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
 	}
 
@@ -510,7 +510,7 @@ func TestCreditNote_RefundWebhook_SuccessAdvancesPendingToProcessed(t *testing.T
 func TestCreditNote_RefundWebhook_FailureRecordsGatewayReason(t *testing.T) {
 	f, _ := pendingRefundNote(domain.RefundStatusPending, "re_hook_2")
 
-	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "re_hook_2", false, "expired_or_canceled_card")
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "re_hook_2", false, "expired_or_canceled_card", uuid.Nil)
 	if err != nil {
 		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestCreditNote_RefundWebhook_FailureRecordsGatewayReason(t *testing.T) {
 func TestCreditNote_RefundWebhook_FailureWithoutReasonStillExplains(t *testing.T) {
 	f, _ := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_3")
 
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_3", false, ""); err != nil {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_3", false, "", uuid.Nil); err != nil {
 		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
 	}
 	if len(f.repo.updates) != 1 || f.repo.updates[0].status != domain.RefundStatusFailed {
@@ -545,11 +545,11 @@ func TestCreditNote_RefundWebhook_AlreadyProcessedIsIdempotent(t *testing.T) {
 	f, _ := pendingRefundNote(domain.RefundStatusProcessed, "rfnd_hook_4")
 
 	// Redelivered success event: no error, no state change.
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", true, ""); err != nil {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", true, "", uuid.Nil); err != nil {
 		t.Fatalf("redelivered success event should be a no-op, got %v", err)
 	}
 	// Late failure event after success was recorded: stored status stays.
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", false, "bank rejected"); err != nil {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_4", false, "bank rejected", uuid.Nil); err != nil {
 		t.Fatalf("late failure event should be a no-op, got %v", err)
 	}
 
@@ -561,7 +561,7 @@ func TestCreditNote_RefundWebhook_AlreadyProcessedIsIdempotent(t *testing.T) {
 func TestCreditNote_RefundWebhook_AlreadyFailedStaysFailed(t *testing.T) {
 	f, _ := pendingRefundNote(domain.RefundStatusFailed, "rfnd_hook_5")
 
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_5", true, ""); err != nil {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_5", true, "", uuid.Nil); err != nil {
 		t.Fatalf("event on refund_failed note should be a no-op, got %v", err)
 	}
 	if len(f.repo.updates) != 0 {
@@ -572,7 +572,7 @@ func TestCreditNote_RefundWebhook_AlreadyFailedStaysFailed(t *testing.T) {
 func TestCreditNote_RefundWebhook_UnknownRefundIDTolerated(t *testing.T) {
 	f := newCNFixture(nil) // repo holds no credit notes
 
-	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_stranger", true, "")
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_stranger", true, "", uuid.Nil)
 	if !errors.Is(err, ErrRefundNotFound) {
 		t.Fatalf("expected ErrRefundNotFound for unknown refund id, got %v", err)
 	}
@@ -584,7 +584,7 @@ func TestCreditNote_RefundWebhook_UnknownRefundIDTolerated(t *testing.T) {
 func TestCreditNote_RefundWebhook_EmptyRefundIDRejected(t *testing.T) {
 	f := newCNFixture(nil)
 
-	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "", true, ""); !errors.Is(err, ErrRefundNotFound) {
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "", true, "", uuid.Nil); !errors.Is(err, ErrRefundNotFound) {
 		t.Fatalf("expected ErrRefundNotFound for empty refund id, got %v", err)
 	}
 }
@@ -593,7 +593,7 @@ func TestCreditNote_RefundWebhook_RepoErrorSurfaces(t *testing.T) {
 	f, _ := pendingRefundNote(domain.RefundStatusPending, "rfnd_hook_6")
 	f.repo.getByRefundErr = errors.New("db down")
 
-	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_6", true, "")
+	err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_hook_6", true, "", uuid.Nil)
 	if err == nil || errors.Is(err, ErrRefundNotFound) {
 		t.Fatalf("repo errors must surface (so the gateway retries), got %v", err)
 	}
@@ -783,5 +783,22 @@ func TestCreditNote_MakerChecker_MemberCreatesPending(t *testing.T) {
 	}
 	if len(f.gateway.calls) != 0 {
 		t.Errorf("a member-created refund must not touch the gateway before approval; got %d call(s)", len(f.gateway.calls))
+	}
+}
+
+// TestCreditNote_RefundWebhook_RejectsCrossTenant is the S2 remainder: a BYO
+// per-connection refund webhook passes the connection's tenant; a refund event
+// resolving to a credit note owned by a DIFFERENT tenant must be ignored (no
+// status advance), so a BYO tenant can't advance another tenant's refund.
+func TestCreditNote_RefundWebhook_RejectsCrossTenant(t *testing.T) {
+	f, _ := pendingRefundNote(domain.RefundStatusPending, "rfnd_xtenant")
+
+	// A different connection's tenant than the credit note's owner.
+	otherTenant := uuid.New()
+	if err := f.svc.ProcessGatewayRefundEvent(context.Background(), "rfnd_xtenant", true, "", otherTenant); err != nil {
+		t.Fatalf("ProcessGatewayRefundEvent returned error: %v", err)
+	}
+	if len(f.repo.updates) != 0 {
+		t.Errorf("cross-tenant refund webhook advanced the credit note (%d UpdateRefund calls); want 0 (ignored)", len(f.repo.updates))
 	}
 }

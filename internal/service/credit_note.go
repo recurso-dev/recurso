@@ -439,7 +439,11 @@ func (s *CreditNoteService) markRefundFailed(ctx context.Context, cn *domain.Cre
 //
 // Events whose refund id matches no credit note return ErrRefundNotFound so
 // the webhook handler can acknowledge them (gateways retry non-2xx responses).
-func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refundID string, succeeded bool, gatewayReason string) error {
+// expectedTenant, when non-nil, requires the resolved credit note to belong to
+// that tenant — the caller (a BYO per-connection webhook) passes the connection's
+// tenant so a signed refund event can't advance another tenant's refund credit
+// note. uuid.Nil (the legacy env route / internal callers) skips the check.
+func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refundID string, succeeded bool, gatewayReason string, expectedTenant uuid.UUID) error {
 	if refundID == "" {
 		return fmt.Errorf("%w: empty refund id", ErrRefundNotFound)
 	}
@@ -450,6 +454,13 @@ func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refun
 	}
 	if cn == nil {
 		return fmt.Errorf("%w: %s", ErrRefundNotFound, refundID)
+	}
+	if expectedTenant != uuid.Nil && cn.TenantID != expectedTenant {
+		// A BYO webhook referenced a refund credit note owned by a different
+		// tenant — ignore it (same treatment as an unknown refund id).
+		s.logger.Warn("refund webhook referenced another tenant's credit note — ignoring",
+			"refund_id", refundID, "conn_tenant", expectedTenant, "credit_note_tenant", cn.TenantID)
+		return nil
 	}
 
 	if cn.RefundStatus != domain.RefundStatusPending {

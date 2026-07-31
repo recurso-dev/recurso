@@ -504,7 +504,7 @@ func (h *WebhookHandler) applyStripeRefund(ctx context.Context, ref *stripe.Refu
 		return nil
 	}
 
-	err := h.creditNoteService.ProcessGatewayRefundEvent(ctx, ref.ID, succeeded, reason)
+	err := h.creditNoteService.ProcessGatewayRefundEvent(ctx, ref.ID, succeeded, reason, webhookConnTenant(ctx))
 	if errors.Is(err, service.ErrRefundNotFound) {
 		// No credit note owns this refund. A merchant-initiated refund always
 		// has one; a succeeded refund with none is an involuntary bank claw-back
