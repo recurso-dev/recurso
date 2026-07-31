@@ -75,6 +75,48 @@ type parsedUBL struct {
 	} `xml:"InvoiceLine"`
 }
 
+// TestBuildUBLInvoice_ZeroDecimalCurrency proves EN 16931 amounts follow the
+// document currency's exponent. For ISK (zero-decimal, an EEA/Peppol currency),
+// a 500000 ISK subtotal must render as "500000", not "5000.00" — the old
+// hardcoded 2-fraction-digit formatting understated the legal amount 100×.
+func TestBuildUBLInvoice_ZeroDecimalCurrency(t *testing.T) {
+	inv := &domain.Invoice{
+		ID:            uuid.New(),
+		InvoiceNumber: "INV-ISK-1",
+		Currency:      "ISK",
+		Subtotal:      500000, // ISK 500,000 (exponent 0)
+		TaxAmount:     120000, // 24% Iceland VAT
+		Total:         620000,
+		CreatedAt:     time.Date(2026, 7, 21, 10, 0, 0, 0, time.UTC),
+		LineItems: []domain.InvoiceItem{
+			{Description: "Consulting", Quantity: 1, UnitAmount: 500000, Amount: 500000, TaxRate: 24},
+		},
+	}
+	out, err := BuildUBLInvoice(inv, euSeller, euBuyer)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	var p parsedUBL
+	if err := xml.Unmarshal(out, &p); err != nil {
+		t.Fatalf("invalid XML: %v", err)
+	}
+	if p.Currency != "ISK" {
+		t.Errorf("currency = %q, want ISK", p.Currency)
+	}
+	if p.Monetary.LineExtension != "500000" {
+		t.Errorf("LineExtensionAmount = %q, want 500000 (exponent 0); 5000.00 means the /100 bug is back", p.Monetary.LineExtension)
+	}
+	if p.Monetary.TaxInclusive != "620000" || p.Monetary.Payable != "620000" {
+		t.Errorf("tax-inclusive/payable = %q/%q, want 620000", p.Monetary.TaxInclusive, p.Monetary.Payable)
+	}
+	if p.TaxTotal.TaxAmount != "120000" {
+		t.Errorf("tax total = %q, want 120000", p.TaxTotal.TaxAmount)
+	}
+	if len(p.Lines) != 1 || p.Lines[0].Amount != "500000" {
+		t.Errorf("line amount = %+v, want 500000", p.Lines)
+	}
+}
+
 // TestBuildUBLInvoice_StructureAndTotals proves the generated UBL is well-formed,
 // carries the EN 16931 mandatory fields, and that its monetary totals reconcile
 // exactly to the source invoice.
