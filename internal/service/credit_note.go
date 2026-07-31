@@ -383,7 +383,14 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	// refund doesn't keep recognizing revenue the customer got back (ENG-147).
 	// Best-effort: a failure is logged, never fails the refund.
 	if s.revrec != nil {
-		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, cn.Amount); err != nil {
+		// Unwind the NET (ex-tax) refund from Deferred. The tax slice was already
+		// removed via RecordRefundTaxReversal above, and Deferred holds net revenue
+		// (Total − TaxAmount). Passing gross cn.Amount here double-reversed the tax
+		// on partial refunds — Refunds expense went negative and the deferred-revenue
+		// rollforward broke. (Full refunds happened to be clamped to net by the
+		// reverse>deferred guard, which is why this only bit partial refunds.)
+		netRefund := cn.Amount - refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
 			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
@@ -873,7 +880,14 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 	}
 
 	if s.revrec != nil {
-		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, cn.Amount); err != nil {
+		// Unwind the NET (ex-tax) refund from Deferred. The tax slice was already
+		// removed via RecordRefundTaxReversal above, and Deferred holds net revenue
+		// (Total − TaxAmount). Passing gross cn.Amount here double-reversed the tax
+		// on partial refunds — Refunds expense went negative and the deferred-revenue
+		// rollforward broke. (Full refunds happened to be clamped to net by the
+		// reverse>deferred guard, which is why this only bit partial refunds.)
+		netRefund := cn.Amount - refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
 			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
