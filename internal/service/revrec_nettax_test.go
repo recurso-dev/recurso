@@ -22,6 +22,12 @@ func (c *captureRevRecRepo) CreateSchedule(_ context.Context, s *domain.RevenueS
 	return nil
 }
 
+// GetActiveScheduleByInvoice: this test has no pre-existing schedule, so the
+// idempotency guard finds none and proceeds.
+func (c *captureRevRecRepo) GetActiveScheduleByInvoice(_ context.Context, _, _ uuid.UUID) (*domain.RevenueSchedule, error) {
+	return nil, nil
+}
+
 func (c *captureRevRecRepo) CreateEvents(_ context.Context, e []*domain.RecognitionEvent) error {
 	c.events = append(c.events, e...)
 	return nil
