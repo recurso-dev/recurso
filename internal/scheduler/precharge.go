@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -10,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/adapter/email"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
 )
@@ -140,13 +140,6 @@ func (s *PreChargeScheduler) runPreChargeNotifications() {
 }
 
 func formatAmount(amountPaise int64, currency string) string {
-	amount := float64(amountPaise) / 100
-	switch currency {
-	case "INR":
-		return fmt.Sprintf("₹%.2f", amount)
-	case "USD":
-		return fmt.Sprintf("$%.2f", amount)
-	default:
-		return fmt.Sprintf("%s %.2f", currency, amount)
-	}
+	// Exponent-aware: hardcoding /100 misstated JPY/KWD amounts in the reminder.
+	return domain.FormatMoney(amountPaise, currency)
 }
