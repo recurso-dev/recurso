@@ -70,9 +70,10 @@ type PlanChangeProration struct {
 }
 
 // computePlanChangeProration is the single source of truth for plan-change
-// math. A positive net (a charge) is taxed on the new plan's HSN; a negative net
-// (a downgrade credit) carries the reversed tax computed on the old plan's HSN
-// (ENG-150), so the credit refunds the GST originally collected.
+// math. Each side is taxed on its own plan's HSN — the remaining new-plan charge
+// at the new plan's rate, the unused old-plan credit at the old plan's rate
+// (ENG-150) — and the two are netted, so mixed-rate changes are taxed correctly
+// and the credit refunds the GST originally collected.
 func (s *SubscriptionService) computePlanChangeProration(
 	ctx context.Context,
 	tenantID uuid.UUID,
@@ -96,18 +97,28 @@ func (s *SubscriptionService) computePlanChangeProration(
 
 	var taxRes InvoiceTax
 	if customer != nil && proration.NetAmount != 0 {
+		// Tax each side on its OWN plan's HSN, then net. The remaining-new-plan
+		// charge collects GST at the new plan's rate; the unused-old-plan credit
+		// reverses GST at the old plan's rate (ENG-150). Applying a single rate
+		// to the net (charge − credit) — the previous behaviour — is only correct
+		// when both plans resolve to the same rate; when they differ (e.g. an 18%
+		// SaaS plan ↔ a 12%/5% service plan) it reversed or collected GST at the
+		// wrong rate, over/under-charging the customer (ENG-158).
+		chargeTax := s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.ChargeAmount, newPlan.HSNCode)
+		creditTax := s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.CreditAmount, currentPlan.HSNCode)
+		taxRes = InvoiceTax{
+			Total: chargeTax.Total - creditTax.Total,
+			IGST:  chargeTax.IGST - creditTax.IGST,
+			CGST:  chargeTax.CGST - creditTax.CGST,
+			SGST:  chargeTax.SGST - creditTax.SGST,
+		}
+		// Descriptive fields (type/rate/HSN) follow the side that dominates the
+		// net: the new plan on a net charge (upgrade), the old plan on a net
+		// credit (downgrade). The money amounts above are always the true net.
 		if proration.NetAmount > 0 {
-			taxRes = s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, proration.NetAmount, newPlan.HSNCode)
+			taxRes.TaxType, taxRes.Rate, taxRes.HSN, taxRes.Note = chargeTax.TaxType, chargeTax.Rate, chargeTax.HSN, chargeTax.Note
 		} else {
-			// Downgrade credit: reverse the GST collected on the old plan's unused
-			// portion. Resolve on the positive base with the OLD plan's HSN, then
-			// negate so the credit carries the tax reversal (ENG-150) — previously
-			// a credit reversed no tax and under-refunded the customer.
-			t := s.taxResolver.ResolveInvoiceTax(ctx, tenantID, customer, currency, -proration.NetAmount, currentPlan.HSNCode)
-			taxRes = InvoiceTax{
-				Total: -t.Total, IGST: -t.IGST, CGST: -t.CGST, SGST: -t.SGST,
-				TaxType: t.TaxType, Note: t.Note, Rate: t.Rate, HSN: t.HSN,
-			}
+			taxRes.TaxType, taxRes.Rate, taxRes.HSN, taxRes.Note = creditTax.TaxType, creditTax.Rate, creditTax.HSN, creditTax.Note
 		}
 	}
 
