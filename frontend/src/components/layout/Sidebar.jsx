@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck, Inbox, BookOpen, ArrowUpRight } from "lucide-react";
+import { Home, LayoutDashboard, Users, Layers, Repeat, Receipt, ScrollText, FileMinus, Ticket, Megaphone, Gift, Brain, Landmark, Scale, BookOpenCheck, Waves, CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3, Code2, Settings, UserCog, ShieldCheck, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown, Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet, ClipboardCheck, Inbox, BookOpen, ArrowUpRight, Webhook } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { DOCS_HOME } from "@/lib/docsLinks";
@@ -50,6 +50,7 @@ const NAV_GROUPS = [
       { to: "/finance/entities", label: "Entities", icon: Building2 },
       { to: "/ledger", label: "Ledger", icon: Landmark },
       { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
+      { to: "/events", label: "Events", icon: Webhook },
       { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },
       { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
       { to: "/finance/close", label: "Month-End Close", icon: ClipboardCheck },
