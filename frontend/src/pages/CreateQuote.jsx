@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router";
 import { Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +44,7 @@ const CreateQuote = () => {
     tax_amount: 0,
     discount_amount: 0,
     valid_until: "",
-    line_items: [{ description: "", quantity: 1, unit_price: 0 }],
+    line_items: [{ description: "", quantity: 1, unit_price: "" }],
   });
 
   // In edit mode, load the quote and pre-fill the form once.
@@ -55,23 +55,27 @@ const CreateQuote = () => {
   });
   useEffect(() => {
     if (!existing) return;
+    // The API stores money in minor units; the form edits in major units
+    // (dollars), so convert on load — otherwise editing a $50 line would show
+    // 5000 and re-multiply it on save.
+    const cur = existing.currency || "USD";
     const items = Array.isArray(existing.line_items) ? existing.line_items : [];
     setFormData({
       customer_id: existing.customer_id || "",
-      currency: existing.currency || "USD",
+      currency: cur,
       notes: existing.notes || "",
       terms: existing.terms || "",
-      tax_amount: existing.tax_amount || 0,
-      discount_amount: existing.discount_amount || 0,
+      tax_amount: fromMinorUnits(existing.tax_amount || 0, cur),
+      discount_amount: fromMinorUnits(existing.discount_amount || 0, cur),
       valid_until: existing.valid_until ? existing.valid_until.slice(0, 10) : "",
       line_items:
         items.length > 0
           ? items.map((it) => ({
               description: it.description || "",
               quantity: it.quantity || 1,
-              unit_price: it.unit_price || 0,
+              unit_price: fromMinorUnits(it.unit_price || 0, cur),
             }))
-          : [{ description: "", quantity: 1, unit_price: 0 }],
+          : [{ description: "", quantity: 1, unit_price: "" }],
     });
   }, [existing]);
 
@@ -114,7 +118,7 @@ const CreateQuote = () => {
   const addLineItem = () => {
     setFormData((prev) => ({
       ...prev,
-      line_items: [...prev.line_items, { description: "", quantity: 1, unit_price: 0 }],
+      line_items: [...prev.line_items, { description: "", quantity: 1, unit_price: "" }],
     }));
   };
 
@@ -127,14 +131,18 @@ const CreateQuote = () => {
     }
   };
 
+  // Previews compute in MINOR units (major input × exponent) so formatCurrency
+  // renders them correctly for any currency.
+  const lineMinor = (item) =>
+    (parseInt(item.quantity) || 1) * toMinorUnits(item.unit_price, formData.currency);
+
   const calculateSubtotal = () =>
-    formData.line_items.reduce(
-      (sum, item) => sum + item.quantity * item.unit_price,
-      0
-    );
+    formData.line_items.reduce((sum, item) => sum + lineMinor(item), 0);
 
   const calculateTotal = () =>
-    calculateSubtotal() + Number(formData.tax_amount) - Number(formData.discount_amount);
+    calculateSubtotal() +
+    toMinorUnits(formData.tax_amount, formData.currency) -
+    toMinorUnits(formData.discount_amount, formData.currency);
 
   const validate = () => {
     const next = {};
@@ -153,16 +161,16 @@ const CreateQuote = () => {
       currency: formData.currency,
       notes: formData.notes,
       terms: formData.terms,
-      tax_amount: parseInt(formData.tax_amount) || 0,
-      discount_amount: parseInt(formData.discount_amount) || 0,
+      tax_amount: toMinorUnits(formData.tax_amount, formData.currency),
+      discount_amount: toMinorUnits(formData.discount_amount, formData.currency),
       valid_until: formData.valid_until
         ? new Date(formData.valid_until).toISOString()
         : null,
       line_items: formData.line_items.map((item) => ({
         description: item.description,
         quantity: parseInt(item.quantity) || 1,
-        unit_price: parseInt(item.unit_price) || 0,
-        amount: (parseInt(item.quantity) || 1) * (parseInt(item.unit_price) || 0),
+        unit_price: toMinorUnits(item.unit_price, formData.currency),
+        amount: lineMinor(item),
       })),
     });
   };
@@ -307,19 +315,16 @@ const CreateQuote = () => {
                   </div>
                   <div className="col-span-4 md:col-span-2">
                     <Label className="mb-1 text-xs text-muted-foreground">
-                      Unit price (¢)
+                      Unit price
                     </Label>
                     <Input
                       type="number"
                       value={item.unit_price}
                       onChange={(e) =>
-                        handleLineItemChange(
-                          index,
-                          "unit_price",
-                          parseInt(e.target.value) || 0
-                        )
+                        handleLineItemChange(index, "unit_price", e.target.value)
                       }
                       min="0"
+                      step="0.01"
                       required
                     />
                   </div>
@@ -328,7 +333,7 @@ const CreateQuote = () => {
                       Amount
                     </Label>
                     <p className="py-2 text-sm font-medium tabular-nums text-foreground">
-                      {formatCurrency(item.quantity * item.unit_price, formData.currency)}
+                      {formatCurrency(lineMinor(item), formData.currency)}
                     </p>
                   </div>
                   <div className="col-span-1">
@@ -355,22 +360,26 @@ const CreateQuote = () => {
                 </span>
               </div>
               <div className="flex items-center justify-end gap-4">
-                <span className="text-sm text-muted-foreground">Tax (¢)</span>
+                <span className="text-sm text-muted-foreground">Tax</span>
                 <Input
                   type="number"
                   name="tax_amount"
                   value={formData.tax_amount}
                   onChange={handleChange}
+                  min="0"
+                  step="0.01"
                   className="w-28 text-right"
                 />
               </div>
               <div className="flex items-center justify-end gap-4">
-                <span className="text-sm text-muted-foreground">Discount (¢)</span>
+                <span className="text-sm text-muted-foreground">Discount</span>
                 <Input
                   type="number"
                   name="discount_amount"
                   value={formData.discount_amount}
                   onChange={handleChange}
+                  min="0"
+                  step="0.01"
                   className="w-28 text-right"
                 />
               </div>
