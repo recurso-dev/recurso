@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-07-31 — The bank-debit release
+
+Direct debit lands (ACH in the US, GoCardless SEPA/Bacs in the UK/EU), Recurso
+becomes agent-operable over MCP, and a public demo sandbox ships — on top of a
+deep money-path correctness sweep and a now self-verifying ledger safety net.
+
+### Security
+
+- **Cross-tenant BYO-webhook binding** — a bring-your-own per-connection
+  webhook could reference another tenant's object. Every money-move is now
+  bound to the connection's own tenant: invoice settle/failure/reversal across
+  all three gateways, the gateway refund-event status advance, and the Razorpay
+  virtual-account reconcile (tenant-scoped atomic increment). A `member` can no
+  longer self-issue a refund credit note (money out without approval); wallet
+  close and offline-payment recording now require a manager role.
+
 ### Added
 
 - **NetSuite & Tally connections** — the sync adapters finally have a
@@ -24,6 +40,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   after every step; runs in CI against Postgres. E2E suite additionally
   gained coupon-math, usage round-trip, webhook lifecycle, and a
   zero-discrepancy reconciliation gate.
+- **Invariant harness now drives real service create-paths** — the harness
+  previously posted ledger legs directly, so it couldn't catch a *service*
+  that forgot its leg. It now runs the real quote-conversion, gift-purchase,
+  and trial-conversion flows through the reconciler (which immediately surfaced
+  a quote-conversion path that was broken against Postgres). The reconciler also
+  gained a credit-note leg-completeness check, so a forgotten credit leg is
+  caught the same way a forgotten invoice leg is — the ledger safety net now
+  self-verifies on both sides.
 - **API monitoring** — Cloud Monitoring uptime check on `/health` plus
   alert policies for downtime and 5xx spikes.
 - Organization rename UI; frontend lint/build/test CI job (previously CI
@@ -41,6 +65,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Two invoice-creating flows posted no ledger leg** — quote→invoice
+  conversion and the buyer's gift-purchase invoice were created without the
+  double-entry AR→Revenue leg every other flow posts, so their later payment
+  drove AR negative and never recognized the revenue. Both now post the leg.
+  Quote conversion was *also* outright broken against Postgres (it stamped a
+  non-deferrable FK before the invoice row existed) — now done atomically.
+- **Pay-in-advance usage billed paused/canceled subscriptions** — a paused sub
+  kept charging per event during the pause and a canceled one accrued phantom
+  charges; usage now only bills active subscriptions.
+- **Gift subscriptions auto-renewed and dunned the recipient** — a redeemed
+  gift is prepaid by the buyer, but it renewed and invoiced the recipient (who
+  has no payment method) into dunning. Gifts now cleanly expire at period end.
+- **Accepted cancel-flow discount offers were never applied** — a customer who
+  stayed for a promised discount was billed full price; the discount is now
+  minted as a coupon and applied to upcoming renewals.
+- **Recurring coupons, US nexus gate, and plan-change tax** — recurring coupons
+  were dropped on renewal/trial (the subscription's `coupon_id` was never
+  persisted); auto-established economic nexus poisoned the US collection gate;
+  mid-period plan-change proration taxed the net at a single HSN rate. All
+  corrected, with per-currency exponent handling threaded through rating,
+  invoicing, tax, and the accounting/e-invoice adapters.
+- **Revenue recognition gaps** — a reversal→re-collect could create a second
+  active schedule (double recognition), and a wallet/credit-covered invoice
+  funded Deferred but never scheduled its recognition; both fixed.
+- **Frontend money input** — the quote and referral forms asked for amounts in
+  cents while every other form takes dollars; both now take dollars (exponent-
+  aware, so JPY/KWD round-trip correctly).
 - **Ledger completeness (audit-grade F1/F2/F3)** — mid-cycle upgrade
   proration and mandate debits never posted their invoice leg (DR AR / CR
   Deferred), drifting AR/Deferred permanently; the rev-rec worker could
