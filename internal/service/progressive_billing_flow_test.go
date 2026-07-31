@@ -101,3 +101,43 @@ func TestProgressive_InterimThenCloseBillsExactlyTotal(t *testing.T) {
 		t.Fatalf("retried close subtotal = %d, want 100000 (no double-bill of usage)", closeInv2.Subtotal)
 	}
 }
+
+// TestProgressive_SkipsPayInAdvanceCharge proves a pay-in-advance charge is NOT
+// billed by the interim progressive sweep. A PIA charge is rated per event at
+// ingestion (captured as an unbilled charge); billing it again on the interim
+// progressive invoice double-charges the usage. The period-close path already
+// skips PIA (invoice.go meteredLines) but the interim sweep did not.
+func TestProgressive_SkipsPayInAdvanceCharge(t *testing.T) {
+	svc, _, _, sub, _ := meteredFixture(0)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{ID: metricID, Code: "api_calls", Name: "API calls", AggregationType: domain.AggregationSum}
+	chargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:           chargeID,
+		PlanID:       sub.PlanID,
+		MetricID:     metricID,
+		ChargeModel:  domain.ChargePerUnit,
+		PayInAdvance: true, // billed per event at ingestion; must NOT be re-billed here
+		Amounts:      map[string]domain.ChargeAmounts{"INR": {UnitAmount: "1"}},
+		Metric:       &metric,
+	}}}
+	svc.UsageRepo = &mockUsageRepoForMeter{qtyByMetricCode: map[string]int64{"api_calls": 100}}
+	threshold := int64(5000)
+	prog := &mockProgressiveRepo{threshold: &threshold, watermarks: map[uuid.UUID]int64{}}
+	svc.SetProgressiveBilling(prog, nil)
+
+	// cum 100 x ₹1 = 10000 would cross the 5000 threshold if counted — but a
+	// pay-in-advance charge is billed at ingestion, so the interim sweep must
+	// bill NOTHING and advance no watermark.
+	interim, err := svc.GenerateProgressiveInvoice(context.Background(), sub)
+	if err != nil {
+		t.Fatalf("interim: %v", err)
+	}
+	if interim != nil {
+		t.Fatalf("interim invoice subtotal = %d, want nil — a pay-in-advance charge must not be billed by the progressive sweep (already billed at ingestion)", interim.Subtotal)
+	}
+	if prog.watermarks[chargeID] != 0 {
+		t.Errorf("watermark advanced to %d for a PIA charge, want 0 (never billed here)", prog.watermarks[chargeID])
+	}
+}

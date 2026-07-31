@@ -176,6 +176,12 @@ func (s *InvoiceService) progressiveUnbilled(ctx context.Context, sub *domain.Su
 		if ch.Metric == nil || !domain.ProgressiveBillingEligible(ch.ChargeModel) {
 			continue
 		}
+		// Pay-in-advance charges are billed per event at ingestion (captured as
+		// unbilled charges); the interim progressive sweep must not re-bill them,
+		// mirroring the period-close skip in invoice.go meteredLines (A3).
+		if ch.PayInAdvance {
+			continue
+		}
 		amounts, ok := ch.Amounts[cur]
 		if !ok {
 			continue
@@ -228,6 +234,12 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 	var invTaxType string // D3c: resolved tax type for the liability report
 	for _, ch := range charges {
 		if ch.Metric == nil || !domain.ProgressiveBillingEligible(ch.ChargeModel) {
+			continue
+		}
+		// Pay-in-advance charges are billed per event at ingestion; never re-bill
+		// them on an interim progressive invoice (mirrors the period-close skip in
+		// invoice.go meteredLines, A3) — otherwise the usage is double-charged.
+		if ch.PayInAdvance {
 			continue
 		}
 		amounts, ok := ch.Amounts[cur]
