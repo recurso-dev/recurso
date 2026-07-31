@@ -209,17 +209,15 @@ func (s *GiftService) RedeemGift(ctx context.Context, tenantID uuid.UUID, recipi
 		ReferenceID:        fmt.Sprintf("GIFT:%s", gift.Code), // Track origin
 		CreatedAt:          time.Now(),
 		UpdatedAt:          time.Now(),
-		// AutoRenew: false? Field missing in domain?
-		// Assuming domain.Subscription logic handles cancellations.
-		// For a gift, usually it's "Canceled at Period End" immediately, or we let it expire.
-		// Let's set status to Active but we need to ensure no future invoices are generated.
-		// Simplest way: Cancel it effective at period end?
-		// Or update Subscription domain to have `AutoRenew` bool.
+		// A gift is prepaid by the BUYER for exactly gift.DurationMonths; the
+		// recipient provides no payment method and never agreed to be billed.
+		// CancelAtPeriodEnd makes the renewal worker END the subscription when
+		// the gift period closes (renewal.go:145 → cancel, not invoice) instead
+		// of generating a renewal invoice that would dun the recipient for a
+		// gift. The recipient keeps full service for the gift window, then it
+		// cleanly expires.
+		CancelAtPeriodEnd: true,
 	}
-
-	// Phase 43 modification: `AutoRenew` field.
-	// Check Subscription Domain if AutoRenew exists.
-	// If not, adding it is a good idea for Gifts.
 
 	if err := s.subscriptionRepo.Create(ctx, sub); err != nil {
 		// Roll the gift back to purchased so the claim doesn't strand it.
