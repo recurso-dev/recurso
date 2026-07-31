@@ -1,6 +1,10 @@
 package domain
 
-import "strings"
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
 
 // currencyExponent lists ISO-4217 currencies whose minor-unit exponent is NOT
 // the default 2. Anything not listed uses exponent 2 (1 major unit == 100 minor
@@ -38,5 +42,42 @@ func MinorUnitsPerMajor(currency string) int64 {
 		return 1000
 	default:
 		return 100
+	}
+}
+
+// FormatMoneyPlain renders an int64 minor-unit amount as a decimal string in the
+// currency's own exponent, with NO symbol: 5000 JPY → "5000", 5000 KWD →
+// "5.000", 123456 USD → "1234.56". Negative amounts keep a leading "-". Use this
+// instead of a hardcoded /100 wherever a stored amount is shown to a user.
+func FormatMoneyPlain(amount int64, currency string) string {
+	exp := CurrencyExponent(currency)
+	neg := amount < 0
+	if neg {
+		amount = -amount
+	}
+	per := MinorUnitsPerMajor(currency)
+	out := strconv.FormatInt(amount/per, 10)
+	if exp > 0 {
+		out = fmt.Sprintf("%s.%0*d", out, exp, amount%per)
+	}
+	if neg {
+		out = "-" + out
+	}
+	return out
+}
+
+// FormatMoney renders a minor-unit amount with a leading currency symbol (₹ for
+// INR, $ for USD) or, for anything else, the ISO code followed by the amount —
+// all exponent-aware. Prefer this over `fmt.Sprintf("%.2f", x/100)` in any
+// customer-facing string, which is wrong for non-2-decimal currencies.
+func FormatMoney(amount int64, currency string) string {
+	n := FormatMoneyPlain(amount, currency)
+	switch strings.ToUpper(strings.TrimSpace(currency)) {
+	case "INR":
+		return "₹" + n
+	case "USD":
+		return "$" + n
+	default:
+		return strings.ToUpper(strings.TrimSpace(currency)) + " " + n
 	}
 }

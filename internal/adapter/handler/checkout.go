@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -190,7 +189,7 @@ func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 			"subtotal":       invoice.Subtotal,
 			"tax_amount":     invoice.TaxAmount,
 			"total":          invoice.Total,
-			"display_amount": fmt.Sprintf("%.2f", float64(invoice.Total)/100.0),
+			"display_amount": domain.FormatMoneyPlain(invoice.Total, invoice.Currency),
 			"due_date":       invoice.DueDate.Format("2006-01-02"),
 			"customer_id":    invoice.CustomerID,
 		},

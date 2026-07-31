@@ -620,13 +620,6 @@ func (s *SubscriptionService) subscriptionCurrency(ctx context.Context, sub *dom
 }
 
 func formatAmount(amountPaise int64, currency string) string {
-	amount := float64(amountPaise) / 100
-	switch currency {
-	case "INR":
-		return fmt.Sprintf("₹%.2f", amount)
-	case "USD":
-		return fmt.Sprintf("$%.2f", amount)
-	default:
-		return fmt.Sprintf("%s %.2f", currency, amount)
-	}
+	// Exponent-aware: hardcoding /100 misstated non-2-decimal currencies.
+	return domain.FormatMoney(amountPaise, currency)
 }
