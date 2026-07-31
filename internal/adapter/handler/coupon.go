@@ -35,6 +35,13 @@ func (h *CouponHandler) CreateCoupon(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
+	// A percent discount above 100% is nonsensical and would drive an invoice's
+	// taxable base negative; reject it at creation (the application path also
+	// clamps the discount to the subtotal as a backstop).
+	if req.DiscountType == "percent" && req.DiscountValue > 100 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "a percent discount_value cannot exceed 100")
+		return
+	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
