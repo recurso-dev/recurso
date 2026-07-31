@@ -122,3 +122,41 @@ func TestResolveChargeInput_PayInAdvanceModelRestriction(t *testing.T) {
 		t.Fatalf("per_unit + pay_in_advance should be allowed, got %v", err)
 	}
 }
+
+// TestResolveChargeInput_PayInAdvanceRejectsPeriodClamps asserts a percentage
+// charge that uses free_units / min_amount / max_amount (period-cumulative
+// clamps) cannot also be pay_in_advance: per-event billing can't honor a
+// per-period cap/floor/allowance, so it would mis-bill. Validation rejects it.
+func TestResolveChargeInput_PayInAdvanceRejectsPeriodClamps(t *testing.T) {
+	tenantID := uuid.New()
+	planID := uuid.New()
+	plan := &domain.Plan{ID: planID, TenantID: tenantID, Prices: []domain.Price{{Currency: "INR"}}}
+	metric := &domain.BillableMetric{ID: uuid.New(), TenantID: tenantID, Code: "api", Name: "API", AggregationType: domain.AggregationSum}
+	svc := simService(plan, metric)
+	ctx := context.Background()
+
+	for _, c := range []struct {
+		name    string
+		amounts domain.ChargeAmounts
+	}{
+		{"max_amount", domain.ChargeAmounts{Rate: "2.5", MaxAmount: 100}},
+		{"min_amount", domain.ChargeAmounts{Rate: "2.5", MinAmount: 100}},
+		{"free_units", domain.ChargeAmounts{Rate: "2.5", FreeUnits: 100}},
+	} {
+		_, _, _, err := svc.resolveChargeInput(ctx, tenantID, 0, ChargeInput{
+			MetricID: metric.ID.String(), ChargeModel: "percentage", PayInAdvance: true,
+			Amounts: map[string]domain.ChargeAmounts{"INR": c.amounts},
+		})
+		if err == nil {
+			t.Errorf("percentage + pay_in_advance + %s should be rejected (period-cumulative clamp)", c.name)
+		}
+	}
+
+	// A plain percentage (rate only) with pay_in_advance stays allowed.
+	if _, _, _, err := svc.resolveChargeInput(ctx, tenantID, 0, ChargeInput{
+		MetricID: metric.ID.String(), ChargeModel: "percentage", PayInAdvance: true,
+		Amounts: map[string]domain.ChargeAmounts{"INR": {Rate: "2.5"}},
+	}); err != nil {
+		t.Fatalf("plain percentage + pay_in_advance should be allowed, got %v", err)
+	}
+}

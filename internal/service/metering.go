@@ -350,6 +350,19 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
 			"charges[%d]: pay_in_advance is not supported with the weighted_sum aggregation (period-close only)", idx))
 	}
+	// free_units / min_amount / max_amount (percentage clamps) are
+	// period-cumulative — an allowance/floor/cap on the WHOLE period's base.
+	// Pay-in-advance rates each event independently, so it cannot honor them: a
+	// period cap would be applied to every event, over-billing (and a floor or
+	// free allowance would misfire the other way). Reject rather than mis-bill.
+	if in.PayInAdvance {
+		for cur, a := range in.Amounts {
+			if a.FreeUnits != 0 || a.MinAmount != 0 || a.MaxAmount != 0 {
+				return nil, "", nil, MeteringValidationError(fmt.Sprintf(
+					"charges[%d].amounts[%s]: free_units, min_amount, and max_amount are period-cumulative and cannot be used with pay_in_advance", idx, cur))
+			}
+		}
+	}
 	normalized, err := normalizeChargeAmounts(model, in.Amounts, idx, "amounts")
 	if err != nil {
 		return nil, "", nil, err
@@ -524,6 +537,12 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 	}
 	for _, ch := range charges {
 		if ch.Metric == nil {
+			continue
+		}
+		// Pay-in-advance charges are billed per event at ingestion, not at period
+		// close, so they are not part of the upcoming invoice this preview
+		// projects — including them double-represents usage already billed.
+		if ch.PayInAdvance {
 			continue
 		}
 		amounts, ok := ch.Amounts[currency]
