@@ -54,6 +54,90 @@ func activeSub(tenant uuid.UUID) *domain.Subscription {
 	}
 }
 
+// lifecycleCouponRepo records coupons created by ApplyRetentionDiscount.
+type lifecycleCouponRepo struct {
+	port.CouponRepository
+	created []*domain.Coupon
+}
+
+func (r *lifecycleCouponRepo) Create(_ context.Context, c *domain.Coupon) error {
+	r.created = append(r.created, c)
+	return nil
+}
+
+// TestApplyRetentionDiscount_AttachesAndApplies proves the cancel-flow discount
+// offer now actually discounts: accepting it mints a percentage coupon, attaches
+// it to the subscription (counter reset so it starts next renewal), and that
+// coupon genuinely reduces the next invoice. Before the fix the offer only
+// logged and the retained customer paid full price.
+func TestApplyRetentionDiscount_AttachesAndApplies(t *testing.T) {
+	tenant := uuid.New()
+	sub := activeSub(tenant)
+	sub.CouponPeriodsApplied = 4 // stale counter from a prior coupon; must reset
+	repo := &lifecycleSubRepo{subs: map[uuid.UUID]*domain.Subscription{sub.ID: sub}}
+	coupons := &lifecycleCouponRepo{}
+	svc := &SubscriptionService{subRepo: repo, couponRepo: coupons}
+	ctx := context.Background()
+
+	// Accept "20% off for 3 months".
+	coupon, err := svc.ApplyRetentionDiscount(ctx, tenant, sub.ID, 20, 3)
+	if err != nil {
+		t.Fatalf("ApplyRetentionDiscount: %v", err)
+	}
+
+	// A repeating percentage coupon was created.
+	if len(coupons.created) != 1 {
+		t.Fatalf("coupons created = %d, want 1", len(coupons.created))
+	}
+	if coupon.DiscountType != domain.DiscountTypePercent || coupon.DiscountValue != 20 {
+		t.Fatalf("coupon = %s/%d, want percent/20", coupon.DiscountType, coupon.DiscountValue)
+	}
+	if coupon.Duration != domain.DurationRepeating || coupon.DurationMonths == nil || *coupon.DurationMonths != 3 {
+		t.Fatalf("coupon duration = %s/%v, want repeating/3", coupon.Duration, coupon.DurationMonths)
+	}
+	if !coupon.Active {
+		t.Fatal("retention coupon must be active or couponAppliesThisPeriod skips it")
+	}
+
+	// It's attached to the subscription with the counter reset to 0.
+	stored := repo.subs[sub.ID]
+	if stored.CouponID == nil || *stored.CouponID != coupon.ID {
+		t.Fatalf("subscription coupon_id = %v, want %s", stored.CouponID, coupon.ID)
+	}
+	if stored.CouponPeriodsApplied != 0 {
+		t.Fatalf("coupon_periods_applied = %d, want 0 (reset so the discount runs its full duration)", stored.CouponPeriodsApplied)
+	}
+
+	// And it genuinely discounts the next 3 renewals: 20% of a ₹100.00 fee = ₹20.00.
+	if !couponAppliesThisPeriod(coupon, stored.CouponPeriodsApplied) {
+		t.Fatal("the retention coupon must apply on the next renewal")
+	}
+	if d := couponDiscountFor(coupon, 10000); d != 2000 {
+		t.Fatalf("discount on 10000 = %d, want 2000 (20%%)", d)
+	}
+	// After the 3rd application the repeating coupon stops.
+	if couponAppliesThisPeriod(coupon, 3) {
+		t.Fatal("a repeating 3-month coupon must not apply on the 4th renewal")
+	}
+
+	// durationMonths == 0 → a forever coupon.
+	forever, err := svc.ApplyRetentionDiscount(ctx, tenant, sub.ID, 10, 0)
+	if err != nil {
+		t.Fatalf("forever discount: %v", err)
+	}
+	if forever.Duration != domain.DurationForever || forever.DurationMonths != nil {
+		t.Fatalf("forever coupon = %s/%v, want forever/nil", forever.Duration, forever.DurationMonths)
+	}
+
+	// Guards: out-of-range percent is rejected.
+	if _, err := svc.ApplyRetentionDiscount(ctx, tenant, sub.ID, 0, 3); err == nil {
+		t.Error("percent 0 should be rejected")
+	}
+	if _, err := svc.ApplyRetentionDiscount(ctx, tenant, sub.ID, 150, 3); err == nil {
+		t.Error("percent 150 should be rejected")
+	}
+}
+
 // TestSubscriptionLifecycle_PauseResume covers the happy path and the guards:
 // only active can pause, only paused can resume, and the transitions persist.
 func TestSubscriptionLifecycle_PauseResume(t *testing.T) {

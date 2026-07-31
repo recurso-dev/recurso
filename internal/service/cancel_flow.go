@@ -325,12 +325,22 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		)
 
 	case domain.OfferTypeDiscount:
-		// Discount offers require coupon integration
-		// For now, log the intent — can be expanded with CouponService
-		s.logger.Info("discount offer accepted (coupon application pending)",
+		// Honor the accepted discount by minting a coupon and attaching it to the
+		// subscription; the discount lands on upcoming renewals. Previously this
+		// only logged, so a customer who stayed for a promised discount was still
+		// billed full price.
+		if offer.DiscountPercent <= 0 {
+			return fmt.Errorf("discount_percent required for a discount offer")
+		}
+		coupon, err := s.subscriptionService.ApplyRetentionDiscount(ctx, session.TenantID, session.SubscriptionID, offer.DiscountPercent, offer.DiscountDurationMonths)
+		if err != nil {
+			return fmt.Errorf("failed to apply retention discount: %w", err)
+		}
+		s.logger.Info("retention discount applied",
 			"subscription_id", session.SubscriptionID,
 			"discount_percent", offer.DiscountPercent,
 			"duration_months", offer.DiscountDurationMonths,
+			"coupon_id", coupon.ID,
 		)
 
 	case domain.OfferTypeCustom:
