@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import posthog from 'posthog-js'
 import { endpoints } from '../lib/api'
 import { getApiKey, setApiKey as storeApiKey, clearApiKey } from '../lib/authToken'
 
@@ -11,6 +12,15 @@ export const AuthProvider = ({ children }) => {
     // XSS payload can't lift it from storage; it clears on refresh.
     const [apiKey, setApiKeyState] = useState(() => getApiKey())
     const [loading, setLoading] = useState(true)
+
+    // Identify the signed-in tenant/user to PostHog (inert without
+    // VITE_POSTHOG_KEY) so product-analytics events tie to a tenant. Runs
+    // whenever auth resolves or changes.
+    useEffect(() => {
+        if (import.meta.env.VITE_POSTHOG_KEY && user) {
+            posthog.identify(user.id, { email: user.email, tenant_id: user.tenant_id })
+        }
+    }, [user])
 
     // On load, resolve the session cookie via /auth/me. If there's no session
     // but a stored API key exists, we stay authenticated in legacy mode.
