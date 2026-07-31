@@ -444,6 +444,7 @@ func main() {
 	invoiceService.ChargeRepo = chargeRepo
 	invoiceService.UsageRepo = usageRepo
 	invoiceService.RatingRepo = usageRatingRepo
+	invoiceService.CouponRepo = couponRepo // C1: re-apply a `forever` coupon on renewals
 	// A5 progressive billing: the watermark repo + the ledger poster interim
 	// invoices use (billProgressive posts DR AR / CR Revenue itself). The repo is
 	// also the sweep scheduler's candidate source (wired below).

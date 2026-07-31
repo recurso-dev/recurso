@@ -41,6 +41,10 @@ type InvoiceService struct {
 	ChargeRepo port.ChargeRepository
 	UsageRepo  port.UsageRepository
 	RatingRepo port.UsageRatingRepository
+	// CouponRepo re-applies a subscription's stored coupon to recurring invoices
+	// (a `forever` coupon discounts the flat plan fee every period). nil-safe:
+	// when unset, renewal invoices carry no coupon discount (pre-C1 behaviour).
+	CouponRepo port.CouponRepository
 	// WalletDrainer applies prepaid wallet balance to a committed invoice
 	// BEFORE adjustment credit notes and the gateway (Lago-parity B1, D3).
 	// nil-safe. Satisfied by *WalletService.
@@ -252,8 +256,28 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// unbilled charge is its own line too (Phase 3), taxed at its own HSN.
 	subtotal := price.Amount
 
-	// Base line: plan price only, taxed on the plan price at the plan's HSN.
-	baseTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, price.Amount, plan.HSNCode)
+	// Recurring coupon: a `forever` coupon set on the subscription discounts the
+	// flat plan fee every period. `once` applied only to the first invoice (create
+	// time) and `repeating` is not yet re-applied on renewals (needs a period
+	// counter — tracked separately), so only `forever` is honoured here. The
+	// discount is clamped to the fee and tax is resolved on the post-discount
+	// base, matching the create and trial-conversion paths.
+	var flatDiscount int64
+	if sub.CouponID != nil && s.CouponRepo != nil {
+		coupon, cerr := s.CouponRepo.GetByID(ctx, sub.TenantID, *sub.CouponID)
+		if cerr != nil {
+			return nil, fmt.Errorf("failed to load subscription coupon: %w", cerr)
+		}
+		if coupon != nil && coupon.Duration == domain.DurationForever {
+			flatDiscount = couponDiscountFor(coupon, price.Amount)
+		}
+	}
+	taxableFlat := price.Amount - flatDiscount
+
+	// Base line: plan price only, taxed on the (post-discount) plan price at the
+	// plan's HSN. The line's gross amount stays the plan price; its taxable base
+	// carries the discount (amount − discount == taxable).
+	baseTax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, taxableFlat, plan.HSNCode)
 
 	// Running invoice totals seeded from the base line. Charges and add-ons are
 	// accumulated onto these as their own lines below.
@@ -263,9 +287,11 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	if baseDesc == "" {
 		baseDesc = "Subscription"
 	}
-	lines := []domain.InvoiceItem{
-		newInvoiceLine(invID, baseDesc, baseTax.HSN, 1, price.Amount, price.Amount, baseTax, time.Time{}),
+	baseLine := newInvoiceLine(invID, baseDesc, baseTax.HSN, 1, price.Amount, price.Amount, baseTax, time.Time{})
+	if flatDiscount > 0 {
+		baseLine.TaxableAmount = taxableFlat
 	}
+	lines := []domain.InvoiceItem{baseLine}
 
 	// P15: Add Unbilled Charges as their own line items (Phase 3). Charges in a
 	// different currency than the plan price cannot be billed on this invoice;
@@ -382,7 +408,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		lines = append(lines, newInvoiceLine(invID, "Minimum commitment true-up", trueUpTax.HSN, 1, shortfall, shortfall, trueUpTax, time.Time{}))
 	}
 
-	total := subtotal + taxTotal
+	// Subtotal stays gross; the flat-fee coupon discount is netted into the total
+	// (net + tax), so Total = subtotal − discount + tax — matching the create path.
+	total := subtotal - flatDiscount + taxTotal
 
 	// 4. Determine Payment Terms & Due Date (P15)
 	terms := sub.PaymentTerms
