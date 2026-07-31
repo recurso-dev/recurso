@@ -256,20 +256,23 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// unbilled charge is its own line too (Phase 3), taxed at its own HSN.
 	subtotal := price.Amount
 
-	// Recurring coupon: a `forever` coupon set on the subscription discounts the
-	// flat plan fee every period. `once` applied only to the first invoice (create
-	// time) and `repeating` is not yet re-applied on renewals (needs a period
-	// counter — tracked separately), so only `forever` is honoured here. The
-	// discount is clamped to the fee and tax is resolved on the post-discount
-	// base, matching the create and trial-conversion paths.
+	// Recurring coupon: re-apply the subscription's coupon to the flat plan fee
+	// for the periods its duration covers (forever = every period; repeating =
+	// the first N; once = the first invoice only, so never on a renewal). The
+	// discount is clamped to the fee, tax is resolved on the post-discount base,
+	// and the applied-periods counter is advanced (persisted by the renewal
+	// worker's subscription Update) so repeating coupons stop after N periods.
 	var flatDiscount int64
 	if sub.CouponID != nil && s.CouponRepo != nil {
 		coupon, cerr := s.CouponRepo.GetByID(ctx, sub.TenantID, *sub.CouponID)
 		if cerr != nil {
 			return nil, fmt.Errorf("failed to load subscription coupon: %w", cerr)
 		}
-		if coupon != nil && coupon.Duration == domain.DurationForever {
+		if couponAppliesThisPeriod(coupon, sub.CouponPeriodsApplied) {
 			flatDiscount = couponDiscountFor(coupon, price.Amount)
+			if flatDiscount > 0 {
+				sub.CouponPeriodsApplied++
+			}
 		}
 	}
 	taxableFlat := price.Amount - flatDiscount

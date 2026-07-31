@@ -91,7 +91,8 @@ func TestGenerateInvoice_OnceCouponNotReappliedOnRenewal(t *testing.T) {
 		DiscountType: domain.DiscountTypePercent, DiscountValue: 20,
 		Duration: domain.DurationOnce, Active: true,
 	}}
-	sub := &domain.Subscription{ID: uuid.New(), CustomerID: custID, PlanID: planID, TenantID: tenantID, CouponID: &couponID}
+	// A renewal: the `once` coupon was already consumed at create (period 1).
+	sub := &domain.Subscription{ID: uuid.New(), CustomerID: custID, PlanID: planID, TenantID: tenantID, CouponID: &couponID, CouponPeriodsApplied: 1}
 
 	inv, err := svc.GenerateInvoice(context.Background(), sub)
 	if err != nil {
@@ -99,5 +100,51 @@ func TestGenerateInvoice_OnceCouponNotReappliedOnRenewal(t *testing.T) {
 	}
 	if inv.Total != 118000 {
 		t.Errorf("total = %d, want 118000 — a `once` coupon must NOT be re-applied on renewals", inv.Total)
+	}
+}
+
+// TestGenerateInvoice_RepeatingCouponStopsAfterN proves a `repeating` coupon
+// (N months) applies for the first N renewal periods and then stops, driven by
+// the subscription's CouponPeriodsApplied counter.
+func TestGenerateInvoice_RepeatingCouponStopsAfterN(t *testing.T) {
+	planID := uuid.New()
+	custID := uuid.New()
+	tenantID := uuid.New()
+	couponID := uuid.New()
+	months := 3
+
+	svc := NewInvoiceService(
+		&MockInvoiceRepo{},
+		&MockPlanRepo{Plan: &domain.Plan{ID: planID, Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}}},
+		&MockCustomerRepo{Customer: &domain.Customer{
+			ID: custID, PlaceOfSupply: domain.StringPtr("TN"),
+			BillingAddress: domain.BillingAddress{Country: "India", State: "TN"},
+		}},
+		&MockUnbilledChargeRepo{}, &MockSubscriptionRepo{}, gsp.NewMockGSPAdapter(), nil,
+	)
+	svc.CouponRepo = &mockCouponRepoForInvoice{coupon: &domain.Coupon{
+		ID: couponID, TenantID: tenantID,
+		DiscountType: domain.DiscountTypePercent, DiscountValue: 20,
+		Duration: domain.DurationRepeating, DurationMonths: &months, Active: true,
+	}}
+
+	// Period 1 was create; renewals are periods 2..N. Walk the counter forward
+	// as the renewal worker would (each GenerateInvoice advances it).
+	sub := &domain.Subscription{ID: uuid.New(), CustomerID: custID, PlanID: planID, TenantID: tenantID, CouponID: &couponID, CouponPeriodsApplied: 1}
+	for period := 2; period <= 5; period++ {
+		inv, err := svc.GenerateInvoice(context.Background(), sub)
+		if err != nil {
+			t.Fatalf("period %d: %v", period, err)
+		}
+		if period <= months {
+			if inv.Total != 94400 {
+				t.Errorf("period %d total = %d, want 94400 (coupon applies for the first %d periods)", period, inv.Total, months)
+			}
+		} else if inv.Total != 118000 {
+			t.Errorf("period %d total = %d, want 118000 (coupon exhausted after %d periods)", period, inv.Total, months)
+		}
+	}
+	if sub.CouponPeriodsApplied != months {
+		t.Errorf("CouponPeriodsApplied = %d, want %d (capped at DurationMonths)", sub.CouponPeriodsApplied, months)
 	}
 }

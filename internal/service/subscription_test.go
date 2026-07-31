@@ -1232,3 +1232,39 @@ func TestConvertTrialToActive_AppliesCoupon(t *testing.T) {
 		t.Errorf("line taxable = %+v, want 80000", inv.LineItems)
 	}
 }
+
+// TestCreateSubscription_TrialCouponNotPreCounted proves a trial subscription's
+// coupon is NOT pre-counted at create: the trial defers its first invoice to
+// conversion, so CouponPeriodsApplied must stay 0 (ConvertTrialToActive applies
+// period 1). Otherwise a `once` coupon would be counted-but-never-applied and
+// lost, and a `repeating` coupon would be off by one.
+func TestCreateSubscription_TrialCouponNotPreCounted(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	tenantID := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID: planID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Amount: 100000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+	coupon := &domain.Coupon{ID: uuid.New(), TenantID: tenantID, Code: "ONCE",
+		DiscountType: domain.DiscountTypePercent, DiscountValue: 20, Duration: domain.DurationOnce, Active: true}
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{coupon: coupon}, &subMockGateway{})
+
+	sub, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID: tenantID, CustomerID: customerID, PlanID: planID,
+		StartDate: time.Now().UTC(), CouponCode: "ONCE", TrialDays: 14,
+	})
+	if err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+	if invRepo.created != nil {
+		t.Error("a trial must not create an invoice at create time")
+	}
+	if sub.CouponPeriodsApplied != 0 {
+		t.Errorf("CouponPeriodsApplied = %d, want 0 (a trial's coupon is applied at conversion, not create)", sub.CouponPeriodsApplied)
+	}
+}

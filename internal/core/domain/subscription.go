@@ -39,11 +39,12 @@ type Subscription struct {
 	CancellationReason   string     `json:"cancellation_reason,omitempty" db:"cancellation_reason"`
 	CancellationFeedback string     `json:"cancellation_feedback,omitempty" db:"cancellation_feedback"`
 	BillingAnchor        time.Time  `json:"billing_anchor"`
-	BillingAnchorType    string     `json:"billing_anchor_type"`                      // P15
-	BillingAnchorDay     int        `json:"billing_anchor_day"`                       // P15
-	PaymentTerms         string     `json:"payment_terms"`                            // P15
-	CouponID             *uuid.UUID `json:"coupon_id,omitempty"`                      // P7
-	ReferenceID          string     `json:"reference_id,omitempty" db:"reference_id"` // P43
+	BillingAnchorType    string     `json:"billing_anchor_type"`                                          // P15
+	BillingAnchorDay     int        `json:"billing_anchor_day"`                                           // P15
+	PaymentTerms         string     `json:"payment_terms"`                                                // P15
+	CouponID             *uuid.UUID `json:"coupon_id,omitempty"`                                          // P7
+	CouponPeriodsApplied int        `json:"coupon_periods_applied,omitempty" db:"coupon_periods_applied"` // C1: periods a repeating coupon has been applied
+	ReferenceID          string     `json:"reference_id,omitempty" db:"reference_id"`                     // P43
 	MandateID            *uuid.UUID `json:"mandate_id,omitempty" db:"mandate_id"`
 	// CommitmentAmount is the per-period minimum in minor units (Lago-parity
 	// B2): when a period's subtotal falls short, a true-up line fills the
