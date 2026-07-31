@@ -531,6 +531,29 @@ func (s *LedgerService) RecordPaymentReversal(ctx context.Context, invoice *doma
 	return nil
 }
 
+// LatestSettledCashAmount returns the amount of the most recent cash payment
+// (code 3) posted for the invoice, or 0 if none exists (fully covered by
+// wallet/credit). The reversal path uses it to reconstruct how much of a
+// fully-paid invoice was settled by NON-cash means (a wallet drain, account
+// credit, TDS): non-cash = Total − CreditApplied − TDSAmount − thisCashAmount.
+// That non-cash portion was never clawed back by an ACH/card return, so it must
+// stay recorded as paid when the invoice is reopened.
+func (s *LedgerService) LatestSettledCashAmount(ctx context.Context, invoiceID uuid.UUID) (int64, error) {
+	if s.pgRepo == nil {
+		return 0, nil
+	}
+	cashLeg, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoiceID, 3)
+	if err != nil {
+		return 0, err
+	}
+	if cashLeg == nil {
+		return 0, nil
+	}
+	// Ledger amounts are stored as uint64 minor units; a cash leg is always a
+	// positive, in-range money value, so the conversion is safe.
+	return int64(cashLeg.Amount), nil
+}
+
 // RecordRefund posts a refund to the ledger.
 // Debit: Refunds (Expense)
 // Credit: Cash (Asset)

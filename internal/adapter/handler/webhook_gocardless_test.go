@@ -167,7 +167,7 @@ func (r *gcReturnRepo) GetByGatewayPaymentIDPublic(_ context.Context, id string)
 func (r *gcReturnRepo) GetByID(_ context.Context, _ uuid.UUID) (*domain.Invoice, error) {
 	return r.inv, nil
 }
-func (r *gcReturnRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID) (bool, error) {
+func (r *gcReturnRepo) ReverseToUnpaid(_ context.Context, _, _ uuid.UUID, _ int64) (bool, error) {
 	r.reverseCalls++
 	r.inv.Status = domain.InvoiceStatusPastDue
 	return true, nil
