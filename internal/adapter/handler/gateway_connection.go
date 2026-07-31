@@ -36,6 +36,15 @@ func (h *GatewayConnectionHandler) tenantID(c *gin.Context) (uuid.UUID, bool) {
 
 // requireManager gates writes to owner/admin; API-key (machine) callers pass.
 func (h *GatewayConnectionHandler) requireManager(c *gin.Context) bool {
+	return requireManagerRole(c)
+}
+
+// requireManagerRole gates a money-sensitive mutation to owner/admin users.
+// API keys (no user role in context) bypass so server-to-server automations
+// aren't blocked. Writes a 403 and returns false when a non-manager user calls.
+// Shared by the money-mutation handlers (gateway/integration connections,
+// wallet close, offline-payment recording) so RBAC is consistent across them.
+func requireManagerRole(c *gin.Context) bool {
 	role, hasUser := middleware.GetUserRole(c)
 	if !hasUser {
 		return true
