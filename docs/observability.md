@@ -81,3 +81,21 @@ VITE_SENTRY_DSN=https://...ingest.sentry.io/...
 
 Both default to **errors only** (no tracing/replay); turn those on later if
 wanted. Combined with the metrics above, this covers the operational surface.
+
+## Product analytics (PostHog)
+
+The dashboard can send product analytics to PostHog — pageviews, interactions,
+and a signup → activation → retention picture. **Inert unless `VITE_POSTHOG_KEY`
+is set at build time**, mirroring Sentry:
+
+```bash
+# Dashboard (build-time)
+VITE_POSTHOG_KEY=phc_...                       # enables PostHog; unset = off
+VITE_POSTHOG_HOST=https://us.i.posthog.com     # or your self-hosted instance
+```
+
+`posthog.init` runs in `main.jsx` only when the key is set; `AuthProvider`
+`identify()`s the signed-in tenant/user (`tenant_id` as a property) once auth
+resolves, so events tie back to a tenant. Self-host PostHog (set
+`VITE_POSTHOG_HOST`) if you want the same own-your-data posture as the rest of
+the stack.
