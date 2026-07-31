@@ -48,6 +48,7 @@ founder can provide; everything else is engineering-ready.
 |---|------|--------|--------|-------|
 | 11 | Gift-subscription cancel + wallet-close UI edge cases | LOW | LOW | Deferred from roadmap run 2026-07-20. |
 | 12 | Dunning alert edit UI | LOW | LOW | Deferred from roadmap run 2026-07-20. |
+| FE1 | Money-input UX inconsistency: two forms take **cents**, the rest take **dollars** | LOW — not a bug (labels are explicit, conversion is correct), but error-prone | LOW-MED | Frontend money audit 2026-07-31: money handling is otherwise sound (centralized exponent-aware `toMinorUnits`/`formatCurrency` in `lib/utils.js`, Intl-derived so JPY/KWD aren't mangled). But `CreateQuote.jsx` (`Unit price (¢)`/`Tax (¢)`/`Discount (¢)`, raw `parseInt`) and `Referrals.jsx` (`Reward amount (cents)`, "500 = $5.00", raw `parseInt`) ask users to enter **minor units**, while every other form (Plan/Coupon/CreditNote/OfflinePayment/Wallet/Mandate/SubscriptionDetail) takes major units via `toMinorUnits`. A user habituated to typing "50" for $50 elsewhere creates a $0.50 quote line. Standardize on dollar-input: label in the currency, `toMinorUnits(value, currency)` on submit, and (CreateQuote) convert the subtotal/total **preview** math from cents to major + `formatCurrency`. Product-convention call (which UX to standardize on) + preview/test churn on the quote side, so filed rather than rushed at session end. |
 
 ## P2b — smoke-sweep findings (2026-07-28, see docs/verification-2026-07-28.md)
 
