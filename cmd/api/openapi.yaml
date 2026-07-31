@@ -126,6 +126,29 @@ paths:
         '401':
           description: METRICS_TOKEN is set and the bearer token did not match.
 
+  /platform/metrics:
+    get:
+      operationId: getPlatformMetrics
+      tags: [System]
+      summary: Founder-only cross-tenant funnel metrics
+      description: >
+        Operator-only snapshot across ALL tenants — signups (7d/30d), activation
+        (tenants with >=1 customer), trials expiring soon, plan/billing
+        breakdowns, and recent signups. Gated by the FOUNDER_TOKEN bearer;
+        returns 404 when FOUNDER_TOKEN is unset (feature off). Never reachable
+        via tenant auth.
+      responses:
+        '200':
+          description: Cross-tenant platform metrics.
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: FOUNDER_TOKEN is set and the bearer token did not match.
+        '404':
+          description: FOUNDER_TOKEN is unset — the endpoint is disabled.
+
   /version:
     get:
       operationId: getVersion

@@ -1520,6 +1520,30 @@ func main() {
 		httpMetrics.WriteProm(c.Writer)
 	})
 
+	// Founder-only platform metrics: a cross-tenant funnel snapshot (signups,
+	// activation, trials, plan/billing breakdown). This is the ONLY cross-tenant
+	// surface, kept deliberately outside tenant auth — gated by FOUNDER_TOKEN and
+	// returning 404 (feature off) when unset, so no tenant login can reach it.
+	founderToken := os.Getenv("FOUNDER_TOKEN")
+	platformRepo := db.NewPlatformRepository(database)
+	r.GET("/platform/metrics", func(c *gin.Context) {
+		if founderToken == "" {
+			c.Status(http.StatusNotFound)
+			return
+		}
+		if c.GetHeader("Authorization") != "Bearer "+founderToken {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		pm, err := platformRepo.PlatformMetrics(c.Request.Context())
+		if err != nil {
+			slog.Error("platform metrics query failed", "error", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compute platform metrics"})
+			return
+		}
+		c.JSON(http.StatusOK, pm)
+	})
+
 	r.GET("/health", func(c *gin.Context) {
 		status := "ok"
 		httpStatus := http.StatusOK
