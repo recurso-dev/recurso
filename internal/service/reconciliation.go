@@ -32,6 +32,7 @@ const (
 	DiscrepancyInvoiceAmountMismatch = "invoice_amount_mismatch"
 	DiscrepancyMissingPaymentTx      = "missing_payment_transaction"
 	DiscrepancyPaymentAmountMismatch = "payment_amount_mismatch"
+	DiscrepancyMissingCreditNoteTx   = "missing_credit_note_transaction"
 	DiscrepancyOrphanedTransaction   = "orphaned_transaction"
 	DiscrepancyMissingInTigerBeetle  = "missing_in_tigerbeetle"
 	DiscrepancyMissingInPostgres     = "missing_in_postgres"
@@ -50,6 +51,7 @@ type ReconciliationRepository interface {
 	CountReconciliationScope(ctx context.Context, tenantID uuid.UUID) (nonDraft int, paid int, err error)
 	GetInvoiceLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
+	GetCreditNoteLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.CreditNoteLedgerMismatch, int, error)
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
 	// GetTrialBalanceLines feeds the double-entry integrity assertion.
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
@@ -160,6 +162,18 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 			invoiceDiscrepancy(row, DiscrepancyMissingPaymentTx, DiscrepancyPaymentAmountMismatch))
 	}
 
+	creditNoteRows, creditNoteTotal, err := s.repo.GetCreditNoteLedgerMismatches(ctx, tenantID, s.maxListed)
+	if err != nil {
+		return nil, fmt.Errorf("credit-note ledger mismatches for tenant %s: %w", tenantID, err)
+	}
+	for _, row := range creditNoteRows {
+		cnID := row.CreditNoteID
+		report.Discrepancies = append(report.Discrepancies, ReconciliationDiscrepancy{
+			Type:        DiscrepancyMissingCreditNoteTx,
+			ReferenceID: &cnID,
+		})
+	}
+
 	orphanRows, orphanTotal, err := s.repo.GetOrphanLedgerTransactions(ctx, tenantID, s.maxListed)
 	if err != nil {
 		return nil, fmt.Errorf("orphan ledger transactions for tenant %s: %w", tenantID, err)
@@ -187,7 +201,7 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		report.Discrepancies = append(integrity, report.Discrepancies...)
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + orphanTotal + len(integrity)
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity)
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"

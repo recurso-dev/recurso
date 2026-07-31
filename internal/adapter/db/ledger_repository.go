@@ -325,6 +325,53 @@ type InvoiceLedgerMismatch struct {
 	TxCount   int       // number of matching ledger transactions (0 = missing entirely)
 }
 
+// CreditNoteLedgerMismatch is a credit note in a leg-bearing status whose
+// issuance ledger leg is missing entirely (its id is referenced by no ledger
+// transaction).
+type CreditNoteLedgerMismatch struct {
+	CreditNoteID uuid.UUID
+}
+
+// GetCreditNoteLedgerMismatches finds credit notes whose issuance ledger leg
+// was never posted — the credit-note analog of a missing invoice Code-1 leg.
+// Only completeness is checked (not amount): a credit note's legs vary by type
+// (adjustment code 8, downgrade credit, refund, plus any tax reversal), so any
+// ledger transaction referencing the credit note clears it — this catches only
+// a WHOLLY forgotten leg. Scoped to leg-bearing statuses: pending_approval and
+// rejected have no leg yet (posted on approval, ENG maker-checker) and void is
+// excluded, so none of those are false positives.
+func (r *LedgerRepository) GetCreditNoteLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]CreditNoteLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, COUNT(*) OVER () AS total
+		FROM (
+			SELECT cn.id, COUNT(t.id) AS tx_count
+			FROM credit_notes cn
+			LEFT JOIN ledger_transactions t ON t.reference_id = cn.id
+			WHERE cn.tenant_id = $1
+			  AND cn.status IN ('issued', 'used', 'expired')
+			GROUP BY cn.id
+		) sub
+		WHERE sub.tx_count = 0
+		ORDER BY sub.id
+		LIMIT $2`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query credit-note ledger mismatches: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var mismatches []CreditNoteLedgerMismatch
+	total := 0
+	for rows.Next() {
+		var m CreditNoteLedgerMismatch
+		if err := rows.Scan(&m.CreditNoteID, &total); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan credit-note ledger mismatch: %w", err)
+		}
+		mismatches = append(mismatches, m)
+	}
+	return mismatches, total, rows.Err()
+}
+
 // OrphanLedgerTransaction is a ledger transaction whose reference_id points
 // to no existing invoice.
 type OrphanLedgerTransaction struct {
