@@ -146,6 +146,11 @@ func (h *WebhookHandler) handleGoCardlessPaymentEvent(c *gin.Context, ev gcEvent
 			h.logger.Info("no invoice references GoCardless payment, ignoring", "payment", ev.Links.Payment)
 			return nil
 		}
+		if !invoiceBelongsToWebhookConn(ctx, inv) {
+			h.logger.Warn("BYO GoCardless webhook referenced another tenant's invoice — ignoring",
+				"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
+			return nil
+		}
 		if h.subService == nil {
 			h.logger.Info("subscription service not configured, ignoring GoCardless settlement", "payment", ev.Links.Payment)
 			return nil
@@ -184,6 +189,11 @@ func (h *WebhookHandler) handleGoCardlessPaymentEvent(c *gin.Context, ev gcEvent
 		if inv == nil {
 			h.logger.Warn("GoCardless payment reversed but no invoice references it — ignoring",
 				"payment", ev.Links.Payment, "action", ev.Action)
+			return nil
+		}
+		if !invoiceBelongsToWebhookConn(ctx, inv) {
+			h.logger.Warn("BYO GoCardless webhook referenced another tenant's invoice — ignoring",
+				"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
 			return nil
 		}
 		// ReverseSettledPayment is idempotent on the paid guard: it reopens

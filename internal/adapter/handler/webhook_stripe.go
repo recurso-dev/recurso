@@ -135,6 +135,11 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 		h.logger.Warn("stripe payment_intent.succeeded ignored — invoice not found", "invoice_id", invoiceID)
 		return nil
 	}
+	if !invoiceBelongsToWebhookConn(ctx, inv) {
+		h.logger.Warn("BYO stripe webhook referenced another tenant's invoice — ignoring",
+			"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
+		return nil
+	}
 
 	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
 	transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
@@ -216,6 +221,11 @@ func (h *WebhookHandler) handlePaymentIntentProcessing(ctx context.Context, even
 		return fmt.Errorf("failed to load invoice %s: %w", invoiceID, err)
 	}
 	if inv == nil {
+		return nil
+	}
+	if !invoiceBelongsToWebhookConn(ctx, inv) {
+		h.logger.Warn("BYO stripe webhook referenced another tenant's invoice — ignoring",
+			"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
 		return nil
 	}
 	if existing, _ := h.paymentAttempts.GetByPaymentIntentID(ctx, pi.ID); existing != nil {
@@ -312,6 +322,11 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event s
 			"error", err,
 		)
 		return fmt.Errorf("failed to fetch invoice %s: %w", invoiceID, err)
+	}
+	if !invoiceBelongsToWebhookConn(ctx, inv) {
+		h.logger.Warn("BYO stripe webhook referenced another tenant's invoice — ignoring",
+			"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
+		return nil
 	}
 
 	inv.Status = domain.InvoiceStatusPastDue

@@ -46,6 +46,35 @@ type gatewayConnResolver interface {
 // increment 3). Nil-safe: unset, only the env webhook routes work.
 func (h *WebhookHandler) SetGatewayConnections(r gatewayConnResolver) { h.gatewayConns = r }
 
+// webhookConnTenantKey holds, in the request context, the tenant of the BYO
+// connection a per-connection webhook authenticated as (set by webhookSecretFor).
+// Absent on the legacy env route, where the platform holds the secret.
+type webhookConnTenantKeyType struct{}
+
+var webhookConnTenantKey webhookConnTenantKeyType
+
+// webhookConnTenant returns the BYO connection's tenant for this request, or
+// uuid.Nil on the legacy env route.
+func webhookConnTenant(ctx context.Context) uuid.UUID {
+	if id, ok := ctx.Value(webhookConnTenantKey).(uuid.UUID); ok {
+		return id
+	}
+	return uuid.Nil
+}
+
+// invoiceBelongsToWebhookConn reports whether it is safe for this webhook to act
+// on inv. On a BYO (:connID) route it requires inv to belong to the connection's
+// own tenant, so a signed payload can't reference another tenant's invoice. On
+// the legacy env route (no conn tenant) it is always true. A nil invoice is
+// handled by the caller's own not-found path.
+func invoiceBelongsToWebhookConn(ctx context.Context, inv *domain.Invoice) bool {
+	ct := webhookConnTenant(ctx)
+	if ct == uuid.Nil || inv == nil {
+		return true
+	}
+	return inv.TenantID == ct
+}
+
 // webhookSecretFor resolves the signing secret to verify an inbound webhook.
 // With a :connID path param it looks up that BYO connection and decrypts its
 // webhook secret (fail closed on any problem); without one it returns the env
@@ -70,6 +99,14 @@ func (h *WebhookHandler) webhookSecretFor(c *gin.Context, provider domain.Gatewa
 		respondError(c, http.StatusNotFound, codeNotFound, "connection not found")
 		return "", false
 	}
+	// Bind this request to the connection's tenant. The signature is verified with
+	// THIS connection's secret, but the invoice a handler acts on is loaded by the
+	// payload's id (unscoped) — so every side effect must confirm the target
+	// belongs to this tenant, or a BYO tenant could settle/refund another tenant's
+	// invoice by signing a body carrying its id (ENG-172). Stored on the request
+	// context so both the gin-context handlers (Razorpay) and the ctx-only
+	// handlers (Stripe) can read it via webhookConnTenant / invoiceBelongsToWebhookConn.
+	c.Request = c.Request.WithContext(context.WithValue(c.Request.Context(), webhookConnTenantKey, conn.TenantID))
 	secret, err := h.gatewayConns.OpenWebhookSecret(conn)
 	if err != nil || secret == "" {
 		// Fail closed: a connection without a webhook secret cannot be verified.
