@@ -146,6 +146,24 @@ CORS_ORIGIN=https://app.recurso.dev,https://recurso.dev
 See **[docs/observability.md](observability.md)** for the `/metrics` schema,
 Grafana dashboard, and alert rules.
 
+### Founder metrics (cross-tenant funnel)
+
+`GET /platform/metrics` returns an operator-only snapshot across **all** tenants
+— signups (7d/30d), activation (tenants with ≥1 customer), trials expiring soon,
+and plan/billing breakdowns. It's the only cross-tenant surface and is kept
+outside tenant auth: gated by a bearer token, and **disabled (404) when unset**.
+
+```bash
+FOUNDER_TOKEN=<a long random secret>   # enables GET /platform/metrics
+```
+
+```bash
+curl -H "Authorization: Bearer $FOUNDER_TOKEN" https://api.recurso.dev/platform/metrics
+```
+
+Keep `FOUNDER_TOKEN` secret — anyone with it sees every tenant's signup/billing
+summary. A tenant login can never reach this endpoint.
+
 ## Kubernetes
 
 Manifests live in `k8s/` (namespace, deployment, service, ingress, configmap, secret, RBAC, network policy). They deploy the **API only** — bring your own managed PostgreSQL (set `DATABASE_URL` in `recurso-secrets`) and, optionally, serve the frontend image behind your ingress.
