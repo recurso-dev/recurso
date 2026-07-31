@@ -164,9 +164,16 @@ func (r *TaxNexusRepository) Delete(ctx context.Context, tenantID uuid.UUID, sta
 }
 
 // NexusFor returns (declaredAny, inState) in a single query.
+//
+// declaredAny counts only MANUALLY declared nexus (auto_established = false):
+// the restrictive collection gate ("collect only in the listed states") is the
+// tenant opting into Recurso-managed nexus, which auto-established economic
+// nexus is not. inState counts ANY nexus in the state (manual or economic), so
+// an economic-nexus state is still collected — it just doesn't flip a
+// provider-deferring tenant into the restrictive gate (ENG-171).
 func (r *TaxNexusRepository) NexusFor(ctx context.Context, tenantID uuid.UUID, stateCode string) (bool, bool, error) {
 	const q = `
-		SELECT COUNT(*), COUNT(*) FILTER (WHERE state_code = $2)
+		SELECT COUNT(*) FILTER (WHERE NOT auto_established), COUNT(*) FILTER (WHERE state_code = $2)
 		FROM tenant_tax_nexus WHERE tenant_id = $1 AND entity_id IS NULL`
 	var total, inState int
 	if err := r.db.QueryRowContext(ctx, q, tenantID, strings.ToUpper(strings.TrimSpace(stateCode))).Scan(&total, &inState); err != nil {
@@ -244,9 +251,12 @@ func (r *TaxNexusRepository) SalesByState(ctx context.Context, tenantID uuid.UUI
 // in. Existing rows (physical/voluntary/economic) are left untouched — a
 // declared nexus is never downgraded to economic.
 func (r *TaxNexusRepository) EstablishEconomic(ctx context.Context, tenantID uuid.UUID, stateCode string, establishedAt time.Time) (bool, error) {
+	// auto_established = true marks this as scheduler-written, so the collection
+	// gate does not treat it as a manual declaration (which would restrict
+	// collection to only the listed states — see NexusFor).
 	res, err := r.db.ExecContext(ctx, `
-		INSERT INTO tenant_tax_nexus (id, tenant_id, state_code, nexus_type, established_at)
-		VALUES ($1, $2, $3, 'economic', $4)
+		INSERT INTO tenant_tax_nexus (id, tenant_id, state_code, nexus_type, established_at, auto_established)
+		VALUES ($1, $2, $3, 'economic', $4, true)
 		ON CONFLICT (tenant_id, state_code) WHERE entity_id IS NULL DO NOTHING`,
 		uuid.New(), tenantID, strings.ToUpper(stateCode), establishedAt)
 	if err != nil {
