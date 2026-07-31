@@ -310,3 +310,69 @@ func TestUnwindOnRefund_FullRefund_Postgres(t *testing.T) {
 		t.Errorf("Refunds balance = %d, want 0", b)
 	}
 }
+
+// TestUnwindOnRefund_TaxInvoice_NetUnwind_Postgres proves a PARTIAL refund of a
+// TAX-bearing invoice unwinds the NET (ex-tax) amount from Deferred — the tax
+// slice was already removed from Refunds by RecordRefundTaxReversal, and Deferred
+// only ever held net revenue. This replicates the exact sequence credit_note.go
+// runs. Passing the GROSS refund here (the pre-fix bug) reversed the tax twice:
+// Refunds expense went to -5000 (abnormal credit balance) and Deferred was
+// under-stated, breaking the deferred-revenue rollforward.
+func TestUnwindOnRefund_TaxInvoice_NetUnwind_Postgres(t *testing.T) {
+	conn := openRevRecTestDB(t)
+	defer func() { _ = conn.Close() }()
+	ctx := context.Background()
+	tenantID := seedRevRecTenant(t, conn)
+
+	ledger := NewLedgerService(nil, db.NewLedgerRepository(conn))
+	svc := NewRevRecService(db.NewRevRecRepository(conn), ledger, nil)
+
+	// Invoice total 110000 = net 100000 + tax 10000.
+	subID, invID, customerID := seedSubAndInvoice(t, conn, tenantID, 110000)
+	inv := &domain.Invoice{ID: invID, TenantID: tenantID, CustomerID: customerID,
+		SubscriptionID: &subID, InvoiceNumber: "SUB-TAXREFUND", Total: 110000, TaxAmount: 10000, Currency: "USD"}
+	if err := ledger.RecordInvoice(ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice: %v", err)
+	}
+	// RecordInvoice defers NET: Deferred = 110000 - 10000 = 100000.
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeDeferredRevenue); b != 100000 {
+		t.Fatalf("pre-refund Deferred = %d, want 100000 (net)", b)
+	}
+
+	// The exact sequence credit_note.go runs on a partial refund of 55000:
+	// gross cash refund, proportional tax reversal, then a NET deferred unwind.
+	creditNoteID := uuid.New()
+	refund := int64(55000)
+	if err := ledger.RecordRefund(ctx, tenantID, nil, creditNoteID, refund, "cash refund"); err != nil {
+		t.Fatalf("RecordRefund: %v", err)
+	}
+	tax := refundTaxPortion(refund, inv.TaxAmount, inv.Total) // round(55000*10000/110000) = 5000
+	if tax != 5000 {
+		t.Fatalf("refundTaxPortion = %d, want 5000", tax)
+	}
+	if _, err := ledger.RecordRefundTaxReversal(ctx, tenantID, nil, creditNoteID, tax, "gst reversal"); err != nil {
+		t.Fatalf("RecordRefundTaxReversal: %v", err)
+	}
+
+	// Net deferred schedule: 100000 across 10 monthly events of 10000.
+	seedRevRecSchedule(t, conn, tenantID, invID, subID, 10000, 10)
+
+	// The fix: unwind NET (refund - tax) = 50000, not the gross 55000.
+	netRefund := refund - tax
+	reversed, err := svc.UnwindOnRefund(ctx, tenantID, nil, invID, creditNoteID, netRefund)
+	if err != nil {
+		t.Fatalf("UnwindOnRefund: %v", err)
+	}
+	if reversed != 50000 {
+		t.Errorf("reversed = %d, want 50000 (net)", reversed)
+	}
+	// Refunds expense nets to 0: +55000 cash − 5000 tax reversal − 50000 net
+	// deferred unwind. A gross (55000) unwind would leave Refunds at -5000.
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeRefunds); b != 0 {
+		t.Errorf("Refunds balance = %d, want 0 (gross unwind would give -5000 — the bug)", b)
+	}
+	// Deferred reduced by the net refund only: 100000 − 50000 = 50000.
+	if b := acctBalance(t, conn, tenantID, domain.AccountCodeDeferredRevenue); b != 50000 {
+		t.Errorf("Deferred balance = %d, want 50000", b)
+	}
+}
