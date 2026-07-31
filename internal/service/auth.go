@@ -62,6 +62,13 @@ type verificationEmailer interface {
 	SendVerification(ctx context.Context, toEmail, verifyURL string) error
 }
 
+// signupNotifier alerts an internal ops address (the founder) when a new tenant
+// registers, so signups are visible without a cross-tenant admin view.
+// *NotificationService satisfies it; nil-safe / opt-in via ConfigureSignupNotify.
+type signupNotifier interface {
+	SendNewSignupAlert(ctx context.Context, toFounder, companyName, ownerEmail, country string) error
+}
+
 // AuthService owns dashboard user accounts, sessions, and team management.
 type AuthService struct {
 	users      port.UserRepository
@@ -92,6 +99,21 @@ type AuthService struct {
 	// seller from its very first invoice instead of the env default. Nil-safe:
 	// unwired (or failing) it degrades to the historical env-default behavior.
 	setPrimaryCountry func(ctx context.Context, tenantID uuid.UUID, country string) error
+
+	// signupNotifier + signupNotifyEmail alert an internal ops address on every
+	// new tenant registration (SIGNUP_NOTIFY_EMAIL). nil-safe / opt-in: without
+	// both wired, Register is unchanged. Delivery still depends on a real email
+	// sender (SMTP_HOST) — otherwise the alert is only logged, like other emails.
+	signupNotifier    signupNotifier
+	signupNotifyEmail string
+}
+
+// ConfigureSignupNotify wires the new-signup alert. Both the recipient
+// (SIGNUP_NOTIFY_EMAIL) and the notifier must be set for Register to send;
+// otherwise it is a no-op.
+func (s *AuthService) ConfigureSignupNotify(founderEmail string, n signupNotifier) {
+	s.signupNotifyEmail = strings.TrimSpace(founderEmail)
+	s.signupNotifier = n
 }
 
 func NewAuthService(users port.UserRepository, sessions port.SessionRepository, tenants tenantRegistrar, sessionTTL time.Duration) *AuthService {
@@ -276,6 +298,20 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 		if err := s.issueEmailVerification(ctx, user); err != nil {
 			s.logger.Warn("failed to issue email verification at signup", "user_id", user.ID, "error", err)
 		}
+	}
+
+	// Alert the founder of the new signup (opt-in via SIGNUP_NOTIFY_EMAIL).
+	// Non-blocking and best-effort: a slow or failed alert must never delay or
+	// fail the signup. Args are passed by value; a fresh context is used because
+	// the request's ctx may be canceled once Register returns.
+	if s.signupNotifier != nil && s.signupNotifyEmail != "" {
+		go func(company, owner, ctry string, tenantID uuid.UUID) {
+			bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := s.signupNotifier.SendNewSignupAlert(bg, s.signupNotifyEmail, company, owner, ctry); err != nil {
+				s.logger.Warn("failed to send new-signup alert", "error", err, "tenant_id", tenantID)
+			}
+		}(companyName, email, country, tenant.ID)
 	}
 
 	return &RegisterResult{Tenant: tenant, APIKey: apiKey, User: user, SessionToken: token}, nil

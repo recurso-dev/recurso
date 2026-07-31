@@ -84,6 +84,23 @@ func (s *NotificationService) SendInvoiceCreated(ctx context.Context, data Invoi
 	})
 }
 
+// SendNewSignupAlert emails an internal ops address (the founder) whenever a new
+// tenant registers. Plain text — this is an internal alert, not a customer email.
+func (s *NotificationService) SendNewSignupAlert(ctx context.Context, toFounder, companyName, ownerEmail, country string) error {
+	if country == "" {
+		country = "—"
+	}
+	body := fmt.Sprintf(
+		"A new tenant just signed up on Recurso.\n\nCompany: %s\nOwner:   %s\nCountry: %s\n",
+		companyName, ownerEmail, country,
+	)
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       toFounder,
+		Subject:  "New Recurso signup: " + companyName,
+		TextBody: body,
+	})
+}
+
 // PaymentData for payment emails
 type PaymentData struct {
 	CustomerName  string
