@@ -51,6 +51,7 @@ const TITLES = {
   team: "Team",
   organizations: "Organizations",
   "audit-log": "Audit Log",
+  events: "Events",
   overview: "Executive Summary",
 };
 

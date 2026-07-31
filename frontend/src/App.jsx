@@ -40,6 +40,7 @@ const Coupons = lazy(() => import('./pages/Coupons'))
 const Metering = lazy(() => import('./pages/Metering'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
+const Events = lazy(() => import('./pages/Events'))
 const CreateCoupon = lazy(() => import('./pages/CreateCoupon'))
 const Usage = lazy(() => import('./pages/Usage'))
 const Developers = lazy(() => import('./pages/Developers'))
@@ -158,6 +159,7 @@ function App() {
                             <Route path="/metering" element={<Metering />} />
                             <Route path="/wallets" element={<Wallets />} />
                             <Route path="/audit-log" element={<AuditLog />} />
+                            <Route path="/events" element={<Events />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
                             <Route path="/finance/close" element={<MonthEndClose />} />
                             <Route path="/finance/trial-balance" element={<TrialBalance />} />
