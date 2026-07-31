@@ -65,6 +65,60 @@ func (m *qtMockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) err
 	return nil
 }
 
+// qtMockLedger records the invoices posted to the ledger on conversion.
+type qtMockLedger struct {
+	posted []*domain.Invoice
+}
+
+func (m *qtMockLedger) RecordInvoice(_ context.Context, inv *domain.Invoice) error {
+	m.posted = append(m.posted, inv)
+	return nil
+}
+
+// TestQuoteConvertToInvoice_PostsLedgerLeg proves the converted invoice gets its
+// double-entry Code-1 leg (AR → Revenue). Before the fix, ConvertToInvoice only
+// called invoiceRepo.Create — no ledger poster wired — so the invoice existed
+// with no originating AR/Revenue leg; its later payment then posted a cash leg
+// (CR AR) with no matching debit, driving AR negative and never recognizing the
+// sale. Every other invoice-creating flow posts this leg via RecordInvoice.
+func TestQuoteConvertToInvoice_PostsLedgerLeg(t *testing.T) {
+	quote := &domain.Quote{
+		ID:          uuid.New(),
+		TenantID:    uuid.New(),
+		CustomerID:  uuid.New(),
+		QuoteNumber: "Q-2",
+		Status:      domain.QuoteStatusAccepted,
+		Subtotal:    1000000,
+		TaxAmount:   180000,
+		Total:       1180000,
+		Currency:    "INR",
+	}
+	qr := &qtMockQuoteRepo{quote: quote}
+	ir := &qtMockInvoiceRepo{}
+	led := &qtMockLedger{}
+	svc := NewQuoteService(qr, ir)
+	svc.SetLedgerPoster(led)
+
+	inv, err := svc.ConvertToInvoice(context.Background(), quote.ID, quote.TenantID)
+	if err != nil {
+		t.Fatalf("ConvertToInvoice: %v", err)
+	}
+	if len(led.posted) != 1 {
+		t.Fatalf("ledger legs posted = %d, want 1 (the converted invoice must post AR→Revenue)", len(led.posted))
+	}
+	if led.posted[0].ID != inv.ID {
+		t.Errorf("posted invoice id = %s, want %s", led.posted[0].ID, inv.ID)
+	}
+	if led.posted[0].Total != 1180000 {
+		t.Errorf("posted invoice Total = %d, want 1180000", led.posted[0].Total)
+	}
+	// A converted quote is a one-off (no subscription): RecordInvoice recognizes
+	// revenue immediately rather than deferring it.
+	if led.posted[0].SubscriptionID != nil {
+		t.Error("converted invoice must have no subscription (one-off revenue)")
+	}
+}
+
 // TestQuoteConvertToInvoice_ConvertTwiceRejected proves the ENG-184 fix: once a
 // quote is converted (invoice_id stamped by the atomic claim), a second convert
 // is refused — one quote can only ever produce one invoice.
