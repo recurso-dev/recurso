@@ -67,7 +67,12 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		if cerr != nil {
 			return nil, fmt.Errorf("failed to load subscription coupon: %w", cerr)
 		}
-		discount = couponDiscountFor(coupon, subtotal)
+		if couponAppliesThisPeriod(coupon, sub.CouponPeriodsApplied) {
+			discount = couponDiscountFor(coupon, subtotal)
+			if discount > 0 {
+				sub.CouponPeriodsApplied++ // persisted by ActivateTrialWithTx / Update below
+			}
+		}
 	}
 	taxableBase := subtotal - discount
 	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, taxableBase, plan.HSNCode)

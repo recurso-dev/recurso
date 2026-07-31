@@ -423,6 +423,14 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		CreatedAt:          time.Now().UTC(),
 		UpdatedAt:          time.Now().UTC(),
 	}
+	// The initial invoice (built below) applies the coupon, so this is period 1
+	// of its duration — record it so renewals continue a `forever`/`repeating`
+	// coupon and stop a `once`/expired `repeating` one. NOT for a trial: a trial
+	// defers its first invoice to conversion, so the coupon hasn't been applied
+	// yet — the counter stays 0 and ConvertTrialToActive advances it.
+	if !isTrial && couponID != nil && discount > 0 {
+		sub.CouponPeriodsApplied = 1
+	}
 
 	// Create gateway subscription (Razorpay/Stripe)
 	if s.gateway != nil {
@@ -630,6 +638,33 @@ func (s *SubscriptionService) subscriptionCurrency(ctx context.Context, sub *dom
 func formatAmount(amountPaise int64, currency string) string {
 	// Exponent-aware: hardcoding /100 misstated non-2-decimal currencies.
 	return domain.FormatMoney(amountPaise, currency)
+}
+
+// couponAppliesThisPeriod reports whether a subscription's coupon still applies
+// for a billing period, given how many periods it has already been applied to:
+//   - forever   → every period
+//   - once      → only the first (periodsApplied == 0)
+//   - repeating → the first DurationMonths periods
+//
+// A nil/inactive coupon never applies.
+func couponAppliesThisPeriod(coupon *domain.Coupon, periodsApplied int) bool {
+	if coupon == nil || !coupon.Active {
+		return false
+	}
+	switch coupon.Duration {
+	case domain.DurationForever:
+		return true
+	case domain.DurationOnce:
+		return periodsApplied == 0
+	case domain.DurationRepeating:
+		n := 0
+		if coupon.DurationMonths != nil {
+			n = *coupon.DurationMonths
+		}
+		return periodsApplied < n
+	default:
+		return false
+	}
 }
 
 // couponDiscountFor returns the discount a coupon applies to a single-line base
