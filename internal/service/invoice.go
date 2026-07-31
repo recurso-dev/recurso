@@ -711,7 +711,7 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 			continue
 		}
 
-		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat)
+		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat, cur)
 		if err != nil {
 			slog.Warn("skipping metered charge: rating failed", "error", err, "metric", ch.Metric.Code)
 			continue
@@ -773,7 +773,7 @@ func (s *InvoiceService) filteredMeteredLines(ctx context.Context, sub *domain.S
 		if qty == 0 {
 			return
 		}
-		amount, err := RateCharge(ch.ChargeModel, amounts, qty)
+		amount, err := RateCharge(ch.ChargeModel, amounts, qty, cur)
 		if err != nil {
 			slog.Warn("skipping filtered charge subset: rating failed", "error", err, "charge_id", ch.ID, "filter", label)
 			return

@@ -136,7 +136,7 @@ func TestAggregateWeightedSum_PricesExactly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("aggregate: %v", err)
 	}
-	amount, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "30"}, avg)
+	amount, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "30"}, avg, "USD")
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}

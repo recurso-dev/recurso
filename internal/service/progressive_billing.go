@@ -30,8 +30,8 @@ import (
 // this period (the watermark, in minor units). Returns the non-negative delta to
 // bill now and the new watermark (= max(fee-at-cumulative, prior watermark)).
 // Pure — the safety proof lives in TestProgressiveDelta_NeverDoubleOrUnderBills.
-func progressiveDelta(model domain.ChargeModel, amounts domain.ChargeAmounts, cumulativeQty *big.Rat, billedAmount int64) (delta int64, newWatermark int64, err error) {
-	feeNow, err := RateChargeRat(model, amounts, cumulativeQty)
+func progressiveDelta(model domain.ChargeModel, amounts domain.ChargeAmounts, cumulativeQty *big.Rat, billedAmount int64, currency string) (delta int64, newWatermark int64, err error) {
+	feeNow, err := RateChargeRat(model, amounts, cumulativeQty, currency)
 	if err != nil {
 		return 0, billedAmount, err
 	}
@@ -65,7 +65,7 @@ func (s *InvoiceService) isProgressive(ctx context.Context, subID uuid.UUID) boo
 // the guarantee that no usage unit is billed twice. Shared by the period-close
 // path (progressiveCloseLine) and the interim path (billProgressive), so the
 // watermark is advanced in exactly one place.
-func (s *InvoiceService) claimProgressiveDelta(ctx context.Context, sub *domain.Subscription, ch domain.Charge, amounts domain.ChargeAmounts, periodStart, upTo time.Time) (int64, bool) {
+func (s *InvoiceService) claimProgressiveDelta(ctx context.Context, sub *domain.Subscription, ch domain.Charge, amounts domain.ChargeAmounts, periodStart, upTo time.Time, currency string) (int64, bool) {
 	cumQty, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, upTo)
 	if err != nil {
 		slog.Warn("progressive: aggregation failed", "charge_id", ch.ID, "error", err)
@@ -76,7 +76,7 @@ func (s *InvoiceService) claimProgressiveDelta(ctx context.Context, sub *domain.
 		slog.Warn("progressive: watermark read failed", "charge_id", ch.ID, "error", err)
 		return 0, false
 	}
-	delta, newWM, err := progressiveDelta(ch.ChargeModel, amounts, cumQty, oldWM)
+	delta, newWM, err := progressiveDelta(ch.ChargeModel, amounts, cumQty, oldWM, currency)
 	if err != nil {
 		slog.Warn("progressive: rating failed", "charge_id", ch.ID, "error", err)
 		return 0, false
@@ -102,7 +102,7 @@ func (s *InvoiceService) progressiveCloseLine(ctx context.Context, sub *domain.S
 	if !ok {
 		return meteredLine{}, false
 	}
-	delta, ok := s.claimProgressiveDelta(ctx, sub, ch, amounts, periodStart, periodEnd)
+	delta, ok := s.claimProgressiveDelta(ctx, sub, ch, amounts, periodStart, periodEnd, cur)
 	if !ok {
 		return meteredLine{}, false
 	}
@@ -188,7 +188,7 @@ func (s *InvoiceService) progressiveUnbilled(ctx context.Context, sub *domain.Su
 		if err != nil {
 			return 0, err
 		}
-		delta, _, err := progressiveDelta(ch.ChargeModel, amounts, cumQty, oldWM)
+		delta, _, err := progressiveDelta(ch.ChargeModel, amounts, cumQty, oldWM, cur)
 		if err != nil {
 			return 0, err
 		}
@@ -234,7 +234,7 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 		if !ok {
 			continue
 		}
-		delta, ok := s.claimProgressiveDelta(ctx, sub, ch, amounts, periodStart, upTo)
+		delta, ok := s.claimProgressiveDelta(ctx, sub, ch, amounts, periodStart, upTo, cur)
 		if !ok {
 			continue
 		}

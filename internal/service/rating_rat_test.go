@@ -17,7 +17,7 @@ func TestRateChargeRat_FractionalQuantityRoundsMoneyOnce(t *testing.T) {
 	// per_unit @ 10.00 major units/seat.
 	perUnit := domain.ChargeAmounts{UnitAmount: "10"}
 
-	got, err := RateChargeRat(domain.ChargePerUnit, perUnit, big.NewRat(15, 2)) // 7.5
+	got, err := RateChargeRat(domain.ChargePerUnit, perUnit, big.NewRat(15, 2), "USD") // 7.5
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestRateChargeRat_FractionalQuantityRoundsMoneyOnce(t *testing.T) {
 	// A quantity that only resolves to whole minor units through exact rational
 	// math: 1/3 of a unit at 0.03 major/unit = 0.01 major = 1 minor unit.
 	third := domain.ChargeAmounts{UnitAmount: "0.03"}
-	got, err = RateChargeRat(domain.ChargePerUnit, third, big.NewRat(1, 3))
+	got, err = RateChargeRat(domain.ChargePerUnit, third, big.NewRat(1, 3), "USD")
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestRateChargeRat_FractionalQuantityRoundsMoneyOnce(t *testing.T) {
 	// At 30.00/seat the exact line is 100.00 (3.333... × 30 = 100), which
 	// pre-rounding the quantity to 3 (→90.00) or 4 (→120.00) would both miss.
 	seat30 := domain.ChargeAmounts{UnitAmount: "30"}
-	got, err = RateChargeRat(domain.ChargePerUnit, seat30, big.NewRat(10, 3))
+	got, err = RateChargeRat(domain.ChargePerUnit, seat30, big.NewRat(10, 3), "USD")
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestRateCharge_IntWrapperUnchanged(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := RateCharge(c.model, c.amt, c.qty)
+			got, err := RateCharge(c.model, c.amt, c.qty, "USD")
 			if err != nil {
 				t.Fatalf("RateCharge: %v", err)
 			}
@@ -86,7 +86,7 @@ func TestRateCharge_IntWrapperUnchanged(t *testing.T) {
 				t.Fatalf("%s: want %d, got %d", c.name, c.expect, got)
 			}
 			// The rational core must agree with the int wrapper for integer input.
-			gotRat, err := RateChargeRat(c.model, c.amt, new(big.Rat).SetInt64(c.qty))
+			gotRat, err := RateChargeRat(c.model, c.amt, new(big.Rat).SetInt64(c.qty), "USD")
 			if err != nil {
 				t.Fatalf("RateChargeRat: %v", err)
 			}
@@ -99,14 +99,14 @@ func TestRateCharge_IntWrapperUnchanged(t *testing.T) {
 
 // TestRateChargeRat_Guards covers nil and negative quantities.
 func TestRateChargeRat_Guards(t *testing.T) {
-	if _, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, nil); err == nil {
+	if _, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, nil, "USD"); err == nil {
 		t.Fatal("nil quantity should error")
 	}
-	if _, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, big.NewRat(-1, 1)); err == nil {
+	if _, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, big.NewRat(-1, 1), "USD"); err == nil {
 		t.Fatal("negative quantity should error")
 	}
 	// Fractional package quantity ceils to a whole bundle.
-	got, err := RateChargeRat(domain.ChargePackage, domain.ChargeAmounts{PackageSize: 1000, PackageAmount: 500}, big.NewRat(1, 10))
+	got, err := RateChargeRat(domain.ChargePackage, domain.ChargeAmounts{PackageSize: 1000, PackageAmount: 500}, big.NewRat(1, 10), "USD")
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}

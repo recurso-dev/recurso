@@ -65,7 +65,7 @@ func TestAggregateCustom_SumsFractionalContributions(t *testing.T) {
 	if sum.Cmp(big.NewRat(15, 2)) != 0 { // 7.5
 		t.Fatalf("want 7.5 MB total, got %s", sum.RatString())
 	}
-	amount, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "10"}, sum)
+	amount, err := RateChargeRat(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "10"}, sum, "USD")
 	if err != nil {
 		t.Fatalf("rate: %v", err)
 	}

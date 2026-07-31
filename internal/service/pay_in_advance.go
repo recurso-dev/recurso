@@ -80,7 +80,7 @@ func (b *PayInAdvanceBiller) BillEvent(ctx context.Context, sub *domain.Subscrip
 		if ch.ChargeModel == domain.ChargeDynamic {
 			qty = event.DynamicAmount
 		}
-		fee, err := RateCharge(ch.ChargeModel, amounts, qty)
+		fee, err := RateCharge(ch.ChargeModel, amounts, qty, currency)
 		if err != nil {
 			return captured, fmt.Errorf("pay-in-advance: rate charge %s: %w", ch.ID, err)
 		}

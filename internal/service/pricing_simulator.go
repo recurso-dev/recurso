@@ -143,7 +143,7 @@ func (s *MeteringService) SimulateCharges(ctx context.Context, tenantID, planID 
 			qtyRat = new(big.Rat)
 		}
 
-		amount, err := RateChargeRat(model, amounts, qtyRat)
+		amount, err := RateChargeRat(model, amounts, qtyRat, currency)
 		if err != nil {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %v", i, err))
 		}

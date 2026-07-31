@@ -28,7 +28,7 @@ func TestRateChargePerUnit(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: tc.rate}, tc.qty)
+			got, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: tc.rate}, tc.qty, "USD")
 			if err != nil {
 				t.Fatalf("RateCharge: %v", err)
 			}
@@ -41,14 +41,14 @@ func TestRateChargePerUnit(t *testing.T) {
 
 func TestRateChargePerUnitRejectsBadRates(t *testing.T) {
 	for _, rate := range []string{"", "-1", "1/3", "1e-5", "1.2.3", "abc", "1,5", " 1", strings.Repeat("9", 41)} {
-		if _, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: rate}, 10); err == nil {
+		if _, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: rate}, 10, "USD"); err == nil {
 			t.Errorf("rate %q: expected error, got none", rate)
 		}
 	}
 }
 
 func TestRateChargeRejectsNegativeQuantity(t *testing.T) {
-	if _, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, -1); err == nil {
+	if _, err := RateCharge(domain.ChargePerUnit, domain.ChargeAmounts{UnitAmount: "1"}, -1, "USD"); err == nil {
 		t.Fatal("expected error for negative quantity")
 	}
 }
@@ -67,7 +67,7 @@ func TestRateChargePackage(t *testing.T) {
 		{5000, 2500}, //
 	}
 	for _, tc := range cases {
-		got, err := RateCharge(domain.ChargePackage, amounts, tc.qty)
+		got, err := RateCharge(domain.ChargePackage, amounts, tc.qty, "USD")
 		if err != nil {
 			t.Fatalf("qty %d: %v", tc.qty, err)
 		}
@@ -76,10 +76,10 @@ func TestRateChargePackage(t *testing.T) {
 		}
 	}
 
-	if _, err := RateCharge(domain.ChargePackage, domain.ChargeAmounts{PackageAmount: 500}, 10); err == nil {
+	if _, err := RateCharge(domain.ChargePackage, domain.ChargeAmounts{PackageAmount: 500}, 10, "USD"); err == nil {
 		t.Fatal("expected error for missing package_size")
 	}
-	if _, err := RateCharge(domain.ChargePackage, domain.ChargeAmounts{PackageAmount: -1, PackageSize: 10}, 10); err == nil {
+	if _, err := RateCharge(domain.ChargePackage, domain.ChargeAmounts{PackageAmount: -1, PackageSize: 10}, 10, "USD"); err == nil {
 		t.Fatal("expected error for negative package_amount")
 	}
 }
@@ -109,7 +109,7 @@ func TestRateChargeGraduated(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: graduatedTiers()}, tc.qty)
+			got, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: graduatedTiers()}, tc.qty, "USD")
 			if err != nil {
 				t.Fatalf("RateCharge: %v", err)
 			}
@@ -128,7 +128,7 @@ func TestRateChargeGraduatedRoundsOnce(t *testing.T) {
 		{UpTo: i64(1), UnitAmount: "0.004"},
 		{UpTo: nil, UnitAmount: "0.004"},
 	}
-	got, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: tiers}, 2)
+	got, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: tiers}, 2, "USD")
 	if err != nil {
 		t.Fatalf("RateCharge: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestRateChargeVolume(t *testing.T) {
 		{1001, 10010 + 500}, // 1001×₹0.10 + flat
 	}
 	for _, tc := range cases {
-		got, err := RateCharge(domain.ChargeVolume, domain.ChargeAmounts{Tiers: tiers}, tc.qty)
+		got, err := RateCharge(domain.ChargeVolume, domain.ChargeAmounts{Tiers: tiers}, tc.qty, "USD")
 		if err != nil {
 			t.Fatalf("qty %d: %v", tc.qty, err)
 		}
@@ -186,10 +186,10 @@ func TestTierValidation(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: tc.tiers}, 5); err == nil {
+			if _, err := RateCharge(domain.ChargeGraduated, domain.ChargeAmounts{Tiers: tc.tiers}, 5, "USD"); err == nil {
 				t.Fatal("expected validation error, got none")
 			}
-			if _, err := RateCharge(domain.ChargeVolume, domain.ChargeAmounts{Tiers: tc.tiers}, 5); err == nil {
+			if _, err := RateCharge(domain.ChargeVolume, domain.ChargeAmounts{Tiers: tc.tiers}, 5, "USD"); err == nil {
 				t.Fatal("expected validation error, got none")
 			}
 		})
@@ -197,7 +197,7 @@ func TestTierValidation(t *testing.T) {
 }
 
 func TestRateChargeUnsupportedModel(t *testing.T) {
-	if _, err := RateCharge(domain.ChargeModel("mystery_model"), domain.ChargeAmounts{}, 5); err == nil {
+	if _, err := RateCharge(domain.ChargeModel("mystery_model"), domain.ChargeAmounts{}, 5, "USD"); err == nil {
 		t.Fatal("expected error for unsupported model")
 	}
 }
@@ -215,7 +215,7 @@ func TestRateChargeDynamic(t *testing.T) {
 		{999999, 999999},
 	}
 	for _, tc := range cases {
-		got, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, tc.qty)
+		got, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, tc.qty, "USD")
 		if err != nil {
 			t.Fatalf("qty %d: %v", tc.qty, err)
 		}
@@ -224,7 +224,7 @@ func TestRateChargeDynamic(t *testing.T) {
 		}
 	}
 	// Negative aggregate is rejected by the shared quantity guard.
-	if _, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, -1); err == nil {
+	if _, err := RateCharge(domain.ChargeDynamic, domain.ChargeAmounts{}, -1, "USD"); err == nil {
 		t.Fatal("expected error for negative dynamic quantity")
 	}
 }
@@ -262,7 +262,7 @@ func TestRateChargePercentage(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := RateCharge(domain.ChargePercentage, tc.amounts, tc.qty)
+			got, err := RateCharge(domain.ChargePercentage, tc.amounts, tc.qty, "USD")
 			if err != nil {
 				t.Fatalf("RateCharge: %v", err)
 			}
@@ -289,7 +289,7 @@ func TestRateChargePercentageRejectsBadConfig(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RateCharge(domain.ChargePercentage, tc.amounts, 100000); err == nil {
+			if _, err := RateCharge(domain.ChargePercentage, tc.amounts, 100000, "USD"); err == nil {
 				t.Fatalf("expected error for %s", tc.name)
 			}
 		})
@@ -322,7 +322,7 @@ func TestRateChargeGraduatedPercentage(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: graduatedPercentTiers()}, tc.base)
+			got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: graduatedPercentTiers()}, tc.base, "USD")
 			if err != nil {
 				t.Fatalf("RateCharge: %v", err)
 			}
@@ -341,7 +341,7 @@ func TestRateChargeGraduatedPercentageRoundsOnce(t *testing.T) {
 		{UpTo: i64(1), Rate: "40"}, // 40% × 1 = 0.4p
 		{UpTo: nil, Rate: "40"},    // 40% × 1 = 0.4p
 	}
-	got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tiers}, 2)
+	got, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tiers}, 2, "USD")
 	if err != nil {
 		t.Fatalf("RateCharge: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestRateChargeGraduatedPercentageRejectsBadConfig(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tc.tiers}, 1_000_000); err == nil {
+			if _, err := RateCharge(domain.ChargeGraduatedPercentage, domain.ChargeAmounts{Tiers: tc.tiers}, 1_000_000, "USD"); err == nil {
 				t.Fatalf("expected error for %s", tc.name)
 			}
 		})

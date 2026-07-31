@@ -51,7 +51,7 @@ func TestProgressiveDelta_NeverDoubleOrUnderBills(t *testing.T) {
 			var billed int64 // the watermark
 			var totalDeltas int64
 			for i, cum := range tc.cumulative {
-				delta, newWM, err := progressiveDelta(tc.model, tc.amounts, new(big.Rat).SetInt64(cum), billed)
+				delta, newWM, err := progressiveDelta(tc.model, tc.amounts, new(big.Rat).SetInt64(cum), billed, "USD")
 				if err != nil {
 					t.Fatalf("step %d (cum=%d): %v", i, cum, err)
 				}
@@ -68,7 +68,7 @@ func TestProgressiveDelta_NeverDoubleOrUnderBills(t *testing.T) {
 			// The sum of all deltas must equal what a single arrears bill of the
 			// final cumulative quantity would produce — exactly.
 			final := tc.cumulative[len(tc.cumulative)-1]
-			want, err := RateCharge(tc.model, tc.amounts, final)
+			want, err := RateCharge(tc.model, tc.amounts, final, "USD")
 			if err != nil {
 				t.Fatalf("final rate: %v", err)
 			}
@@ -104,12 +104,12 @@ func TestProgressiveBillingEligibility(t *testing.T) {
 // double-billing on a re-swept period.
 func TestProgressiveDelta_RepeatedSnapshotBillsNothing(t *testing.T) {
 	amounts := domain.ChargeAmounts{UnitAmount: "1"}
-	delta1, wm1, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), 0)
+	delta1, wm1, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), 0, "USD")
 	if delta1 != 10000 {
 		t.Fatalf("first bill = %d, want 10000", delta1)
 	}
 	// Same cumulative, watermark already advanced -> bill 0.
-	delta2, wm2, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), wm1)
+	delta2, wm2, _ := progressiveDelta(domain.ChargePerUnit, amounts, big.NewRat(100, 1), wm1, "USD")
 	if delta2 != 0 || wm2 != wm1 {
 		t.Fatalf("retry bill = %d (wm %d), want 0 (wm %d)", delta2, wm2, wm1)
 	}
