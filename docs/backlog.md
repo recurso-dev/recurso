@@ -12,6 +12,8 @@ founder can provide; everything else is engineering-ready.
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
 | 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync (QuickBooks rejects it too) | — | **founder** fixes the email in the dashboard; sync rows now show the customer name + id. |
+| S2 | **Cross-tenant invoice settlement via BYO per-connection webhooks** | **HIGH** (security) — MED reach: needs BYO enabled + the target invoice UUID | MED | On `/webhooks/{stripe,razorpay,gocardless}/:connID`, the signing secret is resolved from the connID's own connection (`webhook.go:53` `webhookSecretFor`), but the invoice acted on is loaded by the **payload's** `invoice_id` via unscoped `GetByIDPublic` and `inv.TenantID` is injected — **no check that the invoice's tenant == the connID's tenant**. A BYO tenant B can sign a `payment_intent.succeeded` (or refund/mandate/virtual-account) body carrying tenant A's invoice_id with B's own secret and settle/refund/reverse A's invoice. Fix = `webhookSecretFor` also returns the connection's tenant (uuid.Nil for env routes); every BYO side-effect scopes/verifies the loaded object's tenant against it before acting. **Broad (3 gateways × several event types) — deserves its own focused, carefully-reviewed PR (critical webhook path).** From security audit 2026-07-31. Env routes are safe (platform holds the secret). |
+| S4 | Idempotency is opt-in on money-moving POSTs; webhook dedup fails open | LOW/MED — strong secondary guards blunt the money impact | LOW-MED | `idempotency.go:74` processes normally when `Idempotency-Key` is absent; `webhook.go:104` `alreadyProcessed` returns false (processes) on a dedup-store lookup error. Refund/offline/top-up don't *require* a key. But `CreateRefundWithinLimit` caps at `amount_paid` (blocks full double-refund), `MarkInvoicePaid`/ledger reversals are separately idempotent, and the dunning reward is `transitioned`-guarded — so exposure is partial-refund races + fail-open re-triggering non-idempotent side effects (email/dunning). Consider requiring a key on refund/offline + failing dedup closed. From security audit 2026-07-31. |
 | B2 | Downgrade credit note lacks a CGST/SGST/IGST breakdown | LOW — the credit note **amount** is already correct (audit B1, #357); only the printed itemized GST split is missing, a compliance-doc nicety for India | MED | Needs a schema migration: `domain.CreditNote` has **no** tax columns (subtotal/tax/IGST/CGST/SGST). Add columns + populate from the proration `taxRes` in `persistPlanChange` + render on the credit-note PDF. Deferred from the 2026-07-31 exponent audit as a feature, not a fix. |
 | W2 | TDS portion is dropped from a payment-reversal's retained amount and the TDS leg (code 10) is never reversed | LOW — **unreachable today** (TDS is INR-only; chargeback/return paths are USD-ACH + EUR/GBP GoCardless), but the code's "reversals are USD-only" invariant is already stale now that GC SEPA/Bacs chargebacks are wired | MED | `subscription_payment.go:143` excludes `TDSAmount` from `retainPaid`; `ledger.go` `RecordPaymentReversal` only inverts the code-3 cash leg, `slog.Warn`s on TDS. If any INR mandate-chargeback path is ever added this becomes a silent over-collect + AR imbalance. Fix when an INR reversal path lands: retain+reverse the TDS leg too, with a PG oracle. From wallet audit 2026-07-31. |
 | W3 | GoCardless chargeback path is thinner than the ACH path | LOW — mostly by-design | LOW | `webhook_gocardless.go:168` calls `ReverseSettledPayment` without the ACH path's payment-attempt state update; reopened GC invoices are mandates → scheduler routes them email-only (not auto-re-debited), so a GC chargeback isn't actively re-collected (documented mandate choice). Narrow double-reverse edge if the invoice is re-settled between `charged_back` and `late_failure` (distinct event ids), guarded in practice by the paid-guard + `gateway_payment_id` keying. From wallet audit 2026-07-31. |
@@ -55,6 +57,19 @@ founder can provide; everything else is engineering-ready.
 | 16 | `head` HTTP-tool alias footgun, iCloud `" 2"` duplicate files | — | — | Environment quirks, documented in memory; no code change. |
 
 ## Recently closed (context for the ranking)
+
+- **Revrec + money-endpoint-security audit (2026-07-31, sweep 6)** — two adversarial
+  agents. Revrec (both HIGH, both slipped past the invariant harness): a
+  wallet/credit-covered invoice funded Deferred but never created a recognition
+  schedule → never recognized (#380); a reversal→re-collection created a SECOND
+  schedule → Deferred over-drained + revenue double-recognized (#377, idempotent
+  per invoice). Security: a low-privilege `member` could self-issue gateway refunds
+  (money out, no approval) — now admin/owner-gated (#378); wallet-close +
+  offline-payment gated to admin/owner (#379). Each with a failing-first test
+  (PG for the revrec ledger). S2 (cross-tenant BYO webhook, HIGH) + S4 (idempotency,
+  LOW) above are the open follow-ups. Verified clean: signature verification is
+  timing-safe + fail-closed on every gateway; replay dedup exists; secrets are
+  write-only; revrec rounding + UnwindOnRefund + multi-entity posting correct.
 
 - **Recurring-coupon + nexus-gate implementation (2026-07-31, sweep 5)** — the two
   HIGH deferrals from sweep 4, built out: coupon now applies on trial conversion
