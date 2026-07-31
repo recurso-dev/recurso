@@ -354,7 +354,10 @@ func (h *WebhookHandler) handleVirtualAccountCredited(c *gin.Context, body []byt
 		return
 	}
 
-	if err := h.offlinePaymentSvc.ReconcileVirtualAccount(c.Request.Context(), vaID, amount, paymentID); err != nil {
+	// Bind to the BYO connection's tenant: on a per-connection route a signed
+	// va_credited payload may only touch its own tenant's VA (uuid.Nil on the
+	// env route disables the check).
+	if err := h.offlinePaymentSvc.ReconcileVirtualAccount(c.Request.Context(), vaID, amount, paymentID, webhookConnTenant(c.Request.Context())); err != nil {
 		h.logger.Error("failed to reconcile virtual account", "va_id", vaID, "error", err)
 		respondInternalError(c, err)
 		return

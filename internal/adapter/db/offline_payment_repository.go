@@ -87,16 +87,25 @@ func (r *OfflinePaymentRepository) ListVirtualAccounts(ctx context.Context, tena
 // so two concurrent credits can't lose an increment (the old read-modify-write
 // did last-write-wins). It also closes the VA in the same statement once the
 // expected amount is reached, and returns the updated row.
-func (r *OfflinePaymentRepository) IncrementAmountReceived(ctx context.Context, razorpayVAID string, amount int64) (*domain.VirtualAccount, error) {
+func (r *OfflinePaymentRepository) IncrementAmountReceived(ctx context.Context, razorpayVAID string, amount int64, expectedTenant uuid.UUID) (*domain.VirtualAccount, error) {
+	// $3 scopes the update to the expected tenant when provided; a nil arg
+	// (uuid.Nil) disables the filter for the env route / internal callers. Doing
+	// this in the WHERE clause — not a post-load check — means a foreign va_id
+	// matches zero rows, so the increment that would inflate/close another
+	// tenant's VA never happens.
+	var tenantArg interface{}
+	if expectedTenant != uuid.Nil {
+		tenantArg = expectedTenant
+	}
 	query := `
 		UPDATE virtual_accounts
 		SET amount_received = amount_received + $2,
 		    status = CASE WHEN amount_received + $2 >= amount_expected THEN 'closed' ELSE status END,
 		    closed_at = CASE WHEN amount_received + $2 >= amount_expected AND closed_at IS NULL THEN NOW() ELSE closed_at END
-		WHERE razorpay_va_id = $1
+		WHERE razorpay_va_id = $1 AND ($3::uuid IS NULL OR tenant_id = $3)
 		RETURNING id, tenant_id, customer_id, invoice_id, account_number, ifsc_code,
 			bank_name, beneficiary_name, razorpay_va_id, status, amount_expected, amount_received, closed_at, created_at`
-	row := r.db.QueryRowContext(ctx, query, razorpayVAID, amount)
+	row := r.db.QueryRowContext(ctx, query, razorpayVAID, amount, tenantArg)
 	return r.scanVA(row)
 }
 
