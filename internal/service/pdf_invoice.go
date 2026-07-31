@@ -392,27 +392,35 @@ var currencySymbols = map[string]string{
 	"JPY": "¥",
 }
 
-// FormatAmount formats a minor-unit amount with its currency's symbol.
+// FormatAmount formats a minor-unit amount with its currency's symbol, using the
+// currency's own exponent (¥5000 not ¥50.00, KWD 5.000 not KWD 50.00) rather than
+// a hardcoded 2 decimals.
 func FormatAmount(amountMinor int64, currency string) string {
-	amount := float64(amountMinor) / 100
+	exp := domain.CurrencyExponent(currency)
+	amount := float64(amountMinor) / float64(domain.MinorUnitsPerMajor(currency))
 	if symbol, ok := currencySymbols[strings.ToUpper(currency)]; ok {
-		return fmt.Sprintf("%s%.2f", symbol, amount)
+		return fmt.Sprintf("%s%.*f", symbol, exp, amount)
 	}
-	return fmt.Sprintf("%s %.2f", strings.ToUpper(currency), amount)
+	return fmt.Sprintf("%s %.*f", strings.ToUpper(currency), exp, amount)
 }
 
-// AmountToWords converts amount to words (simplified)
+// AmountToWords converts amount to words (simplified), exponent-aware so a
+// zero-decimal (JPY) or three-decimal (KWD) currency isn't split as if it had 2.
 func AmountToWords(amount int64, currency string) string {
-	rupees := amount / 100
-	paise := amount % 100
-
 	if currency == "INR" {
+		rupees := amount / 100
+		paise := amount % 100
 		if paise > 0 {
 			return fmt.Sprintf("Rupees %d and Paise %d Only", rupees, paise)
 		}
 		return fmt.Sprintf("Rupees %d Only", rupees)
 	}
-	return fmt.Sprintf("%d.%02d %s", rupees, paise, currency)
+	exp := domain.CurrencyExponent(currency)
+	if exp == 0 {
+		return fmt.Sprintf("%d %s", amount, currency) // no minor unit
+	}
+	factor := domain.MinorUnitsPerMajor(currency)
+	return fmt.Sprintf("%d.%0*d %s", amount/factor, exp, amount%factor, currency)
 }
 
 // GenerateInvoiceNumber generates a unique invoice number

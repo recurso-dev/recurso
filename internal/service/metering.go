@@ -370,7 +370,7 @@ func normalizeChargeAmounts(model domain.ChargeModel, amounts map[string]domain.
 		if len(cur) != 3 {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d]: %q is not an ISO currency code", idx, currency))
 		}
-		if _, err := RateCharge(model, a, 1); err != nil {
+		if _, err := RateCharge(model, a, 1, cur); err != nil {
 			return nil, MeteringValidationError(fmt.Sprintf("charges[%d].%s[%s]: %v", idx, label, cur, err))
 		}
 		normalized[cur] = a
@@ -534,7 +534,7 @@ func (s *MeteringService) GetUsageAmount(ctx context.Context, tenantID, subscrip
 		if err != nil {
 			return nil, err
 		}
-		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat)
+		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat, currency)
 		if err != nil {
 			return nil, err
 		}

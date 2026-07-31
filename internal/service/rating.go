@@ -20,10 +20,10 @@ import (
 // line therefore stays int64 minor units and the existing Σ-line == subtotal
 // invariant is untouched.
 
-// minorUnitsPerMajor converts major-unit rates to minor units. The codebase
-// treats all monetary int64s as 1/100 major units (paise/cents) throughout,
-// so rating follows the same convention.
-const minorUnitsPerMajor = 100
+// The major→minor conversion factor is currency-specific
+// (domain.MinorUnitsPerMajor): 100 for USD/EUR, 1 for JPY, 1000 for KWD. It is
+// threaded in via RateCharge/RateChargeRat's currency argument — previously this
+// was a hardcoded 100, which over/under-priced JPY/KWD/BHD usage by 100×/10×.
 
 // rateRe restricts rates to plain non-negative decimals — big.Rat.SetString
 // would also accept fractions ("1/3") and exponents ("1e-5"), which we do
@@ -71,12 +71,13 @@ func roundRatHalfUp(r *big.Rat) int64 {
 	return new(big.Int).Div(sum.Num(), sum.Denom()).Int64()
 }
 
-// ratePerUnit computes quantity × rate (major units) → exact minor units. The
-// quantity is an exact rational, so a fractional aggregate (a time-weighted
-// average or a summed custom expression) is priced without pre-rounding.
-func ratePerUnit(rate, quantity *big.Rat) *big.Rat {
-	minor := new(big.Rat).SetInt64(minorUnitsPerMajor)
-	return new(big.Rat).Mul(new(big.Rat).Mul(rate, quantity), minor)
+// ratePerUnit computes quantity × rate (major units) × minorPerMajor → exact
+// minor units. minorPerMajor is the currency's major→minor factor, passed in so
+// a non-2-decimal currency (JPY=1, KWD=1000) is not mispriced. The quantity is
+// an exact rational, so a fractional aggregate (a time-weighted average or a
+// summed custom expression) is priced without pre-rounding.
+func ratePerUnit(rate, quantity, minorPerMajor *big.Rat) *big.Rat {
+	return new(big.Rat).Mul(new(big.Rat).Mul(rate, quantity), minorPerMajor)
 }
 
 // RateCharge prices an integer aggregated quantity per the charge model,
@@ -84,8 +85,8 @@ func ratePerUnit(rate, quantity *big.Rat) *big.Rat {
 // the count/sum/max/unique/latest/percentile/dynamic aggregations, whose period
 // value is a whole number of units (or minor-unit money). It is a thin wrapper
 // over RateChargeRat — see there for the model semantics.
-func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity int64) (int64, error) {
-	return RateChargeRat(model, amounts, new(big.Rat).SetInt64(quantity))
+func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity int64, currency string) (int64, error) {
+	return RateChargeRat(model, amounts, new(big.Rat).SetInt64(quantity), currency)
 }
 
 // RateChargeRat prices an EXACT-RATIONAL aggregated quantity per the charge
@@ -101,7 +102,7 @@ func RateCharge(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity
 // included). A negative quantity is an error. The amounts must already be the
 // single-currency entry selected for the invoice currency. quantity must not be
 // nil.
-func RateChargeRat(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity *big.Rat) (int64, error) {
+func RateChargeRat(model domain.ChargeModel, amounts domain.ChargeAmounts, quantity *big.Rat, currency string) (int64, error) {
 	if quantity == nil {
 		return 0, RatingError("quantity must not be nil")
 	}
@@ -112,13 +113,17 @@ func RateChargeRat(model domain.ChargeModel, amounts domain.ChargeAmounts, quant
 		return 0, nil
 	}
 
+	// Currency's major→minor factor (100 for USD/EUR, 1 for JPY, 1000 for KWD),
+	// applied to every major-unit per-unit rate below.
+	minorPerMajor := new(big.Rat).SetInt64(domain.MinorUnitsPerMajor(currency))
+
 	switch model {
 	case domain.ChargePerUnit:
 		rate, err := parseRate(amounts.UnitAmount)
 		if err != nil {
 			return 0, err
 		}
-		return roundRatHalfUp(ratePerUnit(rate, quantity)), nil
+		return roundRatHalfUp(ratePerUnit(rate, quantity, minorPerMajor)), nil
 
 	case domain.ChargePackage:
 		if amounts.PackageSize <= 0 {
@@ -134,10 +139,10 @@ func RateChargeRat(model domain.ChargeModel, amounts domain.ChargeAmounts, quant
 		return bundles * amounts.PackageAmount, nil
 
 	case domain.ChargeGraduated:
-		return rateGraduated(amounts.Tiers, quantity)
+		return rateGraduated(amounts.Tiers, quantity, minorPerMajor)
 
 	case domain.ChargeVolume:
-		return rateVolume(amounts.Tiers, quantity)
+		return rateVolume(amounts.Tiers, quantity, minorPerMajor)
 
 	case domain.ChargePercentage:
 		return ratePercentage(amounts, quantity)
@@ -232,7 +237,7 @@ func validatePercentageTiers(tiers []domain.ChargeTier) error {
 // FlatAmount is added once when at least one unit lands in it. Quantity may be
 // fractional (a 150.5-unit quantity puts 0.5 units in the top tier); the exact
 // unit-priced total is rounded once at the end.
-func rateGraduated(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) {
+func rateGraduated(tiers []domain.ChargeTier, quantity, minorPerMajor *big.Rat) (int64, error) {
 	if err := validateTiers(tiers); err != nil {
 		return 0, err
 	}
@@ -254,7 +259,7 @@ func rateGraduated(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) 
 			lower = *t.UpTo
 		}
 		rate, _ := parseRate(t.UnitAmount) // validated above
-		unitTotal.Add(unitTotal, ratePerUnit(rate, inTier))
+		unitTotal.Add(unitTotal, ratePerUnit(rate, inTier, minorPerMajor))
 		flatTotal += t.FlatAmount
 		remaining.Sub(remaining, inTier)
 	}
@@ -265,7 +270,7 @@ func rateGraduated(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) 
 // (the first tier whose up_to ≥ quantity; the unbounded last tier catches
 // the rest), plus that tier's flat amount. A fractional quantity is compared
 // against the integer up_to bounds exactly.
-func rateVolume(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) {
+func rateVolume(tiers []domain.ChargeTier, quantity, minorPerMajor *big.Rat) (int64, error) {
 	if err := validateTiers(tiers); err != nil {
 		return 0, err
 	}
@@ -275,7 +280,7 @@ func rateVolume(tiers []domain.ChargeTier, quantity *big.Rat) (int64, error) {
 			continue
 		}
 		rate, _ := parseRate(t.UnitAmount) // validated above
-		return roundRatHalfUp(ratePerUnit(rate, quantity)) + t.FlatAmount, nil
+		return roundRatHalfUp(ratePerUnit(rate, quantity, minorPerMajor)) + t.FlatAmount, nil
 	}
 	// Unreachable: validateTiers guarantees an unbounded last tier.
 	return 0, RatingError("quantity exceeds tier coverage")
