@@ -53,10 +53,19 @@ func (f *fakeImportSubs) Create(_ context.Context, sub *domain.Subscription) err
 	return nil
 }
 
-type fakeRefRepo struct{ refs []*domain.ImportExternalRef }
+type fakeRefRepo struct {
+	refs []*domain.ImportExternalRef
+	// conflictOn makes Create return ErrDuplicateImportRef for these external ids
+	// WITHOUT them appearing in List* — simulating a concurrent commit that
+	// claimed the ref after loadState snapshotted but before this commit's create.
+	conflictOn map[string]bool
+}
 
 func newFakeRefRepo() *fakeRefRepo { return &fakeRefRepo{} }
 func (f *fakeRefRepo) Create(_ context.Context, ref *domain.ImportExternalRef) error {
+	if f.conflictOn[ref.ExternalID] {
+		return domain.ErrDuplicateImportRef
+	}
 	for _, r := range f.refs {
 		if r.ExternalID == ref.ExternalID {
 			return domain.ErrDuplicateImportRef

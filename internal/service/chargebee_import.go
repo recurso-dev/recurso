@@ -200,11 +200,27 @@ func (s *ChargebeeImportService) commitSubscription(ctx context.Context, tenantI
 		rec.TrialEnd = &t
 	}
 
-	if err := s.subs.Create(ctx, rec); err != nil {
-		fail(err.Error())
+	// Claim-first idempotency: record the (source, external id) ref BEFORE
+	// creating the subscription. Subscriptions have no external-id column (unlike
+	// Stripe's stripe_subscription_id unique-index backstop), so without this a
+	// concurrent or retried commit would insert a SECOND subscription for one
+	// Chargebee sub and double-bill it at renewal. rec.ID is pre-generated, so
+	// the claim carries the right mapping; a duplicate hits the unique index and
+	// we skip the create. (Trade-off: if the create then fails transiently the
+	// sub is left unimported rather than double-imported — operator-visible and
+	// far safer than a double charge.)
+	refErr := s.refs.Create(ctx, &domain.ImportExternalRef{
+		ID: uuid.New(), TenantID: tenantID, Source: domain.ImportSourceChargebee,
+		Kind: domain.ImportKindSubscription, ExternalID: sub.ID, RecursoID: rec.ID,
+	})
+	if errors.Is(refErr, domain.ErrDuplicateImportRef) {
+		return // already imported (or a concurrent commit claimed it) — do not double-insert
+	}
+	if refErr != nil {
+		fail(refErr.Error())
 		return
 	}
-	if err := s.recordRef(ctx, tenantID, domain.ImportKindSubscription, sub.ID, rec.ID); err != nil {
+	if err := s.subs.Create(ctx, rec); err != nil {
 		fail(err.Error())
 		return
 	}
