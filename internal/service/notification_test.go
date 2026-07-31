@@ -2,11 +2,30 @@ package service_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
 )
+
+func TestNotificationService_NewSignupAlert(t *testing.T) {
+	sender := &mockEmailSender{}
+	svc := service.NewNotificationService(sender, "https://api.recurso.dev")
+
+	if err := svc.SendNewSignupAlert(context.Background(), "founder@recurso.dev", "Acme Inc", "owner@acme.com", "US"); err != nil {
+		t.Fatalf("SendNewSignupAlert: %v", err)
+	}
+	if sender.sentMsg.To != "founder@recurso.dev" {
+		t.Errorf("alert To = %q, want founder@recurso.dev", sender.sentMsg.To)
+	}
+	if sender.sentMsg.Subject != "New Recurso signup: Acme Inc" {
+		t.Errorf("subject = %q, want 'New Recurso signup: Acme Inc'", sender.sentMsg.Subject)
+	}
+	if !strings.Contains(sender.sentMsg.TextBody, "owner@acme.com") || !strings.Contains(sender.sentMsg.TextBody, "US") {
+		t.Errorf("body missing owner/country: %q", sender.sentMsg.TextBody)
+	}
+}
 
 type mockEmailSender struct {
 	sentMsg port.EmailMessage

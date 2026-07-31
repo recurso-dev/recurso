@@ -110,6 +110,18 @@ Also set the dashboard host so the links point at your SPA, not the API:
 DASHBOARD_URL=https://app.yourdomain.com   # verify/reset links; also PORTAL_URL for the customer portal
 ```
 
+### New-signup alerts
+
+Get an email every time a new tenant signs up (so you know who's onboarding
+without a cross-tenant admin view). Opt-in — unset means no alert:
+
+```bash
+SIGNUP_NOTIFY_EMAIL=you@example.com   # e.g. swapnil.go20@gmail.com
+```
+
+Delivery uses the same SMTP transport as above, so it only sends once `SMTP_*`
+is configured (otherwise it's logged to the console like other emails).
+
 ## Metrics & status access
 
 ```bash

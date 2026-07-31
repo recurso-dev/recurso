@@ -484,6 +484,12 @@ func main() {
 	// Email verification reuses the dashboard host (set above) for its verify
 	// link, so it must be configured after ConfigurePasswordReset.
 	authService.ConfigureEmailVerification(emailVerificationRepo, notificationService)
+	// New-signup alerts: email an internal ops address on every tenant signup.
+	// Opt-in via SIGNUP_NOTIFY_EMAIL; delivery needs SMTP_HOST (else console-only).
+	if signupNotifyEmail := os.Getenv("SIGNUP_NOTIFY_EMAIL"); signupNotifyEmail != "" {
+		authService.ConfigureSignupNotify(signupNotifyEmail, notificationService)
+		log.Printf("New-signup alerts enabled → %s", signupNotifyEmail)
+	}
 	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
