@@ -94,10 +94,12 @@ type invariantHarness struct {
 	cheapPlan  uuid.UUID // 100000 USD/month
 	priceyPlan uuid.UUID // 200000 USD/month
 
-	ledger *LedgerService
-	revrec *RevRecService
-	subSvc *SubscriptionService
-	recon  *ReconciliationService
+	ledger   *LedgerService
+	revrec   *RevRecService
+	subSvc   *SubscriptionService
+	quoteSvc *QuoteService
+	giftSvc  *GiftService
+	recon    *ReconciliationService
 
 	subs []*invariantSub
 	run  string
@@ -135,6 +137,17 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	h.subSvc = NewSubscriptionService(subRepo, db.NewInvoiceRepository(conn), db.NewPlanRepository(conn),
 		db.NewCustomerRepository(dbx), nil, nil, h.ledger, nil, nil, db.NewTxManager(conn), h.revrec, nil)
 	h.subSvc.SetCreditNoteRepo(db.NewCreditNoteRepository(dbx))
+
+	// Real quote + gift services, wired to post their invoice legs exactly as
+	// production does. These drive the SERVICE create-paths (not a direct
+	// RecordInvoice), so a service that forgets its ledger leg — the Q1/Q2 class
+	// — is caught here by the reconciler as missing_invoice_transaction.
+	h.quoteSvc = NewQuoteService(db.NewQuoteRepository(conn), db.NewInvoiceRepository(conn))
+	h.quoteSvc.SetLedgerPoster(h.ledger)
+	h.quoteSvc.SetTxManager(db.NewTxManager(conn))
+	giftInvSvc := &InvoiceService{InvoiceRepo: db.NewInvoiceRepository(conn), LedgerPoster: h.ledger}
+	h.giftSvc = NewGiftService(db.NewGiftRepository(dbx), subRepo, giftInvSvc, db.NewPlanRepository(conn), nil)
+
 	h.recon = NewReconciliationService(db.NewLedgerRepository(conn), nil)
 	return h
 }
@@ -144,23 +157,67 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	// Weighted table: plan changes and recognition dominate; structural ops
 	// (new sub, one-off, cancel) keep the population evolving.
 	switch p := rng.Intn(100); {
-	case p < 20:
+	case p < 18:
 		h.opNewSubscription(rng)
 		return "new_subscription"
-	case p < 40:
+	case p < 36:
 		return h.opPlanChange(rng, true)
-	case p < 55:
+	case p < 50:
 		return h.opPlanChange(rng, false)
-	case p < 70:
+	case p < 64:
 		h.opBackdateOneEvent(rng)
 		h.opRecognize()
 		return "backdate+recognize"
-	case p < 85:
+	case p < 76:
 		h.opOneOffInvoice(rng)
 		return "one_off_invoice"
+	case p < 85:
+		return h.opQuoteConversion(rng)
+	case p < 93:
+		return h.opGiftPurchase(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
 	}
+}
+
+// opQuoteConversion drives the REAL QuoteService.ConvertToInvoice — the path
+// that (pre-#394) created an invoice with no ledger leg. The converted invoice
+// is non-draft ('open'), so the reconciler requires its Code-1 leg; a service
+// that forgets to post it fails the next assertAuditGrade as
+// missing_invoice_transaction.
+func (h *invariantHarness) opQuoteConversion(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "quote_skipped"
+	}
+	t := h.t
+	h.n++
+	s := h.subs[rng.Intn(len(h.subs))]
+	quoteID := uuid.New()
+	total := int64(3000 + rng.Intn(40000))
+	mustExec(t, h.conn, `INSERT INTO quotes (id, tenant_id, customer_id, quote_number, status,
+		line_items, subtotal, tax_amount, discount_amount, total, currency, valid_until, notes, terms, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,'accepted','[]'::jsonb,$5,0,0,$5,'USD', NOW() + INTERVAL '30 days','','', NOW(), NOW())`,
+		quoteID, h.tenantID, s.customer, fmt.Sprintf("Q-%s-%d", h.run, h.n), total)
+	if _, err := h.quoteSvc.ConvertToInvoice(h.ctx, quoteID, h.tenantID); err != nil {
+		t.Fatalf("ConvertToInvoice (quote %s): %v", quoteID, err)
+	}
+	return "quote_conversion"
+}
+
+// opGiftPurchase drives the REAL GiftService.PurchaseGift — the buyer-invoice
+// path that (pre-#396) posted no ledger leg. The buyer invoice is non-draft
+// ('open'), so the reconciler requires its Code-1 leg.
+func (h *invariantHarness) opGiftPurchase(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "gift_skipped"
+	}
+	s := h.subs[rng.Intn(len(h.subs))]
+	months := 1 + rng.Intn(6)
+	// tctx: the gift service's plan lookup is tenant-scoped from context.
+	if _, err := h.giftSvc.PurchaseGift(h.tctx, h.tenantID, s.customer, h.cheapPlan, "", months); err != nil {
+		h.t.Fatalf("PurchaseGift (buyer %s): %v", s.customer, err)
+	}
+	return "gift_purchase"
 }
 
 // opNewSubscription seeds a customer + active mid-period subscription on the
