@@ -1097,3 +1097,83 @@ func TestReactivate_CorrectTenant_Succeeds(t *testing.T) {
 		t.Error("expected CancelAtPeriodEnd to be false after reactivation")
 	}
 }
+
+// TestCreateSubscription_OverSubtotalCouponClampsTaxable proves a coupon larger
+// than the subtotal does not persist a NEGATIVE line taxable_amount (which would
+// corrupt the IRP e-invoice assessable value and the GST report). The discount
+// is clamped to the subtotal, so Total is 0 and the line's taxable base is 0.
+func TestCreateSubscription_OverSubtotalCouponClampsTaxable(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	tenantID := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID: planID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}, // ₹1000 subtotal
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+	// Fixed-amount coupon ₹1500 — larger than the ₹1000 subtotal.
+	coupon := &domain.Coupon{ID: uuid.New(), TenantID: tenantID, Code: "BIG",
+		DiscountType: domain.DiscountTypeAmount, DiscountValue: 150000, Duration: domain.DurationOnce, Active: true}
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{coupon: coupon}, &subMockGateway{})
+
+	if _, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID: tenantID, CustomerID: customerID, PlanID: planID,
+		StartDate: time.Now().UTC(), CouponCode: "BIG",
+	}); err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+	inv := invRepo.created
+	if inv == nil {
+		t.Fatal("expected an invoice")
+	}
+	if inv.Total != 0 {
+		t.Errorf("Total = %d, want 0 (coupon ≥ subtotal)", inv.Total)
+	}
+	if len(inv.LineItems) != 1 {
+		t.Fatalf("want 1 line, got %d", len(inv.LineItems))
+	}
+	if inv.LineItems[0].TaxableAmount < 0 {
+		t.Errorf("line TaxableAmount = %d, want ≥ 0 — an over-subtotal coupon must not persist a negative taxable base", inv.LineItems[0].TaxableAmount)
+	}
+	if inv.LineItems[0].TaxableAmount != 0 {
+		t.Errorf("line TaxableAmount = %d, want 0", inv.LineItems[0].TaxableAmount)
+	}
+}
+
+// TestCreateSubscription_PercentOver100ClampsTaxable is the percent-coupon
+// sibling of the over-subtotal test: a >100% coupon (which the create API now
+// also rejects) must still be clamped at application so no negative taxable base
+// is persisted if such a coupon already exists.
+func TestCreateSubscription_PercentOver100ClampsTaxable(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	tenantID := uuid.New()
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID: planID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Amount: 100000, Currency: "INR"}},
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+	coupon := &domain.Coupon{ID: uuid.New(), TenantID: tenantID, Code: "P150",
+		DiscountType: domain.DiscountTypePercent, DiscountValue: 150, Duration: domain.DurationOnce, Active: true}
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{coupon: coupon}, &subMockGateway{})
+
+	if _, err := svc.CreateSubscription(context.Background(), CreateSubscriptionInput{
+		TenantID: tenantID, CustomerID: customerID, PlanID: planID,
+		StartDate: time.Now().UTC(), CouponCode: "P150",
+	}); err != nil {
+		t.Fatalf("CreateSubscription: %v", err)
+	}
+	inv := invRepo.created
+	if inv == nil || len(inv.LineItems) != 1 {
+		t.Fatal("expected an invoice with one line")
+	}
+	if inv.LineItems[0].TaxableAmount != 0 {
+		t.Errorf("line TaxableAmount = %d, want 0 (a >100%% percent coupon must clamp to the subtotal)", inv.LineItems[0].TaxableAmount)
+	}
+}

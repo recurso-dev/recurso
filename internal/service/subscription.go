@@ -311,6 +311,14 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		} else {
 			discount = coupon.DiscountValue
 		}
+		// A discount can never exceed the subtotal. Clamping here (not just the
+		// header Total) keeps the line's taxable base ≥ 0 — an over-subtotal
+		// fixed-amount coupon, or a >100% percent coupon, otherwise persisted a
+		// NEGATIVE taxable_amount that corrupts the IRP e-invoice assessable value
+		// and the GST liability report.
+		if discount > subtotal {
+			discount = subtotal
+		}
 	}
 
 	total := subtotal - discount
