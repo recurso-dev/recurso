@@ -101,6 +101,37 @@ func (r *CouponRepository) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 	return &c, nil
 }
 
+// GetByID loads a coupon by its id within the tenant. Used to re-apply a
+// subscription's stored coupon (sub.CouponID) on renewals / trial conversion.
+func (r *CouponRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Coupon, error) {
+	query := `
+		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at
+		FROM coupons
+		WHERE id = $1 AND tenant_id = $2
+	`
+
+	row := r.db.QueryRowContext(ctx, query, id, tenantID)
+
+	var c domain.Coupon
+	var durationMonths sql.NullInt32
+
+	err := row.Scan(
+		&c.ID, &c.TenantID, &c.Code, &c.DiscountType, &c.DiscountValue,
+		&c.Duration, &durationMonths, &c.Active, &c.CreatedAt, &c.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if durationMonths.Valid {
+		val := int(durationMonths.Int32)
+		c.DurationMonths = &val
+	}
+	return &c, nil
+}
+
 func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Coupon, error) {
 	query := `
 		SELECT id, tenant_id, code, discount_type, discount_value, duration, duration_months, active, created_at, updated_at

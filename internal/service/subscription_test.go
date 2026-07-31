@@ -81,6 +81,13 @@ func (m *subMockCouponRepo) GetByCode(ctx context.Context, tenantID uuid.UUID, c
 	return nil, nil
 }
 
+func (m *subMockCouponRepo) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Coupon, error) {
+	if m.coupon != nil && m.coupon.ID == id && m.coupon.TenantID == tenantID {
+		return m.coupon, nil
+	}
+	return nil, nil
+}
+
 type subMockNotifier struct{}
 
 func (m *subMockNotifier) SendEmail(ctx context.Context, to, subject, body string) error {
@@ -1175,5 +1182,53 @@ func TestCreateSubscription_PercentOver100ClampsTaxable(t *testing.T) {
 	}
 	if inv.LineItems[0].TaxableAmount != 0 {
 		t.Errorf("line TaxableAmount = %d, want 0 (a >100%% percent coupon must clamp to the subtotal)", inv.LineItems[0].TaxableAmount)
+	}
+}
+
+// TestConvertTrialToActive_AppliesCoupon proves a coupon set on a trial
+// subscription is applied to its first real invoice (trial conversion). Before
+// the fix the discount was dropped entirely for the sub's whole life, because
+// the trial defers the create-time invoice and conversion ignored the coupon.
+func TestConvertTrialToActive_AppliesCoupon(t *testing.T) {
+	planID := uuid.New()
+	customerID := uuid.New()
+	subID := uuid.New()
+	tenantID := uuid.New()
+	trialEnd := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	planRepo := &subMockPlanRepo{plan: &domain.Plan{
+		ID: planID, IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Amount: 100000, Currency: "INR"}}, // ₹1000
+	}}
+	custRepo := &subMockCustomerRepo{customer: &domain.Customer{ID: customerID, PlaceOfSupply: domain.StringPtr("TN")}}
+	invRepo := &subMockInvoiceRepo{}
+	subRepo := &subMockSubRepo{}
+	coupon := &domain.Coupon{ID: uuid.New(), TenantID: tenantID, Code: "SAVE20",
+		DiscountType: domain.DiscountTypePercent, DiscountValue: 20, Duration: domain.DurationForever, Active: true}
+	svc := newTestSubscriptionService(subRepo, invRepo, planRepo, custRepo, &subMockCouponRepo{coupon: coupon}, &subMockGateway{})
+
+	couponID := coupon.ID
+	trialingSub := &domain.Subscription{
+		ID: subID, TenantID: tenantID, CustomerID: customerID, PlanID: planID,
+		Status: domain.SubscriptionStatusTrialing, TrialEnd: &trialEnd, CouponID: &couponID,
+		CurrentPeriodStart: time.Date(2026, 1, 18, 0, 0, 0, 0, time.UTC), CurrentPeriodEnd: trialEnd,
+	}
+
+	inv, err := svc.ConvertTrialToActive(context.Background(), trialingSub)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 20% off ₹1000 → taxable ₹800; 18% intra-state tax on 80000 = 14400; total 94400.
+	if inv.Subtotal != 100000 {
+		t.Errorf("subtotal = %d, want 100000 (gross)", inv.Subtotal)
+	}
+	if inv.TaxAmount != 14400 {
+		t.Errorf("tax = %d, want 14400 (18%% of the discounted 80000, not the gross 100000)", inv.TaxAmount)
+	}
+	if inv.Total != 94400 {
+		t.Errorf("total = %d, want 94400 (80000 net + 14400 tax)", inv.Total)
+	}
+	if len(inv.LineItems) != 1 || inv.LineItems[0].TaxableAmount != 80000 {
+		t.Errorf("line taxable = %+v, want 80000", inv.LineItems)
 	}
 }

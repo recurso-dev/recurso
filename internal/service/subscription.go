@@ -631,3 +631,26 @@ func formatAmount(amountPaise int64, currency string) string {
 	// Exponent-aware: hardcoding /100 misstated non-2-decimal currencies.
 	return domain.FormatMoney(amountPaise, currency)
 }
+
+// couponDiscountFor returns the discount a coupon applies to a single-line base
+// amount, clamped to [0, base] so it can never drive the taxable base negative.
+// Returns 0 for a nil/inactive coupon. Shared by the trial-conversion and
+// renewal coupon paths so they match the CreateSubscription discount math.
+func couponDiscountFor(coupon *domain.Coupon, base int64) int64 {
+	if coupon == nil || !coupon.Active || base <= 0 {
+		return 0
+	}
+	var d int64
+	if coupon.DiscountType == domain.DiscountTypePercent {
+		d = (base * coupon.DiscountValue) / 100
+	} else {
+		d = coupon.DiscountValue
+	}
+	if d > base {
+		d = base
+	}
+	if d < 0 {
+		d = 0
+	}
+	return d
+}

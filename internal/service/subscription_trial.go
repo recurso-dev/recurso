@@ -55,8 +55,23 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	end := domain.AddInterval(start, string(plan.IntervalUnit), plan.IntervalCount)
 
 	subtotal := price.Amount
-	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, subtotal, plan.HSNCode)
-	total := subtotal + taxRes.Total
+	// Apply the subscription's coupon to this first real invoice. A coupon set at
+	// CreateSubscription time never applied on a TRIAL sub (the trial defers the
+	// invoice), so without this the discount was dropped for the sub's whole life.
+	// This is the first billed period, so every duration (once/forever/repeating)
+	// applies here. Tax is resolved on the post-discount base, exactly as the
+	// non-trial create path does.
+	var discount int64
+	if sub.CouponID != nil && s.couponRepo != nil {
+		coupon, cerr := s.couponRepo.GetByID(ctx, sub.TenantID, *sub.CouponID)
+		if cerr != nil {
+			return nil, fmt.Errorf("failed to load subscription coupon: %w", cerr)
+		}
+		discount = couponDiscountFor(coupon, subtotal)
+	}
+	taxableBase := subtotal - discount
+	taxRes := s.taxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, price.Currency, taxableBase, plan.HSNCode)
+	total := taxableBase + taxRes.Total
 
 	paymentTerms := sub.PaymentTerms
 	if paymentTerms == "" {
@@ -85,13 +100,18 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 		IGSTAmount:     taxRes.IGST,
 		CGSTAmount:     taxRes.CGST,
 		SGSTAmount:     taxRes.SGST,
-		// Itemization (Phase 1): single plan line reconciling to the totals.
+		// Itemization (Phase 1): single plan line reconciling to the totals. The
+		// line's gross amount stays the plan price; its taxable base carries the
+		// discount (amount − discount == taxable), matching the create path.
 		LineItems: []domain.InvoiceItem{
 			newInvoiceLine(invID, convDesc, taxRes.HSN, 1, subtotal, subtotal, taxRes, time.Time{}),
 		},
 		PaymentTerms: paymentTerms,
 		CreatedAt:    now,
 		DueDate:      dueDate,
+	}
+	if discount > 0 {
+		invoice.LineItems[0].TaxableAmount = taxableBase
 	}
 
 	// P25 e-invoicing is deferred to AFTER the invoice + activation commit (below),
