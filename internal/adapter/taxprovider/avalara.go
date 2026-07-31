@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/service/tax"
 )
 
@@ -133,7 +134,7 @@ func (p *AvalaraProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQue
 			"shipFrom": {Country: q.FromCountry, Region: q.FromState, PostalCode: q.FromZip},
 			"shipTo":   {Country: q.ToCountry, Region: q.ToState, PostalCode: q.ToZip},
 		},
-		Lines: []avaLine{{Amount: float64(q.Amount) / 100.0}},
+		Lines: []avaLine{{Amount: domain.MinorToMajor(q.Amount, q.Currency)}},
 	}
 	if q.IsExempt() {
 		// exemptionNo documents the certificate; entityUseCode is what makes
@@ -174,7 +175,7 @@ func (p *AvalaraProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQue
 		return nil, &AvalaraError{Kind: ErrAvalaraUnavailable, Detail: "bad response: " + err.Error()}
 	}
 
-	taxAmount := int64(math.Round(out.TotalTax * 100))
+	taxAmount := int64(math.Round(out.TotalTax * float64(domain.MinorUnitsPerMajor(q.Currency))))
 	rate := 0.0
 	juris := make([]string, 0, len(out.Summary))
 	for _, sum := range out.Summary {

@@ -134,7 +134,7 @@ func (a *NetSuiteAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoi
 			"item":        map[string]string{"id": refs.ProductExternalID},
 			"description": line.Description,
 			"quantity":    line.Quantity,
-			"amount":      float64(line.Amount) / 100.0, // major units
+			"amount":      domain.MinorToMajor(line.Amount, invoice.Currency), // major units
 		})
 	}
 	if len(items) == 0 {
@@ -142,7 +142,7 @@ func (a *NetSuiteAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoi
 			"item":        map[string]string{"id": refs.ProductExternalID},
 			"description": "Invoice " + invoice.InvoiceNumber,
 			"quantity":    1,
-			"amount":      float64(invoice.Subtotal) / 100.0,
+			"amount":      domain.MinorToMajor(invoice.Subtotal, invoice.Currency),
 		})
 	}
 

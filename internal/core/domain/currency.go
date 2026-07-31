@@ -45,6 +45,14 @@ func MinorUnitsPerMajor(currency string) int64 {
 	}
 }
 
+// MinorToMajor converts an int64 minor-unit amount to a major-unit float for the
+// currency's exponent: 5000 JPY → 5000.0, 5000 KWD → 5.0, 12345 USD → 123.45.
+// Use for external systems (accounting, tax providers) that expect a decimal
+// major-unit value; never hardcode /100, which is wrong for JPY/KWD/BHD/…
+func MinorToMajor(amount int64, currency string) float64 {
+	return float64(amount) / float64(MinorUnitsPerMajor(currency))
+}
+
 // FormatMoneyPlain renders an int64 minor-unit amount as a decimal string in the
 // currency's own exponent, with NO symbol: 5000 JPY → "5000", 5000 KWD →
 // "5.000", 123456 USD → "1234.56". Negative amounts keep a leading "-". Use this

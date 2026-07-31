@@ -137,7 +137,7 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 	}
 
 	lineDetail := map[string]interface{}{
-		"UnitPrice": float64(invoice.Subtotal) / 100,
+		"UnitPrice": domain.MinorToMajor(invoice.Subtotal, invoice.Currency),
 		"Qty":       1,
 	}
 	if refs.ProductExternalID != "" {
@@ -146,7 +146,7 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 
 	lineItems := []map[string]interface{}{
 		{
-			"Amount":              float64(invoice.Subtotal) / 100,
+			"Amount":              domain.MinorToMajor(invoice.Subtotal, invoice.Currency),
 			"DetailType":          "SalesItemLineDetail",
 			"Description":         fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
 			"SalesItemLineDetail": lineDetail,
@@ -165,7 +165,7 @@ func (a *QuickBooksAdapter) SyncInvoice(ctx context.Context, invoice *domain.Inv
 	// Add tax detail if tax exists
 	if invoice.TaxAmount > 0 {
 		qbInvoice["TxnTaxDetail"] = map[string]interface{}{
-			"TotalTax": float64(invoice.TaxAmount) / 100,
+			"TotalTax": domain.MinorToMajor(invoice.TaxAmount, invoice.Currency),
 		}
 	}
 
