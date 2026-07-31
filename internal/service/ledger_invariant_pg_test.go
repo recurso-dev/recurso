@@ -134,8 +134,12 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	h.ledger = NewLedgerService(nil, db.NewLedgerRepository(conn))
 	subRepo := db.NewSubscriptionRepository(conn)
 	h.revrec = NewRevRecService(db.NewRevRecRepository(conn), h.ledger, subRepo)
+	// A US-seller tax resolver (customers here are US/USD → 0 tax, no provider):
+	// ConvertTrialToActive calls the resolver unconditionally, and proration is
+	// unaffected (US resolves to 0, same as the prior nil path).
+	taxResolver := NewTaxResolver(harnessGSTConfigs{}, "United States", "")
 	h.subSvc = NewSubscriptionService(subRepo, db.NewInvoiceRepository(conn), db.NewPlanRepository(conn),
-		db.NewCustomerRepository(dbx), nil, nil, h.ledger, nil, nil, db.NewTxManager(conn), h.revrec, nil)
+		db.NewCustomerRepository(dbx), nil, nil, h.ledger, nil, nil, db.NewTxManager(conn), h.revrec, taxResolver)
 	h.subSvc.SetCreditNoteRepo(db.NewCreditNoteRepository(dbx))
 
 	// Real quote + gift services, wired to post their invoice legs exactly as
@@ -152,32 +156,73 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	return h
 }
 
+// harnessGSTConfigs is a no-op GST config provider — the harness's tenant is a
+// US seller, so India GST configs are never consulted (nil is correct).
+type harnessGSTConfigs struct{}
+
+func (harnessGSTConfigs) GetByTenantID(_ context.Context, _ uuid.UUID) (*domain.TenantGSTConfig, error) {
+	return nil, nil
+}
+
 // randomOp picks and executes one weighted operation; returns its name.
 func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	// Weighted table: plan changes and recognition dominate; structural ops
 	// (new sub, one-off, cancel) keep the population evolving.
 	switch p := rng.Intn(100); {
-	case p < 18:
+	case p < 16:
 		h.opNewSubscription(rng)
 		return "new_subscription"
-	case p < 36:
+	case p < 34:
 		return h.opPlanChange(rng, true)
-	case p < 50:
+	case p < 48:
 		return h.opPlanChange(rng, false)
-	case p < 64:
+	case p < 62:
 		h.opBackdateOneEvent(rng)
 		h.opRecognize()
 		return "backdate+recognize"
-	case p < 76:
+	case p < 72:
 		h.opOneOffInvoice(rng)
 		return "one_off_invoice"
-	case p < 85:
+	case p < 81:
 		return h.opQuoteConversion(rng)
-	case p < 93:
+	case p < 89:
 		return h.opGiftPurchase(rng)
+	case p < 95:
+		return h.opTrialConversion(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
 	}
+}
+
+// opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —
+// a core money flow (trial → first paid invoice) that uses ActivateTrialWithTx
+// + CreateWithTx and posts RecordInvoice, never before exercised against real
+// Postgres through the service. The first invoice is non-draft ('open'), so the
+// reconciler requires its Code-1 leg.
+func (h *invariantHarness) opTrialConversion(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Trial Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("trial-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	subID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, trial_end, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,'trialing', NOW() - INTERVAL '14 days', NOW(), NOW() - INTERVAL '14 days', NOW(), NOW(), NOW())`,
+		subID, h.tenantID, customerID, h.cheapPlan)
+
+	sub := &domain.Subscription{
+		ID: subID, TenantID: h.tenantID, CustomerID: customerID, PlanID: h.cheapPlan,
+		Status: domain.SubscriptionStatusTrialing,
+	}
+	if _, err := h.subSvc.ConvertTrialToActive(h.ctx, sub); err != nil {
+		t.Fatalf("ConvertTrialToActive (sub %s): %v", subID, err)
+	}
+	// The now-active subscription joins the population (its first invoice funded
+	// Deferred and created a recognition schedule).
+	h.subs = append(h.subs, &invariantSub{id: subID, customer: customerID, active: true})
+	return "trial_conversion"
 }
 
 // opQuoteConversion drives the REAL QuoteService.ConvertToInvoice — the path
