@@ -77,6 +77,39 @@ func TestAvalaraLookupSalesTax(t *testing.T) {
 	}
 }
 
+// TestAvalaraZeroDecimalCurrencyScaling proves the minor↔major conversion uses
+// the currency exponent, not a hardcoded 100. For a ¥5000 JPY line (exponent 0)
+// the taxable amount sent must be 5000 (not 50), and a returned totalTax of ¥400
+// must decode to 400 minor units (not 40000).
+func TestAvalaraZeroDecimalCurrencyScaling(t *testing.T) {
+	var body map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"totalTax": 400.0, "summary": [{"region":"NY","jurisName":"X","rate":0.08}]}`))
+	}))
+	defer srv.Close()
+
+	q := &tax.SalesTaxQuery{
+		FromCountry: "US", FromState: "CA", FromZip: "94016",
+		ToCountry: "US", ToState: "NY", ToZip: "10001",
+		Amount: 5000, Currency: "JPY",
+	}
+	p := NewAvalaraProvider("acct1", "lic1", "", srv.URL)
+	res, err := p.LookupSalesTax(context.Background(), q)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	lines := body["lines"].([]any)
+	if got := lines[0].(map[string]any)["amount"].(float64); got != 5000.0 {
+		t.Errorf("JPY taxable amount sent = %v, want 5000 (exponent 0); 50 means the /100 bug is back", got)
+	}
+	if res.TaxAmount != 400 {
+		t.Errorf("JPY TaxAmount = %d, want 400 minor units; 40000 means the ×100 bug is back", res.TaxAmount)
+	}
+}
+
 func TestAvalaraErrorTaxonomy(t *testing.T) {
 	cases := []struct {
 		status int

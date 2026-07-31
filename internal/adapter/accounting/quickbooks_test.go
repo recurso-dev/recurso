@@ -255,3 +255,34 @@ func TestQuickBooksInvoiceLineOmitsItemRefWithoutProductMapping(t *testing.T) {
 		t.Error("bare line lost its Description")
 	}
 }
+
+// TestQuickBooksInvoiceZeroDecimalCurrencyAmount proves the exported amount
+// respects the currency exponent. A ¥5000 JPY invoice (5000 minor units = ¥5000,
+// exponent 0) must post Amount 5000 — not 50, which the old hardcoded /100
+// produced, corrupting the customer's general ledger by 100×.
+func TestQuickBooksInvoiceZeroDecimalCurrencyAmount(t *testing.T) {
+	ts := &qboTestServer{t: t, postResponses: []func() (int, string){qboOK("Invoice", "17")}}
+	server := httptest.NewServer(ts.handler("invoice", "Invoice", "17"))
+	defer server.Close()
+
+	adapter := newQBOTestAdapter(server.URL)
+	invoice := &domain.Invoice{ID: uuid.New(), InvoiceNumber: "INV-JPY", Currency: "JPY", Subtotal: 5000, TaxAmount: 500}
+
+	if _, err := adapter.SyncInvoice(context.Background(), invoice,
+		port.InvoiceSyncRefs{CustomerExternalID: "9", ProductExternalID: "77"}, ""); err != nil {
+		t.Fatalf("SyncInvoice returned error: %v", err)
+	}
+
+	line := ts.postBodies[0]["Line"].([]interface{})[0].(map[string]interface{})
+	if got := line["Amount"].(float64); got != 5000 {
+		t.Errorf("JPY line Amount = %v, want 5000 (exponent 0). 50 means the /100 bug is back", got)
+	}
+	detail := line["SalesItemLineDetail"].(map[string]interface{})
+	if got := detail["UnitPrice"].(float64); got != 5000 {
+		t.Errorf("JPY UnitPrice = %v, want 5000", got)
+	}
+	tax := ts.postBodies[0]["TxnTaxDetail"].(map[string]interface{})
+	if got := tax["TotalTax"].(float64); got != 500 {
+		t.Errorf("JPY TotalTax = %v, want 500", got)
+	}
+}

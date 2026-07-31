@@ -137,7 +137,7 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 	lineItem := map[string]interface{}{
 		"Description": fmt.Sprintf("Invoice %s", invoice.InvoiceNumber),
 		"Quantity":    1,
-		"UnitAmount":  float64(invoice.Subtotal) / 100,
+		"UnitAmount":  domain.MinorToMajor(invoice.Subtotal, invoice.Currency),
 		"AccountCode": "200", // Default sales account
 	}
 	if refs.ProductCode != "" {
@@ -147,7 +147,7 @@ func (a *XeroAdapter) SyncInvoice(ctx context.Context, invoice *domain.Invoice, 
 
 	// Add tax line if applicable
 	if invoice.TaxAmount > 0 {
-		lineItems[0]["TaxAmount"] = float64(invoice.TaxAmount) / 100
+		lineItems[0]["TaxAmount"] = domain.MinorToMajor(invoice.TaxAmount, invoice.Currency)
 	}
 
 	invoiceData := map[string]interface{}{
