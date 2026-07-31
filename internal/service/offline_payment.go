@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -80,12 +83,21 @@ func (s *OfflinePaymentService) CreateVirtualAccount(ctx context.Context, input 
 	return va, nil
 }
 
-func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, razorpayVAID string, amount int64, paymentID string) error {
+func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, razorpayVAID string, amount int64, paymentID string, expectedTenant uuid.UUID) error {
 	// Atomic increment (not read-modify-write): two concurrent credits for the
 	// same VA — e.g. an invoice paid in two bank transfers, which are DISTINCT
 	// webhook events the inbound dedup doesn't collapse — must both be counted.
-	va, err := s.repo.IncrementAmountReceived(ctx, razorpayVAID, amount)
+	//
+	// expectedTenant binds a BYO per-connection webhook to its own tenant: a
+	// va_credited payload referencing another tenant's va_id matches zero rows
+	// (sql.ErrNoRows) and settles nothing.
+	va, err := s.repo.IncrementAmountReceived(ctx, razorpayVAID, amount, expectedTenant)
 	if err != nil {
+		if expectedTenant != uuid.Nil && errors.Is(err, sql.ErrNoRows) {
+			slog.Warn("virtual-account credit referenced an unknown or cross-tenant VA — ignoring",
+				"razorpay_va_id", razorpayVAID, "expected_tenant", expectedTenant)
+			return nil
+		}
 		return fmt.Errorf("failed to record virtual-account credit: %w", err)
 	}
 

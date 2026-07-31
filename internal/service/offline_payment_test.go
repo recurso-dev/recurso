@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -31,8 +32,12 @@ func (r *fakeOfflineRepo) UpdateVirtualAccount(_ context.Context, va *domain.Vir
 	r.vas[va.RazorpayVAID] = va
 	return nil
 }
-func (r *fakeOfflineRepo) IncrementAmountReceived(_ context.Context, id string, amount int64) (*domain.VirtualAccount, error) {
+func (r *fakeOfflineRepo) IncrementAmountReceived(_ context.Context, id string, amount int64, expectedTenant uuid.UUID) (*domain.VirtualAccount, error) {
 	va := r.vas[id]
+	// Mirror the SQL WHERE clause: a foreign tenant matches zero rows.
+	if va == nil || (expectedTenant != uuid.Nil && va.TenantID != expectedTenant) {
+		return nil, sql.ErrNoRows
+	}
 	va.AmountReceived += amount
 	if va.AmountReceived >= va.AmountExpected {
 		va.Status = "closed"
@@ -146,7 +151,7 @@ func TestReconcileVirtualAccount_SettlesWhenExpectedReached(t *testing.T) {
 	svc := NewOfflinePaymentService(repo, nil, &fakeOfflineInvoiceRepo{invoices: map[uuid.UUID]*domain.Invoice{}}, marker)
 
 	// First partial deposit: not closed, invoice untouched.
-	if err := svc.ReconcileVirtualAccount(context.Background(), vaID, 4000, "pay_1"); err != nil {
+	if err := svc.ReconcileVirtualAccount(context.Background(), vaID, 4000, "pay_1", uuid.Nil); err != nil {
 		t.Fatalf("first deposit: %v", err)
 	}
 	if repo.vas[vaID].Status != "active" || len(marker.marked) != 0 {
@@ -154,7 +159,7 @@ func TestReconcileVirtualAccount_SettlesWhenExpectedReached(t *testing.T) {
 	}
 
 	// Second deposit reaches the expected: closed and invoice settled.
-	if err := svc.ReconcileVirtualAccount(context.Background(), vaID, 6000, "pay_2"); err != nil {
+	if err := svc.ReconcileVirtualAccount(context.Background(), vaID, 6000, "pay_2", uuid.Nil); err != nil {
 		t.Fatalf("second deposit: %v", err)
 	}
 	if repo.vas[vaID].Status != "closed" {
@@ -162,5 +167,36 @@ func TestReconcileVirtualAccount_SettlesWhenExpectedReached(t *testing.T) {
 	}
 	if len(marker.marked) != 1 || marker.marked[0] != invID {
 		t.Fatalf("after full deposit: invoice marks=%v, want [%s]", marker.marked, invID)
+	}
+}
+
+// TestReconcileVirtualAccount_RejectsCrossTenant proves the S2 remainder fix: on
+// a BYO per-connection Razorpay webhook, a signed va_credited payload carrying
+// ANOTHER tenant's razorpay_va_id must not inflate that VA's received amount or
+// settle its invoice. The tenant scope is applied in the atomic increment
+// itself — so the foreign VA is never touched — and the service swallows the
+// resulting no-rows as an ignore, not a 500.
+func TestReconcileVirtualAccount_RejectsCrossTenant(t *testing.T) {
+	victimTenant := uuid.New()
+	attackerTenant := uuid.New() // the BYO connection that signed the webhook
+	invID := uuid.New()
+	vaID := "va_victim_1"
+
+	repo := &fakeOfflineRepo{vas: map[string]*domain.VirtualAccount{
+		vaID: {ID: uuid.New(), TenantID: victimTenant, InvoiceID: &invID, RazorpayVAID: vaID, AmountExpected: 10000, Status: "active"},
+	}}
+	marker := &fakeInvoiceMarker{}
+	svc := NewOfflinePaymentService(repo, nil, &fakeOfflineInvoiceRepo{invoices: map[uuid.UUID]*domain.Invoice{}}, marker)
+
+	// Attacker's connection tenant references the victim's va_id with a full-cover amount.
+	if err := svc.ReconcileVirtualAccount(context.Background(), vaID, 10000, "pay_evil", attackerTenant); err != nil {
+		t.Fatalf("cross-tenant reconcile should be ignored (nil error), got: %v", err)
+	}
+	if repo.vas[vaID].AmountReceived != 0 || repo.vas[vaID].Status != "active" {
+		t.Fatalf("cross-tenant reconcile mutated the victim VA: received=%d status=%s, want 0/active",
+			repo.vas[vaID].AmountReceived, repo.vas[vaID].Status)
+	}
+	if len(marker.marked) != 0 {
+		t.Fatalf("cross-tenant reconcile settled the victim invoice (%d marks); a foreign va_id must touch nothing", len(marker.marked))
 	}
 }
