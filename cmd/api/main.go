@@ -1336,6 +1336,7 @@ func main() {
 
 	// Quotes (P27)
 	quoteService := service.NewQuoteService(quoteRepo, invoiceRepo)
+	quoteService.SetLedgerPoster(ledgerService) // post the converted invoice's AR→Revenue leg
 	quoteHandler := handler.NewQuoteHandler(quoteService)
 
 	// GST & PDF (P30)

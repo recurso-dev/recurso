@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,6 +15,10 @@ import (
 type QuoteService struct {
 	quoteRepo   port.QuoteRepository
 	invoiceRepo port.InvoiceRepository
+	// ledger posts the converted invoice's Code-1 leg (AR → Revenue). Optional
+	// and nil-safe, wired via SetLedgerPoster; without it a converted invoice
+	// carries no ledger leg and its later payment leaves AR unbalanced.
+	ledger invoiceLedgerPoster
 }
 
 func NewQuoteService(quoteRepo port.QuoteRepository, invoiceRepo port.InvoiceRepository) *QuoteService {
@@ -21,6 +26,12 @@ func NewQuoteService(quoteRepo port.QuoteRepository, invoiceRepo port.InvoiceRep
 		quoteRepo:   quoteRepo,
 		invoiceRepo: invoiceRepo,
 	}
+}
+
+// SetLedgerPoster wires the ledger so ConvertToInvoice posts the converted
+// invoice's double-entry leg, matching every other invoice-creating path.
+func (s *QuoteService) SetLedgerPoster(ledger invoiceLedgerPoster) {
+	s.ledger = ledger
 }
 
 // CreateQuote creates a new quote
@@ -271,6 +282,21 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 		// Release the claim so the accepted quote can be converted again.
 		_ = s.quoteRepo.ReleaseConversion(ctx, id, tenantID)
 		return nil, err
+	}
+
+	// Post the invoice's double-entry leg, exactly like every other
+	// invoice-creating flow. A converted invoice has no subscription, so
+	// RecordInvoice books DR AR / CR Revenue at gross (one-off, recognized
+	// immediately) and reclassifies any GST to Tax Payable. Without this the
+	// invoice's later payment posts a cash leg (CR AR) with no originating
+	// debit, driving AR negative and never recognizing the sale's revenue.
+	// Best-effort + reconciliation, matching recordInvoiceLeg and the
+	// create/proration/mandate paths.
+	if s.ledger != nil {
+		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
+			slog.Error("ledger write failed on quote conversion — needs reconciliation",
+				"invoice_id", invoice.ID, "quote_id", quote.ID, "error", err)
+		}
 	}
 
 	// The quote's invoice_id was already stamped by the atomic claim above.
