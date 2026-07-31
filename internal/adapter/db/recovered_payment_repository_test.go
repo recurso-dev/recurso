@@ -42,7 +42,11 @@ func TestRecoveredPaymentRepository_Postgres(t *testing.T) {
 	tenantID := uuid.New()
 	otherTenantID := uuid.New()
 	now := time.Now().UTC()
-	lastMonth := now.AddDate(0, -1, 0)
+	// Anchor "last month" to the 15th before subtracting a month: a naive
+	// now.AddDate(0,-1,0) on the 29th–31st rolls into the current month when the
+	// previous month is shorter (e.g. 31 Jul − 1mo normalises to 1 Jul), which
+	// collapses both records into one month and breaks the bucket assertions.
+	lastMonth := time.Date(now.Year(), now.Month(), 15, 12, 0, 0, 0, time.UTC).AddDate(0, -1, 0)
 	campaignID := uuid.New()
 
 	records := []*domain.RecoveredPayment{
