@@ -50,6 +50,19 @@ func NewPayInAdvanceBiller(charges port.ChargeRepository, plans port.PlanReposit
 // caller decides how to handle an error (the ingestion path logs it for
 // reconciliation and does not fail the event write).
 func (b *PayInAdvanceBiller) BillEvent(ctx context.Context, sub *domain.Subscription, event *domain.UsageEvent) (int, error) {
+	// Pay-in-advance is a live charge captured the instant an event is ingested.
+	// A paused subscription has billing suspended, and a canceled one is terminal
+	// — its final usage window already closed at cancel time (see
+	// SubscriptionService.Cancel → GenerateFinalUsageInvoice). Neither may accrue
+	// a new PIA charge: doing so bills a customer during a pause, or leaves a
+	// phantom unbilled charge on a dead subscription that no future invoice will
+	// ever sweep up. The event itself is still recorded upstream (usage history is
+	// preserved); only the billing side-effect is gated. Active / trialing /
+	// past-due subscriptions bill normally.
+	if sub.Status == domain.SubscriptionStatusPaused || sub.Status == domain.SubscriptionStatusCanceled {
+		return 0, nil
+	}
+
 	plan, err := b.plans.GetByID(ctx, sub.PlanID)
 	if err != nil {
 		return 0, fmt.Errorf("pay-in-advance: load plan: %w", err)

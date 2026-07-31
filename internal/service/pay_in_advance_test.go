@@ -93,6 +93,54 @@ func TestPayInAdvanceBiller_BillEvent(t *testing.T) {
 	}
 }
 
+// TestPayInAdvanceBiller_SkipsPausedAndCanceled proves a paused or canceled
+// subscription accrues NO pay-in-advance charge on a freshly-ingested usage
+// event: a paused sub has billing suspended, and a canceled one is terminal
+// (its final usage window closed at cancel), so a PIA capture would be a phantom
+// charge — billing a customer mid-pause, or leaking an unbilled charge onto a
+// dead subscription. The identical active-sub event DOES bill, isolating the
+// status gate.
+func TestPayInAdvanceBiller_SkipsPausedAndCanceled(t *testing.T) {
+	tenantID := uuid.New()
+	planID := uuid.New()
+	plan := &domain.Plan{ID: planID, TenantID: tenantID, Prices: []domain.Price{{Currency: "INR"}}}
+	metric := &domain.BillableMetric{ID: uuid.New(), Code: "api_calls", Name: "API calls"}
+	charges := []domain.Charge{
+		{ID: uuid.New(), PlanID: planID, ChargeModel: domain.ChargePerUnit, PayInAdvance: true,
+			Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.0035"}}, Metric: metric},
+	}
+	ctx := context.Background()
+
+	event := func(subID uuid.UUID) *domain.UsageEvent {
+		return &domain.UsageEvent{ID: uuid.New(), SubscriptionID: subID, Dimension: "api_calls", Quantity: 1500}
+	}
+
+	for _, tc := range []struct {
+		name    string
+		status  domain.SubscriptionStatus
+		wantCap int
+	}{
+		{"paused", domain.SubscriptionStatusPaused, 0},
+		{"canceled", domain.SubscriptionStatusCanceled, 0},
+		{"active", domain.SubscriptionStatusActive, 1}, // control: the gate isn't blanket-off
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: planID, Status: tc.status}
+			ucRepo := &piaUnbilledRepo{}
+			biller := NewPayInAdvanceBiller(&piaChargeRepo{charges: charges}, &piaPlanRepo{plan: plan}, ucRepo)
+
+			n, err := biller.BillEvent(ctx, sub, event(sub.ID))
+			if err != nil {
+				t.Fatalf("BillEvent(%s): %v", tc.status, err)
+			}
+			if n != tc.wantCap || len(ucRepo.created) != tc.wantCap {
+				t.Fatalf("%s sub: captured %d (repo %d), want %d — a %s subscription must not accrue a pay-in-advance charge",
+					tc.status, n, len(ucRepo.created), tc.wantCap, tc.status)
+			}
+		})
+	}
+}
+
 // TestSetPlanCharges_PayInAdvanceRejectsCumulativeModels asserts the validation
 // restricting pay_in_advance to non-cumulative models.
 func TestResolveChargeInput_PayInAdvanceModelRestriction(t *testing.T) {
