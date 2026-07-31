@@ -12,6 +12,7 @@ founder can provide; everything else is engineering-ready.
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
 | 2 | **Xero-invalid customer email** (`bed15f4d…`) | MED — one customer's invoices never sync (QuickBooks rejects it too) | — | **founder** fixes the email in the dashboard; sync rows now show the customer name + id. |
+| B2 | Downgrade credit note lacks a CGST/SGST/IGST breakdown | LOW — the credit note **amount** is already correct (audit B1, #357); only the printed itemized GST split is missing, a compliance-doc nicety for India | MED | Needs a schema migration: `domain.CreditNote` has **no** tax columns (subtotal/tax/IGST/CGST/SGST). Add columns + populate from the proration `taxRes` in `persistPlanChange` + render on the credit-note PDF. Deferred from the 2026-07-31 exponent audit as a feature, not a fix. |
 
 ## P1 — verification & parity (mostly founder-blocked)
 
@@ -48,6 +49,15 @@ founder can provide; everything else is engineering-ready.
 | 16 | `head` HTTP-tool alias footgun, iCloud `" 2"` duplicate files | — | — | Environment quirks, documented in memory; no code change. |
 
 ## Recently closed (context for the ranking)
+
+- **Currency-exponent + proration-tax audit (2026-07-31)** — two adversarial
+  audit agents → 6 fixes shipped: proration tax now uses each plan's own HSN
+  rate, not one rate on the net (#357, hits India); exponent-aware
+  customer-facing money display (#358); exponent-correct amounts to accounting
+  adapters + Avalara (#359); exponent-aware EU e-invoice UBL + import hints
+  (#360). Each fix ships with an oracle test that fails on the old code. B2
+  (above) is the one deferred item. Verified clean: ledger balance, refund tax
+  double-reversal, truncation.
 
 - BYO GoCardless from the dashboard (#237), mandate activation webhooks
   (#238), payment settlement webhooks (#240), currency-aware mandate UI
