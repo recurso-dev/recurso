@@ -122,6 +122,18 @@ SIGNUP_NOTIFY_EMAIL=you@example.com   # e.g. swapnil.go20@gmail.com
 Delivery uses the same SMTP transport as above, so it only sends once `SMTP_*`
 is configured (otherwise it's logged to the console like other emails).
 
+You can also **push every signup into Brevo** (or any tool via its API later) so
+new tenants land in an onboarding list. Opt-in via `BREVO_API_KEY`:
+
+```bash
+BREVO_API_KEY=xkeysib-...   # Brevo (Sendinblue) API key; enables contact sync
+BREVO_LIST_ID=3             # optional: add the signup to this Brevo list
+```
+
+This syncs Recurso's *own* signups (a new tenant's owner email) to *your* Brevo —
+it is platform-level, separate from a tenant syncing their customers to their own
+CRM. Non-blocking and best-effort: a failed sync never affects the signup.
+
 ## Metrics & status access
 
 ```bash

@@ -32,6 +32,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/gateway"
 	"github.com/recurso-dev/recurso/internal/adapter/gsp"
 	"github.com/recurso-dev/recurso/internal/adapter/handler"
+	"github.com/recurso-dev/recurso/internal/adapter/marketing"
 	"github.com/recurso-dev/recurso/internal/adapter/memory"
 	"github.com/recurso-dev/recurso/internal/adapter/metrics"
 	"github.com/recurso-dev/recurso/internal/adapter/middleware"
@@ -489,6 +490,18 @@ func main() {
 	if signupNotifyEmail := os.Getenv("SIGNUP_NOTIFY_EMAIL"); signupNotifyEmail != "" {
 		authService.ConfigureSignupNotify(signupNotifyEmail, notificationService)
 		log.Printf("New-signup alerts enabled → %s", signupNotifyEmail)
+	}
+	// New-signup → marketing tool (Brevo) contact sync. Opt-in via BREVO_API_KEY;
+	// BREVO_LIST_ID (optional) drops the contact into an onboarding list.
+	if brevoKey := os.Getenv("BREVO_API_KEY"); brevoKey != "" {
+		listID := 0
+		if v := os.Getenv("BREVO_LIST_ID"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				listID = n
+			}
+		}
+		authService.ConfigureSignupContactSync(marketing.NewBrevoContactSync(brevoKey, listID))
+		log.Printf("New-signup → Brevo contact sync enabled (list %d)", listID)
 	}
 	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
