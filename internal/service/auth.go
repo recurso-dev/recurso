@@ -69,6 +69,13 @@ type signupNotifier interface {
 	SendNewSignupAlert(ctx context.Context, toFounder, companyName, ownerEmail, country string) error
 }
 
+// signupContactSync upserts a new tenant's owner into the operator's marketing /
+// email tool (e.g. Brevo) so signups land in an onboarding funnel. nil-safe /
+// opt-in via ConfigureSignupContactSync. *marketing.BrevoContactSync satisfies it.
+type signupContactSync interface {
+	AddSignupContact(ctx context.Context, email, companyName, country string) error
+}
+
 // AuthService owns dashboard user accounts, sessions, and team management.
 type AuthService struct {
 	users      port.UserRepository
@@ -106,6 +113,9 @@ type AuthService struct {
 	// sender (SMTP_HOST) — otherwise the alert is only logged, like other emails.
 	signupNotifier    signupNotifier
 	signupNotifyEmail string
+	// signupContactSync upserts each new signup into the operator's marketing
+	// tool (Brevo). nil-safe / opt-in via ConfigureSignupContactSync.
+	signupContactSync signupContactSync
 }
 
 // ConfigureSignupNotify wires the new-signup alert. Both the recipient
@@ -114,6 +124,12 @@ type AuthService struct {
 func (s *AuthService) ConfigureSignupNotify(founderEmail string, n signupNotifier) {
 	s.signupNotifyEmail = strings.TrimSpace(founderEmail)
 	s.signupNotifier = n
+}
+
+// ConfigureSignupContactSync wires new-signup → marketing-tool contact sync
+// (BREVO_API_KEY). nil-safe / opt-in.
+func (s *AuthService) ConfigureSignupContactSync(sync signupContactSync) {
+	s.signupContactSync = sync
 }
 
 func NewAuthService(users port.UserRepository, sessions port.SessionRepository, tenants tenantRegistrar, sessionTTL time.Duration) *AuthService {
@@ -312,6 +328,19 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 				s.logger.Warn("failed to send new-signup alert", "error", err, "tenant_id", tenantID)
 			}
 		}(companyName, email, country, tenant.ID)
+	}
+
+	// Upsert the signup into the operator's marketing tool (opt-in via
+	// BREVO_API_KEY) so it lands in an onboarding funnel. Non-blocking and
+	// best-effort — a slow or failed sync must never affect the signup.
+	if s.signupContactSync != nil {
+		go func(owner, company, ctry string, tenantID uuid.UUID) {
+			bg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			if err := s.signupContactSync.AddSignupContact(bg, owner, company, ctry); err != nil {
+				s.logger.Warn("failed to sync new-signup contact to marketing tool", "error", err, "tenant_id", tenantID)
+			}
+		}(email, companyName, country, tenant.ID)
 	}
 
 	return &RegisterResult{Tenant: tenant, APIKey: apiKey, User: user, SessionToken: token}, nil
