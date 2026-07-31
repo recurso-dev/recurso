@@ -1,6 +1,7 @@
 package service
 
 import (
+	"math"
 	"sort"
 	"time"
 
@@ -110,7 +111,11 @@ func distributeDiscount(lines []domain.InvoiceItem, discount int64) (igst, cgst,
 		lines[i].TaxableAmount = taxable
 
 		rate := lines[i].TaxRate / 100.0 // stored as percent (18.0 -> 0.18)
-		lineTax := int64(float64(taxable) * rate)
+		// Round half-up, matching the GST engine (tax/gst.go uses math.Round).
+		// Truncating here divided the inexact float rate (0.18 ≈ 0.17999…) and
+		// then floored it, understating tax by a paisa on exact cases — e.g.
+		// taxable ₹500.00 at 18% gave 8999 instead of 9000.
+		lineTax := int64(math.Round(float64(taxable) * rate))
 
 		// Inter-state lines carry IGST; intra-state carry CGST+SGST. A zero-tax
 		// line is treated as inter-state (its recomputed tax is zero regardless).

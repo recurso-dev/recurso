@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"math"
 	"testing"
 	"time"
 
@@ -45,9 +46,9 @@ func reconcileLines(t *testing.T, lines []domain.InvoiceItem, subtotal, discount
 //
 //	shares (largest-remainder): line0 6667, line1 3333 (Σ == 10000)
 //	taxable: line0 93333, line1 46667 (Σ == 140000 == 150000-10000)
-//	tax @18%: line0 trunc(93333*.18)=16799 -> CGST 8399 / SGST 8400
-//	          line1 trunc(46667*.18)=8400  -> CGST 4200 / SGST 4200
-//	header: CGST 12599, SGST 12600, total 25199
+//	tax @18%: line0 round(93333*.18=16799.94)=16800 -> CGST 8400 / SGST 8400
+//	          line1 round(46667*.18=8400.06)=8400    -> CGST 4200 / SGST 4200
+//	header: CGST 12600, SGST 12600, total 25200
 func TestDistributeDiscount_MultiLine_IntraState(t *testing.T) {
 	lines := []domain.InvoiceItem{
 		{Description: "Base", HSNCode: "998314", Amount: 100000, TaxRate: 18, CGSTAmount: 9000, SGSTAmount: 9000},
@@ -64,21 +65,22 @@ func TestDistributeDiscount_MultiLine_IntraState(t *testing.T) {
 	if got := lines[0].Amount - lines[0].TaxableAmount; got != 6667 {
 		t.Errorf("line0 discount share = %d, want 6667", got)
 	}
-	if lines[0].CGSTAmount != 8399 || lines[0].SGSTAmount != 8400 {
-		t.Errorf("line0 CGST/SGST = %d/%d, want 8399/8400", lines[0].CGSTAmount, lines[0].SGSTAmount)
+	if lines[0].CGSTAmount != 8400 || lines[0].SGSTAmount != 8400 {
+		t.Errorf("line0 CGST/SGST = %d/%d, want 8400/8400", lines[0].CGSTAmount, lines[0].SGSTAmount)
 	}
 	if lines[1].CGSTAmount != 4200 || lines[1].SGSTAmount != 4200 {
 		t.Errorf("line1 CGST/SGST = %d/%d, want 4200/4200", lines[1].CGSTAmount, lines[1].SGSTAmount)
 	}
-	if igst != 0 || cgst != 12599 || sgst != 12600 || total != 25199 {
-		t.Errorf("header igst/cgst/sgst/total = %d/%d/%d/%d, want 0/12599/12600/25199", igst, cgst, sgst, total)
+	if igst != 0 || cgst != 12600 || sgst != 12600 || total != 25200 {
+		t.Errorf("header igst/cgst/sgst/total = %d/%d/%d/%d, want 0/12600/12600/25200", igst, cgst, sgst, total)
 	}
 
-	// Per line: tax == trunc(taxable × rate) (the engine rule).
+	// Per line: tax == round(taxable × rate) — matches the GST engine, which
+	// rounds (tax/gst.go). line0's 93333×18% = 16799.94 must round to 16800.
 	for i, li := range lines {
-		want := int64(float64(li.TaxableAmount) * (li.TaxRate / 100.0))
+		want := int64(math.Round(float64(li.TaxableAmount) * (li.TaxRate / 100.0)))
 		if got := li.CGSTAmount + li.SGSTAmount + li.IGSTAmount; got != want {
-			t.Errorf("line %d tax = %d, want trunc(taxable×rate) = %d", i, got, want)
+			t.Errorf("line %d tax = %d, want round(taxable×rate) = %d", i, got, want)
 		}
 	}
 
@@ -105,6 +107,28 @@ func TestDistributeDiscount_MultiLine_InterState(t *testing.T) {
 		t.Errorf("header = igst %d cgst %d sgst %d total %d, want 19200/0/0/19200", igst, cgst, sgst, total)
 	}
 	reconcileLines(t, lines, 150000, 30000, total)
+}
+
+// Regression: the post-discount per-line tax must ROUND half-up, not truncate.
+// A single-line invoice gross 200003 with a 100000 discount leaves taxable
+// 100003; 100003 × 18% = 18000.54, which must round to 18001 — the GST engine's
+// rule (asserted in tax/gst_test.go). Truncation understated it to 18000.
+func TestDistributeDiscount_RoundsTaxHalfUp(t *testing.T) {
+	lines := []domain.InvoiceItem{
+		{HSNCode: "998314", Amount: 200003, TaxRate: 18, IGSTAmount: 36001},
+	}
+	igst, cgst, sgst, total := distributeDiscount(lines, 100000)
+
+	if lines[0].TaxableAmount != 100003 {
+		t.Fatalf("taxable = %d, want 100003", lines[0].TaxableAmount)
+	}
+	if lines[0].IGSTAmount != 18001 {
+		t.Errorf("line IGST = %d, want 18001 (round(18000.54), not trunc 18000)", lines[0].IGSTAmount)
+	}
+	if igst != 18001 || cgst != 0 || sgst != 0 || total != 18001 {
+		t.Errorf("header igst/cgst/sgst/total = %d/%d/%d/%d, want 18001/0/0/18001", igst, cgst, sgst, total)
+	}
+	reconcileLines(t, lines, 200003, 100000, total)
 }
 
 // Task A — the single-line discounted invoice (the only discounted path in
