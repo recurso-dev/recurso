@@ -359,7 +359,10 @@ func main() {
 	// (India + state) when present; env company defaults otherwise. Dispatches
 	// to GST/VAT/SalesTax engines per invoice.
 	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
-	companyState := getEnvDefault("COMPANY_STATE", "TN")
+	// No hardcoded state default: NewTaxResolver applies the India "TN" default
+	// only when the seller country is India, so a US/EU deployment that leaves
+	// COMPANY_STATE unset doesn't inherit an invalid Indian state.
+	companyState := getEnvDefault("COMPANY_STATE", "")
 	taxResolver := service.NewTaxResolver(gstConfigRepo, companyCountry, companyState)
 	// US sales-tax nexus gating (opt-in): once a tenant declares nexus states,
 	// US tax is collected only there; a tenant with none is unaffected.
