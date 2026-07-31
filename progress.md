@@ -1,3 +1,60 @@
+# Progress log
+
+## 2026-07-31 autonomous session — money-path correctness + safety-net hardening
+
+~39 PRs merged (#382–#404), all on green CI, each fix with a failing-first
+oracle (PG-backed for ledger paths). Theme: close the remaining money-path
+correctness gaps, then build the guardrail that prevents the whole bug class
+from recurring — and prove it by having that guardrail catch a real HIGH bug.
+
+**Security — cross-tenant BYO webhooks (S2), fully closed.** Every BYO
+per-connection webhook money-move is now bound to the connection's own tenant:
+invoice settle/failure/reversal across all 3 gateways (#382), gateway
+refund-event status advance (#384), and the Razorpay virtual-account reconcile
+(#386, tenant-scoped atomic increment so a foreign `va_id` matches 0 rows).
+
+**Lifecycle × metering / retention.**
+- #388 (L1) — pay-in-advance usage no longer bills **paused/canceled** subs
+  (was billing during a pause + accruing phantom charges on dead subs).
+- #390 (L3, HIGH) — gift subscriptions no longer **auto-renew and dun the
+  recipient** (set `CancelAtPeriodEnd` at redemption; a prepaid gift now
+  cleanly expires instead of invoicing someone with no payment method).
+- #392 (L4) — an accepted cancel-flow **discount offer is now actually applied**
+  (it was logged and dropped, so retained customers paid full price).
+
+**Ledger-leg completeness (money-in) — audited all invoice-creating paths.**
+Found and fixed two flows that created an invoice with **no double-entry leg**
+(AR would go negative on payment, revenue never recognized):
+- #394 (Q1, HIGH) — quote→invoice conversion.
+- #396 (Q2, HIGH) — the buyer's gift-purchase invoice.
+The other 8 `invoiceRepo.Create` sites, and every money-**out** credit/refund
+leg, were verified balanced. FK-ordering audit also clean (Q3 was the sole
+stamp-before-create case).
+
+**Safety-net hardening — the arc that pays for itself.**
+- #399 (H1) — the ledger invariant harness called `RecordInvoice` *directly*,
+  never the service create-paths — the blind spot that hid Q1/Q2. Hardened it to
+  drive the **real** `QuoteService.ConvertToInvoice` + `GiftService.PurchaseGift`
+  through the reconciler. **On its first run it caught Q3 (HIGH): quote
+  conversion FK-violated against real Postgres and was outright broken in prod**
+  (mock tests never exercised the FK). Fixed by wrapping create+claim in one tx.
+- #403 (H2) — reconciler meta-audit confirmed the oracle is sound, then closed
+  its one gap: credit-note leg-completeness (`missing_credit_note_transaction`),
+  the credit-note analog of the invoice-leg check. Proven: neutering
+  `RecordDowngradeCredit` now fails the harness. Both sides of the ledger —
+  invoice legs and credit-note legs — are guarded.
+
+**Investigated and *not* built (avoided needless change):** B2 (credit-note GST
+split — no consumer: no credit-note PDF, and the GSTR-1 CDNR report already
+prorates; #401) and the `invoice.go:260` "use first price" smell (consistent,
+not a bug).
+
+**Handoff — remaining items need a decision, not more bug-hunting:** L2 (pause
+metering policy) and S4 (idempotency policy) are product calls; B2 is a no-op
+until a credit-note document/e-invoice exists; W2/W3 are latent/unreachable;
+QuickBooks OAuth / GoCardless webhook / telemetry / Peppol / demo hosting / the
+Xero customer-email fix are founder-credential-blocked. No open correctness bugs.
+
 # Progress log — overnight 2026-07-27 → 28
 
 ## Morning session (after founder wake-up)
