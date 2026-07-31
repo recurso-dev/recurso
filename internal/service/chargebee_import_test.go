@@ -63,6 +63,32 @@ func TestChargebeeCommit_CreatesCustomersPlansAndSubscriptions(t *testing.T) {
 	}
 }
 
+// Regression: a concurrent (or retried) commit must not double-insert a
+// subscription. Claim-first records the idempotency ref before the create, so a
+// ref-claim conflict at commit time skips the create instead of inserting a
+// second subscription that would double-bill at renewal.
+func TestChargebeeCommit_ClaimFirstSkipsDuplicateSubscription(t *testing.T) {
+	svc, _, _, subs, refs := newChargebeeSvc()
+	// loadState sees no subscription ref (so BuildPlan decides to create sub_a),
+	// but the ref-claim conflicts — as if another commit claimed it in between.
+	refs.conflictOn = map[string]bool{"sub_a": true}
+
+	res, err := svc.Commit(context.Background(), uuid.New(), chargebeeFixture())
+	if err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	if len(subs.created) != 0 {
+		t.Errorf("claim-first should skip the create on a duplicate ref; got %d subscriptions created (double-insert)", len(subs.created))
+	}
+	if res.Created["subscription"] != 0 {
+		t.Errorf("subscription must not be counted as created; got %d", res.Created["subscription"])
+	}
+	// Customers and plans still import normally — only the conflicting sub is skipped.
+	if res.Created["customer"] != 2 || res.Created["plan"] != 1 {
+		t.Errorf("customers/plans should still import: %v", res.Created)
+	}
+}
+
 func TestChargebeeCommit_LinksExistingCustomer(t *testing.T) {
 	svc, cust, _, subs, _ := newChargebeeSvc()
 	existingID := uuid.New()

@@ -188,11 +188,22 @@ func (s *RevenueCatImportService) commitSubscription(ctx context.Context, tenant
 		rec.TrialEnd = &t
 	}
 
-	if err := s.subs.Create(ctx, rec); err != nil {
-		fail(err.Error())
+	// Claim-first idempotency: record the (source, external id) ref BEFORE
+	// creating the subscription — see the ChargebeeImportService equivalent for
+	// the full rationale. Without it a concurrent/retried commit inserts a second
+	// subscription for one RevenueCat entitlement and double-bills at renewal.
+	refErr := s.refs.Create(ctx, &domain.ImportExternalRef{
+		ID: uuid.New(), TenantID: tenantID, Source: domain.ImportSourceRevenueCat,
+		Kind: domain.ImportKindSubscription, ExternalID: subID, RecursoID: rec.ID,
+	})
+	if errors.Is(refErr, domain.ErrDuplicateImportRef) {
+		return // already imported (or a concurrent commit claimed it) — do not double-insert
+	}
+	if refErr != nil {
+		fail(refErr.Error())
 		return
 	}
-	if err := s.recordRef(ctx, tenantID, domain.ImportKindSubscription, subID, rec.ID); err != nil {
+	if err := s.subs.Create(ctx, rec); err != nil {
 		fail(err.Error())
 		return
 	}
