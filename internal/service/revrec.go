@@ -250,6 +250,20 @@ func (s *RevRecService) ReduceScheduleForDowngrade(ctx context.Context, tenantID
 // CreateScheduleForInvoice generates a recognition schedule for a paid invoice.
 // If sub is provided, its period dates are used; otherwise the subscription is looked up.
 func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *domain.Invoice, sub *domain.Subscription) error {
+	// Idempotent per invoice: an invoice can be marked paid more than once over
+	// its life — e.g. an ACH return reopens it (paid → past_due) and re-collection
+	// marks it paid again. Without this guard a SECOND active schedule would be
+	// created for the same funded Deferred, so recognition over-drains Deferred
+	// (goes negative) and double-recognizes revenue. The original schedule is left
+	// intact and continues recognizing.
+	if existing, err := s.repo.GetActiveScheduleByInvoice(ctx, invoice.TenantID, invoice.ID); err != nil {
+		slog.Error("revrec: failed to check for an existing schedule; skipping to avoid a duplicate",
+			"invoice_id", invoice.ID, "error", err)
+		return nil
+	} else if existing != nil {
+		return nil // already scheduled
+	}
+
 	// If invoice has no subscription (one-off), we recognize immediately
 	if invoice.SubscriptionID == nil {
 		return s.createImmediateRecognition(ctx, invoice)
