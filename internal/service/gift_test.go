@@ -268,6 +268,16 @@ func TestRedeemGift_Success(t *testing.T) {
 		t.Errorf("status = %q, want active", sub.Status)
 	}
 
+	// A gift is prepaid by the buyer for a fixed duration; the recipient never
+	// provided payment. The subscription MUST be flagged cancel-at-period-end so
+	// the renewal worker ends it when the gift window closes instead of billing
+	// the recipient for a renewal (renewal.go honors CancelAtPeriodEnd → cancel,
+	// not invoice). Without this, a redeemed gift auto-renews and duns the
+	// recipient for a subscription they received as a gift.
+	if !sub.CancelAtPeriodEnd {
+		t.Error("gift subscription must be cancel-at-period-end so it expires instead of billing the recipient on renewal")
+	}
+
 	// Gift should be marked redeemed
 	updatedGift := giftRepo.gifts[gift.Code]
 	if updatedGift.Status != domain.GiftStatusRedeemed {
