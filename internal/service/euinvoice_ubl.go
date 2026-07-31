@@ -146,20 +146,6 @@ type ublInvoice struct {
 	InvoiceLine []ublInvoiceLine `xml:"cac:InvoiceLine"`
 }
 
-// ublMoney renders int64 minor units as an EN 16931 decimal with 2 fraction
-// digits (e.g. 12345 -> "123.45").
-func ublMoney(minor int64) string {
-	neg := minor < 0
-	if neg {
-		minor = -minor
-	}
-	s := fmt.Sprintf("%d.%02d", minor/100, minor%100)
-	if neg {
-		return "-" + s
-	}
-	return s
-}
-
 // taxCategoryFor picks the EN 16931 tax-category code for a rate. A positive
 // rate is standard-rated ("S"); a zero rate with a buyer VAT id is treated as an
 // intra-EU reverse charge ("AE"); otherwise zero-rated ("Z").
@@ -222,6 +208,10 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 	}
 
 	cur := inv.Currency
+	// money renders minor units in the invoice currency's own exponent (EN 16931
+	// amounts follow the document currency's decimals — 0 for JPY/ISK, 3 for KWD),
+	// not a hardcoded 2. Delegates to the shared exponent-aware formatter.
+	money := func(v int64) string { return domain.FormatMoneyPlain(v, cur) }
 	buyerHasVAT := buyer.VATID != ""
 
 	// Invoice lines + per-rate tax grouping. Line net = InvoiceItem.Amount; the
@@ -242,12 +232,12 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		lines = append(lines, ublInvoiceLine{
 			ID:                  fmt.Sprintf("%d", i+1),
 			InvoicedQuantity:    ublQuantity{UnitCode: ublUnitCode, Value: fmt.Sprintf("%d", qty)},
-			LineExtensionAmount: ublAmount{Currency: cur, Value: ublMoney(li.Amount)},
+			LineExtensionAmount: ublAmount{Currency: cur, Value: money(li.Amount)},
 			Item: ublItem{
 				Name:                  itemName(li.Description),
 				ClassifiedTaxCategory: ublTaxCategory{ID: cat, Percent: ublPercent(li.TaxRate), TaxScheme: ublTaxSchemeID{ID: ublVATScheme}},
 			},
-			Price: ublPrice{PriceAmount: ublAmount{Currency: cur, Value: ublMoney(li.UnitAmount)}},
+			Price: ublPrice{PriceAmount: ublAmount{Currency: cur, Value: money(li.UnitAmount)}},
 		})
 		g := byRate[li.TaxRate]
 		if g == nil {
@@ -272,8 +262,8 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		lineTax := int64(float64(g.taxable)*r/100.0 + 0.5)
 		taxSum += lineTax
 		subtotals = append(subtotals, ublTaxSubtotal{
-			TaxableAmount: ublAmount{Currency: cur, Value: ublMoney(g.taxable)},
-			TaxAmount:     ublAmount{Currency: cur, Value: ublMoney(lineTax)},
+			TaxableAmount: ublAmount{Currency: cur, Value: money(g.taxable)},
+			TaxAmount:     ublAmount{Currency: cur, Value: money(lineTax)},
 			TaxCategory:   breakdownTaxCategory(taxCategoryFor(r, buyerHasVAT), r),
 		})
 	}
@@ -283,13 +273,13 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		last := &subtotals[n-1]
 		adj := inv.TaxAmount - taxSum
 		g := byRate[rates[n-1]]
-		last.TaxAmount = ublAmount{Currency: cur, Value: ublMoney(int64(float64(g.taxable)*rates[n-1]/100.0+0.5) + adj)}
+		last.TaxAmount = ublAmount{Currency: cur, Value: money(int64(float64(g.taxable)*rates[n-1]/100.0+0.5) + adj)}
 	}
 	if len(subtotals) == 0 {
 		// No lines (defensive): a single zero subtotal keeps the document valid.
 		subtotals = append(subtotals, ublTaxSubtotal{
-			TaxableAmount: ublAmount{Currency: cur, Value: ublMoney(inv.Subtotal)},
-			TaxAmount:     ublAmount{Currency: cur, Value: ublMoney(inv.TaxAmount)},
+			TaxableAmount: ublAmount{Currency: cur, Value: money(inv.Subtotal)},
+			TaxAmount:     ublAmount{Currency: cur, Value: money(inv.TaxAmount)},
 			TaxCategory:   breakdownTaxCategory(taxCategoryFor(0, buyerHasVAT), 0),
 		})
 	}
@@ -307,14 +297,14 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 		Supplier:        ublSupplier{Party: ublParty2(seller)},
 		Customer:        ublSupplier{Party: ublParty2(buyer)},
 		TaxTotal: ublTaxTotal{
-			TaxAmount:   ublAmount{Currency: cur, Value: ublMoney(inv.TaxAmount)},
+			TaxAmount:   ublAmount{Currency: cur, Value: money(inv.TaxAmount)},
 			TaxSubtotal: subtotals,
 		},
 		Monetary: ublMonetaryTotal{
-			LineExtensionAmount: ublAmount{Currency: cur, Value: ublMoney(inv.Subtotal)},
-			TaxExclusiveAmount:  ublAmount{Currency: cur, Value: ublMoney(inv.Subtotal)},
-			TaxInclusiveAmount:  ublAmount{Currency: cur, Value: ublMoney(inv.Total)},
-			PayableAmount:       ublAmount{Currency: cur, Value: ublMoney(inv.Total)},
+			LineExtensionAmount: ublAmount{Currency: cur, Value: money(inv.Subtotal)},
+			TaxExclusiveAmount:  ublAmount{Currency: cur, Value: money(inv.Subtotal)},
+			TaxInclusiveAmount:  ublAmount{Currency: cur, Value: money(inv.Total)},
+			PayableAmount:       ublAmount{Currency: cur, Value: money(inv.Total)},
 		},
 		InvoiceLine: lines,
 	}

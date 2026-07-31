@@ -13,6 +13,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // --- Chargebee input types (the subset Recurso maps) -----------------------
@@ -325,18 +327,7 @@ func intervalCount(period int) int {
 }
 
 func money(amount int64, currency string) string {
-	cur := strings.ToUpper(currency)
-	switch cur {
-	case "JPY", "KRW", "VND", "CLP":
-		return fmt.Sprintf("%d %s", amount, cur)
-	default:
-		return fmt.Sprintf("%d.%02d %s", amount/100, abs64(amount%100), cur)
-	}
-}
-
-func abs64(v int64) int64 {
-	if v < 0 {
-		return -v
-	}
-	return v
+	// Exponent-aware hint (covers all zero/three-decimal currencies, not just a
+	// hardcoded few); the frontend does the authoritative formatting.
+	return domain.FormatMoneyPlain(amount, currency) + " " + strings.ToUpper(strings.TrimSpace(currency))
 }
