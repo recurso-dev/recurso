@@ -162,15 +162,19 @@ func (c *CachedSalesTaxProvider) evictExpiredLocked() {
 	}
 }
 
-// salesTaxCacheKey keys rates by destination jurisdiction. Rates depend on
-// where the sale lands (destination-sourced in most states), so (state, zip)
-// is the right granularity; amount is deliberately excluded.
+// salesTaxCacheKey keys rates by BOTH the seller origin and the destination
+// jurisdiction. Most states are destination-sourced (rate depends on where the
+// sale lands), but origin-sourced intra-state states (AZ, IL, MO, TX, …) price
+// on the SELLER's location — so the seller (from) state/zip must be in the key,
+// or two tenants sharing one env provider would serve each other's origin rate.
+// Amount is deliberately excluded (the rate is amount-independent).
 func salesTaxCacheKey(q *SalesTaxQuery) string {
 	// Asserted nexus changes the answer (has_nexus gates the rate), so it is
 	// part of the key — tenants with and without declared nexus sharing one
 	// provider must not serve each other's cached result.
 	nexus := append([]string(nil), q.NexusStates...)
 	sort.Strings(nexus)
-	return strings.ToUpper(strings.TrimSpace(q.ToState)) + "|" + strings.TrimSpace(q.ToZip) +
+	return strings.ToUpper(strings.TrimSpace(q.FromState)) + "|" + strings.TrimSpace(q.FromZip) + "|" +
+		strings.ToUpper(strings.TrimSpace(q.ToState)) + "|" + strings.TrimSpace(q.ToZip) +
 		"|" + strings.ToUpper(strings.Join(nexus, ","))
 }

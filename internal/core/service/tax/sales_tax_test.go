@@ -352,3 +352,20 @@ func TestSalesTaxCacheKey_NexusDistinct(t *testing.T) {
 		t.Fatal("cache key must be order-insensitive over nexus states")
 	}
 }
+
+// TestSalesTaxCacheKey_SellerOriginDistinct proves the seller's origin
+// (from-state/zip) is part of the cache key, so two tenants selling into the
+// SAME destination from DIFFERENT seller states — which matters for
+// origin-sourced intra-state sales — never serve each other's cached rate.
+func TestSalesTaxCacheKey_SellerOriginDistinct(t *testing.T) {
+	caSeller := &SalesTaxQuery{FromState: "CA", FromZip: "90001", ToState: "CA", ToZip: "90001"}
+	txSeller := &SalesTaxQuery{FromState: "TX", FromZip: "73301", ToState: "CA", ToZip: "90001"}
+	if salesTaxCacheKey(caSeller) == salesTaxCacheKey(txSeller) {
+		t.Fatal("cache key must differ by seller origin state (origin-sourced sales price on the seller's location)")
+	}
+	// Same seller + same destination → same key (still cacheable).
+	again := &SalesTaxQuery{FromState: "CA", FromZip: "90001", ToState: "CA", ToZip: "90001"}
+	if salesTaxCacheKey(caSeller) != salesTaxCacheKey(again) {
+		t.Fatal("identical seller+destination must share a cache key")
+	}
+}
