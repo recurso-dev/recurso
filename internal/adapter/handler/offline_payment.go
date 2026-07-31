@@ -101,6 +101,12 @@ type recordOfflinePaymentRequest struct {
 }
 
 func (h *OfflinePaymentHandler) RecordOfflinePayment(c *gin.Context) {
+	// Recording an offline payment marks an invoice paid (books cash settlement) —
+	// owner/admin only (API keys bypass), so a low-privilege user can't fabricate
+	// settlement / poison AR.
+	if !requireManagerRole(c) {
+		return
+	}
 	var req recordOfflinePaymentRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())

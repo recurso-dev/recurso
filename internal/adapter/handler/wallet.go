@@ -200,6 +200,11 @@ func (h *WalletHandler) UpdateAutoRecharge(c *gin.Context) {
 // the refunded amount owed back to the customer and the forfeited amount.
 // POST /wallets/:id/close
 func (h *WalletHandler) Close(c *gin.Context) {
+	// Closing a wallet refunds its paid residue to the customer (money out) —
+	// owner/admin only (API keys bypass).
+	if !requireManagerRole(c) {
+		return
+	}
 	tenantID, ctx, ok := walletTenantCtx(c)
 	if !ok {
 		return
