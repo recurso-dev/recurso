@@ -176,6 +176,12 @@ func (h *WebhookHandler) handleRazorpayPaymentCaptured(c *gin.Context, event Raz
 		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
 		return
 	}
+	if !invoiceBelongsToWebhookConn(ctx, inv) {
+		h.logger.Warn("BYO razorpay webhook referenced another tenant's invoice — ignoring",
+			"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
+		return
+	}
 
 	ctxWithTenant := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
 	transitioned, err := h.subService.MarkInvoicePaid(ctxWithTenant, invoiceID)
@@ -384,6 +390,12 @@ func (h *WebhookHandler) handleRazorpayPaymentFailed(c *gin.Context, event Razor
 			"error", err,
 		)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
+		return
+	}
+	if !invoiceBelongsToWebhookConn(ctx, inv) {
+		h.logger.Warn("BYO razorpay webhook referenced another tenant's invoice — ignoring",
+			"invoice_id", inv.ID, "conn_tenant", webhookConnTenant(ctx), "invoice_tenant", inv.TenantID)
+		c.JSON(http.StatusOK, gin.H{"status": "ignored", "reason": "unknown invoice_id"})
 		return
 	}
 
