@@ -767,3 +767,21 @@ func TestCreditNote_Approve_NoRevertAfterGatewayCharged(t *testing.T) {
 		t.Errorf("re-approval after a charged refund must NOT refund again; got %d gateway call(s)", len(f.gateway.calls))
 	}
 }
+
+// TestCreditNote_MakerChecker_MemberCreatesPending is the S1 security fix: a
+// low-privilege `member` is a MAKER, not a checker — a member-created refund
+// must land in pending_approval and NOT fire a gateway refund. Before the fix
+// only `support` was gated, so a member could self-issue refunds (money out).
+func TestCreditNote_MakerChecker_MemberCreatesPending(t *testing.T) {
+	f := newCNFixture(paidInvoice(10000, "INR", "pay_123"))
+	cn, err := f.svc.Create(context.Background(), f.tenantID, uuid.New(), "member", refundRequest(f, 5000, "INR"))
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if cn.Status != domain.CreditNoteStatusPending {
+		t.Errorf("member-created refund status = %q, want pending_approval (a member must not self-issue money out)", cn.Status)
+	}
+	if len(f.gateway.calls) != 0 {
+		t.Errorf("a member-created refund must not touch the gateway before approval; got %d call(s)", len(f.gateway.calls))
+	}
+}

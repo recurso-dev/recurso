@@ -177,10 +177,15 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 
 	ref := fmt.Sprintf("CN-%d", time.Now().Unix())
 
-	// Support users are makers; admins/owners are checkers (can self-issue).
-	// API keys (creatorID == nil or role "") bypass maker-checker so automations don't break.
+	// Maker-checker: only admins/owners (the checkers) may self-issue a credit
+	// note / refund. EVERY other authenticated USER role — support, member, or
+	// anything not admin/owner — is a maker and lands in Pending, needing an
+	// admin/owner approval before a gateway refund fires. (Previously only
+	// "support" was gated, so a low-privilege "member" could self-issue refunds
+	// = money out with no sign-off.) API keys (empty role / nil creator) bypass
+	// so automations don't break.
 	initialStatus := domain.CreditNoteStatusIssued
-	if creatorRole == string(domain.RoleSupport) {
+	if creatorRole != "" && creatorRole != string(domain.RoleAdmin) && creatorRole != string(domain.RoleOwner) {
 		initialStatus = domain.CreditNoteStatusPending
 	}
 
