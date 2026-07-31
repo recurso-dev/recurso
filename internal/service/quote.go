@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
@@ -19,19 +21,41 @@ type QuoteService struct {
 	// and nil-safe, wired via SetLedgerPoster; without it a converted invoice
 	// carries no ledger leg and its later payment leaves AR unbalanced.
 	ledger invoiceLedgerPoster
+	// Concrete repos + tx manager for the atomic create-then-claim conversion
+	// path (SetTxManager). Required in production: the quotes.invoice_id FK is
+	// non-deferrable, so the invoice must be inserted and the quote claimed in
+	// one transaction. Nil in unit tests (mock repos) → the legacy path runs.
+	txManager     *db.TxManager
+	invRepoImpl   *db.InvoiceRepository
+	quoteRepoImpl *db.QuoteRepository
 }
 
 func NewQuoteService(quoteRepo port.QuoteRepository, invoiceRepo port.InvoiceRepository) *QuoteService {
-	return &QuoteService{
+	s := &QuoteService{
 		quoteRepo:   quoteRepo,
 		invoiceRepo: invoiceRepo,
 	}
+	if ir, ok := invoiceRepo.(*db.InvoiceRepository); ok {
+		s.invRepoImpl = ir
+	}
+	if qr, ok := quoteRepo.(*db.QuoteRepository); ok {
+		s.quoteRepoImpl = qr
+	}
+	return s
 }
 
 // SetLedgerPoster wires the ledger so ConvertToInvoice posts the converted
 // invoice's double-entry leg, matching every other invoice-creating path.
 func (s *QuoteService) SetLedgerPoster(ledger invoiceLedgerPoster) {
 	s.ledger = ledger
+}
+
+// SetTxManager enables the atomic create-then-claim conversion path. Without a
+// tx manager the legacy claim-then-create path runs (fine for mock repos, but
+// it violates the non-deferrable quotes.invoice_id FK against real Postgres) —
+// so production MUST wire this.
+func (s *QuoteService) SetTxManager(tm *db.TxManager) {
+	s.txManager = tm
 }
 
 // CreateQuote creates a new quote
@@ -223,17 +247,9 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 		return nil, ErrCannotConvertQuote
 	}
 
-	// Atomically CLAIM the quote for conversion (stamp the pre-generated invoice
-	// id) before creating the invoice. Without this, two concurrent conversions
-	// both pass CanConvertToInvoice and each create an invoice for one quote.
+	// Build the invoice from the quote first (its id is fixed up front so the
+	// lines reference it). It is persisted and the quote claimed together below.
 	invID := uuid.New()
-	claimed, err := s.quoteRepo.ClaimForConversion(ctx, id, tenantID, invID)
-	if err != nil {
-		return nil, err
-	}
-	if !claimed {
-		return nil, ErrCannotConvertQuote
-	}
 
 	// Create invoice from quote
 	dueDate := time.Now().AddDate(0, 0, 30) // Net 30
@@ -278,10 +294,44 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
-		// Release the claim so the accepted quote can be converted again.
-		_ = s.quoteRepo.ReleaseConversion(ctx, id, tenantID)
-		return nil, err
+	// Persist the invoice and atomically claim the quote in ONE transaction. The
+	// quotes.invoice_id FK is non-deferrable, so the invoice row must exist
+	// before the claim stamps its id (claim-then-create violates the FK against
+	// real Postgres — quote conversion was silently broken there). Doing both in
+	// a tx also means a lost race rolls back the invoice AND its gapless number,
+	// leaving no orphan invoice and no number gap.
+	if s.txManager != nil && s.invRepoImpl != nil && s.quoteRepoImpl != nil {
+		if err := s.txManager.WithTx(ctx, func(tx *sql.Tx) error {
+			if err := s.invRepoImpl.CreateWithTx(ctx, tx, invoice); err != nil {
+				return fmt.Errorf("create converted invoice: %w", err)
+			}
+			claimed, cErr := s.quoteRepoImpl.ClaimForConversionWithTx(ctx, tx, id, tenantID, invID)
+			if cErr != nil {
+				return cErr
+			}
+			if !claimed {
+				// Lost the race or already converted — roll back the invoice.
+				return ErrCannotConvertQuote
+			}
+			return nil
+		}); err != nil {
+			return nil, err
+		}
+	} else {
+		// Legacy path for mock/partial wiring (unit tests): claim then create.
+		// Only safe where no real FK is enforced.
+		claimed, cErr := s.quoteRepo.ClaimForConversion(ctx, id, tenantID, invID)
+		if cErr != nil {
+			return nil, cErr
+		}
+		if !claimed {
+			return nil, ErrCannotConvertQuote
+		}
+		if err := s.invoiceRepo.Create(ctx, invoice); err != nil {
+			// Release the claim so the accepted quote can be converted again.
+			_ = s.quoteRepo.ReleaseConversion(ctx, id, tenantID)
+			return nil, err
+		}
 	}
 
 	// Post the invoice's double-entry leg, exactly like every other

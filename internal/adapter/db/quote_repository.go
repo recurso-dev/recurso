@@ -88,6 +88,23 @@ func (r *QuoteRepository) ClaimForConversion(ctx context.Context, id, tenantID, 
 	return n == 1, err
 }
 
+// ClaimForConversionWithTx is ClaimForConversion inside an existing transaction.
+// The quotes.invoice_id FK to invoices is NOT deferrable, so the invoice row
+// must be INSERTed earlier in the same transaction before this stamps its id —
+// otherwise the UPDATE violates quotes_invoice_id_fkey. See
+// QuoteService.ConvertToInvoice for the create-then-claim ordering.
+func (r *QuoteRepository) ClaimForConversionWithTx(ctx context.Context, tx *sql.Tx, id, tenantID, invoiceID uuid.UUID) (bool, error) {
+	res, err := tx.ExecContext(ctx,
+		`UPDATE quotes SET invoice_id = $1, updated_at = NOW()
+		 WHERE id = $2 AND tenant_id = $3 AND status = $4 AND invoice_id IS NULL`,
+		invoiceID, id, tenantID, domain.QuoteStatusAccepted)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 func (r *QuoteRepository) ReleaseConversion(ctx context.Context, id, tenantID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE quotes SET invoice_id = NULL, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
