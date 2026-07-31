@@ -75,13 +75,15 @@ func (m *mockInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, in
 
 type mockGateway struct {
 	port.PaymentGateway
-	result *port.PaymentResult
-	err    error
-	calls  int
+	result     *port.PaymentResult
+	err        error
+	calls      int
+	lastAmount int64 // amount passed to the most recent RetryPayment
 }
 
 func (m *mockGateway) RetryPayment(ctx context.Context, invoiceID string, amount int64, currency string) (*port.PaymentResult, error) {
 	m.calls++
+	m.lastAmount = amount
 	return m.result, m.err
 }
 
@@ -216,6 +218,38 @@ func TestRetryWorker_PaymentSuccess(t *testing.T) {
 	}
 	if dunningRepo.history[0].Reward != 1.0 {
 		t.Errorf("expected reward=1.0, got %f", dunningRepo.history[0].Reward)
+	}
+}
+
+// Regression: dunning retries must collect only the OUTSTANDING balance
+// (Total − wallet/credit already applied), not the full invoice Total. Charging
+// Total over-charged the customer's card by the wallet portion drained at
+// invoice generation. Mirrors renewal.go's amountDue.
+func TestRetryWorker_ChargesOutstandingNotTotal(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID:                uuid.New(),
+		TenantID:          uuid.New(),
+		InvoiceNumber:     "INV-WALLET",
+		Total:             10000,
+		AmountPaid:        3000, // wallet drained at invoice generation
+		Currency:          "USD",
+		Status:            domain.InvoiceStatusPastDue,
+		RetryCount:        1,
+		DunningActionID:   "24h",
+		DunningContextKey: "USD:insufficient_funds",
+		DunningManagedBy:  "worker",
+		NextRetryAt:       &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: true, PaymentID: "pay_x"}}
+	retrySvc := service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)})
+	w := NewRetryWorker(repo, retrySvc, gw, &mockNotifier{})
+
+	w.processRetries(context.Background())
+
+	if gw.lastAmount != 7000 {
+		t.Errorf("retry charged %d, want 7000 (Total 10000 − wallet 3000); charging Total over-charges the customer", gw.lastAmount)
 	}
 }
 

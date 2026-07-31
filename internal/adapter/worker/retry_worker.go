@@ -107,6 +107,17 @@ func (w *RetryWorker) SetChargerRouter(router savedCardChargerRouter) {
 // method (charged off-session) when one exists, and falling back to the
 // interactive gateway retry otherwise.
 func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*port.PaymentResult, error) {
+	// Collect only the OUTSTANDING balance — Total net of any wallet drain and
+	// account credit already applied (mirrors renewal.go's amountDue). Charging
+	// the full inv.Total here over-charged the customer's card by the wallet/
+	// credit portion already settled at invoice generation.
+	amountDue := inv.Total - inv.AmountPaid - inv.CreditApplied
+	if amountDue <= 0 {
+		// Fully covered by wallet/credit — nothing left to collect, so treat it as
+		// paid rather than charging the card for an amount that isn't owed.
+		return &port.PaymentResult{Success: true, PaymentID: "no_charge_due"}, nil
+	}
+
 	if w.savedCharger != nil && w.customerLookup != nil {
 		stripeCustomerID, paymentMethodID, connID, err := w.customerLookup.GetSavedPaymentMethod(ctx, inv.CustomerID)
 		if err == nil && stripeCustomerID != "" && paymentMethodID != "" {
@@ -118,17 +129,17 @@ func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*
 					// Can't reach the saved card's gateway; fall through to the
 					// interactive retry path rather than charge the wrong account.
 					slog.Warn("retry: could not resolve saved-card gateway; using interactive retry", "invoice_id", inv.ID, "error", rerr)
-					return w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
+					return w.gateway.RetryPayment(ctx, inv.ID.String(), amountDue, inv.Currency)
 				}
 				charger = c
 			}
 			// Idempotent per attempt: a worker re-run for the same attempt won't
 			// double-charge.
 			key := fmt.Sprintf("retry-%s-%d", inv.ID, inv.RetryCount)
-			return charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, inv.Total, inv.Currency, inv.ID.String(), key)
+			return charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amountDue, inv.Currency, inv.ID.String(), key)
 		}
 	}
-	return w.gateway.RetryPayment(ctx, inv.ID.String(), inv.Total, inv.Currency)
+	return w.gateway.RetryPayment(ctx, inv.ID.String(), amountDue, inv.Currency)
 }
 
 // Start runs the worker loop.
