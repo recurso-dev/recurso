@@ -764,6 +764,36 @@ func (s *LedgerService) RecordDowngradeCredit(ctx context.Context, tenantID uuid
 	return s.postEntityTransfer(ctx, ent, deferredAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeCredit, creditNoteID, description)
 }
 
+// RecordDowngradeRevenueReversal books the portion of a downgrade credit that
+// corresponds to revenue ALREADY recognized (recognition ran ahead of the
+// proration boundary, so Deferred no longer holds the full net credit). It
+// reverses that portion out of Recognized Revenue rather than Deferred, so the
+// Deferred liability is never debited below what its recognition schedule still
+// holds — which would drive it wrong-sign (ENG-191d):
+//
+//	Debit:  Recognized Revenue (Income) — claw back the recognized-but-now-credited service
+//	Credit: Customer Credit (Liability) — the credit we now owe the customer
+//
+// It pairs with RecordDowngradeCredit (DR Deferred, the still-unrecognized part);
+// together the two debits sum to the net credit and the customer is credited the
+// full net regardless of how much had already been recognized.
+func (s *LedgerService) RecordDowngradeRevenueReversal(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, creditNoteID uuid.UUID, amount int64, description string) (uuid.UUID, error) {
+	amt, err := ledgerAmount(amount)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("downgrade revenue reversal %s: %w", creditNoteID, err)
+	}
+	ent := s.resolveEntity(ctx, tenantID, entityID)
+	recognizedAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeRecognizedRevenue, "Recognized Revenue", domain.AccountTypeRevenue)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	creditAccountID, err := s.getOrCreateEntityAccount(ctx, tenantID, ent, domain.AccountCodeCustomerCredit, "Customer Credit", domain.AccountTypeLiability)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	return s.postEntityTransfer(ctx, ent, recognizedAccountID, creditAccountID, amt, domain.LedgerCodeDowngradeRevenueReversal, creditNoteID, description)
+}
+
 // RecordAdjustmentCreditIssued books a manually-issued adjustment credit note as
 // an account-credit liability (ENG-154).
 //
