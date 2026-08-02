@@ -43,6 +43,17 @@ const (
 	// tripwire, not just a report.
 	DiscrepancyLedgerUnbalanced = "ledger_unbalanced"
 	DiscrepancyAbnormalBalance  = "abnormal_account_balance"
+	// Deferred Revenue must always be at least the revenue still scheduled to be
+	// recognized (the sum of pending recognition events) — Deferred funds exactly
+	// that future recognition, plus any recorded-but-unpaid invoice deferrals.
+	// A Deferred balance BELOW the scheduled remainder means a posting drained
+	// Deferred past what its schedule holds (e.g. a downgrade credit debiting the
+	// full net when recognition had already run ahead). Unlike the abnormal-sign
+	// check, this survives aggregation across subscriptions/entities: the over-draw
+	// lowers Deferred without lowering the pending-event total, so the inequality
+	// breaks even when other subscriptions' positive Deferred masks a single
+	// account going net-debit.
+	DiscrepancyDeferredBelowScheduled = "deferred_below_scheduled_revenue"
 )
 
 // ReconciliationRepository is the narrow, read-only view of the ledger store
@@ -55,6 +66,8 @@ type ReconciliationRepository interface {
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
 	// GetTrialBalanceLines feeds the double-entry integrity assertion.
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
+	// SumPendingRecognitionEvents feeds the deferred-vs-scheduled invariant.
+	SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error)
 
 	// TigerBeetle comparison inputs (all read-only).
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error)
@@ -196,12 +209,37 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 	if err != nil {
 		return nil, fmt.Errorf("trial balance for tenant %s: %w", tenantID, err)
 	}
-	integrity := trialBalanceDiscrepancies(finalizeTrialBalance(tenantID, tbLines, time.Now().UTC()))
+	tb := finalizeTrialBalance(tenantID, tbLines, time.Now().UTC())
+	integrity := trialBalanceDiscrepancies(tb)
 	if len(integrity) > 0 {
 		report.Discrepancies = append(integrity, report.Discrepancies...)
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity)
+	// Deferred-vs-scheduled invariant: the Deferred Revenue balance must be at
+	// least the revenue still scheduled to be recognized. Prepended (like the
+	// other integrity findings) so it survives the maxListed truncation.
+	deferredShort := 0
+	pending, err := s.repo.SumPendingRecognitionEvents(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("pending recognition events for tenant %s: %w", tenantID, err)
+	}
+	var deferredBalance int64
+	for _, l := range tb.Lines {
+		if l.Code == domain.AccountCodeDeferredRevenue {
+			deferredBalance += l.Balance
+		}
+	}
+	if pending > deferredBalance {
+		report.Discrepancies = append([]ReconciliationDiscrepancy{{
+			Type:           DiscrepancyDeferredBelowScheduled,
+			AccountCode:    domain.AccountCodeDeferredRevenue,
+			ExpectedAmount: pending,         // Deferred must be at least this
+			FoundAmount:    deferredBalance, // what it actually is
+		}}, report.Discrepancies...)
+		deferredShort = 1
+	}
+
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity) + deferredShort
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"
