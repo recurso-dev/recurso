@@ -434,19 +434,37 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		if taxCredit < 0 {
 			taxCredit = 0
 		}
+		// Split the net credit by what the recognition schedule can still give
+		// back. deferredPortion is the still-unrecognized part (safe to pull from
+		// Deferred); revenueReversal is the part recognition already booked as
+		// revenue and must be clawed back out of Recognized Revenue. Without this
+		// split, debiting the full net out of Deferred when the schedule holds less
+		// drives Deferred wrong-sign and leaves recognized revenue overstated
+		// (ENG-191d). If revrec is unavailable we can't know the split, so we keep
+		// the conservative full-Deferred behavior.
+		deferredPortion := netCredit
 		if s.revrecService != nil && netCredit > 0 {
 			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, netCredit); err != nil {
 				s.logger.Error("downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
-			} else if reduced != netCredit {
-				s.logger.Warn("downgrade schedule reduced less than the net credit (deferred/credit may need reconciliation)",
-					"subscription_id", subscriptionID, "net_credit", netCredit, "reduced", reduced)
+			} else {
+				deferredPortion = reduced
 			}
 		}
+		revenueReversal := netCredit - deferredPortion
+		if revenueReversal < 0 {
+			revenueReversal = 0
+		}
 		if s.ledger != nil {
-			if netCredit > 0 {
-				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.EntityID, creditNote.ID, netCredit, "Plan downgrade credit (net)"); err != nil {
+			if deferredPortion > 0 {
+				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.EntityID, creditNote.ID, deferredPortion, "Plan downgrade credit (net, deferred portion)"); err != nil {
 					s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
-						"credit_note_id", creditNote.ID, "amount", netCredit, "error", err)
+						"credit_note_id", creditNote.ID, "amount", deferredPortion, "error", err)
+				}
+			}
+			if revenueReversal > 0 {
+				if _, err := s.ledger.RecordDowngradeRevenueReversal(ctx, tenantID, creditNote.EntityID, creditNote.ID, revenueReversal, "Plan downgrade credit (net, recognized portion)"); err != nil {
+					s.logger.Error("downgrade revenue reversal ledger post failed — reconciliation needed",
+						"credit_note_id", creditNote.ID, "amount", revenueReversal, "error", err)
 				}
 			}
 			if taxCredit > 0 {

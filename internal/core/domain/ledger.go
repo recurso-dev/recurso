@@ -207,6 +207,17 @@ const LedgerCodeCreditExpiry uint16 = 18
 // merchant-initiated return of funds, not an involuntary claw-back.
 const LedgerCodePaymentReversal uint16 = 19
 
+// LedgerCodeDowngradeRevenueReversal books the portion of a mid-period downgrade
+// credit that corresponds to revenue ALREADY recognized: DR Recognized Revenue /
+// CR Customer Credit. It is the counterpart to LedgerCodeDowngradeCredit (code
+// 16, DR Deferred / CR Customer Credit): when recognition has run ahead of the
+// proration boundary the schedule no longer holds the full net credit, so the
+// unrecognized part comes out of Deferred (code 16) and the already-recognized
+// remainder is clawed back out of Recognized Revenue here — keeping Deferred from
+// being driven wrong-sign. Distinct code so it stays idempotent per (reference_id,
+// code).
+const LedgerCodeDowngradeRevenueReversal uint16 = 21
+
 // LedgerCodeCreditVoid books an account credit note voided by an operator before
 // its balance was spent: DR Customer Credit / CR Credits & Adjustments — the
 // same reversal-of-issuance legs as an expiry write-off (code 18), but distinct
