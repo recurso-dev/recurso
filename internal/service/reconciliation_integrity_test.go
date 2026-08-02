@@ -64,6 +64,74 @@ func TestTrialBalanceDiscrepancies_AbnormalAccount(t *testing.T) {
 	}
 }
 
+// TestReconciliationRun_DeferredBelowScheduled flags the case where Deferred
+// Revenue has been drained below the revenue still scheduled to be recognized —
+// the class the downgrade-credit over-draw produced, which the abnormal-sign
+// check misses because the account stays positive (masked by other
+// subscriptions). The books balance and no account is wrong-sign, so ONLY the
+// new invariant fires.
+func TestReconciliationRun_DeferredBelowScheduled(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		nonDraft: 1, paid: 1,
+		// Balanced, non-abnormal: Cash debit 3000 == Deferred credit 3000. Deferred
+		// carries a healthy +3000 credit balance.
+		trialBalanceLines: []domain.TrialBalanceLine{
+			{Code: domain.AccountCodeCash, Type: domain.AccountTypeAsset, Debits: 3000, Credits: 0},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Debits: 0, Credits: 3000},
+		},
+		// ...but 5000 of revenue is still scheduled to be recognized. Deferred is
+		// 2000 short of what its schedule holds.
+		pendingEvents: 5000,
+	}
+	svc := NewReconciliationService(nil, nil)
+	svc.repo = repo
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.TotalDiscrepancies != 1 {
+		t.Fatalf("want exactly 1 discrepancy, got %d: %+v", report.TotalDiscrepancies, report.Discrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyDeferredBelowScheduled {
+		t.Fatalf("want %q, got %q", DiscrepancyDeferredBelowScheduled, d.Type)
+	}
+	if d.ExpectedAmount != 5000 || d.FoundAmount != 3000 {
+		t.Errorf("finding = scheduled %d / deferred %d, want 5000 / 3000", d.ExpectedAmount, d.FoundAmount)
+	}
+	if d.AccountCode != domain.AccountCodeDeferredRevenue {
+		t.Errorf("account code = %d, want %d", d.AccountCode, domain.AccountCodeDeferredRevenue)
+	}
+}
+
+// TestReconciliationRun_DeferredCoversScheduled: when Deferred is at least the
+// scheduled remainder (the healthy invariant), no finding fires — including the
+// common case where Deferred EXCEEDS pending because a recorded invoice is not
+// yet paid (funded Deferred, no schedule yet).
+func TestReconciliationRun_DeferredCoversScheduled(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		nonDraft: 2, paid: 1,
+		trialBalanceLines: []domain.TrialBalanceLine{
+			{Code: domain.AccountCodeCash, Type: domain.AccountTypeAsset, Debits: 8000, Credits: 0},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Debits: 0, Credits: 8000},
+		},
+		pendingEvents: 5000, // <= 8000 Deferred (3000 is an unpaid recorded deferral)
+	}
+	svc := NewReconciliationService(nil, nil)
+	svc.repo = repo
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, d := range report.Discrepancies {
+		if d.Type == DiscrepancyDeferredBelowScheduled {
+			t.Fatalf("Deferred (8000) covers scheduled (5000) but got a shortfall finding: %+v", d)
+		}
+	}
+}
+
 // TestReconciliationRun_SurfacesIntegrityFindings proves the integrity check is
 // wired into Run and its findings are prepended (survive truncation).
 func TestReconciliationRun_SurfacesIntegrityFindings(t *testing.T) {
@@ -80,13 +148,14 @@ func TestReconciliationRun_SurfacesIntegrityFindings(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	// The lone Deferred line (net debit, no offset) is both unbalanced and
-	// abnormal -> two integrity findings, prepended ahead of any billing drift.
+	// The lone Deferred line (net debit, no offset) is unbalanced, abnormal, AND
+	// below its scheduled recognition (0) — three integrity findings, all prepended
+	// ahead of any billing drift.
 	if report.TotalDiscrepancies < 2 || len(report.Discrepancies) < 2 {
 		t.Fatalf("expected integrity discrepancies in report, got total=%d list=%d", report.TotalDiscrepancies, len(report.Discrepancies))
 	}
 	first := report.Discrepancies[0].Type
-	if first != DiscrepancyLedgerUnbalanced && first != DiscrepancyAbnormalBalance {
+	if first != DiscrepancyLedgerUnbalanced && first != DiscrepancyAbnormalBalance && first != DiscrepancyDeferredBelowScheduled {
 		t.Errorf("integrity finding not prepended: first = %q", first)
 	}
 }

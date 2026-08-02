@@ -38,6 +38,9 @@ type mockReconciliationRepo struct {
 	trialBalanceLines []domain.TrialBalanceLine
 	trialBalanceErr   error
 
+	pendingEvents    int64
+	pendingEventsErr error
+
 	accounts    []*domain.LedgerAccount
 	accountsErr error
 
@@ -94,6 +97,13 @@ func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenan
 		return nil, m.trialBalanceErr
 	}
 	return m.trialBalanceLines, nil
+}
+
+func (m *mockReconciliationRepo) SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	if m.pendingEventsErr != nil {
+		return 0, m.pendingEventsErr
+	}
+	return m.pendingEvents, nil
 }
 
 func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error) {

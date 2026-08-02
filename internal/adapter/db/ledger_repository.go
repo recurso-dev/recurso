@@ -92,6 +92,24 @@ func (r *LedgerRepository) GetDeferredRollforward(ctx context.Context, tenantID 
 	return opening, added, released, nil
 }
 
+// SumPendingRecognitionEvents returns the total (net) revenue still scheduled to
+// be recognized for a tenant: the sum of every pending recognition event across
+// all its active schedules. The reconciler compares this against the Deferred
+// Revenue balance — Deferred must always be at least this large, since it funds
+// exactly this future recognition (plus any recorded-but-unpaid invoice
+// deferrals). A Deferred balance below it means a posting drained Deferred past
+// what the schedule holds (e.g. a downgrade credit over-debiting Deferred).
+func (r *LedgerRepository) SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	var total int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(amount), 0)::bigint FROM recognition_events
+		 WHERE tenant_id = $1 AND status = 'pending'`, tenantID).Scan(&total)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to sum pending recognition events: %w", err)
+	}
+	return total, nil
+}
+
 // GetGeneralLedgerRows returns every posted transaction for a tenant, flattened
 // with both account codes and names, ordered oldest first. Tenant-scoped via the
 // debit account (both sides of a transfer always belong to the same tenant).
