@@ -1,5 +1,53 @@
 # Progress log
 
+## 2026-08-02 overnight session — latent revrec bug + reconciler tripwire
+
+Two PRs, both merged on green CI, each with a failing-first oracle. The thread:
+a warning the invariant harness had been *logging but not failing on* turned out
+to be a real latent bug, and the fix came paired with a standing guardrail so
+the class can't recur silently.
+
+**#413 — downgrade credit no longer drives Deferred Revenue wrong-sign
+(latent, revrec).** A mid-period plan downgrade booked the full net proration
+credit as `DR Deferred / CR Customer-Credit` regardless of how much the
+recognition schedule still held. When recognition had run ahead of the
+proration boundary (lumpy/upfront recognition, or a fully-elapsed period),
+Deferred no longer held it — so Deferred went **wrong-sign (a negative
+liability)** and Recognized Revenue was left **overstated**. The trial balance
+still netted to zero, so aggregated across subscriptions the harness only
+logged `WARN downgrade schedule reduced less than the net credit … reduced=0`
+and stayed green. Fix: split the net credit by what the schedule can actually
+give back — the still-unrecognized part drains Deferred (code 16), the
+already-recognized remainder is clawed back out of Recognized Revenue via a new
+`RecordDowngradeRevenueReversal` (`LedgerCodeDowngradeRevenueReversal = 21`).
+Deferred is never over-drawn; the Customer-Credit liability is unchanged.
+Oracle `TestDowngradeCreditRevenueReversal_Postgres`: fully-recognize then
+downgrade → old Deferred −50000 / RecRev 200000; fixed Deferred 0 / RecRev
+150000. The sibling paths were already correct — `UnwindOnRefund` clamps the
+reversal to what's deferred, and `UnwindOnCancel` derives the forfeit from the
+pending events themselves; downgrade was the lone outlier.
+
+**#414 — reconciler flags Deferred drained below scheduled recognition
+(standing invariant).** New discrepancy `deferred_below_scheduled_revenue`:
+Deferred Revenue must always be at least the sum of pending recognition events.
+Unlike the abnormal-sign check (which needs a single account to go net-debit,
+and is masked when other subscriptions' positive Deferred hides one going
+negative), this compares two independently-computed totals, so a net shortfall
+survives aggregation across subscriptions and entities. Wired into both
+production reconciliation and the invariant-harness grade. Proven
+never-false-positive: the full randomized harness stays green with it active
+(the gap between Deferred and pending is exactly the recorded-but-unpaid
+invoice deferrals, always ≥ 0). Unit tests cover both the shortfall and the
+covered (incl. unpaid-slack) cases.
+
+**Verified non-findings (left unchanged):** the `big.Rat` rating engine
+(per-unit / graduated / volume / percentage / graduated-percentage) rounds
+exactly once on the final money amount — no mischarge; the TaxJar float
+`dollarsToCents`/`centsToDollars` is safe within its USD-only domain (no
+currency-exponent bug). Convergence still holds: reachable correctness bugs are
+essentially exhausted; the remainder is product decisions and founder-blocked
+credential work.
+
 ## 2026-07-31 autonomous session — money-path correctness + safety-net hardening
 
 ~39 PRs merged (#382–#404), all on green CI, each fix with a failing-first
