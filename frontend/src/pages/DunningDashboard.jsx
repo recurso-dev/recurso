@@ -52,6 +52,12 @@ const lastTwelveMonths = () => {
   return months;
 };
 
+// "USD:card_declined" → "USD · card declined" — the segment key, in words.
+const segmentLabel = (k) => (k || "").replace(":", " · ").replace(/_/g, " ");
+
+const fmtWhen = (x) =>
+  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
 const DunningDashboard = () => {
   const {
     data,
@@ -157,22 +163,22 @@ const DunningDashboard = () => {
     <div>
       <PageHeader
         title="Smart Dunning"
-        description="RL-based payment retry optimization — epsilon-greedy multi-armed bandit."
+        description="Failed-payment retries that learn the best timing from your own outcomes."
         actions={
           <Button variant="outline" asChild>
             <Link to="/dunning/campaigns">
               <Settings2 className="h-4 w-4" />
+              Manage campaigns
+            </Link>
+          </Button>
+        }
+      />
 
       {loadError && (
         <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
           {loadError} — refresh to retry.
         </p>
       )}
-              Manage campaigns
-            </Link>
-          </Button>
-        }
-      />
 
       {/* Overview KPIs */}
       {loading ? (
@@ -244,9 +250,10 @@ const DunningDashboard = () => {
       {/* Arm Performance by Context */}
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle className="text-base">Arm Performance by Context</CardTitle>
+          <CardTitle className="text-base">Retry timing performance</CardTitle>
           <CardDescription>
-            Each context (currency:error_code) learns independently which retry interval works best.
+            Each segment (currency &middot; failure code) independently learns which retry
+            interval recovers most &mdash; a multi-armed bandit over your real outcomes.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-0 pb-0">
@@ -265,10 +272,10 @@ const DunningDashboard = () => {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableHead className="pl-6">Context</TableHead>
-                  <TableHead>Arm</TableHead>
-                  <TableHead className="text-right">Avg Reward</TableHead>
-                  <TableHead className="text-right">Samples</TableHead>
+                  <TableHead className="pl-6">Segment</TableHead>
+                  <TableHead>Retry timing</TableHead>
+                  <TableHead className="text-right">Success rate</TableHead>
+                  <TableHead className="text-right">Attempts</TableHead>
                   <TableHead className="pr-6">Status</TableHead>
                 </TableRow>
               </TableHeader>
@@ -282,10 +289,10 @@ const DunningDashboard = () => {
                     <TableRow key={`${contextKey}-${arm.action_id}`} className="hover:bg-transparent">
                       {idx === 0 && (
                         <TableCell
-                          className="pl-6 font-mono text-sm text-muted-foreground align-top"
+                          className="pl-6 text-sm text-muted-foreground align-top"
                           rowSpan={arms.length}
                         >
-                          {contextKey}
+                          {segmentLabel(contextKey)}
                         </TableCell>
                       )}
                       <TableCell className="font-mono text-sm text-foreground">
@@ -341,22 +348,22 @@ const DunningDashboard = () => {
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
                   <TableHead className="pl-6">Time</TableHead>
                   <TableHead>Invoice</TableHead>
-                  <TableHead>Context</TableHead>
-                  <TableHead>Action</TableHead>
+                  <TableHead>Segment</TableHead>
+                  <TableHead>Retry timing</TableHead>
                   <TableHead className="pr-6">Outcome</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {history.map((h) => (
                   <TableRow key={h.id} className="hover:bg-transparent">
-                    <TableCell className="pl-6 text-sm text-muted-foreground">
-                      {new Date(h.created_at).toLocaleString()}
+                    <TableCell className="pl-6 whitespace-nowrap text-sm text-muted-foreground">
+                      {fmtWhen(h.created_at)}
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">
-                      {h.invoice_id?.substring(0, 8)}...
+                    <TableCell className="font-mono text-sm text-muted-foreground" title={h.invoice_id}>
+                      {h.invoice_id?.substring(0, 8)}…
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground">
-                      {h.context_key}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {segmentLabel(h.context_key)}
                     </TableCell>
                     <TableCell className="font-mono text-sm text-foreground">
                       {h.action_id}

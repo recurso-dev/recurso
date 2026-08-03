@@ -29,6 +29,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -36,9 +43,6 @@ const MONTHS = [
 ];
 
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
-
-const selectClass =
-  "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export default function MonthEndClose() {
   const now = new Date();
@@ -98,7 +102,30 @@ export default function MonthEndClose() {
   const years = [];
   for (let y = now.getFullYear() - 3; y <= now.getFullYear() + 1; y++) years.push(y);
 
-  const tb = pack?.trial_balance;
+  const tbRaw = pack?.trial_balance;
+  // Same rollup as the Trial Balance page: per-customer AR sub-accounts share a
+  // name+code, so collapse identical lines and keep the member count.
+  const tb = tbRaw
+    ? {
+        ...tbRaw,
+        lines: (() => {
+          const byKey = new Map();
+          for (const l of tbRaw.lines || []) {
+            const key = `${l.code}|${l.name}`;
+            const agg = byKey.get(key);
+            if (!agg) byKey.set(key, { ...l, sub_count: 1 });
+            else {
+              agg.debits += l.debits;
+              agg.credits += l.credits;
+              agg.balance += l.balance;
+              agg.abnormal = agg.abnormal || l.abnormal;
+              agg.sub_count += 1;
+            }
+          }
+          return [...byKey.values()].sort((a, b) => a.code - b.code);
+        })(),
+      }
+    : tbRaw;
   const recon = pack?.reconciliation;
   const rollforward = pack?.deferred_revenue?.rollforward;
   const recognition = pack?.deferred_revenue?.recognition;
@@ -115,28 +142,26 @@ export default function MonthEndClose() {
         description="One evidence pack per period: the books balance, billing ties to the ledger, and deferred revenue rolls forward."
         actions={
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="close-month">Month</label>
-            <select
-              id="close-month"
-              className={selectClass}
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>{m}</option>
-              ))}
-            </select>
-            <label className="sr-only" htmlFor="close-year">Year</label>
-            <select
-              id="close-year"
-              className={selectClass}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+              <SelectTrigger className="w-[130px]" aria-label="Month">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-[92px]" aria-label="Year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button variant="outline" onClick={exportGL} disabled={exporting}>
               <Download className="h-4 w-4" />
               {exporting ? "Exporting…" : "GL (CSV)"}
@@ -304,6 +329,9 @@ export default function MonthEndClose() {
                         <TableCell className="text-foreground">
                           <span className="font-mono text-xs text-muted-foreground">{l.code}</span>{" "}
                           {l.name}
+                          {l.sub_count > 1 && (
+                            <span className="ml-1.5 text-xs text-muted-foreground">· {l.sub_count} sub-accounts</span>
+                          )}
                           {l.abnormal && (
                             <Badge variant="destructive" className="ml-2">abnormal</Badge>
                           )}
@@ -330,7 +358,7 @@ export default function MonthEndClose() {
 
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ClipboardCheck className="h-3.5 w-3.5" />
-              Generated {pack.generated_at ? new Date(pack.generated_at).toLocaleString() : "—"}.
+              Generated {pack.generated_at ? new Date(pack.generated_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}.
               Nothing is persisted — closing the period stays your decision.
             </p>
           </div>

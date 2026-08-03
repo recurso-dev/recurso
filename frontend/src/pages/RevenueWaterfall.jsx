@@ -1,6 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { BarChart } from "@tremor/react";
 import { TrendingUp } from "lucide-react";
+
+import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 
 import { endpoints } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -9,7 +12,7 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, fromMinorUnits } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -18,15 +21,19 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
-
-const selectClass =
-  "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export default function RevenueWaterfall() {
   const now = new Date();
@@ -60,6 +67,27 @@ export default function RevenueWaterfall() {
   const money = (minor) => formatCurrency(minor, cur);
 
   const buckets = waterfall?.buckets || [];
+  // The chart is the waterfall — recognized stacked against scheduled, month by
+  // month, in major units for the axis.
+  const chartData = buckets.map((b) => ({
+    month: `${(MONTHS[b.month - 1] || "").slice(0, 3)} ${String(b.year).slice(2)}`,
+    Recognized: fromMinorUnits(b.recognized || 0, cur),
+    Scheduled: fromMinorUnits(b.scheduled || 0, cur),
+  }));
+  const axisFormatter = (v) => {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: cur,
+        maximumFractionDigits: 0,
+        notation: "compact",
+      }).format(v);
+    } catch {
+      return `${cur} ${v}`;
+    }
+  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const chartTooltip = useMemo(() => makeChartTooltip(axisFormatter), [cur]);
   const years = [];
   for (let y = now.getFullYear() - 3; y <= now.getFullYear() + 1; y++) years.push(y);
 
@@ -70,28 +98,26 @@ export default function RevenueWaterfall() {
         description="The recognition curve — revenue already recognized and revenue still scheduled — plus the deferred-revenue rollforward for a chosen month."
         actions={
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="wf-month">Month</label>
-            <select
-              id="wf-month"
-              className={selectClass}
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>{m}</option>
-              ))}
-            </select>
-            <label className="sr-only" htmlFor="wf-year">Year</label>
-            <select
-              id="wf-year"
-              className={selectClass}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+              <SelectTrigger className="w-[130px]" aria-label="Month">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-[92px]" aria-label="Year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         }
       />
@@ -145,6 +171,34 @@ export default function RevenueWaterfall() {
                     <div className="mt-1 font-mono text-lg tabular-nums text-foreground">{money(val)}</div>
                   </div>
                 ))}
+              </div>
+            </Card>
+          )}
+
+          {/* The waterfall itself — recognized vs scheduled, stacked by month. */}
+          {buckets.length > 0 && (
+            <Card>
+              <div className="px-6 pt-6">
+                <h2 className="text-base font-semibold text-foreground">Waterfall</h2>
+                <p className="text-sm text-muted-foreground">
+                  Recognized revenue (historical) stacked with scheduled releases (future).
+                </p>
+              </div>
+              <div className="p-6" data-testid="waterfall-chart">
+                <BarChart
+                  {...chartDefaults}
+                  className="h-72"
+                  data={chartData}
+                  index="month"
+                  categories={["Recognized", "Scheduled"]}
+                  colors={chartCategoryColors}
+                  valueFormatter={axisFormatter}
+                  customTooltip={chartTooltip}
+                  stack
+                  showLegend
+                  showGridLines
+                  yAxisWidth={64}
+                />
               </div>
             </Card>
           )}

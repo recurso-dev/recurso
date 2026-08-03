@@ -71,7 +71,28 @@ export default function TrialBalance() {
     }
   };
 
-  const lines = tb?.lines || [];
+  const rawLines = tb?.lines || [];
+  // Every customer carries their own AR sub-account with the same name+code, so
+  // the raw report is a wall of identical "Accounts Receivable 1100" rows. Roll
+  // identical (code, name, entity) lines into one, keeping the sub-account
+  // count and flagging the rollup if ANY member carries a wrong-sign balance.
+  const lines = (() => {
+    const byKey = new Map();
+    for (const l of rawLines) {
+      const key = `${l.code}|${l.name}|${l.entity_name || ""}`;
+      const agg = byKey.get(key);
+      if (!agg) {
+        byKey.set(key, { ...l, sub_count: 1 });
+      } else {
+        agg.debits += l.debits;
+        agg.credits += l.credits;
+        agg.balance += l.balance;
+        agg.abnormal = agg.abnormal || l.abnormal;
+        agg.sub_count += 1;
+      }
+    }
+    return [...byKey.values()].sort((a, b) => a.code - b.code || (a.entity_name || "").localeCompare(b.entity_name || ""));
+  })();
   const abnormal = lines.filter((l) => l.abnormal);
   // Show the entity column only in the all-entities breakdown, where each line
   // belongs to a specific entity (hidden when scoped to one or consolidated).
@@ -160,6 +181,11 @@ export default function TrialBalance() {
                           <TableCell className="text-foreground">
                             <span className="font-mono text-xs text-muted-foreground">{l.code}</span>{" "}
                             {l.name}
+                            {l.sub_count > 1 && (
+                              <span className="ml-1.5 text-xs text-muted-foreground">
+                                · {l.sub_count} sub-accounts
+                              </span>
+                            )}
                             {l.abnormal && (
                               <Badge variant="destructive" className="ml-2">
                                 abnormal
@@ -185,6 +211,22 @@ export default function TrialBalance() {
                           </TableCell>
                         </TableRow>
                       ))}
+                      <TableRow className="border-t-2 border-foreground/20 bg-muted/30 font-medium hover:bg-muted/30">
+                        <TableCell className="text-foreground">Totals</TableCell>
+                        {showEntity && <TableCell />}
+                        <TableCell />
+                        <TableCell className="text-right font-mono text-sm tabular-nums text-foreground">
+                          {money(tb.total_debits)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm tabular-nums text-foreground">
+                          {money(tb.total_credits)}
+                        </TableCell>
+                        <TableCell
+                          className={`text-right font-mono text-sm tabular-nums ${tb.balanced ? "text-emerald-600" : "text-red-600"}`}
+                        >
+                          {tb.balanced ? "0" : money(tb.total_debits - tb.total_credits)}
+                        </TableCell>
+                      </TableRow>
                     </TableBody>
                   </Table>
                 </div>
