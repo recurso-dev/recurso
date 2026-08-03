@@ -1379,7 +1379,8 @@ func main() {
 
 	invoiceBrandingRepo := db.NewInvoiceBrandingRepository(database)
 	invoiceBrandingHandler := handler.NewInvoiceBrandingHandler(invoiceBrandingRepo)
-	pdfHandler.SetBranding(invoiceBrandingRepo) // per-tenant logo/signature/bank/terms on invoices
+	pdfHandler.SetBranding(invoiceBrandingRepo)        // per-tenant logo/signature/bank/terms on invoices
+	creditNoteHandler.SetBranding(invoiceBrandingRepo) // same letterhead on credit notes
 	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
 	// Manual CRM sync ("test my HubSpot connection"). Typed-nil trap: only hand
