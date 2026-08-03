@@ -338,3 +338,182 @@ func TestDowngradeRevenueReversalCappedAtRecognized_Postgres(t *testing.T) {
 		t.Errorf("ledger does not balance: debits %d != credits %d", tb.TotalDebits, tb.TotalCredits)
 	}
 }
+
+// TestDowngradeScheduleDebt_ShrinksLaterSchedule_Postgres proves ENG-191f
+// end-to-end: when a downgrade credit's residual is funded from UNSCHEDULED
+// deferral (an unpaid invoice's code-1 credited Deferred, no schedule yet),
+// that residual is recorded as schedule debt — and the schedule created when
+// the invoice is later paid SHRINKS by it. Without the debt, the new schedule
+// would carry the full net and recognize revenue the business already credited
+// back to the customer (double-count), over-draining Deferred (the
+// deferred_below_scheduled_revenue class).
+//
+// Shape (continues the capped-reversal scenario): recognized pool 20000,
+// pending 0, unscheduled deferral 180000; downgrade credit ~50000 → 20000
+// reversed from Recognized Revenue, residual ~30000 debited from Deferred AND
+// recorded as debt. Then a 50000 invoice for the subscription is paid: its
+// schedule must total 50000 − residual, and the debt must be fully consumed.
+func TestDowngradeScheduleDebt_ShrinksLaterSchedule_Postgres(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed schedule-debt test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	dbx, err := sqlx.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = dbx.Close() }()
+	conn := dbx.DB
+	ctx := context.Background()
+	tenantID := seedRevRecTenant(t, conn)
+	run := uuid.New().String()[:8]
+
+	customerID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		 VALUES ($1, $2, $3, 'Acme US', 'United States', 'individual', $4, NOW(), NOW())`,
+		customerID, tenantID, "cust-"+run+"@t.com", uuid.New()); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+	seedPlan := func(name string, amt int64) uuid.UUID {
+		id := uuid.New()
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO plans (id, tenant_id, name, code, interval_unit, interval_count, active) VALUES ($1,$2,$3,$4,'month',1,TRUE)`,
+			id, tenantID, name, name+"-"+run); err != nil {
+			t.Fatalf("seed plan %s: %v", name, err)
+		}
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO prices (id, plan_id, currency, amount, type) VALUES ($1,$2,'USD',$3,'recurring')`,
+			uuid.New(), id, amt); err != nil {
+			t.Fatalf("seed price %s: %v", name, err)
+		}
+		return id
+	}
+	currentPlanID := seedPlan("Pro", 200000)
+	targetPlanID := seedPlan("Basic", 100000)
+
+	subID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,'active', NOW() - INTERVAL '15 days', NOW() + INTERVAL '15 days', NOW() - INTERVAL '15 days', NOW(), NOW())`,
+		subID, tenantID, customerID, currentPlanID); err != nil {
+		t.Fatalf("seed subscription: %v", err)
+	}
+
+	curInvID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO invoices (id, tenant_id, customer_id, subscription_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		 VALUES ($1,$2,$3,$4,'USD',200000,200000,200000,'paid',$5,NOW(),NOW())`,
+		curInvID, tenantID, customerID, subID, "INV-"+run); err != nil {
+		t.Fatalf("seed current invoice: %v", err)
+	}
+	ledger := NewLedgerService(nil, db.NewLedgerRepository(conn))
+	if err := ledger.RecordInvoice(ctx, &domain.Invoice{
+		ID: curInvID, TenantID: tenantID, CustomerID: customerID, SubscriptionID: &subID,
+		InvoiceNumber: "INV-" + run, Total: 200000, Currency: "USD",
+	}); err != nil {
+		t.Fatalf("RecordInvoice: %v", err)
+	}
+	schedID := seedRevRecSchedule(t, conn, tenantID, curInvID, subID, 20000, 1)
+
+	subRepo := db.NewSubscriptionRepository(conn)
+	revrec := NewRevRecService(db.NewRevRecRepository(conn), ledger, subRepo)
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE recognition_events SET recognition_date = NOW() - INTERVAL '1 day' WHERE revenue_schedule_id = $1`,
+		schedID); err != nil {
+		t.Fatalf("backdate event: %v", err)
+	}
+	if err := revrec.ProcessDueEvents(ctx); err != nil {
+		t.Fatalf("ProcessDueEvents: %v", err)
+	}
+
+	invoiceRepo := db.NewInvoiceRepository(conn)
+	planRepo := db.NewPlanRepository(conn)
+	customerRepo := db.NewCustomerRepository(dbx)
+	svc := NewSubscriptionService(subRepo, invoiceRepo, planRepo, customerRepo,
+		nil, nil, ledger, nil, nil, db.NewTxManager(conn), revrec, nil)
+	svc.SetCreditNoteRepo(db.NewCreditNoteRepository(dbx))
+
+	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	if _, err := svc.UpdateSubscription(tctx, tenantID, subID, targetPlanID); err != nil {
+		t.Fatalf("UpdateSubscription (downgrade): %v", err)
+	}
+
+	var creditAmount int64
+	if err := conn.QueryRowContext(ctx,
+		`SELECT amount FROM credit_notes WHERE tenant_id = $1 AND customer_id = $2 AND type = 'adjustment'`,
+		tenantID, customerID).Scan(&creditAmount); err != nil {
+		t.Fatalf("read downgrade credit note: %v", err)
+	}
+	wantResidual := creditAmount - 20000 // reversed 20000 from the recognized pool
+	if wantResidual <= 0 {
+		t.Fatalf("test shape broken: credit %d leaves no residual", creditAmount)
+	}
+
+	// The residual was recorded as schedule debt on the subscription.
+	var debt int64
+	if err := conn.QueryRowContext(ctx,
+		`SELECT revrec_schedule_debt FROM subscriptions WHERE id = $1`, subID).Scan(&debt); err != nil {
+		t.Fatalf("read schedule debt: %v", err)
+	}
+	if debt != wantResidual {
+		t.Fatalf("schedule debt = %d, want %d (the unscheduled residual)", debt, wantResidual)
+	}
+
+	// The unpaid-then-paid invoice: schedule creation must shrink by the debt.
+	inv2 := &domain.Invoice{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID, SubscriptionID: &subID,
+		InvoiceNumber: "INV2-" + run, Total: 50000, Currency: "USD",
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO invoices (id, tenant_id, customer_id, subscription_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		 VALUES ($1,$2,$3,$4,'USD',50000,50000,50000,'paid',$5,NOW(),NOW())`,
+		inv2.ID, tenantID, customerID, subID, inv2.InvoiceNumber); err != nil {
+		t.Fatalf("seed second invoice: %v", err)
+	}
+	if err := revrec.CreateScheduleForInvoice(tctx, inv2, nil); err != nil {
+		t.Fatalf("CreateScheduleForInvoice: %v", err)
+	}
+
+	var schedTotal int64
+	if err := conn.QueryRowContext(ctx,
+		`SELECT total_amount FROM revenue_schedules WHERE tenant_id = $1 AND invoice_id = $2`,
+		tenantID, inv2.ID).Scan(&schedTotal); err != nil {
+		t.Fatalf("read new schedule: %v", err)
+	}
+	if want := int64(50000) - wantResidual; schedTotal != want {
+		t.Errorf("new schedule total = %d, want %d (50000 net minus the %d debt) — scheduling the full net would recognize revenue already credited back", schedTotal, want, wantResidual)
+	}
+	if err := conn.QueryRowContext(ctx,
+		`SELECT revrec_schedule_debt FROM subscriptions WHERE id = $1`, subID).Scan(&debt); err != nil {
+		t.Fatalf("re-read schedule debt: %v", err)
+	}
+	if debt != 0 {
+		t.Errorf("schedule debt after consumption = %d, want 0", debt)
+	}
+
+	// End-state: recognize everything; the books stay clean.
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE recognition_events SET recognition_date = NOW() - INTERVAL '1 day' WHERE tenant_id = $1 AND status = 'pending'`,
+		tenantID); err != nil {
+		t.Fatalf("backdate remaining events: %v", err)
+	}
+	if err := revrec.ProcessDueEvents(ctx); err != nil {
+		t.Fatalf("ProcessDueEvents (final): %v", err)
+	}
+	tb, err := ledger.GetTrialBalance(ctx, tenantID, nil)
+	if err != nil {
+		t.Fatalf("GetTrialBalance: %v", err)
+	}
+	for _, l := range tb.Lines {
+		if l.Abnormal {
+			t.Errorf("account %d (%s) carries an abnormal (wrong-sign) balance %d after full recognition", l.Code, l.Name, l.Balance)
+		}
+	}
+	if !tb.Balanced {
+		t.Errorf("ledger does not balance: debits %d != credits %d", tb.TotalDebits, tb.TotalCredits)
+	}
+}

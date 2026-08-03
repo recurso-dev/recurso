@@ -38,6 +38,13 @@ type RevRecRepository interface {
 	GetRecognizedEventsBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RecognitionEvent, error)
 	MarkEventReversed(ctx context.Context, eventID uuid.UUID) error
 	SplitRecognizedEvent(ctx context.Context, eventID, newEventID uuid.UUID, reverseAmount int64) error
+
+	// Schedule-debt support (ENG-191f): a downgrade credit that consumed
+	// UNSCHEDULED deferral (an unpaid invoice's code-1 funding, no schedule yet)
+	// records a debt; the subscription's next schedule(s) shrink by it so they
+	// never recognize revenue whose deferral was already credited back.
+	AddScheduleDebt(ctx context.Context, subscriptionID uuid.UUID, amount int64) error
+	ConsumeScheduleDebt(ctx context.Context, subscriptionID uuid.UUID, max int64) (int64, error)
 }
 
 type RevRecService struct {
@@ -248,6 +255,13 @@ func (s *RevRecService) ReverseRecognizedForDowngrade(ctx context.Context, tenan
 	return reversed, nil
 }
 
+// RecordScheduleDebt records that a downgrade credit consumed `amount` of the
+// subscription's UNSCHEDULED deferral (ENG-191f) — see ConsumeScheduleDebt in
+// CreateScheduleForInvoice for how the next schedule shrinks by it.
+func (s *RevRecService) RecordScheduleDebt(ctx context.Context, subscriptionID uuid.UUID, amount int64) error {
+	return s.repo.AddScheduleDebt(ctx, subscriptionID, amount)
+}
+
 // ReduceScheduleForDowngrade shrinks a subscription's active recognition
 // schedule(s) by `amount` when it is downgraded mid-period (ENG-154): the
 // over-deferred portion is removed from the tail (latest events first, splitting
@@ -348,6 +362,29 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 	if netRevenue < 0 {
 		netRevenue = 0
 	}
+
+	// Schedule-debt consumption (ENG-191f): a mid-period downgrade credit may
+	// have already drawn on this subscription's UNSCHEDULED deferral (this
+	// invoice's code-1 funded Deferred while unpaid, with no schedule to
+	// reduce). That consumed portion was credited back to the customer — it is
+	// no longer revenue to recognize, and its Deferred funding is gone. Shrink
+	// the new schedule by the recorded debt, or it would recognize revenue the
+	// business already gave back (over-draining Deferred — the reconciler's
+	// deferred_below_scheduled_revenue finding — and double-counting the
+	// credited service). Best-effort: a debt-read failure schedules the full
+	// net (the standing reconciler invariant then surfaces any shortfall).
+	if invoice.SubscriptionID != nil && netRevenue > 0 {
+		if consumed, err := s.repo.ConsumeScheduleDebt(ctx, *invoice.SubscriptionID, netRevenue); err != nil {
+			slog.Error("revrec: schedule-debt read failed; scheduling the full net",
+				"invoice_id", invoice.ID, "subscription_id", *invoice.SubscriptionID, "error", err)
+		} else if consumed > 0 {
+			netRevenue -= consumed
+		}
+	}
+	if netRevenue == 0 {
+		return nil // the whole deferral was already credited back — nothing to recognize
+	}
+
 	schedule := &domain.RevenueSchedule{
 		ID:             uuid.New(),
 		TenantID:       invoice.TenantID,
