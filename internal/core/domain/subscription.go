@@ -44,8 +44,14 @@ type Subscription struct {
 	PaymentTerms         string     `json:"payment_terms"`                                                // P15
 	CouponID             *uuid.UUID `json:"coupon_id,omitempty"`                                          // P7
 	CouponPeriodsApplied int        `json:"coupon_periods_applied,omitempty" db:"coupon_periods_applied"` // C1: periods a repeating coupon has been applied
-	ReferenceID          string     `json:"reference_id,omitempty" db:"reference_id"`                     // P43
-	MandateID            *uuid.UUID `json:"mandate_id,omitempty" db:"mandate_id"`
+	// CouponAppliedCurrentPeriod records whether the CURRENT period's invoice
+	// carried the coupon's discount (R3/ENG-195). Set at every invoice-generation
+	// site; plan-change proration reads it to credit/charge at the prices the
+	// customer actually pays this period. Not derivable from the counter alone —
+	// a repeating coupon past its window keeps its final count.
+	CouponAppliedCurrentPeriod bool       `json:"coupon_applied_current_period,omitempty" db:"coupon_applied_current_period"`
+	ReferenceID                string     `json:"reference_id,omitempty" db:"reference_id"` // P43
+	MandateID                  *uuid.UUID `json:"mandate_id,omitempty" db:"mandate_id"`
 	// CommitmentAmount is the per-period minimum in minor units (Lago-parity
 	// B2): when a period's subtotal falls short, a true-up line fills the
 	// gap on the renewal invoice. 0 = no commitment.

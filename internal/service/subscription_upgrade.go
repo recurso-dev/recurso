@@ -87,9 +87,32 @@ func (s *SubscriptionService) computePlanChangeProration(
 	}
 
 	currency := newPlan.Prices[0].Currency
+
+	// R3 (ENG-195): prorate at the prices the customer actually pays THIS
+	// period. A coupon-blind proration credited unused time at LIST price, so a
+	// heavily-discounted subscription could downgrade into more account credit
+	// than it ever paid (money-out over-credit), and an upgrading discounted
+	// customer was charged the full list-price difference while renewals honor
+	// the coupon. When the current period's invoice carried the discount
+	// (CouponAppliedCurrentPeriod, recorded at every generation site), both
+	// sides are discounted: the old-plan credit refunds what was actually paid
+	// for the unused time, and the new-plan charge matches what a renewal on the
+	// new plan would bill inside this discounted period.
+	currentPrice := currentPlan.Prices[0].Amount
+	newPrice := newPlan.Prices[0].Amount
+	if sub.CouponAppliedCurrentPeriod && sub.CouponID != nil && s.couponRepo != nil {
+		if coupon, cerr := s.couponRepo.GetByID(ctx, tenantID, *sub.CouponID); cerr != nil {
+			s.logger.Error("plan-change proration: coupon load failed; prorating at list prices",
+				"subscription_id", sub.ID, "coupon_id", *sub.CouponID, "error", cerr)
+		} else {
+			currentPrice -= couponDiscountFor(coupon, currentPrice)
+			newPrice -= couponDiscountFor(coupon, newPrice)
+		}
+	}
+
 	proration := s.CalculateProration(
-		currentPlan.Prices[0].Amount,
-		newPlan.Prices[0].Amount,
+		currentPrice,
+		newPrice,
 		sub.CurrentPeriodStart,
 		sub.CurrentPeriodEnd,
 		now,

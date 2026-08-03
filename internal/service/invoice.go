@@ -275,6 +275,10 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// and the applied-periods counter is advanced (persisted by the renewal
 	// worker's subscription Update) so repeating coupons stop after N periods.
 	var flatDiscount int64
+	// R3: record whether THIS period's invoice carries the discount — false by
+	// default so a coupon that just expired (or was detached) flips the flag off
+	// and plan-change proration goes back to list prices.
+	sub.CouponAppliedCurrentPeriod = false
 	if sub.CouponID != nil && s.CouponRepo != nil {
 		coupon, cerr := s.CouponRepo.GetByID(ctx, sub.TenantID, *sub.CouponID)
 		if cerr != nil {
@@ -284,6 +288,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 			flatDiscount = couponDiscountFor(coupon, price.Amount)
 			if flatDiscount > 0 {
 				sub.CouponPeriodsApplied++
+				sub.CouponAppliedCurrentPeriod = true
 			}
 		}
 	}
