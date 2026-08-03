@@ -41,7 +41,16 @@ func (h *LedgerHandler) GetEntries(c *gin.Context) {
 		return
 	}
 
-	entries, err := h.service.GetEntries(c.Request.Context(), tenantID.(uuid.UUID), accountID)
+	// Optional posting-code filter (?code=3) + standard limit/offset paging —
+	// the page used to be silently capped at the repo's hard 100.
+	var code uint16
+	if cs := c.Query("code"); cs != "" {
+		if v, err := strconv.Atoi(cs); err == nil && v > 0 && v < 65536 {
+			code = uint16(v)
+		}
+	}
+	pg := ParsePagination(c)
+	entries, err := h.service.GetEntries(c.Request.Context(), tenantID.(uuid.UUID), accountID, code, pg.Limit, pg.Offset)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch ledger entries")
 		return

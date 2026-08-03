@@ -627,13 +627,22 @@ func (r *LedgerRepository) GetLedgerTransactionSummaries(ctx context.Context, te
 	return summaries, rows.Err()
 }
 
-func (r *LedgerRepository) GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error) {
+// GetTransactionsByAccount pages an account's postings, newest first. code=0
+// means all posting codes; a nonzero code filters to that posting type.
+func (r *LedgerRepository) GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error) {
+	if limit <= 0 || limit > 250 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.debit_account_id, t.credit_account_id, t.amount, t.ledger_id, t.code, COALESCE(t.reference_id, '00000000-0000-0000-0000-000000000000'), COALESCE(t.description, ''), t.created_at
 		 FROM ledger_transactions t
 		 JOIN ledger_accounts a ON a.id = $2 AND a.tenant_id = $1
-		 WHERE t.debit_account_id = $2 OR t.credit_account_id = $2
-		 ORDER BY t.created_at DESC LIMIT 100`, tenantID, accountID)
+		 WHERE (t.debit_account_id = $2 OR t.credit_account_id = $2)
+		   AND ($3 = 0 OR t.code = $3)
+		 ORDER BY t.created_at DESC LIMIT $4 OFFSET $5`, tenantID, accountID, int(code), limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query ledger transactions: %w", err)
 	}
