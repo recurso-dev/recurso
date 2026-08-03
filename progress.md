@@ -1,5 +1,53 @@
 # Progress log
 
+## 2026-08-03 early-AM continuation — metering & reporting correctness sweep
+
+Three more merged fixes (#416–#418), each a real mis-billing or mis-reporting
+bug with a failing-first oracle. Theme: seams where two features compose —
+per-value pricing × progressive billing, FX rates × currency exponents,
+per-event capture × non-additive aggregations.
+
+**#416 — filtered charges on progressive subscriptions bypass the filter-blind
+watermark.** A dimensional-pricing charge (`FilterKey` + per-value amounts) on
+a progressive subscription was routed through the watermark path, whose
+aggregate is filter-blind: ALL events billed at the charge's BASE amounts,
+every per-value rate silently ignored (and if base amounts lacked the invoice
+currency, the charge billed nothing at close). Unpreventable by validation —
+the threshold lives on the subscription, the filters on the plan charge. Fix:
+one shared `progressiveBillable` predicate (eligible model + arrears +
+unfiltered) at all three sites (interim gate, interim bill, period-close
+dispatch); filtered charges fall through to the classic filtered path exactly
+as the volume model already did.
+
+**#417 — FX conversion ignored currency exponents; JPY reporting off 100×,
+KWD 10×.** FX rates are major-to-major, but every conversion site multiplied
+minor-unit amounts by the raw rate — correct only for same-exponent pairs.
+JPY→USD 100× understated, USD→JPY 100× overstated, KWD 10× off. Corrupted all
+normalized reporting (MRR analytics, revenue segments, waterfall, invoice
+aging, dunning recovery, org consolidation) for zero/three-decimal-currency
+tenants; the static fallback seeds are true market rates, so the corruption
+was real. No ledger impact (single-currency per tenant) — reporting only. Fix:
+`domain.ConvertMinorUnits` (amount × rate × 10^(expTo−expFrom)) used by the
+normalizer and both providers' `Convert`.
+
+**#418 — pay-in-advance required additive aggregations; count metrics bill one
+per event.** PIA validation guarded the charge model but accepted PIA on
+max/latest/unique/percentile metrics — per-event captures SUM, so max
+concurrent seats reported by heartbeats billed per heartbeat and unique users
+billed per repeat visit. Also `BillEvent` billed `event.Quantity` on COUNT
+metrics while arrears `COUNT(*)` counts each event once. Fix:
+`PayInAdvanceAggregationEligible` (count, sum) enforced at the single
+`resolveChargeInput` choke point (subsumes the weighted_sum-only guard), and
+count metrics bill exactly one unit per event.
+
+**Verified clean (non-findings):** payment-settle amount validation (correct by
+construction — server creates the order/session at invoice total, HMAC-verified,
+tenant-bound), Stripe/Chargebee/RevenueCat importers (already exponent-aware),
+remaining hardcoded `/100`s (all percent/percentile/INR-only), SQL currency
+bucketing (GROUP BY currency everywhere), credit-note void (atomic claim
+reverses exactly the unspent balance), accounting adapters (all `MinorToMajor`),
+usage alerts (quantity-based, no rating math).
+
 ## 2026-08-02 overnight session — latent revrec bug + reconciler tripwire
 
 Two PRs, both merged on green CI, each with a failing-first oracle. The thread:
