@@ -39,6 +39,39 @@ const EXAMPLES = [
   "Top 10 customers by revenue",
 ];
 
+// First-run example gallery, grouped to teach the breadth of what's askable —
+// revenue, customers, collections, and the books themselves.
+const EXAMPLE_GROUPS = [
+  {
+    label: "Revenue",
+    items: [
+      "What was my MRR growth over the last 3 months?",
+      "Revenue by plan this quarter",
+    ],
+  },
+  {
+    label: "Customers",
+    items: [
+      "Top 10 customers by revenue",
+      "Which customers churned last month?",
+    ],
+  },
+  {
+    label: "Collections",
+    items: [
+      "How many invoices are overdue, and for how much?",
+      "Which payments failed this week?",
+    ],
+  },
+  {
+    label: "Books",
+    items: [
+      "What is my deferred revenue balance right now?",
+      "Credit notes issued this month, with amounts",
+    ],
+  },
+];
+
 const HISTORY_KEY = "recurso.ask.history.v1";
 const HISTORY_CAP = 25;
 
@@ -352,6 +385,10 @@ const AskAnalytics = () => {
   const removeEntry = (id) => setHistory((h) => h.filter((e) => e.id !== id));
   const clearAll = () => setHistory([]);
 
+  // First run = nothing asked yet: the page becomes an invitation (hero input
+  // + example gallery). Once there's history, it compacts into a working tool.
+  const isFirstRun = history.length === 0 && !asking && !error;
+
   return (
     <div>
       <PageHeader
@@ -367,39 +404,90 @@ const AskAnalytics = () => {
         }
       />
 
+      {/* The input is the star of this page: large, focused, always first. */}
       <form
         onSubmit={(e) => {
           e.preventDefault();
           ask();
         }}
-        className="flex gap-2"
+        className={isFirstRun ? "mx-auto mt-10 flex w-full max-w-2xl gap-2" : "flex gap-2"}
       >
-        <Input
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="e.g. Which customers churned last month?"
-          aria-label="Question"
-          autoFocus
-        />
-        <Button type="submit" disabled={asking || !question.trim()}>
+        <div className="relative flex-1">
+          <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" aria-hidden />
+          <Input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask anything about your billing data…"
+            aria-label="Question"
+            autoFocus
+            className={
+              isFirstRun
+                ? "h-12 rounded-xl pl-10 text-base shadow-sm"
+                : "h-10 rounded-lg pl-10"
+            }
+          />
+        </div>
+        <Button
+          type="submit"
+          disabled={asking || !question.trim()}
+          className={isFirstRun ? "h-12 rounded-xl px-5" : ""}
+        >
           <Send className="h-4 w-4" />
           {asking ? "Thinking…" : "Ask"}
         </Button>
       </form>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        {EXAMPLES.map((ex) => (
-          <button
-            key={ex}
-            type="button"
-            disabled={asking}
-            onClick={() => ask(ex)}
-            className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-          >
-            {ex}
-          </button>
-        ))}
-      </div>
+      {isFirstRun ? (
+        /* First run: a gallery that teaches the breadth of what's askable. */
+        <div className="mx-auto mt-8 grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
+          {EXAMPLE_GROUPS.map((group) => (
+            <div key={group.label} className="rounded-xl border border-border p-4">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                {group.label}
+              </p>
+              <div className="space-y-1">
+                {group.items.map((ex) => (
+                  <button
+                    key={ex}
+                    type="button"
+                    disabled={asking}
+                    onClick={() => ask(ex)}
+                    className="block w-full rounded-md px-2 py-1.5 text-left text-sm text-foreground/80 transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  >
+                    {ex}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          <p className="col-span-full text-center text-xs text-muted-foreground">
+            Read-only, tenant-scoped queries — and every answer shows the SQL it
+            ran.{" "}
+            <a
+              href={docsUrlFor("/ask")}
+              target="_blank"
+              rel="noreferrer"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              How it works
+            </a>
+          </p>
+        </div>
+      ) : (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {EXAMPLES.map((ex) => (
+            <button
+              key={ex}
+              type="button"
+              disabled={asking}
+              onClick={() => ask(ex)}
+              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {ex}
+            </button>
+          ))}
+        </div>
+      )}
 
       {error && (
         <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
@@ -409,31 +497,34 @@ const AskAnalytics = () => {
 
       <div className="mt-6 space-y-4">
         {asking && (
-          <Card>
-            <CardContent className="flex items-center gap-3 p-5 text-sm text-muted-foreground">
-              <Sparkles className="h-4 w-4 animate-pulse text-emerald-600" />
-              Translating your question into a query…
+          <Card aria-busy="true" aria-label="Working on your question">
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <Sparkles className="h-4 w-4 animate-pulse text-emerald-600" />
+                Translating your question into a tenant-scoped query…
+              </div>
+              <div className="space-y-2">
+                <div className="h-3 w-3/4 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                <div className="h-3 w-2/3 animate-pulse rounded bg-muted" />
+              </div>
             </CardContent>
           </Card>
         )}
 
-        {history.length === 0 && !asking && !error ? (
-          <EmptyState
-            icon={Sparkles}
-            title="Ask anything about your billing data"
-            description="Answers appear here and are kept as a running history on this device. Try an example above."
-            learnMoreHref={docsUrlFor("/ask")}
-          />
-        ) : (
-          history.map((entry) => (
-            <ResultCard
-              key={entry.id}
-              entry={entry}
-              onRerun={ask}
-              onRemove={removeEntry}
-            />
-          ))
+        {history.length > 0 && (
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Recent answers
+          </p>
         )}
+        {history.map((entry) => (
+          <ResultCard
+            key={entry.id}
+            entry={entry}
+            onRerun={ask}
+            onRemove={removeEntry}
+          />
+        ))}
       </div>
     </div>
   );

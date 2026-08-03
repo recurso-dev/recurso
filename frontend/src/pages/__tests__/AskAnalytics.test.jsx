@@ -30,9 +30,13 @@ describe("AskAnalytics", () => {
     localStorage.clear();
   });
 
-  it("shows the empty state before any question", () => {
+  it("shows the first-run example gallery before any question", () => {
     renderPage();
-    expect(screen.getByText(/Ask anything about your billing data/i)).toBeInTheDocument();
+    // Hero input + grouped example gallery teaching the breadth of questions.
+    expect(screen.getByPlaceholderText(/Ask anything about your billing data/i)).toBeInTheDocument();
+    expect(screen.getByText("Collections")).toBeInTheDocument();
+    expect(screen.getByText("Which customers churned last month?")).toBeInTheDocument();
+    expect(screen.getByText(/every answer shows the SQL it ran/i)).toBeInTheDocument();
   });
 
   it("asks a question and keeps the answer as a persisted history entry", async () => {
