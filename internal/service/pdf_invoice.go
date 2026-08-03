@@ -25,6 +25,7 @@ type PDFInvoiceData struct {
 	// Seller details
 	SellerName      string
 	SellerAddress   string
+	LogoDataURL     template.URL // tenant logo (validated data URL); rendered above the company name
 	SellerGSTIN     string
 	SellerPAN       string
 	SellerStateCode string
@@ -71,15 +72,15 @@ type PDFInvoiceData struct {
 	IRN        string
 	AckNo      string
 	AckDate    string
-	QRCodeData string
+	QRCodeData template.URL // data:image/png;base64 — self-generated QR; typed so html/template does not sanitize it to #ZgotmplZ
 
 	// Footer
 	BankDetails         string
 	TermsAndConditions  string
 	AuthorizedSignatory string
-	SignatureImageURL   string // Base64 or URL to signature image
-	SignedAt            string // Date/time when digitally signed
-	SignedBy            string // Name of the signatory
+	SignatureImageURL   template.URL // validated data:image/… URL (branding settings) — typed to survive html/template's URL filter
+	SignedAt            string       // Date/time when digitally signed
+	SignedBy            string       // Name of the signatory
 }
 
 // PDFLineItem represents a line item in the invoice. SACCode carries the line's
@@ -461,6 +462,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
         .header-cell { padding: 10px; }
         .header-left { width: 50%; border-right: 1px solid #000; }
         .header-right { width: 50%; }
+        .company-logo { display: block; max-height: 48px; max-width: 180px; margin-bottom: 8px; }
         .company-name { font-size: 18px; font-weight: bold; color: #000; margin-bottom: 5px; }
         .label { color: #666; font-size: 10px; text-transform: uppercase; margin-bottom: 2px; }
         .value { font-weight: bold; }
@@ -518,6 +520,7 @@ const GSTInvoicePDFTemplate = `<!DOCTYPE html>
         <div class="header">
             <div class="header-row">
                 <div class="header-cell header-left">
+                    {{if .LogoDataURL}}<img src="{{.LogoDataURL}}" class="company-logo" alt="" />{{end}}
                     <div class="company-name">{{.SellerName}}</div>
                     <div>{{.SellerAddress}}</div>
                 </div>

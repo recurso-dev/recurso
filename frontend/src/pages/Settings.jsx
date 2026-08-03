@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine, CreditCard } from "lucide-react";
+import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine, CreditCard, Palette } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
@@ -102,6 +102,12 @@ export default function Settings() {
       icon: ShieldCheck,
       title: "Security",
       description: "Two-factor authentication and active sessions.",
+    },
+    {
+      to: "/settings/invoice-branding",
+      icon: Palette,
+      title: "Invoice branding",
+      description: "Company name, logo, signature, bank details and terms on your invoices.",
     },
     {
       to: "/settings/gst",

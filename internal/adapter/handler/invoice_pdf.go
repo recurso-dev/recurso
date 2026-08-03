@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"html/template"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +20,13 @@ type InvoicePDFHandler struct {
 	customerRepo port.CustomerRepository
 	seller       sellerJurisdictionResolver // optional; picks the per-tenant regime
 	usTax        usTaxIdentityResolver      // optional; per-tenant US seller identity (W-9)
+	branding     invoiceBrandingResolver    // optional; per-tenant invoice presentation (logo, signature, bank, terms)
+}
+
+// invoiceBrandingResolver returns a tenant's invoice branding. Optional and
+// nil-safe; *db.InvoiceBrandingRepository satisfies it.
+type invoiceBrandingResolver interface {
+	GetByTenantID(ctx context.Context, tenantID uuid.UUID) (*domain.TenantInvoiceBranding, error)
 }
 
 // usTaxIdentityResolver returns a tenant's US tax identity (W-9). Optional and
@@ -44,6 +52,43 @@ func (h *InvoicePDFHandler) SetSellerResolver(r sellerJurisdictionResolver) { h.
 // SetUSTaxIdentity wires the per-tenant US tax identity (W-9). Nil-safe: without
 // it, or on a GST invoice, the env seller identity is used unchanged.
 func (h *InvoicePDFHandler) SetUSTaxIdentity(r usTaxIdentityResolver) { h.usTax = r }
+
+// SetBranding wires the per-tenant invoice branding. Nil-safe: without it the
+// env presentation defaults render unchanged.
+func (h *InvoicePDFHandler) SetBranding(r invoiceBrandingResolver) { h.branding = r }
+
+// applyBranding overlays the tenant's presentation settings on the built
+// invoice data. It runs BEFORE applyUSSellerIdentity so a statutory legal
+// name (W-9) still wins on US tax invoices. The stored image values were
+// validated to a strict data:image/(png|jpeg);base64 shape at write time,
+// which is what makes the template.URL cast safe.
+func (h *InvoicePDFHandler) applyBranding(ctx context.Context, tenantID uuid.UUID, data *service.PDFInvoiceData) {
+	if h.branding == nil {
+		return
+	}
+	b, err := h.branding.GetByTenantID(ctx, tenantID)
+	if err != nil || b == nil {
+		return
+	}
+	if b.CompanyName != "" {
+		data.SellerName = b.CompanyName
+	}
+	if b.LogoDataURL != "" {
+		data.LogoDataURL = template.URL(b.LogoDataURL)
+	}
+	if b.SignatureDataURL != "" {
+		data.SignatureImageURL = template.URL(b.SignatureDataURL)
+	}
+	if b.SignatoryName != "" {
+		data.SignedBy = b.SignatoryName
+	}
+	if b.BankDetails != "" {
+		data.BankDetails = b.BankDetails
+	}
+	if b.Terms != "" {
+		data.TermsAndConditions = b.Terms
+	}
+}
 
 // applyUSSellerIdentity overrides the seller block of a US (non-GST) invoice
 // with the tenant's own W-9 identity when one is set. GST invoices and the
@@ -115,12 +160,13 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 	}
 
 	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, tenantID))
+	h.applyBranding(ctx, tenantID, &data)
 	h.applyUSSellerIdentity(ctx, tenantID, &data)
 
 	// The e-invoice QR is GST-only — the IRN is set only on e-invoiced invoices.
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
-			data.QRCodeData = qr
+			data.QRCodeData = template.URL(qr)
 		}
 	}
 
@@ -184,10 +230,11 @@ func (h *InvoicePDFHandler) PortalDownloadPDF(c *gin.Context) {
 	}
 
 	data := h.pdfService.BuildInvoiceDataFor(inv, customer, h.sellerCountryFor(ctx, inv.TenantID))
+	h.applyBranding(ctx, inv.TenantID, &data)
 	h.applyUSSellerIdentity(ctx, inv.TenantID, &data)
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
-			data.QRCodeData = qr
+			data.QRCodeData = template.URL(qr)
 		}
 	}
 
