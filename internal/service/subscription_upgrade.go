@@ -434,25 +434,36 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		if taxCredit < 0 {
 			taxCredit = 0
 		}
-		// Split the net credit by what the recognition schedule can still give
-		// back. deferredPortion is the still-unrecognized part (safe to pull from
-		// Deferred); revenueReversal is the part recognition already booked as
-		// revenue and must be clawed back out of Recognized Revenue. Without this
-		// split, debiting the full net out of Deferred when the schedule holds less
-		// drives Deferred wrong-sign and leaves recognized revenue overstated
-		// (ENG-191d). If revrec is unavailable we can't know the split, so we keep
-		// the conservative full-Deferred behavior.
+		// Split the net credit by where its funding actually sits (ENG-191d):
+		//   1. the schedule's still-pending part -> DR Deferred (schedule reduced
+		//      in step, so Deferred and the schedule move together);
+		//   2. revenue this subscription GENUINELY recognized -> DR Recognized
+		//      Revenue, capped at (and marking) its recognized events, so repeated
+		//      downgrades can never claw back more than was ever recognized;
+		//   3. any residual is deferred-but-unscheduled value (an unpaid
+		//      upgrade-charge invoice funds Deferred but has no schedule until it
+		//      is paid) -> DR Deferred, where that funding still sits.
+		// Attributing the whole shortfall to Recognized Revenue drove IT
+		// wrong-sign whenever the shortfall was really unscheduled deferral; the
+		// old full-Deferred behavior drove Deferred wrong-sign whenever revenue
+		// had genuinely recognized ahead. If revrec is unavailable we can't know
+		// the split, so we keep the conservative full-Deferred behavior.
 		deferredPortion := netCredit
+		revenueReversal := int64(0)
 		if s.revrecService != nil && netCredit > 0 {
 			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, netCredit); err != nil {
 				s.logger.Error("downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
+			} else if shortfall := netCredit - reduced; shortfall > 0 {
+				reversed, rErr := s.revrecService.ReverseRecognizedForDowngrade(ctx, tenantID, subscriptionID, shortfall)
+				if rErr != nil {
+					s.logger.Error("downgrade recognized-revenue reversal failed — funding the shortfall from Deferred",
+						"subscription_id", subscriptionID, "error", rErr)
+				}
+				revenueReversal = reversed
+				deferredPortion = netCredit - reversed
 			} else {
-				deferredPortion = reduced
+				deferredPortion = netCredit
 			}
-		}
-		revenueReversal := netCredit - deferredPortion
-		if revenueReversal < 0 {
-			revenueReversal = 0
 		}
 		if s.ledger != nil {
 			if deferredPortion > 0 {

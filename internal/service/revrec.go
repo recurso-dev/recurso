@@ -30,6 +30,14 @@ type RevRecRepository interface {
 	CancelEvent(ctx context.Context, eventID uuid.UUID) error
 	SetEventAmount(ctx context.Context, eventID uuid.UUID, amount int64) error
 	MarkScheduleCanceled(ctx context.Context, scheduleID uuid.UUID) error
+
+	// Downgrade revenue-reversal support: cap the DR Recognized Revenue leg of a
+	// downgrade credit at what this subscription GENUINELY recognized, and mark
+	// what was reversed so repeated downgrades can never claw back more than was
+	// ever recognized (which drove Recognized Revenue wrong-sign).
+	GetRecognizedEventsBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RecognitionEvent, error)
+	MarkEventReversed(ctx context.Context, eventID uuid.UUID) error
+	SplitRecognizedEvent(ctx context.Context, eventID, newEventID uuid.UUID, reverseAmount int64) error
 }
 
 type RevRecService struct {
@@ -197,6 +205,47 @@ func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID uuid.UUID, 
 		}
 	}
 	return reverse, nil
+}
+
+// ReverseRecognizedForDowngrade claws back up to `amount` of a subscription's
+// ALREADY-RECOGNIZED revenue when a downgrade credit exceeds what its schedules
+// still held (recognition ran ahead of the proration boundary). Newest
+// recognitions reverse first; whole events flip to 'reversed', the boundary
+// event splits. Returns the amount actually reversed — the caller posts exactly
+// that as DR Recognized Revenue / CR Customer-Credit (code 21) and must fund
+// the rest from Deferred. Capping at (and marking) genuinely-recognized events
+// is what keeps Recognized Revenue from being driven wrong-sign when the
+// shortfall is really deferred-but-unscheduled value (an unpaid upgrade-charge
+// invoice funds Deferred but has no schedule until it is paid).
+func (s *RevRecService) ReverseRecognizedForDowngrade(ctx context.Context, tenantID, subscriptionID uuid.UUID, amount int64) (int64, error) {
+	if amount <= 0 {
+		return 0, nil
+	}
+	events, err := s.repo.GetRecognizedEventsBySubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return 0, fmt.Errorf("load recognized events: %w", err)
+	}
+	remaining := amount
+	var reversed int64
+	for _, e := range events {
+		if remaining <= 0 {
+			break
+		}
+		if remaining >= e.Amount {
+			if err := s.repo.MarkEventReversed(ctx, e.ID); err != nil {
+				return reversed, fmt.Errorf("reverse event %s: %w", e.ID, err)
+			}
+			reversed += e.Amount
+			remaining -= e.Amount
+		} else {
+			if err := s.repo.SplitRecognizedEvent(ctx, e.ID, uuid.New(), remaining); err != nil {
+				return reversed, fmt.Errorf("split event %s: %w", e.ID, err)
+			}
+			reversed += remaining
+			remaining = 0
+		}
+	}
+	return reversed, nil
 }
 
 // ReduceScheduleForDowngrade shrinks a subscription's active recognition

@@ -229,6 +229,75 @@ func (r *RevRecRepository) SetEventAmount(ctx context.Context, eventID uuid.UUID
 	return err
 }
 
+// GetRecognizedEventsBySubscription returns every RECOGNIZED event across all
+// of a subscription's schedules (any schedule status — a fully-recognized or
+// canceled schedule still owns its recognized history), newest recognition
+// first so a downgrade reversal claws back the most recently recognized
+// revenue. Feeds ReverseRecognizedForDowngrade's cap: only revenue that
+// genuinely recognized (and hasn't already been reversed) may fund the
+// DR Recognized Revenue leg of a downgrade credit.
+func (r *RevRecRepository) GetRecognizedEventsBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RecognitionEvent, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT e.id, e.revenue_schedule_id, e.tenant_id, e.amount, e.recognition_date, e.status, e.ledger_tx_id, e.created_at
+		   FROM recognition_events e
+		   JOIN revenue_schedules s ON s.id = e.revenue_schedule_id
+		  WHERE e.tenant_id = $1 AND s.subscription_id = $2 AND e.status = 'recognized'
+		  ORDER BY e.recognition_date DESC, e.id`,
+		tenantID, subscriptionID)
+	if err != nil {
+		return nil, fmt.Errorf("query recognized events for subscription %s: %w", subscriptionID, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var events []*domain.RecognitionEvent
+	for rows.Next() {
+		var e domain.RecognitionEvent
+		var ledgerTxID uuid.NullUUID
+		if err := rows.Scan(&e.ID, &e.RevenueScheduleID, &e.TenantID, &e.Amount, &e.RecognitionDate, &e.Status, &ledgerTxID, &e.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan recognized event: %w", err)
+		}
+		if ledgerTxID.Valid {
+			e.LedgerTxID = &ledgerTxID.UUID
+		}
+		events = append(events, &e)
+	}
+	return events, rows.Err()
+}
+
+// MarkEventReversed flips a RECOGNIZED event to reversed (a downgrade credit
+// clawed its revenue back). Scoped to status='recognized' so a pending or
+// already-reversed event can't be double-counted.
+func (r *RevRecRepository) MarkEventReversed(ctx context.Context, eventID uuid.UUID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE recognition_events SET status = 'reversed' WHERE id = $1 AND status = 'recognized'`, eventID)
+	return err
+}
+
+// SplitRecognizedEvent reverses PART of a recognized event (the boundary of a
+// partial downgrade reversal): atomically shrink the recognized event by
+// reverseAmount and insert a sibling 'reversed' event carrying that amount, so
+// per-schedule totals are preserved and the reversed portion can never be
+// reversed again. No-op (both statements) when the event is not recognized or
+// too small — the CTE reads the row once and both writes key off it.
+func (r *RevRecRepository) SplitRecognizedEvent(ctx context.Context, eventID, newEventID uuid.UUID, reverseAmount int64) error {
+	_, err := r.db.ExecContext(ctx, `
+		WITH orig AS (
+			SELECT id, revenue_schedule_id, tenant_id, recognition_date
+			  FROM recognition_events
+			 WHERE id = $1 AND status = 'recognized' AND amount > $3
+		), ins AS (
+			INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at)
+			SELECT $2, revenue_schedule_id, tenant_id, $3, recognition_date, 'reversed', NOW() FROM orig
+		)
+		UPDATE recognition_events e SET amount = e.amount - $3
+		  FROM orig WHERE e.id = orig.id`,
+		eventID, newEventID, reverseAmount)
+	if err != nil {
+		return fmt.Errorf("split recognized event %s: %w", eventID, err)
+	}
+	return nil
+}
+
 // MarkScheduleCanceled marks a schedule canceled once its deferred is unwound.
 func (r *RevRecRepository) MarkScheduleCanceled(ctx context.Context, scheduleID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,

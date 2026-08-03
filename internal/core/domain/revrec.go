@@ -51,6 +51,14 @@ const (
 	// worker, so a concurrent runner can never re-post it — or mis-mark an
 	// already-recognized event as failed when its duplicate posting errors.
 	RecognitionStatusProcessing = "processing"
+	// RecognitionStatusReversed marks an ALREADY-RECOGNIZED event whose revenue
+	// was later clawed back by a mid-period downgrade credit (the DR Recognized
+	// Revenue / CR Customer-Credit leg, code 21). Distinct from canceled — the
+	// event DID recognize (its code-2 posting stands); the reversal is a separate
+	// posting, and flipping the status caps how much recognized revenue a
+	// subscription's repeated downgrades can ever reverse. Excluded from every
+	// recognized/pending report sum.
+	RecognitionStatusReversed = "reversed"
 	// RecognitionStatusCanceled marks a future event voided by an unwind
 	// (cancel/refund mid-period, ENG-147) so the worker never recognizes it.
 	RecognitionStatusCanceled = "canceled"

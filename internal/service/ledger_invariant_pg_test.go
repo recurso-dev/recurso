@@ -48,7 +48,12 @@ func TestLedgerInvariants_RandomizedBillingSequences(t *testing.T) {
 	defer func() { _ = dbx.Close() }()
 	conn := dbx.DB
 
-	seeds := []int64{1, 2, 3, 4, 5, 6, 7, 8}
+	// 23 and 39 are regression seeds: their sequences drive a downgrade whose
+	// credit exceeds both the schedule's pending AND the subscription's
+	// recognized revenue (the shortfall is an unpaid upgrade-charge's
+	// unscheduled deferral) — the case that once drove Recognized Revenue
+	// wrong-sign (ENG-191e).
+	seeds := []int64{1, 2, 3, 4, 5, 6, 7, 8, 23, 39}
 	if s := os.Getenv("LEDGER_INVARIANT_SEED"); s != "" {
 		v, err := strconv.ParseInt(s, 10, 64)
 		if err != nil {
