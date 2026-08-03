@@ -5458,6 +5458,49 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/settings/invoice-branding:
+    get:
+      operationId: getInvoiceBranding
+      tags: [Settings]
+      summary: Get invoice branding
+      description: Returns the tenant's invoice presentation settings (display name, logo, signature, signatory, bank details, terms), or an empty default when none is set.
+      responses:
+        '200':
+          description: Invoice branding.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/InvoiceBranding'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      operationId: updateInvoiceBranding
+      tags: [Settings]
+      summary: Create or update invoice branding
+      description: Upserts the tenant's invoice presentation settings. Logo and signature must be data:image/png or data:image/jpeg base64 URLs (max 300KB decoded). Presentation only — statutory seller identity (GST / W-9) still takes precedence on tax invoices.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceBranding'
+      responses:
+        '200':
+          description: Branding saved.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/InvoiceBranding'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/entities:
     get:
@@ -10952,6 +10995,28 @@ components:
         address:
           type: string
           description: Seller postal address shown on US invoices.
+    InvoiceBranding:
+      type: object
+      description: A tenant's invoice presentation settings — display name, logo, signature, signatory, bank details and terms rendered on invoice documents. Presentation only; statutory seller identity (GST / W-9) takes precedence on tax invoices.
+      properties:
+        company_name:
+          type: string
+          description: Display name shown at the top of invoices (max 200 chars).
+        logo_data_url:
+          type: string
+          description: "Logo as a data:image/png or data:image/jpeg base64 URL (max 300KB decoded)."
+        signature_data_url:
+          type: string
+          description: "Signature image as a data:image/png or data:image/jpeg base64 URL (max 300KB decoded)."
+        signatory_name:
+          type: string
+          description: Name printed under the signature line (max 200 chars).
+        bank_details:
+          type: string
+          description: Bank/remittance details shown in the invoice footer (max 4000 chars).
+        terms:
+          type: string
+          description: Terms and conditions shown in the invoice footer (max 4000 chars).
     EUEInvoiceConfig:
       type: object
       description: A tenant's EU e-invoicing configuration — the opt-in flag plus the EN 16931 seller party.

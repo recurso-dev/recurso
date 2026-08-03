@@ -1376,6 +1376,10 @@ func main() {
 	usTaxConfigRepo := db.NewTenantUSTaxConfigRepository(database)
 	usTaxConfigHandler := handler.NewUSTaxConfigHandler(usTaxConfigRepo)
 	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
+
+	invoiceBrandingRepo := db.NewInvoiceBrandingRepository(database)
+	invoiceBrandingHandler := handler.NewInvoiceBrandingHandler(invoiceBrandingRepo)
+	pdfHandler.SetBranding(invoiceBrandingRepo) // per-tenant logo/signature/bank/terms on invoices
 	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
 	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
 	// Manual CRM sync ("test my HubSpot connection"). Typed-nil trap: only hand
@@ -1979,6 +1983,9 @@ func main() {
 		v1.POST("/crm/sync", crmSyncHandler.SyncNow)
 		v1.GET("/settings/tax/us", usTaxConfigHandler.GetUSTaxConfig)
 		v1.PUT("/settings/tax/us", usTaxConfigHandler.UpdateUSTaxConfig)
+
+		v1.GET("/settings/invoice-branding", invoiceBrandingHandler.GetBranding)
+		v1.PUT("/settings/invoice-branding", invoiceBrandingHandler.UpdateBranding)
 		// EU e-invoicing per invoice (Track C inc 2): inspect the generated UBL +
 		// delivery status, and manually regenerate/re-transmit a failed one.
 		v1.GET("/invoices/:id/eu-einvoice", euEInvoiceHandler.GetEUEInvoice)

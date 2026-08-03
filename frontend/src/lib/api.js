@@ -334,6 +334,8 @@ export const endpoints = {
   // US tax identity (W-9): seller party shown on US sales-tax invoices.
   getUSTaxConfig: () => api.get('/settings/tax/us'),
   updateUSTaxConfig: (data) => api.put('/settings/tax/us', data),
+  getInvoiceBranding: () => api.get('/settings/invoice-branding'),
+  updateInvoiceBranding: (data) => api.put('/settings/invoice-branding', data),
   // Per-invoice EU e-invoice: inspect the generated UBL + delivery status, and
   // regenerate/re-transmit a failed one.
   getEUEInvoice: (invoiceId) => api.get(`/invoices/${invoiceId}/eu-einvoice`),

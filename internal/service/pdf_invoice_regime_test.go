@@ -94,3 +94,39 @@ func TestBuildInvoiceData_IndiaGSTRegime(t *testing.T) {
 		}
 	}
 }
+
+// Data-URL images (the e-invoice QR, tenant logo/signature) must survive
+// html/template's URL filter. Before the fields were typed template.URL,
+// they rendered as the "#ZgotmplZ" sanitizer marker — a broken image on a
+// statutory GST invoice. This is the regression oracle.
+func TestInvoiceHTML_DataURLImagesSurvive(t *testing.T) {
+	svc := NewInvoicePDFService("Seller", "Addr", "", "", "", "", "US", "")
+	inv := &domain.Invoice{
+		InvoiceNumber: "INV-IMG-1",
+		Currency:      "USD",
+		Subtotal:      100000,
+		Total:         100000,
+		CreatedAt:     time.Now(),
+		DueDate:       time.Now().Add(720 * time.Hour),
+	}
+	cust := &domain.Customer{
+		Name:           pdfStr("Img Buyer"),
+		BillingAddress: domain.BillingAddress{Line1: "5 King St", City: "Austin", State: "TX", Zip: "78701", Country: "US"},
+	}
+	data := svc.BuildInvoiceData(inv, cust)
+	data.QRCodeData = "data:image/png;base64,iVBORw0KGgo="
+	data.LogoDataURL = "data:image/png;base64,iVBORw0KGgo="
+	data.SignatureImageURL = "data:image/jpeg;base64,/9j/4AAQ"
+	html, err := svc.GenerateInvoiceHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "ZgotmplZ") {
+		t.Fatal("data-URL image was sanitized away (ZgotmplZ) — image fields must be template.URL")
+	}
+	for _, want := range []string{"data:image/png;base64,iVBORw0KGgo=", "data:image/jpeg;base64,/9j/4AAQ"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered HTML is missing image %q", want)
+		}
+	}
+}
