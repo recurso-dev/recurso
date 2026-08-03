@@ -40,6 +40,15 @@ const fmtMoney = (minor, currency) => {
   return `${fromMinorUnits(minor, currency).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d })} ${currency}`;
 };
 
+const fmtWhen = (x) =>
+  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+// Human labels for movement types; unknown types fall back to a cleaned slug.
+const TX_LABEL = { top_up: "Top-up", drain: "Drain", refund: "Refund", forfeit: "Forfeit" };
+const txLabel = (t) =>
+  TX_LABEL[t] || (t || "").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase());
+const TX_SOURCE = { manual: "Manual", promotional: "Promotional credit", auto_recharge: "Auto-recharge" };
+
 // Prepaid wallets (Lago-parity B1): balances, top-ups, and movement history.
 const Wallets = () => {
   const [wallets, setWallets] = useState([]);
@@ -55,6 +64,7 @@ const Wallets = () => {
   const [autoForm, setAutoForm] = useState({ threshold: "", amount: "" });
   const [txWallet, setTxWallet] = useState(null);
   const [txs, setTxs] = useState([]);
+  const [txsLoading, setTxsLoading] = useState(false);
   const [closingWallet, setClosingWallet] = useState(null);
   const [closing, setClosing] = useState(false);
   const [closeResult, setCloseResult] = useState(null);
@@ -170,11 +180,14 @@ const Wallets = () => {
   const openTransactions = async (wallet) => {
     setTxWallet(wallet);
     setTxs([]);
+    setTxsLoading(true);
     try {
       const res = await api.getWalletTransactions(wallet.id, { limit: 50 });
       setTxs(res.data.data || []);
     } catch {
       setTxs([]);
+    } finally {
+      setTxsLoading(false);
     }
   };
 
@@ -426,41 +439,79 @@ const Wallets = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Transactions */}
-      <Dialog open={!!txWallet} onOpenChange={(open) => !open && setTxWallet(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Wallet transactions</DialogTitle>
-          </DialogHeader>
-          <div className="max-h-96 space-y-1 overflow-y-auto text-sm">
-            {txs.length === 0 && <p className="text-muted-foreground">No movements yet.</p>}
-            {txs.map((t) => (
-              <div key={t.id} className="flex items-center justify-between border-b border-border py-2">
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      t.type === "top_up" ? "success" : t.type === "drain" ? "neutral" : "destructive"
-                    }
-                  >
-                    {t.type}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    {new Date(t.created_at).toLocaleString()}
-                    {t.source ? ` · ${t.source}` : ""}
+      {/* Transactions — the wallet's movement history, house detail-Sheet style */}
+      <Sheet open={!!txWallet} onOpenChange={(open) => !open && setTxWallet(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          {txWallet && (
+            <>
+              <SheetHeader>
+                <SheetTitle>Wallet activity</SheetTitle>
+                <SheetDescription>
+                  <CustomerName id={txWallet.customer_id} names={names} /> · balance{" "}
+                  <span className="tabular-nums font-medium text-foreground">
+                    {fmtMoney(txWallet.balance, txWallet.currency)}
                   </span>
-                </div>
-                <div className="tabular-nums">
-                  {t.type === "top_up" ? "+" : "−"}
-                  {fmtMoney(t.amount, txWallet?.currency || "")}
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    → {fmtMoney(t.balance_after, txWallet?.currency || "")}
-                  </span>
-                </div>
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="mt-2 px-6 pb-6">
+                {txsLoading ? (
+                  <div className="space-y-3" aria-busy="true" aria-label="Loading transactions">
+                    {[0, 1, 2].map((i) => (
+                      <div key={i} className="h-12 animate-pulse rounded-md bg-muted" />
+                    ))}
+                  </div>
+                ) : txs.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    No movements yet — top up this wallet to get started.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-border">
+                    {txs.map((t) => (
+                      <li key={t.id} className="flex items-center justify-between gap-3 py-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={
+                                t.type === "top_up"
+                                  ? "success"
+                                  : t.type === "drain"
+                                    ? "neutral"
+                                    : "destructive"
+                              }
+                            >
+                              {txLabel(t.type)}
+                            </Badge>
+                            {t.source && (
+                              <span className="truncate text-xs text-muted-foreground">
+                                {TX_SOURCE[t.source] || t.source}
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">{fmtWhen(t.created_at)}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p
+                            className={`tabular-nums text-sm font-medium ${
+                              t.type === "top_up" ? "text-emerald-600" : "text-foreground"
+                            }`}
+                          >
+                            {t.type === "top_up" ? "+" : "−"}
+                            {fmtMoney(t.amount, txWallet.currency)}
+                          </p>
+                          <p className="tabular-nums text-xs text-muted-foreground">
+                            balance {fmtMoney(t.balance_after, txWallet.currency)}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       {/* Close wallet — irreversible settlement */}
       <ConfirmDialog

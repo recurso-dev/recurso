@@ -18,6 +18,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -25,9 +32,6 @@ const MONTHS = [
 ];
 
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
-
-const selectClass =
-  "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 export default function RevenueRecognition() {
   const now = new Date();
@@ -77,28 +81,26 @@ export default function RevenueRecognition() {
         description="Deferred revenue still on the books, and the schedule for when it recognizes."
         actions={
           <div className="flex items-center gap-2">
-            <label className="sr-only" htmlFor="revrec-month">Month</label>
-            <select
-              id="revrec-month"
-              className={selectClass}
-              value={month}
-              onChange={(e) => setMonth(Number(e.target.value))}
-            >
-              {MONTHS.map((m, i) => (
-                <option key={m} value={i + 1}>{m}</option>
-              ))}
-            </select>
-            <label className="sr-only" htmlFor="revrec-year">Year</label>
-            <select
-              id="revrec-year"
-              className={selectClass}
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
+            <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
+              <SelectTrigger className="w-[130px]" aria-label="Month">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m, i) => (
+                  <SelectItem key={m} value={String(i + 1)}>{m}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={String(year)} onValueChange={(v) => setYear(Number(v))}>
+              <SelectTrigger className="w-[92px]" aria-label="Year">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map((y) => (
+                  <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         }
       />
@@ -172,16 +174,27 @@ export default function RevenueRecognition() {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {upcoming.map((b) => (
-                          <TableRow key={`${b.year}-${b.month}`}>
-                            <TableCell className="text-foreground">
-                              {monthLabel(b.month, b.year)}
-                            </TableCell>
-                            <TableCell className="text-right font-mono text-sm tabular-nums text-foreground">
-                              {fmt(b.amount || 0)}
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                        {(() => {
+                          const max = Math.max(...upcoming.map((b) => b.amount || 0), 1);
+                          return upcoming.map((b) => (
+                            <TableRow key={`${b.year}-${b.month}`}>
+                              <TableCell className="text-foreground">
+                                <div className="flex items-center gap-3">
+                                  <span className="w-32 shrink-0">{monthLabel(b.month, b.year)}</span>
+                                  <div className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-muted sm:block">
+                                    <div
+                                      className="h-full rounded-full bg-emerald-500/70"
+                                      style={{ width: `${Math.max(2, ((b.amount || 0) / max) * 100)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-right font-mono text-sm tabular-nums text-foreground">
+                                {fmt(b.amount || 0)}
+                              </TableCell>
+                            </TableRow>
+                          ));
+                        })()}
                       </TableBody>
                     </Table>
                   )}
