@@ -10182,6 +10182,33 @@ components:
         amount:
           type: integer
           format: int64
+        subtotal:
+          type: integer
+          format: int64
+          description: >-
+            Taxable (net-of-tax) value of the credit, minor units. Present
+            (non-zero) when the note recorded a tax breakdown at creation —
+            invoice-linked credits slice the invoice's tax proportionally,
+            downgrade credits carry the reversed proration tax. 0 on legacy
+            rows and standalone goodwill credits (gross-only).
+        tax_amount:
+          type: integer
+          format: int64
+          description: Tax reversed by this credit, minor units.
+        igst_amount:
+          type: integer
+          format: int64
+        cgst_amount:
+          type: integer
+          format: int64
+        sgst_amount:
+          type: integer
+          format: int64
+        tax_type:
+          type: string
+          description: Tax regime of the breakdown (e.g. inter_state, intra_state); empty when none recorded.
+        hsn_code:
+          type: string
         balance:
           type: integer
           format: int64

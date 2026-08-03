@@ -242,7 +242,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 			COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler'),
 			COALESCE(payment_wall_active, FALSE),
 			COALESCE(gateway_payment_id, ''),
-			COALESCE(billing_reason, ''), entity_id
+			COALESCE(billing_reason, ''), entity_id, COALESCE(tax_type, '')
 		FROM invoices WHERE id = $1
 	`
 	args := []interface{}{id}
@@ -266,7 +266,7 @@ func (r *InvoiceRepository) getByIDInternal(ctx context.Context, id uuid.UUID, t
 		&inv.LastPaymentError, &inv.DunningManagedBy,
 		&inv.PaymentWallActive,
 		&inv.GatewayPaymentID,
-		&inv.BillingReason, &entityID,
+		&inv.BillingReason, &entityID, &inv.TaxType,
 	)
 
 	inv.HSNCode = hsnCode.String

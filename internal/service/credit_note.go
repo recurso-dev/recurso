@@ -223,6 +223,21 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 	if req.InvoiceID != nil {
 		if inv, err := s.invoiceRepo.GetByIDPublic(ctx, *req.InvoiceID); err == nil && inv != nil {
 			cn.EntityID = inv.EntityID
+			// B2 (ENG-196): an invoice-linked credit reverses part of that
+			// invoice's supply, so slice its tax proportionally (the same math
+			// GSTR-1 CDNR uses — exact for a same-invoice credit) and record the
+			// breakdown. The credit-note document renders a statutory-grade CDN
+			// from it. Standalone credits (no invoice) reverse no supply and stay
+			// gross-only.
+			if inv.Total > 0 {
+				cn.TaxAmount = refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+				cn.Subtotal = cn.Amount - cn.TaxAmount
+				cn.IGSTAmount = refundTaxPortion(cn.Amount, inv.IGSTAmount, inv.Total)
+				cn.CGSTAmount = refundTaxPortion(cn.Amount, inv.CGSTAmount, inv.Total)
+				cn.SGSTAmount = refundTaxPortion(cn.Amount, inv.SGSTAmount, inv.Total)
+				cn.TaxType = inv.TaxType
+				cn.HSNCode = inv.HSNCode
+			}
 		}
 	}
 

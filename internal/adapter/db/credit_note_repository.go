@@ -69,11 +69,13 @@ func (r *CreditNoteRepository) CreateRefundWithinLimit(ctx context.Context, cn *
 		INSERT INTO credit_notes (
 			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
-			refund_message, expires_at, created_at, updated_at
+			refund_message, expires_at, created_at, updated_at,
+			subtotal, tax_amount, igst_amount, cgst_amount, sgst_amount, tax_type, hsn_code
 		) VALUES (
 			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
-			:refund_message, :expires_at, :created_at, :updated_at
+			:refund_message, :expires_at, :created_at, :updated_at,
+			:subtotal, :tax_amount, :igst_amount, :cgst_amount, :sgst_amount, :tax_type, :hsn_code
 		) RETURNING id`
 	q, args, err := sqlx.Named(insert, cn)
 	if err != nil {
@@ -95,11 +97,13 @@ func (r *CreditNoteRepository) Create(ctx context.Context, creditNote *domain.Cr
 		INSERT INTO credit_notes (
 			tenant_id, customer_id, invoice_id, entity_id, reference, amount, balance,
 			currency, status, reason, type, refund_status, refund_id,
-			refund_message, expires_at, created_at, updated_at
+			refund_message, expires_at, created_at, updated_at,
+			subtotal, tax_amount, igst_amount, cgst_amount, sgst_amount, tax_type, hsn_code
 		) VALUES (
 			:tenant_id, :customer_id, :invoice_id, :entity_id, :reference, :amount, :balance,
 			:currency, :status, :reason, :type, :refund_status, :refund_id,
-			:refund_message, :expires_at, :created_at, :updated_at
+			:refund_message, :expires_at, :created_at, :updated_at,
+			:subtotal, :tax_amount, :igst_amount, :cgst_amount, :sgst_amount, :tax_type, :hsn_code
 		) RETURNING id`
 
 	rows, err := r.db.NamedQueryContext(ctx, query, creditNote)

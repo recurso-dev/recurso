@@ -385,6 +385,16 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		// Both proration.NetAmount and taxRes.Total are negative here; negating
 		// their sum yields a positive, spendable credit balance.
 		creditAmount := -(proration.NetAmount + taxRes.Total)
+		// B2 (ENG-196): record the tax breakdown so the credit-note document is a
+		// statutory-grade CDN. The net values are negative on a downgrade — the
+		// negations below are the tax actually reversed to the customer, clamped
+		// at 0 so a mixed-rate change can never record a negative component.
+		clampPos := func(v int64) int64 {
+			if v < 0 {
+				return 0
+			}
+			return v
+		}
 		creditNote = &domain.CreditNote{
 			ID:           uuid.New(),
 			TenantID:     tenantID,
@@ -392,6 +402,13 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 			CustomerID:   sub.CustomerID,
 			Amount:       creditAmount,
 			Balance:      creditAmount,
+			Subtotal:     clampPos(-proration.NetAmount),
+			TaxAmount:    clampPos(-taxRes.Total),
+			IGSTAmount:   clampPos(-taxRes.IGST),
+			CGSTAmount:   clampPos(-taxRes.CGST),
+			SGSTAmount:   clampPos(-taxRes.SGST),
+			TaxType:      taxRes.TaxType,
+			HSNCode:      taxRes.HSN,
 			Currency:     pcp.Currency,
 			Status:       domain.CreditNoteStatusIssued,
 			Reason:       "Plan downgrade proration credit",
