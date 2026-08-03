@@ -70,6 +70,7 @@ export const endpoints = {
   stripeImportPreview: (exportData) => api.post('/import/stripe/preview', exportData),
   stripeImportCommit: (exportData) => api.post('/import/stripe/commit', exportData),
   stripeImportCompare: (exportData) => api.post('/import/stripe/compare', exportData),
+  chargebeeImportCompare: (exportData) => api.post('/import/chargebee/compare', exportData),
   chargebeeImportPreview: (exportData) => api.post('/import/chargebee/preview', exportData),
   chargebeeImportCommit: (exportData) => api.post('/import/chargebee/commit', exportData),
   revenuecatImportPreview: (exportData) => api.post('/import/revenuecat/preview', exportData),

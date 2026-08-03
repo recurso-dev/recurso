@@ -17,6 +17,8 @@ import (
 // subscriptions. It reuses the same customer/catalog listers, subscription
 // repo, and shared import-ref store as the Stripe importer.
 type ChargebeeImportService struct {
+	subReader compareSubReader // optional; read side for the Compare gate
+
 	customers importCustomers
 	catalog   importCatalog
 	subs      importSubscriptions
