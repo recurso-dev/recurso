@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
@@ -94,8 +95,9 @@ func (p *StaticRatesProvider) Convert(ctx context.Context, amount int64, from, t
 	if err != nil {
 		return 0, 0, err
 	}
-	converted := int64(float64(amount) * rate)
-	return converted, rate, nil
+	// The rate is major-to-major; amounts are minor units with per-currency
+	// exponents, so the domain helper normalizes (JPY 0, KWD 3, default 2).
+	return domain.ConvertMinorUnits(amount, rate, from, to), rate, nil
 }
 
 func (p *StaticRatesProvider) ListRates(ctx context.Context, baseCurrency string) ([]port.ExchangeRate, error) {

@@ -3,9 +3,9 @@ package service
 import (
 	"context"
 	"fmt"
-	"math"
 	"time"
 
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
@@ -72,13 +72,16 @@ func (n *fxNormalizer) rate(ctx context.Context, from, to string) (float64, erro
 	return rate, nil
 }
 
-// convert converts a minor-unit amount from -> to, rounding half away from zero.
+// convert converts a minor-unit amount from -> to, rounding half away from
+// zero. The rate is major-to-major, so the exponent-aware domain helper does
+// the minor-unit normalization (JPY 0, KWD/BHD 3, default 2) — multiplying
+// minor units by the raw rate is only correct for same-exponent pairs.
 func (n *fxNormalizer) convert(ctx context.Context, amount int64, from, to string) (int64, float64, error) {
 	rate, err := n.rate(ctx, from, to)
 	if err != nil {
 		return 0, 0, err
 	}
-	return int64(math.Round(float64(amount) * rate)), rate, nil
+	return domain.ConvertMinorUnits(amount, rate, from, to), rate, nil
 }
 
 // snapshot returns the audit trail for all conversions performed so far.
