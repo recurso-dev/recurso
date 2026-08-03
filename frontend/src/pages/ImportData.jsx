@@ -41,6 +41,7 @@ const SOURCES = {
     label: "Chargebee",
     preview: endpoints.chargebeeImportPreview,
     commit: endpoints.chargebeeImportCommit,
+    compare: endpoints.chargebeeImportCompare,
     idField: "chargebee_id",
     blurb:
       "Export your Chargebee data as JSON (customers, plans, subscriptions). Subscriptions import in their current billing state — no re-billing.",

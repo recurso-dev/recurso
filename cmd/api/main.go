@@ -1169,6 +1169,7 @@ func main() {
 	stripeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                   // read side for the Compare gate
 	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
 	chargebeeImportService := service.NewChargebeeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Chargebee → Recurso
+	chargebeeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                      // read side for the Compare gate
 	chargebeeImportHandler := handler.NewChargebeeImportHandler(chargebeeImportService)
 	revenuecatImportService := service.NewRevenueCatImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: RevenueCat → Recurso
 	revenuecatImportHandler := handler.NewRevenueCatImportHandler(revenuecatImportService)
@@ -1750,6 +1751,7 @@ func main() {
 		// Chargebee migration: dry-run preview then idempotent commit.
 		v1.POST("/import/chargebee/preview", chargebeeImportHandler.Preview)
 		v1.POST("/import/chargebee/commit", chargebeeImportHandler.Commit)
+		v1.POST("/import/chargebee/compare", chargebeeImportHandler.Compare)
 		// RevenueCat migration: dry-run preview then idempotent commit.
 		v1.POST("/import/revenuecat/preview", revenuecatImportHandler.Preview)
 		v1.POST("/import/revenuecat/commit", revenuecatImportHandler.Commit)

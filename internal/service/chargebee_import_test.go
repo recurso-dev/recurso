@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -136,5 +137,87 @@ func TestChargebeePreview_NoSideEffects(t *testing.T) {
 	}
 	if len(cust.created) != 0 || len(cat.created) != 0 || len(subs.created) != 0 || len(refs.refs) != 0 {
 		t.Error("preview must not create anything")
+	}
+}
+
+// ---- Compare gate (mirrors the Stripe compare tests) ----
+
+func chargebeeCompareFixture(t *testing.T, tenantID uuid.UUID) (*ChargebeeImportService, *chargebee.Export, *fakeSubReader) {
+	t.Helper()
+	exp := chargebeeFixture()
+
+	custA := &domain.Customer{ID: uuid.New(), Email: "a@acme.com"}
+	custB := &domain.Customer{ID: uuid.New(), Email: "b@acme.com"}
+	plan := &domain.Plan{
+		ID: uuid.New(), Code: "chargebee_pro", IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 4900}},
+	}
+	sub := exp.Subscriptions[0]
+	rec := &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: custA.ID, PlanID: plan.ID,
+		Status:           "active",
+		CurrentPeriodEnd: time.Unix(sub.CurrentTermEnd, 0).UTC(),
+	}
+
+	refs := newFakeRefRepo()
+	refs.refs = []*domain.ImportExternalRef{
+		{Kind: domain.ImportKindCustomer, ExternalID: "cb_a", RecursoID: custA.ID},
+		{Kind: domain.ImportKindCustomer, ExternalID: "cb_b", RecursoID: custB.ID},
+		{Kind: domain.ImportKindPlan, ExternalID: "pro", RecursoID: plan.ID},
+		{Kind: domain.ImportKindSubscription, ExternalID: sub.ID, RecursoID: rec.ID},
+	}
+	reader := &fakeSubReader{subs: map[uuid.UUID]*domain.Subscription{rec.ID: rec}}
+	svc := NewChargebeeImportService(
+		&fakeImportCustomers{existing: []*domain.Customer{custA, custB}},
+		&fakeImportCatalog{existing: []*domain.Plan{plan}},
+		&fakeImportSubs{}, refs,
+	)
+	svc.SetSubscriptionReader(reader)
+	return svc, exp, reader
+}
+
+func TestChargebeeCompare_Ready(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, _ := chargebeeCompareFixture(t, tenantID)
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Ready {
+		t.Fatalf("expected ready, issues: %+v", rep.Issues)
+	}
+	if rep.Customers.Matched != 2 || rep.Plans.Matched != 1 || rep.Subscriptions.Matched != 1 {
+		t.Fatalf("counts: %+v %+v %+v", rep.Customers, rep.Plans, rep.Subscriptions)
+	}
+}
+
+func TestChargebeeCompare_FlagsDriftAndNonRenewing(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, reader := chargebeeCompareFixture(t, tenantID)
+	// Chargebee says non_renewing; the imported sub forgot CancelAtPeriodEnd,
+	// and its period end drifted 3 days.
+	exp.Subscriptions[0].Status = "non_renewing"
+	for _, rec := range reader.subs {
+		rec.CurrentPeriodEnd = rec.CurrentPeriodEnd.Add(72 * time.Hour)
+	}
+
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Ready {
+		t.Fatal("expected NOT ready")
+	}
+	var cancel, drift bool
+	for _, is := range rep.Issues {
+		if is.Field == "cancel_at_period_end" && is.Source == "true" {
+			cancel = true
+		}
+		if is.Field == "current_period_end" {
+			drift = true
+		}
+	}
+	if !cancel || !drift {
+		t.Fatalf("missing issues (cancel=%t drift=%t): %+v", cancel, drift, rep.Issues)
 	}
 }

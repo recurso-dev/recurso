@@ -39,6 +39,23 @@ func (h *ChargebeeImportHandler) Preview(c *gin.Context) {
 // Commit imports the uploaded Chargebee export (customers, plans, subscriptions)
 // idempotently. Per-object failures are reported, not fatal.
 // POST /v1/import/chargebee/commit
+// Compare is the migration gate for Chargebee — same contract as the Stripe
+// one: coverage, fidelity, billing continuity, zero writes.
+//
+// POST /v1/import/chargebee/compare
+func (h *ChargebeeImportHandler) Compare(c *gin.Context) {
+	tenantID, exp, ok := h.readRequest(c)
+	if !ok {
+		return
+	}
+	report, err := h.svc.Compare(c.Request.Context(), tenantID, exp)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, report)
+}
+
 func (h *ChargebeeImportHandler) Commit(c *gin.Context) {
 	tenantID, exp, ok := h.readRequest(c)
 	if !ok {
