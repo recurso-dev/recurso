@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, Coins } from "lucide-react";
 
@@ -122,16 +123,28 @@ export default function RevenueRecognition() {
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <StatCard
-                label={`Recognized in ${monthLabel(month, year)}`}
-                value={fmt(report.recognized_amount || 0)}
-                hint="Earned revenue booked this period"
-              />
-              <StatCard
-                label="Deferred balance"
-                value={fmt(report.deferred_balance || 0)}
-                hint="Unearned revenue still to recognize"
-              />
+              <Link
+                to="/ledger?account_code=4100&code=2"
+                className="block"
+                title="View the recognition postings in the Ledger"
+              >
+                <StatCard
+                  label={`Recognized in ${monthLabel(month, year)}`}
+                  value={fmt(report.recognized_amount || 0)}
+                  hint="Earned revenue booked this period — click for the postings"
+                />
+              </Link>
+              <Link
+                to="/ledger?account_code=2100"
+                className="block"
+                title="View the Deferred Revenue account in the Ledger"
+              >
+                <StatCard
+                  label="Deferred balance"
+                  value={fmt(report.deferred_balance || 0)}
+                  hint="Unearned revenue still to recognize — click for the account"
+                />
+              </Link>
               <StatCard
                 label="Currencies deferred"
                 value={(byCurrency.length || 0).toLocaleString()}

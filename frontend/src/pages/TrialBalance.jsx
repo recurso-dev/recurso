@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { Scale, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -28,6 +29,7 @@ const typeLabel = (t) =>
   ({ 1: "Asset", 2: "Liability", 3: "Equity", 4: "Revenue", 5: "Expense" }[t] || "—");
 
 export default function TrialBalance() {
+  const navigate = useNavigate();
   // How the report is scoped across legal entities (Multi-Entity Books). Default
   // is the all-entities breakdown; single-entity tenants never see the control.
   const [scope, setScope] = useState(SCOPE_ALL);
@@ -177,7 +179,16 @@ export default function TrialBalance() {
                     </TableHeader>
                     <TableBody>
                       {lines.map((l) => (
-                        <TableRow key={`${l.account_id}-${l.code}`}>
+                        <TableRow
+                          key={`${l.account_id}-${l.code}`}
+                          className={l.sub_count === 1 ? "cursor-pointer" : undefined}
+                          title={l.sub_count === 1 ? "View this account's postings in the Ledger" : undefined}
+                          onClick={
+                            l.sub_count === 1
+                              ? () => navigate(`/ledger?account_id=${l.account_id}`)
+                              : undefined
+                          }
+                        >
                           <TableCell className="text-foreground">
                             <span className="font-mono text-xs text-muted-foreground">{l.code}</span>{" "}
                             {l.name}

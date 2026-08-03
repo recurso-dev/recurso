@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { toast } from "@/components/ui/sonner";
@@ -45,6 +46,7 @@ const MONTHS = [
 const monthLabel = (m, y) => `${MONTHS[m - 1] || "—"} ${y}`;
 
 export default function MonthEndClose() {
+  const navigate = useNavigate();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
@@ -325,7 +327,16 @@ export default function MonthEndClose() {
                   </TableHeader>
                   <TableBody>
                     {(tb?.lines || []).map((l) => (
-                      <TableRow key={l.account_id}>
+                      <TableRow
+                        key={l.account_id}
+                        className={l.sub_count === 1 ? "cursor-pointer" : undefined}
+                        title={l.sub_count === 1 ? "View this account's postings in the Ledger" : undefined}
+                        onClick={
+                          l.sub_count === 1
+                            ? () => navigate(`/ledger?account_id=${l.account_id}`)
+                            : undefined
+                        }
+                      >
                         <TableCell className="text-foreground">
                           <span className="font-mono text-xs text-muted-foreground">{l.code}</span>{" "}
                           {l.name}

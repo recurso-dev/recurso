@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import TrialBalance from "../TrialBalance";
 import { endpoints } from "../../lib/api";
@@ -28,9 +29,9 @@ const balanced = {
 };
 
 const wrapper = ({ children }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+  <MemoryRouter><QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
     {children}
-  </QueryClientProvider>
+  </QueryClientProvider></MemoryRouter>
 );
 
 describe("TrialBalance page", () => {

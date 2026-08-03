@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
 
@@ -57,10 +58,14 @@ const fmtWhen = (x) =>
 const PAGE_SIZE = 50;
 
 export default function Ledger() {
-  const [selectedAccountId, setSelectedAccountId] = useState("");
+  // URL-addressable: /ledger?account_id=…&code=3 (or ?account_code=2100 to
+  // resolve a tenant-level account by chart code). Reports deep-link here so
+  // any figure is two clicks from the journal legs behind it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedAccountId, setSelectedAccountId] = useState(searchParams.get("account_id") || "");
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [page, setPage] = useState(0);
-  const [codeFilter, setCodeFilter] = useState("all");
+  const [codeFilter, setCodeFilter] = useState(searchParams.get("code") || "all");
 
   const accountsQuery = useQuery({
     queryKey: ["ledger-accounts"],
@@ -105,12 +110,32 @@ export default function Ledger() {
     return null;
   };
 
-  // Auto-select the first account once accounts load (matches prior behavior).
+  // Auto-select once accounts load: an explicit ?account_code picks the
+  // matching tenant-level account when it's unambiguous (per-customer AR
+  // sub-accounts all share 1100, so that code stays ambiguous and falls
+  // through); otherwise the first account, matching prior behavior.
   useEffect(() => {
-    if (!selectedAccountId && accounts.length > 0) {
-      setSelectedAccountId(accounts[0].id);
+    if (selectedAccountId || accounts.length === 0) return;
+    const codeParam = searchParams.get("account_code");
+    if (codeParam) {
+      const matches = accounts.filter((a) => String(a.code) === codeParam);
+      if (matches.length === 1) {
+        setSelectedAccountId(matches[0].id);
+        return;
+      }
     }
-  }, [accounts, selectedAccountId]);
+    setSelectedAccountId(accounts[0].id);
+  }, [accounts, selectedAccountId, searchParams]);
+
+  // Reflect the current view in the URL (replace, not push) so it is
+  // shareable and the back button isn't spammed.
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    const next = new URLSearchParams();
+    next.set("account_id", selectedAccountId);
+    if (codeFilter !== "all") next.set("code", codeFilter);
+    setSearchParams(next, { replace: true });
+  }, [selectedAccountId, codeFilter, setSearchParams]);
 
   // A new account or posting filter starts back at the first page.
   useEffect(() => {
