@@ -31,7 +31,7 @@ export function useCustomers() {
 
 // usePlans returns {plans, names} with the same shared-cache semantics.
 export function usePlans() {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ["plans", "all"],
     queryFn: async () => {
       // The API defaults to limit=10 — ask for everything or name
@@ -48,7 +48,7 @@ export function usePlans() {
     });
     return map;
   }, [plans]);
-  return { plans, names };
+  return { plans, names, isLoading };
 }
 
 // useSubscriptions returns the tenant's subscriptions from the shared cache.
