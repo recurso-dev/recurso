@@ -72,6 +72,7 @@ export const endpoints = {
   stripeImportCompare: (exportData) => api.post('/import/stripe/compare', exportData),
   chargebeeImportCompare: (exportData) => api.post('/import/chargebee/compare', exportData),
   revenuecatImportCompare: (exportData) => api.post('/import/revenuecat/compare', exportData),
+  getCompareReportDocumentUrl: (id) => api.defaults.baseURL + '/import/compare-reports/' + id + '/document',
   chargebeeImportPreview: (exportData) => api.post('/import/chargebee/preview', exportData),
   chargebeeImportCommit: (exportData) => api.post('/import/chargebee/commit', exportData),
   revenuecatImportPreview: (exportData) => api.post('/import/revenuecat/preview', exportData),

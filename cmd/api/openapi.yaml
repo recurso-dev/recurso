@@ -983,6 +983,75 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/import/compare-reports:
+    get:
+      operationId: listCompareReports
+      tags: [Migration]
+      summary: List stored Compare runs
+      description: Every persisted migration Compare run (newest first) — each one a citable receipt that a migration was proven before cut-over.
+      responses:
+        '200':
+          description: Stored runs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        source: { type: string }
+                        ready: { type: boolean }
+                        generated_at: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/import/compare-reports/{id}:
+    get:
+      operationId: getCompareReport
+      tags: [Migration]
+      summary: Get a stored Compare run
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The stored run with its full report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data: { type: object }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/import/compare-reports/{id}/document:
+    get:
+      operationId: getCompareReportDocument
+      tags: [Migration]
+      summary: Printable Compare receipt
+      description: Self-contained HTML document (print-to-PDF) stating what was checked, what matched, and the verdict.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The printable document.
+          content:
+            text/html:
+              schema: { type: string }
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/import/chargebee/preview:
     post:
       operationId: previewChargebeeImport

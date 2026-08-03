@@ -40,8 +40,10 @@ type CompareCount struct {
 	Missing int `json:"missing"`
 }
 
-// CompareReport is the full gate result.
+// CompareReport is the full gate result. ReportID is set by the handler after
+// the run is persisted — the handle for the printable receipt.
 type CompareReport struct {
+	ReportID      uuid.UUID      `json:"report_id,omitempty"`
 	Source        string         `json:"source"` // "stripe"
 	Customers     CompareCount   `json:"customers"`
 	Plans         CompareCount   `json:"plans"`

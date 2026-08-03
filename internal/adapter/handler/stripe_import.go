@@ -19,8 +19,13 @@ const maxImportBytes = 25 << 20
 // preview (dry run) and an idempotent commit. Both take the Stripe export JSON
 // as the request body.
 type StripeImportHandler struct {
-	svc *service.StripeImportService
+	svc     *service.StripeImportService
+	reports compareReportStore // optional; persists Compare runs as receipts
 }
+
+// SetReportStore wires Compare-run persistence. Nil-safe: without it, Compare
+// still returns its result, just without a stored receipt.
+func (h *StripeImportHandler) SetReportStore(s compareReportStore) { h.reports = s }
 
 func NewStripeImportHandler(svc *service.StripeImportService) *StripeImportHandler {
 	return &StripeImportHandler{svc: svc}
@@ -58,6 +63,13 @@ func (h *StripeImportHandler) Compare(c *gin.Context) {
 	if err != nil {
 		respondInternalError(c, err)
 		return
+	}
+	// Persist the run as a citable receipt; best-effort — a storage failure
+	// must not hide the result the operator is waiting on.
+	if h.reports != nil {
+		if id, serr := h.reports.Create(c.Request.Context(), tenantID, report.Source, report.Ready, report); serr == nil {
+			report.ReportID = id
+		}
 	}
 	c.JSON(http.StatusOK, report)
 }

@@ -1380,6 +1380,13 @@ func main() {
 	usTaxConfigHandler := handler.NewUSTaxConfigHandler(usTaxConfigRepo)
 	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
 
+	compareReportRepo := db.NewCompareReportRepository(database)
+	compareReportHandler := handler.NewCompareReportHandler(compareReportRepo)
+	compareReportHandler.SetTenantNamer(tenantService)
+	stripeImportHandler.SetReportStore(compareReportRepo)
+	chargebeeImportHandler.SetReportStore(compareReportRepo)
+	revenuecatImportHandler.SetReportStore(compareReportRepo)
+
 	invoiceBrandingRepo := db.NewInvoiceBrandingRepository(database)
 	invoiceBrandingHandler := handler.NewInvoiceBrandingHandler(invoiceBrandingRepo)
 	pdfHandler.SetBranding(invoiceBrandingRepo)        // per-tenant logo/signature/bank/terms on invoices
@@ -1757,6 +1764,10 @@ func main() {
 		v1.POST("/import/revenuecat/preview", revenuecatImportHandler.Preview)
 		v1.POST("/import/revenuecat/commit", revenuecatImportHandler.Commit)
 		v1.POST("/import/revenuecat/compare", revenuecatImportHandler.Compare)
+
+		v1.GET("/import/compare-reports", compareReportHandler.List)
+		v1.GET("/import/compare-reports/:id", compareReportHandler.Get)
+		v1.GET("/import/compare-reports/:id/document", compareReportHandler.Document)
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)

@@ -14,8 +14,13 @@ import (
 // ChargebeeImportHandler serves the Chargebee migration endpoints: a
 // no-side-effect preview and an idempotent commit.
 type ChargebeeImportHandler struct {
-	svc *service.ChargebeeImportService
+	svc     *service.ChargebeeImportService
+	reports compareReportStore // optional; persists Compare runs as receipts
 }
+
+// SetReportStore wires Compare-run persistence. Nil-safe: without it, Compare
+// still returns its result, just without a stored receipt.
+func (h *ChargebeeImportHandler) SetReportStore(s compareReportStore) { h.reports = s }
 
 func NewChargebeeImportHandler(svc *service.ChargebeeImportService) *ChargebeeImportHandler {
 	return &ChargebeeImportHandler{svc: svc}
@@ -52,6 +57,13 @@ func (h *ChargebeeImportHandler) Compare(c *gin.Context) {
 	if err != nil {
 		respondInternalError(c, err)
 		return
+	}
+	// Persist the run as a citable receipt; best-effort — a storage failure
+	// must not hide the result the operator is waiting on.
+	if h.reports != nil {
+		if id, serr := h.reports.Create(c.Request.Context(), tenantID, report.Source, report.Ready, report); serr == nil {
+			report.ReportID = id
+		}
 	}
 	c.JSON(http.StatusOK, report)
 }
