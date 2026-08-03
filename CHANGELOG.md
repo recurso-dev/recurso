@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Statutory credit-note documents** — credit notes store their tax breakdown
+  (taxable value, IGST/CGST/SGST, HSN; migration 000160), populated at
+  creation: downgrade credits carry the reversed proration tax, invoice-linked
+  credits slice the invoice's tax proportionally (the same math the GSTR-1
+  CDNR report uses). The downloadable document renders a GST-grade CDN and the
+  dashboard's detail sheet mirrors it. Standalone goodwill credits stay
+  gross-only.
+- **Credit-note issuance emails** — the customer is now notified when a credit
+  note goes live: a refund on its way to their payment method, or account
+  credit that will offset upcoming invoices. Direct-issued notes email
+  immediately; maker-checker notes email at approval. This was the one money
+  event that never notified.
+
+### Fixed
+
+- Invoice reads never surfaced `tax_type` (the column was missing from the
+  single-invoice scan) — every `GetByID` consumer saw it empty.
+- The customer portal's Total Paid / Outstanding cards summed minor units
+  across currencies and formatted the result as USD; they are now per-currency.
+- The last three unclamped list limits (dunning history — which accepted
+  negative values verbatim — and both webhook-management lists) now clamp
+  through the shared helper.
+
+### Changed
+
+- Reconciliation page labels the newer discrepancy types instead of showing
+  raw identifiers; recognition sweeps no longer print a raw-log line per run
+  (structured `slog` throughout the revrec repo and ledger handler).
+
 ## [0.8.0] - 2026-08-03 — The correctness release
 
 No new surface — a deep correctness pass over the money paths that already
