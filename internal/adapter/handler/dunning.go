@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -46,12 +45,9 @@ func (h *DunningHandler) GetWeights(c *gin.Context) {
 }
 
 func (h *DunningHandler) GetHistory(c *gin.Context) {
-	limit := 50
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil {
-			limit = parsed
-		}
-	}
+	// Clamped like every other list endpoint: garbage/negative falls back to
+	// the default, and a huge ?limit= can't force an unbounded read.
+	limit, _ := parseLimitOffset(c, 50, 500)
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

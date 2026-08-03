@@ -3,7 +3,6 @@ package handler
 import (
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -189,18 +188,9 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 		return
 	}
 
-	limit := 50
-	offset := 0
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-	if o := c.Query("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
+	// Clamped like every other list endpoint: garbage falls back to the
+	// default, and a huge ?limit= can't force an unbounded read.
+	limit, offset := parseLimitOffset(c, 50, 500)
 
 	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
 	if err != nil {
@@ -316,18 +306,9 @@ func (h *WebhookManagementHandler) ListEndpointDeliveries(c *gin.Context) {
 		return
 	}
 
-	limit := 50
-	offset := 0
-	if l := c.Query("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 {
-			limit = parsed
-		}
-	}
-	if o := c.Query("offset"); o != "" {
-		if parsed, err := strconv.Atoi(o); err == nil && parsed >= 0 {
-			offset = parsed
-		}
-	}
+	// Clamped like every other list endpoint: garbage falls back to the
+	// default, and a huge ?limit= can't force an unbounded read.
+	limit, offset := parseLimitOffset(c, 50, 500)
 
 	deliveries, endpoint, err := h.webhookService.ListEndpointDeliveries(
 		c.Request.Context(), tenantID.(uuid.UUID), endpointID, c.Query("status"), limit, offset)
