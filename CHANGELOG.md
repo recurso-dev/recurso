@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-03 — The paper-trail release
+
+The money you move now explains itself: credit notes become statutory-grade
+documents with their tax breakdown recorded at creation, customers are emailed
+the moment a refund or credit goes live (the one money event that never
+notified), the customer portal shows every figure in its own currency, and a
+schema-wide index audit makes the busiest paths — the invoice list, every
+settlement webhook, the dunning sweep — index-served at any scale.
+
 ### Added
 
 - **Statutory credit-note documents** — credit notes store their tax breakdown
