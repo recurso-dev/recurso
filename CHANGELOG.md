@@ -38,6 +38,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   raw identifiers; recognition sweeps no longer print a raw-log line per run
   (structured `slog` throughout the revrec repo and ledger handler).
 
+### Performance
+
+- **Hot-path indexes across the schema** (a systematic EXPLAIN audit;
+  migrations 000161–000163). The invoices table — the busiest in the product —
+  had no index on tenant, customer, subscription, gateway payment, or the
+  dunning due-date shape; the dashboard list, every settlement webhook, and
+  the dunning sweep could only sequential-scan. Rev-rec's reconciliation sum
+  and per-payment schedule checks, and the webhook delivery worker's
+  continuous claim loop, likewise gained the partial indexes they lacked.
+  Every other hot table was verified already-indexed.
+
 ## [0.8.0] - 2026-08-03 — The correctness release
 
 No new surface — a deep correctness pass over the money paths that already
