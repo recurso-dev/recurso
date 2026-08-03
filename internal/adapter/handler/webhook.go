@@ -135,17 +135,23 @@ func (h *WebhookHandler) SetInboundWebhookDedup(d InboundWebhookDedup) { h.inbou
 func (h *WebhookHandler) SetPaymentAttempts(s paymentAttemptStore) { h.paymentAttempts = s }
 
 // alreadyProcessed acknowledges and returns true when this (gateway, eventID)
-// was already fully processed — the caller should stop. Fails open (returns
-// false) on a nil store, empty id, or a lookup error, so dedup never blocks a
-// legitimate event.
+// was already fully processed OR the dedup store could not be consulted — in
+// both cases the caller must stop (a response has been written). Fails open
+// (returns false) only for a nil store or empty id — configuration choices,
+// not transient faults. A LOOKUP ERROR fails CLOSED with a 503 (S4): every
+// gateway retries on a non-2xx, so a store outage merely defers the event
+// until the store recovers — whereas processing on faith risks re-running
+// non-idempotent side effects (payment-failed emails, dunning bandit outcomes)
+// on a redelivery the broken dedup could not recognize.
 func (h *WebhookHandler) alreadyProcessed(c *gin.Context, gateway, eventID string) bool {
 	if h.inboundDedup == nil || eventID == "" {
 		return false
 	}
 	processed, err := h.inboundDedup.WasProcessed(c.Request.Context(), gateway, eventID)
 	if err != nil {
-		h.logger.Error("webhook dedup check failed; processing anyway", "gateway", gateway, "event_id", eventID, "error", err)
-		return false
+		h.logger.Error("webhook dedup check failed; deferring to gateway retry", "gateway", gateway, "event_id", eventID, "error", err)
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "dedup store unavailable; retry"})
+		return true
 	}
 	if processed {
 		h.logger.Info("duplicate webhook ignored", "gateway", gateway, "event_id", eventID)

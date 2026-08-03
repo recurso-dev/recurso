@@ -79,7 +79,15 @@ func (h *WebhookHandler) HandleGoCardless(c *gin.Context) {
 
 	processed := 0
 	for _, ev := range payload.Events {
-		if h.gcEventProcessed(c, ev.ID) {
+		done, derr := h.gcEventProcessed(c, ev.ID)
+		if derr != nil {
+			// Dedup store unavailable: fail the WHOLE batch closed (S4).
+			// GoCardless redelivers on a non-2xx; per-event dedup skips whatever
+			// completed before the outage, so nothing is double-processed.
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "dedup store unavailable; retry"})
+			return
+		}
+		if done {
 			continue
 		}
 		if err := h.handleGoCardlessEvent(c, ev); err != nil {
@@ -213,15 +221,18 @@ func (h *WebhookHandler) handleGoCardlessPaymentEvent(c *gin.Context, ev gcEvent
 
 // gcEventProcessed is alreadyProcessed without the per-request acknowledgement
 // response — GoCardless batches events, so a duplicate is skipped silently
-// while the rest of the batch still runs.
-func (h *WebhookHandler) gcEventProcessed(c *gin.Context, eventID string) bool {
+// while the rest of the batch still runs. A LOOKUP ERROR fails CLOSED (S4):
+// it returns a non-nil error and the caller 503s the whole request —
+// GoCardless redelivers the batch, and the per-event dedup skips whatever had
+// already completed before the store outage.
+func (h *WebhookHandler) gcEventProcessed(c *gin.Context, eventID string) (bool, error) {
 	if h.inboundDedup == nil || eventID == "" {
-		return false
+		return false, nil
 	}
 	done, err := h.inboundDedup.WasProcessed(c.Request.Context(), "gocardless", eventID)
 	if err != nil {
-		h.logger.Error("webhook dedup check failed; processing anyway", "gateway", "gocardless", "event_id", eventID, "error", err)
-		return false
+		h.logger.Error("webhook dedup check failed; deferring batch to gateway retry", "gateway", "gocardless", "event_id", eventID, "error", err)
+		return false, err
 	}
-	return done
+	return done, nil
 }

@@ -115,3 +115,49 @@ func TestHandleRazorpay_InvalidSignatureNotRecorded(t *testing.T) {
 		t.Fatalf("recorded %d times, want 0 (a rejected webhook must not be marked processed)", dedup.marks)
 	}
 }
+
+// errDedup is an InboundWebhookDedup whose lookups always fail — the
+// dedup-store-outage case.
+type errDedup struct{ mapDedup }
+
+func (e *errDedup) WasProcessed(_ context.Context, _, _ string) (bool, error) {
+	return false, context.DeadlineExceeded
+}
+
+// TestHandleRazorpay_DedupLookupErrorFailsClosed proves S4's fail-open half is
+// closed: when the dedup store cannot be consulted, the webhook must NOT be
+// processed on faith. Every gateway retries on a non-2xx, so responding 503
+// simply defers the event until the store recovers — whereas failing open
+// risks re-running non-idempotent side effects (payment-failed emails, dunning
+// bandit outcomes) on a redelivery that the broken dedup could not recognize.
+func TestHandleRazorpay_DedupLookupErrorFailsClosed(t *testing.T) {
+	secret := "whsec_razorpay_test"
+	t.Setenv("RAZORPAY_WEBHOOK_SECRET", secret)
+	gin.SetMode(gin.TestMode)
+
+	dedup := &errDedup{}
+	h := &WebhookHandler{
+		logger:       slog.Default(),
+		inboundDedup: dedup,
+	}
+
+	body := []byte(`{"event":"subscription.pending"}`)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/razorpay", bytes.NewReader(body))
+	req.Header.Set("X-Razorpay-Signature", sig)
+	req.Header.Set("X-Razorpay-Event-Id", "evt_dedup_err_1")
+	c.Request = req
+	h.HandleRazorpay(c)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503 — a dedup outage must defer the event to a gateway retry, not process on faith", w.Code)
+	}
+	if dedup.marks != 0 {
+		t.Fatalf("recorded %d times, want 0 (nothing was processed)", dedup.marks)
+	}
+}
