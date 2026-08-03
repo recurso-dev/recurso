@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -101,5 +102,97 @@ func TestCreditNoteTaxBreakdown_RoundTrip_Postgres(t *testing.T) {
 	if gotPlain.Subtotal != 0 || gotPlain.TaxAmount != 0 || gotPlain.TaxType != "" {
 		t.Errorf("standalone credit must stay gross-only, got subtotal %d tax %d type %q",
 			gotPlain.Subtotal, gotPlain.TaxAmount, gotPlain.TaxType)
+	}
+}
+
+// captureCNNotifier records SendCreditNoteIssued calls; the send happens on a
+// goroutine, so a channel hands the data back to the test.
+type captureCNNotifier struct{ got chan CreditNoteEmailData }
+
+func (c *captureCNNotifier) SendCreditNoteIssued(_ context.Context, d CreditNoteEmailData) error {
+	c.got <- d
+	return nil
+}
+
+// TestCreditNoteIssuanceEmail_Postgres proves the customer is emailed when a
+// credit note becomes ISSUED — immediately for a direct-issued note, at
+// APPROVAL for a maker-checker pending note (and NOT at its creation). A
+// silent credit/refund was the one money event that never notified.
+func TestCreditNoteIssuanceEmail_Postgres(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping postgres-backed CN email test")
+	}
+	if err := db.RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	dbx, err := sqlx.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = dbx.Close() }()
+	conn := dbx.DB
+	ctx := context.Background()
+	tenantID := seedRevRecTenant(t, conn)
+	run := uuid.New().String()[:8]
+
+	customerID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, ledger_account_id, created_at) VALUES ($1,$2,$3,'Mail Cust',$4,NOW())`,
+		customerID, tenantID, "mail-"+run+"@t.com", uuid.New()); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+
+	tctx := context.WithValue(ctx, domain.TenantIDKey, tenantID)
+	cnSvc := NewCreditNoteService(db.NewCreditNoteRepository(dbx), db.NewCustomerRepository(dbx), db.NewInvoiceRepository(conn), nil)
+	notif := &captureCNNotifier{got: make(chan CreditNoteEmailData, 2)}
+	cnSvc.SetNotifier(notif)
+
+	// Direct-issued adjustment (API-key path, empty role) -> emails immediately.
+	if _, err := cnSvc.Create(tctx, tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: customerID, Amount: 2500, Currency: "USD", Reason: "goodwill",
+	}); err != nil {
+		t.Fatalf("Create issued credit: %v", err)
+	}
+	select {
+	case d := <-notif.got:
+		if d.CustomerEmail != "mail-"+run+"@t.com" || d.IsRefund || d.Amount == "" {
+			t.Errorf("issued-credit email = %+v, want account-credit email to the customer", d)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no issuance email for a direct-issued credit note")
+	}
+
+	// Maker (member role) -> pending: NO email at creation...
+	makerID := uuid.New()
+	pending, err := cnSvc.Create(tctx, tenantID, makerID, "member", domain.CreateCreditNoteRequest{
+		CustomerID: customerID, Amount: 4000, Currency: "USD", Reason: "pending credit",
+	})
+	if err != nil {
+		t.Fatalf("Create pending credit: %v", err)
+	}
+	select {
+	case d := <-notif.got:
+		t.Fatalf("pending credit note must not email at creation, got %+v", d)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	// ...the email fires at APPROVAL, when the note goes live.
+	approverID := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO users (id, tenant_id, email, password_hash, name, role) VALUES ($1, $2, $3, 'x', 'Approver', 'admin')`,
+		approverID, tenantID, "appr-"+run+"@t.com"); err != nil {
+		t.Fatalf("seed approver: %v", err)
+	}
+	if _, err := cnSvc.Approve(tctx, tenantID, pending.ID, approverID); err != nil {
+		t.Fatalf("Approve: %v", err)
+	}
+	select {
+	case d := <-notif.got:
+		if d.IsRefund || d.CustomerEmail != "mail-"+run+"@t.com" {
+			t.Errorf("approval email = %+v, want account-credit email", d)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no issuance email after approval")
 	}
 }
