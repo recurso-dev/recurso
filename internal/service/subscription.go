@@ -430,6 +430,9 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	// yet — the counter stays 0 and ConvertTrialToActive advances it.
 	if !isTrial && couponID != nil && discount > 0 {
 		sub.CouponPeriodsApplied = 1
+		// R3: the first period's invoice carries the discount — proration must
+		// credit/charge this period at the discounted prices.
+		sub.CouponAppliedCurrentPeriod = true
 	}
 
 	// Create gateway subscription (Razorpay/Stripe)

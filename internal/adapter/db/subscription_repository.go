@@ -30,7 +30,7 @@ const subscriptionColumnList = `id, tenant_id, customer_id, plan_id, status, ` +
 	`billing_anchor_type, billing_anchor_day, payment_terms, ` +
 	`cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id, ` +
 	`trial_end, commitment_amount, created_at, updated_at, resume_at, entity_id, ` +
-	`coupon_id, coupon_periods_applied`
+	`coupon_id, coupon_periods_applied, coupon_applied_current_period`
 
 // subscriptionColumns returns the canonical column list, optionally prefixed
 // (e.g. "s." for aliased JOIN queries).
@@ -64,7 +64,7 @@ func scanSubscription(row rowScanner) (*domain.Subscription, error) {
 		&anchorType, &anchorDay, &paymentTerms,
 		&sub.CancelAtPeriodEnd, &refID, &razorpayID, &stripeID,
 		&trialEnd, &sub.CommitmentAmount, &sub.CreatedAt, &sub.UpdatedAt, &resumeAt, &entityID,
-		&couponID, &sub.CouponPeriodsApplied,
+		&couponID, &sub.CouponPeriodsApplied, &sub.CouponAppliedCurrentPeriod,
 	)
 	if err != nil {
 		return nil, err
@@ -99,15 +99,17 @@ func (r *SubscriptionRepository) Create(ctx context.Context, sub *domain.Subscri
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at, entity_id, coupon_id, coupon_periods_applied
+			trial_end, created_at, updated_at, entity_id, coupon_id, coupon_periods_applied,
+			coupon_applied_current_period
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
 		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt, sub.EntityID, sub.CouponID, sub.CouponPeriodsApplied,
+		sub.CouponAppliedCurrentPeriod,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription: %w", err)
@@ -122,15 +124,17 @@ func (r *SubscriptionRepository) CreateWithTx(ctx context.Context, tx *sql.Tx, s
 			id, tenant_id, customer_id, plan_id, status,
 			current_period_start, current_period_end, billing_anchor,
 			cancel_at_period_end, reference_id, razorpay_subscription_id, stripe_subscription_id,
-			trial_end, created_at, updated_at, entity_id, coupon_id, coupon_periods_applied
+			trial_end, created_at, updated_at, entity_id, coupon_id, coupon_periods_applied,
+			coupon_applied_current_period
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 	`
 	_, err := tx.ExecContext(ctx, query,
 		sub.ID, sub.TenantID, sub.CustomerID, sub.PlanID, sub.Status,
 		sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.BillingAnchor,
 		sub.CancelAtPeriodEnd, sub.ReferenceID, sub.RazorpaySubscriptionID, sub.StripeSubscriptionID,
 		sub.TrialEnd, sub.CreatedAt, sub.UpdatedAt, sub.EntityID, sub.CouponID, sub.CouponPeriodsApplied,
+		sub.CouponAppliedCurrentPeriod,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert subscription in tx: %w", err)
@@ -289,8 +293,9 @@ func (r *SubscriptionRepository) Update(ctx context.Context, sub *domain.Subscri
 			stripe_subscription_id = $10,
 			trial_end = $11,
 			updated_at = $12,
-			coupon_periods_applied = $13
-		WHERE id = $14 AND tenant_id = $15
+			coupon_periods_applied = $13,
+			coupon_applied_current_period = $14
+		WHERE id = $15 AND tenant_id = $16
 	`
 	_, err := r.db.ExecContext(ctx, query, subUpdateArgs(sub)...)
 	if err != nil {
@@ -311,9 +316,9 @@ func (r *SubscriptionRepository) ActivateTrialWithTx(ctx context.Context, tx *sq
 	res, err := tx.ExecContext(ctx,
 		`UPDATE subscriptions
 		 SET status = $1, current_period_start = $2, current_period_end = $3, updated_at = $4,
-		     coupon_periods_applied = $5
-		 WHERE id = $6 AND tenant_id = $7 AND status = 'trialing'`,
-		sub.Status, sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.UpdatedAt, sub.CouponPeriodsApplied, sub.ID, sub.TenantID)
+		     coupon_periods_applied = $5, coupon_applied_current_period = $6
+		 WHERE id = $7 AND tenant_id = $8 AND status = 'trialing'`,
+		sub.Status, sub.CurrentPeriodStart, sub.CurrentPeriodEnd, sub.UpdatedAt, sub.CouponPeriodsApplied, sub.CouponAppliedCurrentPeriod, sub.ID, sub.TenantID)
 	if err != nil {
 		return false, fmt.Errorf("failed to activate trial (tx): %w", err)
 	}
@@ -330,8 +335,9 @@ func (r *SubscriptionRepository) UpdateWithTx(ctx context.Context, tx *sql.Tx, s
 			plan_id = $1, status = $2, current_period_start = $3, current_period_end = $4,
 			cancel_at_period_end = $5, canceled_at = $6, cancellation_reason = $7,
 			cancellation_feedback = $8, razorpay_subscription_id = $9, stripe_subscription_id = $10,
-			trial_end = $11, updated_at = $12, coupon_periods_applied = $13
-		WHERE id = $14 AND tenant_id = $15
+			trial_end = $11, updated_at = $12, coupon_periods_applied = $13,
+			coupon_applied_current_period = $14
+		WHERE id = $15 AND tenant_id = $16
 	`
 	if _, err := tx.ExecContext(ctx, query, subUpdateArgs(sub)...); err != nil {
 		return fmt.Errorf("failed to update subscription (tx): %w", err)
@@ -344,7 +350,7 @@ func subUpdateArgs(sub *domain.Subscription) []interface{} {
 		sub.PlanID, sub.Status, sub.CurrentPeriodStart, sub.CurrentPeriodEnd,
 		sub.CancelAtPeriodEnd, sub.CanceledAt, sub.CancellationReason, sub.CancellationFeedback,
 		sub.RazorpaySubscriptionID, sub.StripeSubscriptionID, sub.TrialEnd, sub.UpdatedAt,
-		sub.CouponPeriodsApplied,
+		sub.CouponPeriodsApplied, sub.CouponAppliedCurrentPeriod,
 		sub.ID, sub.TenantID,
 	}
 }

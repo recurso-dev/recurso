@@ -71,6 +71,9 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 			discount = couponDiscountFor(coupon, subtotal)
 			if discount > 0 {
 				sub.CouponPeriodsApplied++ // persisted by ActivateTrialWithTx / Update below
+				// R3: the first paid period carries the discount — proration must
+				// credit/charge this period at the discounted prices.
+				sub.CouponAppliedCurrentPeriod = true
 			}
 		}
 	}
