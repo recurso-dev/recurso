@@ -1,4 +1,8 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+
+const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+const wrapper = ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import InvoiceDetail from "../InvoiceDetail";
 import { endpoints } from "../../../lib/api";
@@ -27,7 +31,7 @@ const baseInvoice = {
 };
 
 const renderDetail = (invoice) =>
-  render(<InvoiceDetail invoice={invoice} isOpen={true} onClose={() => {}} />);
+  render(<InvoiceDetail invoice={invoice} isOpen={true} onClose={() => {}} />, { wrapper });
 
 describe("InvoiceDetail tax regime presentation", () => {
   beforeEach(() => {

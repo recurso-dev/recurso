@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { RefreshCw, XCircle, FileDown, FileCode, Eye, Send } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
+import { CustomerName } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -90,6 +92,7 @@ const euStatusVariant = (status) =>
   })[status] || "neutral";
 
 const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
+  const { names: customerNames } = useCustomers();
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
@@ -382,11 +385,13 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
               />
             </div>
 
-            <Field label="Customer ID">
-              <span className="font-mono">{invoice.customer_id}</span>
+            <Field label="Customer">
+              <CustomerName id={invoice.customer_id} names={customerNames} />
             </Field>
             <Field label="Created at">
-              {invoice.created_at ? new Date(invoice.created_at).toLocaleString() : "—"}
+              {invoice.created_at
+                ? new Date(invoice.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                : "—"}
             </Field>
             <Field label="Due date">{formatDate(invoice.due_date)}</Field>
           </dl>
