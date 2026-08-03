@@ -7,6 +7,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-03 — The receipts release
+
+Nothing here asks to be believed. A migration into Recurso now proves itself
+before you cut over — a Compare gate for Stripe, Chargebee, and RevenueCat
+that checks coverage, money-critical fidelity, and billing continuity, then
+persists as a dated, printable receipt. Every report figure is two clicks
+from the journal legs behind it. Invoices carry your logo and signature, and
+a latent bug that broke the statutory e-invoice QR is fixed. The dashboard's
+navigation, onboarding, and a dozen pages were rebuilt around how operators
+actually read them.
+
+### Added
+
+- **Migration Compare gate** for all three import sources — Stripe (#456),
+  Chargebee (#458), RevenueCat (#459): `POST /v1/import/<source>/compare`
+  re-diffs the committed export against live data, read-only, and reports
+  per-record coverage, fidelity (plan amount/currency/interval, customer
+  identity), and continuity (a period end drifted >1h is flagged as the
+  double-billing risk it is). `ready` ⇔ zero issues; wired into the Import
+  wizard's final step. (#456, #458, #459)
+- **Compare receipts**: every Compare run persists (migration 000165) and
+  renders as a printable, dated document — verdict, coverage, issues, and
+  method — via `GET /v1/import/compare-reports/:id/document`; the wizard
+  gains *Download report*. (#468)
+- **Invoice branding**: Settings → Invoice branding — company name, logo,
+  signature, signatory, bank details, and terms on invoice documents
+  (migration 000164), applied on dashboard and portal renders; statutory
+  GST/W-9 identity still wins on tax invoices. Credit notes carry the same
+  letterhead. Images are strictly validated data URLs (PNG/JPEG, 300KB).
+  (#452, #455)
+- **Explain any number**: the Ledger is URL-addressable
+  (`?account_id`/`?account_code`/`?code`), and Trial Balance rows, Month-End
+  Close rows, and Revenue Recognition's headline cards deep-link to the
+  postings behind them. (#467)
+- **Navigation IA v2 + onboarding**: the sidebar reorganized around operator
+  jobs (Billing / Usage / Revenue Recovery / Payments / Books / Reports /
+  System, with Reconciliation leading Books), and a state-driven
+  "Get to your first invoice" checklist on Home for new tenants. (#447)
+- **Restore drill**: `scripts/restore_drill.sh` restores a live dump and
+  proves row parity, invoice fidelity, and double-entry conservation; first
+  published drill report included. (#448)
+- Ledger entries API: `?code` posting-type filter plus real `limit`/`offset`
+  paging (the page was silently capped at 100). (#457)
+- `GET /v1/analytics/usage` returns `customers_metered` — a real distinct
+  count. (#465)
+
+### Fixed
+
+- **Statutory e-invoice QR and signature images rendered broken** —
+  `html/template` sanitized `data:` URLs to `#ZgotmplZ`; image fields are now
+  typed `template.URL` with a regression test. (#452)
+- The demo seeder now posts coherent books — deferred revenue funded at
+  issuance, recognition legs per recognized event, credit-note issuance
+  legs — verified against the reconciler's own checks; `--reset` purges by
+  ownership with full FK coverage and keeps in-use demo plans. (#451, #460,
+  #462, #464)
+- Subscriptions list showed raw plan ids and `$0.00/mo` while plans loaded;
+  invoice/subscription detail sheets showed raw UUIDs and machine dates;
+  notifications dates humanized; Smart Dunning's error banner rendered
+  inside a button. (#453, #463, #465, #471)
+
+### Changed
+
+- Ask AI first-run experience (example gallery, staged thinking state), Events
+  detail and family-colored stream with a type filter, Wallets activity sheet,
+  sync-record detail with deep links, grouped Settings hub, session-device
+  labels, books-pages polish (AR rollups, totals footer, waterfall chart,
+  de-jargoned dunning). (#449, #450, #453, #454)
+
 ## [0.9.0] - 2026-08-03 — The paper-trail release
 
 The money you move now explains itself: credit notes become statutory-grade
