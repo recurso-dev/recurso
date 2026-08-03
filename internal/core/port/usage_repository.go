@@ -16,6 +16,7 @@ type UsageRepository interface {
 	RecordEventIdempotent(ctx context.Context, event *domain.UsageEvent) (duplicate bool, err error)
 	GetUsageForPeriod(ctx context.Context, subID string, dimension string, start, end time.Time) (int64, error)
 	GetUsageStats(ctx context.Context, tenantID uuid.UUID) ([]*domain.UsageStats, error)
+	CountMeteredCustomers(ctx context.Context, tenantID uuid.UUID) (int64, error)
 
 	// QueryUsage aggregates usage into date_trunc'd time buckets. The
 	// filter's From/To/Granularity must already be validated/defaulted by

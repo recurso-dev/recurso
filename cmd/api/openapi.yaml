@@ -4320,6 +4320,9 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/UsageStats'
+                  customers_metered:
+                    type: integer
+                    description: Distinct customers with any recorded usage.
         '401':
           $ref: '#/components/responses/Unauthorized'
 
