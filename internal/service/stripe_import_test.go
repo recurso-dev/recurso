@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -220,5 +221,120 @@ func TestPreview_NoSideEffects(t *testing.T) {
 	}
 	if len(cust.created) != 0 || len(cat.created) != 0 || len(subs.created) != 0 || len(refs.refs) != 0 {
 		t.Error("preview must not create anything")
+	}
+}
+
+// ---- Compare gate ----
+
+type fakeSubReader struct {
+	subs map[uuid.UUID]*domain.Subscription
+}
+
+func (f *fakeSubReader) GetByID(_ context.Context, id uuid.UUID) (*domain.Subscription, error) {
+	return f.subs[id], nil
+}
+
+// compareFixture builds a tenant whose Recurso state EXACTLY matches the
+// export fixture, refs included — the gate must report ready.
+func compareFixture(t *testing.T, tenantID uuid.UUID) (*StripeImportService, *stripeimport.Export, *fakeSubReader) {
+	t.Helper()
+	exp := importFixture()
+
+	custA := &domain.Customer{ID: uuid.New(), Email: "a@acme.com"}
+	custB := &domain.Customer{ID: uuid.New(), Email: "b@acme.com"}
+	plan := &domain.Plan{
+		ID: uuid.New(), Code: "stripe_price_m", IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 4900}},
+	}
+	sub := exp.Subscriptions[0]
+	rec := &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: custA.ID, PlanID: plan.ID,
+		Status:            "active",
+		CurrentPeriodEnd:  time.Unix(sub.CurrentPeriodEnd, 0).UTC(),
+		CancelAtPeriodEnd: sub.CancelAtPeriodEnd,
+	}
+
+	refs := newFakeRefRepo()
+	refs.refs = []*domain.ImportExternalRef{
+		{Kind: domain.ImportKindCustomer, ExternalID: "cus_a", RecursoID: custA.ID},
+		{Kind: domain.ImportKindCustomer, ExternalID: "cus_b", RecursoID: custB.ID},
+		{Kind: domain.ImportKindPlan, ExternalID: "price_m", RecursoID: plan.ID},
+		{Kind: domain.ImportKindSubscription, ExternalID: sub.ID, RecursoID: rec.ID},
+	}
+	reader := &fakeSubReader{subs: map[uuid.UUID]*domain.Subscription{rec.ID: rec}}
+	svc := NewStripeImportService(
+		&fakeImportCustomers{existing: []*domain.Customer{custA, custB}},
+		&fakeImportCatalog{existing: []*domain.Plan{plan}},
+		&fakeImportSubs{}, refs,
+	)
+	svc.SetSubscriptionReader(reader)
+	return svc, exp, reader
+}
+
+func TestCompare_ReadyWhenEverythingMatches(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, _ := compareFixture(t, tenantID)
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Ready {
+		t.Fatalf("expected ready, issues: %+v", rep.Issues)
+	}
+	if rep.Customers.Matched != 2 || rep.Plans.Matched != 1 || rep.Subscriptions.Matched < 1 {
+		t.Fatalf("counts: %+v %+v %+v", rep.Customers, rep.Plans, rep.Subscriptions)
+	}
+}
+
+func TestCompare_FlagsPeriodDriftAndAmountMismatch(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, reader := compareFixture(t, tenantID)
+	// Drift the imported period end by 2 days (double-billing risk) and corrupt
+	// the plan amount.
+	for _, rec := range reader.subs {
+		rec.CurrentPeriodEnd = rec.CurrentPeriodEnd.Add(48 * time.Hour)
+	}
+	plans, _ := svc.catalog.ListPlans(context.Background(), tenantID, domain.PlanFilter{})
+	plans[0].Prices[0].Amount = 5900
+
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Ready {
+		t.Fatal("expected NOT ready")
+	}
+	var drift, amount bool
+	for _, is := range rep.Issues {
+		if is.Field == "current_period_end" {
+			drift = true
+		}
+		if is.Field == "amount" && is.Source == "4900" && is.Recurso == "5900" {
+			amount = true
+		}
+	}
+	if !drift || !amount {
+		t.Fatalf("missing expected issues (drift=%t amount=%t): %+v", drift, amount, rep.Issues)
+	}
+}
+
+func TestCompare_FlagsMissingRecords(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, _ := compareFixture(t, tenantID)
+	// A record the export has but Recurso doesn't: unknown customer + sub.
+	exp.Customers = append(exp.Customers, stripeimport.Customer{ID: "cus_new", Email: "new@acme.com"})
+	exp.Subscriptions = append(exp.Subscriptions, stripeimport.Subscription{
+		ID: "sub_new", Customer: "cus_new", Status: "active", CurrentPeriodEnd: 1_702_600_000,
+	})
+
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Ready {
+		t.Fatal("expected NOT ready")
+	}
+	if rep.Customers.Missing != 1 || rep.Subscriptions.Missing != 1 {
+		t.Fatalf("missing counts: %+v %+v", rep.Customers, rep.Subscriptions)
 	}
 }

@@ -43,6 +43,25 @@ func (h *StripeImportHandler) Preview(c *gin.Context) {
 	c.JSON(http.StatusOK, plan)
 }
 
+// Compare is the migration gate: it diffs the uploaded export against the
+// tenant's live Recurso data — coverage, money-critical fidelity, and billing
+// continuity (period-end drift = double-billing risk) — with zero writes.
+// Run it after a commit, before cutting billing over.
+//
+// POST /v1/import/stripe/compare
+func (h *StripeImportHandler) Compare(c *gin.Context) {
+	tenantID, exp, ok := h.readRequest(c)
+	if !ok {
+		return
+	}
+	report, err := h.svc.Compare(c.Request.Context(), tenantID, exp)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, report)
+}
+
 // Commit imports the uploaded Stripe export — creating customers and plans and
 // recording an idempotency ref for each. Re-running is safe (already-imported
 // ids and existing emails/plan-codes are skipped). Per-object failures are

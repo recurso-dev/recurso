@@ -1080,6 +1080,63 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/stripe/compare:
+    post:
+      operationId: compareStripeImport
+      tags: [Migration]
+      summary: Compare gate — prove the migration before cut-over
+      description: >
+        Diffs the uploaded Stripe export against the tenant's live Recurso data
+        with zero writes. Three checks, per record: coverage (every importable
+        source record exists in Recurso), fidelity (plan amount, currency, and
+        interval; customer identity), and billing continuity (a subscription
+        whose current_period_end drifted more than an hour is flagged — the
+        double-billing / billing-gap risk). ready=true means zero issues.
+        Run after a commit, before pointing billing at Recurso.
+      requestBody:
+        required: true
+        description: The same Stripe export JSON the commit consumed.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                customers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+                prices: { type: array, items: { type: object } }
+                subscriptions: { type: array, items: { type: object } }
+                payment_methods: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The compare report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  customers:
+                    $ref: '#/components/schemas/CompareCount'
+                  plans:
+                    $ref: '#/components/schemas/CompareCount'
+                  subscriptions:
+                    $ref: '#/components/schemas/CompareCount'
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        external_id: { type: string }
+                        field: { type: string }
+                        source: { type: string }
+                        recurso: { type: string }
+                  ready: { type: boolean }
+                  generated_at: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/customers:
     post:
       operationId: createCustomer
@@ -10982,6 +11039,13 @@ components:
         tier3_enabled:
           type: boolean
           description: When true, AI agents may run money-path / destructive MCP tools (convert quote to invoice, cancel subscription, issue credit note, top up wallet, …) against this tenant. Off by default.
+    CompareCount:
+      type: object
+      description: Migration-compare coverage for one record kind.
+      properties:
+        source: { type: integer, description: Importable records in the export. }
+        matched: { type: integer, description: Found in Recurso. }
+        missing: { type: integer }
     USTaxConfig:
       type: object
       description: A tenant's US tax identity (W-9) — the seller party shown on US sales-tax invoices. Presentation only.
