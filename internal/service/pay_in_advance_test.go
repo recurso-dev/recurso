@@ -208,3 +208,87 @@ func TestResolveChargeInput_PayInAdvanceRejectsPeriodClamps(t *testing.T) {
 		t.Fatalf("plain percentage + pay_in_advance should be allowed, got %v", err)
 	}
 }
+
+// TestResolveChargeInput_PayInAdvanceRequiresAdditiveAggregation asserts
+// pay_in_advance is only accepted with ADDITIVE aggregations (count, sum).
+// Per-event capture bills each event independently and the captures SUM onto
+// the invoice — coherent only when the period aggregate is itself a sum. For
+// max/latest/unique/percentile the arrears aggregate is NOT the sum of events
+// (max concurrent seats reported by heartbeat events would be billed per
+// heartbeat; unique users would be billed per repeat visit), and custom
+// computes an expression BillEvent never evaluates. weighted_sum was already
+// rejected; this closes the rest of the non-additive set.
+func TestResolveChargeInput_PayInAdvanceRequiresAdditiveAggregation(t *testing.T) {
+	tenantID := uuid.New()
+	planID := uuid.New()
+	plan := &domain.Plan{ID: planID, TenantID: tenantID, Prices: []domain.Price{{Currency: "INR"}}}
+	ctx := context.Background()
+
+	mk := func(agg domain.AggregationType, field string) *domain.BillableMetric {
+		return &domain.BillableMetric{ID: uuid.New(), TenantID: tenantID, Code: "m-" + string(agg),
+			Name: string(agg), AggregationType: agg, FieldName: field}
+	}
+
+	rejected := []*domain.BillableMetric{
+		mk(domain.AggregationMax, ""),
+		mk(domain.AggregationLatest, ""),
+		mk(domain.AggregationUnique, "user_id"),
+		mk(domain.AggregationPercentile, "95"),
+	}
+	for _, m := range rejected {
+		svc := simService(plan, m)
+		_, _, _, err := svc.resolveChargeInput(ctx, tenantID, 0, ChargeInput{
+			MetricID: m.ID.String(), ChargeModel: "per_unit", PayInAdvance: true,
+			Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "1"}},
+		})
+		if err == nil {
+			t.Errorf("%s + pay_in_advance should be rejected (non-additive aggregation)", m.AggregationType)
+		}
+	}
+
+	// Additive aggregations stay allowed.
+	for _, agg := range []domain.AggregationType{domain.AggregationCount, domain.AggregationSum} {
+		m := mk(agg, "")
+		svc := simService(plan, m)
+		if _, _, _, err := svc.resolveChargeInput(ctx, tenantID, 0, ChargeInput{
+			MetricID: m.ID.String(), ChargeModel: "per_unit", PayInAdvance: true,
+			Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "1"}},
+		}); err != nil {
+			t.Errorf("%s + pay_in_advance should be allowed, got %v", agg, err)
+		}
+	}
+}
+
+// TestPayInAdvanceBiller_CountMetricBillsOnePerEvent asserts per-event capture
+// on a COUNT metric bills exactly one unit per event, matching the arrears
+// COUNT(*) semantics (quantity is ignored for count — each event counts once).
+// Billing event.Quantity instead would charge a qty-5 event five units while
+// the arrears path would have counted it as one.
+func TestPayInAdvanceBiller_CountMetricBillsOnePerEvent(t *testing.T) {
+	tenantID := uuid.New()
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: uuid.New(), Status: domain.SubscriptionStatusActive}
+	plan := &domain.Plan{ID: sub.PlanID, TenantID: tenantID, Prices: []domain.Price{{Currency: "INR"}}}
+
+	countMetric := &domain.BillableMetric{ID: uuid.New(), Code: "logins", Name: "Logins", AggregationType: domain.AggregationCount}
+	charges := []domain.Charge{
+		{ID: uuid.New(), PlanID: sub.PlanID, ChargeModel: domain.ChargePerUnit, PayInAdvance: true,
+			Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "2"}}, Metric: countMetric},
+	}
+
+	ucRepo := &piaUnbilledRepo{}
+	biller := NewPayInAdvanceBiller(&piaChargeRepo{charges: charges}, &piaPlanRepo{plan: plan}, ucRepo)
+
+	// A count event that (incorrectly or not) carries Quantity 5 still counts
+	// as ONE event: fee = 1 × ₹2 = 200p, not 5 × ₹2 = 1000p.
+	n, err := biller.BillEvent(context.Background(), sub,
+		&domain.UsageEvent{ID: uuid.New(), SubscriptionID: sub.ID, Dimension: "logins", Quantity: 5})
+	if err != nil {
+		t.Fatalf("BillEvent count: %v", err)
+	}
+	if n != 1 || len(ucRepo.created) != 1 {
+		t.Fatalf("captured %d (repo %d), want 1", n, len(ucRepo.created))
+	}
+	if uc := ucRepo.created[0]; uc.Amount != 200 {
+		t.Fatalf("count-metric capture = %dp, want 200p (one unit per event, matching COUNT(*) arrears)", uc.Amount)
+	}
+}

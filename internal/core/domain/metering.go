@@ -134,6 +134,18 @@ func PayInAdvanceEligible(m ChargeModel) bool {
 	return false
 }
 
+// PayInAdvanceAggregationEligible reports whether a metric's aggregation can be
+// billed per event at ingestion. Per-event captures SUM onto the invoice, so
+// the period aggregate must itself be additive over events: count (one per
+// event) and sum (the event's quantity). Everything else is non-additive —
+// max/latest pick one event's value, unique dedups repeats, percentile is an
+// order statistic, weighted_sum is time-weighted, custom evaluates an
+// expression BillEvent never sees — so per-event billing would charge a
+// different total than the arrears aggregate for the same events.
+func PayInAdvanceAggregationEligible(a AggregationType) bool {
+	return a == AggregationCount || a == AggregationSum
+}
+
 // ProgressiveBillingEligible reports whether a charge model can be billed
 // progressively (interim invoices via a billed-amount watermark). The watermark
 // requires the fee to be MONOTONIC non-decreasing in the cumulative quantity —
