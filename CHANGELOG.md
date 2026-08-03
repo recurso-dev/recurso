@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Revenue recognition around mid-period downgrades** — a downgrade credit
+  could drive Deferred Revenue wrong-sign when recognition had run ahead of the
+  proration boundary. The credit's net now splits by where its funding actually
+  sits: the schedule's pending part drains Deferred; genuinely-recognized
+  revenue is clawed back out of Recognized Revenue (capped at, and marking, the
+  subscription's recognized events so repeated downgrades can never over-claw);
+  any residual funded by an unpaid invoice's unscheduled deferral comes out of
+  Deferred and is recorded as *schedule debt*, shrinking the schedule created
+  when that invoice is later paid (migration 000158) — so credited-back service
+  is never re-recognized as revenue.
+- **Coupon-aware plan-change proration** — proration used list prices while
+  renewals honor the subscription's coupon, so a heavily-discounted customer
+  could downgrade into more spendable account credit than they ever paid
+  (money-out over-credit), and upgrades over-charged the full list difference.
+  A new per-subscription flag records whether the current period's invoice
+  carried the discount (migration 000159); proration and its preview now
+  credit/charge at the discounted prices.
+- **Filtered charges on progressive subscriptions** — dimensional-pricing
+  charges were routed through the filter-blind progressive watermark and billed
+  every event at base rates (or nothing at all when base amounts lacked the
+  invoice currency). They now fall through to the classic per-value path,
+  exactly as the volume model already did.
+- **FX normalization honors currency exponents** — reports converted minor
+  units with major-to-major rates, so JPY figures were 100× off and KWD/BHD 10×
+  off in every FX-normalized view (MRR analytics, revenue segments, waterfall,
+  invoice aging, dunning recovery, consolidation). One exponent-aware
+  conversion helper now backs the normalizer and both rate providers.
+- **Pay-in-advance requires an additive aggregation** — per-event captures sum,
+  so PIA on max/latest/unique/percentile metrics mis-billed (max concurrent
+  seats billed per heartbeat; unique users billed per repeat visit); charge
+  validation now restricts PIA to count and sum, and a count metric bills
+  exactly one unit per event, matching the arrears `COUNT(*)`.
+- **Inbound webhook dedup fails closed** — a dedup-store outage no longer lets
+  a gateway webhook process on faith (risking duplicated side effects); the
+  request 503s and the gateway's retry delivers it once the store recovers.
+
+### Added
+
+- **Reconciler: deferred-vs-scheduled invariant** — a standing
+  `deferred_below_scheduled_revenue` finding fires when Deferred Revenue drops
+  below the revenue still scheduled to recognize; unlike the wrong-sign check
+  it survives aggregation across subscriptions and entities.
+- **Invariant harness: couponed subscriptions + regression seeds** — the
+  randomized ledger harness now creates a third of its subscriptions inside a
+  discounted period and permanently carries the two seeds that exposed the
+  downgrade-reversal edge, locking the whole coupon × proration × revrec
+  surface into CI.
+- Dashboard reconciliation page labels the newer discrepancy types
+  (credit-note leg, unbalanced ledger, wrong-sign balance, deferred-below-
+  scheduled) instead of showing raw identifiers.
+
 ## [0.7.0] - 2026-07-31 — The bank-debit release
 
 Direct debit lands (ACH in the US, GoCardless SEPA/Bacs in the UK/EU), Recurso
