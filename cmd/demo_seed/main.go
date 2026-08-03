@@ -172,6 +172,23 @@ type seeder struct {
 
 	arAcct, cashAcct, revAcct, taxAcct uuid.UUID
 	plans                              []plan
+
+	// Invoice facts captured during seeding so seedEvents can emit a
+	// realistic invoice/payment event stream without re-querying.
+	invEvts []invEvt
+}
+
+type invEvt struct {
+	id         uuid.UUID
+	num        string
+	sub        *subscription
+	status     string
+	total      int64
+	amountPaid int64
+	createdAt  time.Time
+	paidAt     time.Time
+	lastErr    string
+	retryCount int
 }
 
 type plan struct {
@@ -688,8 +705,10 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 			}
 		}
 	}
+	var paidAtT time.Time
 	if status == "paid" {
-		paidAt = s.between(p.start, p.end)
+		paidAtT = s.between(p.start, p.end)
+		paidAt = paidAtT
 	}
 
 	s.invoiceSeq++
@@ -723,6 +742,15 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 		igst, cgst, sgst, "9983", eStatus, retryCount, nextRetry,
 		managedBy, lastErr)
 	s.bump("invoices", 1)
+	lastErrCode := ""
+	if v, ok := lastErr.(string); ok {
+		lastErrCode = v
+	}
+	s.invEvts = append(s.invEvts, invEvt{
+		id: invID, num: invNum, sub: sub, status: status, total: total,
+		amountPaid: amountPaid, createdAt: p.start, paidAt: paidAtT,
+		lastErr: lastErrCode, retryCount: retryCount,
+	})
 
 	// line item
 	s.exec(`INSERT INTO invoice_items
@@ -1032,20 +1060,85 @@ func (s *seeder) seedOfflinePayments(custs []*customer) {
 
 func (s *seeder) seedEvents(custs []*customer, subs []*subscription) {
 	n := 0
-	emit := func(typ, objType string, objID uuid.UUID, at time.Time) {
-		data, _ := json.Marshal(map[string]any{"demo": true})
+	// Every payload keeps "demo": true — reset-mode cleanup deletes demo
+	// events by data->>'demo'='true'. The rest of the payload mirrors what
+	// the live webhook pipeline would carry: a snapshot of the object at
+	// the moment the event fired, so the Events page (and anyone poking the
+	// sandbox API) sees production-shaped data instead of an empty marker.
+	emit := func(typ, objType string, objID uuid.UUID, at time.Time, payload map[string]any) {
+		payload["demo"] = true
+		data, _ := json.Marshal(payload)
 		s.exec(`INSERT INTO events (id, tenant_id, type, object_type, object_id, data, created_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.tenantID, typ, objType, objID, data, at)
 		n++
 	}
 	for _, c := range custs {
-		emit("customer.created", "customer", c.id, c.createdAt)
+		emit("customer.created", "customer", c.id, c.createdAt, map[string]any{
+			"name":     c.name,
+			"email":    c.email,
+			"country":  c.country,
+			"currency": c.ccy,
+		})
 	}
 	for _, sub := range subs {
-		emit("subscription.created", "subscription", sub.id, sub.start)
+		emit("subscription.created", "subscription", sub.id, sub.start, map[string]any{
+			"customer_id":   sub.cust.id.String(),
+			"customer_name": sub.cust.name,
+			"plan":          sub.pl.name,
+			"interval":      sub.pl.interval,
+			"currency":      sub.cust.ccy,
+			"status":        "active",
+		})
 		if sub.status == "canceled" && !sub.canceledAt.IsZero() {
-			emit("subscription.canceled", "subscription", sub.id, sub.canceledAt)
+			emit("subscription.canceled", "subscription", sub.id, sub.canceledAt, map[string]any{
+				"customer_id": sub.cust.id.String(),
+				"plan":        sub.pl.name,
+				"canceled_at": sub.canceledAt.Format(time.RFC3339),
+			})
+		}
+	}
+	// Invoice lifecycle: created for every invoice, then the outcome —
+	// paid (with a payment.succeeded companion) or payment_failed for the
+	// past-due ones. This is the bulk of a real billing event stream.
+	for i := range s.invEvts {
+		ev := &s.invEvts[i]
+		base := map[string]any{
+			"invoice_number":  ev.num,
+			"customer_id":     ev.sub.cust.id.String(),
+			"subscription_id": ev.sub.id.String(),
+			"currency":        ev.sub.cust.ccy,
+			"total":           ev.total,
+		}
+		clone := func(extra map[string]any) map[string]any {
+			out := map[string]any{}
+			for k, v := range base {
+				out[k] = v
+			}
+			for k, v := range extra {
+				out[k] = v
+			}
+			return out
+		}
+		emit("invoice.created", "invoice", ev.id, ev.createdAt, clone(map[string]any{"status": "open"}))
+		switch ev.status {
+		case "paid":
+			emit("invoice.paid", "invoice", ev.id, ev.paidAt, clone(map[string]any{
+				"status":      "paid",
+				"amount_paid": ev.amountPaid,
+			}))
+			emit("payment.succeeded", "invoice", ev.id, ev.paidAt, map[string]any{
+				"invoice_number": ev.num,
+				"customer_id":    ev.sub.cust.id.String(),
+				"amount":         ev.amountPaid,
+				"currency":       ev.sub.cust.ccy,
+			})
+		case "past_due":
+			emit("invoice.payment_failed", "invoice", ev.id, s.between(ev.createdAt, s.now), clone(map[string]any{
+				"status":      "past_due",
+				"error_code":  ev.lastErr,
+				"retry_count": ev.retryCount,
+			}))
 		}
 	}
 	s.bump("events", n)
