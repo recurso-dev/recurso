@@ -223,6 +223,16 @@ func (s *seeder) exec(q string, args ...any) {
 	}
 }
 
+// execCount is exec + rows-affected, so the purge can report what it removed.
+func (s *seeder) execCount(q string, args ...any) int64 {
+	res, err := s.tx.ExecContext(s.ctx, q, args...)
+	if err != nil {
+		log.Fatalf("exec failed: %v\n  query: %s", err, strings.TrimSpace(q)[:min(120, len(strings.TrimSpace(q)))])
+	}
+	n, _ := res.RowsAffected()
+	return n
+}
+
 // queryID runs an INSERT ... RETURNING id (or a SELECT) and returns the id.
 func (s *seeder) queryID(q string, args ...any) uuid.UUID {
 	var id uuid.UUID
@@ -238,7 +248,7 @@ func (s *seeder) bump(table string, n int) { s.counts[table] += n }
 // @demo.recurso.dev / DEMO- markers the seeder stamps), in FK-safe order.
 // Non-demo data for the tenant is never touched. Runs inside the seed tx.
 func (s *seeder) purge() {
-	log.Println("--reset: purging existing demo rows for this tenant…")
+	log.Println("--reset: purging existing demo rows for this tenant… (purge v2: ownership-scoped, worker rows included)")
 	t := s.tenantID
 	demoCust := `SELECT id FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`
 	// Ownership, not number pattern: demo subscriptions live-bill at renewal, so
@@ -293,7 +303,12 @@ func (s *seeder) purge() {
 		`DELETE FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'`,
 	}
 	for _, q := range stmts {
-		s.exec(q, t)
+		n := s.execCount(q, t)
+		if n > 0 {
+			// "DELETE FROM <table> ..." → table name for the log line.
+			table := strings.Fields(q)[2]
+			log.Printf("  · purged %-28s %d", table, n)
+		}
 	}
 	// Tenant-level ledger accounts (Cash/Revenue/Tax/Deferred) are reused via
 	// lookup-or-create on re-seed and stay in place. Per-CUSTOMER AR accounts
