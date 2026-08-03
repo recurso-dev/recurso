@@ -43,6 +43,49 @@ func TestFXNormalizer_SameCurrencyIsIdentity(t *testing.T) {
 	}
 }
 
+// TestFXNormalizer_CrossExponentConversion proves conversion honors each
+// currency's minor-unit exponent. FX rates are MAJOR-to-MAJOR (1 JPY = 0.0067
+// USD); the stored amounts are MINOR units with per-currency exponents (JPY 0,
+// USD 2, KWD 3). Multiplying minor units by the raw rate — the old behavior —
+// is only correct when both exponents match: JPY→USD came out 100× too small,
+// USD→JPY 100× too large, KWD→USD 10× too large, silently corrupting every
+// normalized report (MRR, revenue segments, aging, dunning recovery, org
+// consolidation) for zero- and three-decimal currencies.
+func TestFXNormalizer_CrossExponentConversion(t *testing.T) {
+	cases := []struct {
+		name string
+		amt  int64
+		from string
+		to   string
+		rate float64
+		want int64
+	}{
+		// ¥1000 (1000 minor, exp 0) at 0.0067 USD/JPY = $6.70 = 670 minor (old: 7).
+		{"JPY to USD", 1000, "JPY", "USD", 0.0067, 670},
+		// $10.00 (1000 minor, exp 2) at 149 JPY/USD = ¥1490 = 1490 minor (old: 149000).
+		{"USD to JPY", 1000, "USD", "JPY", 149, 1490},
+		// KWD 1.500 (1500 minor, exp 3) at 3.26 USD/KWD = $4.89 = 489 minor (old: 4890).
+		{"KWD to USD", 1500, "KWD", "USD", 3.26, 489},
+		// $4.89 (489 minor) at 0.3067 KWD/USD = KWD 1.4998 = 1500 minor (old: 150).
+		{"USD to KWD", 489, "USD", "KWD", 0.3067, 1500},
+		// Same-exponent pair is unchanged by the fix: €10.00 at 1.08 = $10.80.
+		{"EUR to USD", 1000, "EUR", "USD", 1.08, 1080},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			n := newFXNormalizer(&fakeRateProvider{rate: tc.rate}, nil)
+			got, _, err := n.convert(context.Background(), tc.amt, tc.from, tc.to)
+			if err != nil {
+				t.Fatalf("convert: %v", err)
+			}
+			if got != tc.want {
+				t.Errorf("convert(%d %s -> %s @ %v) = %d, want %d",
+					tc.amt, tc.from, tc.to, tc.rate, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestFXNormalizer_ConvertRoundsHalfAwayFromZero(t *testing.T) {
 	cases := []struct {
 		amount int64

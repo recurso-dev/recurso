@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 )
@@ -51,6 +52,20 @@ func MinorUnitsPerMajor(currency string) int64 {
 // major-unit value; never hardcode /100, which is wrong for JPY/KWD/BHD/…
 func MinorToMajor(amount int64, currency string) float64 {
 	return float64(amount) / float64(MinorUnitsPerMajor(currency))
+}
+
+// ConvertMinorUnits converts an int64 minor-unit amount between currencies
+// given the MAJOR-to-MAJOR exchange rate (the only kind FX providers quote:
+// 1 JPY = 0.0067 USD), rounding half away from zero. Minor units carry each
+// currency's own exponent, so the raw rate only applies after normalizing:
+// minor→major (÷10^exp_from), × rate, major→minor (×10^exp_to). Multiplying
+// minor units by the raw rate — the tempting shortcut — is correct only when
+// both exponents match, and was 100× off for JPY/KRW/… and 10× off for
+// KWD/BHD/… pairs against exponent-2 currencies. Every minor-unit FX
+// conversion must route through this helper.
+func ConvertMinorUnits(amount int64, rate float64, from, to string) int64 {
+	factor := float64(MinorUnitsPerMajor(to)) / float64(MinorUnitsPerMajor(from))
+	return int64(math.Round(float64(amount) * rate * factor))
 }
 
 // FormatMoneyPlain renders an int64 minor-unit amount as a decimal string in the
