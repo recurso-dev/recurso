@@ -3,8 +3,10 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/importer/revenuecat"
 )
 
@@ -92,5 +94,89 @@ func TestRevenueCatPreview_NoSideEffects(t *testing.T) {
 	}
 	if len(cust.created) != 0 || len(cat.created) != 0 || len(subs.created) != 0 || len(refs.refs) != 0 {
 		t.Error("preview must not create anything")
+	}
+}
+
+// ---- Compare gate ----
+
+func revenuecatCompareFixture(t *testing.T, tenantID uuid.UUID) (*RevenueCatImportService, *revenuecat.Export, *fakeSubReader) {
+	t.Helper()
+	exp := revenuecatFixture()
+
+	custA := &domain.Customer{ID: uuid.New(), Email: "a@acme.com"}
+	plan := &domain.Plan{
+		ID: uuid.New(), Code: "revenuecat_monthly", IntervalUnit: domain.IntervalMonth, IntervalCount: 1,
+		Prices: []domain.Price{{Currency: "USD", Amount: 999}},
+	}
+	subID := exp.Subscribers[0].Subscriptions[0].SubID("user_a")
+	rec := &domain.Subscription{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: custA.ID, PlanID: plan.ID,
+		Status:           "active",
+		CurrentPeriodEnd: time.Unix(1_702_600_000, 0).UTC(),
+	}
+
+	refs := newFakeRefRepo()
+	refs.refs = []*domain.ImportExternalRef{
+		{Kind: domain.ImportKindCustomer, ExternalID: "user_a", RecursoID: custA.ID},
+		{Kind: domain.ImportKindPlan, ExternalID: "monthly", RecursoID: plan.ID},
+		{Kind: domain.ImportKindSubscription, ExternalID: subID, RecursoID: rec.ID},
+	}
+	reader := &fakeSubReader{subs: map[uuid.UUID]*domain.Subscription{rec.ID: rec}}
+	svc := NewRevenueCatImportService(
+		&fakeImportCustomers{existing: []*domain.Customer{custA}},
+		&fakeImportCatalog{existing: []*domain.Plan{plan}},
+		&fakeImportSubs{}, refs,
+	)
+	svc.SetSubscriptionReader(reader)
+	return svc, exp, reader
+}
+
+func TestRevenueCatCompare_ReadyAndScopesOutNoEmail(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, _ := revenuecatCompareFixture(t, tenantID)
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rep.Ready {
+		t.Fatalf("expected ready, issues: %+v", rep.Issues)
+	}
+	// user_noemail was never importable — the gate must NOT count it as missing.
+	if rep.Customers.Source != 1 || rep.Customers.Matched != 1 {
+		t.Fatalf("no-email subscriber leaked into scope: %+v", rep.Customers)
+	}
+	if rep.Subscriptions.Matched != 1 {
+		t.Fatalf("subscriptions: %+v", rep.Subscriptions)
+	}
+}
+
+func TestRevenueCatCompare_FlagsDriftAndTrialStatus(t *testing.T) {
+	tenantID := uuid.New()
+	svc, exp, reader := revenuecatCompareFixture(t, tenantID)
+	// RevenueCat says it's a trial; the import recorded active. And the period
+	// end drifted a week.
+	exp.Subscribers[0].Subscriptions[0].IsTrial = true
+	for _, rec := range reader.subs {
+		rec.CurrentPeriodEnd = rec.CurrentPeriodEnd.Add(7 * 24 * time.Hour)
+	}
+
+	rep, err := svc.Compare(context.Background(), tenantID, exp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Ready {
+		t.Fatal("expected NOT ready")
+	}
+	var status, drift bool
+	for _, is := range rep.Issues {
+		if is.Field == "status" && is.Source == "trialing" {
+			status = true
+		}
+		if is.Field == "current_period_end" {
+			drift = true
+		}
+	}
+	if !status || !drift {
+		t.Fatalf("missing issues (status=%t drift=%t): %+v", status, drift, rep.Issues)
 	}
 }

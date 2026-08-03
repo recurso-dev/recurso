@@ -17,6 +17,8 @@ import (
 // subscriptions. Subscribers without an email can't become Recurso customers
 // (RevenueCat identifies by app_user_id) — those surface as conflicts.
 type RevenueCatImportService struct {
+	subReader compareSubReader // optional; read side for the Compare gate
+
 	customers importCustomers
 	catalog   importCatalog
 	subs      importSubscriptions

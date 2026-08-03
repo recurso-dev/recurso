@@ -36,6 +36,23 @@ func (h *RevenueCatImportHandler) Preview(c *gin.Context) {
 }
 
 // Commit — POST /v1/import/revenuecat/commit
+// Compare is the migration gate for RevenueCat — same contract as the Stripe
+// and Chargebee gates: coverage, fidelity, continuity, zero writes.
+//
+// POST /v1/import/revenuecat/compare
+func (h *RevenueCatImportHandler) Compare(c *gin.Context) {
+	tenantID, exp, ok := h.readRequest(c)
+	if !ok {
+		return
+	}
+	report, err := h.svc.Compare(c.Request.Context(), tenantID, exp)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, report)
+}
+
 func (h *RevenueCatImportHandler) Commit(c *gin.Context) {
 	tenantID, exp, ok := h.readRequest(c)
 	if !ok {
