@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"html/template"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,9 @@ import (
 )
 
 type CreditNoteHandler struct {
-	service *service.CreditNoteService
-	pdf     *service.InvoicePDFService
+	service  *service.CreditNoteService
+	pdf      *service.InvoicePDFService
+	branding invoiceBrandingResolver // optional; tenant letterhead on credit notes
 }
 
 func NewCreditNoteHandler(service *service.CreditNoteService) *CreditNoteHandler {
@@ -24,6 +26,10 @@ func NewCreditNoteHandler(service *service.CreditNoteService) *CreditNoteHandler
 // SetPDFService wires the shared PDF renderer so credit notes print with the
 // same seller letterhead as invoices. Nil-safe: without it, DownloadPDF 404s.
 func (h *CreditNoteHandler) SetPDFService(pdf *service.InvoicePDFService) { h.pdf = pdf }
+
+// SetBranding wires the per-tenant invoice branding so credit notes carry the
+// same letterhead (display name + logo) as invoices. Nil-safe.
+func (h *CreditNoteHandler) SetBranding(r invoiceBrandingResolver) { h.branding = r }
 
 // DownloadPDF renders the credit note as printable HTML (the browser's
 // print-to-PDF produces the document), mirroring the invoice PDF flow.
@@ -52,6 +58,18 @@ func (h *CreditNoteHandler) DownloadPDF(c *gin.Context) {
 	}
 
 	data := h.pdf.BuildCreditNoteData(cn, cust, invoiceNumber)
+	if h.branding != nil {
+		if b, berr := h.branding.GetByTenantID(ctx, tenantID); berr == nil && b != nil {
+			if b.CompanyName != "" {
+				data.SellerName = b.CompanyName
+			}
+			if b.LogoDataURL != "" {
+				// Safe as template.URL: validated to a strict image data-URL shape
+				// at write time (see invoice_branding.go).
+				data.LogoDataURL = template.URL(b.LogoDataURL)
+			}
+		}
+	}
 	html, err := h.pdf.GenerateCreditNoteHTML(data)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to generate credit note")

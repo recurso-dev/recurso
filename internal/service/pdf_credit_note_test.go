@@ -143,3 +143,34 @@ func TestBuildCreditNoteData_TaxBreakdown(t *testing.T) {
 		t.Error("legacy gross-only document must not render a Taxable value row")
 	}
 }
+
+// The tenant logo must survive html/template's URL filter — same ZgotmplZ
+// regression class as the invoice QR/signature (typed template.URL).
+func TestCreditNoteHTML_LogoDataURLSurvives(t *testing.T) {
+	cn := &domain.CreditNote{
+		ID:        uuid.New(),
+		Amount:    5000,
+		Currency:  "USD",
+		Status:    domain.CreditNoteStatusIssued,
+		Type:      domain.CreditNoteTypeAdjustment,
+		CreatedAt: time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+	}
+	name := "Logo Buyer"
+	cust := &domain.Customer{Name: &name, Email: "b@example.com"}
+	data := cnTestService().BuildCreditNoteData(cn, cust, "")
+	data.LogoDataURL = "data:image/png;base64,iVBORw0KGgo="
+	data.SellerName = "Branded Co"
+
+	html, err := cnTestService().GenerateCreditNoteHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(html, "ZgotmplZ") {
+		t.Fatal("logo data URL was sanitized away (ZgotmplZ)")
+	}
+	for _, want := range []string{"data:image/png;base64,iVBORw0KGgo=", "Branded Co"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered credit note missing %q", want)
+		}
+	}
+}

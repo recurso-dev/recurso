@@ -14,6 +14,7 @@ import (
 type PDFCreditNoteData struct {
 	SellerName    string
 	SellerAddress string
+	LogoDataURL   template.URL // tenant logo (validated data URL) — letterhead parity with invoices
 
 	CreditNoteNumber string
 	IssueDate        string
@@ -160,6 +161,7 @@ const CreditNotePDFTemplate = `<!DOCTYPE html>
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #1c1917; margin: 0; padding: 40px; background: #fff; }
   .doc { max-width: 720px; margin: 0 auto; }
   .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #10b981; padding-bottom: 20px; margin-bottom: 28px; }
+  .seller-logo { display: block; max-height: 44px; max-width: 170px; margin-bottom: 8px; }
   .seller-name { font-size: 18px; font-weight: 700; }
   .seller-addr { font-size: 12px; color: #57534e; white-space: pre-line; margin-top: 4px; }
   .title { text-align: right; }
@@ -185,6 +187,7 @@ const CreditNotePDFTemplate = `<!DOCTYPE html>
 <div class="doc">
   <div class="head">
     <div>
+      {{if .LogoDataURL}}<img src="{{.LogoDataURL}}" class="seller-logo" alt="" />{{end}}
       <div class="seller-name">{{.SellerName}}</div>
       <div class="seller-addr">{{.SellerAddress}}</div>
     </div>
