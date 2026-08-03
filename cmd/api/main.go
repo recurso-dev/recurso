@@ -393,10 +393,15 @@ func main() {
 			avalaraAcct, os.Getenv("AVALARA_LICENSE_KEY"),
 			os.Getenv("AVALARA_COMPANY_CODE"), os.Getenv("AVALARA_API_URL")))
 		log.Println("US sales tax: Avalara provider enabled (EXPERIMENTAL — sandbox verification pending)")
+	} else if ziptaxKey := os.Getenv("ZIPTAX_API_KEY"); ziptaxKey != "" && !residency.SelfHosted() && !demo.Enabled() {
+		// Ziptax rate lookup. Same residency guard as the other two, since it is
+		// third-party SaaS egress regardless of which vendor answers.
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewZiptaxProvider(ziptaxKey, os.Getenv("ZIPTAX_API_URL")))
+		log.Println("US sales tax: Ziptax provider enabled")
 	} else if residency.SelfHosted() {
 		log.Println("US sales tax: 0% stub (external tax API disabled by RESIDENCY_MODE=self_hosted)")
 	} else {
-		log.Println("US sales tax: 0% stub (TAXJAR_API_KEY not set)")
+		log.Println("US sales tax: 0% stub (no sales-tax provider key set)")
 	}
 
 	// BYO integration credentials (docs/spec_byo_gateway.md increment 5): tenants
@@ -418,6 +423,8 @@ func main() {
 					return taxprovider.NewTaxJarProvider(cfg["api_key"], "")
 				case "avalara":
 					return taxprovider.NewAvalaraProvider(cfg["account_id"], cfg["license_key"], cfg["company_code"], "")
+				case "ziptax":
+					return taxprovider.NewZiptaxProvider(cfg["api_key"], "")
 				}
 				return nil
 			})

@@ -61,6 +61,22 @@ const SECTIONS = [
           urlLabel: "Open AvaTax console",
         },
       },
+      {
+        id: "ziptax",
+        name: "Ziptax",
+        fields: [{ key: "api_key", label: "API key", secret: true, placeholder: "Your Ziptax API key" }],
+        guide: {
+          steps: [
+            "Sign in at platform.zip.tax and open API Keys.",
+            "Create a key (or copy an existing one) and paste it here.",
+            "Ziptax's published free Starter plan is 100 API calls/month at 10 requests/minute, enough to evaluate Recurso but not to run a business on. Check their pricing page for current limits before relying on it.",
+            "Recurso caches each rate for 24h per state+ZIP, which is what keeps a small deployment inside that allowance.",
+            "Scope: rates only. No filing, no returns, and no exemption certificate stored on Ziptax's side. Rates resolve at ZIP level, not rooftop. See docs/providers-us-sales-tax.md.",
+          ],
+          url: "https://platform.zip.tax/",
+          urlLabel: "Open the Ziptax platform",
+        },
+      },
     ],
   },
   {

@@ -21,7 +21,7 @@ const (
 func ValidIntegration(category IntegrationCategory, provider string) bool {
 	switch category {
 	case IntegrationTax:
-		return provider == "taxjar" || provider == "avalara"
+		return provider == "taxjar" || provider == "avalara" || provider == "ziptax"
 	case IntegrationCRM:
 		return provider == "hubspot"
 	case IntegrationStorage:
