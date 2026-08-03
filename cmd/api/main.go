@@ -1172,6 +1172,7 @@ func main() {
 	chargebeeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                      // read side for the Compare gate
 	chargebeeImportHandler := handler.NewChargebeeImportHandler(chargebeeImportService)
 	revenuecatImportService := service.NewRevenueCatImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: RevenueCat → Recurso
+	revenuecatImportService.SetSubscriptionReader(subscriptionRepo)                                                                                       // read side for the Compare gate
 	revenuecatImportHandler := handler.NewRevenueCatImportHandler(revenuecatImportService)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
 	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime
@@ -1755,6 +1756,7 @@ func main() {
 		// RevenueCat migration: dry-run preview then idempotent commit.
 		v1.POST("/import/revenuecat/preview", revenuecatImportHandler.Preview)
 		v1.POST("/import/revenuecat/commit", revenuecatImportHandler.Commit)
+		v1.POST("/import/revenuecat/compare", revenuecatImportHandler.Compare)
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)

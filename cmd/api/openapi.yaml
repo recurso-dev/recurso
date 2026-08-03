@@ -931,6 +931,58 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/import/revenuecat/compare:
+    post:
+      operationId: compareRevenueCatImport
+      tags: [Migration]
+      summary: Compare gate — prove the RevenueCat migration before cut-over
+      description: >
+        Diffs the uploaded RevenueCat export against the tenant's live Recurso
+        data with zero writes — coverage (subscribers with an email, active
+        entitlements), fidelity (product price/currency/period; identity), and
+        billing continuity (an entitlement whose expires_at drifted >1h from
+        the imported period end is flagged). ready=true means zero issues.
+      requestBody:
+        required: true
+        description: The same RevenueCat export JSON the commit consumed.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subscribers: { type: array, items: { type: object } }
+                products: { type: array, items: { type: object } }
+      responses:
+        '200':
+          description: The compare report.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  source: { type: string }
+                  customers:
+                    $ref: '#/components/schemas/CompareCount'
+                  plans:
+                    $ref: '#/components/schemas/CompareCount'
+                  subscriptions:
+                    $ref: '#/components/schemas/CompareCount'
+                  issues:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kind: { type: string }
+                        external_id: { type: string }
+                        field: { type: string }
+                        source: { type: string }
+                        recurso: { type: string }
+                  ready: { type: boolean }
+                  generated_at: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/import/chargebee/preview:
     post:
       operationId: previewChargebeeImport
