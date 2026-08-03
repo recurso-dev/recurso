@@ -32,6 +32,17 @@ type PDFCreditNoteData struct {
 	RefundStatus    string
 	OriginalInvoice string
 	StatusLabel     string
+
+	// Tax breakdown (B2/ENG-196) — present when the credit note recorded one
+	// (Subtotal > 0): Amount is gross, Subtotal the taxable value, and the GST
+	// components make the document a statutory-grade CDN for Indian tenants.
+	HasTaxBreakdown bool
+	Subtotal        string
+	TaxAmount       string
+	IGST            string
+	CGST            string
+	SGST            string
+	HSNCode         string
 }
 
 // BuildCreditNoteData assembles the document view model. originalInvoiceNumber
@@ -61,6 +72,25 @@ func (s *InvoicePDFService) BuildCreditNoteData(cn *domain.CreditNote, cust *dom
 		data.RefundStatus = titleFromSnake(string(cn.RefundStatus))
 	} else {
 		data.TypeLabel = "Account credit"
+	}
+
+	// B2 (ENG-196): a recorded tax breakdown makes the document a
+	// statutory-grade CDN — taxable value + GST components. Only the components
+	// that apply render (IGST inter-state, CGST+SGST intra-state).
+	if cn.Subtotal > 0 {
+		data.HasTaxBreakdown = true
+		data.Subtotal = FormatAmount(cn.Subtotal, cn.Currency)
+		data.TaxAmount = FormatAmount(cn.TaxAmount, cn.Currency)
+		if cn.IGSTAmount > 0 {
+			data.IGST = FormatAmount(cn.IGSTAmount, cn.Currency)
+		}
+		if cn.CGSTAmount > 0 {
+			data.CGST = FormatAmount(cn.CGSTAmount, cn.Currency)
+		}
+		if cn.SGSTAmount > 0 {
+			data.SGST = FormatAmount(cn.SGSTAmount, cn.Currency)
+		}
+		data.HSNCode = cn.HSNCode
 	}
 
 	if cust != nil {
@@ -194,7 +224,11 @@ const CreditNotePDFTemplate = `<!DOCTYPE html>
   </table>
 
   <div class="totals">
-    <div class="row"><span>Credit amount</span><span>{{.Amount}}</span></div>
+    {{if .HasTaxBreakdown}}<div class="row"><span>Taxable value{{if .HSNCode}} (HSN {{.HSNCode}}){{end}}</span><span>{{.Subtotal}}</span></div>
+    {{if .IGST}}<div class="row"><span>IGST reversed</span><span>{{.IGST}}</span></div>{{end}}
+    {{if .CGST}}<div class="row"><span>CGST reversed</span><span>{{.CGST}}</span></div>{{end}}
+    {{if .SGST}}<div class="row"><span>SGST reversed</span><span>{{.SGST}}</span></div>{{end}}
+    {{end}}<div class="row"><span>Credit amount</span><span>{{.Amount}}</span></div>
     <div class="row grand"><span>Balance remaining</span><span>{{.Balance}}</span></div>
   </div>
 

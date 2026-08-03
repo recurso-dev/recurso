@@ -83,3 +83,63 @@ func TestBuildCreditNoteData_AdjustmentNoInvoice(t *testing.T) {
 		t.Fatalf("render: %v", err)
 	}
 }
+
+// TestBuildCreditNoteData_TaxBreakdown proves B2 (ENG-196): a credit note that
+// recorded its tax breakdown renders a statutory-grade CDN — taxable value plus
+// the GST components that apply — while a legacy note (no breakdown) renders
+// gross-only exactly as before.
+func TestBuildCreditNoteData_TaxBreakdown(t *testing.T) {
+	cn := &domain.CreditNote{
+		ID:         uuid.New(),
+		Amount:     59000,
+		Balance:    59000,
+		Subtotal:   50000,
+		TaxAmount:  9000,
+		CGSTAmount: 4500,
+		SGSTAmount: 4500,
+		TaxType:    "intra_state",
+		HSNCode:    "998314",
+		Currency:   "INR",
+		Status:     domain.CreditNoteStatusIssued,
+		Reason:     "downgrade_proration",
+		Type:       domain.CreditNoteTypeAdjustment,
+		CreatedAt:  time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC),
+	}
+	data := cnTestService().BuildCreditNoteData(cn, nil, "")
+	if !data.HasTaxBreakdown {
+		t.Fatal("HasTaxBreakdown = false, want true (Subtotal recorded)")
+	}
+	if data.IGST != "" || data.CGST == "" || data.SGST == "" {
+		t.Errorf("intra-state split wrong: IGST=%q CGST=%q SGST=%q", data.IGST, data.CGST, data.SGST)
+	}
+	html, err := cnTestService().GenerateCreditNoteHTML(data)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{"Taxable value", "HSN 998314", "CGST reversed", "SGST reversed"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("rendered CDN missing %q", want)
+		}
+	}
+	if strings.Contains(html, "IGST reversed") {
+		t.Error("intra-state CDN must not render an IGST row")
+	}
+
+	// Legacy note: no breakdown recorded -> gross-only document, no tax rows.
+	legacy := &domain.CreditNote{
+		ID: uuid.New(), Amount: 3000, Balance: 3000, Currency: "USD",
+		Status: domain.CreditNoteStatusIssued, Reason: "goodwill",
+		Type: domain.CreditNoteTypeAdjustment, CreatedAt: time.Now(),
+	}
+	ldata := cnTestService().BuildCreditNoteData(legacy, nil, "")
+	if ldata.HasTaxBreakdown {
+		t.Fatal("legacy note must not claim a tax breakdown")
+	}
+	lhtml, err := cnTestService().GenerateCreditNoteHTML(ldata)
+	if err != nil {
+		t.Fatalf("render legacy: %v", err)
+	}
+	if strings.Contains(lhtml, "Taxable value") {
+		t.Error("legacy gross-only document must not render a Taxable value row")
+	}
+}

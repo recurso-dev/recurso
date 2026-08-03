@@ -61,6 +61,21 @@ type CreditNote struct {
 	Currency  string           `json:"currency" db:"currency"`
 	Status    CreditNoteStatus `json:"status" db:"status"`
 	Reason    string           `json:"reason" db:"reason"`
+	// Tax breakdown (B2/ENG-196): Amount is GROSS; Subtotal is the taxable
+	// (net-of-tax) value and TaxAmount its tax, split into IGST or CGST+SGST for
+	// GST tenants. Subtotal > 0 marks the breakdown as recorded — the credit-note
+	// document renders a statutory-grade CDN from it. Populated at creation:
+	// downgrade credits carry the reversed proration tax, refund credits derive
+	// proportionally from their invoice. Legacy rows (and manual goodwill
+	// credits, which reverse no supply) keep zeros and render gross-only.
+	Subtotal   int64  `json:"subtotal,omitempty" db:"subtotal"`
+	TaxAmount  int64  `json:"tax_amount,omitempty" db:"tax_amount"`
+	IGSTAmount int64  `json:"igst_amount,omitempty" db:"igst_amount"`
+	CGSTAmount int64  `json:"cgst_amount,omitempty" db:"cgst_amount"`
+	SGSTAmount int64  `json:"sgst_amount,omitempty" db:"sgst_amount"`
+	TaxType    string `json:"tax_type,omitempty" db:"tax_type"`
+	HSNCode    string `json:"hsn_code,omitempty" db:"hsn_code"`
+
 	// ExpiresAt bounds a spendable adjustment credit's life; nil = never expires.
 	// The expiry sweep writes off any balance still open at this time.
 	ExpiresAt *time.Time `json:"expires_at,omitempty" db:"expires_at"`
