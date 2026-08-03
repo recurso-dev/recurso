@@ -98,6 +98,7 @@ type invariantHarness struct {
 
 	cheapPlan  uuid.UUID // 100000 USD/month
 	priceyPlan uuid.UUID // 200000 USD/month
+	couponID   uuid.UUID // 80% off, forever — some subs are created discounted
 
 	ledger   *LedgerService
 	revrec   *RevRecService
@@ -136,6 +137,17 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	h.cheapPlan = seedPlan("inv-basic", 100000)
 	h.priceyPlan = seedPlan("inv-pro", 200000)
 
+	// A tenant coupon (80% off, forever) so randomized sequences exercise the
+	// coupon × proration × revrec surface: some subscriptions are created inside
+	// a DISCOUNTED period (invoice, Deferred funding, and schedule all at the
+	// discounted amount), and plan changes on them must prorate at discounted
+	// prices (ENG-195) — a coupon-blind proration credits list price and mints
+	// account credit the customer never paid, which the reconciler flags here.
+	h.couponID = uuid.New()
+	mustExec(t, conn, `INSERT INTO coupons (id, tenant_id, code, discount_type, discount_value, duration, active, created_at, updated_at)
+		VALUES ($1,$2,$3,'percent',80,'forever',TRUE,NOW(),NOW())`,
+		h.couponID, tenantID, "INV80-"+h.run)
+
 	h.ledger = NewLedgerService(nil, db.NewLedgerRepository(conn))
 	subRepo := db.NewSubscriptionRepository(conn)
 	h.revrec = NewRevRecService(db.NewRevRecRepository(conn), h.ledger, subRepo)
@@ -144,7 +156,7 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	// unaffected (US resolves to 0, same as the prior nil path).
 	taxResolver := NewTaxResolver(harnessGSTConfigs{}, "United States", "")
 	h.subSvc = NewSubscriptionService(subRepo, db.NewInvoiceRepository(conn), db.NewPlanRepository(conn),
-		db.NewCustomerRepository(dbx), nil, nil, h.ledger, nil, nil, db.NewTxManager(conn), h.revrec, taxResolver)
+		db.NewCustomerRepository(dbx), db.NewCouponRepository(conn), nil, h.ledger, nil, nil, db.NewTxManager(conn), h.revrec, taxResolver)
 	h.subSvc.SetCreditNoteRepo(db.NewCreditNoteRepository(dbx))
 
 	// Real quote + gift services, wired to post their invoice legs exactly as
@@ -273,7 +285,13 @@ func (h *invariantHarness) opGiftPurchase(rng *rand.Rand) string {
 // opNewSubscription seeds a customer + active mid-period subscription on the
 // cheap plan with a PAID first invoice, fully posted: invoice leg, cash leg,
 // and its recognition schedule — the same baseline every production
-// subscription reaches after checkout.
+// subscription reaches after checkout. Roughly a third of subscriptions are
+// created inside a DISCOUNTED period (the tenant's 80%-off coupon, mirroring
+// what CreateSubscription produces: coupon attached, periods counter 1, the
+// discounted-period flag set, and the invoice / Deferred funding / schedule
+// all at the discounted amount) — so every later plan change on them drives
+// the coupon-aware proration (ENG-195) and its revrec machinery through the
+// reconciler.
 func (h *invariantHarness) opNewSubscription(rng *rand.Rand) {
 	t := h.t
 	h.n++
@@ -282,20 +300,31 @@ func (h *invariantHarness) opNewSubscription(rng *rand.Rand) {
 		VALUES ($1,$2,$3,'Inv Cust','United States','individual',$4,NOW(),NOW())`,
 		customerID, h.tenantID, fmt.Sprintf("inv-%s-%d@t.com", h.run, h.n), uuid.New())
 
+	couponed := rng.Intn(3) == 0
+	total := int64(100000)
+	var cpID *uuid.UUID
+	periods := 0
+	if couponed {
+		total = 20000 // 80% off the cheap plan's 100000
+		cpID = &h.couponID
+		periods = 1
+	}
+
 	subID := uuid.New()
-	mustExec(t, h.conn, `INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor, created_at, updated_at)
-		VALUES ($1,$2,$3,$4,'active', NOW() - INTERVAL '15 days', NOW() + INTERVAL '15 days', NOW() - INTERVAL '15 days', NOW(), NOW())`,
-		subID, h.tenantID, customerID, h.cheapPlan)
+	mustExec(t, h.conn, `INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, status, current_period_start, current_period_end, billing_anchor,
+			coupon_id, coupon_periods_applied, coupon_applied_current_period, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,'active', NOW() - INTERVAL '15 days', NOW() + INTERVAL '15 days', NOW() - INTERVAL '15 days', $5, $6, $7, NOW(), NOW())`,
+		subID, h.tenantID, customerID, h.cheapPlan, cpID, periods, couponed)
 
 	invID := uuid.New()
 	invNo := fmt.Sprintf("INV-%s-%d", h.run, h.n)
 	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, subscription_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
-		VALUES ($1,$2,$3,$4,'USD',100000,100000,100000,'paid',$5,NOW(),NOW())`,
-		invID, h.tenantID, customerID, subID, invNo)
+		VALUES ($1,$2,$3,$4,'USD',$6,$6,$6,'paid',$5,NOW(),NOW())`,
+		invID, h.tenantID, customerID, subID, invNo, total)
 
 	inv := &domain.Invoice{
 		ID: invID, TenantID: h.tenantID, CustomerID: customerID, SubscriptionID: &subID,
-		InvoiceNumber: invNo, Total: 100000, Currency: "USD",
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
 	}
 	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
 		t.Fatalf("RecordInvoice (new sub): %v", err)
