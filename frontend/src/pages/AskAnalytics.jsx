@@ -13,7 +13,6 @@ import {
 
 import { endpoints as api } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
-import { EmptyState } from "@/components/patterns/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
