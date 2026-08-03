@@ -31,6 +31,7 @@ const SOURCES = {
     label: "Stripe",
     preview: endpoints.stripeImportPreview,
     commit: endpoints.stripeImportCommit,
+    compare: endpoints.stripeImportCompare,
     idField: "stripe_id",
     blurb:
       "Export your Stripe data as JSON (customers, products, prices, subscriptions). Subscriptions import in their current billing state — no re-billing. Card payment methods can't be migrated from an export and are skipped.",
@@ -89,6 +90,8 @@ export default function ImportData() {
   const [exportData, setExportData] = useState(null);
   const [plan, setPlan] = useState(null);
   const [result, setResult] = useState(null);
+  const [compare, setCompare] = useState(null);
+  const [comparing, setComparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -151,8 +154,24 @@ export default function ImportData() {
     }
   };
 
+  // The Compare gate: re-diff the same export against live data — coverage,
+  // money-critical fidelity, billing continuity. Read-only.
+  const runCompare = async () => {
+    setComparing(true);
+    setCompare(null);
+    try {
+      const res = await cfg.compare(exportData);
+      setCompare(res.data);
+    } catch (err) {
+      toast.error(err?.response?.data?.error?.message || "Compare failed. Please try again.");
+    } finally {
+      setComparing(false);
+    }
+  };
+
   const reset = () => {
     setSource(null);
+    setCompare(null);
     setStep("source");
     setRaw("");
     setFileName("");
@@ -366,6 +385,69 @@ export default function ImportData() {
                     <span className="font-medium capitalize">{f.kind}</span> {f.stripe_id}: {f.error}
                   </p>
                 ))}
+              </div>
+            )}
+
+            {/* Compare gate — prove the migration before pointing billing here. */}
+            {cfg?.compare && (
+              <div className="rounded-lg border border-border bg-muted/20 p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Before you cut over: run the Compare gate</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Re-checks this export against your live Recurso data — every record present,
+                      amounts and intervals exact, and billing resuming exactly where {cfg.label} stops.
+                      Read-only.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
+                    {comparing ? "Comparing…" : compare ? "Re-run" : "Run Compare"}
+                  </Button>
+                </div>
+
+                {compare && (
+                  <div className="mt-4 space-y-3">
+                    {compare.ready ? (
+                      <div className="flex items-center gap-2 rounded-md border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700">
+                        <CheckCircle2 className="h-4 w-4 shrink-0" />
+                        Safe to cut over — every record matched, no drift found.
+                      </div>
+                    ) : (
+                      <div className="rounded-md border border-red-600/30 bg-red-600/10 px-3 py-2 text-sm text-red-700">
+                        Not ready — {compare.issues?.length || 0} issue(s) need attention before cut-over.
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                      {[["Customers", compare.customers], ["Plans", compare.plans], ["Subscriptions", compare.subscriptions]].map(
+                        ([label, c]) => (
+                          <span key={label} className="rounded-md border border-border bg-card px-2.5 py-1.5">
+                            {label}: <span className="font-medium text-foreground">{c?.matched ?? 0}/{c?.source ?? 0}</span> matched
+                            {c?.missing > 0 && <span className="text-red-600"> · {c.missing} missing</span>}
+                          </span>
+                        )
+                      )}
+                    </div>
+                    {compare.issues?.length > 0 && (
+                      <div className="max-h-48 space-y-1 overflow-y-auto rounded-md border border-border bg-card p-3">
+                        {compare.issues.map((is, i) => (
+                          <p key={i} className="text-xs text-foreground">
+                            <span className="font-medium capitalize">{is.kind}</span>{" "}
+                            <span className="font-mono">{is.external_id}</span>:{" "}
+                            {is.field === "missing" ? (
+                              <>not found in Recurso</>
+                            ) : (
+                              <>
+                                {is.field.replace(/_/g, " ")} — {cfg.label} has{" "}
+                                <span className="font-mono">{is.source}</span>, Recurso has{" "}
+                                <span className="font-mono">{is.recurso}</span>
+                              </>
+                            )}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 

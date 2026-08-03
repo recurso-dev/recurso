@@ -1166,6 +1166,7 @@ func main() {
 	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
 	billingHandler := handler.NewBillingHandler(tenantService)                                                                                    // Phase B: managed-cloud trial/billing status
 	stripeImportService := service.NewStripeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
+	stripeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                   // read side for the Compare gate
 	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
 	chargebeeImportService := service.NewChargebeeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Chargebee → Recurso
 	chargebeeImportHandler := handler.NewChargebeeImportHandler(chargebeeImportService)
@@ -1745,6 +1746,7 @@ func main() {
 		// Migration: dry-run preview (no writes) then idempotent commit.
 		v1.POST("/import/stripe/preview", stripeImportHandler.Preview)
 		v1.POST("/import/stripe/commit", stripeImportHandler.Commit)
+		v1.POST("/import/stripe/compare", stripeImportHandler.Compare)
 		// Chargebee migration: dry-run preview then idempotent commit.
 		v1.POST("/import/chargebee/preview", chargebeeImportHandler.Preview)
 		v1.POST("/import/chargebee/commit", chargebeeImportHandler.Commit)

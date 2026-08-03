@@ -46,6 +46,7 @@ type StripeImportService struct {
 	catalog   importCatalog
 	subs      importSubscriptions
 	refs      port.ImportRefRepository
+	subReader compareSubReader // optional; read side for the Compare gate
 }
 
 func NewStripeImportService(customers importCustomers, catalog importCatalog, subs importSubscriptions, refs port.ImportRefRepository) *StripeImportService {
