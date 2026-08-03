@@ -8,30 +8,40 @@ import { DOCS_HOME } from "@/lib/docsLinks";
 // `end` forces exact matching (used for Home so it isn't active everywhere).
 const NAV_GROUPS = [
   {
-    label: "Core",
+    label: "",
     items: [
       { to: "/", label: "Home", icon: Home, end: true },
-      { to: "/overview", label: "Overview", icon: LayoutDashboard },
       { to: "/ask", label: "Ask AI", icon: Sparkles },
-      { to: "/customers", label: "Customers", icon: Users },
-      { to: "/plans", label: "Plans", icon: Layers },
-      { to: "/subscriptions", label: "Subscriptions", icon: Repeat },
-      { to: "/invoices", label: "Invoices", icon: Receipt },
-      { to: "/quotes", label: "Quotes", icon: ScrollText },
-      { to: "/credit-notes", label: "Credit Notes", icon: FileMinus },
     ],
   },
   {
-    label: "Growth",
+    label: "Billing",
+    items: [
+      { to: "/customers", label: "Customers", icon: Users },
+      { to: "/subscriptions", label: "Subscriptions", icon: Repeat },
+      { to: "/plans", label: "Plans", icon: Layers },
+      { to: "/invoices", label: "Invoices", icon: Receipt },
+      { to: "/quotes", label: "Quotes", icon: ScrollText },
+      { to: "/credit-notes", label: "Credit Notes", icon: FileMinus },
+      { to: "/coupons", label: "Coupons", icon: Ticket },
+      { to: "/gifts", label: "Gifts", icon: Gift },
+    ],
+  },
+  {
+    label: "Usage",
     items: [
       { to: "/metering", label: "Metering", icon: Gauge },
-      { to: "/usage", label: "Usage", icon: BarChart3 },
+      { to: "/usage", label: "Usage Explorer", icon: BarChart3 },
       { to: "/wallets", label: "Wallets", icon: Wallet2 },
-      { to: "/coupons", label: "Coupons", icon: Ticket },
-      { to: "/referrals", label: "Referrals", icon: Megaphone },
-      { to: "/gifts", label: "Gifts", icon: Gift },
+    ],
+  },
+  {
+    label: "Revenue Recovery",
+    items: [
+      { to: "/collections", label: "Collections", icon: Inbox },
       { to: "/dunning", label: "Dunning", icon: Brain },
       { to: "/dunning/campaigns", label: "Dunning Campaigns", icon: MailWarning },
+      { to: "/disputes", label: "Disputes", icon: FileQuestion },
       { to: "/cancel-flows", label: "Cancel Flows", icon: HeartHandshake },
       { to: "/churn", label: "Churn Risk", icon: TrendingDown },
     ],
@@ -39,29 +49,37 @@ const NAV_GROUPS = [
   {
     label: "Payments",
     items: [
-      { to: "/collections", label: "Collections", icon: Inbox },
       { to: "/mandates", label: "Mandates", icon: Repeat2 },
       { to: "/payments/offline", label: "Offline Payments", icon: Banknote },
-      { to: "/disputes", label: "Disputes", icon: FileQuestion },
+      { to: "/referrals", label: "Referrals", icon: Megaphone },
     ],
   },
   {
-    label: "Finance",
+    // Books-of-record: the auditor/controller surface. Reconciliation leads —
+    // the self-verifying ledger is the product's identity, not a sub-feature.
+    label: "Books",
     items: [
-      { to: "/finance/entities", label: "Entities", icon: Building2 },
-      { to: "/ledger", label: "Ledger", icon: Landmark },
-      { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
-      { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },
       { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
+      { to: "/ledger", label: "Ledger", icon: Landmark },
+      { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },
       { to: "/finance/close", label: "Month-End Close", icon: ClipboardCheck },
       { to: "/finance/revenue-recognition", label: "Revenue Recognition", icon: CalendarClock },
+      { to: "/finance/entities", label: "Entities", icon: Building2 },
+      { to: "/finance/gst-returns", label: "GST Returns", icon: FileSpreadsheet },
+      { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
+    ],
+  },
+  {
+    // Analytics, cleanly split from books-of-record: the CFO's morning tab.
+    label: "Reports",
+    items: [
+      { to: "/overview", label: "Executive Summary", icon: LayoutDashboard },
       { to: "/finance/revenue-waterfall", label: "Revenue Waterfall", icon: Waves },
       { to: "/finance/mrr-waterfall", label: "MRR Waterfall", icon: TrendingUp },
       { to: "/finance/invoice-aging", label: "Invoice Aging", icon: FileClock },
       { to: "/finance/unit-economics", label: "Unit Economics", icon: Gauge },
       { to: "/finance/revenue-by-plan", label: "Revenue by Plan", icon: PieChart },
       { to: "/finance/revenue-by-geography", label: "Revenue by Geography", icon: Globe },
-      { to: "/finance/gst-returns", label: "GST Returns", icon: FileSpreadsheet },
     ],
   },
   {
@@ -122,11 +140,13 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 py-4">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.label} className="mb-5 last:mb-0">
-            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400">
-              {group.label}
-            </p>
+        {NAV_GROUPS.map((group, i) => (
+          <div key={group.label || i} className="mb-5 last:mb-0">
+            {group.label && (
+              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+                {group.label}
+              </p>
+            )}
             <div className="space-y-0.5">
               {group.items.map((item) => (
                 <SidebarItem key={item.to} {...item} />
