@@ -8,6 +8,13 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Copy } from "lucide-react";
 
 // "Aug 3, 2026, 2:17 PM" beats "03/08/2026, 14:17:34" for scanning.
@@ -32,6 +39,17 @@ const Field = ({ label, children }) => (
 
 const PAGE_SIZE = 100;
 
+// Color by event family so the stream scans at a glance: money events pop,
+// lifecycle events stay quiet.
+const FAMILY_VARIANT = {
+  invoice: "success",
+  payment: "info",
+  subscription: "warning",
+  customer: "neutral",
+  usage: "info",
+};
+const familyVariant = (type) => FAMILY_VARIANT[(type || "").split(".")[0]] || "neutral";
+
 // Webhook event inspector: recent outbound events, their payloads, and per-endpoint
 // delivery attempts — with one-click redelivery. Backed by GET /events,
 // GET /events/:id/deliveries, POST /events/:id/redeliver.
@@ -40,6 +58,7 @@ const Events = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [page, setPage] = useState(0);
+  const [typeFilter, setTypeFilter] = useState("all");
 
   const [selected, setSelected] = useState(null); // event whose detail sheet is open
   const [deliveries, setDeliveries] = useState([]);
@@ -112,7 +131,11 @@ const Events = () => {
     {
       key: "type",
       header: "Type",
-      cell: (e) => <span className="font-mono text-xs text-foreground">{e.type}</span>,
+      cell: (e) => (
+        <Badge variant={familyVariant(e.type)} className="font-mono text-[11px]">
+          {e.type}
+        </Badge>
+      ),
     },
     {
       key: "object",
@@ -126,6 +149,11 @@ const Events = () => {
     },
   ];
 
+  // Distinct types on the loaded page — a cheap, zero-request way to narrow the
+  // stream while hunting a specific event.
+  const types = [...new Set(events.map((e) => e.type))].sort();
+  const visible = typeFilter === "all" ? events : events.filter((e) => e.type === typeFilter);
+
   const deliveryBadge = (d) => {
     if (!d.status_code) return <Badge variant="neutral">pending</Badge>;
     const ok = d.status_code >= 200 && d.status_code < 300;
@@ -137,11 +165,26 @@ const Events = () => {
       <PageHeader
         title="Events"
         description="Outbound webhook events, their payloads, and delivery attempts. Click an event to inspect it and redeliver in one click."
+        actions={
+          types.length > 1 ? (
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-[220px]" aria-label="Filter by event type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All types</SelectItem>
+                {types.map((t) => (
+                  <SelectItem key={t} value={t}>{t}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : undefined
+        }
       />
 
       <DataTable
         columns={columns}
-        data={events}
+        data={visible}
         loading={loading}
         error={error}
         onRetry={fetchEvents}
@@ -154,7 +197,12 @@ const Events = () => {
         }}
         empty={{
           icon: Webhook,
-          title: page > 0 ? "No more events" : "No events yet",
+          title:
+            typeFilter !== "all"
+              ? "No events of this type on this page"
+              : page > 0
+                ? "No more events"
+                : "No events yet",
           description:
             "Events appear here as your account creates customers, invoices, subscriptions, and more.",
         }}
