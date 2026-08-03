@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import OnboardingChecklist from "../components/onboarding/OnboardingChecklist";
 import { Link, useNavigate } from "react-router";
 import { AreaChart, DonutChart } from "@tremor/react";
 import {
@@ -248,6 +249,7 @@ export default function Dashboard() {
 
   return (
     <div>
+      <OnboardingChecklist />
       <PageHeader
         title="Home"
         description="A snapshot of your billing performance."

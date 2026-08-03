@@ -16,9 +16,12 @@ describe('Sidebar (redesign)', () => {
 
     it('renders the grouped navigation sections', () => {
         renderWithRouter(<Sidebar />);
-        expect(screen.getByText('Core')).toBeInTheDocument();
-        expect(screen.getByText('Growth')).toBeInTheDocument();
-        expect(screen.getByText('Finance')).toBeInTheDocument();
+        expect(screen.getByText('Billing')).toBeInTheDocument();
+        expect(screen.getByText('Usage')).toBeInTheDocument();
+        expect(screen.getByText('Payments')).toBeInTheDocument();
+        expect(screen.getByText('Books')).toBeInTheDocument();
+        expect(screen.getByText('Reports')).toBeInTheDocument();
+        expect(screen.getByText('Revenue Recovery')).toBeInTheDocument();
         expect(screen.getByText('System')).toBeInTheDocument();
     });
 
@@ -26,7 +29,7 @@ describe('Sidebar (redesign)', () => {
         renderWithRouter(<Sidebar />);
         ['Home', 'Customers', 'Plans', 'Subscriptions', 'Invoices',
             'Coupons', 'Referrals', 'Gifts', 'Dunning',
-            'Ledger', 'Reconciliation', 'Usage',
+            'Ledger', 'Reconciliation', 'Usage Explorer',
             'Developers', 'Settings'].forEach((label) => {
             expect(screen.getByText(label)).toBeInTheDocument();
         });
