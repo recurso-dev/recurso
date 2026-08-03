@@ -248,13 +248,34 @@ const PortalDashboard = () => {
   };
 
   // Invoices carry total/amount_paid (minor units); there is no amount_due
-  // field in the payload.
-  const paidTotal = invoices
-    .filter((inv) => inv.status === "paid")
-    .reduce((acc, inv) => acc + (inv.total || 0), 0);
-  const outstandingTotal = invoices
-    .filter((inv) => inv.status !== "paid" && inv.status !== "void")
-    .reduce((acc, inv) => acc + ((inv.total || 0) - (inv.amount_paid || 0)), 0);
+  // field in the payload. Totals are PER CURRENCY: summing raw minor units
+  // across currencies and formatting the result as USD showed an INR customer
+  // "$118,000.00" (wrong symbol) and mangled zero-decimal currencies (JPY
+  // minor units divided by 100 under the USD default). A single-currency
+  // customer — the normal case — sees one properly-formatted figure; a
+  // mixed-currency customer sees each currency's total.
+  const sumByCurrency = (amountOf) => {
+    const by = {};
+    for (const inv of invoices) {
+      const amt = amountOf(inv);
+      if (!amt) continue;
+      const cur = inv.currency || "USD";
+      by[cur] = (by[cur] || 0) + amt;
+    }
+    return (
+      Object.entries(by)
+        .map(([cur, amt]) => formatCurrency(amt, cur))
+        .join(" · ") || formatCurrency(0, invoices[0]?.currency)
+    );
+  };
+  const paidTotal = sumByCurrency((inv) =>
+    inv.status === "paid" ? inv.total || 0 : 0
+  );
+  const outstandingTotal = sumByCurrency((inv) =>
+    inv.status !== "paid" && inv.status !== "void"
+      ? (inv.total || 0) - (inv.amount_paid || 0)
+      : 0
+  );
 
   if (loading) {
     return (
@@ -329,12 +350,12 @@ const PortalDashboard = () => {
           />
           <StatCard
             label="Total Paid"
-            value={formatCurrency(paidTotal)}
+            value={paidTotal}
             icon={FileText}
           />
           <StatCard
             label="Outstanding"
-            value={formatCurrency(outstandingTotal)}
+            value={outstandingTotal}
             icon={Wallet}
           />
 
