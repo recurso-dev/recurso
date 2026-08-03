@@ -1,5 +1,44 @@
 # Progress log
 
+## 2026-08-03 second wave — revrec deep-fixes + a money-out arbitrage
+
+Three more merged fixes (#420–#422), the last one HIGH money-out. The arc:
+soaking our own safety net found an edge in our own fix, repairing it properly
+surfaced a latent interaction, closing that filed a lead which turned out to be
+a real arbitrage.
+
+**#420 — downgrade revenue reversal capped at genuinely-recognized events.**
+A 32-seed soak of the invariant harness (CI runs 8 fixed seeds) caught seeds
+23/39 driving Recognized Revenue wrong-sign: #413 attributed the whole schedule
+shortfall to "already recognized," but an unpaid upgrade-charge invoice funds
+Deferred with NO schedule — that shortfall is unscheduled deferral, not
+recognized revenue. Fix: three-way split (pending → Deferred; genuinely
+recognized → clawed back from 4100, capped at and MARKING the sub's recognized
+events with a new 'reversed' status so repeat downgrades can never over-claw;
+residual → Deferred, where the funding sits). Seeds 23/39 are now in the CI
+seed list permanently. Lesson: soak beyond CI's fixed seeds after any
+revrec/ledger change — 30 extra seeds cost ~2 minutes and found a real bug.
+
+**#421 — schedule debt (ENG-191f).** Closed the latent interaction #420
+documented: when a downgrade residual consumes unscheduled deferral, paying
+that invoice later would schedule its FULL net — recognizing revenue already
+credited back. New `revrec_schedule_debt` (migration 000158): the downgrade
+records the residual; `CreateScheduleForInvoice` atomically consumes it and
+shrinks the new schedule; a fully-consumed net creates no schedule.
+
+**#422 — coupon-blind proration = money-out arbitrage (ENG-195, HIGH).**
+Filed as backlog R3 during #421; the audit found it worse than filed:
+plan-change proration used LIST prices while renewals honor the coupon, so an
+80%-off customer who paid 40000 could downgrade mid-period into ~50000 of
+spendable account credit — more than they ever paid, unbounded with steeper
+discounts. Upgrades symmetrically over-charged discounted customers. Fix:
+`coupon_applied_current_period` (migration 000159), set at all three
+invoice-generation sites (create/renewal/trial; renewal clears it when the
+coupon stops — the counter alone can't derive it), and
+`computePlanChangeProration` discounts both plan prices when set. Preview
+inherits automatically. Oracle: 80%-off downgrade credits ~10000 not ~50000;
+the undiscounted control still credits list.
+
 ## 2026-08-03 early-AM continuation — metering & reporting correctness sweep
 
 Three more merged fixes (#416–#418), each a real mis-billing or mis-reporting
