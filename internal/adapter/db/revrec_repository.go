@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -74,7 +74,6 @@ func (r *RevRecRepository) ClaimDueEvents(ctx context.Context, date time.Time) (
 		WHERE re.revenue_schedule_id = rs.id AND re.recognition_date <= $1 AND re.status = 'pending'
 		RETURNING re.id, re.revenue_schedule_id, re.tenant_id, rs.entity_id, re.amount, re.recognition_date, re.status, re.ledger_tx_id, re.created_at
 	`
-	log.Printf("RevRec Repository: Claiming events <= %v", date)
 	rows, err := r.db.QueryContext(ctx, query, date)
 	if err != nil {
 		return nil, err
@@ -88,7 +87,7 @@ func (r *RevRecRepository) ClaimDueEvents(ctx context.Context, date time.Time) (
 		var entityID sql.NullString
 
 		if err := rows.Scan(&e.ID, &e.RevenueScheduleID, &e.TenantID, &entityID, &e.Amount, &e.RecognitionDate, &e.Status, &ledgerTxID, &e.CreatedAt); err != nil {
-			log.Printf("RevRec Repository: Scan error: %v", err)
+			slog.Error("revrec claim scan failed", "error", err)
 			return nil, err
 		}
 
