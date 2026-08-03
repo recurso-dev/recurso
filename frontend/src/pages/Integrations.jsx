@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
-import { Landmark, RefreshCw, Check } from "lucide-react";
+import { Link, useSearchParams } from "react-router";
+import { Landmark, RefreshCw, Check, Copy, ExternalLink } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -80,6 +80,23 @@ const syncStatusVariant = (status) =>
 
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString() : "—");
 
+// Where in the app a synced record actually lives — the "track it down" link.
+const ENTITY_PAGES = {
+  invoice: { to: "/invoices", label: "Open Invoices" },
+  customer: { to: "/customers", label: "Open Customers" },
+  product: { to: "/plans", label: "Open Plans" },
+  plan: { to: "/plans", label: "Open Plans" },
+};
+
+const copyId = async (v, label) => {
+  try {
+    await navigator.clipboard.writeText(v);
+    toast.success(`${label} copied.`);
+  } catch {
+    toast.error("Couldn't copy to clipboard.");
+  }
+};
+
 const Integrations = () => {
   const [connections, setConnections] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -95,6 +112,7 @@ const Integrations = () => {
   const [logSearchInput, setLogSearchInput] = useState("");
   const [connecting, setConnecting] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [selectedLog, setSelectedLog] = useState(null);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [tokenProvider, setTokenProvider] = useState(null); // provider being connected via sheet
   const [tokenForm, setTokenForm] = useState({ account_id: "", access_token: "" });
@@ -470,6 +488,7 @@ const Integrations = () => {
           loading={logsLoading}
           error={logsError}
           onRetry={fetchLogs}
+          onRowClick={(l) => setSelectedLog(l)}
           getRowId={(l) => l.id}
           empty={{
             icon: RefreshCw,
@@ -477,6 +496,98 @@ const Integrations = () => {
             description: "Connect a provider and run a sync to see records here.",
           }}
         />
+
+        {/* Sync-record detail: everything about one sync attempt, with the IDs
+            copyable and a jump to where the record lives in the app. */}
+        <Sheet open={!!selectedLog} onOpenChange={(o) => !o && setSelectedLog(null)}>
+          <SheetContent className="overflow-y-auto sm:max-w-md">
+            {selectedLog && (
+              <>
+                <SheetHeader>
+                  <SheetTitle className="flex items-center gap-2">
+                    <span className="capitalize">{selectedLog.provider}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <span className="capitalize">{selectedLog.entity_type}</span>
+                    <Badge variant={syncStatusVariant(selectedLog.status)}>{selectedLog.status}</Badge>
+                  </SheetTitle>
+                </SheetHeader>
+
+                <div className="mt-4 space-y-5 px-1">
+                  <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 p-3">
+                    <div>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Record</dt>
+                      <dd className="mt-0.5 truncate text-sm font-medium" title={selectedLog.entity_name || undefined}>
+                        {selectedLog.entity_name || "—"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</dt>
+                      <dd className="mt-0.5 text-sm capitalize">{selectedLog.action}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Internal ID</dt>
+                      <dd className="mt-0.5">
+                        {selectedLog.entity_id ? (
+                          <button
+                            type="button"
+                            onClick={() => copyId(selectedLog.entity_id, "Internal ID")}
+                            className="group inline-flex max-w-full items-center gap-1.5 text-left"
+                            title="Copy internal ID"
+                          >
+                            <span className="truncate font-mono text-xs">{selectedLog.entity_id}</span>
+                            <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Provider ID</dt>
+                      <dd className="mt-0.5">
+                        {selectedLog.external_id ? (
+                          <button
+                            type="button"
+                            onClick={() => copyId(selectedLog.external_id, "Provider ID")}
+                            className="group inline-flex max-w-full items-center gap-1.5 text-left"
+                            title="Copy provider ID"
+                          >
+                            <span className="truncate font-mono text-xs">{selectedLog.external_id}</span>
+                            <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                          </button>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">not assigned yet</span>
+                        )}
+                      </dd>
+                    </div>
+                    <div className="col-span-2">
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Synced</dt>
+                      <dd className="mt-0.5 text-sm">{fmtDateTime(selectedLog.synced_at)}</dd>
+                    </div>
+                  </dl>
+
+                  {selectedLog.error_message && (
+                    <div>
+                      <p className="mb-1 text-xs font-medium text-foreground">What went wrong</p>
+                      <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs leading-relaxed text-red-800">
+                        {selectedLog.error_message}
+                      </p>
+                    </div>
+                  )}
+
+                  {ENTITY_PAGES[selectedLog.entity_type] && (
+                    <Button variant="outline" size="sm" asChild>
+                      <Link to={ENTITY_PAGES[selectedLog.entity_type].to}>
+                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                        {ENTITY_PAGES[selectedLog.entity_type].label}
+                      </Link>
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
         {logTotal > LOG_PAGE_SIZE && (
           <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
             <span>
