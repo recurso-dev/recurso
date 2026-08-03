@@ -47,8 +47,8 @@ founder can provide; everything else is engineering-ready.
 
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
-| 11 | Gift-subscription cancel + wallet-close UI edge cases | LOW | LOW | Deferred from roadmap run 2026-07-20. |
-| 12 | Dunning alert edit UI | LOW | LOW | Deferred from roadmap run 2026-07-20. |
+| ~~11~~ | ~~Gift-subscription cancel + wallet-close UI edge cases~~ | — | — | **ALREADY DONE (verified 2026-08-03)** — Gifts page has the full cancel flow incl. the buyer-compensation notice (`cancelTarget`/`cancelNotice`, #218-era); Wallets page has close with the refunded/forfeited result breakdown (`submitClose`/`closeResult`, #163–#169-era). Row predated both. |
+| ~~12~~ | ~~Dunning alert edit UI~~ | — | — | **OBSOLETE (verified 2026-08-03)** — no "dunning alert" entity exists. Usage alerts have full edit/delete UI on the Metering page (`openEditAlert`/`submitEditAlert`/`removeAlert` against PUT/DELETE `/usage-alerts/:id`); churn alerts are system-generated and acknowledge-only **by design** (nothing to edit). Row predated the Metering alert UI. |
 | ~~FE1~~ | ~~Money-input UX inconsistency: two forms took cents, the rest take dollars~~ | — | — | **DONE (#408, #409)** — the two outlier forms now take **dollars** like the rest of the dashboard. **#408** `Referrals.jsx` (create-only): dollar input + `toMinorUnits` on submit. **#409** `CreateQuote.jsx` (the hard one): dollar input, edit-load converts the API's minor units → major via `fromMinorUnits` (so editing a $50 line shows 50, not 5000, and doesn't re-multiply on save), subtotal/total/line previews compute in minor units then `formatCurrency`, submit converts back via `toMinorUnits`. API contract unchanged (still minor units); exponent-safe. lint + build clean, vitest 365/365. Frontend money audit otherwise CLEAN (centralized exponent-aware helpers). From frontend money audit 2026-07-31. |
 
 ## P2b — smoke-sweep findings (2026-07-28, see docs/verification-2026-07-28.md)
