@@ -25,6 +25,7 @@ const NAV_GROUPS = [
     label: "Growth",
     items: [
       { to: "/metering", label: "Metering", icon: Gauge },
+      { to: "/usage", label: "Usage", icon: BarChart3 },
       { to: "/wallets", label: "Wallets", icon: Wallet2 },
       { to: "/coupons", label: "Coupons", icon: Ticket },
       { to: "/referrals", label: "Referrals", icon: Megaphone },
@@ -50,7 +51,6 @@ const NAV_GROUPS = [
       { to: "/finance/entities", label: "Entities", icon: Building2 },
       { to: "/ledger", label: "Ledger", icon: Landmark },
       { to: "/audit-log", label: "Audit Log", icon: ShieldCheck },
-      { to: "/events", label: "Events", icon: Webhook },
       { to: "/finance/trial-balance", label: "Trial Balance", icon: BookOpenCheck },
       { to: "/finance/reconciliation", label: "Reconciliation", icon: Scale },
       { to: "/finance/close", label: "Month-End Close", icon: ClipboardCheck },
@@ -61,7 +61,6 @@ const NAV_GROUPS = [
       { to: "/finance/unit-economics", label: "Unit Economics", icon: Gauge },
       { to: "/finance/revenue-by-plan", label: "Revenue by Plan", icon: PieChart },
       { to: "/finance/revenue-by-geography", label: "Revenue by Geography", icon: Globe },
-      { to: "/usage", label: "Usage", icon: BarChart3 },
       { to: "/finance/gst-returns", label: "GST Returns", icon: FileSpreadsheet },
     ],
   },
@@ -69,6 +68,7 @@ const NAV_GROUPS = [
     label: "System",
     items: [
       { to: "/developers", label: "Developers", icon: Code2 },
+      { to: "/events", label: "Events", icon: Webhook },
       { to: "/integrations", label: "Integrations", icon: Plug },
       { to: "/settings", label: "Settings", icon: Settings },
       { to: "/security", label: "Security", icon: ShieldCheck },
