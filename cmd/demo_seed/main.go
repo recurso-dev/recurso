@@ -248,7 +248,7 @@ func (s *seeder) bump(table string, n int) { s.counts[table] += n }
 // @demo.recurso.dev / DEMO- markers the seeder stamps), in FK-safe order.
 // Non-demo data for the tenant is never touched. Runs inside the seed tx.
 func (s *seeder) purge() {
-	log.Println("--reset: purging existing demo rows for this tenant… (purge v2: ownership-scoped, worker rows included)")
+	log.Println("--reset: purging existing demo rows for this tenant… (purge v3: full FK coverage — worker, portal, churn, campaign, entity rows; in-use demo plans are kept)")
 	t := s.tenantID
 	demoCust := `SELECT id FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`
 	// Ownership, not number pattern: demo subscriptions live-bill at renewal, so
@@ -257,15 +257,24 @@ func (s *seeder) purge() {
 	demoSub := `SELECT id FROM subscriptions WHERE customer_id IN (` + demoCust + `)`
 	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND (invoice_number LIKE 'INV-DEMO-%' OR customer_id IN (` + demoCust + `) OR subscription_id IN (` + demoSub + `))`
 	demoCN := `SELECT id FROM credit_notes WHERE tenant_id=$1 AND (reference LIKE 'CN-DEMO-%' OR customer_id IN (` + demoCust + `))`
-	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`
+	// Plans: only purge demo plans nothing else references — a non-demo
+	// subscription/addon/gift on a demo plan (founder tests, gift redemptions)
+	// is REAL data; deleting it would be destructive, so the plan stays.
+	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'
+		AND id NOT IN (SELECT plan_id FROM subscriptions WHERE plan_id IS NOT NULL)
+		AND id NOT IN (SELECT plan_id FROM subscription_addons WHERE plan_id IS NOT NULL)
+		AND id NOT IN (SELECT plan_id FROM gifts WHERE plan_id IS NOT NULL)`
+	demoCamp := `SELECT id FROM dunning_campaigns WHERE tenant_id=$1 AND name LIKE '%(demo)%'`
+	demoEnt := `SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'`
+	demoHook := `SELECT id FROM webhook_endpoints WHERE tenant_id=$1 AND url LIKE '%` + demoDomain + `%'`
 	stmts := []string{
 		`DELETE FROM payment_attempts WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM credit_note_applications WHERE credit_note_id IN (` + demoCN + `) OR invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM eu_einvoices WHERE invoice_id IN (` + demoInv + `)`,
-		`DELETE FROM invoice_disputes WHERE invoice_id IN (` + demoInv + `)`,
-		`DELETE FROM virtual_accounts WHERE invoice_id IN (` + demoInv + `)`,
-		`DELETE FROM consents WHERE subscription_id IN (` + demoSub + `)`,
-		`DELETE FROM precharge_notifications WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM invoice_disputes WHERE invoice_id IN (` + demoInv + `) OR customer_id IN (` + demoCust + `)`,
+		`DELETE FROM virtual_accounts WHERE invoice_id IN (` + demoInv + `) OR customer_id IN (` + demoCust + `)`,
+		`DELETE FROM consents WHERE subscription_id IN (` + demoSub + `) OR customer_id IN (` + demoCust + `)`,
+		`DELETE FROM precharge_notifications WHERE subscription_id IN (` + demoSub + `) OR customer_id IN (` + demoCust + `)`,
 		`DELETE FROM progressive_billing_watermarks WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM unbilled_charges WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoInv + `)`,
@@ -274,17 +283,24 @@ func (s *seeder) purge() {
 		`DELETE FROM dunning_history WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM recognition_events WHERE revenue_schedule_id IN (SELECT id FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `) OR subscription_id IN (` + demoSub + `))`,
 		`DELETE FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `) OR subscription_id IN (` + demoSub + `)`,
-		`DELETE FROM referrals WHERE referrer_id IN (` + demoCust + `)`,
-		`DELETE FROM gifts WHERE buyer_customer_id IN (` + demoCust + `)`,
+		`DELETE FROM referrals WHERE referrer_id IN (` + demoCust + `) OR referred_id IN (` + demoCust + `)`,
+		`DELETE FROM gifts WHERE buyer_customer_id IN (` + demoCust + `) OR redeemed_by_customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_ratings WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM usage_alerts WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE customer_id IN (` + demoCust + `))`,
 		`DELETE FROM wallets WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM plan_charges WHERE plan_id IN (` + demoPlan + `)`,
-		`DELETE FROM billable_metrics WHERE tenant_id=$1 AND code IN ('api_calls','active_users')`,
+		`DELETE FROM billable_metrics WHERE tenant_id=$1 AND code IN ('api_calls','active_users')
+			AND id NOT IN (SELECT metric_id FROM plan_charges WHERE metric_id IS NOT NULL)`,
 		`DELETE FROM subscription_addons WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM plan_entitlements WHERE plan_id IN (` + demoPlan + `)`,
+		`UPDATE subscriptions SET mandate_id=NULL WHERE mandate_id IN (SELECT id FROM mandates WHERE customer_id IN (` + demoCust + `))`,
 		`DELETE FROM mandates WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM churn_feature_snapshots WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM card_expiry_notifications WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM magic_links WHERE customer_id IN (` + demoCust + `)`,
+		`DELETE FROM portal_sessions WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM mrr_snapshots WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM churn_alerts WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM offline_payments WHERE customer_id IN (` + demoCust + `)`,
@@ -293,14 +309,23 @@ func (s *seeder) purge() {
 		`DELETE FROM events WHERE tenant_id=$1 AND data->>'demo'='true'`,
 		`DELETE FROM invoices WHERE id IN (` + demoInv + `)`,
 		`DELETE FROM subscriptions WHERE customer_id IN (` + demoCust + `)`,
-		`DELETE FROM dunning_campaigns WHERE tenant_id=$1 AND name LIKE '%(demo)%'`,
+		`DELETE FROM dunning_campaign_executions WHERE campaign_id IN (` + demoCamp + `)`,
+		`DELETE FROM dunning_campaign_steps WHERE campaign_id IN (` + demoCamp + `)`,
+		`DELETE FROM dunning_campaigns WHERE id IN (` + demoCamp + `)`,
 		`DELETE FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`,
 		`DELETE FROM prices WHERE plan_id IN (` + demoPlan + `)`,
-		`DELETE FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`,
+		`DELETE FROM plans WHERE id IN (` + demoPlan + `)`,
+		`UPDATE subscriptions SET coupon_id=NULL WHERE coupon_id IN (SELECT id FROM coupons WHERE tenant_id=$1 AND code LIKE 'DEMO-%')`,
 		`DELETE FROM coupons WHERE tenant_id=$1 AND code LIKE 'DEMO-%'`,
-		`DELETE FROM webhook_endpoints WHERE tenant_id=$1 AND url LIKE '%` + demoDomain + `%'`,
-		`DELETE FROM entity_invoice_sequences WHERE entity_id IN (SELECT id FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO')`,
-		`DELETE FROM entities WHERE tenant_id=$1 AND invoice_prefix='EU-DEMO'`,
+		`DELETE FROM event_deliveries WHERE webhook_endpoint_id IN (` + demoHook + `)`,
+		`DELETE FROM webhook_endpoints WHERE id IN (` + demoHook + `)`,
+		`DELETE FROM entity_invoice_sequences WHERE entity_id IN (` + demoEnt + `)`,
+		`DELETE FROM tenant_gst_configs WHERE entity_id IN (` + demoEnt + `)`,
+		`DELETE FROM tenant_irp_configs WHERE entity_id IN (` + demoEnt + `)`,
+		`DELETE FROM tenant_eu_config WHERE entity_id IN (` + demoEnt + `)`,
+		`DELETE FROM tenant_tax_nexus WHERE entity_id IN (` + demoEnt + `)`,
+		`UPDATE ledger_accounts SET entity_id=NULL WHERE entity_id IN (` + demoEnt + `)`,
+		`DELETE FROM entities WHERE id IN (` + demoEnt + `)`,
 	}
 	for _, q := range stmts {
 		n := s.execCount(q, t)
@@ -309,6 +334,13 @@ func (s *seeder) purge() {
 			table := strings.Fields(q)[2]
 			log.Printf("  · purged %-28s %d", table, n)
 		}
+	}
+	// Demo plans still referenced by real subscriptions/addons/gifts were kept
+	// on purpose — deleting them would take live data with them. Say so.
+	var kept int
+	if err := s.tx.QueryRowContext(s.ctx,
+		`SELECT count(*) FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`, t).Scan(&kept); err == nil && kept > 0 {
+		log.Printf("  · kept %d in-use demo plan(s) still referenced by real subscriptions/gifts", kept)
 	}
 	// Tenant-level ledger accounts (Cash/Revenue/Tax/Deferred) are reused via
 	// lookup-or-create on re-seed and stay in place. Per-CUSTOMER AR accounts
