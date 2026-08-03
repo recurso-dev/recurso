@@ -54,9 +54,13 @@ const codeLabel = (c) => CODE_LABEL[c] || `Code ${c}`;
 const fmtWhen = (x) =>
   x ? new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
 
+const PAGE_SIZE = 50;
+
 export default function Ledger() {
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedEntry, setSelectedEntry] = useState(null);
+  const [page, setPage] = useState(0);
+  const [codeFilter, setCodeFilter] = useState("all");
 
   const accountsQuery = useQuery({
     queryKey: ["ledger-accounts"],
@@ -70,10 +74,18 @@ export default function Ledger() {
 
   // Entries for the selected account; disabled until one is chosen.
   const entriesQuery = useQuery({
-    queryKey: ["ledger-entries", selectedAccountId],
+    queryKey: ["ledger-entries", selectedAccountId, page, codeFilter],
     queryFn: async () =>
-      (await endpoints.getLedgerEntries({ account_id: selectedAccountId, limit: 50 })).data.data || [],
+      (
+        await endpoints.getLedgerEntries({
+          account_id: selectedAccountId,
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+          ...(codeFilter !== "all" ? { code: Number(codeFilter) } : {}),
+        })
+      ).data.data || [],
     enabled: !!selectedAccountId,
+    keepPreviousData: true,
   });
   const entries = entriesQuery.data ?? [];
   const entriesLoading = entriesQuery.isFetching;
@@ -99,6 +111,11 @@ export default function Ledger() {
       setSelectedAccountId(accounts[0].id);
     }
   }, [accounts, selectedAccountId]);
+
+  // A new account or posting filter starts back at the first page.
+  useEffect(() => {
+    setPage(0);
+  }, [selectedAccountId, codeFilter]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.id === selectedAccountId),
@@ -198,6 +215,21 @@ export default function Ledger() {
           </Select>
         </div>
 
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-foreground">Posting type</label>
+          <Select value={codeFilter} onValueChange={setCodeFilter}>
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All postings</SelectItem>
+              {Object.entries(CODE_LABEL).map(([c, label]) => (
+                <SelectItem key={c} value={c}>{label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {selectedAccount && (
           <StatCard
             className="md:col-span-1"
@@ -217,10 +249,19 @@ export default function Ledger() {
         onRetry={accountsQuery.refetch}
         onRowClick={(e) => setSelectedEntry(e)}
         getRowId={(e) => e.id}
+        pagination={{
+          page: page + 1,
+          onPrev: () => setPage((p) => Math.max(0, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext: entries.length === PAGE_SIZE,
+        }}
         empty={{
           icon: BookOpen,
-          title: "No entries found",
-          description: "No ledger entries were found for this account.",
+          title: page > 0 ? "No more entries" : "No entries found",
+          description:
+            codeFilter !== "all"
+              ? "No postings of this type for this account."
+              : "No ledger entries were found for this account.",
         }}
       />
 

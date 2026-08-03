@@ -4651,6 +4651,23 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: code
+          in: query
+          required: false
+          description: Filter to one posting code (e.g. 3 = payment). Omit for all.
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 250).
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
       responses:
         '200':
           description: Ledger transfers touching the account.

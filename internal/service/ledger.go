@@ -1105,10 +1105,11 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 
 // GetEntries fetches ledger entries (transfers) for a given account.
 // Prefers PG as source of truth; falls back to TB if PG is unavailable.
-func (s *LedgerService) GetEntries(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error) {
+// GetEntries pages an account's postings. code=0 means every posting type.
+func (s *LedgerService) GetEntries(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error) {
 	// Try PG first
 	if s.pgRepo != nil {
-		entries, err := s.pgRepo.GetTransactionsByAccount(ctx, tenantID, accountID)
+		entries, err := s.pgRepo.GetTransactionsByAccount(ctx, tenantID, accountID, code, limit, offset)
 		if err == nil {
 			return entries, nil
 		}

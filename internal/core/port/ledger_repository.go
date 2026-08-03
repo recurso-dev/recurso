@@ -29,7 +29,7 @@ type LedgerRepository interface {
 	// of one code for a reference (nil when none). The ACH reversal inverts the
 	// actual latest cash leg rather than recomputing its amount.
 	GetLatestTransactionByReferenceAndCode(ctx context.Context, referenceID uuid.UUID, code uint16) (*domain.LedgerTransaction, error)
-	GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID) ([]*domain.LedgerTransaction, error)
+	GetTransactionsByAccount(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error)
 	// GetTrialBalanceLines returns each of the tenant's accounts with its posted
 	// debit and credit totals (minor units). Balance/Abnormal are computed by the
 	// service, not the repository.
