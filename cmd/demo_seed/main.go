@@ -244,8 +244,8 @@ func (s *seeder) purge() {
 	// Ownership, not number pattern: demo subscriptions live-bill at renewal, so
 	// the renewal worker mints REAL-numbered invoices against demo customers —
 	// those are demo data too, and they FK-block the subscription purge if left.
-	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND (invoice_number LIKE 'INV-DEMO-%' OR customer_id IN (` + demoCust + `))`
 	demoSub := `SELECT id FROM subscriptions WHERE customer_id IN (` + demoCust + `)`
+	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND (invoice_number LIKE 'INV-DEMO-%' OR customer_id IN (` + demoCust + `) OR subscription_id IN (` + demoSub + `))`
 	demoCN := `SELECT id FROM credit_notes WHERE tenant_id=$1 AND (reference LIKE 'CN-DEMO-%' OR customer_id IN (` + demoCust + `))`
 	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`
 	stmts := []string{
