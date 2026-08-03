@@ -88,8 +88,14 @@ func (b *PayInAdvanceBiller) BillEvent(ctx context.Context, sub *domain.Subscrip
 		}
 
 		// The per-event quantity fed to the (non-cumulative) model: the event's
-		// units for per_unit/percentage, its supplied price for dynamic.
+		// units for per_unit/percentage, its supplied price for dynamic, and
+		// exactly ONE for a count metric — arrears COUNT(*) ignores quantity
+		// (each event counts once), so per-event capture must too, or a qty-5
+		// event would be billed five units the period aggregate never counted.
 		qty := event.Quantity
+		if ch.Metric.AggregationType == domain.AggregationCount {
+			qty = 1
+		}
 		if ch.ChargeModel == domain.ChargeDynamic {
 			qty = event.DynamicAmount
 		}

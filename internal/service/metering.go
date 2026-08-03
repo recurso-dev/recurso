@@ -343,12 +343,15 @@ func (s *MeteringService) resolveChargeInput(ctx context.Context, tenantID uuid.
 				"charges[%d]: the dynamic charge model is incompatible with the %s aggregation", idx, metric.AggregationType))
 		}
 	}
-	// weighted_sum is a time-weighted average over the whole period, so it can
-	// only be rated at period close — pay-in-advance (per-event capture) is
-	// meaningless for it.
-	if metric.AggregationType == domain.AggregationWeightedSum && in.PayInAdvance {
+	// Per-event captures SUM onto the invoice, so pay-in-advance is only
+	// coherent when the period aggregate is itself additive over events: count
+	// and sum. For max/latest/unique/percentile/weighted_sum/custom the arrears
+	// aggregate of the same events is NOT their sum (max concurrent seats
+	// reported by heartbeats would be billed per heartbeat; unique users billed
+	// per repeat visit) — reject rather than mis-bill at period close.
+	if in.PayInAdvance && !domain.PayInAdvanceAggregationEligible(metric.AggregationType) {
 		return nil, "", nil, MeteringValidationError(fmt.Sprintf(
-			"charges[%d]: pay_in_advance is not supported with the weighted_sum aggregation (period-close only)", idx))
+			"charges[%d]: pay_in_advance is only supported with the count and sum aggregations (per-event capture must be additive), not %s", idx, metric.AggregationType))
 	}
 	// free_units / min_amount / max_amount (percentage clamps) are
 	// period-cumulative — an allowance/floor/cap on the WHOLE period's base.
