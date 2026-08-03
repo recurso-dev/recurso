@@ -402,9 +402,22 @@ export default function ImportData() {
                       Read-only.
                     </p>
                   </div>
-                  <Button variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
-                    {comparing ? "Comparing…" : compare ? "Re-run" : "Run Compare"}
-                  </Button>
+                  <div className="flex shrink-0 gap-2">
+                    {compare?.report_id && (
+                      <Button variant="outline" size="sm" asChild>
+                        <a
+                          href={endpoints.getCompareReportDocumentUrl(compare.report_id)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Download report
+                        </a>
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" onClick={runCompare} disabled={comparing}>
+                      {comparing ? "Comparing…" : compare ? "Re-run" : "Run Compare"}
+                    </Button>
+                  </div>
                 </div>
 
                 {compare && (

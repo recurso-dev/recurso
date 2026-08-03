@@ -85,6 +85,16 @@ func (s *TenantService) RevokeKey(ctx context.Context, tenantID, keyID uuid.UUID
 	return s.repo.RevokeAPIKey(ctx, tenantID, keyID)
 }
 
+// TenantName returns the tenant's display name, or "" — used on printed
+// documents where a lookup failure should degrade, not fail the render.
+func (s *TenantService) TenantName(ctx context.Context, tenantID uuid.UUID) string {
+	t, err := s.GetAccount(ctx, tenantID)
+	if err != nil || t == nil {
+		return ""
+	}
+	return t.Name
+}
+
 func (s *TenantService) GetAccount(ctx context.Context, tenantID uuid.UUID) (*domain.Tenant, error) {
 	return s.repo.GetByID(ctx, tenantID)
 }

@@ -130,3 +130,40 @@ func TestInvoiceHTML_DataURLImagesSurvive(t *testing.T) {
 		}
 	}
 }
+
+// The printable Compare receipt must render both verdicts and carry the
+// coverage numbers + issues verbatim.
+func TestCompareReportHTML_Renders(t *testing.T) {
+	data := CompareReportDocData{
+		TenantName:  "Acme Labs",
+		Source:      "stripe",
+		Ready:       false,
+		GeneratedAt: time.Date(2026, 8, 3, 12, 0, 0, 0, time.UTC),
+		Report: CompareReport{
+			Customers:     CompareCount{Source: 10, Matched: 9, Missing: 1},
+			Plans:         CompareCount{Source: 3, Matched: 3},
+			Subscriptions: CompareCount{Source: 8, Matched: 8},
+			Issues: []CompareIssue{
+				{Kind: "customer", ExternalID: "cus_x", Field: "missing", Source: "x@acme.com"},
+			},
+		},
+	}
+	html, err := RenderCompareReportHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"NOT READY", "Acme Labs", "cus_x", "x@acme.com", ">10<", ">9<", ">1<"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("document missing %q", want)
+		}
+	}
+	data.Ready = true
+	data.Report.Issues = nil
+	html, err = RenderCompareReportHTML(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(html, "READY") || strings.Contains(html, "NOT READY") {
+		t.Error("ready verdict not rendered")
+	}
+}
