@@ -241,17 +241,29 @@ func (s *seeder) purge() {
 	log.Println("--reset: purging existing demo rows for this tenant…")
 	t := s.tenantID
 	demoCust := `SELECT id FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`
-	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND invoice_number LIKE 'INV-DEMO-%'`
+	// Ownership, not number pattern: demo subscriptions live-bill at renewal, so
+	// the renewal worker mints REAL-numbered invoices against demo customers —
+	// those are demo data too, and they FK-block the subscription purge if left.
 	demoSub := `SELECT id FROM subscriptions WHERE customer_id IN (` + demoCust + `)`
+	demoInv := `SELECT id FROM invoices WHERE tenant_id=$1 AND (invoice_number LIKE 'INV-DEMO-%' OR customer_id IN (` + demoCust + `) OR subscription_id IN (` + demoSub + `))`
+	demoCN := `SELECT id FROM credit_notes WHERE tenant_id=$1 AND (reference LIKE 'CN-DEMO-%' OR customer_id IN (` + demoCust + `))`
 	demoPlan := `SELECT id FROM plans WHERE tenant_id=$1 AND code LIKE 'demo\_%'`
 	stmts := []string{
 		`DELETE FROM payment_attempts WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM credit_note_applications WHERE credit_note_id IN (` + demoCN + `) OR invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM eu_einvoices WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM invoice_disputes WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM virtual_accounts WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM consents WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM precharge_notifications WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM progressive_billing_watermarks WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM unbilled_charges WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoInv + `)`,
 		`DELETE FROM invoice_items WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM recovered_payments WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM dunning_history WHERE invoice_id IN (` + demoInv + `)`,
-		`DELETE FROM recognition_events WHERE revenue_schedule_id IN (SELECT id FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `))`,
-		`DELETE FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `)`,
+		`DELETE FROM recognition_events WHERE revenue_schedule_id IN (SELECT id FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `) OR subscription_id IN (` + demoSub + `))`,
+		`DELETE FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `) OR subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM referrals WHERE referrer_id IN (` + demoCust + `)`,
 		`DELETE FROM gifts WHERE buyer_customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
@@ -267,9 +279,9 @@ func (s *seeder) purge() {
 		`DELETE FROM churn_alerts WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM offline_payments WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM quotes WHERE tenant_id=$1 AND quote_number LIKE 'Q-DEMO-%'`,
-		`DELETE FROM credit_notes WHERE tenant_id=$1 AND reference LIKE 'CN-DEMO-%'`,
+		`DELETE FROM credit_notes WHERE id IN (` + demoCN + `)`,
 		`DELETE FROM events WHERE tenant_id=$1 AND data->>'demo'='true'`,
-		`DELETE FROM invoices WHERE tenant_id=$1 AND invoice_number LIKE 'INV-DEMO-%'`,
+		`DELETE FROM invoices WHERE id IN (` + demoInv + `)`,
 		`DELETE FROM subscriptions WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM dunning_campaigns WHERE tenant_id=$1 AND name LIKE '%(demo)%'`,
 		`DELETE FROM customers WHERE tenant_id=$1 AND email LIKE '%@` + demoDomain + `'`,
