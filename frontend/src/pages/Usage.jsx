@@ -29,9 +29,8 @@ const unitsTooltip = makeChartTooltip(unitsFormatter);
 
 export default function Usage() {
   const [usageStats, setUsageStats] = useState([]);
+  const [meteredCount, setMeteredCount] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [customerFilter, setCustomerFilter] = useState("all");
-  const [planFilter, setPlanFilter] = useState("all");
   const { names: customerNames } = useCustomers();
   const [events, setEvents] = useState([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -106,6 +105,7 @@ export default function Usage() {
       try {
         const response = await api.getUsageStats();
         setUsageStats(response.data.data || []);
+        setMeteredCount(response.data.customers_metered ?? null);
       } catch (error) {
         console.error("Failed to fetch usage stats:", error);
       } finally {
@@ -115,26 +115,8 @@ export default function Usage() {
     fetchUsage();
   }, []);
 
-  // Unique filter options derived from the stats.
-  const uniqueCustomers = useMemo(
-    () => [...new Set(usageStats.map((d) => d.customer_id))],
-    [usageStats]
-  );
-  const uniquePlans = useMemo(
-    () => [...new Set(usageStats.map((d) => d.plan_id))],
-    [usageStats]
-  );
 
-  const filteredData = useMemo(
-    () =>
-      usageStats.filter((item) => {
-        if (customerFilter !== "all" && item.customer_id !== customerFilter)
-          return false;
-        if (planFilter !== "all" && item.plan_id !== planFilter) return false;
-        return true;
-      }),
-    [usageStats, customerFilter, planFilter]
-  );
+  const filteredData = usageStats;
 
   const totalUnits = useMemo(
     () => filteredData.reduce((acc, curr) => acc + curr.total_quantity, 0),
@@ -246,37 +228,6 @@ export default function Usage() {
         }
       />
 
-      {/* Filters */}
-      <div className="mb-6 flex flex-wrap items-center gap-2">
-        <Select value={customerFilter} onValueChange={setCustomerFilter}>
-          <SelectTrigger className="w-auto min-w-[12rem]">
-            <SelectValue placeholder="Customer: All" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All customers</SelectItem>
-            {uniqueCustomers.map((c) => (
-              <SelectItem key={c} value={c}>
-                {shortId(c)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select value={planFilter} onValueChange={setPlanFilter}>
-          <SelectTrigger className="w-auto min-w-[10rem]">
-            <SelectValue placeholder="Plan: All" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All plans</SelectItem>
-            {uniquePlans.map((p) => (
-              <SelectItem key={p} value={p}>
-                {shortId(p)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {/* Stats */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
@@ -287,7 +238,7 @@ export default function Usage() {
         />
         <StatCard
           label="Customers Metered"
-          value={customersMetered.toLocaleString()}
+          value={(meteredCount ?? customersMetered).toLocaleString()}
           icon={Users}
           hint="With recorded usage"
         />

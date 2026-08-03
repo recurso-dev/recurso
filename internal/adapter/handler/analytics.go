@@ -259,5 +259,12 @@ func (h *AnalyticsHandler) GetUsageStats(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch usage stats")
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"data": stats})
+	// Additive: the distinct-customer count the dashboard card shows. Kept
+	// beside data (not inside) so existing consumers of data:[] are untouched.
+	metered, err := h.svc.CountMeteredCustomers(ctx, tenantID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to fetch usage stats")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": stats, "customers_metered": metered})
 }

@@ -57,7 +57,7 @@ export default function Notifications() {
           id: evt.id,
           title,
           description,
-          time: new Date(evt.created_at).toLocaleString(),
+          time: new Date(evt.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
           Icon,
           read: false, // No backend support yet.
         };

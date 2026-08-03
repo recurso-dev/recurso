@@ -141,6 +141,12 @@ func (s *AnalyticsService) GetUsageStats(ctx context.Context, tenantID uuid.UUID
 	return s.usageRepo.GetUsageStats(ctx, tenantID)
 }
 
+// CountMeteredCustomers is the distinct-customer count behind the usage page's
+// "customers metered" card.
+func (s *AnalyticsService) CountMeteredCustomers(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	return s.usageRepo.CountMeteredCustomers(ctx, tenantID)
+}
+
 // MRRCurrencyBreakdown is the per-currency slice of MRR before and after
 // normalization into the reporting currency.
 type MRRCurrencyBreakdown struct {

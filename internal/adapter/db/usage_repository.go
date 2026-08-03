@@ -463,6 +463,23 @@ func (r *UsageRepository) ListDimensions(ctx context.Context, tenantID uuid.UUID
 	return dims, rows.Err()
 }
 
+// CountMeteredCustomers returns how many distinct customers have any recorded
+// usage — the honest number behind the dashboard's "customers metered" card
+// (it previously counted a field the stats rows never carried, so it was
+// always 1).
+func (r *UsageRepository) CountMeteredCustomers(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(DISTINCT ue.customer_id)
+		FROM usage_events ue
+		JOIN subscriptions s ON ue.subscription_id = s.id
+		WHERE s.tenant_id = $1`, tenantID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count metered customers: %w", err)
+	}
+	return n, nil
+}
+
 func (r *UsageRepository) GetUsageStats(ctx context.Context, tenantID uuid.UUID) ([]*domain.UsageStats, error) {
 	query := `
 		SELECT ue.dimension, COALESCE(SUM(ue.quantity), 0) as total_quantity

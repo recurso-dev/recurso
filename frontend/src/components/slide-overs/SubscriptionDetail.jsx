@@ -303,7 +303,17 @@ export default function SubscriptionDetail({
     <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
-          <SheetTitle className="font-mono text-base">{subscription.id}</SheetTitle>
+          <SheetTitle className="text-base">
+            {customer?.name || "Subscription"}
+            {planName ? <span className="text-muted-foreground"> — {planName}</span> : null}
+          </SheetTitle>
+          <p
+            className="cursor-pointer font-mono text-xs text-muted-foreground"
+            title="Click to copy the subscription ID"
+            onClick={() => navigator.clipboard?.writeText(subscription.id)}
+          >
+            {subscription.id}
+          </p>
           <SheetDescription className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
               <span
