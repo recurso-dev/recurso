@@ -43,6 +43,24 @@ func progressiveDelta(model domain.ChargeModel, amounts domain.ChargeAmounts, cu
 	return feeNow - billedAmount, feeNow, nil
 }
 
+// progressiveBillable reports whether a charge can be billed via the watermark
+// path: an eligible (monotonic-fee) model, arrears-billed, and UNFILTERED. The
+// watermark path aggregates the metric's whole event stream via meteredQuantity
+// and rates it at the charge's base amounts — it is filter-blind — so a
+// dimensional-pricing charge (FilterKey set) must fall through to the classic
+// filtered path (filteredMeteredLines, guarded by usage_ratings) or its
+// per-value rates would be silently ignored and every event billed at the base
+// rate. Pay-in-advance charges are billed per event at ingestion (A3) and the
+// volume model's fee is not monotonic in cumulative quantity; both are equally
+// watermark-incompatible. One predicate so the interim sweep, the interim bill,
+// and the period-close dispatch can never disagree about a charge's path.
+func progressiveBillable(ch domain.Charge) bool {
+	return ch.Metric != nil &&
+		domain.ProgressiveBillingEligible(ch.ChargeModel) &&
+		!ch.PayInAdvance &&
+		ch.FilterKey == ""
+}
+
 // isProgressive reports whether the subscription bills progressively (has a
 // threshold set). Nil-safe: false when the repo is unwired.
 func (s *InvoiceService) isProgressive(ctx context.Context, subID uuid.UUID) bool {
@@ -173,13 +191,7 @@ func (s *InvoiceService) progressiveUnbilled(ctx context.Context, sub *domain.Su
 	periodStart := sub.CurrentPeriodStart
 	var total int64
 	for _, ch := range charges {
-		if ch.Metric == nil || !domain.ProgressiveBillingEligible(ch.ChargeModel) {
-			continue
-		}
-		// Pay-in-advance charges are billed per event at ingestion (captured as
-		// unbilled charges); the interim progressive sweep must not re-bill them,
-		// mirroring the period-close skip in invoice.go meteredLines (A3).
-		if ch.PayInAdvance {
+		if !progressiveBillable(ch) {
 			continue
 		}
 		amounts, ok := ch.Amounts[cur]
@@ -233,13 +245,7 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 	var subtotal, taxTotal, igst, cgst, sgst int64
 	var invTaxType string // D3c: resolved tax type for the liability report
 	for _, ch := range charges {
-		if ch.Metric == nil || !domain.ProgressiveBillingEligible(ch.ChargeModel) {
-			continue
-		}
-		// Pay-in-advance charges are billed per event at ingestion; never re-bill
-		// them on an interim progressive invoice (mirrors the period-close skip in
-		// invoice.go meteredLines, A3) — otherwise the usage is double-charged.
-		if ch.PayInAdvance {
+		if !progressiveBillable(ch) {
 			continue
 		}
 		amounts, ok := ch.Amounts[cur]

@@ -724,9 +724,12 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 		if ch.PayInAdvance {
 			continue
 		}
-		// Progressive settle for eligible charges (A5). Non-eligible (volume)
-		// charges on a progressive subscription fall through to the classic path.
-		if progressive && domain.ProgressiveBillingEligible(ch.ChargeModel) {
+		// Progressive settle for watermark-billable charges (A5). Charges the
+		// watermark path cannot price correctly — the volume model (fee not
+		// monotonic) and dimensional-pricing charges (the watermark aggregate is
+		// filter-blind, so per-value rates would be ignored) — fall through to
+		// the classic paths below on a progressive subscription.
+		if progressive && progressiveBillable(ch) {
 			if ml, ok := s.progressiveCloseLine(ctx, sub, customer, plan, currency, cur, invID, ch, periodStart, periodEnd, now); ok {
 				out = append(out, ml)
 			}

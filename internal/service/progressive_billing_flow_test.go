@@ -141,3 +141,74 @@ func TestProgressive_SkipsPayInAdvanceCharge(t *testing.T) {
 		t.Errorf("watermark advanced to %d for a PIA charge, want 0 (never billed here)", prog.watermarks[chargeID])
 	}
 }
+
+// TestProgressive_FilteredChargeUsesClassicPath proves a dimensional-pricing
+// charge (FilterKey set) on a PROGRESSIVE subscription is billed by the classic
+// filtered path — one line per value at that value's amounts — never by the
+// filter-blind watermark path. The watermark path aggregates ALL events and
+// rates them at the charge's BASE amounts, so routing a filtered charge through
+// it silently ignores every per-value rate: us=100@₹0.02 + eu=50@₹0.03 +
+// other=30@₹0.01 must bill 380p, not 180×base. Mirrors how the volume model
+// (also watermark-incompatible) falls through to the classic path.
+func TestProgressive_FilteredChargeUsesClassicPath(t *testing.T) {
+	svc, _, ratingRepo, sub, _ := meteredFixture(0)
+
+	metricID := uuid.New()
+	metric := domain.BillableMetric{ID: metricID, Code: "api_calls", Name: "API calls", AggregationType: domain.AggregationSum}
+	chargeID := uuid.New()
+	svc.ChargeRepo = &mockChargeRepoForMeter{charges: []domain.Charge{{
+		ID:          chargeID,
+		PlanID:      sub.PlanID,
+		MetricID:    metricID,
+		ChargeModel: domain.ChargePerUnit,
+		Amounts:     map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.01"}}, // base rate
+		FilterKey:   "region",
+		Filters: []domain.ChargeFilterValue{
+			{Value: "us", Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.02"}}},
+			{Value: "eu", Amounts: map[string]domain.ChargeAmounts{"INR": {UnitAmount: "0.03"}}},
+		},
+		Metric: &metric,
+	}}}
+	// The blind aggregate (all regions) is 180; the per-value subsets are what
+	// the filtered path bills: us=100 (200p), eu=50 (150p), other=30 (30p).
+	svc.UsageRepo = &mockUsageRepoForMeter{
+		qtyByMetricCode: map[string]int64{"api_calls": 180},
+		filteredByValue: map[string]int64{"us": 100, "eu": 50, "__default__": 30},
+	}
+	threshold := int64(1) // any usage crosses it — maximal pressure on the interim path
+	prog := &mockProgressiveRepo{threshold: &threshold, watermarks: map[uuid.UUID]int64{}}
+	svc.SetProgressiveBilling(prog, nil)
+	ctx := context.Background()
+
+	// Interim sweep: a filtered charge is not progressively billable — nothing
+	// interim, no watermark. (Blind behavior would bill 180 × ₹0.01 = 180p.)
+	interim, err := svc.GenerateProgressiveInvoice(ctx, sub)
+	if err != nil {
+		t.Fatalf("interim: %v", err)
+	}
+	if interim != nil {
+		t.Fatalf("interim invoice = %+v, want nil — a filtered charge must not be billed by the filter-blind watermark path", interim)
+	}
+	if prog.watermarks[chargeID] != 0 {
+		t.Errorf("watermark advanced to %d for a filtered charge, want 0", prog.watermarks[chargeID])
+	}
+
+	// Period close: the classic filtered path bills per-value lines under one
+	// rating claim, exactly as on a non-progressive subscription.
+	inv, err := svc.GenerateInvoice(ctx, sub)
+	if err != nil {
+		t.Fatalf("close: %v", err)
+	}
+	if inv.Subtotal != 100380 { // 100000 flat + 200 + 150 + 30
+		t.Fatalf("close subtotal = %d, want 100380 (flat + per-value lines, not base-rate blind billing)", inv.Subtotal)
+	}
+	if len(inv.LineItems) != 4 {
+		t.Fatalf("line count = %d, want 4 (base + us + eu + default)", len(inv.LineItems))
+	}
+	if len(ratingRepo.created) != 1 || ratingRepo.created[0].Amount != 380 {
+		t.Fatalf("rating claims = %+v, want one claim amount 380", ratingRepo.created)
+	}
+	if prog.watermarks[chargeID] != 0 {
+		t.Errorf("watermark advanced to %d at close for a filtered charge, want 0 (usage_ratings is the guard)", prog.watermarks[chargeID])
+	}
+}
