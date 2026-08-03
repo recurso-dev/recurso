@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-03 — The correctness release
+
+No new surface — a deep correctness pass over the money paths that already
+exist. The headline: a money-out arbitrage (coupon-blind proration could mint
+more account credit than a discounted customer ever paid) found and fixed, a
+family of revenue-recognition edges around mid-period downgrades closed, FX
+reporting made exponent-correct for zero/three-decimal currencies, and the
+self-verifying ledger safety net extended far enough that the whole stack now
+holds across 128 randomized billing sequences with coupons in the mix.
+
 ### Fixed
 
 - **Revenue recognition around mid-period downgrades** — a downgrade credit
