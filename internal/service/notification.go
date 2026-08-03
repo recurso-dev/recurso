@@ -552,3 +552,40 @@ type EmailLog struct {
 	SentAt    time.Time
 	Status    string
 }
+
+// CreditNoteEmailData for credit-note issuance emails.
+type CreditNoteEmailData struct {
+	CustomerName  string
+	CustomerEmail string
+	Amount        string // pre-formatted, exponent-aware
+	Reference     string
+	InvoiceNumber string // human number of the invoice the note offsets, "" when none
+	IsRefund      bool
+}
+
+// SendCreditNoteIssued notifies the customer a credit note was issued — a
+// refund heading back to their payment method, or spendable account credit.
+// Every other money event (invoice, payment, failure) already emails; a silent
+// credit/refund is a "where's my money?" support ticket.
+func (s *NotificationService) SendCreditNoteIssued(ctx context.Context, data CreditNoteEmailData) error {
+	content, err := s.renderTemplate(email.CreditNoteIssuedTemplate, data)
+	if err != nil {
+		return err
+	}
+	subject := "Account credit added - " + data.Amount
+	title := "Account Credit"
+	if data.IsRefund {
+		subject = "Your refund of " + data.Amount + " is on its way"
+		title = "Refund Issued"
+	}
+	html, err := s.wrapInBaseTemplate(title, content)
+	if err != nil {
+		return err
+	}
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       data.CustomerEmail,
+		ToName:   data.CustomerName,
+		Subject:  subject,
+		HTMLBody: html,
+	})
+}

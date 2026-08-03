@@ -95,7 +95,46 @@ type CreditNoteService struct {
 	gateway      port.PaymentGateway
 	ledger       *LedgerService
 	revrec       *RevRecService
+	notifier     creditNoteNotifier
 	logger       *slog.Logger
+}
+
+// creditNoteNotifier is the slice of *NotificationService the credit-note
+// service needs to email the customer at issuance. Narrow so tests can fake it.
+type creditNoteNotifier interface {
+	SendCreditNoteIssued(ctx context.Context, data CreditNoteEmailData) error
+}
+
+// SetNotifier wires customer emails at credit-note issuance (nil-safe: unset,
+// no emails are sent — pre-existing behavior).
+func (s *CreditNoteService) SetNotifier(n creditNoteNotifier) { s.notifier = n }
+
+// notifyIssued emails the customer that a credit note is now ISSUED — a
+// refund on its way, or spendable account credit. Best-effort and
+// NON-BLOCKING (a slow SMTP send must never hold up the API response), with
+// its own context because the request's dies at return. invoiceNumber is the
+// human number of the offset invoice ("" when none).
+func (s *CreditNoteService) notifyIssued(cn *domain.CreditNote, customer *domain.Customer, invoiceNumber string) {
+	if s.notifier == nil || cn == nil || customer == nil || customer.Email == "" {
+		return
+	}
+	data := CreditNoteEmailData{
+		CustomerName:  domain.PtrToString(customer.Name),
+		CustomerEmail: customer.Email,
+		Amount:        formatAmount(cn.Amount, cn.Currency),
+		InvoiceNumber: invoiceNumber,
+		IsRefund:      cn.Type == domain.CreditNoteTypeRefund,
+	}
+	if cn.Reference != nil {
+		data.Reference = *cn.Reference
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.notifier.SendCreditNoteIssued(ctx, data); err != nil {
+			s.logger.Error("credit-note issuance email failed", "credit_note_id", cn.ID, "error", err)
+		}
+	}()
 }
 
 // SetLedgerService wires the ledger for refund reversals (optional).
@@ -220,9 +259,11 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 	// references (Multi-Entity Books). Its Customer-Credit liability posts on
 	// that entity's ledger; a standalone credit (no invoice) stays nil and
 	// resolves to the tenant's primary entity.
+	linkedInvoiceNumber := ""
 	if req.InvoiceID != nil {
 		if inv, err := s.invoiceRepo.GetByIDPublic(ctx, *req.InvoiceID); err == nil && inv != nil {
 			cn.EntityID = inv.EntityID
+			linkedInvoiceNumber = inv.InvoiceNumber
 			// B2 (ENG-196): an invoice-linked credit reverses part of that
 			// invoice's supply, so slice its tax proportionally (the same math
 			// GSTR-1 CDNR uses — exact for a same-invoice credit) and record the
@@ -284,6 +325,11 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 	}
 
 	cn.Customer = customer // Populate customer for response
+	// Email the customer when the note is live now; a pending note emails on
+	// approval instead (Approve calls notifyIssued after its CAS).
+	if cn.Status == domain.CreditNoteStatusIssued {
+		s.notifyIssued(cn, customer, linkedInvoiceNumber)
+	}
 	return cn, nil
 }
 
@@ -762,6 +808,12 @@ func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approve
 					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
 			}
 		}
+	}
+
+	// The note is now live — email the customer (refund on its way / credit
+	// added), exactly as a direct-issued note does at Create.
+	if cust, cerr := s.customerRepo.GetByID(ctx, cn.CustomerID); cerr == nil && cust != nil {
+		s.notifyIssued(cn, cust, "")
 	}
 
 	return cn, nil

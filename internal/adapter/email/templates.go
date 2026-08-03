@@ -729,3 +729,33 @@ const NexusCrossedTemplate = `
     This is a monitoring aid based on commonly-cited thresholds, not filing advice — confirm the current rule and your registration duty for {{.State}} with a tax professional.
 </p>
 `
+
+// CreditNoteIssuedTemplate notifies the customer a credit note was issued —
+// a refund on its way back to their payment method, or spendable account
+// credit that will offset future invoices. A silent credit/refund is a
+// "where's my money?" support ticket; this closes the loop.
+const CreditNoteIssuedTemplate = `
+{{if .IsRefund}}<h1>Your refund is on its way</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>We've issued a refund to your original payment method. Depending on your bank, it can take 5–10 business days to appear.</p>
+{{else}}<h1>Account credit added</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>We've added a credit to your account. It will be applied automatically to your upcoming invoices until it's used up.</p>
+{{end}}
+<div class="info-box">
+    <div class="info-row">
+        <span class="info-label">{{if .IsRefund}}Refund amount{{else}}Credit amount{{end}}</span>
+        <span class="info-value">{{.Amount}}</span>
+    </div>
+    {{if .Reference}}<div class="info-row">
+        <span class="info-label">Reference</span>
+        <span class="info-value">{{.Reference}}</span>
+    </div>{{end}}
+    {{if .InvoiceNumber}}<div class="info-row">
+        <span class="info-label">Against invoice</span>
+        <span class="info-value">{{.InvoiceNumber}}</span>
+    </div>{{end}}
+</div>
+
+<p>If you weren't expecting this, just reply to this email and we'll take a look.</p>
+`

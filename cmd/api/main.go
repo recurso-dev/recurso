@@ -510,6 +510,7 @@ func main() {
 	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
 	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
 	creditNoteService.SetLedgerService(ledgerService)
+	creditNoteService.SetNotifier(notificationService) // email the customer at refund/credit issuance
 	txManager := db.NewTxManager(database)
 
 	// Revenue Recognition (P5)
