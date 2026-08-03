@@ -8,6 +8,27 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Copy } from "lucide-react";
+
+// "Aug 3, 2026, 2:17 PM" beats "03/08/2026, 14:17:34" for scanning.
+const fmtWhen = (x) =>
+  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+const copyText = async (v, label) => {
+  try {
+    await navigator.clipboard.writeText(v);
+    toast.success(`${label} copied.`);
+  } catch {
+    toast.error("Couldn't copy to clipboard.");
+  }
+};
+
+const Field = ({ label, children }) => (
+  <div>
+    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+    <dd className="mt-0.5 text-sm text-foreground">{children}</dd>
+  </div>
+);
 
 const PAGE_SIZE = 100;
 
@@ -84,7 +105,7 @@ const Events = () => {
       header: "When",
       cell: (e) => (
         <span className="whitespace-nowrap text-xs text-muted-foreground">
-          {new Date(e.created_at).toLocaleString()}
+          {fmtWhen(e.created_at)}
         </span>
       ),
     },
@@ -148,19 +169,49 @@ const Events = () => {
               </SheetHeader>
 
               <div className="mt-4 space-y-5">
-                <div className="space-y-0.5 text-xs text-muted-foreground">
-                  <div>
-                    ID: <span className="font-mono">{selected.id}</span>
-                  </div>
-                  <div>
-                    Object: {selected.object_type}
-                    {selected.object_id ? ` · ${selected.object_id}` : ""}
-                  </div>
-                  <div>Created: {new Date(selected.created_at).toLocaleString()}</div>
-                </div>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 p-3">
+                  <Field label="Event ID">
+                    <button
+                      type="button"
+                      onClick={() => copyText(selected.id, "Event ID")}
+                      className="group inline-flex max-w-full items-center gap-1.5 text-left"
+                      title="Copy event ID"
+                    >
+                      <span className="truncate font-mono text-xs">{selected.id}</span>
+                      <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </button>
+                  </Field>
+                  <Field label="Created">{fmtWhen(selected.created_at)}</Field>
+                  <Field label="Object">
+                    <span className="capitalize">{selected.object_type}</span>
+                  </Field>
+                  {selected.object_id && (
+                    <Field label="Object ID">
+                      <button
+                        type="button"
+                        onClick={() => copyText(selected.object_id, "Object ID")}
+                        className="group inline-flex max-w-full items-center gap-1.5 text-left"
+                        title="Copy object ID"
+                      >
+                        <span className="truncate font-mono text-xs">{selected.object_id}</span>
+                        <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                      </button>
+                    </Field>
+                  )}
+                </dl>
 
                 <div>
-                  <div className="mb-1 text-xs font-medium text-foreground">Payload</div>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-xs font-medium text-foreground">Payload</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => copyText(JSON.stringify(selected.data, null, 2), "Payload")}
+                    >
+                      <Copy className="mr-1 h-3 w-3" /> Copy JSON
+                    </Button>
+                  </div>
                   <pre className="max-h-64 overflow-auto rounded-md border border-border bg-muted/40 p-3 text-xs">
                     {JSON.stringify(selected.data, null, 2)}
                   </pre>

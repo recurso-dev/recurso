@@ -40,6 +40,26 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
+// A raw user-agent is unreadable and wide enough to force the table into
+// horizontal clipping. Reduce it to "Browser · OS"; the full string stays
+// available as a tooltip.
+function describeUserAgent(ua) {
+  if (!ua) return "Unknown device";
+  const browser = ua.includes("Edg/") ? "Edge"
+    : ua.includes("OPR/") || ua.includes("Opera") ? "Opera"
+    : ua.includes("Chrome/") ? "Chrome"
+    : ua.includes("Firefox/") ? "Firefox"
+    : ua.includes("Safari/") ? "Safari"
+    : "Browser";
+  const os = ua.includes("Mac OS X") ? "macOS"
+    : ua.includes("Windows") ? "Windows"
+    : ua.includes("Android") ? "Android"
+    : ua.includes("iPhone") || ua.includes("iPad") ? "iOS"
+    : ua.includes("Linux") ? "Linux"
+    : "";
+  return os ? `${browser} · ${os}` : browser;
+}
+
 function CopyButton({ value, label = "Copy" }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -395,8 +415,8 @@ function SessionsSection() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <Smartphone className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="max-w-[320px] truncate text-sm text-foreground">
-                        {s.user_agent || "Unknown device"}
+                      <span className="truncate text-sm text-foreground" title={s.user_agent || undefined}>
+                        {describeUserAgent(s.user_agent)}
                       </span>
                       {s.current && (
                         <Badge variant="success">This device</Badge>
