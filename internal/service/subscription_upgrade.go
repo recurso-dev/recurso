@@ -461,6 +461,17 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 				}
 				revenueReversal = reversed
 				deferredPortion = netCredit - reversed
+				// The residual beyond schedule + recognized is UNSCHEDULED deferral
+				// (an unpaid invoice's code-1 funding). Its Deferred is being debited
+				// here, so when that invoice is later paid its new schedule must
+				// shrink by the same amount (ENG-191f) — otherwise it would recognize
+				// revenue the business already credited back and over-drain Deferred.
+				if residual := shortfall - reversed; residual > 0 {
+					if dErr := s.revrecService.RecordScheduleDebt(ctx, subscriptionID, residual); dErr != nil {
+						s.logger.Error("downgrade schedule-debt record failed — a later schedule may over-recognize",
+							"subscription_id", subscriptionID, "amount", residual, "error", dErr)
+					}
+				}
 			} else {
 				deferredPortion = netCredit
 			}

@@ -298,6 +298,52 @@ func (r *RevRecRepository) SplitRecognizedEvent(ctx context.Context, eventID, ne
 	return nil
 }
 
+// AddScheduleDebt records that `amount` of the subscription's UNSCHEDULED
+// deferral was consumed by a downgrade credit (ENG-191f). The next schedule(s)
+// created for this subscription shrink by this debt so they never recognize
+// revenue whose deferral was already credited back.
+func (r *RevRecRepository) AddScheduleDebt(ctx context.Context, subscriptionID uuid.UUID, amount int64) error {
+	if amount <= 0 {
+		return nil
+	}
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE subscriptions SET revrec_schedule_debt = revrec_schedule_debt + $2 WHERE id = $1`,
+		subscriptionID, amount)
+	if err != nil {
+		return fmt.Errorf("add schedule debt for subscription %s: %w", subscriptionID, err)
+	}
+	return nil
+}
+
+// ConsumeScheduleDebt atomically draws up to `max` from the subscription's
+// schedule debt and returns the amount consumed (0 when there is no debt).
+// The row lock in the CTE makes concurrent schedule creations consume disjoint
+// portions.
+func (r *RevRecRepository) ConsumeScheduleDebt(ctx context.Context, subscriptionID uuid.UUID, max int64) (int64, error) {
+	if max <= 0 {
+		return 0, nil
+	}
+	var consumed int64
+	err := r.db.QueryRowContext(ctx, `
+		WITH cur AS (
+			SELECT id, revrec_schedule_debt AS debt FROM subscriptions
+			 WHERE id = $1 AND revrec_schedule_debt > 0
+			 FOR UPDATE
+		)
+		UPDATE subscriptions s
+		   SET revrec_schedule_debt = s.revrec_schedule_debt - LEAST(cur.debt, $2)
+		  FROM cur WHERE s.id = cur.id
+		RETURNING LEAST(cur.debt, $2)`,
+		subscriptionID, max).Scan(&consumed)
+	if err == sql.ErrNoRows {
+		return 0, nil // no debt
+	}
+	if err != nil {
+		return 0, fmt.Errorf("consume schedule debt for subscription %s: %w", subscriptionID, err)
+	}
+	return consumed, nil
+}
+
 // MarkScheduleCanceled marks a schedule canceled once its deferred is unwound.
 func (r *RevRecRepository) MarkScheduleCanceled(ctx context.Context, scheduleID uuid.UUID) error {
 	_, err := r.db.ExecContext(ctx,

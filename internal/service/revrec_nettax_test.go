@@ -33,6 +33,11 @@ func (c *captureRevRecRepo) CreateEvents(_ context.Context, e []*domain.Recognit
 	return nil
 }
 
+// ConsumeScheduleDebt: no downgrade debt in this test's world.
+func (c *captureRevRecRepo) ConsumeScheduleDebt(_ context.Context, _ uuid.UUID, _ int64) (int64, error) {
+	return 0, nil
+}
+
 // TestCreateScheduleForInvoice_DefersNetOfTax proves the ENG-191 fix: a GST
 // subscription invoice defers only the taxable revenue (Total-Tax), not the
 // gross. GST is reclassified out of Deferred into Tax Payable at invoice time,
