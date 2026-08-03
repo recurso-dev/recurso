@@ -168,6 +168,49 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
             </div>
           </div>
 
+          {/* Tax breakdown (present when the note recorded one at creation —
+              the same figures the downloadable CDN document shows). */}
+          {creditNote.subtotal > 0 && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Tax breakdown
+                {creditNote.hsn_code ? ` · HSN ${creditNote.hsn_code}` : ""}
+              </p>
+              <dl className="mt-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Taxable value</dt>
+                  <dd className="tabular-nums font-medium">
+                    {formatCurrency(creditNote.subtotal, currency)}
+                  </dd>
+                </div>
+                {creditNote.igst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">IGST reversed</dt>
+                    <dd className="tabular-nums">
+                      {formatCurrency(creditNote.igst_amount, currency)}
+                    </dd>
+                  </div>
+                )}
+                {creditNote.cgst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">CGST reversed</dt>
+                    <dd className="tabular-nums">
+                      {formatCurrency(creditNote.cgst_amount, currency)}
+                    </dd>
+                  </div>
+                )}
+                {creditNote.sgst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <dt className="text-muted-foreground">SGST reversed</dt>
+                    <dd className="tabular-nums">
+                      {formatCurrency(creditNote.sgst_amount, currency)}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+
           <Separator />
 
           <dl className="space-y-5">
