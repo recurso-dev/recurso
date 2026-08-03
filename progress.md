@@ -1,5 +1,34 @@
 # Progress log
 
+## 2026-08-03 owner-mode session — v0.8.0 released + product-grade polish wave
+
+**`v0.8.0 — The correctness release` published** (tag at #427's changelog cut;
+workflow clean: tests → GHCR image → release; curated notes). Then a standing
+"think like an owner" directive kicked off a continuous audit loop (#428–#432):
+
+- **#428 — statutory credit-note documents (B2/ENG-196, migration 000160).**
+  The backlog's "no consumer — don't build" conclusion was stale (#279 had
+  shipped the downloadable credit-note document days before it was written).
+  Credit notes now store subtotal/tax/IGST/CGST/SGST/tax_type/HSN, populated at
+  creation (downgrade credits carry the reversed proration tax; invoice-linked
+  credits slice proportionally — the exact GSTR-1 CDNR math); the document
+  renders a GST-grade CDN. Bonus real bug caught by the round-trip oracle:
+  invoice `getByIDInternal` never scanned `tax_type` — every GetByID consumer
+  saw it empty.
+- **#429 — backlog truth-sync.** S1 ("card sync should be incremental") was
+  ALREADY implemented (`force := provider == ""` + dirty-tracking) — struck
+  with evidence. Lesson recorded: backlog rows go stale in both directions.
+- **#430 — the last three unclamped list limits.** Dunning history accepted
+  negative limits verbatim; both webhook-management lists had no upper cap.
+  Routed through the house `parseLimitOffset` (50/500).
+- **#431 — credit-note detail sheet** mirrors the recorded tax breakdown.
+- **#432 — customer-portal money bug (end-customer facing).** Total Paid /
+  Outstanding summed minor units across currencies and formatted as USD — an
+  INR customer saw "$118,000.00"; JPY was divided by 100. Now per-currency.
+
+HANDOFF.md refreshed to the v0.8.0 state.
+
+
 ## 2026-08-03 second wave — revrec deep-fixes + a money-out arbitrage
 
 Three more merged fixes (#420–#422), the last one HIGH money-out. The arc:

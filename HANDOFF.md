@@ -3,16 +3,23 @@
 Single entry point for picking up work on Recurso — from any machine or account.
 Everything here lives in the repo, so it travels with a `git clone`.
 
-## Current state (2026-07-31)
+## Current state (2026-08-03)
 
-- **Released:** `v0.7.0 — The bank-debit release` (Latest). See the
-  [GitHub release](https://github.com/recurso-dev/recurso/releases/tag/v0.7.0)
-  and `CHANGELOG.md`.
-- **Production:** healthy on the released code. Deploys are automatic on merge
-  to `main` (Cloud Run = API `api.recurso.dev`, Cloudflare Workers = dashboard
+- **Released:** `v0.8.0 — The correctness release` (Latest). See the
+  [GitHub release](https://github.com/recurso-dev/recurso/releases/tag/v0.8.0)
+  and `CHANGELOG.md`. (v0.7.0 "bank-debit" preceded it.)
+- **Production:** healthy on the released code (verified post-deploy: /health
+  green, migrations 000156–000160 applied). Deploys are automatic on merge to
+  `main` (Cloud Run = API `api.recurso.dev`, Cloudflare Workers = dashboard
   `app.recurso.dev`), *not* on the tag — the tag is the versioned milestone.
-- **No open correctness bugs.** The money path is audited (backend + frontend)
-  and guarded by a self-verifying ledger safety net (below).
+- **No open correctness bugs.** Two full audit waves (#413–#432): the revrec
+  downgrade family, a coupon-proration money-out arbitrage, FX exponent
+  corruption, PIA aggregation mis-billing, portal per-currency totals — all
+  fixed with failing-first oracles; the safety net now also covers couponed
+  subscriptions and 128 randomized seeds.
+- **Statutory credit-note documents** (#428): credit notes store their tax
+  breakdown (migration 000160) and the downloadable document renders a
+  GST-grade CDN; the detail sheet mirrors it (#431).
 
 ## Where to look first
 
@@ -29,12 +36,13 @@ Everything here lives in the repo, so it travels with a `git clone`.
 All tracked in `docs/backlog.md`. In short:
 
 - **Needs a product/policy decision:** L2 (should a pause freeze usage
-  accrual?), S4 (require idempotency keys on money POSTs / fail webhook dedup
-  closed?).
-- **Needs a prerequisite feature:** B2 (a credit-note document/PDF or IRP-CDN
-  e-invoicing must exist before a stored credit-note tax split has any consumer).
+  accrual?), S4-remaining (require idempotency keys on money POSTs — the
+  fail-open webhook-dedup half is DONE, #425).
 - **Latent / unreachable:** W2, W3 (documented, by-design or currently
-  unreachable).
+  unreachable). B2 is DONE (#428 — its old "no consumer" note was stale).
+- **Engineering hygiene (small):** backlog #14 (interface-embedding test
+  mocks), #15 (unwrapped dunning/cancel responses — breaking, batch with v2),
+  P2 #11/#12 (gift-cancel & wallet-close UI edges, dunning alert edit UI).
 - **Founder-credential-blocked:** QuickBooks OAuth, GoCardless webhook
   registration, telemetry deploy, `TRAFFIC_TOKEN`, real Peppol AP creds, demo
   sandbox hosting, and fixing one customer's Xero-invalid email.
