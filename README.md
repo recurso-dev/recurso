@@ -28,12 +28,31 @@
 
 Most billing platforms charge a percentage of your revenue and lock you into their ecosystem. Recurso is different.
 
-- **Immutable Financial Ledger** — Double-entry accounting in PostgreSQL (the authoritative ledger), with an optional TigerBeetle mirror for high-throughput deployments. Every transaction is audit-ready from day one.
+- **A self-verifying financial ledger** — Double-entry accounting in PostgreSQL (with an optional TigerBeetle mirror), and — unlike anyone else — **we prove it on every commit**: CI drives randomized sequences of real billing operations (subscriptions, upgrades, downgrades, coupons, refunds, recognition, cancels) and requires the reconciler to find *zero* discrepancies after every single step. Every cent explained, every balance reconstructable — property-tested, not promised.
 - **A real usage-based billing engine** — 8 aggregations (including a time-weighted average and a sandboxed custom expression), 7 charge models, and billing in arrears, in advance, or progressively past a threshold — all priced with exact rational math (no float drift), reconciled onto the ledger. Built for AI and API companies that bill by the call.
 - **Multi-region tax compliance** — India GST (Place of Supply, HSN, TDS, e-invoicing via GSP) built in, not bolted on, plus EU VAT (reverse charge + VIES) and US sales tax with economic-nexus tracking.
 - **AI-Powered Dunning** — Smart retry engine analyzes failure patterns and schedules retries with exponential backoff to maximize recovery.
 - **No Success Tax** — Flat infrastructure cost. You don't pay more as your revenue grows.
 - **Truly Open Source** — MIT licensed. Self-host, fork, extend. Full control over your billing data.
+
+## The self-verifying ledger
+
+Billing bugs hide in the seams — a downgrade during a discount, a refund after
+partial recognition, a webhook redelivered mid-retry. Recurso's answer is not
+code review; it is a standing proof:
+
+- A **randomized invariant harness** ([`ledger_invariant_pg_test.go`](internal/service/ledger_invariant_pg_test.go))
+  runs real billing sequences against real Postgres in CI and asserts an
+  **audit-grade ledger after every operation** — no missing legs, no unbalanced
+  books, no wrong-sign balances, deferred revenue always covering its schedule.
+- A **built-in reconciler** ships in the product itself (Finance →
+  Reconciliation): the same checks your auditor would run, on demand, against
+  your live books.
+- The E2E suite ends with a **zero-discrepancy gate** — a release cannot ship
+  with unexplained money.
+
+This harness has caught real high-severity bugs before customers ever saw
+them — including ones its own authors introduced. That is the point.
 
 ## Features
 
