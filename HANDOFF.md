@@ -5,9 +5,10 @@ Everything here lives in the repo, so it travels with a `git clone`.
 
 ## Current state (2026-08-03)
 
-- **Released:** `v0.8.0 — The correctness release` (Latest). See the
-  [GitHub release](https://github.com/recurso-dev/recurso/releases/tag/v0.8.0)
-  and `CHANGELOG.md`. (v0.7.0 "bank-debit" preceded it.)
+- **Released:** `v0.9.0 — The paper-trail release` (Latest). See the
+  [GitHub release](https://github.com/recurso-dev/recurso/releases/tag/v0.9.0)
+  and `CHANGELOG.md`. (v0.8.0 "correctness" and v0.7.0 "bank-debit" preceded
+  it — v0.8.0 and v0.9.0 both shipped 2026-08-03.)
 - **Production:** healthy on the released code (verified post-deploy: /health
   green, migrations 000156–000160 applied). Deploys are automatic on merge to
   `main` (Cloud Run = API `api.recurso.dev`, Cloudflare Workers = dashboard
