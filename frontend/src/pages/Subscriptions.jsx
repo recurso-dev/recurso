@@ -77,7 +77,7 @@ export default function Subscriptions() {
     : null;
 
   const { customers: customerList } = useCustomers();
-  const { plans: planList } = usePlans();
+  const { plans: planList, isLoading: plansLoading } = usePlans();
   const customers = useMemo(() => {
     const map = {};
     customerList.forEach((c) => {
@@ -163,7 +163,7 @@ export default function Subscriptions() {
       header: "Plan",
       cell: (s) => (
         <span className="text-muted-foreground">
-          {plans[s.plan_id]?.name || s.plan_id?.slice(0, 8)}
+          {plans[s.plan_id]?.name || (plansLoading ? "…" : s.plan_id?.slice(0, 8))}
         </span>
       ),
     },
@@ -172,6 +172,9 @@ export default function Subscriptions() {
       header: "Amount",
       cell: (s) => {
         const plan = plans[s.plan_id];
+        if (!plan && plansLoading) {
+          return <span className="text-muted-foreground">…</span>;
+        }
         const price = plan?.prices?.[0];
         const amount = price ? price.amount : 0;
         const currency = price ? price.currency : "USD";
