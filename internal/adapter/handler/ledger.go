@@ -3,7 +3,7 @@ package handler
 import (
 	"encoding/csv"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -81,7 +81,7 @@ func (h *LedgerHandler) GetTrialBalance(c *gin.Context) {
 		tb, err = h.service.GetTrialBalance(c.Request.Context(), tenantID.(uuid.UUID), entityID)
 	}
 	if err != nil {
-		log.Printf("ledger GetTrialBalance error: %v", err)
+		slog.Error("ledger GetTrialBalance error", "error", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to build trial balance")
 		return
 	}
@@ -115,7 +115,7 @@ func (h *LedgerHandler) GetDeferredRollforward(c *gin.Context) {
 
 	rf, err := h.service.GetDeferredRollforward(c.Request.Context(), tenantID.(uuid.UUID), start, end)
 	if err != nil {
-		log.Printf("ledger GetDeferredRollforward error: %v", err)
+		slog.Error("ledger GetDeferredRollforward error", "error", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to build deferred rollforward")
 		return
 	}
@@ -140,7 +140,7 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 
 	entries, err := h.service.GeneralLedger(c.Request.Context(), tenantID.(uuid.UUID), entityID)
 	if err != nil {
-		log.Printf("ledger ExportGL error: %v", err)
+		slog.Error("ledger ExportGL error", "error", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to export general ledger")
 		return
 	}
@@ -169,7 +169,7 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
-		log.Printf("ledger ExportGL csv flush error: %v", err)
+		slog.Error("ledger ExportGL csv flush error", "error", err)
 	}
 }
 
@@ -183,7 +183,7 @@ func (h *LedgerHandler) ListAccounts(c *gin.Context) {
 	limit, offset := parseLimitOffset(c, 1000, 1000)
 	accounts, err := h.service.ListAccounts(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
 	if err != nil {
-		log.Printf("ledger ListAccounts error: %v", err)
+		slog.Error("ledger ListAccounts error", "error", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch accounts")
 		return
 	}
