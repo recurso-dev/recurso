@@ -29,8 +29,16 @@ type SalesTaxQuery struct {
 	ToCountry   string // Buyer country (ISO 2-letter)
 	ToState     string // Buyer state
 	ToZip       string // Buyer ZIP
-	Amount      int64  // Sale amount in the lowest currency unit (cents)
-	Currency    string // ISO 3-letter code (US sales tax providers assume USD)
+	// ToStreet is the buyer's street line. OPTIONAL, and empty is the safe
+	// default: providers fall back to a ZIP-level lookup.
+	//
+	// It exists because a US ZIP can span several tax jurisdictions, so a
+	// ZIP-only destination caps every provider at an approximation regardless of
+	// how precise the provider itself is. With a street line, TaxJar, Avalara and
+	// Ziptax can each resolve to the rooftop instead.
+	ToStreet string
+	Amount   int64  // Sale amount in the lowest currency unit (cents)
+	Currency string // ISO 3-letter code (US sales tax providers assume USD)
 
 	// Exemption (Track D · D2). When Exempt is set, the number and entity-use
 	// code are passed to the provider so it returns zero tax and records an
@@ -174,7 +182,14 @@ func salesTaxCacheKey(q *SalesTaxQuery) string {
 	// provider must not serve each other's cached result.
 	nexus := append([]string(nil), q.NexusStates...)
 	sort.Strings(nexus)
+	// The destination street is part of the key whenever it is set. A ZIP can
+	// span several tax jurisdictions, so once a provider resolves to the
+	// rooftop, two addresses in the same ZIP can legitimately carry different
+	// rates, and keying on ZIP alone would serve one buyer's rate to the other.
+	// Empty street keeps the pre-existing ZIP-level key shape, so ZIP-only
+	// deployments cache exactly as before.
 	return strings.ToUpper(strings.TrimSpace(q.FromState)) + "|" + strings.TrimSpace(q.FromZip) + "|" +
 		strings.ToUpper(strings.TrimSpace(q.ToState)) + "|" + strings.TrimSpace(q.ToZip) +
+		"|" + strings.ToUpper(strings.Join(strings.Fields(q.ToStreet), " ")) +
 		"|" + strings.ToUpper(strings.Join(nexus, ","))
 }

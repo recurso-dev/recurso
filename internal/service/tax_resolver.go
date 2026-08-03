@@ -450,10 +450,14 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 	}
 
 	calc, err := engine.CalculateTax(ctx, &port.TaxRequest{
-		Amount:        amount,
-		Currency:      currency,
-		BuyerState:    buyerState,
-		BuyerZip:      strings.TrimSpace(customer.BillingAddress.Zip),
+		Amount:     amount,
+		Currency:   currency,
+		BuyerState: buyerState,
+		BuyerZip:   strings.TrimSpace(customer.BillingAddress.Zip),
+		// Street line, when the customer has one: lets a US sales-tax provider
+		// resolve the rooftop rate rather than approximating from the ZIP.
+		// Empty is fine and keeps the previous ZIP-level behaviour.
+		BuyerStreet:   strings.TrimSpace(customer.BillingAddress.Line1),
 		BuyerCountry:  buyerCountry,
 		SellerCountry: "US",
 		IsBusiness:    isBusinessBuyer(customer),

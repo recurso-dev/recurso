@@ -4,12 +4,17 @@ import "context"
 
 // TaxRequest contains the inputs needed to calculate tax
 type TaxRequest struct {
-	Amount        int64  // Amount in cents/paise (lowest currency unit)
-	Currency      string // ISO 3-letter code
-	HSNCode       string // Harmonized System of Nomenclature code (India)
-	SellerState   string // Seller's state/province
-	BuyerState    string // Buyer's state/province
-	BuyerZip      string // Buyer's ZIP/postal code (US sales tax; ignored by the GST and VAT engines)
+	Amount      int64  // Amount in cents/paise (lowest currency unit)
+	Currency    string // ISO 3-letter code
+	HSNCode     string // Harmonized System of Nomenclature code (India)
+	SellerState string // Seller's state/province
+	BuyerState  string // Buyer's state/province
+	BuyerZip    string // Buyer's ZIP/postal code (US sales tax; ignored by the GST and VAT engines)
+	// BuyerStreet is the buyer's street line (US sales tax; ignored by the GST
+	// and VAT engines). Optional: when empty, providers resolve at ZIP level.
+	// A US ZIP can span several tax jurisdictions, so supplying the street lets
+	// a provider return the rooftop rate instead of a ZIP-level approximation.
+	BuyerStreet   string
 	BuyerCountry  string // Buyer's country (ISO 2-letter)
 	SellerCountry string // Seller's country (ISO 2-letter)
 	IsBusiness    bool   // B2B vs B2C

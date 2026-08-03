@@ -103,6 +103,9 @@ type avaAddr struct {
 	Country    string `json:"country"`
 	Region     string `json:"region,omitempty"`
 	PostalCode string `json:"postalCode,omitempty"`
+	// Line1 lets AvaTax resolve the rooftop rate instead of the ZIP-level one.
+	// Omitted when the query carries no street.
+	Line1 string `json:"line1,omitempty"`
 }
 
 type avaLine struct {
@@ -132,7 +135,7 @@ func (p *AvalaraProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQue
 		CurrencyCode: strings.ToUpper(q.Currency),
 		Addresses: map[string]avaAddr{
 			"shipFrom": {Country: q.FromCountry, Region: q.FromState, PostalCode: q.FromZip},
-			"shipTo":   {Country: q.ToCountry, Region: q.ToState, PostalCode: q.ToZip},
+			"shipTo":   {Country: q.ToCountry, Region: q.ToState, PostalCode: q.ToZip, Line1: strings.TrimSpace(q.ToStreet)},
 		},
 		Lines: []avaLine{{Amount: domain.MinorToMajor(q.Amount, q.Currency)}},
 	}

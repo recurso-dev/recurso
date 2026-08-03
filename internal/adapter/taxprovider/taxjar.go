@@ -79,14 +79,17 @@ func (p *TaxJarProvider) Name() string { return "taxjar" }
 // taxJarOrderRequest is the /v2/taxes request body. TaxJar amounts are
 // decimal dollars; shipping is a required parameter (0 for SaaS invoices).
 type taxJarOrderRequest struct {
-	FromCountry string  `json:"from_country,omitempty"`
-	FromState   string  `json:"from_state,omitempty"`
-	FromZip     string  `json:"from_zip,omitempty"`
-	ToCountry   string  `json:"to_country"`
-	ToState     string  `json:"to_state,omitempty"`
-	ToZip       string  `json:"to_zip,omitempty"`
-	Amount      float64 `json:"amount"`
-	Shipping    float64 `json:"shipping"`
+	FromCountry string `json:"from_country,omitempty"`
+	FromState   string `json:"from_state,omitempty"`
+	FromZip     string `json:"from_zip,omitempty"`
+	ToCountry   string `json:"to_country"`
+	ToState     string `json:"to_state,omitempty"`
+	ToZip       string `json:"to_zip,omitempty"`
+	// ToStreet lets TaxJar resolve the rooftop rate instead of the ZIP-level
+	// one. Omitted when the query carries no street.
+	ToStreet string  `json:"to_street,omitempty"`
+	Amount   float64 `json:"amount"`
+	Shipping float64 `json:"shipping"`
 	// ExemptionType, when set, tells TaxJar the order is exempt and it returns
 	// amount_to_collect 0 (Track D · D2). One of TaxJar's categories:
 	// wholesale, government, marketplace, other, non_exempt.
@@ -154,6 +157,7 @@ func (p *TaxJarProvider) LookupSalesTax(ctx context.Context, q *tax.SalesTaxQuer
 		ToCountry:   q.ToCountry,
 		ToState:     q.ToState,
 		ToZip:       q.ToZip,
+		ToStreet:    strings.TrimSpace(q.ToStreet),
 		Amount:      centsToDollars(q.Amount),
 		Shipping:    0,
 	}
