@@ -170,8 +170,9 @@ type seeder struct {
 	quoteSeq   int
 	cnSeq      int
 
-	arAcct, cashAcct, revAcct, taxAcct uuid.UUID
-	plans                              []plan
+	arAcct, cashAcct, revAcct, taxAcct    uuid.UUID
+	defAcct, recAcct, credExpAcct, ccAcct uuid.UUID
+	plans                                 []plan
 
 	// Invoice facts captured during seeding so seedEvents can emit a
 	// realistic invoice/payment event stream without re-querying.
@@ -278,6 +279,8 @@ func (s *seeder) purge() {
 		`DELETE FROM progressive_billing_watermarks WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM unbilled_charges WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoInv + `)`,
+		`DELETE FROM ledger_transactions WHERE reference_id IN (SELECT id FROM recognition_events WHERE revenue_schedule_id IN (SELECT id FROM revenue_schedules WHERE invoice_id IN (` + demoInv + `) OR subscription_id IN (` + demoSub + `)))`,
+		`DELETE FROM ledger_transactions WHERE reference_id IN (` + demoCN + `)`,
 		`DELETE FROM invoice_items WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM recovered_payments WHERE invoice_id IN (` + demoInv + `)`,
 		`DELETE FROM dunning_history WHERE invoice_id IN (` + demoInv + `)`,
@@ -420,6 +423,10 @@ func (s *seeder) seedLedgerAccounts() {
 	s.cashAcct = s.ledgerAccount("Cash", "asset", 1000)
 	s.revAcct = s.ledgerAccount("Revenue", "revenue", 4000)
 	s.taxAcct = s.ledgerAccount("Tax Payable", "liability", 2200)
+	s.defAcct = s.ledgerAccount("Deferred Revenue", "liability", 2100)
+	s.recAcct = s.ledgerAccount("Recognized Revenue", "revenue", 4100)
+	s.credExpAcct = s.ledgerAccount("Credits & Adjustments", "expense", 5100)
+	s.ccAcct = s.ledgerAccount("Customer Credit", "liability", 2300)
 }
 
 func (s *seeder) ledgerAccount(name, typ string, code int) uuid.UUID {
@@ -828,7 +835,7 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 		s.bump("ledger_transactions", 1)
 		// Revenue recognition: spread the invoice over its service period
 		// (monthly plan → 1 month, annual → 12) so deferred revenue shows.
-		s.seedRevSchedule(invID, sub, total, p.start)
+		s.seedRevSchedule(invID, sub, subtotal, p.start)
 		// ~12% of paid USD invoices were recovered after an initial failure
 		// (dunning win). Kept USD-only so the recovered-revenue headline reads
 		// USD — the dunning card compares raw minor units, where INR paise would
@@ -847,15 +854,23 @@ func (s *seeder) makeInvoice(sub *subscription, p period, isLast bool, campaignI
 // moves the tax out of Revenue into Tax Payable, matching the app's
 // RecordInvoice (ENG-159). A distinct code avoids the unique (reference_id,
 // code) collision; Code-1 still sums to the total for the reconciler.
+// postInvoiceLedger mirrors the app's RecordInvoice for SUBSCRIPTION invoices
+// (every seeded invoice bills a subscription): Code-1 posts AR → DEFERRED at
+// the gross total — subscription revenue is earned over the period, not at
+// issuance — and the GST reclass (Code-6) moves the tax out of Deferred into
+// Tax Payable, leaving Deferred holding exactly the pre-tax value the rev-rec
+// schedule will recognize. Posting to Revenue directly (the old behavior) left
+// Deferred unfunded, so recognition drained it NEGATIVE — the wrong-sign
+// balance the founder hit on the live demo tenant.
 func (s *seeder) postInvoiceLedger(invID uuid.UUID, total, tax int64, at time.Time) {
 	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
 		VALUES ($1,$2,$3,$4,700,1,$5,'Invoice raised', $6) ON CONFLICT DO NOTHING`,
-		uuid.New(), s.arAcct, s.revAcct, total, invID, at)
+		uuid.New(), s.arAcct, s.defAcct, total, invID, at)
 	s.bump("ledger_transactions", 1)
 	if tax > 0 {
 		s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
 			VALUES ($1,$2,$3,$4,700,6,$5,'GST on invoice', $6) ON CONFLICT DO NOTHING`,
-			uuid.New(), s.revAcct, s.taxAcct, tax, invID, at)
+			uuid.New(), s.defAcct, s.taxAcct, tax, invID, at)
 		s.bump("ledger_transactions", 1)
 	}
 }
@@ -929,10 +944,20 @@ func (s *seeder) seedRevSchedule(invID uuid.UUID, sub *subscription, total int64
 		if !recDate.After(s.now) {
 			st = "recognized"
 		}
+		evID := uuid.New()
 		s.exec(`INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at)
 			VALUES ($1,$2,$3,$4,$5,$6, now()) ON CONFLICT DO NOTHING`,
-			uuid.New(), schedID, s.tenantID, amt, recDate, st)
+			evID, schedID, s.tenantID, amt, recDate, st)
 		s.bump("recognition_events", 1)
+		if st == "recognized" {
+			// Mirror RecordRecognition: Deferred → Recognized, one Code-2 per
+			// event id — (reference_id, code) uniqueness makes this idempotent
+			// against the live recognition worker.
+			s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+				VALUES ($1,$2,$3,$4,700,2,$5,'Revenue recognition', $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), s.defAcct, s.recAcct, amt, evID, recDate)
+			s.bump("ledger_transactions", 1)
+		}
 	}
 }
 
@@ -1083,11 +1108,19 @@ func (s *seeder) seedStandaloneCreditNotes(custs []*customer) {
 		if s.rng.Intn(100) < 50 {
 			status, refundStatus, bal = "used", "processed", 0
 		}
+		cnID := uuid.New()
+		at := s.backdate(s.rng.Intn(8), 0)
 		s.exec(`INSERT INTO credit_notes (id, tenant_id, customer_id, reference, amount, balance, currency, status, reason, type, refund_status, created_at, updated_at)
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'adjustment',$10,$11,now()) ON CONFLICT DO NOTHING`,
-			uuid.New(), s.tenantID, c.id, fmt.Sprintf("CN-DEMO-%04d", s.cnSeq), amt, bal, c.ccy, status,
+			cnID, s.tenantID, c.id, fmt.Sprintf("CN-DEMO-%04d", s.cnSeq), amt, bal, c.ccy, status,
 			[]string{"Goodwill credit", "Service downtime", "Billing correction", "Downgrade proration"}[s.rng.Intn(4)],
-			refundStatus, s.backdate(s.rng.Intn(8), 0))
+			refundStatus, at)
+		// The issuance leg (Code-8) the reconciler's completeness check
+		// requires — mirrors RecordAdjustmentCreditIssued.
+		s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+			VALUES ($1,$2,$3,$4,700,8,$5,'Credit note issued', $6) ON CONFLICT DO NOTHING`,
+			uuid.New(), s.credExpAcct, s.ccAcct, amt, cnID, at)
+		s.bump("ledger_transactions", 1)
 	}
 	s.bump("credit_notes", 6)
 }
