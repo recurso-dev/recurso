@@ -137,6 +137,14 @@ func (s *PortalService) VerifyMagicLink(ctx context.Context, token string) (*dom
 }
 
 // ValidateSession validates a portal session token
+// RevokeSession deletes a portal session server-side so a logged-out token
+// cannot be replayed for the rest of its 7-day TTL (the cookie clear alone
+// leaves the row valid, and the X-Portal-Session header path never sees the
+// cleared cookie). Best-effort per caller; a missing row is not an error.
+func (s *PortalService) RevokeSession(ctx context.Context, sessionID uuid.UUID) error {
+	return s.sessionRepo.Delete(ctx, sessionID)
+}
+
 func (s *PortalService) ValidateSession(ctx context.Context, token string) (*domain.PortalSession, error) {
 	session, err := s.sessionRepo.GetByToken(ctx, token)
 	if err != nil {

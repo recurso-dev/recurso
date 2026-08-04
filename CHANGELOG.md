@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Portal logout now revokes the session server-side.** Logging out of the
+  customer portal only cleared the cookie — the `portal_sessions` row stayed
+  valid for its full 7-day TTL, and the token-via-header auth path
+  (`X-Portal-Session`) never sees the cleared cookie, so a captured token
+  survived logout entirely. Logout now deletes the session row; the token
+  dies immediately.
+- **Magic-link request no longer reveals whether an email is a customer.** The
+  portal login endpoint returned "Login link sent to your email" for a known
+  address and a different "if this email exists…" message for an unknown one,
+  letting an attacker enumerate customers by diffing the response. Both cases
+  now return one identical generic message.
+
 ### Fixed
 
 - **The customer portal's Outstanding card ignored applied account credit.**
