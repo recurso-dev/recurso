@@ -128,6 +128,18 @@ func keyModeMismatchMessage(serverLive bool) string {
 // against the tenants/api_keys table, and gated by mode: a key's livemode must
 // match the server's (serverLive), so a test key can never run on a live-money
 // server and vice-versa.
+// stampAuthContext flows the resolved tenant (and user, when known) onto the
+// request context so a context-aware slog handler tags every downstream
+// service log with them. Tenant is stored as uuid.UUID to match the repository
+// layer's expectation; user id as a string for logging only.
+func stampAuthContext(c *gin.Context, tenantID uuid.UUID, userID string) {
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	if userID != "" {
+		ctx = context.WithValue(ctx, domain.UserIDKey, userID)
+	}
+	c.Request = c.Request.WithContext(ctx)
+}
+
 func AuthMiddleware(repo *db.TenantRepository, serverLive bool) gin.HandlerFunc {
 	logger := slog.Default().With("middleware", "auth")
 	cache := &verifiedKeyCache{entries: make(map[[32]byte]verifiedKeyEntry)}
@@ -150,6 +162,7 @@ func AuthMiddleware(repo *db.TenantRepository, serverLive bool) gin.HandlerFunc 
 		}
 		c.Set("tenant_id", tenantID)
 		c.Set("livemode", livemode)
+		stampAuthContext(c, tenantID, "")
 		c.Next()
 	}
 }
@@ -181,6 +194,7 @@ func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolv
 				c.Set("user_id", user.ID)
 				c.Set("user_role", string(user.Role))
 				c.Set("user", user)
+				stampAuthContext(c, user.TenantID, user.ID.String())
 				c.Next()
 				return
 			}
@@ -208,6 +222,7 @@ func SessionOrAPIKeyMiddleware(repo *db.TenantRepository, resolver SessionResolv
 		}
 		c.Set("tenant_id", tenantID)
 		c.Set("livemode", livemode)
+		stampAuthContext(c, tenantID, "")
 		c.Next()
 	}
 }

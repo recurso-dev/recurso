@@ -1,10 +1,12 @@
 package middleware
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
 // RequestIDMiddleware adds a unique request ID to each request for tracing.
@@ -18,6 +20,11 @@ func RequestIDMiddleware() gin.HandlerFunc {
 
 		c.Set("request_id", requestID)
 		c.Writer.Header().Set("X-Request-ID", requestID)
+		// Carry the id on the request context so a context-aware slog handler
+		// stamps every downstream service log with it.
+		c.Request = c.Request.WithContext(
+			context.WithValue(c.Request.Context(), domain.RequestIDKey, requestID),
+		)
 
 		// Add request_id to the logger context for this request
 		logger := slog.Default().With(
