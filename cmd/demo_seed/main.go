@@ -1322,6 +1322,20 @@ func (s *seeder) seedCollectionsExtras() {
 		WHERE id = (SELECT id FROM invoices WHERE tenant_id=$1 AND status='past_due'
 		            AND invoice_number LIKE 'INV-DEMO-%' ORDER BY invoice_number DESC OFFSET 1 LIMIT 1)`, s.tenantID)
 
+	// Post the write-off ledger reversals (mirrors RecordInvoiceWriteOff):
+	// DR Deferred / CR the customer's AR at pre-tax (code 22), plus the tax
+	// reversal out of Tax Payable (code 23) — without these the written-off
+	// invoices' deferral haunts the close pack's tie-out forever.
+	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+		SELECT gen_random_uuid(), $2, $3, i.subtotal, 700, 22, i.id, 'Write-off of invoice '||i.invoice_number, i.marked_uncollectible_at
+		FROM invoices i WHERE i.tenant_id=$1 AND i.status='uncollectible' AND i.invoice_number LIKE 'INV-DEMO-%'
+		ON CONFLICT DO NOTHING`, s.tenantID, s.defAcct, s.arAcct)
+	s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+		SELECT gen_random_uuid(), $2, $3, i.tax_amount, 700, 23, i.id, 'Tax reversal on write-off of '||i.invoice_number, i.marked_uncollectible_at
+		FROM invoices i WHERE i.tenant_id=$1 AND i.status='uncollectible' AND i.invoice_number LIKE 'INV-DEMO-%' AND i.tax_amount > 0
+		ON CONFLICT DO NOTHING`, s.tenantID, s.taxAcct, s.arAcct)
+	s.bump("ledger_transactions", 2)
+
 	// ACH attempts: a debit still settling on an open invoice (the Collections
 	// "settling" chip + dunning's in-flight guard), and a bank return (R01,
 	// insufficient funds) on a past-due one (the "returned" chip).

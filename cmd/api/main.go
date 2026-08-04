@@ -943,7 +943,8 @@ func main() {
 		scheduler.DefaultDunningConfig(),
 		baseURL,
 	)
-	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database)) // skip dunning for a settling ACH (Inc 3b)
+	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))          // skip dunning for a settling ACH (Inc 3b)
+	dunningScheduler.SetWriteOffLedger(ledgerService, invoiceRepo.(*db.InvoiceRepository)) // auto-write-off posts its ledger reversal (#466 follow-up)
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 
@@ -1427,6 +1428,7 @@ func main() {
 	// in-flight checker so a manual retry never stacks on a settling attempt.
 	dunningRecoveryService.SetCollectionsAggregator(invoiceRepo)
 	collectionsActionService := service.NewCollectionsActionService(invoiceRepo)
+	collectionsActionService.SetWriteOffLedger(ledgerService, invoiceRepo) // write-off posts its ledger reversal (#466 follow-up)
 	collectionsActionService.SetInFlightChecker(db.NewPaymentAttemptRepository(database))
 	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo, dunningRecoveryService, collectionsActionService)
 

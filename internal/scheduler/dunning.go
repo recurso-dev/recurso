@@ -51,6 +51,8 @@ type inFlightChecker interface {
 // DunningScheduler handles payment retry and dunning notifications
 type DunningScheduler struct {
 	invoiceRepo     InvoiceRepoForDunning
+	writeOffLedger  writeOffPoster        // nil-safe; posts the ledger reversal on auto-write-off
+	writeOffReader  writeOffInvoiceReader // nil-safe; loads the full invoice for the reversal
 	notificationSvc *service.NotificationService
 	locker          port.Locker
 	config          DunningConfig
@@ -64,6 +66,24 @@ type DunningScheduler struct {
 // SetPaymentAttempts wires the in-flight checker so dunning skips invoices with
 // a settling payment (e.g. an ACH debit still processing). Nil-safe (Inc 3b).
 func (s *DunningScheduler) SetPaymentAttempts(c inFlightChecker) { s.attempts = c }
+
+// writeOffPoster is satisfied by *service.LedgerService.
+type writeOffPoster interface {
+	RecordInvoiceWriteOff(ctx context.Context, invoice *domain.Invoice) error
+}
+
+// writeOffInvoiceReader is satisfied by *db.InvoiceRepository.
+type writeOffInvoiceReader interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
+}
+
+// SetWriteOffLedger wires the ledger reversal posted when the scheduler
+// auto-writes-off an invoice. Nil-safe: without it the status still flips and
+// the close pack's unscheduled bucket keeps the gap visible.
+func (s *DunningScheduler) SetWriteOffLedger(l writeOffPoster, r writeOffInvoiceReader) {
+	s.writeOffLedger = l
+	s.writeOffReader = r
+}
 
 // NewDunningScheduler creates a new dunning scheduler
 func NewDunningScheduler(
@@ -181,6 +201,13 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 			slog.Error("failed to mark invoice as uncollectible", "invoice_number", invoice.InvoiceNumber, "error", err)
 		} else {
 			slog.Info("marked invoice as uncollectible", "invoice_number", invoice.InvoiceNumber, "days_overdue", daysOverdue)
+			if s.writeOffLedger != nil && s.writeOffReader != nil {
+				if full, ferr := s.writeOffReader.GetByID(ctx, invoice.ID); ferr != nil || full == nil {
+					slog.Error("write-off ledger reversal skipped: invoice lookup failed", "invoice_number", invoice.InvoiceNumber, "error", ferr)
+				} else if lerr := s.writeOffLedger.RecordInvoiceWriteOff(ctx, full); lerr != nil {
+					slog.Error("write-off ledger reversal failed", "invoice_number", invoice.InvoiceNumber, "error", lerr)
+				}
+			}
 		}
 		return
 	}

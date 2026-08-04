@@ -225,6 +225,20 @@ const LedgerCodeDowngradeRevenueReversal uint16 = 21
 // unspent balance is reversed; any already-applied portion stays real.
 const LedgerCodeCreditVoid uint16 = 20
 
+// LedgerCodeInvoiceWriteOff reverses an unpaid invoice's issuance posting when
+// it is written off (marked uncollectible): DR Deferred Revenue (or Revenue,
+// for a one-off invoice) / CR the customer's AR at the pre-tax value. Without
+// this leg a write-off left BOTH sides overstated forever — AR carrying money
+// that will never arrive and Deferred carrying revenue that will never be
+// earned (found by the close pack's deferred tie-out, recurso#466 follow-up).
+const LedgerCodeInvoiceWriteOff uint16 = 22
+
+// LedgerCodeWriteOffTaxReversal reverses the GST/tax portion of a written-off
+// invoice out of Tax Payable back against AR — the tax on an invoice that will
+// never be collected is not owed. Pairs with LedgerCodeInvoiceWriteOff; its own
+// code keeps both legs idempotent per (reference_id, code).
+const LedgerCodeWriteOffTaxReversal uint16 = 23
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{
