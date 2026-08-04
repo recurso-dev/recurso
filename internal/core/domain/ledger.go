@@ -353,9 +353,13 @@ type LedgerTransaction struct {
 	// behavior); the settlement (3/11) and reversal (19) legs derive it from the
 	// invoice's count of prior code-19 reversals, so a re-collected returned
 	// invoice posts fresh legs while same-cycle duplicates still dedup.
-	Occurrence  uint16    `json:"occurrence" db:"occurrence"`
-	Description string    `json:"description" db:"description"`
-	Timestamp   time.Time `json:"timestamp" db:"created_at"`
+	Occurrence  uint16 `json:"occurrence" db:"occurrence"`
+	Description string `json:"description" db:"description"`
+	// AccountingVersion records which accounting model produced this journal
+	// (AccountingModelV1 cash / V2 accrual) — journal-level provenance (ADR-008).
+	// Zero means "unset": the repository stamps the deployment's active model.
+	AccountingVersion int       `json:"accounting_version" db:"accounting_version"`
+	Timestamp         time.Time `json:"timestamp" db:"created_at"`
 }
 
 // Helper struct for uint128 since Go doesn't have it native,

@@ -12,11 +12,21 @@ import (
 
 type LedgerRepository struct {
 	db *sql.DB
+	// accountingVersion is the deployment's active accounting model, stamped on
+	// every journal that doesn't carry its own version (ADR-008 increment 2).
+	// Zero ⇒ the cash default (AccountingModelV1); set to V2 when accrual is on.
+	accountingVersion int
 }
 
 func NewLedgerRepository(db *sql.DB) *LedgerRepository {
 	return &LedgerRepository{db: db}
 }
+
+// SetAccountingVersion sets the accounting model stamped on journals this
+// repository posts. Called at wiring time from the RECURSO_ACCRUAL_RECOGNITION
+// flag (V2 when accrual is on); the default is V1 (cash). A transaction that
+// carries its own non-zero AccountingVersion overrides this.
+func (r *LedgerRepository) SetAccountingVersion(v int) { r.accountingVersion = v }
 
 func (r *LedgerRepository) CreateAccount(ctx context.Context, account *domain.LedgerAccount) error {
 	if account.CreatedAt.IsZero() {
@@ -233,7 +243,7 @@ func (r *LedgerRepository) CreateTransaction(ctx context.Context, tx *domain.Led
 		return fmt.Errorf("failed to begin ledger transaction: %w", err)
 	}
 	defer func() { _ = dbtx.Rollback() }() // no-op once committed
-	if err := applyLedgerTx(ctx, dbtx, tx); err != nil {
+	if err := r.applyLedgerTx(ctx, dbtx, tx); err != nil {
 		return err
 	}
 	return dbtx.Commit()
@@ -255,7 +265,7 @@ func (r *LedgerRepository) CreateTransactions(ctx context.Context, txs []*domain
 	}
 	defer func() { _ = dbtx.Rollback() }()
 	for _, tx := range txs {
-		if err := applyLedgerTx(ctx, dbtx, tx); err != nil {
+		if err := r.applyLedgerTx(ctx, dbtx, tx); err != nil {
 			return err
 		}
 	}
@@ -265,9 +275,20 @@ func (r *LedgerRepository) CreateTransactions(ctx context.Context, txs []*domain
 // applyLedgerTx inserts one transfer (idempotent on reference_id+code+occurrence)
 // and moves both account balances, WITHIN the caller's transaction. Extracted so a
 // single post and a multi-leg post share identical semantics; the caller owns commit.
-func applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransaction) error {
+func (r *LedgerRepository) applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransaction) error {
 	if tx.Timestamp.IsZero() {
 		tx.Timestamp = time.Now()
+	}
+
+	// Journal-level accounting-model stamp (ADR-008): the transaction's own
+	// version wins (a per-posting override); otherwise the deployment's active
+	// model; otherwise the cash default. Never insert 0 into the NOT NULL column.
+	version := tx.AccountingVersion
+	if version == 0 {
+		version = r.accountingVersion
+	}
+	if version == 0 {
+		version = domain.AccountingModelV1
 	}
 
 	// Idempotent insert: a duplicate (reference_id, code, occurrence) for a real
@@ -278,11 +299,11 @@ func applyLedgerTx(ctx context.Context, dbtx *sql.Tx, tx *domain.LedgerTransacti
 	// swallowed (docs/design-ledger-occurrence.md). Recognition rows (zero
 	// reference) are excluded from the index and always insert.
 	res, err := dbtx.ExecContext(ctx,
-		`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, created_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, accounting_version, created_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		 ON CONFLICT DO NOTHING`,
 		tx.ID, tx.DebitAccountID, tx.CreditAccountID, tx.Amount,
-		tx.LedgerID, tx.Code, tx.ReferenceID, tx.Occurrence, tx.Description, tx.Timestamp,
+		tx.LedgerID, tx.Code, tx.ReferenceID, tx.Occurrence, tx.Description, version, tx.Timestamp,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create ledger transaction: %w", err)
