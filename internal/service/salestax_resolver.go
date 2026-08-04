@@ -43,9 +43,10 @@ func NewSalesTaxProviderResolver(integrations *IntegrationConnectionService, bui
 }
 
 // For returns the tenant's own sales-tax provider, or nil to fall back to the
-// env provider. The list order is the tie-break if more than one is somehow
-// connected (the active-index makes that impossible per provider, not across
-// providers). Order is first-registered-first and carries no recommendation.
+// env provider. At most one tax provider is active per tenant (Connect
+// deactivates the rest of the category), so this loop finds exactly that one;
+// the list order is only the iteration order, never a tie-break between two
+// live providers.
 func (r *SalesTaxProviderResolver) For(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider {
 	if r == nil || r.integrations == nil || r.build == nil {
 		return nil
