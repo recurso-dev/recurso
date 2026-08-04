@@ -1751,6 +1751,11 @@ func main() {
 	// Protected Customer Portal Routes
 	portal := r.Group("/portal/api")
 	portal.Use(middleware.PortalAuthMiddleware(portalService))
+	// Double-submit CSRF backstop behind the session cookie's SameSite=Lax:
+	// state-changing portal calls must echo the portal_csrf cookie in the
+	// X-CSRF-Token header. Runs after auth so tokens are only issued to a valid
+	// session; safe GETs lazily mint the cookie so pre-existing sessions heal.
+	portal.Use(middleware.PortalCSRFMiddleware(secureCookie))
 	{
 		portal.GET("/profile", portalAPIHandler.GetProfile)
 		portal.GET("/invoices", portalAPIHandler.GetInvoices)

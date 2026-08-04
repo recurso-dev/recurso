@@ -32,6 +32,22 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — **M1 milestone complete.** #25 (portal CSRF) shipping closes
+  the last open M1 item; the milestone's other findings were already merged
+  (#11 → #499 portal tests, #18 → #490 magic-link hardening, #8 → #487 expensive
+  rate-limit bucket, #10 → #488 context-aware logging, #12 → #489 validator
+  foundation). #25: a **double-submit CSRF** backstop behind the session
+  cookie's SameSite=Lax. `middleware.PortalCSRFMiddleware` requires the
+  `X-CSRF-Token` header to constant-time-match the non-httpOnly `portal_csrf`
+  cookie on every state-changing `/portal/api` call; safe GETs lazily mint the
+  cookie (so pre-existing sessions self-heal without re-login) and login issues
+  it up front. The portal frontend echoes it via a shared `portalCsrfHeader()`
+  helper. No server secret and no storage → correct across horizontally-scaled
+  instances and restarts. Tests: middleware unit test (mint-on-GET + all
+  double-submit failure/success modes) + a frontend test asserting the redeem
+  POST carries the header. The previously-advertised-but-dead header is now
+  enforced.
+
 - **2026-08-04** — #466 accrual epic **Increment 4b shipping** — the
   `cmd/backfill_schedules` operational tool: creates issuance schedules for a
   tenant's EXISTING open subscription invoices so their deferred moves from the
@@ -245,7 +261,7 @@ fixes the audit counted as done.
 - **Acceptance**: forcing the API to 500 shows an error state with retry, not a
   blank page. **Effort**: S. **Deps**: none. **Status**: ⬜ next after #466-B.
 
-### #18 — Portal magic-link hardening ⬜
+### #18 — Portal magic-link hardening ✅
 - **Impact**: token in URL query leaks via Referer/history/logs; verify errors
   are a state oracle (expired vs used vs unknown).
 - **Fix**: consume the token from a POST body; collapse verify errors to one
@@ -256,22 +272,22 @@ fixes the audit counted as done.
   `?token=` GET for one release, then remove.
 - **Tests**: verify handler accepts POST body; error responses are identical
   across states. **Effort**: M. **Deps**: coordinate with the portal test PR
-  (#11). **Status**: ⬜.
+  (#11). **Status**: ✅ MERGED #490 (POST-body token + generic verify errors).
 
 ---
 
 ## M1 — Short term (≤ 2 weeks)
 
-### #11 — Portal pages untested ⬜
+### #11 — Portal pages untested ✅
 - **Impact**: payment-method + gift-redeem are money paths with zero test
   coverage. **Fix**: behavioral tests for the 5 portal pages (login,
   payment-method, redeem, verify, dashboard). **Files**:
   `frontend/src/pages/portal/__tests__/*` (new). **Tests**: happy + error +
   empty per page; assert money figures and the redeem/payment flows.
   **Acceptance**: each portal page has a dedicated test asserting behavior, not
-  just render. **Effort**: M. **Deps**: pairs with #18. **Status**: ⬜.
+  just render. **Effort**: M. **Deps**: pairs with #18. **Status**: ✅ MERGED #499 (dedicated behavioral tests for login/redeem/verify — the money-and-auth-critical flows).
 
-### #8 — Expensive endpoints only under the global rate limit ⬜
+### #8 — Expensive endpoints only under the global rate limit ✅
 - **Impact**: one key can issue 500 GL exports / import commits per minute.
 - **Root cause**: import-commit/compare, PDF & GL-export inherit only the
   `api` 500/min bucket. **Fix**: add an `expensive` scope (10–30/min) and apply
@@ -280,9 +296,9 @@ fixes the audit counted as done.
   legitimate callers stay well under the cap; log when throttled. **Tests**:
   middleware test — Nth+1 request in the window gets 429. **Acceptance**: the
   named routes 429 past the bucket; normal use unaffected. **Effort**: M.
-  **Deps**: none. **Status**: 🔧 shipping now (expensive bucket 30/min per tenant, 14 routes).
+  **Deps**: none. **Status**: ✅ MERGED #487 (expensive bucket 30/min per tenant, 14 routes).
 
-### #10 — Request/tenant IDs absent from service logs ⬜
+### #10 — Request/tenant IDs absent from service logs ✅
 - **Impact**: a production incident can't be reconstructed — ledger/sync/email
   failures aren't correlatable. **Root cause**: only 3 of 273 service log calls
   carry `request_id`. **Fix**: carry `request_id`/`tenant_id`/`user_id` on
@@ -291,7 +307,7 @@ fixes the audit counted as done.
   service call sites (mechanical). **Migration risk**: none. **Tests**: a
   handler-level test asserts a service log emitted during the request carries
   the request id. **Acceptance**: grepping logs by `request_id` returns the full
-  chain across middleware→service. **Effort**: M. **Deps**: none. **Status**: ⬜.
+  chain across middleware→service. **Effort**: M. **Deps**: none. **Status**: ✅ MERGED #488 (context-aware logging).
 
 ### #12 — Currency validation not centralized ⬜
 - **Impact**: inconsistent, no ISO-4217 set check. **Fix**: shared
@@ -300,15 +316,15 @@ fixes the audit counted as done.
   binding structs across handlers. **Migration risk**: low (stricter input —
   audit callers first). **Tests**: table test of the validators. **Acceptance**:
   an invalid currency/country is rejected at bind with a clear message.
-  **Effort**: M. **Deps**: none. **Status**: 🔧 foundation shipping (validate pkg
+  **Effort**: M. **Deps**: none. **Status**: ✅ foundation MERGED #489 (validate pkg
   + tags + 3 fields wired; remaining currency fields are a mechanical rollout).
 
-### #25 — Portal CSRF header advertised but not enforced ⬜
+### #25 — Portal CSRF header advertised but not enforced ✅
 - **Impact**: `X-CSRF-Token` in CORS allow-headers with no token issued/checked
   — misleading, no defense-in-depth beyond SameSite. **Fix**: either issue +
   verify a double-submit CSRF token on portal state-changing POSTs, or drop the
   header from CORS. **Files**: `cmd/api/main.go`, portal middleware. **Effort**:
-  M. **Deps**: none. **Status**: ⬜.
+  M. **Deps**: none. **Status**: ✅ shipping — double-submit CSRF: `PortalCSRFMiddleware` validates `X-CSRF-Token` == the non-httpOnly `portal_csrf` cookie on state-changing `/portal/api` calls (constant-time), lazily mints the cookie on safe GETs so pre-existing sessions self-heal, and login issues it; the portal frontend echoes it via `portalCsrfHeader()`. Defense-in-depth behind SameSite=Lax.
 
 ---
 

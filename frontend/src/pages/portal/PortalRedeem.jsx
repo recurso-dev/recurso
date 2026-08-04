@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { ArrowLeft, Gift, Loader2 } from "lucide-react";
 
-import { API_ROOT as API_BASE } from "../../lib/api";
+import { API_ROOT as API_BASE, portalCsrfHeader } from "../../lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ const PortalRedeem = () => {
         credentials: "include",
         headers: {
           "Content-Type": "application/json",
+          ...portalCsrfHeader(),
         },
         body: JSON.stringify({ code }),
       });
