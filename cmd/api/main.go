@@ -660,6 +660,11 @@ func main() {
 	// Per-entity ledger resolution (Multi-Entity Books): postings resolve their
 	// legal entity's ledger; without this they use the primary ledger.
 	ledgerService.SetEntityReader(db.NewEntityRepository(database))
+	// Recognized-revenue lookup for the write-off bad-debt split (accrual
+	// #466/#477): a write-off expenses the already-recognized portion as Bad
+	// Debt instead of reversing it from Deferred. Under the cash model (no
+	// schedule until payment) recognized is 0, so this is a no-op.
+	ledgerService.SetRecognizedReader(revrecRepo)
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 	analyticsService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: per-entity MRR scoping + concrete entity on snapshots

@@ -32,6 +32,19 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 accrual epic **Increment 2 shipping** (write-off
+  bad-debt split): `RecordInvoiceWriteOff` now splits the pre-tax reversal by
+  recognized-vs-deferred — recognized → Bad Debt Expense (code 26), still-
+  deferred → Deferred (code 22); `RecordWriteOffRecovery` inverts the actual
+  legs (24/27/25). SAFE: under the cash model recognized=0, so the write-off is
+  byte-identical to before (existing PG test unchanged); one-off write-offs now
+  correctly expense bad debt (revenue was recognized at issuance) instead of
+  reversing Revenue. `SetRecognizedReader` wired to the revrec repo. New PG test
+  proves the split + recovery + balanced books; full invariant harness + all 10
+  seeds green. This is the prerequisite for Increment 3 (schedule-at-issuance
+  switch + backfill + tie-out identity update) — accrual would otherwise drive
+  Deferred negative on write-offs. Increment 1 **MERGED (#493)**.
+
 - **2026-08-04** — #466 Track A (accrual) epic **Increment 1 shipping**:
   Bad Debt Expense account (5200, seeded + on-demand), reserved codes 26/27,
   the `AccountingPolicy` seam (interface + US default adapter + resolver,
