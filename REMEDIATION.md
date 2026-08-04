@@ -225,7 +225,8 @@ fixes the audit counted as done.
   binding structs across handlers. **Migration risk**: low (stricter input —
   audit callers first). **Tests**: table test of the validators. **Acceptance**:
   an invalid currency/country is rejected at bind with a clear message.
-  **Effort**: M. **Deps**: none. **Status**: ⬜.
+  **Effort**: M. **Deps**: none. **Status**: 🔧 foundation shipping (validate pkg
+  + tags + 3 fields wired; remaining currency fields are a mechanical rollout).
 
 ### #25 — Portal CSRF header advertised but not enforced ⬜
 - **Impact**: `X-CSRF-Token` in CORS allow-headers with no token issued/checked

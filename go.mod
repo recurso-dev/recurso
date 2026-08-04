@@ -10,6 +10,7 @@ require (
 	github.com/expr-lang/expr v1.17.8
 	github.com/getsentry/sentry-go v0.48.0
 	github.com/gin-gonic/gin v1.9.1
+	github.com/go-playground/validator/v10 v10.14.0
 	github.com/golang-migrate/migrate/v4 v4.16.2
 	github.com/google/uuid v1.4.0
 	github.com/jmoiron/sqlx v1.4.0
@@ -23,6 +24,7 @@ require (
 	github.com/tigerbeetle/tigerbeetle-go v0.15.3
 	golang.org/x/crypto v0.53.0
 	golang.org/x/oauth2 v0.35.0
+	golang.org/x/text v0.39.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -39,7 +41,6 @@ require (
 	github.com/gin-contrib/sse v0.1.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.14.0 // indirect
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
@@ -65,6 +66,5 @@ require (
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/net v0.56.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
-	golang.org/x/text v0.39.0 // indirect
 	google.golang.org/protobuf v1.33.0 // indirect
 )

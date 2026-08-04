@@ -54,6 +54,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/residency"
 	"github.com/recurso-dev/recurso/internal/scheduler"
 	"github.com/recurso-dev/recurso/internal/service"
+	"github.com/recurso-dev/recurso/internal/validate"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -1467,6 +1468,11 @@ func main() {
 
 	// 8. Setup Router
 	r := gin.Default()
+
+	// Register custom binding validators (currency/country) so request structs
+	// can declare `binding:"required,currency"` and reject malformed codes at
+	// bind time with a consistent message.
+	validate.Register()
 
 	// Client IP must not be spoofable. gin.Default() trusts ALL proxies
 	// (0.0.0.0/0), so it reads a client-supplied X-Forwarded-For — letting

@@ -24,7 +24,7 @@ type createPlanRequest struct {
 	IntervalUnit  string `json:"interval_unit" binding:"required,oneof=day week month year"`
 	IntervalCount int    `json:"interval_count" binding:"required,min=1"`
 	Amount        int64  `json:"amount" binding:"required"`
-	Currency      string `json:"currency" binding:"required,len=3"`
+	Currency      string `json:"currency" binding:"required,currency"`
 	HSNCode       string `json:"hsn_code"`
 }
 

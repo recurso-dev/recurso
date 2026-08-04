@@ -34,7 +34,7 @@ func (h *AdvancedBillingHandler) tenantCtx(c *gin.Context) (context.Context, boo
 
 type AddUnbilledChargeRequest struct {
 	Amount      int64  `json:"amount" binding:"required"`
-	Currency    string `json:"currency" binding:"required"`
+	Currency    string `json:"currency" binding:"required,currency"`
 	Description string `json:"description" binding:"required"`
 	// HSNCode is optional. When set, the charge is taxed at this HSN/SAC code's
 	// rate on the invoice; empty falls back to the tenant SAC.
