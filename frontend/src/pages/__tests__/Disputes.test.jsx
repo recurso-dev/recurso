@@ -83,4 +83,25 @@ describe("Disputes review", () => {
       })
     );
   });
+
+  it("paginates: a full page enables Next, which requests the next offset (#9)", async () => {
+    // 26 rows = PER_PAGE (25) + 1, the sentinel that means "there's a next page".
+    const fullPage = Array.from({ length: 26 }, (_, i) => ({
+      ...openDispute,
+      id: `d-${i}`,
+      reason: `Reason ${i}`,
+    }));
+    endpoints.getDisputes.mockResolvedValue({ data: { data: fullPage } });
+    renderPage();
+
+    await waitFor(() => expect(screen.getByText("Reason 0")).toBeInTheDocument());
+    // Default filter "open" → status passed alongside offset 0; only PER_PAGE render.
+    expect(endpoints.getDisputes).toHaveBeenLastCalledWith("open", { limit: 26, offset: 0 });
+    expect(screen.queryByText("Reason 25")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() =>
+      expect(endpoints.getDisputes).toHaveBeenLastCalledWith("open", { limit: 26, offset: 25 })
+    );
+  });
 });
