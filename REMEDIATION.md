@@ -345,6 +345,14 @@ fixes the audit counted as done.
   path sees them; `usage.DynamicAmount` enforced in `toEvent` (the field already
   documented "non-negative"). Tests cover each guard.
 - **#21** — confirm `fxNormalizer.rates` is per-report (or add a mutex). S.
+  **Status**: ✅ shipping — CONFIRMED safe, no mutex needed. Every one of the 12
+  call sites constructs a fresh `newFXNormalizer` and drives it sequentially
+  over the report's rows (no goroutines), so its rates map is per-report and
+  single-goroutine. The real shared state — `s.fxProvider`/`s.fxFallback`, hit
+  by concurrent report requests — is already `sync.RWMutex`-guarded in both the
+  live (OpenExchangeRates) and static providers. Locked it in with a `-race`
+  concurrency test on the shared static provider + a doc comment on the
+  normalizer stating the single-goroutine contract.
 - **#23** — verify CI provisions Postgres so `_pg_test.go` coverage is real,
   not skipped. S (CI config).
 - **#24** — unit tests for `subscription_payment/cancel/pause/retention/
