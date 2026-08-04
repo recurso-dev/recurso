@@ -1,13 +1,11 @@
 ---
 name: Recurso Design Language
 description: >-
-  Recurso's own accounting-first design language — a hybrid (~45% Linear / 35%
-  Stripe / 20% Vercel, principles not copies) optimized for trust, clarity,
+  Recurso's accounting-first design language — optimized for correctness, trust,
   auditability, and data density. Every UI decision answers "would a CFO trust
   this with their revenue?". Warm-stone neutrals, Inter with tabular figures for
   money, soft shadows, 8px radius, light-only. Tokens below are the REAL shipped
-  values from src/index.css + tailwind.config.js (the accent is emerald today);
-  the founder-set target direction (blue accent) and its deltas are in §A/§I.
+  values from src/index.css + tailwind.config.js (the accent is emerald today).
 tokens_source:
   - frontend/src/index.css
   - frontend/tailwind.config.js
@@ -37,6 +35,8 @@ typography:
     title:  { size: 18px, line: 28px }
     metric: { size: 30px, line: 36px }
   money: { feature: "tnum", family: "mono" }   # tabular, monospace (index.css:69-79)
+spacing:                       # Tailwind scale (rem × 16)
+  scale: [4, 8, 12, 16, 24, 32, 48, 64]   # px — the only step values used
 radius:
   base: 8px      # --radius 0.5rem
   md: 6px        # calc(radius - 2px), buttons
@@ -45,159 +45,283 @@ shadows:         # tailwind.config.js:115-119
   input: "0 1px 2px 0 rgb(0 0 0 / 0.05)"
   card: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)"
   dropdown: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)"
+motion:          # target standard (§8); reduced-motion always respected
+  hover: 100ms
+  press: 80ms
+  page: 150ms
+  modal: 200ms
 dark-mode: disabled   # light-only, index.css:8
 ---
 
 # Recurso — Design Language
 
-> **Code-derived.** The frontmatter tokens above are the real values from the
-> cited files; the prose cites files too. Implementation is the source of truth
-> for "what is." §A is the founder-set *intent*; §C lists where intent ≠ code.
+> **Code-derived.** The frontmatter tokens are the real values from the cited
+> files; implementation is the source of truth for "what is." Sections that
+> describe a *target* (motion timings, the 44px touch target, the accent) are
+> marked as **Direction** — adopt them going forward; don't assume the whole app
+> already conforms. Point-in-time implementation gaps live in a **separate audit**
+> (§14), so this document stays timeless.
 
 ---
 
-## §A. Design intent (target language)
+## §1. Philosophy
 
-**Recurso is its own system — a hybrid, not a copy of any brand.** Extract the
-principles below, don't imitate the aesthetic. The blend that fits an
-accounting-first developer platform:
+Recurso is an **accounting-first** product. Under every screen is a real
+double-entry ledger, and the interface exists to make that ledger legible,
+trustworthy, and fast to operate. The single filter for every UI decision:
 
-| Surface | Blend (principles, not brand copies) |
+> **"Would a CFO, finance manager, or engineering leader trust this product with
+> their revenue?"**
+
+Recurso is not trying to be the most visually striking SaaS. It is trying to be
+the most **trustworthy** billing and accounting platform. Every choice — a
+number's alignment, a confirm dialog, an empty state — either earns that trust or
+spends it.
+
+**Personality:** enterprise · professional · calm · precise · trustworthy ·
+minimal · fast. Never playful, never consumer, never "startup landing page."
+
+**Desired qualities** (describe the intent directly — do not imitate any brand):
+enterprise-first · accounting-focused · calm · information-dense · trustworthy ·
+keyboard-friendly · quiet-by-default. Where an external product does one of these
+well it can inform a decision, but the target is the *quality*, not the aesthetic
+of any company.
+
+## §2. Core principles (priority order)
+
+When two goals conflict, the higher-priority one wins. This ordering is the
+tie-breaker an engineer or an AI agent should apply.
+
+1. **Correctness** — the number, the state, and the money path must be right. A
+   beautiful screen that shows a wrong or unexplained figure is a failure.
+2. **Trust** — auditability, reversibility, honest states (error/loading/empty),
+   and explainability. Never hide uncertainty; surface it.
+3. **Readability** — the primary figure is instantly findable; hierarchy is
+   obvious; tables scan cleanly.
+4. **Density** — high information-per-screen without clutter. Finance users
+   compare; give them enough on one screen to compare.
+5. **Beauty** — polish and restraint, *after* the four above are satisfied.
+
+## §3. Visual language
+
+- **Light-only.** White ground (`--background`), warm-stone body canvas
+  (`bg-stone-50`). No dark mode (`index.css:8`); never write `dark:` variants.
+- **Warm neutrals, not cool gray.** Foreground is a warm near-black
+  (`--foreground: 24 10% 10%`); borders are a hairline warm stone
+  (`--border: 20 6% 90%`). The warmth reads "enterprise light," not "cold tech."
+- **One accent, used sparingly.** Emerald marks interactive elements and the
+  single primary action per view — never as a decorative fill or a body-text
+  color.
+- **Quiet elevation.** Three soft shadows only (`input`/`card`/`dropdown`); no
+  heavy layered shadows, no glow. Depth is a hairline border plus a soft shadow.
+- **No decoration for its own sake.** No gradients unless they illustrate real
+  value, no illustrations, no emoji, no background patterns behind data.
+
+## §4. Tokens
+
+The frontmatter is the token spec (colors, type, spacing, radius, shadows,
+motion) drawn from `src/index.css` and `tailwind.config.js`. Rules of use:
+
+- **Color:** use the semantic tokens (`primary`, `foreground`, `muted`, `border`,
+  `success`, `warning`, `destructive`) — never a raw hex. Emerald is
+  accent + primary action; amber = warning; red = destructive only.
+- **Money is exponent-aware.** Format through `currencyDecimals` (`utils.js:17-26`)
+  — never divide by `/100`. JPY has 0 decimals, KWD/BHD have 3.
+- **Semantic color is never the sole signal** — always pair with a text label or
+  icon (`ui/badge.jsx:12-17`).
+- **Known token debt:** emerald currently does double duty as accent *and*
+  success. When it's resolved, success may shift; until then, keep pairing
+  success with its label so meaning never rests on hue alone.
+
+## §5. Layout & spacing
+
+### Spacing system
+
+Use only the token steps — **4 · 8 · 12 · 16 · 24 · 32 · 48 · 64 px** (Tailwind
+`1/2/3/4/6/8/12/16`). Never invent an off-scale value (`13px`, `mt-[22px]`).
+
+| Step | Use |
 |---|---|
-| **Dashboard** | 70% Linear · 20% Stripe · 10% GitHub — data density, spacing, keyboard-first, enterprise tables |
-| **Website** | 50% Stripe · 30% Vercel · 20% Mercury — financial trust + clean marketing |
-| **Docs** | 80% Mintlify · 20% Stripe Docs |
-| **Customer portal** | 70% Stripe Billing · 30% Linear |
-| **This doc's basis** | ~45% Linear · 35% Stripe · 20% Vercel |
+| 4 / 8 | Between an icon and its label; inside a chip/badge; tight control gaps |
+| 12 / 16 | Inside a card/cell; between a label and its field; between stacked controls |
+| 24 | Between related blocks within a section; card grid gap |
+| 32 | Between distinct sections of a page |
+| 48 / 64 | Page top/bottom breathing room; major section separation |
 
-**The filter for every UI decision:** *"Would a CFO, finance manager, or
-engineering leader trust this product with their revenue?"* Recurso isn't trying
-to be the most visually striking SaaS — it's trying to be the most **trustworthy**
-billing and accounting platform.
+Lay out sibling groups with **flex/grid + `gap`**, never per-element margins that
+collapse or double.
 
-**Personality:** enterprise · professional · modern · trustworthy · minimal ·
-fast · calm · premium. Never playful, never consumer, never "startup landing
-page."
+### Canonical page hierarchy
 
-**Optimize for:** trust · clarity · auditability · data density · speed ·
-accessibility.
+Every dashboard page reads top-to-bottom in this order — **numbers first, charts
+second, tables third, actions in place**:
 
-**Prioritize:** readable tables · tabular numbers · accounting layouts ·
-enterprise navigation · keyboard-first workflows · responsive dashboards · high
-information density without clutter.
+```
+Page
+ └ PageHeader        title + one-line description + primary action (right)
+ └ StatCards         the key figures — the answer before the detail
+ └ Chart (optional)  the trend behind the figures
+ └ DataTable         the rows, with row-level actions
+ └ Detail (Sheet)    right-side panel for a single record
+```
 
-**Avoid:** flashy gradients · oversized hero sections · decorative animations ·
-unnecessary whitespace · consumer aesthetics.
+A finance user should get the answer (StatCards) before scrolling, then the
+evidence (table). Actions live where the object is (row action, header action) —
+not in a separate toolbar the eye has to hunt for.
 
-**Intended color:** almost-white ground with generous (not wasteful) whitespace,
-**blue/indigo accent** (the Linear/Stripe lineage), green *only* for success,
-red *only* for destructive, gradients only when they illustrate value.
-**Cards:** rounded ~12px. **Tables:** virtualized, dense mode.
+### Responsive
 
----
+Works at **320 / 768 / 1024 / 1440**. Wide content (tables, code, charts) scrolls
+inside its own `overflow-x-auto` container; the page body never scrolls sideways.
+Mobile-first: stack, then expand.
 
-## §B. Colors (implemented)
+## §6. Typography
 
-**Accent = emerald**, not blue (`src/index.css:20` `--primary: 161 94% 30%`; the
-file comment names it "Deep emerald"). Chart accent is emerald-500 `#10B981`.
-Hover is `#059669` (`tailwind.config.js:59`). **Neutrals are warm stone**
-(`--foreground: 24 10% 10%`, `--muted: 60 5% 96%`, hairline `--border: 20 6%
-90%`) — "enterprise light, not cool gray" per the code comment. Body ground is
-`bg-stone-50`.
+- **Inter** for everything (`tailwind.config.js:96-99`), system fallback.
+- **Type scale** (Tremor): label 12 / body 14 (default) / title 18 / metric 30.
+  Don't invent sizes; don't skip heading levels.
+- **Money is tabular + monospace.** `tabular-nums` on every `td` (`index.css:69-71`)
+  and the `.money` mono stack (`:74-79`) so digits align in columns. IDs are
+  shortened via `shortId()` (`utils.js:94-96`).
+- Right-align every numeric/money column; left-align text.
 
-**Semantic** (`src/components/ui/badge.jsx:12-17`, always paired with a text
-label): success emerald, warning amber, destructive red. **Consequence:** green
-currently does double duty as accent *and* success — see §C.
+## §7. Components (house library)
 
-## §C. Typography
+Compose from these; **do not invent new base styles** (no new button variant, no
+one-off card). Each entry: purpose · when to use · when NOT · notes.
 
-Inter → system (`tailwind.config.js:96-99`). Type scale is the Tremor scale
-(label 12 / body 14 / title 18 / metric 30). **Money is tabular + monospace**:
-`tabular-nums` on every `td` (`src/index.css:69-71`) and the `.money` mono stack
-(`:74-79`); IDs shortened via `shortId()` (`src/lib/utils.js:94-96`). Money
-values are exponent-aware (`currencyDecimals`, `utils.js:17-26`) — never `/100`.
-
-## §D. Layout, elevation, shape
-
-- **Spacing:** Tailwind's scale; layout uses flex/grid + `gap`, not per-element
-  margins.
-- **Radius:** base 8px (`--radius: 0.5rem`); buttons use `rounded-md` = 6px
-  (`ui/button.jsx`); cards `rounded-lg` = 8px.
-- **Elevation:** three soft shadows only — `tremor-input`/`-card`/`-dropdown`
-  (`tailwind.config.js:115-119`). No heavy layered shadows.
-- **Whitespace:** generous; content max-widths keep tables and text readable.
-
-## §E. Components (house library)
-
-- **Buttons** (`ui/button.jsx`): default `h-9 px-4 py-2`, sm `h-8`, lg `h-10`,
-  icon `h-9 w-9`; `rounded-md`; focus ring `ring-2 ring-ring ring-offset-2`.
-- **Cards** (`ui/card.jsx`): minimal border, soft shadow, `rounded-lg`, generous
+- **Button** (`ui/button.jsx`) — *purpose:* trigger an action. *Use:* one primary
+  (emerald/filled) per view; everything else secondary/ghost/outline. *Don't:*
+  make a destructive action the default; put two primaries on one screen; create
+  a new variant. *Notes:* `rounded-md`; visible focus ring
+  `ring-2 ring-ring ring-offset-2`; sizes sm `h-8` / default `h-9` / lg `h-10`.
+- **Card** (`ui/card.jsx`) — *purpose:* group one coherent unit. *Use:* a stat, a
+  form, a table wrapper. *Don't:* **nest a card inside a card**; stack heavy
+  shadows. *Notes:* hairline border + `card` shadow, `rounded-lg`, generous
   padding.
-- **Inputs/forms** (`ui/input.jsx`, `patterns/FormField.jsx`): hairline border,
-  emerald focus ring; per-field validation messages.
-- **Tables** (`patterns/DataTable.jsx`): the accounting-first surface — sortable,
-  built-in error/loading/empty/data states (`:91-104`), keyboard-operable rows
-  (`:124-139`), optional pagination, right-aligned tabular money. Wrapped in a
-  `Card overflow-hidden`.
-- **Sheets** (`ui/sheet.jsx:35`): right-side `sm:max-w-md` for detail/create.
-- **Dialogs** (`ui/confirm-dialog.jsx`): Radix, `busy` state, destructive styling
-  for destructive actions.
-- **Charts** (`charts/ChartTooltip.jsx`): shared premium tooltip; animation gated
-  on visibility + `prefers-reduced-motion` (`:77-87`).
-- **StatCard, PageHeader, EmptyState, ErrorState, LoadingSkeleton,
-  CustomerSelect/Name** in `patterns/`.
+- **DataTable** (`patterns/DataTable.jsx`) — *purpose:* the accounting-first
+  surface. *Use:* every list. *Always* provide error / loading / empty / data
+  states (`:91-104`); keep rows keyboard-operable (`:124-139`); right-align money.
+  *Don't:* hand-roll a `<table>` without the wrapper; paginate an internal
+  processing sweep.
+- **Sheet** (`ui/sheet.jsx:35`) — *purpose:* view/edit one record without leaving
+  the list. *Use:* right-side `sm:max-w-md`, header + description, pinned footer.
+  *Don't:* use it for a bulk/multi-record flow.
+- **ConfirmDialog** (`ui/confirm-dialog.jsx`) — *purpose:* guard an irreversible
+  or money-moving action. *Use:* Radix dialog with a `busy` state and destructive
+  styling for destructive intent. *Don't:* confirm trivial, reversible actions.
+- **StatCard / PageHeader / EmptyState / ErrorState / LoadingSkeleton /
+  CustomerSelect+Name** (`patterns/`) — the standard page furniture. Use the
+  pickers, never raw UUID inputs.
+- **Charts** (`charts/ChartTooltip.jsx`) — shared premium tooltip; animation is
+  gated on visibility + `prefers-reduced-motion` (`:77-87`).
 
-## §F. Dashboard hierarchy
+## §8. Interaction & motion  *(Direction — adopt going forward)*
 
-**Numbers first, charts second, actions third** — StatCards lead, then the
-visualization, then controls. Mostly followed today; verify per page.
+Motion is functional, never decorative. Fast, quiet, and always cancellable by
+reduced-motion.
 
-## §G. Do / Don't
+| Interaction | Duration | Notes |
+|---|---|---|
+| Hover state | **100ms** | color/border only; no movement on data rows |
+| Press / active | **80ms** | subtle; confirms the tap |
+| Page / route transition | **150ms** | fade; no slide that shifts data |
+| Modal / sheet open | **200ms** | fade + small translate |
+| Skeleton → content | fade | never a spinner for content that has a skeleton |
 
-**Do:** use emerald sparingly for accent + primary action; right-align tabular
-money; give every list error/loading/empty/success; name the exact figure;
-keyboard-operate everything. **Don't:** write `dark:` variants (light-only);
-hardcode `/100`; use green for a non-success accent *and* success without
-deciding (§C); make a destructive action the default button; render a blank page
-on error; paginate a billing sweep. (Full list: `ANTI_PATTERNS.md`.)
+- **`prefers-reduced-motion: reduce` disables all of the above** — content is
+  visible and static, never gated behind an animation.
+- No parallax, no scroll-jacking, no animated numbers counting up on money.
+- A control's motion must never delay the user reading a figure.
 
-## §H. Responsive
+## §9. Accessibility (contract)
 
-Works at 320/768/1024/1440; wide content scrolls inside `overflow-x-auto`; the
-page body never scrolls sideways. **Violations:** native `<Table>` pages missing
-the wrapper (Team `:122`, Security `:403`, DunningDashboard `:272`) and clipping
-`overflow-hidden` (RevenueRecognition `:166`, FinanceReconciliation `:177`).
+Non-negotiable for every interactive surface (WCAG 2.1 AA baseline):
 
----
+- **Touch target ≥ 44×44px** on touch; ≥ 24px always *(Direction — some controls
+  are h-9/36px today; size up on touch)*.
+- **Visible focus** on every focusable element (`ring-2 ring-ring ring-offset-2`)
+  — never remove the outline.
+- **Keyboard-reachable and operable** — every action works without a mouse;
+  DataTable rows are keyboard-operable.
+- **No hover-only interactions** — anything revealed on hover is also reachable by
+  focus/click.
+- **Contrast** ≥ 4.5:1 body, ≥ 3:1 large text; small semantic text uses the
+  darker token (`brand.dark`, `emerald-700`).
+- **Dialogs:** focus trapped, **Esc closes**, **Enter confirms** (Radix).
+- **Labels:** every input has a `<label>` or `aria-label`; icon-only buttons have
+  an `aria-label`.
+- **Never rely on color alone** — pair with text/icon.
 
-## §I. Direction vs. current — the deltas (design decisions to make)
+## §10. Copywriting
 
-| Aspect | Intent (§A) | Current (cited) | Decision |
-|---|---|---|---|
-| **Accent** | Blue | **Emerald** (`index.css:20`) | **Rebrand call** — touches `--primary`, the safelist, and the "light identity is the keeper" website decision. Not done. |
-| Green usage | Success only | Accent **and** success | Follows the accent decision. |
-| Card radius | 12px | 8px (`--radius`) | One-token change once confirmed. |
-| Tables | Virtualized, dense | Not virtualized; native tables unpaginated | Real work — see `UX_RULES.md` audit. |
+Words are UI. Write from the user's side of the screen, in the register of a
+finance tool.
 
-**The one needing your explicit go/no-go: the accent.** The app ships emerald
-end-to-end; moving to blue is a rebrand, not a tweak. Until decided, this doc
-documents emerald as reality and blue as the target.
+- **Short, specific, professional.** No marketing fluff, no exclamation marks, no
+  emoji, no "Oops."
+- **Name the action, not the vibe.** A button says exactly what happens; the toast
+  confirms it happened.
+- **Use accounting terminology** users recognize — *invoice, credit note,
+  reconcile, write-off, deferred revenue* — not invented product-speak.
+- **Errors** explain what went wrong and how to fix it; no apology, no blame.
 
-> **Brand Refresh — Status: DEFERRED until post-GA** (founder decision,
-> 2026-08-04). The emerald→blue accent change is intentionally held until after
-> the accrual-accounting work reaches GA. Recoloring now would inject noise into
-> screenshots, docs, marketing, visual-regression baselines, and product review
-> during the most significant accounting change in the product. Finish the
-> accounting work first; revisit the accent as a deliberate post-GA project.
-> Until then, **emerald is the shipped and documented identity** — do not begin
-> the rebrand.
+| Prefer | Over |
+|---|---|
+| Create invoice | Let's get started! |
+| Retry | Oops… something went wrong |
+| No invoices yet | Nothing to see here 🎉 |
+| Mark uncollectible | Say goodbye 👋 |
+| Reconciliation found 0 discrepancies | All good! |
 
-## §J. Implementation audit (violations)
+## §11. AI generation rules
 
-State-handling drift (BillingSettings has no error path), responsive table
-wrappers, oversized components (SubscriptionDetail 1011 / Developers 948 /
-PlanCharges 777), portal test hole. Full detail:
-`docs/evidence/design-and-ux.md`; tracked in `../REMEDIATION.md`.
+When an AI agent generates or edits Recurso UI:
+
+- **Never invent a color** — use the semantic tokens only.
+- **Never invent spacing** — use the 4/8/12/16/24/32/48/64 scale only.
+- **Reuse existing components; prefer composition** over configuration. If a
+  pattern exists (`DataTable`, `Sheet`, `StatCard`, `ConfirmDialog`), use it.
+- **Never create a new button style, shadow, or radius.**
+- **Never add** gradients, illustrations, emoji, playful copy, background
+  patterns behind data, or a second primary action.
+- **Money** goes through the exponent-aware formatter; **numbers** are tabular and
+  right-aligned.
+- **Every list** ships error + loading + empty + data states.
+- **Every irreversible/money action** is guarded by `ConfirmDialog`.
+- **Use accounting terminology** (§10); write no `dark:` variants (§3).
+- When unsure, **match the nearest existing page**, and prefer the more
+  conservative, quieter option.
+
+## §12. Do / Don't
+
+**Do:** use emerald sparingly for accent + the one primary action; right-align
+tabular money; give every list its four states; name the exact figure;
+keyboard-operate everything; guard money-moving actions.
+
+**Don't:** write `dark:` variants; hardcode `/100`; nest cards; add a second
+primary; make a destructive action the default; render a blank page on error;
+paginate a billing sweep; use color as the only signal. (Full list:
+`ANTI_PATTERNS.md`.)
+
+## §13. Implementation notes
+
+- **Accent = emerald** (`index.css:20`), not blue. **Brand refresh (emerald→blue)
+  is DEFERRED until post-GA** (founder decision, 2026-08-04): recoloring now would
+  inject noise into screenshots, docs, marketing, and visual-regression baselines
+  during the accrual-accounting work. Emerald is the shipped and documented
+  identity — do not begin the rebrand.
+- **Card radius** is 8px today; the target is ~12px — a one-token change to make
+  when the accent decision is made.
+- **Tables** are not yet virtualized; large lists use server pagination
+  (`clampLimitOffset`).
+
+## §14. Audit (separate document)
+
+Point-in-time implementation gaps — missing responsive wrappers, state-handling
+drift, oversized components, specific file:line violations — are **not** kept
+here (they'd date this document). They live in **`docs/evidence/design-and-ux.md`**
+and are tracked in **`../REMEDIATION.md`**. Update those, not §1–§13.
 
 ---
 
@@ -206,9 +330,10 @@ PlanCharges 777), portal test hole. Full detail:
 - **Code:** `frontend/src/index.css`, `frontend/tailwind.config.js`,
   `frontend/src/lib/utils.js`, `frontend/src/components/{ui,patterns,charts}/`,
   `frontend/src/App.jsx`.
-- **Evidence:** `docs/evidence/design-and-ux.md`.
-- **Direction:** founder design input (§A), 2026-08-04.
-- **Format:** structured after the `awesome-design-md` token-spec convention,
-  populated with Recurso's real tokens.
+- **Evidence / audit:** `docs/evidence/design-and-ux.md`.
 - **Related:** `BRAND.md`, `UX_RULES.md`, `ANTI_PATTERNS.md`,
   `DOCUMENTATION_RULES.md`.
+- **Format:** token-spec frontmatter (the `awesome-design-md` convention)
+  populated with Recurso's real values; body organized philosophy → principles →
+  language → tokens → layout → type → components → motion → a11y → copy → AI
+  rules → do/don't → notes → audit.
