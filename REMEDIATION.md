@@ -346,7 +346,16 @@ fixes the audit counted as done.
   was needed there (evidence-based: the finding's clip claim held only for the
   native tables).
 - **#19** — response-envelope consistency (`{data:}`), 2 raw error escapes,
-  ~16 missing `operationId`. S–M; API-contract care.
+  ~16 missing `operationId`. S–M; API-contract care. **Status**: 🔧 partial —
+  the **operationId** half is shipping: all 16 operations that lacked one
+  (OAuth, gateway/integration connections, SSO, SAML) now have a unique
+  `operationId`, so all 304 operations are named and the generated SDKs get
+  stable method names (verified: 0 missing, 0 duplicates, spec + drift tests
+  green). The **envelope-normalization** and **2 raw `{"error"}` escapes**
+  (webhook.go, webhook_gocardless.go, founder-metrics) are deliberately deferred:
+  they change response shapes clients already depend on (and gateway webhook
+  bodies), so they belong in a versioned API-contract change with SDK
+  regeneration, not a drive-by. Tracked as the remaining #19 slice.
 - **#20** — add `>=0` guards to `dispute.CreditAmount`, `referral.RewardAmount`,
   `usage.DynamicAmount`, `plan.Amount`. S. **Status**: ✅ shipping — all four
   reject negatives at the API edge (400) before any ledger/credit-note/billing
