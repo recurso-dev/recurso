@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/safego"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -321,26 +322,28 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	// fail the signup. Args are passed by value; a fresh context is used because
 	// the request's ctx may be canceled once Register returns.
 	if s.signupNotifier != nil && s.signupNotifyEmail != "" {
-		go func(company, owner, ctry string, tenantID uuid.UUID) {
+		company, owner, ctry, tenantID := companyName, email, country, tenant.ID
+		safego.Go("auth.signupNotify", func() {
 			bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := s.signupNotifier.SendNewSignupAlert(bg, s.signupNotifyEmail, company, owner, ctry); err != nil {
 				s.logger.Warn("failed to send new-signup alert", "error", err, "tenant_id", tenantID)
 			}
-		}(companyName, email, country, tenant.ID)
+		})
 	}
 
 	// Upsert the signup into the operator's marketing tool (opt-in via
 	// BREVO_API_KEY) so it lands in an onboarding funnel. Non-blocking and
 	// best-effort — a slow or failed sync must never affect the signup.
 	if s.signupContactSync != nil {
-		go func(owner, company, ctry string, tenantID uuid.UUID) {
+		owner, company, ctry, tenantID := email, companyName, country, tenant.ID
+		safego.Go("auth.signupContactSync", func() {
 			bg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := s.signupContactSync.AddSignupContact(bg, owner, company, ctry); err != nil {
 				s.logger.Warn("failed to sync new-signup contact to marketing tool", "error", err, "tenant_id", tenantID)
 			}
-		}(email, companyName, country, tenant.ID)
+		})
 	}
 
 	return &RegisterResult{Tenant: tenant, APIKey: apiKey, User: user, SessionToken: token}, nil

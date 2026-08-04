@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Detached goroutines no longer risk crashing the whole API on a panic.**
+  Fire-and-forget goroutines (invoice + credit-note issuance emails, the
+  new-signup operator alert and marketing sync, the manual accounting-sync
+  worker) ran with no panic recovery — and an unrecovered panic in ANY
+  goroutine terminates the entire Go process, dropping every in-flight
+  request. Gin's Recovery middleware only covers the request goroutine.
+  A nil customer reaching a notification template, or a provider client
+  panicking mid-sync, could take the API down. New `internal/safego.Go`
+  wraps each detached goroutine in a recover-and-log guard; the panic is
+  contained and logged with its stack instead of crashing the process.
+  Found by the post-release audit sweep.
+
+### Fixed
+
 - **Charts mounted in a hidden tab rendered empty.** Chrome freezes
   `requestAnimationFrame` in hidden/occluded windows, so a chart that mounted
   there stuck at its entry animation's first frame — sub-pixel bars over a

@@ -14,6 +14,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/residency"
+	"github.com/recurso-dev/recurso/internal/safego"
 )
 
 // tokenRefreshWindow is how close to expiry a token may get before we
@@ -413,7 +414,7 @@ func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string
 	if _, running := s.syncInFlight.LoadOrStore(tenantID, struct{}{}); running {
 		return false
 	}
-	go func() {
+	safego.Go("accounting.TriggerSyncAsync", func() {
 		defer s.syncInFlight.Delete(tenantID)
 		// Detached from the HTTP request: the client navigating away must not
 		// cancel a half-done books push. Bounded so a wedged provider cannot
@@ -423,7 +424,7 @@ func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string
 		if err := s.syncForTenant(ctx, tenantID, force, provider); err != nil {
 			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "provider", provider, "error", err)
 		}
-	}()
+	})
 	return true
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/safego"
 )
 
 // ErrCreditNoteValidation marks caller-correctable failures (bad request).
@@ -128,13 +129,13 @@ func (s *CreditNoteService) notifyIssued(cn *domain.CreditNote, customer *domain
 	if cn.Reference != nil {
 		data.Reference = *cn.Reference
 	}
-	go func() {
+	safego.Go("creditnote.notifyIssued", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.notifier.SendCreditNoteIssued(ctx, data); err != nil {
 			s.logger.Error("credit-note issuance email failed", "credit_note_id", cn.ID, "error", err)
 		}
-	}()
+	})
 }
 
 // SetLedgerService wires the ledger for refund reversals (optional).
