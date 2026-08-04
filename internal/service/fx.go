@@ -24,6 +24,12 @@ type FXSnapshot struct {
 // fxNormalizer converts per-currency amounts into a single reporting
 // currency, tracking every rate it used and whether the static fallback
 // provider had to be consulted.
+//
+// Concurrency: a normalizer is single-goroutine and per-report. Every caller
+// constructs a fresh one via newFXNormalizer and drives it sequentially over a
+// report's rows, so its rates map needs no lock. Do NOT share one instance
+// across goroutines — the shared *providers* it wraps are the concurrency-safe
+// layer (their rate caches are mutex-guarded), the normalizer is not.
 type fxNormalizer struct {
 	provider port.ExchangeRateProvider
 	fallback port.ExchangeRateProvider
