@@ -665,6 +665,18 @@ func main() {
 	// Debt instead of reversing it from Deferred. Under the cash model (no
 	// schedule until payment) recognized is 0, so this is a no-op.
 	ledgerService.SetRecognizedReader(revrecRepo)
+	// Cancel an invoice's pending recognition events on write-off so the
+	// reversed-out Deferred isn't re-recognized under accrual. No-op under cash.
+	ledgerService.SetScheduleCanceller(revrecService)
+	// Accrual revenue recognition (#466): build the schedule at ISSUANCE for
+	// subscription invoices, so revenue recognizes over the period regardless of
+	// payment and the month-end tie-out is structurally zero. OFF by default (the
+	// cash model) — enabled per deployment via RECURSO_ACCRUAL_RECOGNITION=true,
+	// so it's an opt-in rollout. The write-off bad-debt split above makes it safe.
+	if strings.EqualFold(os.Getenv("RECURSO_ACCRUAL_RECOGNITION"), "true") {
+		invoiceService.SetAccrualRecognition(true)
+		log.Println("Revenue recognition: ACCRUAL (schedules built at invoice issuance)")
+	}
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
 	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
 	analyticsService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: per-entity MRR scoping + concrete entity on snapshots

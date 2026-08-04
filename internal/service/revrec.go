@@ -101,6 +101,34 @@ func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
 // forfeit is posted to the ledger best-effort (a post failure is logged for
 // reconciliation, never fails the cancel). Idempotent: once the schedule is
 // canceled a repeat call finds nothing to unwind.
+// CancelPendingForInvoice cancels the not-yet-recognized events of an invoice's
+// recognition schedule and marks the schedule canceled, on write-off. Unlike
+// UnwindOnCancel it posts NO breakage recognition: a written-off invoice's
+// unrecognized deferral is reversed to AR by the write-off itself (code 22), so
+// recognizing it here too would double-count. Its recognized events stay (that
+// revenue was earned; the write-off expenses it as bad debt, code 26). No-op
+// when the invoice has no schedule (the cash model), so it is safe to call on
+// every write-off.
+func (s *RevRecService) CancelPendingForInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) error {
+	sched, err := s.repo.GetActiveScheduleByInvoice(ctx, tenantID, invoiceID)
+	if err != nil {
+		return fmt.Errorf("load schedule for invoice %s: %w", invoiceID, err)
+	}
+	if sched == nil {
+		return nil
+	}
+	events, err := s.repo.GetPendingEventsBySchedule(ctx, sched.ID)
+	if err != nil {
+		return fmt.Errorf("load pending events for schedule %s: %w", sched.ID, err)
+	}
+	for _, e := range events {
+		if err := s.repo.CancelEvent(ctx, e.ID); err != nil {
+			return fmt.Errorf("cancel event %s: %w", e.ID, err)
+		}
+	}
+	return s.repo.MarkScheduleCanceled(ctx, sched.ID)
+}
+
 func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int64, error) {
 	schedules, err := s.repo.GetActiveSchedulesBySubscription(ctx, tenantID, subscriptionID)
 	if err != nil {

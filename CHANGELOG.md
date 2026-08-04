@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Accrual revenue recognition (opt-in).** With
+  `RECURSO_ACCRUAL_RECOGNITION=true`, recognition schedules are built at invoice
+  **issuance** for subscription invoices, so revenue recognizes over the service
+  period regardless of payment — accrual accounting (#466). The month-end
+  deferred tie-out is then structurally zero (every issued invoice is
+  scheduled, so nothing sits in the awaiting-payment bucket). **Default off**
+  (the cash model — schedule at payment), so it is a per-deployment rollout.
+  Writing off an accrual invoice cancels its schedule's not-yet-recognized
+  events (so the reversed-out Deferred can't be re-recognized) and expenses the
+  already-recognized portion as Bad Debt (the #477 split). No behavior change
+  when the flag is off; the invariant harness stays green either way.
+
 ### Fixed
 
 - **Write-offs of already-recognized revenue now expense Bad Debt, not reverse

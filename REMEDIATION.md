@@ -32,6 +32,20 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 accrual epic **Increment 3 shipping** (the switch,
+  opt-in): `RECURSO_ACCRUAL_RECOGNITION=true` builds the recognition schedule at
+  invoice ISSUANCE for subscription invoices, so revenue recognizes over the
+  period regardless of payment and the month-end tie-out is structurally zero.
+  **Default OFF** = the cash model, so production is unchanged until a deployment
+  opts in. Write-off now cancels the schedule's pending events (so reversed-out
+  Deferred isn't re-recognized) — no-op under cash. End-to-end PG test:
+  recognize 30k of 100k → write off → 30k Bad Debt, 70k Deferred reversal,
+  pending events cancelled, schedule canceled, books balanced. Full invariant
+  harness + all 10 seeds green (flag off). Increment 2 **MERGED (#495)**.
+  Remaining (Increment 4, operational): open-invoice schedule backfill for a
+  tenant that flips to accrual, and (optional) close-pack tie-out wording once a
+  tenant is fully accrual (the identity already accommodates the mixed state).
+
 - **2026-08-04** — #466 accrual epic **Increment 2 shipping** (write-off
   bad-debt split): `RecordInvoiceWriteOff` now splits the pre-tax reversal by
   recognized-vs-deferred — recognized → Bad Debt Expense (code 26), still-
@@ -191,8 +205,9 @@ fixes the audit counted as done.
   all seeds green.
 - **Effort**: L (4 PRs). **Deps**: ✅ founder APPROVED accrual + directed a
   policy-driven (not hardcoded) bad-debt model with jurisdiction adapters.
-- **Status**: ✅ GREENLIT — building. Increment 1 (AccountingPolicy + Bad Debt
-  Expense account, US default) is next after the portal M0/M1 items.
+- **Status**: ✅ Increments 1–3 shipping (#493 merged, #495 merged, #496
+  = the opt-in switch). Accrual is now AVAILABLE (RECURSO_ACCRUAL_RECOGNITION),
+  default-off. Increment 4 = backfill + tie-out wording (operational).
 
 ### #7a — Three pages render nothing on API error ✅
 - **Impact**: `Usage`, `OfflinePayments`, `Churn` show a blank/empty view when
