@@ -11,3 +11,6 @@ ADRs — supersede them with a new one that references the old.
 | [ADR-004](ADR-004-one-off-revenue-recognition.md) | One-off invoices: immediate, net-of-tax, no ledger posting | Accepted |
 | [ADR-005](ADR-005-layered-caching.md) | Layered caching: tenant-scoped Redis + react-query | Accepted |
 | [ADR-006](ADR-006-token-based-accounting-connections.md) | Token-based connections for non-OAuth accounting providers | Accepted |
+| [ADR-007](ADR-007-accounting-policy-engine.md) | Accounting policy is a first-class engine, separate from tax and jurisdiction | Accepted |
+| [ADR-008](ADR-008-accrual-revenue-recognition.md) | Accrual revenue recognition (schedule at issuance), opt-in and reversible | Accepted |
+| [ADR-009](ADR-009-bad-debt-treatment.md) | Bad-debt write-off splits recognized-vs-deferred; tax relief is policy-driven | Accepted |

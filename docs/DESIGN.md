@@ -183,6 +183,15 @@ the wrapper (Team `:122`, Security `:403`, DunningDashboard `:272`) and clipping
 end-to-end; moving to blue is a rebrand, not a tweak. Until decided, this doc
 documents emerald as reality and blue as the target.
 
+> **Brand Refresh — Status: DEFERRED until post-GA** (founder decision,
+> 2026-08-04). The emerald→blue accent change is intentionally held until after
+> the accrual-accounting work reaches GA. Recoloring now would inject noise into
+> screenshots, docs, marketing, visual-regression baselines, and product review
+> during the most significant accounting change in the product. Finish the
+> accounting work first; revisit the accent as a deliberate post-GA project.
+> Until then, **emerald is the shipped and documented identity** — do not begin
+> the rebrand.
+
 ## §J. Implementation audit (violations)
 
 State-handling drift (BillingSettings has no error path), responsive table
