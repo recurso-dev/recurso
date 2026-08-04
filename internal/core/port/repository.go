@@ -24,6 +24,11 @@ type InvoiceRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
 	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
 	GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error)
+	// GetByCustomerIDPaged is the customer-portal variant of GetByCustomerID:
+	// newest first, bounded by limit/offset so an untrusted portal session can
+	// never pull an unbounded set. GetByCustomerID stays unbounded for internal
+	// consumers that genuinely need the full set (churn scoring).
+	GetByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
 	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error)
 	// ListPaginated returns one page of invoices (newest first); CountByTenant
 	// gives the total for pagination metadata. The API list path uses these so a

@@ -402,7 +402,10 @@ func (h *AccountingHandler) SyncStatus(c *gin.Context) {
 		return
 	}
 
-	limit, offset := parseLimitOffset(c, 200, 25)
+	// (25, 200) is what the OpenAPI spec has always documented; the args were
+	// inverted here (200, 25), so any requested limit above 25 was silently
+	// forced to 200.
+	limit, offset := parseLimitOffset(c, 25, 200)
 	logs, total, err := lister.ListSyncLogsFiltered(c.Request.Context(), tenantID, db.SyncLogFilter{
 		Provider: strings.TrimSpace(c.Query("provider")),
 		Status:   strings.TrimSpace(c.Query("status")),

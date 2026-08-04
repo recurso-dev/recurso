@@ -150,9 +150,11 @@ func (s *PortalService) ValidateSession(ctx context.Context, token string) (*dom
 	return session, nil
 }
 
-// GetCustomerInvoices returns invoices for a customer
-func (s *PortalService) GetCustomerInvoices(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
-	return s.invoiceRepo.GetByCustomerID(ctx, customerID)
+// GetCustomerInvoices returns one bounded page of the customer's invoices
+// (newest first). The portal is an untrusted surface, so the list is always
+// limit/offset-bounded — the handler supplies clamped values.
+func (s *PortalService) GetCustomerInvoices(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	return s.invoiceRepo.GetByCustomerIDPaged(ctx, customerID, limit, offset)
 }
 
 // GetCustomer returns the customer profile
@@ -208,10 +210,10 @@ func (s *PortalService) RaiseDispute(ctx context.Context, customerID, invoiceID 
 	return dispute, nil
 }
 
-// GetCustomerDisputes returns all disputes raised by the customer, so the
-// portal can show dispute status alongside invoices.
-func (s *PortalService) GetCustomerDisputes(ctx context.Context, customerID uuid.UUID) ([]*domain.InvoiceDispute, error) {
-	return s.disputeRepo.ListByCustomerID(ctx, customerID)
+// GetCustomerDisputes returns one bounded page of the customer's disputes
+// (newest first), so the portal can show dispute status alongside invoices.
+func (s *PortalService) GetCustomerDisputes(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.InvoiceDispute, error) {
+	return s.disputeRepo.ListByCustomerIDPaged(ctx, customerID, limit, offset)
 }
 
 // RedeemGift redeems a gift code for the customer

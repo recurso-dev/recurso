@@ -985,6 +985,8 @@ paths:
           $ref: '#/components/responses/Unauthorized'
   /v1/import/compare-reports:
     get:
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 }, description: Max runs returned (default 50, capped at 200). }
       operationId: listCompareReports
       tags: [Migration]
       summary: List stored Compare runs
@@ -1686,6 +1688,8 @@ paths:
       tags: [Subscriptions]
       summary: List unbilled charges for a subscription
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
         - $ref: '#/components/parameters/PathID'
       responses:
         '200':
@@ -2870,6 +2874,8 @@ paths:
       summary: List deliveries for a webhook endpoint
       description: Recent delivery attempts to this endpoint, newest first.
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
         - $ref: '#/components/parameters/PathID'
         - $ref: '#/components/parameters/Limit'
         - name: offset
@@ -2910,6 +2916,8 @@ paths:
       summary: List events
       description: Chronological feed of billing events emitted for this tenant.
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
         - $ref: '#/components/parameters/Limit'
         - name: offset
           in: query
@@ -4536,6 +4544,8 @@ paths:
         remaining, days overdue, retry count, last failure code, next scheduled
         retry, which engine owns it, and the latest ACH attempt status. Read-only.
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - name: status
           in: query
           description: Narrow to a single recovery status.
@@ -6071,6 +6081,8 @@ paths:
       tags: [Referrals]
       summary: List referrals
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
       responses:
@@ -6194,6 +6206,8 @@ paths:
       tags: [Gifts]
       summary: List gift subscriptions
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
       responses:
@@ -7034,7 +7048,7 @@ paths:
           required: false
           schema: { type: integer, default: 0 }
       summary: Recent accounting sync log
-      description: The 50 most recent per-entity sync results.
+      description: Recent per-entity sync results, newest first (paged via limit/offset).
       responses:
         '200':
           description: Sync log entries.
@@ -7078,6 +7092,8 @@ paths:
       tags: [Churn]
       summary: List high-churn-risk customers
       parameters:
+        - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
         - name: threshold
           in: query
           description: Minimum churn score (0-100) to include.

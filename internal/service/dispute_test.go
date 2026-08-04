@@ -63,6 +63,15 @@ func (m *disputeMockRepo) ListByCustomerID(ctx context.Context, customerID uuid.
 	}
 	return out, nil
 }
+func (m *disputeMockRepo) ListByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.InvoiceDispute, error) {
+	out := []*domain.InvoiceDispute{}
+	for _, d := range m.items {
+		if d.CustomerID == customerID {
+			out = append(out, d)
+		}
+	}
+	return out, nil
+}
 
 func (m *disputeMockRepo) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error) {
 	out := []*domain.InvoiceDispute{}

@@ -14,13 +14,20 @@ import (
 
 type mockInvoiceRepoForPortal struct {
 	port.InvoiceRepository
-	gotCustomerID uuid.UUID
-	invoices      []*domain.Invoice
-	err           error
+	gotCustomerID       uuid.UUID
+	invoices            []*domain.Invoice
+	err                 error
+	gotLimit, gotOffset int
 }
 
 func (m *mockInvoiceRepoForPortal) GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
 	m.gotCustomerID = customerID
+	return m.invoices, m.err
+}
+
+func (m *mockInvoiceRepoForPortal) GetByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	m.gotCustomerID = customerID
+	m.gotLimit, m.gotOffset = limit, offset
 	return m.invoices, m.err
 }
 
@@ -33,7 +40,7 @@ func TestPortalGetCustomerInvoices_DelegatesToRepo(t *testing.T) {
 	repo := &mockInvoiceRepoForPortal{invoices: want}
 	svc := NewPortalService(nil, repo, nil, nil, nil, nil, nil, "")
 
-	got, err := svc.GetCustomerInvoices(context.Background(), customerID)
+	got, err := svc.GetCustomerInvoices(context.Background(), customerID, 1000, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +63,7 @@ func TestPortalGetCustomerInvoices_PropagatesError(t *testing.T) {
 	repo := &mockInvoiceRepoForPortal{err: repoErr}
 	svc := NewPortalService(nil, repo, nil, nil, nil, nil, nil, "")
 
-	got, err := svc.GetCustomerInvoices(context.Background(), uuid.New())
+	got, err := svc.GetCustomerInvoices(context.Background(), uuid.New(), 1000, 0)
 	if !errors.Is(err, repoErr) {
 		t.Fatalf("error = %v, want repo error %v unchanged", err, repoErr)
 	}

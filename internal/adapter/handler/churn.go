@@ -62,7 +62,8 @@ func (h *ChurnHandler) GetHighRiskCustomers(c *gin.Context) {
 		}
 	}
 
-	results, err := h.churnService.GetHighRiskCustomers(c.Request.Context(), tenantID, threshold)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	results, err := h.churnService.GetHighRiskCustomers(c.Request.Context(), tenantID, threshold, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

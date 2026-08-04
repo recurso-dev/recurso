@@ -175,20 +175,24 @@ func (s *ChurnService) GetCustomerScore(ctx context.Context, customerID uuid.UUI
 	}, nil
 }
 
-// GetHighRiskCustomers returns customers above the threshold.
-func (s *ChurnService) GetHighRiskCustomers(ctx context.Context, tenantID uuid.UUID, threshold int) ([]*ChurnScoreResult, error) {
+// GetHighRiskCustomers returns one bounded page of customers above the
+// threshold, riskiest first. Bounded because the matching set grows with the
+// customer base (every other list endpoint is limit/offset-bounded).
+func (s *ChurnService) GetHighRiskCustomers(ctx context.Context, tenantID uuid.UUID, threshold, limit, offset int) ([]*ChurnScoreResult, error) {
 	if s.db == nil {
 		return nil, nil
 	}
 
-	query := `SELECT DISTINCT ON (customer_id) customer_id, risk_score, days_since_signup,
+	query := `SELECT * FROM (
+		SELECT DISTINCT ON (customer_id) customer_id, risk_score, days_since_signup,
 		total_invoices, failed_invoices_90d, payment_failure_rate, avg_days_to_pay,
 		plan_downgrades, months_active, current_mrr, usage_trend
 		FROM churn_feature_snapshots
 		WHERE tenant_id = $1 AND risk_score >= $2
-		ORDER BY customer_id, computed_at DESC`
+		ORDER BY customer_id, computed_at DESC
+	) latest ORDER BY risk_score DESC LIMIT $3 OFFSET $4`
 
-	rows, err := s.db.QueryContext(ctx, query, tenantID, threshold)
+	rows, err := s.db.QueryContext(ctx, query, tenantID, threshold, limit, offset)
 	if err != nil {
 		return nil, err
 	}

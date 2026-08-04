@@ -37,6 +37,9 @@ type fakeUCRepo struct {
 func (r *fakeUCRepo) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
 	return r.bySub[subscriptionID], nil
 }
+func (r *fakeUCRepo) ListBySubscriptionIDPaged(subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
+	return r.bySub[subscriptionID], nil
+}
 
 // TestAddUnbilledCharge_RejectsNonPositiveAmount proves the ENG-165 H3 guard: a
 // zero or negative unbilled charge is refused before any repo write, so it
@@ -71,13 +74,13 @@ func TestListUnbilledCharges_TenantIsolation(t *testing.T) {
 
 	// Attacker cannot list the owner's charges — subscription is invisible.
 	attackerCtx := context.WithValue(context.Background(), domain.TenantIDKey, attacker)
-	if _, err := svc.ListUnbilledCharges(attackerCtx, subID); err == nil {
+	if _, err := svc.ListUnbilledCharges(attackerCtx, subID, 1000, 0); err == nil {
 		t.Fatal("cross-tenant ListUnbilledCharges: expected error, got nil")
 	}
 
 	// Owner sees its charge.
 	ownerCtx := context.WithValue(context.Background(), domain.TenantIDKey, owner)
-	charges, err := svc.ListUnbilledCharges(ownerCtx, subID)
+	charges, err := svc.ListUnbilledCharges(ownerCtx, subID, 1000, 0)
 	if err != nil {
 		t.Fatalf("owner ListUnbilledCharges: %v", err)
 	}
