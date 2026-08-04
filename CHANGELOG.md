@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The customer portal's Outstanding card ignored applied account credit.**
+  An open invoice with account credit applied showed its face value as owed —
+  a customer with a fully credit-covered invoice saw it as outstanding debt.
+  Outstanding is now `total − amount_paid − credit_applied` (clamped at
+  zero), per currency. Found by the post-release audit sweep.
+- The ledger-entries read no longer falls back to the TigerBeetle mirror on a
+  Postgres error: TB's transfer lookup is keyed by account id alone (no
+  tenant scoping), so a transient DB outage could have served another
+  tenant's transfers to a caller who guessed an account UUID. PG errors now
+  surface as errors; the TB path serves only PG-less deployments. (Latent —
+  prod runs without a TB client.)
+
+### Fixed
+
 - **Charts mounted in a hidden tab rendered empty.** Chrome freezes
   `requestAnimationFrame` in hidden/occluded windows, so a chart that mounted
   there stuck at its entry animation's first frame — sub-pixel bars over a

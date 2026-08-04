@@ -31,6 +31,9 @@ const invoices = [
   { id: "i1", status: "paid", total: 118000, amount_paid: 118000, currency: "INR", invoice_number: "INV-1", created_at: "2026-08-01T00:00:00Z" },
   { id: "i2", status: "paid", total: 5000, amount_paid: 5000, currency: "JPY", invoice_number: "INV-2", created_at: "2026-08-01T00:00:00Z" },
   { id: "i3", status: "open", total: 4000, amount_paid: 1500, currency: "USD", invoice_number: "INV-3", created_at: "2026-08-01T00:00:00Z" },
+  // Open USD invoice fully covered by account credit: the customer owes
+  // nothing on it — it must contribute 0 to Outstanding, not its face value.
+  { id: "i4", status: "open", total: 3000, amount_paid: 0, credit_applied: 3000, currency: "USD", invoice_number: "INV-4", created_at: "2026-08-01T00:00:00Z" },
 ];
 
 beforeEach(() => {
@@ -65,8 +68,11 @@ describe("PortalDashboard money totals", () => {
     const paid = await screen.findByText((t) => t.includes("₹1,180.00") && t.includes("¥5,000"));
     expect(paid).toBeTruthy();
 
-    // Outstanding: only the USD invoice's 2500 minor = $25.00.
+    // Outstanding: only the USD invoice's 2500 minor = $25.00. The credit-
+    // covered invoice (i4) contributes 0 — total − amount_paid − credit_applied,
+    // not total − amount_paid (which would wrongly add its $30.00).
     expect(await screen.findByText("$25.00")).toBeTruthy();
+    expect(screen.queryByText(/\$55\.00/)).toBeNull();
 
     // The old bug's outputs must not appear: the cross-currency sum
     // (118000+5000 minor as USD) or the JPY value mangled by /100.
