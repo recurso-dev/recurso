@@ -239,6 +239,17 @@ const LedgerCodeInvoiceWriteOff uint16 = 22
 // code keeps both legs idempotent per (reference_id, code).
 const LedgerCodeWriteOffTaxReversal uint16 = 23
 
+// LedgerCodeWriteOffRecovery re-establishes a written-off invoice's books when
+// the customer pays after all (stale checkout link, late bank transfer):
+// DR customer AR / CR Deferred (or Revenue) — the exact mirror of code 22, so
+// the subsequent payment leg (code 3) settles a real receivable instead of
+// driving AR negative.
+const LedgerCodeWriteOffRecovery uint16 = 24
+
+// LedgerCodeWriteOffRecoveryTax mirrors code 23 on late recovery:
+// DR customer AR / CR Tax Payable — the collected invoice's tax is owed again.
+const LedgerCodeWriteOffRecoveryTax uint16 = 25
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{

@@ -49,6 +49,10 @@ const CODE_LABEL = {
   19: "Payment reversal",
   20: "Credit void",
   21: "Downgrade — revenue reversal",
+  22: "Write-off",
+  23: "Write-off — tax reversal",
+  24: "Write-off recovery",
+  25: "Write-off recovery — tax",
 };
 const codeLabel = (c) => CODE_LABEL[c] || `Code ${c}`;
 
