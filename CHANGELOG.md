@@ -28,6 +28,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mirror of 22/23; idempotent, posted only when a write-off leg exists), so
   the end state of the write-off → paid-after-all arc is identical to a plain
   paid invoice. Proven end-to-end by the Postgres write-off test.
+- **Write-off cycles are occurrence-aware.** An invoice can be written off,
+  paid after all, have the bank return that payment, and be written off
+  again — but the second write-off's legs were silently swallowed by the
+  `(reference, code)` idempotency pre-check, leaving AR and Deferred
+  overstated invisibly. The write-off/recovery pair now follows the
+  settle→reverse occurrence design (migration 000146): a fresh write-off
+  posts only when every prior one has been recovered, at
+  occurrence = completed cycles, and same-cycle duplicates still no-op.
+  Repeat cycles log a books-review warning (recognized revenue, if any, is
+  reversed from Deferred rather than expensed as bad debt — a tracked
+  policy follow-up). Proven by a two-cycle Postgres test.
 
 ## [0.10.0] - 2026-08-03 — The receipts release
 

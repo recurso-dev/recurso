@@ -495,8 +495,10 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 //	DR Deferred (or Revenue, for a one-off invoice) / CR customer AR — pre-tax
 //	DR Tax Payable / CR customer AR — the tax portion, when present
 //
-// Idempotent per (invoice, code) via a pre-check; safe for both the manual
-// mark-uncollectible action and the dunning scheduler's automatic write-off.
+// Cycle-aware idempotent: a fresh write-off posts only when every prior one
+// has been recovered (code 24), at occurrence = completed cycles; safe for
+// both the manual mark-uncollectible action and the dunning scheduler's
+// automatic write-off.
 func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *domain.Invoice) error {
 	if s.pgRepo == nil {
 		return nil
@@ -504,12 +506,33 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 	if invoice.Total <= 0 {
 		return nil // nothing was ever posted
 	}
-	existing, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeInvoiceWriteOff)
+	// Cycle-aware idempotency (docs/design-ledger-occurrence.md): an invoice
+	// can be written off, paid after all (recovery, code 24), returned by the
+	// bank, and written off AGAIN. A fresh write-off is due only when every
+	// prior write-off has been recovered (counts equal); a same-cycle duplicate
+	// sees counts unequal and no-ops. The pair posts at occurrence = completed
+	// cycles, so legs are never silently swallowed by the (reference, code,
+	// occurrence) dedup.
+	nWO, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeInvoiceWriteOff)
 	if err != nil {
 		return fmt.Errorf("write-off lookup failed for invoice %s: %w", invoice.ID, err)
 	}
-	if existing != nil {
-		return nil // already written off
+	nRec, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeWriteOffRecovery)
+	if err != nil {
+		return fmt.Errorf("write-off lookup failed for invoice %s: %w", invoice.ID, err)
+	}
+	if nWO != nRec {
+		return nil // current cycle already written off (and not yet recovered)
+	}
+	occurrence := uint16(nWO)
+	if occurrence > 0 {
+		// A repeat write-off means the invoice settled once and the money later
+		// left (bank return). If recognition progressed in between, the mirror
+		// legs below reverse the recognized portion from Deferred instead of
+		// expensing it as bad debt — balanced and visible, but a policy call
+		// (tracked as a designed follow-up). Flag it for review.
+		slog.Warn("repeat write-off cycle: recognized revenue (if any) is reversed from Deferred, not expensed as bad debt — review the books",
+			"invoice_id", invoice.ID, "occurrence", occurrence)
 	}
 
 	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
@@ -534,6 +557,7 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 	transfers := []*domain.LedgerTransaction{{
 		ID: uuid.New(), DebitAccountID: revenueAccountID, CreditAccountID: arID,
 		Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeInvoiceWriteOff, ReferenceID: invoice.ID,
+		Occurrence:  occurrence,
 		Description: "Write-off of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 	}}
 	if invoice.TaxAmount > 0 {
@@ -548,6 +572,7 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 		transfers = append(transfers, &domain.LedgerTransaction{
 			ID: uuid.New(), DebitAccountID: taxAccountID, CreditAccountID: arID,
 			Amount: taxAmt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffTaxReversal, ReferenceID: invoice.ID,
+			Occurrence:  occurrence,
 			Description: "Tax reversal on write-off of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 		})
 	}
@@ -568,28 +593,30 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 //	DR customer AR / CR Deferred (or Revenue, for a one-off) — pre-tax (code 24)
 //	DR customer AR / CR Tax Payable — the tax portion, when present (code 25)
 //
-// Only posts when a code-22 write-off leg exists; idempotent per (invoice,
-// code 24). Must run BEFORE the payment's cash leg so code-3 settles a real
+// Only posts when an unrecovered code-22 write-off leg exists (cycle-aware,
+// at occurrence = completed cycles). Must run BEFORE the payment's cash leg so code-3 settles a real
 // receivable instead of driving AR negative — and so the recognition schedule
 // the payment creates draws from a re-established Deferred balance.
 func (s *LedgerService) RecordWriteOffRecovery(ctx context.Context, invoice *domain.Invoice) error {
 	if s.pgRepo == nil {
 		return nil
 	}
-	writeOff, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeInvoiceWriteOff)
+	// Cycle-aware idempotency (docs/design-ledger-occurrence.md): a recovery
+	// is due only when there is an unrecovered write-off (more code-22 legs
+	// than code-24 legs). A redelivered webhook in the same cycle sees equal
+	// counts and no-ops; a second write-off→pay cycle posts at occurrence 1.
+	nWO, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeInvoiceWriteOff)
 	if err != nil {
 		return fmt.Errorf("write-off recovery lookup failed for invoice %s: %w", invoice.ID, err)
 	}
-	if writeOff == nil {
-		return nil // never written off — nothing to recover
-	}
-	already, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeWriteOffRecovery)
+	nRec, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeWriteOffRecovery)
 	if err != nil {
 		return fmt.Errorf("write-off recovery lookup failed for invoice %s: %w", invoice.ID, err)
 	}
-	if already != nil {
-		return nil // already recovered
+	if nWO <= nRec {
+		return nil // never written off, or the current cycle is already recovered
 	}
+	occurrence := uint16(nRec)
 
 	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
 	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
@@ -613,6 +640,7 @@ func (s *LedgerService) RecordWriteOffRecovery(ctx context.Context, invoice *dom
 	transfers := []*domain.LedgerTransaction{{
 		ID: uuid.New(), DebitAccountID: arID, CreditAccountID: revenueAccountID,
 		Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecovery, ReferenceID: invoice.ID,
+		Occurrence:  occurrence,
 		Description: "Write-off recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 	}}
 	if invoice.TaxAmount > 0 {
@@ -627,6 +655,7 @@ func (s *LedgerService) RecordWriteOffRecovery(ctx context.Context, invoice *dom
 		transfers = append(transfers, &domain.LedgerTransaction{
 			ID: uuid.New(), DebitAccountID: arID, CreditAccountID: taxAccountID,
 			Amount: taxAmt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecoveryTax, ReferenceID: invoice.ID,
+			Occurrence:  occurrence,
 			Description: "Tax re-established on recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
 		})
 	}

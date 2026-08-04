@@ -170,6 +170,62 @@ func TestInvoiceWriteOff_Postgres(t *testing.T) {
 		t.Errorf("Deferred after payment = %d, want 100000 (awaiting recognition)", got)
 	}
 
+	// Second cycle: the bank returns the payment (code 19 reinstates AR),
+	// dunning exhausts, and the invoice is written off AGAIN. The cycle-aware
+	// idempotency must post fresh legs at occurrence 1 instead of silently
+	// swallowing them against cycle 0's legs.
+	if err := svc.RecordPaymentReversal(ctx, inv); err != nil {
+		t.Fatalf("payment reversal: %v", err)
+	}
+	if got := arBalance(); got != 118000 {
+		t.Fatalf("AR after bank return = %d, want 118000", got)
+	}
+	if err := svc.RecordInvoiceWriteOff(ctx, inv); err != nil {
+		t.Fatalf("second-cycle write-off: %v", err)
+	}
+	if got := arBalance(); got != 0 {
+		t.Errorf("AR after second-cycle write-off = %d, want 0", got)
+	}
+	if got := balance(2100); got != 0 {
+		t.Errorf("Deferred after second-cycle write-off = %d, want 0", got)
+	}
+	var woLegs int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id=$1 AND code=$2`,
+		inv.ID, int(domain.LedgerCodeInvoiceWriteOff)).Scan(&woLegs); err != nil {
+		t.Fatalf("wo legs count: %v", err)
+	}
+	if woLegs != 2 {
+		t.Errorf("write-off legs after two cycles = %d, want 2 (occurrences 0 and 1)", woLegs)
+	}
+	// Same-cycle duplicate still no-ops.
+	if err := svc.RecordInvoiceWriteOff(ctx, inv); err != nil {
+		t.Fatalf("duplicate second-cycle write-off: %v", err)
+	}
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id=$1 AND code=$2`,
+		inv.ID, int(domain.LedgerCodeInvoiceWriteOff)).Scan(&woLegs); err != nil {
+		t.Fatalf("wo legs recount: %v", err)
+	}
+	if woLegs != 2 {
+		t.Errorf("write-off legs after duplicate = %d, want still 2", woLegs)
+	}
+	// And a second-cycle recovery posts at occurrence 1.
+	if err := svc.RecordWriteOffRecovery(ctx, inv); err != nil {
+		t.Fatalf("second-cycle recovery: %v", err)
+	}
+	if got := arBalance(); got != 118000 {
+		t.Errorf("AR after second-cycle recovery = %d, want 118000", got)
+	}
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id=$1 AND code=$2 AND occurrence=1`,
+		inv.ID, int(domain.LedgerCodeWriteOffRecovery)).Scan(&recCount); err != nil {
+		t.Fatalf("occ-1 recovery count: %v", err)
+	}
+	if recCount != 1 {
+		t.Errorf("occurrence-1 recovery legs = %d, want 1", recCount)
+	}
+
 	// A never-written-off invoice is a no-op for recovery.
 	other := &domain.Invoice{
 		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID,
