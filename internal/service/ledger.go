@@ -35,11 +35,21 @@ type LedgerService struct {
 	// recognized is treated as 0, so a write-off reverses the full pre-tax from
 	// Deferred — byte-identical to the pre-accrual behavior.
 	recognized recognizedAmountReader
+	// scheduleCanceller cancels an invoice's not-yet-recognized recognition
+	// events when it is written off, so under accrual the reversed-out Deferred
+	// isn't re-recognized by a stale schedule. Optional and nil-safe; a no-op
+	// when the invoice has no schedule (the cash model).
+	scheduleCanceller pendingEventCanceller
 }
 
 // recognizedAmountReader returns the recognized (earned) revenue for an invoice.
 type recognizedAmountReader interface {
 	SumRecognizedByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (int64, error)
+}
+
+// pendingEventCanceller cancels an invoice's pending recognition events.
+type pendingEventCanceller interface {
+	CancelPendingForInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) error
 }
 
 // entityLedgerReader is the slice of the entity repository the ledger needs.
@@ -59,6 +69,11 @@ func (s *LedgerService) SetEntityReader(r entityLedgerReader) { s.entities = r }
 // SetRecognizedReader wires the recognized-revenue lookup used by the write-off
 // bad-debt split. nil-safe: without it, recognized is treated as 0.
 func (s *LedgerService) SetRecognizedReader(r recognizedAmountReader) { s.recognized = r }
+
+// SetScheduleCanceller wires the recognition-event canceller used on write-off.
+// nil-safe: without it, pending events are not cancelled (fine under the cash
+// model, where a written-off invoice has no schedule).
+func (s *LedgerService) SetScheduleCanceller(c pendingEventCanceller) { s.scheduleCanceller = c }
 
 // recognizedForInvoice returns the recognized (earned) pre-tax revenue for an
 // invoice, capped at preTax, or 0 when no reader is wired / on error (fail safe:
@@ -642,6 +657,18 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 	}
 	if err := s.pgRepo.CreateTransactions(ctx, transfers); err != nil {
 		return fmt.Errorf("write-off ledger failed for invoice %s: %w", invoice.ID, err)
+	}
+	// Cancel the schedule's not-yet-recognized events so the Deferred just
+	// reversed out (code 22) isn't re-recognized by a stale schedule under
+	// accrual. Best-effort and non-fatal: the ledger split above is already
+	// committed, and a no-op under the cash model (no schedule). Skipped on a
+	// repeat cycle (occurrence > 0) — its schedule was already canceled the
+	// first time round.
+	if s.scheduleCanceller != nil && occurrence == 0 {
+		if cerr := s.scheduleCanceller.CancelPendingForInvoice(ctx, invoice.TenantID, invoice.ID); cerr != nil {
+			slog.ErrorContext(ctx, "write-off: failed to cancel pending recognition events — review the schedule",
+				"invoice_id", invoice.ID, "error", cerr)
+		}
 	}
 	if s.tbClient != nil {
 		return s.tbClient.CreateTransfers(ctx, transfers)
