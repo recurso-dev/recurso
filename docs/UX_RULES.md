@@ -1,79 +1,99 @@
 # Recurso — UX Rules
 
-> The behavioral contract every screen honors. If a page is missing one of
-> these, it is unfinished. Enforced in review; several already have automated
-> tests.
+> The behavioral contract every screen honors, plus a code-cited audit of where
+> the current UI does and doesn't meet it (§Audit). A page missing a required
+> state is unfinished. Implementation wins over this doc.
 
 ## Every page must have
 
-- **Loading state** — a skeleton (not a bare spinner) that mirrors the coming
-  layout.
-- **Error state** — a message that says what failed and offers **Retry**. Never
-  a blank page. (Tested for Usage/OfflinePayments/Churn.)
-- **Empty state** — an `EmptyState` with a one-line explanation and the primary
-  action ("No wallets yet — Create wallet").
-- **Success feedback** — a toast or inline confirmation that names what happened
-  ("Published", "Invoice voided").
+- **Loading** — a skeleton, not a bare spinner (`patterns/LoadingSkeleton.jsx`:
+  `Skeleton`/`TableSkeleton`/`CardGridSkeleton`).
+- **Error** — a message + **Retry**, never a blank page (`patterns/ErrorState.jsx`).
+- **Empty** — an `EmptyState` with a one-line explanation and the primary action.
+- **Success feedback** — a toast (`ui/sonner`) or inline confirmation.
+
+`patterns/DataTable.jsx:91-104` supplies error → loading → empty → data **for
+free** to any list routed through it. Pages that don't use DataTable must
+hand-roll all four.
 
 ## Data & tables
 
-- **Search** on any list a user scans.
-- **Filters** for the dimensions that matter (status, date, customer).
-- **Pagination** — server-side for anything that grows with the customer base;
-  virtualization for high-cardinality lists.
-- **Export** (CSV) on financial tables.
-- **Bulk actions** where a user would otherwise repeat themselves.
-- **Sortable** columns; **sticky headers** on long lists.
-- Money is right-aligned, tabular, and currency-exponent-correct.
+Search · filters · pagination (server-side for growth-unbounded lists;
+virtualization for high-cardinality — *intended, not yet implemented*, see
+Audit) · export (CSV) on financial tables · bulk actions where repetition would
+occur · sortable columns · sticky headers · right-aligned tabular money with the
+correct currency exponent.
 
 ## Interaction
 
-- **Keyboard**: everything operable without a mouse; visible focus rings;
-  shortcuts for power users where they fit (`⌘K` search exists).
-- **Confirmation dialogs** for destructive/irreversible actions — with the
-  specific target named ("Void INV-1043?"), destructive styling, never the
-  default focus.
-- **Undo where possible**; where not, confirm first.
-- **Optimistic updates** for cheap toggles, with rollback on error.
-- **≤ 3 clicks** for common tasks.
+Keyboard-operable with visible focus; `⌘K` command palette
+(`ui/command-palette.jsx`). Destructive actions use `ConfirmDialog`
+(`ui/confirm-dialog.jsx`) with the specific target named, destructive styling,
+never default focus. Undo where possible; optimistic updates with rollback;
+≤ 3 clicks for common tasks.
 
 ## Forms
 
-- Validate at the edge with specific, per-field messages.
-- Preserve input on error.
-- Disable submit while in-flight; show progress; re-enable on completion.
-- Never auto-refresh a form the user is editing.
+Validate at the edge with per-field messages (`patterns/FormField.jsx`); preserve
+input on error; disable submit in-flight; never auto-refresh a form the user is
+editing.
 
 ## Accessibility (WCAG 2.1 AA)
 
-- Labelled inputs; `aria-label` on icon-only buttons.
-- Focus management in dialogs/sheets (Radix handles this — use the shared
-  components).
-- Contrast ≥ 4.5:1 for text; status conveyed by text/icon, not color alone.
-- `prefers-reduced-motion` respected.
+Labelled inputs; `aria-label` on icon buttons (91 present); Radix focus
+management in Dialog/Sheet; contrast ≥ 4.5:1; status conveyed by text+icon, not
+color alone (`ui/badge.jsx:12-17`); `prefers-reduced-motion` respected
+(chart animation gates on it).
 
 ## Responsive
 
-- Works at 320 / 768 / 1024 / 1440.
-- Wide content (tables, charts) scrolls inside its own container; the page body
-  never scrolls sideways.
+Works at 320/768/1024/1440; wide content scrolls inside its own
+`overflow-x-auto` container; the page body never scrolls sideways.
 
 ## Money-specific UX
 
-- Every displayed figure is traceable to its postings (deep-link to the ledger
-  where the surface supports it — "explain any number").
-- Statuses read in words, not codes.
-- A reconciling difference is explained, never called "unexplained"
-  (`ANTI_PATTERNS.md`).
+Every figure traces to its postings (deep-link to the ledger where supported);
+statuses in words, not codes; a reconciling difference is explained, never
+"unexplained" (`ANTI_PATTERNS.md`).
 
-## The house patterns to reuse
+## House patterns to reuse
 
-`src/components/patterns/`: `DataTable`, `PageHeader`, `StatCard`, `EmptyState`,
-`ErrorState`, `LoadingSkeleton`, `ConfirmDialog`, `CustomerSelect`/`CustomerName`.
-Detail & create/edit views are right-side Sheets (`sm:max-w-md`). Data fetching
-is react-query (ADR-005) — not hand-rolled `useEffect`.
+`src/components/patterns/` (DataTable, PageHeader, StatCard, EmptyState,
+ErrorState, LoadingSkeleton, CustomerSelect/Name, FormField) and
+`ui/confirm-dialog.jsx`. Detail & create/edit views are right-side Sheets
+(`sm:max-w-md`). Data fetching is react-query (ADR-005), not hand-rolled
+`useEffect`.
 
-## Related
+---
 
-- `DESIGN.md` — the visual system these rules live in
-- `ANTI_PATTERNS.md` — the inverse (what breaks these)
+## Audit — inconsistencies to fix (code-cited)
+
+- **State handling (ADR-005 drift):** ~12 pages bypass react-query with
+  hand-rolled `useEffect`+fetch (Metering, Usage, Organizations, OfflinePayments,
+  Integrations, CancelFlows, Events, Churn, Wallets, FinanceReconciliation,
+  TaxNexusSettings, portal/*). **Worst: `settings/BillingSettings.jsx`** — no
+  error path at all (only `loading`, `:79,103`). *Correction:* `Security.jsx`
+  does **not** purely bypass.
+- **Responsive violations:** native `<Table>` without `overflow-x-auto` — Team
+  (`:122`), Security (`:403`), DunningDashboard (`:272`); clipping
+  `overflow-hidden` — RevenueRecognition (`:166`), FinanceReconciliation
+  (`:177`).
+- **No virtualization yet:** DataTable renders all rows; native-`<Table>` pages
+  are unpaginated (silent-truncation risk with backend default limits). The
+  "virtualized / dense mode" table intent is not implemented.
+- **Test holes:** no dedicated test for AcceptInvite, CancelFlows, CreateCoupon,
+  CreateCreditNote, CreatePlan, CreateQuote, ExecutiveSummary, Integrations,
+  Ledger, Profile, RevenueRecognition, Security (PageSmoke covers them).
+  **Portal:** only PortalDashboard tested; PageSmoke's glob **excludes
+  `portal/*`** — 5 portal pages untested.
+
+Recommendation order + full detail: `docs/evidence/design-and-ux.md`; tracked in
+`../REMEDIATION.md`.
+
+## Source of truth
+
+- **Code:** `frontend/src/components/{patterns,ui,charts}/`,
+  `frontend/src/pages/`, `frontend/src/App.jsx`.
+- **ADR:** ADR-005 (layered caching / react-query contract).
+- **Evidence file:** `docs/evidence/design-and-ux.md`.
+- **Related:** `DESIGN.md`, `ANTI_PATTERNS.md`, `DOCUMENTATION_RULES.md`.

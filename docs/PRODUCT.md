@@ -1,71 +1,123 @@
 # Recurso — Product
 
-> The durable answer to "what is this?" — read before deciding what to build.
+> What Recurso is and what it actually does. The feature inventory (§4) is
+> **code-derived** — each capability names the package that implements it and is
+> marked IMPL (implemented) or PARTIAL (real interface, mock/stub transport or
+> provider-gated). Implementation wins over this doc.
 
-## Mission
+## 1. Mission
 
-Recurso is the **financial operating system for SaaS companies**. Unlike Stripe
-Billing, Chargebee, or RevenueCat, Recurso is **accounting-first**: every
-financial event produces an auditable, double-entry ledger posting. Billing is
+Recurso is the **accounting-first financial operating system for SaaS**. Unlike
+Stripe Billing, Chargebee, or RevenueCat, every financial event produces an
+auditable, double-entry ledger posting (`internal/service/ledger.go`). Billing is
 the surface; a reconcilable set of books is the product.
 
-The one-sentence promise: **every number a customer sees can be traced to the
-journal entries behind it, and the books always balance.**
+**The promise:** every number a customer sees traces to the journal entries
+behind it, and the books always balance — enforced by the reconciler and
+invariant harness (see `ACCOUNTING_PRINCIPLES.md`).
 
-## Who it's for
+## 2. Who it's for / not for
 
-- SaaS and B2B software companies that bill subscriptions and/or usage
-- AI startups with consumption pricing (tokens, calls, compute)
-- Developer-tools companies that need a real API, not a dashboard-only tool
-- Finance teams at those companies who close the books monthly and get audited
-- Global sellers who owe GST (India), VAT (EU/UK), and US sales tax
+**For:** SaaS / AI / developer-tools / B2B software companies billing
+subscriptions and/or usage; their finance teams who close monthly and get
+audited; global sellers owing GST (India), VAT (EU/UK), US sales tax. **Not
+for:** consumer/mobile-only app-store billing where an entitlements tool
+(RevenueCat) suffices; teams that want a dashboard-only tool with no ledger.
 
-The buyer we optimize for is a **founder or finance lead who will personally be
-asked "can you prove this number?"** — by an auditor, an investor, or a board.
+## 3. Principles (non-negotiable)
 
-## Problems we solve
+Every number explainable · every event reversible · no hidden state · no silent
+corrections · the books always reconcile · everything auditable. A change that
+violates one is wrong even if it ships green. (See `ANTI_PATTERNS.md`.)
 
-| Area | What Recurso does |
-|---|---|
-| Subscription billing | Plans, trials, upgrades/downgrades with proration, pauses, cancellations |
-| Usage billing | Metered aggregation, seven charge models, progressive billing, pay-in-advance |
-| Invoicing | Branded invoices + statutory documents (GST e-invoice/IRP, EU UBL/Peppol) |
-| Revenue recognition | Deferred revenue, recognition schedules, month-end close pack |
-| Collections & dunning | Smart retries, dunning campaigns, collections worklist, recovery attribution |
-| Tax | GST, VAT, US sales tax (BYO TaxJar/Avalara/Ziptax), nexus, exemptions |
-| Accounting | Double-entry ledger, trial balance, multi-entity books, QuickBooks/Xero sync |
-| Reconciliation | On-demand + CI-enforced proof that invoices, payments, and the ledger agree |
-| Payments | Cards, ACH, UPI/GoCardless mandates, wallets, offline payments, BYO gateways |
+## 4. Feature inventory (code-derived)
 
-## Product principles (non-negotiable)
+**Subscriptions — IMPL:** `subscription.go`, `subscription_trial.go` (trials),
+`subscription_upgrade.go`, `subscription_cancel.go` + `cancel_flow.go` +
+`subscription_retention.go` (retention offers), `subscription_pause.go`,
+`subscription_addon.go`, `renewal.go`. Downgrades via the credit path (codes
+16/17/21).
 
-These are the load-bearing beliefs. A change that violates one is wrong even if
-it ships green.
+**Usage / metering — IMPL:** `metering.go`, `usage.go`, `rating.go`,
+`pay_in_advance.go`, `progressive_billing.go`, `advanced_billing.go`,
+`weighted_sum.go`, `custom_expr.go`, `usage_alert.go`.
 
-1. **Every number must be explainable.** A figure on a screen links to the
-   postings that produced it. No magic totals.
-2. **Every financial event must be reversible.** Refunds, write-offs, reversals,
-   voids — each has a defined inverse that keeps the books balanced.
-3. **No hidden state.** Status, balances, and pending work are visible, not
-   inferred.
-4. **No silent corrections.** The system never quietly patches a discrepancy; it
-   surfaces it (see the reconciler) and records the fix as its own event.
-5. **The books always reconcile.** Debits equal credits, invoices tie to the
-   ledger, and CI fails if a code path can break that.
-6. **Everything is auditable.** Config changes, money moves, and API actions
-   leave an append-only trail.
+**Invoicing + statutory:** core IMPL (`invoice.go`, `pdf_invoice.go`,
+`invoice_branding.go`). India GST IRP e-invoice **IMPL (real NIC HTTP)**
+(`einvoice.go` + `adapter/gsp/nic.go`; GSTR-1/3B filing incl. gov submission);
+`CancelIRN` is a soft no-op — **PARTIAL**. EU UBL/Peppol: document generation
+IMPL (`euinvoice_ubl.go`), but the Peppol Access Point transport is a **mock**
+(`adapter/einvoice_eu/mock.go`) — **PARTIAL (real AP founder-blocked).**
 
-## What "done" means here
+**Revenue recognition — IMPL:** `revrec.go`, `trial_balance.go`, `close_pack.go`,
+`revenue_waterfall.go`, `mrr_waterfall.go`.
 
-A feature is done when it has: the happy path, the reversal, a ledger posting
-(if it moves money), a test that fails on the old code, and no way to leave the
-books unbalanced. See `ACCOUNTING_PRINCIPLES.md` and `ANTI_PATTERNS.md`.
+**Collections / dunning — IMPL:** `smart_retry.go`, `dunning_campaign.go`,
+`dunning_recovery.go` + `dunning_analytics.go` (recovery attribution),
+`collections_actions.go` (worklist).
 
-## Related docs
+**Tax — IMPL (US rate PARTIAL):** GST/VAT/no-tax engines
+(`core/service/tax/`); BYO TaxJar/Avalara/Ziptax (`adapter/taxprovider/`), VAT
+VIES (`adapter/vatprovider/`); US nexus (`nexus_status.go`). US sales-tax rate is
+a **0% stub without an injected provider** — PARTIAL.
 
-- `ACCOUNTING_PRINCIPLES.md` — the ledger contract every money path obeys
-- `DESIGN.md` / `BRAND.md` — how it looks and sounds
-- `UX_RULES.md` / `ANTI_PATTERNS.md` — how it behaves, and what never to build
-- `API_GUIDELINES.md` — the API contract
-- `COMPETITORS.md` — where we win and where we don't
-- `../REMEDIATION.md` — current engineering remediation state
+**Accounting — IMPL (live OAuth PARTIAL):** ledger/trial-balance/multi-entity/
+reconciliation (see `ACCOUNTING_PRINCIPLES.md`). External sync: real QuickBooks/
+Xero/NetSuite/Tally adapters (`adapter/accounting/` + `oauth.go`), but live flows
+depend on registered OAuth apps — PARTIAL (provider-gated).
+
+**Payments — IMPL:** Stripe/Adyen/Razorpay gateways + smart routing
+(`adapter/gateway/`); ACH/UPI/GoCardless mandates (`mandate.go` +
+`adapter/gateway/gocardless.go`); wallets (`wallet.go`, codes 11–15); offline
+payments (`offline_payment.go`); saved cards; **BYO gateways**
+(`tenant_gateway.go` + `gateway_connection.go`); disputes (`dispute.go`).
+
+**Credit notes / coupons / gifts / referrals / quotes — IMPL:** `credit_note.go`
++ `pdf_credit_note.go`; `handler/coupon.go`; `gift.go`; `referral.go`;
+`quote.go`; `pricing_simulator.go`.
+
+**Customer portal — IMPL:** `portal.go` + `handler/portal_api.go`; consent
+(`consent.go`); entitlements (`entitlement.go`).
+
+**MCP server — IMPL:** `cmd/mcp/` + `internal/mcp/` — standalone, tier-gated,
+authenticates with `rsk_` keys forwarded to `/v1`, holds no DB. Deployed
+separately (`Dockerfile.mcp`).
+
+**Imports + Compare gate — IMPL:** Stripe/Chargebee/RevenueCat importers
+(`internal/importer/`) + read-only Compare reports (`*_compare.go`,
+`compare_report_html.go`) diffing export vs live data on coverage/fidelity/
+continuity.
+
+**SSO / organizations — IMPL (IdP OAuth provider-gated):** `sso.go`, `oauth.go`,
+`auth_phase2.go`, `team.go`, `auth_invite.go`; `organization.go`, `entity.go`
+(multi-entity books).
+
+**Also implemented:** analytics + GenAI (`analytics.go`, `genai.go` +
+`adapter/ai/`), churn modeling (`churn_model.go`), unit economics
+(`unit_economics.go`), outbound webhooks (`webhook.go` +
+`handler/webhook_management.go`), notifications (`notification.go`), demo mode
+(`demo.go`).
+
+## 5. Partial / founder-blocked (honest status)
+
+- EU Peppol Access Point — document layer real, transport mock.
+- US live sales-tax rates — 0% stub without a provider.
+- Accounting sync — adapters real, live OAuth apps provider-gated.
+- IRN cancellation — soft no-op.
+
+These are clearly PARTIAL, not claimed as shipped. Tracked where applicable in
+`../REMEDIATION.md`.
+
+## 6. Architecture & differentiation
+
+See `ARCHITECTURE.md` (hexagonal Go API, dual-write ledger, schedulers/workers).
+See `COMPETITORS.md` for where we win (auditable ledger, reconciliation
+guarantees) and lose (payments breadth, metering scale).
+
+## Source of truth
+
+- **Code:** `internal/service/*`, `internal/adapter/*`, `cmd/*` (per capability
+  above).
+- **Evidence file:** `docs/evidence/accounting-and-product.md`.
+- **Related:** `ARCHITECTURE.md`, `ACCOUNTING_PRINCIPLES.md`, `COMPETITORS.md`,
+  `DOCUMENTATION_RULES.md`, `../REMEDIATION.md`.

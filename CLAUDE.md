@@ -33,19 +33,26 @@ swallows the failure (this exact mistake shipped a broken button once).
 
 - Money is **minor units** (`int64`); subscription status is `"canceled"`
   (one L); coupon `discount_type` is `"percent"`/`"amount"`.
-- List endpoints are inconsistent about pagination: a few default to
-  `limit=10` (subscriptions, customers, plans), some to 50/100/200, and many
-  are unbounded. Always pass an explicit limit when you need the full set
-  (silent truncation has bitten twice), and use `ParsePagination`/
-  `clampLimitOffset` for new list endpoints.
+- List endpoints are inconsistent about pagination: the shared tier-1 default
+  is now `limit=50` (raised from 10; `parsePageLimit` cap 1000), `ParsePagination`
+  defaults 50/cap 250, some lists 50/100/200, and internal billing sweeps are
+  deliberately unbounded. Always pass an explicit limit when you need the full
+  set (silent truncation has bitten twice), and use `ParsePagination`/
+  `clampLimitOffset` for new list endpoints. Never paginate a processing sweep.
 - Nullable text columns scan through `sql.NullString`, never bare `string`.
 - Optional service dependencies use nil-safe `Set*` wiring
   (`SetLedgerService`, `SetCreditApplier`, …) — follow that idiom.
 - Workers over due rows use atomic claims, not locks (ADR-003).
 - New migration = next sequential number in
   `internal/adapter/db/migrations/`; both `.up.sql` and `.down.sql`.
-- Dunning-campaign and cancel-flow list/get/stats responses are UNWRAPPED
-  (not `{data: ...}`) — a known API quirk, keep clients tolerant.
+- Success responses wrap as `{data: ...}` by convention (not enforced
+  middleware), so deviations exist — bare-object shapes in `auth.go` and the
+  import handlers, action shapes (`{status}`/`{message}`), and a few
+  `{data}`+sibling-key responses. (The old "dunning-campaign/cancel-flow are
+  unwrapped" note is now STALE — those endpoints DO wrap `{data:}` in current
+  code; only their delete responses stay `{status:"deleted"}`.) Three raw
+  `{"error":...}` sites still bypass the canonical error envelope
+  (`webhook.go`, `webhook_gocardless.go`, the founder metrics endpoint).
 
 ## Frontend conventions
 
