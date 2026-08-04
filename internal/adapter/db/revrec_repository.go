@@ -181,6 +181,27 @@ func (r *RevRecRepository) GetActiveScheduleByInvoice(ctx context.Context, tenan
 	return &s, nil
 }
 
+// SumRecognizedByInvoice returns the total amount already RECOGNIZED (status
+// 'recognized') across the invoice's revenue schedule(s). It is what the accrual
+// write-off split (accrual epic #466 / #477) needs to decide how much of an
+// uncollectible invoice is bad-debt expense (recognized) vs a Deferred reversal
+// (unrecognized). Returns 0 when the invoice has no schedule (e.g. an unpaid
+// invoice under the current cash model), which keeps the write-off behavior
+// byte-identical to today.
+func (r *RevRecRepository) SumRecognizedByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (int64, error) {
+	var total sql.NullInt64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(e.amount), 0)
+		FROM recognition_events e
+		JOIN revenue_schedules s ON s.id = e.revenue_schedule_id
+		WHERE s.tenant_id = $1 AND s.invoice_id = $2 AND e.status = 'recognized'`,
+		tenantID, invoiceID).Scan(&total)
+	if err != nil {
+		return 0, err
+	}
+	return total.Int64, nil
+}
+
 // GetPendingEventsBySchedule returns a schedule's not-yet-recognized events,
 // latest recognition_date first so an unwind reduces from the tail.
 func (r *RevRecRepository) GetPendingEventsBySchedule(ctx context.Context, scheduleID uuid.UUID) ([]*domain.RecognitionEvent, error) {
