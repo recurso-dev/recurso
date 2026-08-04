@@ -1289,13 +1289,14 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 // Prefers PG as source of truth; falls back to TB if PG is unavailable.
 // GetEntries pages an account's postings. code=0 means every posting type.
 func (s *LedgerService) GetEntries(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error) {
-	// Try PG first
+	// PG is the authority when configured. A PG error is returned, NOT masked
+	// by the TigerBeetle fallback below: TB's GetAccountTransfers is keyed by
+	// account id alone (no tenant scoping), so falling back on error would let
+	// a transient DB outage serve another tenant's transfers to a caller who
+	// guessed an account UUID. The TB path is only for deployments with no PG
+	// ledger at all.
 	if s.pgRepo != nil {
-		entries, err := s.pgRepo.GetTransactionsByAccount(ctx, tenantID, accountID, code, limit, offset)
-		if err == nil {
-			return entries, nil
-		}
-		slog.Warn("PG GetTransactionsByAccount failed, trying TB", "error", err)
+		return s.pgRepo.GetTransactionsByAccount(ctx, tenantID, accountID, code, limit, offset)
 	}
 
 	// Fallback to TB

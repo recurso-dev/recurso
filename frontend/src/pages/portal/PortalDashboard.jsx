@@ -247,8 +247,10 @@ const PortalDashboard = () => {
     setDisputeInvoice(invoice);
   };
 
-  // Invoices carry total/amount_paid (minor units); there is no amount_due
-  // field in the payload. Totals are PER CURRENCY: summing raw minor units
+  // Invoices carry total/amount_paid/credit_applied (minor units); there is
+  // no amount_due field in the payload — what the customer still owes is
+  // total − amount_paid − credit_applied (account credit already applied to
+  // the invoice is not money the customer owes). Totals are PER CURRENCY: summing raw minor units
   // across currencies and formatting the result as USD showed an INR customer
   // "$118,000.00" (wrong symbol) and mangled zero-decimal currencies (JPY
   // minor units divided by 100 under the USD default). A single-currency
@@ -273,7 +275,10 @@ const PortalDashboard = () => {
   );
   const outstandingTotal = sumByCurrency((inv) =>
     inv.status !== "paid" && inv.status !== "void"
-      ? (inv.total || 0) - (inv.amount_paid || 0)
+      ? Math.max(
+          0,
+          (inv.total || 0) - (inv.amount_paid || 0) - (inv.credit_applied || 0)
+        )
       : 0
   );
 
