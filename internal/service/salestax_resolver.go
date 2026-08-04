@@ -43,13 +43,14 @@ func NewSalesTaxProviderResolver(integrations *IntegrationConnectionService, bui
 }
 
 // For returns the tenant's own sales-tax provider, or nil to fall back to the
-// env provider. TaxJar is preferred over Avalara if both are somehow connected
-// (the active-index makes that impossible per provider, not across providers).
+// env provider. The list order is the tie-break if more than one is somehow
+// connected (the active-index makes that impossible per provider, not across
+// providers). Order is first-registered-first and carries no recommendation.
 func (r *SalesTaxProviderResolver) For(ctx context.Context, tenantID uuid.UUID) tax.SalesTaxProvider {
 	if r == nil || r.integrations == nil || r.build == nil {
 		return nil
 	}
-	for _, prov := range []string{"taxjar", "avalara"} {
+	for _, prov := range []string{"taxjar", "avalara", "ziptax"} {
 		cfg, ok := r.integrations.Resolve(ctx, tenantID, domain.IntegrationTax, prov)
 		if !ok {
 			continue

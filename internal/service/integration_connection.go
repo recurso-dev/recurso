@@ -31,6 +31,7 @@ func IsIntegrationConnectionValidationError(err error) bool {
 var integrationRequiredFields = map[string][]string{
 	"taxjar":  {"api_key"},
 	"avalara": {"account_id", "license_key", "company_code"},
+	"ziptax":  {"api_key"},
 	"hubspot": {"access_token"},
 	"s3":      {"bucket", "region", "access_key_id", "secret_access_key"},
 }

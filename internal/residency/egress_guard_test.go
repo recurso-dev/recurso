@@ -10,7 +10,9 @@ package residency_test
 //   - service.AccountingService.getAdapterForConnection → refuses
 //     QuickBooks/Xero under self_hosted (tested in
 //     service/accounting_residency_test.go)
-//   - cmd/api/main.go TaxJar wiring             → provider skipped
+//   - cmd/api/main.go sales-tax wiring          → provider skipped
+//     (TaxJar, Avalara and Ziptax share one guard; the per-tenant BYO
+//     resolver is likewise not constructed under self_hosted)
 //   - cmd/api/main.go OAuth configs             → blanked, connect flow off
 //
 // Channels intentionally NOT guarded (operator-configured, functionally

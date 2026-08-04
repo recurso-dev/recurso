@@ -9182,7 +9182,7 @@ paths:
                   enum: [tax, crm, storage]
                 provider:
                   type: string
-                  description: taxjar / avalara / hubspot / s3.
+                  description: taxjar / avalara / ziptax / hubspot / s3.
                 config:
                   type: object
                   additionalProperties:

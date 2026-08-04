@@ -64,7 +64,7 @@ them — including ones its own authors introduced. That is the point.
 - Payments — multi-currency routing (INR → Razorpay, EUR/GBP mandates → GoCardless bank debit, US ACH → Stripe, others → Stripe or Adyen), prepaid wallets with auto-recharge, and **bring-your-own-gateway**: connect your own Stripe/Razorpay/GoCardless so recurring autopay (renewal, dunning, wallet) settles in *your* account
 - Smart dunning — a multi-armed-bandit retry engine plus multi-channel recovery campaigns and recovery attribution, with a **Collections Intelligence** operator layer (worklist, analytics, manual controls, timing) on top
 - Disputes & chargebacks — customer-raised invoice disputes with an accept/reject review workflow (accepting can issue a resolution credit note in one step), plus provider-webhook-driven gateway chargebacks with automatic ledger reversal
-- Tax & e-invoicing — India GST (Place of Supply, HSN, TDS, IRN e-invoicing via GSP), EU VAT (reverse charge + VIES) with **EN 16931 / UBL e-invoice export**, US sales tax (TaxJar/Avalara) with economic-nexus threshold tracking
+- Tax & e-invoicing — India GST (Place of Supply, HSN, TDS, IRN e-invoicing via GSP), EU VAT (reverse charge + VIES) with **EN 16931 / UBL e-invoice export**, US sales tax (TaxJar/Avalara/Ziptax) with economic-nexus threshold tracking
 - Credit notes, refunds (Stripe/Razorpay lifecycle), coupons, gifts, referrals, quotes (CPQ)
 - Double-entry ledger (PostgreSQL-authoritative, optional TigerBeetle mirror) with reconciliation, ASC 606 revenue recognition, and a month-end close pack
 - **Multi-entity books** — multiple legal entities under one tenant, each with its own gapless invoice series, tax identity, per-entity ledger, and consolidated reporting
