@@ -369,3 +369,38 @@ func TestSalesTaxCacheKey_SellerOriginDistinct(t *testing.T) {
 		t.Fatal("identical seller+destination must share a cache key")
 	}
 }
+
+// TestSalesTaxCacheKey_StreetDistinct is the correctness reason the street line
+// belongs in the key. A US ZIP can span several tax jurisdictions, so once a
+// provider resolves to the rooftop, two addresses in the same ZIP can carry
+// genuinely different rates. Keying on ZIP alone would serve one buyer's rate
+// to the other.
+func TestSalesTaxCacheKey_StreetDistinct(t *testing.T) {
+	a := &SalesTaxQuery{ToState: "CA", ToZip: "92618", ToStreet: "200 Spectrum Center Dr"}
+	b := &SalesTaxQuery{ToState: "CA", ToZip: "92618", ToStreet: "1 Civic Center Plaza"}
+	if salesTaxCacheKey(a) == salesTaxCacheKey(b) {
+		t.Fatal("two streets in one ZIP must not share a cache key")
+	}
+
+	// The same street is still cacheable, insensitively to case and spacing.
+	same := &SalesTaxQuery{ToState: "CA", ToZip: "92618", ToStreet: "  200  spectrum center dr "}
+	if salesTaxCacheKey(a) != salesTaxCacheKey(same) {
+		t.Fatal("the same street must share a cache key regardless of case/spacing")
+	}
+}
+
+// TestSalesTaxCacheKey_EmptyStreetUnchangedFromZipOnly pins that adding the
+// street field did not change behaviour for ZIP-only deployments: a query with
+// no street still collides with an identical one, so caching is exactly as
+// before.
+func TestSalesTaxCacheKey_EmptyStreetUnchangedFromZipOnly(t *testing.T) {
+	a := &SalesTaxQuery{FromState: "CA", FromZip: "90001", ToState: "CA", ToZip: "92618"}
+	b := &SalesTaxQuery{FromState: "CA", FromZip: "90001", ToState: "CA", ToZip: "92618"}
+	if salesTaxCacheKey(a) != salesTaxCacheKey(b) {
+		t.Fatal("ZIP-only queries must still share a cache key")
+	}
+	withStreet := &SalesTaxQuery{FromState: "CA", FromZip: "90001", ToState: "CA", ToZip: "92618", ToStreet: "200 Spectrum Center Dr"}
+	if salesTaxCacheKey(a) == salesTaxCacheKey(withStreet) {
+		t.Fatal("a street-qualified query must not reuse the ZIP-level cache entry")
+	}
+}

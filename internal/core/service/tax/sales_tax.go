@@ -129,6 +129,7 @@ func (e *USSalesTaxEngine) queryFor(req *port.TaxRequest, amount int64) *SalesTa
 		ToCountry:     toCountry,
 		ToState:       strings.ToUpper(strings.TrimSpace(req.BuyerState)),
 		ToZip:         strings.TrimSpace(req.BuyerZip),
+		ToStreet:      strings.TrimSpace(req.BuyerStreet),
 		Amount:        amount,
 		Currency:      req.Currency,
 		Exempt:        req.TaxExempt,
