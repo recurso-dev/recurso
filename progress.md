@@ -337,3 +337,31 @@ Remaining backlog: pagination-consistency sweep (docs/design-pagination.md —
 start with documenting actual defaults in OpenAPI, zero behavior risk),
 accessibility pass (axe-core; lowest score 6), performance baseline + charts
 lazy-load, telemetry deploy (#215, founder), mock-widening cleanup, React 19.
+
+## The correctness marathon → v0.10.1 (2026-08-02 → 08-04)
+
+Five releases in three days, all bug-driven, all oracle-tested (see
+CHANGELOG.md for the full ledgers): v0.7.0 bank debits → v0.8.0 correctness
+sweep (coupon arbitrage, revrec downgrade family, FX exponents) → v0.9.0
+paper trail (statutory credit notes, hot-path indexes) → v0.10.0 receipts
+(migration Compare gate for Stripe/Chargebee/RevenueCat with printable
+persisted reports, invoice branding, explain-any-number ledger deep links,
+IA v2) → **v0.10.1 write-offs (2026-08-04)**.
+
+The write-off arc is the one to study: the month-end close pack gained a
+deferred tie-out identity (#473) — `ledger closing == schedule deferred +
+awaiting payment` — and on its FIRST day live its unexplained-delta flagged
+$7,345. The trail: write-offs were bare status flips (#474, codes 22/23 fix
+it), a written-off invoice could be paid by a stale checkout link with
+nowhere sound for the money to land (#475, recovery codes 24/25), and the
+repeat cycle write-off→pay→bank-return→write-off was silently swallowed by
+ledger idempotency (#476, occurrence-aware per design-ledger-occurrence.md).
+Open policy question — bad-debt expense treatment for repeat write-offs on
+partially-recognized invoices — is issue #477, guarded by a runtime warning.
+
+Also since 07-28: demo tenant reseeded with coherent books (reconciler-clean,
+survived overnight workers); docs+website carry real product screenshots with
+zero placeholders; dashboard swept page-by-page with the founder live.
+
+Founder-blocked queue: #466 (schedule-at-issuance accrual policy), #477
+(bad-debt policy), SDK publish secrets, telemetry deploy, pricing.
