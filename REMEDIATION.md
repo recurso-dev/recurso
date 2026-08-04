@@ -335,6 +335,16 @@ fixes the audit counted as done.
   refresh. Files: the 16 pages + their test mocks.
 - **#9** — server-side pagination / virtualization on unbounded list pages
   (`Wallets`, `Mandates`, `Developers`, `Disputes`, `CreditNotes`). M.
+  **Status**: 🔧 partial — **Mandates + Disputes shipping** (both already had
+  backend `limit`/`offset` support): server-side offset pagination via the
+  `DataTable` `pagination` prop, fetching `PER_PAGE+1` to detect `hasNext`
+  without a total count, `keepPreviousData` for smooth paging, and the status
+  filter resets to page 1. Tests assert Next requests the next offset.
+  **Remaining 3**: `CreditNotes` currently filters client-side (its search would
+  only cover the loaded page) — needs search moved server-side first; `Wallets`
+  (`ListWallets` takes only `limit`) and `Developers` (`ListKeys` takes neither)
+  need a backend `offset` added (handler→service→repo + PG test) before their
+  frontend can paginate. Tracked as the #9 backend slice.
 - **#13** — wrap native tables in `overflow-x-auto`; fix
   `FinanceReconciliation`'s `overflow-hidden` clip. S. **Status**: ✅ shipping —
   the two native `<table>`s in `PricingSimulator` (a narrow slide-over) were

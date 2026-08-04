@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Plus, Repeat2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -52,10 +52,13 @@ const MANDATE_CURRENCIES = [
 
 // UPI Autopay mandates: standing authorizations to debit a customer up to a
 // cap per cycle. Amounts are minor units; UPI mandates are INR.
+const PER_PAGE = 25;
+
 const Mandates = () => {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [revokeTarget, setRevokeTarget] = useState(null);
+  const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
   const { customers, names } = useCustomers();
   // Subscriptions back the optional link picker in the create dialog; plans
@@ -74,9 +77,15 @@ const Mandates = () => {
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["mandates"],
-    queryFn: async () => (await api.getMandates()).data.data || [],
+    queryKey: ["mandates", page],
+    // Fetch PER_PAGE+1 to detect a next page without a server-side total count.
+    queryFn: async () =>
+      (await api.getMandates({ limit: PER_PAGE + 1, offset: (page - 1) * PER_PAGE }))
+        .data.data || [],
+    placeholderData: keepPreviousData,
   });
+  const hasNext = mandates.length > PER_PAGE;
+  const pageRows = hasNext ? mandates.slice(0, PER_PAGE) : mandates;
   const error = queryError
     ? queryError?.response?.data?.error?.message || "Failed to load mandates"
     : null;
@@ -212,10 +221,16 @@ const Mandates = () => {
 
       <DataTable
         columns={columns}
-        data={mandates}
+        data={pageRows}
         loading={loading}
         error={error}
         onRetry={refetch}
+        pagination={{
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext,
+        }}
         empty={{
           icon: Repeat2,
           title: "No mandates yet",

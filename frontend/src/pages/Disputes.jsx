@@ -1,6 +1,6 @@
 import { shortId } from "@/lib/utils";
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { FileQuestion, Check, X } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -35,8 +35,11 @@ const statusVariant = (s) =>
 
 // Customer-raised invoice disputes; admins accept (optionally issuing a credit)
 // or reject them.
+const PER_PAGE = 25;
+
 const Disputes = () => {
   const [statusFilter, setStatusFilter] = useState("open");
+  const [page, setPage] = useState(1);
   const [resolveTarget, setResolveTarget] = useState(null);
   const [note, setNote] = useState("");
   const [issueCredit, setIssueCredit] = useState(false);
@@ -55,10 +58,20 @@ const Disputes = () => {
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["disputes", statusFilter],
+    queryKey: ["disputes", statusFilter, page],
+    // Fetch PER_PAGE+1 so a full page tells us there's a next one, without the
+    // backend needing to return a total count.
     queryFn: async () =>
-      (await api.getDisputes(statusFilter === "all" ? undefined : statusFilter)).data.data || [],
+      (
+        await api.getDisputes(statusFilter === "all" ? undefined : statusFilter, {
+          limit: PER_PAGE + 1,
+          offset: (page - 1) * PER_PAGE,
+        })
+      ).data.data || [],
+    placeholderData: keepPreviousData,
   });
+  const hasNext = disputes.length > PER_PAGE;
+  const pageRows = hasNext ? disputes.slice(0, PER_PAGE) : disputes;
   const error = queryError
     ? queryError?.response?.data?.error?.message || "Failed to load disputes"
     : null;
@@ -161,12 +174,24 @@ const Disputes = () => {
 
       <DataTable
         columns={columns}
-        data={disputes}
+        data={pageRows}
         loading={loading}
         error={error}
         onRetry={refetch}
+        pagination={{
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext,
+        }}
         toolbar={
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => {
+              setStatusFilter(v);
+              setPage(1);
+            }}
+          >
             <SelectTrigger className="w-32">
               <SelectValue />
             </SelectTrigger>

@@ -292,12 +292,13 @@ export const endpoints = {
   collectionsMarkUncollectible: (id) => api.post(`/collections/invoices/${id}/mark-uncollectible`),
 
   // Payment mandates (UPI Autopay)
-  getMandates: () => api.get('/mandates'),
+  getMandates: (params = {}) => api.get('/mandates', { params }),
   createMandate: (data) => api.post('/mandates', data),
   revokeMandate: (id) => api.post(`/mandates/${id}/revoke`),
 
   // Invoice disputes (admin)
-  getDisputes: (status) => api.get('/disputes', { params: status ? { status } : {} }),
+  getDisputes: (status, params = {}) =>
+    api.get('/disputes', { params: { ...(status ? { status } : {}), ...params } }),
   // body: { note?, outcome?: 'accept'|'reject', issue_credit?, credit_amount? }
   resolveDispute: (id, body) => api.post(`/disputes/${id}/resolve`, body),
 

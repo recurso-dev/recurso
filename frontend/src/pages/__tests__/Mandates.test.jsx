@@ -67,4 +67,25 @@ describe("Mandates page", () => {
     render(<Mandates />, { wrapper });
     await waitFor(() => expect(screen.getByText(/no mandates yet/i)).toBeInTheDocument());
   });
+
+  it("paginates: a full page enables Next, which requests the next offset (#9)", async () => {
+    // 26 rows = PER_PAGE (25) + 1, the sentinel that means "there's a next page".
+    const fullPage = Array.from({ length: 26 }, (_, i) => ({
+      ...mandates[0],
+      id: `mnd_${i}`,
+      vpa: `user${i}@upi`,
+    }));
+    endpoints.getMandates.mockResolvedValue({ data: { data: fullPage } });
+    render(<Mandates />, { wrapper });
+
+    await waitFor(() => expect(screen.getByText("user0@upi")).toBeInTheDocument());
+    // First page requests offset 0 and shows only PER_PAGE rows (the 26th is the sentinel).
+    expect(endpoints.getMandates).toHaveBeenLastCalledWith({ limit: 26, offset: 0 });
+    expect(screen.queryByText("user25@upi")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() =>
+      expect(endpoints.getMandates).toHaveBeenLastCalledWith({ limit: 26, offset: 25 })
+    );
+  });
 });
