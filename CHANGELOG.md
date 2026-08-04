@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Centralized input validation.** Currency and country codes were validated
+  ad hoc (a bare `len==3`, or not at all). A new `internal/validate` package
+  provides ISO-4217 currency and ISO-3166 country checks — backed by the
+  maintained `golang.org/x/text` dataset rather than a hardcoded table, so the
+  accepted set tracks the standard — plus amount/percentage/email predicates
+  and gin `currency`/`country` binding tags. Plan, mandate, and advanced-charge
+  currency fields now reject a non-ISO code (e.g. `ZZZ`, or the reserved
+  `XXX`/`XTS`) at bind time instead of accepting any 3-character string.
+
+### Changed
+
 - **Expensive endpoints now have a dedicated rate-limit bucket.** Import
   preview/commit/compare (each reprocesses an entire external billing
   account), invoice/credit-note PDF + HTML renders, the GL export, and the

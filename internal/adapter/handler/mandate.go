@@ -30,7 +30,7 @@ type createMandateRequest struct {
 	Frequency string `json:"frequency" binding:"required,oneof=weekly monthly quarterly yearly"`
 	// Currency routes the mandate rail: empty/INR = Razorpay UPI AutoPay;
 	// an overridden currency (e.g. EUR) = bank debit via GoCardless.
-	Currency string `json:"currency" binding:"omitempty,len=3"`
+	Currency string `json:"currency" binding:"omitempty,currency"`
 }
 
 func (h *MandateHandler) CreateMandate(c *gin.Context) {
