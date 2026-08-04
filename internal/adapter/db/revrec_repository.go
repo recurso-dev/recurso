@@ -20,13 +20,19 @@ func NewRevRecRepository(db *sql.DB) *RevRecRepository {
 }
 
 func (r *RevRecRepository) CreateSchedule(ctx context.Context, schedule *domain.RevenueSchedule) error {
+	// A zero version means the caller didn't stamp one (legacy call path); default
+	// to V1 (cash) so the NOT NULL column always gets a meaningful value.
+	version := schedule.AccountingVersion
+	if version == 0 {
+		version = domain.AccountingModelV1
+	}
 	query := `
-		INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, accounting_version, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		schedule.ID, schedule.TenantID, schedule.InvoiceID, schedule.SubscriptionID, schedule.EntityID, schedule.TotalAmount,
-		schedule.Currency, schedule.StartDate, schedule.EndDate, schedule.Status, schedule.CreatedAt, schedule.UpdatedAt,
+		schedule.Currency, schedule.StartDate, schedule.EndDate, schedule.Status, version, schedule.CreatedAt, schedule.UpdatedAt,
 	)
 	return err
 }
@@ -127,7 +133,7 @@ func (r *RevRecRepository) MarkEventFailed(ctx context.Context, eventID uuid.UUI
 // (tenant-scoped) for an unwind (ENG-147).
 func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]*domain.RevenueSchedule, error) {
 	query := `
-		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, accounting_version, created_at, updated_at
 		FROM revenue_schedules
 		WHERE tenant_id = $1 AND subscription_id = $2 AND status = 'active'
 	`
@@ -142,7 +148,7 @@ func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context,
 		var s domain.RevenueSchedule
 		var entityID sql.NullString
 		if err := rows.Scan(&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &entityID, &s.TotalAmount,
-			&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt); err != nil {
+			&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.AccountingVersion, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return nil, err
 		}
 		if entityID.Valid {
@@ -158,7 +164,7 @@ func (r *RevRecRepository) GetActiveSchedulesBySubscription(ctx context.Context,
 // when there is none (one-off invoice, or already fully recognized/canceled).
 func (r *RevRecRepository) GetActiveScheduleByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (*domain.RevenueSchedule, error) {
 	query := `
-		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at
+		SELECT id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, accounting_version, created_at, updated_at
 		FROM revenue_schedules
 		WHERE tenant_id = $1 AND invoice_id = $2 AND status = 'active'
 		LIMIT 1
@@ -167,7 +173,7 @@ func (r *RevRecRepository) GetActiveScheduleByInvoice(ctx context.Context, tenan
 	var entityID sql.NullString
 	err := r.db.QueryRowContext(ctx, query, tenantID, invoiceID).Scan(
 		&s.ID, &s.TenantID, &s.InvoiceID, &s.SubscriptionID, &entityID, &s.TotalAmount,
-		&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+		&s.Currency, &s.StartDate, &s.EndDate, &s.Status, &s.AccountingVersion, &s.CreatedAt, &s.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

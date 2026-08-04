@@ -6,6 +6,18 @@ import (
 	"github.com/google/uuid"
 )
 
+// Accounting-model versions (ADR-008) stamped on each revenue schedule so we can
+// always answer "which accounting rules produced this recognition?" — the basis
+// for historical reproducibility, per-tenant migration, and rollback.
+const (
+	// AccountingModelV1 = cash recognition: the schedule is built when the invoice
+	// is paid. The legacy default; every pre-versioning schedule is V1.
+	AccountingModelV1 = 1
+	// AccountingModelV2 = accrual recognition: the schedule is built at issuance,
+	// so revenue recognizes over the period regardless of payment (ADR-008).
+	AccountingModelV2 = 2
+)
+
 // RevenueSchedule defines how revenue from an invoice is allocated over time
 type RevenueSchedule struct {
 	ID             uuid.UUID  `json:"id" db:"id"`
@@ -20,8 +32,11 @@ type RevenueSchedule struct {
 	StartDate   time.Time  `json:"start_date" db:"start_date"`
 	EndDate     time.Time  `json:"end_date" db:"end_date"`
 	Status      string     `json:"status" db:"status"` // 'active', 'canceled'
-	CreatedAt   time.Time  `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at" db:"updated_at"`
+	// AccountingVersion records which accounting model produced this schedule
+	// (AccountingModelV1 cash / V2 accrual). Zero is treated as V1 by the repo.
+	AccountingVersion int       `json:"accounting_version" db:"accounting_version"`
+	CreatedAt         time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // RecognitionEvent represents a single point in time when a portion of revenue is recognized

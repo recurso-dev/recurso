@@ -1,6 +1,10 @@
 package service
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/recurso-dev/recurso/internal/core/domain"
+)
 
 // AccountingPolicy is the jurisdiction-resolved set of accounting-behavior
 // decisions the ledger consults — deliberately SEPARATE from the accounting
@@ -21,6 +25,18 @@ type AccountingPolicy struct {
 	// BadDebt governs how a write-off of a partially-recognized invoice is
 	// booked.
 	BadDebt BadDebtTreatment
+}
+
+// ModelVersion maps the policy to the accounting-model version stamped on the
+// schedules it produces (ADR-008): accrual is V2, cash is V1. Recognition timing
+// is the only axis that distinguishes the models today, so the version is
+// derived from it rather than stored as a second, drift-prone field — a future
+// model that diverges from the recognition axis would add an explicit version.
+func (p AccountingPolicy) ModelVersion() int {
+	if p.RevenueRecognition == RecognitionAccrual {
+		return domain.AccountingModelV2
+	}
+	return domain.AccountingModelV1
 }
 
 // RecognitionMethod enumerates when revenue recognition schedules are created.
