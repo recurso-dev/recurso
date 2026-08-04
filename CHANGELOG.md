@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- **Portal magic-link hardening.** The sign-in token now travels in a POST
+  body instead of the URL query string (which leaks via `Referer`, browser
+  history, and proxy/access logs); the verify page strips the token from the
+  URL and history the moment it reads it. And the verify endpoint now returns
+  one generic message for every failure — invalid, expired, or already used —
+  so the response can no longer be used to probe a token's state. The old
+  query-string endpoint is kept for one release for links already in flight.
+
 ### Changed
 
 - **Centralized input validation.** Currency and country codes were validated

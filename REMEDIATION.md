@@ -32,6 +32,21 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #18 (portal magic-link hardening) shipping: token moves to
+  a POST body (kept GET one release for links in flight), the frontend strips
+  the token from the URL/history immediately, and verify returns ONE generic
+  message for every failure state. #12 (validators) **MERGED (#489)**.
+- **FOUNDER DECISIONS (2026-08-04)**: (1) **#466 Track A APPROVED** — proceed
+  with accrual (schedules at issuance). (2) **Bad-debt = policy-driven, NOT
+  hardcoded** — model an `AccountingPolicy{RevenueRecognition, BadDebtTreatment
+  {AllowTaxRelief, RecognitionDelayDays, RecoverableTaxes}}` with jurisdiction
+  adapters (US / IndiaGST / UKVAT / EUVAT / AustraliaGST). (3) Keep the
+  accounting engine, tax engine, and jurisdiction rules SEPARATE — the
+  accounting engine must not know GST rules. (4) After M1: a **production
+  resilience sprint** (chaos/failover/outage/load 10k–100k). (5) Then invest in
+  **Continuous Quality Gates** (invariants + reconciliation + security + API
+  contract + Playwright + perf + a11y on every PR).
+
 - **2026-08-04** — #8 (expensive-endpoint rate limits) shipping. #466 Track B +
   #7a **MERGED (#486)**. Added the **#466 Track A epic design** below — and the
   key finding that Track A is *coupled to #477* (bad-debt on recognized
@@ -151,10 +166,10 @@ fixes the audit counted as done.
   period regardless of payment) and touches the reconciler invariants. The
   invariant harness + reconciler are the safety net; every increment must keep
   all seeds green.
-- **Effort**: L (4 PRs). **Deps**: founder decision on (a) proceed with accrual,
-  (b) bad-debt tax treatment. **Status**: 🧭 designed, awaiting the go-ahead on
-  the two policy points; Track B already shipped so no customer sees
-  "unexplained" in the meantime.
+- **Effort**: L (4 PRs). **Deps**: ✅ founder APPROVED accrual + directed a
+  policy-driven (not hardcoded) bad-debt model with jurisdiction adapters.
+- **Status**: ✅ GREENLIT — building. Increment 1 (AccountingPolicy + Bad Debt
+  Expense account, US default) is next after the portal M0/M1 items.
 
 ### #7a — Three pages render nothing on API error ✅
 - **Impact**: `Usage`, `OfflinePayments`, `Churn` show a blank/empty view when
@@ -272,6 +287,20 @@ fixes the audit counted as done.
   workers`; split the largest money functions for unit-testability. L.
 
 ---
+
+## M4 — Production resilience sprint (founder-added, after M1)
+
+Before more features: chaos testing, DB failover, Redis/queue/email/webhook
+outage behavior, webhook retry storms, clock skew, multi-node deploy,
+backup/restore validation, 10k–100k invoice load/soak tests. The audit
+deliberately did not cover load/soak — this closes that gap.
+
+## M5 — Continuous Quality Gates (founder-added, the durable investment)
+
+Every PR runs automatically: accounting invariant tests, reconciliation
+verification, security scans (SAST + deps), API contract tests, Playwright
+e2e, performance-regression checks, accessibility checks. Shifts from *finding*
+regressions in periodic audits to *preventing* them from reaching main.
 
 ## Follow-on
 

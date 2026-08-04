@@ -1728,7 +1728,8 @@ func main() {
 	// worked when the operator's dashboard cookie happened to ride along.
 	r.GET("/v1/accounting/callback/:provider", publicLimit, accountingHandler.OAuthCallback)
 	r.POST("/portal/auth/request", publicLimit, portalAPIHandler.RequestMagicLink)
-	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)
+	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)  // deprecated: query-string token, kept one release for links in flight
+	r.POST("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink) // preferred: token in POST body (not logged/refererred)
 
 	// Protected Customer Portal Routes
 	portal := r.Group("/portal/api")

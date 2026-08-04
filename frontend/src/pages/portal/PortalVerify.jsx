@@ -21,14 +21,23 @@ const PortalVerify = () => {
     if (verifyStarted.current) return;
     verifyStarted.current = true;
 
+    // Strip the token from the visible URL (and history) immediately, so it
+    // doesn't linger in browser history or leak via a Referer header on the
+    // next navigation. We already have it captured in `token`.
+    window.history.replaceState({}, "", "/portal/verify");
+
     const verifyToken = async () => {
       try {
-        // credentials: "include" lets the browser store the httpOnly session
-        // cookie the server sets on success — the session is never exposed to JS.
-        const response = await fetch(
-          `${API_BASE}/portal/auth/verify?token=${token}`,
-          { credentials: "include" }
-        );
+        // POST the token in the body (not the query string, which is logged and
+        // sent in Referer). credentials: "include" lets the browser store the
+        // httpOnly session cookie the server sets on success — the session is
+        // never exposed to JS.
+        const response = await fetch(`${API_BASE}/portal/auth/verify`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ token }),
+        });
 
         if (response.ok) {
           navigate("/portal/dashboard");
