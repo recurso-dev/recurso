@@ -32,6 +32,13 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 Track B (tie-out reframe) + #7a (Usage error state)
+  shipping as a frontend PR. **Correction on #7a**: on verification,
+  OfflinePayments and Churn *already* render retryable error states (via
+  `DataTable error=`/inline) — the agent finding was inaccurate for those two;
+  only Usage's top-level stats fetch genuinely rendered nothing. Fixed Usage;
+  #7a is now complete.
+- **2026-08-04** — TAX-PREFERRED-PROVIDER **MERGED (#485)**.
 - **2026-08-04** — Plan created. TAX-PREFERRED-PROVIDER fix implemented
   (one active provider per category; PG test green) — shipping as the first
   remediation PR.
@@ -62,7 +69,7 @@ fixes the audit counted as done.
   provider, Ziptax active, TaxJar deactivated. ✅ green.
 - **Acceptance**: connecting a tax provider shows exactly one Connected badge in
   the Tax section; the resolver returns the just-connected provider.
-- **Effort**: S. **Deps**: none. **Status**: 🔧 shipping now.
+- **Effort**: S. **Deps**: none. **Status**: ✅ MERGED #485.
 
 ### #466 — Deferred tie-out shows "Unexplained delta" 🧭 + 🔧
 - **Impact**: HIGHEST trust-ROI. The flagship Month-End Close shows
@@ -98,7 +105,7 @@ fixes the audit counted as done.
   a healthy tenant shows a green tie-out.
 - **Effort**: Track B S–M, Track A L. **Deps**: Track A needs the demo reseed
   (to confirm residual is data-only) + founder decision.
-- **Status**: 🧭 Track A awaiting decision; 🔧 Track B queued next.
+- **Status**: 🧭 Track A awaiting decision; 🔧 Track B shipping now.
 
 ### #7a — Three pages render nothing on API error ⬜
 - **Impact**: `Usage`, `OfflinePayments`, `Churn` show a blank/empty view when

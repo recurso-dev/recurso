@@ -253,15 +253,44 @@ export default function MonthEndClose() {
                   ) : (
                     <Badge variant="warning">
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      Unexplained delta {money(unexplained)}
+                      {money(Math.abs(unexplained))} to reconcile
                     </Badge>
                   )}
                 </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {recognition == null
-                    ? "Only the ledger rollforward is shown."
-                    : `Scheduled ${money(recognition.deferred_balance)} + awaiting payment ${money(awaiting)}`}
-                </p>
+                {recognition == null ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Only the ledger rollforward is shown.
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                    <div className="flex justify-between">
+                      <span>Recognizing on schedule</span>
+                      <span className="tabular-nums text-foreground">
+                        {money(recognition.deferred_balance)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Awaiting payment</span>
+                      <span className="tabular-nums text-foreground">
+                        {money(awaiting)}
+                      </span>
+                    </div>
+                    {!ties && (
+                      <div className="flex justify-between">
+                        <span>To reconcile</span>
+                        <span className="tabular-nums text-foreground">
+                          {money(unexplained)}
+                        </span>
+                      </div>
+                    )}
+                    <p className="pt-1 leading-snug">
+                      Revenue is deferred when an invoice is issued; its
+                      recognition schedule is built when the invoice is paid — so
+                      unpaid invoices sit in <em>awaiting payment</em> until they
+                      settle.
+                    </p>
+                  </div>
+                )}
               </Card>
             </div>
 
