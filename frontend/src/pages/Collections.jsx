@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -78,7 +78,7 @@ const relativeRetry = (iso) => {
   if (Math.abs(diffMin) < 60) return diffMin <= 0 ? "due now" : `in ${diffMin}m`;
   const diffHr = Math.round(diffMin / 60);
   if (Math.abs(diffHr) < 48) return diffHr <= 0 ? `${-diffHr}h ago` : `in ${diffHr}h`;
-  return new Date(iso).toLocaleDateString();
+  return formatDate(iso);
 };
 
 // RowActions is the per-invoice manual-controls menu (Inc 3): retry now, pause /

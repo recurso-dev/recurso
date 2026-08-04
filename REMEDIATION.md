@@ -336,7 +336,15 @@ fixes the audit counted as done.
 - **#9** — server-side pagination / virtualization on unbounded list pages
   (`Wallets`, `Mandates`, `Developers`, `Disputes`, `CreditNotes`). M.
 - **#13** — wrap native tables in `overflow-x-auto`; fix
-  `FinanceReconciliation`'s `overflow-hidden` clip. S.
+  `FinanceReconciliation`'s `overflow-hidden` clip. S. **Status**: ✅ shipping —
+  the two native `<table>`s in `PricingSimulator` (a narrow slide-over) were
+  wrapped in `overflow-hidden` divs that CLIP wide pricing/GL rows; changed to
+  `overflow-x-auto` so they scroll (rounded corners preserved). On verification
+  `FinanceReconciliation`'s discrepancies use the shadcn `<Table>`, whose
+  internal `overflow-auto` wrapper already self-scrolls — the enclosing Card's
+  `overflow-hidden` only rounds corners, it does not clip content, so no change
+  was needed there (evidence-based: the finding's clip claim held only for the
+  native tables).
 - **#19** — response-envelope consistency (`{data:}`), 2 raw error escapes,
   ~16 missing `operationId`. S–M; API-contract care.
 - **#20** — add `>=0` guards to `dispute.CreditAmount`, `referral.RewardAmount`,
@@ -357,7 +365,16 @@ fixes the audit counted as done.
   not skipped. S (CI config).
 - **#24** — unit tests for `subscription_payment/cancel/pause/retention/
   upgrade`, `smart_retry`, `salestax_resolver`. L (spread across PRs).
-- **#26** — remove stray `console.*`; use shared `formatDate`. S.
+- **#26** — remove stray `console.*`; use shared `formatDate`. S. **Status**:
+  ✅ formatDate consolidated; console premise corrected. The 4 remaining ad-hoc
+  `new Date(x).toLocaleDateString()` sites (Collections, FinanceReconciliation,
+  Developers, Mandates) now use the shared `formatDate` from `lib/utils`
+  (null-safe, one house format "Aug 4, 2026"). On the console part: a survey
+  found **zero** stray `console.log`/debug calls — all 12 non-test `console.*`
+  are `console.error` inside genuine error/`onError`/ErrorBoundary handlers
+  (legitimate diagnostics), so there was nothing to remove without losing
+  production observability. Left intentionally; the actionable half was the
+  date consolidation.
 
 ## M3 — Long term (technical debt)
 

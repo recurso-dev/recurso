@@ -1,4 +1,4 @@
-import { shortId } from "@/lib/utils";
+import { shortId, formatDate } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldCheck } from "lucide-react";
 
@@ -144,11 +144,7 @@ export default function FinanceReconciliation() {
                     ? new Date(report.finished_at).toLocaleTimeString()
                     : "—"
                 }
-                hint={
-                  report.finished_at
-                    ? new Date(report.finished_at).toLocaleDateString()
-                    : ""
-                }
+                hint={report.finished_at ? formatDate(report.finished_at) : ""}
               />
             </div>
 
