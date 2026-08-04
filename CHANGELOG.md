@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Charts mounted in a hidden tab rendered empty.** Chrome freezes
+  `requestAnimationFrame` in hidden/occluded windows, so a chart that mounted
+  there stuck at its entry animation's first frame — sub-pixel bars over a
+  correctly scaled axis, indistinguishable from "no data" (seen live on Usage
+  Explorer). Chart animation is now enabled only when the document is visible,
+  and honors `prefers-reduced-motion`; charts booting hidden render at full
+  height immediately.
+
 - **Pagination consistency wave** (the silent-truncation bug class, from the
   backlog): the customer portal's invoice and dispute lists, the high-churn-
   risk list, and a subscription's unbilled-charges list were unbounded — they
