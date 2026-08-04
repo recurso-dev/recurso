@@ -64,6 +64,15 @@ swallows the failure (this exact mistake shipped a broken button once).
 - `lucide-react` is pinned at 0.294.0 — verify an icon exists before
   importing (`node -e "console.log('X' in require('lucide-react'))"`).
 
+## Product & design source of truth
+
+Before building UI, writing copy, designing an endpoint, or touching a money
+path, read the relevant doc in `docs/` (index: `docs/README.md`): PRODUCT,
+DESIGN, BRAND, UX_RULES, ANTI_PATTERNS, ACCOUNTING_PRINCIPLES, API_GUIDELINES,
+WEBSITE, COMPETITORS. They are the durable philosophy; this file is the
+mechanical how-to. The through-line: Recurso is accounting-first — every number
+explainable, every event reversible, the books always reconcile.
+
 ## Decisions
 
 Architectural rationale lives in `docs/decisions/` (ADR-001…006: rate-limit
