@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-08-04 — The write-off release
+
+Bad debt stops lying. Yesterday's close-pack tie-out flagged a $7,345 delta it
+couldn't explain; the trail led to write-offs that were bare status flips —
+AR carrying money that would never arrive, Deferred carrying revenue that
+would never be earned. This release closes the whole arc: write-offs post
+their reversal, a written-off invoice that gets paid after all recovers its
+books before the cash lands, and the full cycle (write off, pay, bank
+return, write off again) posts fresh legs instead of being silently
+swallowed. Every step is proven end-to-end against real Postgres.
+
 ### Fixed
 
 - **Invoice write-offs now post their ledger reversal.** Marking an invoice
