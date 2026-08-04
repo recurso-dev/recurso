@@ -313,6 +313,10 @@ type GeneralLedgerRow struct {
 	Amount            int64     `json:"amount"` // minor units
 	ReferenceID       uuid.UUID `json:"reference_id"`
 	Description       string    `json:"description"`
+	// AccountingVersion is the accounting model that produced this journal
+	// (AccountingModelV1 cash / V2 accrual) — journal-level provenance surfaced in
+	// the GL export so an auditor sees which rules booked each entry (ADR-008).
+	AccountingVersion int `json:"accounting_version"`
 	// EntityName tags the issuing legal entity of the posting (Multi-Entity
 	// Books), resolved from the debit account's ledger. Empty for single-entity.
 	EntityID   *uuid.UUID `json:"entity_id,omitempty"`
