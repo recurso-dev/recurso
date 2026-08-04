@@ -77,7 +77,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	// and the close pack's tie-out keeps an un-recovered write-off visible.
 	if wasWrittenOff && s.ledger != nil {
 		if err := s.ledger.RecordWriteOffRecovery(ctx, inv); err != nil {
-			s.logger.Error("write-off recovery posting failed — books understate AR/Deferred until reposted",
+			s.logger.ErrorContext(ctx, "write-off recovery posting failed — books understate AR/Deferred until reposted",
 				"error", err, "invoice_id", inv.ID)
 		}
 	}
@@ -86,7 +86,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	// settled at generation (see walletSettled above).
 	if s.ledger != nil {
 		if err := s.ledger.RecordPaymentWithSettled(ctx, inv, walletSettled); err != nil {
-			s.logger.Error("ledger payment write failed", "error", err, "invoice_id", inv.ID)
+			s.logger.ErrorContext(ctx, "ledger payment write failed", "error", err, "invoice_id", inv.ID)
 		}
 	}
 
@@ -97,7 +97,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 			sub, _ = s.subRepo.GetByID(ctx, *inv.SubscriptionID)
 		}
 		if err := s.revrecService.CreateScheduleForInvoice(ctx, inv, sub); err != nil {
-			s.logger.Error("failed to create revrec schedule", "invoice_id", inv.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to create revrec schedule", "invoice_id", inv.ID, "error", err)
 			// Don't fail the whole payment mark-paid for now, just log.
 		}
 	}
@@ -186,7 +186,7 @@ func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoice
 	// caught by reconciliation, and the invoice is already correctly reopened.
 	if s.ledger != nil {
 		if err := s.ledger.RecordPaymentReversal(ctx, inv); err != nil {
-			s.logger.Error("ledger payment reversal write failed", "error", err, "invoice_id", inv.ID)
+			s.logger.ErrorContext(ctx, "ledger payment reversal write failed", "error", err, "invoice_id", inv.ID)
 		}
 	}
 

@@ -101,7 +101,7 @@ func (s *InvoiceService) recordInvoiceLeg(ctx context.Context, inv *domain.Invoi
 		return
 	}
 	if err := s.LedgerPoster.RecordInvoice(ctx, inv); err != nil {
-		slog.Error("ledger write failed on invoice generation — needs reconciliation",
+		slog.ErrorContext(ctx, "ledger write failed on invoice generation — needs reconciliation",
 			"invoice_id", inv.ID, "error", err)
 	}
 }
@@ -532,7 +532,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// logged for reconciliation, never fails generation).
 	if inv.Status == domain.InvoiceStatusPaid && s.RevRecScheduler != nil {
 		if err := s.RevRecScheduler.CreateScheduleForInvoice(ctx, inv, sub); err != nil {
-			slog.Error("failed to create revrec schedule for a wallet/credit-covered invoice",
+			slog.ErrorContext(ctx, "failed to create revrec schedule for a wallet/credit-covered invoice",
 				"invoice_id", inv.ID, "error", err)
 		}
 	}

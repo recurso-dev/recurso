@@ -50,6 +50,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 	coretax "github.com/recurso-dev/recurso/internal/core/service/tax"
 	"github.com/recurso-dev/recurso/internal/demo"
+	"github.com/recurso-dev/recurso/internal/logctx"
 	"github.com/recurso-dev/recurso/internal/residency"
 	"github.com/recurso-dev/recurso/internal/scheduler"
 	"github.com/recurso-dev/recurso/internal/service"
@@ -98,7 +99,7 @@ func main() {
 	// Structured JSON logging for the whole process: the workers and schedulers
 	// log via slog, so make the default handler emit JSON to stdout for
 	// machine-parseable, queryable logs in any deployment.
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
+	slog.SetDefault(slog.New(logctx.NewContextHandler(slog.NewJSONHandler(os.Stdout, nil))))
 
 	// Error tracking (Sentry): inert unless SENTRY_DSN is set — sentry calls are
 	// no-ops without a configured client, so this is safe to leave wired.
