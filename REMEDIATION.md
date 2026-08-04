@@ -32,6 +32,17 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 accrual epic **Increment 4b shipping** — the
+  `cmd/backfill_schedules` operational tool: creates issuance schedules for a
+  tenant's EXISTING open subscription invoices so their deferred moves from the
+  awaiting-payment bucket into scheduled and the tie-out reads zero on live
+  data. Dry-run by default, `--apply` to write, idempotent (reuses the PG-tested
+  CreateScheduleForInvoice). Smoke-verified end-to-end: 1 eligible → apply →
+  schedule+events created (50000) → re-run finds 0. **This completes the
+  accrual epic's rollout tooling.** The runbook to enable on a live tenant:
+  (1) set RECURSO_ACCRUAL_RECOGNITION=true + deploy, (2)
+  `DATABASE_URL=... go run ./cmd/backfill_schedules --tenant=<id> --apply`.
+
 - **2026-08-04** — #466 accrual epic **Increment 4 shipping** (tie-out
   exclusion + verification): `SumUnscheduledDeferral` now EXCLUDES invoices with
   an active recognition schedule — the load-bearing fix, without which an
