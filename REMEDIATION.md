@@ -32,6 +32,20 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — **Accounting-model versioning increment 2: journal-level
+  provenance.** Every ledger journal is now stamped with the accounting model in
+  force when it was posted (`ledger_transactions.accounting_version`, migration
+  000167, default 1), so an auditor can ask "which accounting rules produced THIS
+  journal entry?". Stamped in the single posting choke point `applyLedgerTx`:
+  the transaction's own version wins (a per-posting override), else the
+  deployment's active model (`LedgerRepository.SetAccountingVersion`, wired to V2
+  from `RECURSO_ACCRUAL_RECOGNITION` in main.go), else the V1 cash default.
+  Additive + reversible: the invariant harness (10 seeds) stays green, a PG test
+  proves the V1-default / V2-configured / per-tx-override paths, and the
+  down-migration drops cleanly. This completes the founder's request #2 across
+  both artifacts (schedules = increment 1 / #509, journals = this). Follow-up:
+  surface the version in the general-ledger export so it's visible to auditors.
+
 - **2026-08-04** — **Accounting-model versioning (founder request #2), increment 1.**
   Every revenue schedule is now stamped with the accounting model that produced
   it — `AccountingModelV1` (cash, built at payment) or `V2` (accrual, built at

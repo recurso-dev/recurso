@@ -675,6 +675,9 @@ func main() {
 	// so it's an opt-in rollout. The write-off bad-debt split above makes it safe.
 	if strings.EqualFold(os.Getenv("RECURSO_ACCRUAL_RECOGNITION"), "true") {
 		invoiceService.SetAccrualRecognition(true)
+		// Stamp every journal this deployment posts with the accrual model (V2) so
+		// the entries carry their accounting-model provenance (ADR-008).
+		ledgerRepo.SetAccountingVersion(domain.AccountingModelV2)
 		log.Println("Revenue recognition: ACCRUAL (schedules built at invoice issuance)")
 	}
 	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
