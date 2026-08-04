@@ -32,6 +32,28 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — **Accrual invariant (founder request): "Revenue Recognized ≤
+  recognizable amount" now fails CI.** The reconciler gained a
+  `recognized_exceeds_invoice` discrepancy: any revenue schedule whose recognized
+  events sum to more than its `total_amount` (fabricated P&L revenue) is flagged
+  per schedule. Because the invariant harness runs the reconciler with a
+  zero-discrepancy gate after every step, this is now CI-enforced automatically.
+  Verified by neutering: a PG test seeds a real over-recognized schedule and
+  proves the oracle fires (and leaves a healthy one alone); the full harness (10
+  seeds) stays green, confirming the current code never over-recognizes. This
+  joins the existing accrual invariants already enforced —
+  `ledger_unbalanced` (every journal balances), `abnormal_account_balance`
+  (Deferred/Bad-Debt sign), `deferred_below_scheduled_revenue` (Deferred ≥
+  pending), `orphaned_transaction`. Remaining from the founder's list as
+  follow-ups: accounting-policy **versioning** (V1 cash / V2 accrual for
+  historical reproducibility) and an **ADR index**.
+
+- **2026-08-04** — server-side pagination for Mandates + Disputes shipped (#506,
+  #9 partial); OpenAPI operationIds (#505, #19 partial); CI invariant guard
+  (#504, #23); table overflow + formatDate (#503, #13/#26); fx concurrency lock
+  (#502, #21); negative-amount guards (#501, #20); portal CSRF (#500, #25);
+  portal tests (#499, #11). **M1 complete; M2 S-items done.**
+
 - **2026-08-04** — **M1 milestone complete.** #25 (portal CSRF) shipping closes
   the last open M1 item; the milestone's other findings were already merged
   (#11 → #499 portal tests, #18 → #490 magic-link hardening, #8 → #487 expensive

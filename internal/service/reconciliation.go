@@ -54,6 +54,11 @@ const (
 	// breaks even when other subscriptions' positive Deferred masks a single
 	// account going net-debit.
 	DiscrepancyDeferredBelowScheduled = "deferred_below_scheduled_revenue"
+	// Accrual invariant "Revenue Recognized ≤ the amount to recognize": a
+	// schedule whose recognized events sum to MORE than its total recognizable
+	// amount has fabricated revenue on the P&L. Must never happen; surfaced per
+	// offending schedule.
+	DiscrepancyRecognizedExceedsInvoice = "recognized_exceeds_invoice"
 )
 
 // ReconciliationRepository is the narrow, read-only view of the ledger store
@@ -68,6 +73,8 @@ type ReconciliationRepository interface {
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
 	// SumPendingRecognitionEvents feeds the deferred-vs-scheduled invariant.
 	SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error)
+	// GetRecognitionOverruns feeds the "recognized ≤ recognizable" invariant.
+	GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error)
 
 	// TigerBeetle comparison inputs (all read-only).
 	GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error)
@@ -239,7 +246,29 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		deferredShort = 1
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity) + deferredShort
+	// Recognized-vs-recognizable invariant: no schedule may recognize MORE than
+	// its total recognizable amount. A violation fabricates revenue on the P&L.
+	// Prepended (like the other integrity findings) so it survives truncation.
+	overruns, overrunTotal, err := s.repo.GetRecognitionOverruns(ctx, tenantID, s.maxListed)
+	if err != nil {
+		return nil, fmt.Errorf("recognition overruns for tenant %s: %w", tenantID, err)
+	}
+	overrunDiscrepancies := make([]ReconciliationDiscrepancy, 0, len(overruns))
+	for _, o := range overruns {
+		schedID, invID := o.ScheduleID, o.InvoiceID
+		overrunDiscrepancies = append(overrunDiscrepancies, ReconciliationDiscrepancy{
+			Type:           DiscrepancyRecognizedExceedsInvoice,
+			InvoiceID:      &invID,
+			ReferenceID:    &schedID,
+			ExpectedAmount: o.TotalAmount, // the most that may be recognized
+			FoundAmount:    o.Recognized,  // what was actually recognized (greater)
+		})
+	}
+	if len(overrunDiscrepancies) > 0 {
+		report.Discrepancies = append(overrunDiscrepancies, report.Discrepancies...)
+	}
+
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity) + deferredShort + overrunTotal
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"

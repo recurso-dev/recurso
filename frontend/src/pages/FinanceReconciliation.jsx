@@ -32,6 +32,7 @@ const DISCREPANCY_LABELS = {
   ledger_unbalanced: "Ledger unbalanced (debits ≠ credits)",
   abnormal_account_balance: "Wrong-sign account balance",
   deferred_below_scheduled_revenue: "Deferred below scheduled revenue",
+  recognized_exceeds_invoice: "Revenue recognized exceeds recognizable amount",
   missing_in_tigerbeetle: "Missing in TigerBeetle",
   missing_in_postgres: "Missing in Postgres",
   tb_amount_mismatch: "TigerBeetle amount mismatch",

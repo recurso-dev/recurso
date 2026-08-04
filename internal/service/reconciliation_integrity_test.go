@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
@@ -102,6 +103,43 @@ func TestReconciliationRun_DeferredBelowScheduled(t *testing.T) {
 	}
 	if d.AccountCode != domain.AccountCodeDeferredRevenue {
 		t.Errorf("account code = %d, want %d", d.AccountCode, domain.AccountCodeDeferredRevenue)
+	}
+}
+
+// TestReconciliationRun_RecognizedExceedsInvoice: a schedule that recognized
+// more than its recognizable total (fabricated revenue) surfaces as a
+// recognized_exceeds_invoice discrepancy carrying the schedule + invoice ids and
+// the (expected ≤, found >) amounts.
+func TestReconciliationRun_RecognizedExceedsInvoice(t *testing.T) {
+	schedID, invID := uuid.New(), uuid.New()
+	repo := &mockReconciliationRepo{
+		nonDraft: 1, paid: 1,
+		overruns: []db.RecognitionOverrun{
+			{ScheduleID: schedID, InvoiceID: invID, TotalAmount: 10000, Recognized: 12000},
+		},
+		overrunTotal: 1,
+	}
+	svc := NewReconciliationService(repo, nil)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.TotalDiscrepancies != 1 {
+		t.Fatalf("want exactly 1 discrepancy, got %d: %+v", report.TotalDiscrepancies, report.Discrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyRecognizedExceedsInvoice {
+		t.Fatalf("want %q, got %q", DiscrepancyRecognizedExceedsInvoice, d.Type)
+	}
+	if d.InvoiceID == nil || *d.InvoiceID != invID {
+		t.Errorf("InvoiceID = %v, want %v", d.InvoiceID, invID)
+	}
+	if d.ReferenceID == nil || *d.ReferenceID != schedID {
+		t.Errorf("ReferenceID (schedule) = %v, want %v", d.ReferenceID, schedID)
+	}
+	if d.ExpectedAmount != 10000 || d.FoundAmount != 12000 {
+		t.Errorf("finding = recognizable %d / recognized %d, want 10000 / 12000", d.ExpectedAmount, d.FoundAmount)
 	}
 }
 

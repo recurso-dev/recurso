@@ -569,6 +569,52 @@ func (r *LedgerRepository) GetOrphanLedgerTransactions(ctx context.Context, tena
 	return orphans, total, rows.Err()
 }
 
+// RecognitionOverrun is a revenue schedule whose recognized events sum to MORE
+// than the schedule's total recognizable amount — i.e. the system recognized
+// revenue it was never owed. The accrual invariant "Revenue Recognized ≤ the
+// amount to recognize" must never break; this is the reconciler input for it.
+type RecognitionOverrun struct {
+	ScheduleID  uuid.UUID
+	InvoiceID   uuid.UUID
+	TotalAmount int64 // the schedule's recognizable base
+	Recognized  int64 // sum of recognized events (> TotalAmount when this row exists)
+}
+
+// GetRecognitionOverruns returns schedules where the sum of RECOGNIZED events
+// exceeds the schedule's total_amount. A non-empty result means revenue was
+// over-recognized (money fabricated on the P&L) — a hard accrual violation.
+// Empty in a correct system, so it costs nothing on healthy tenants.
+func (r *LedgerRepository) GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]RecognitionOverrun, int, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT sub.id, sub.invoice_id, sub.total_amount, sub.recognized, COUNT(*) OVER () AS total
+		FROM (
+			SELECT s.id, s.invoice_id, s.total_amount,
+			       COALESCE(SUM(CASE WHEN e.status = 'recognized' THEN e.amount ELSE 0 END), 0)::bigint AS recognized
+			FROM revenue_schedules s
+			LEFT JOIN recognition_events e ON e.revenue_schedule_id = s.id
+			WHERE s.tenant_id = $1
+			GROUP BY s.id, s.invoice_id, s.total_amount
+			HAVING COALESCE(SUM(CASE WHEN e.status = 'recognized' THEN e.amount ELSE 0 END), 0) > s.total_amount
+		) sub
+		ORDER BY sub.id
+		LIMIT $2`, tenantID, limit)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query recognition overruns: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var overruns []RecognitionOverrun
+	total := 0
+	for rows.Next() {
+		var o RecognitionOverrun
+		if err := rows.Scan(&o.ScheduleID, &o.InvoiceID, &o.TotalAmount, &o.Recognized, &total); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan recognition overrun: %w", err)
+		}
+		overruns = append(overruns, o)
+	}
+	return overruns, total, rows.Err()
+}
+
 // LedgerTransactionSummary is the minimal projection of a ledger transaction
 // used to diff Postgres against TigerBeetle: the shared transaction ID and
 // the posted amount. Read-only reconciliation input; never written back.
