@@ -84,7 +84,8 @@ func (h *AdvancedBillingHandler) ListUnbilledCharges(c *gin.Context) {
 	if !ok {
 		return
 	}
-	charges, err := h.Service.ListUnbilledCharges(ctx, subID)
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	charges, err := h.Service.ListUnbilledCharges(ctx, subID, limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

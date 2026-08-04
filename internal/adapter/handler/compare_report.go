@@ -48,7 +48,9 @@ func (h *CompareReportHandler) List(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
 		return
 	}
-	rows, err := h.store.List(c.Request.Context(), tenantID, 50)
+	// Caller-controllable page size (was a hardcoded 50 with no way to page).
+	limit, _ := parseLimitOffset(c, 50, 200)
+	rows, err := h.store.List(c.Request.Context(), tenantID, limit)
 	if err != nil {
 		respondInternalError(c, err)
 		return

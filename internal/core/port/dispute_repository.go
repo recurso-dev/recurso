@@ -18,6 +18,9 @@ type DisputeRepository interface {
 	UpdateReason(ctx context.Context, id, customerID uuid.UUID, reason string) error
 	// ListByCustomerID returns all disputes raised by a customer (newest first).
 	ListByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.InvoiceDispute, error)
+	// ListByCustomerIDPaged bounds the portal-facing dispute list by
+	// limit/offset (newest first).
+	ListByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.InvoiceDispute, error)
 	// ListByTenant returns tenant-scoped disputes, optionally filtered by status.
 	ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error)
 	// Resolve marks a dispute resolved with an optional note. It is scoped by

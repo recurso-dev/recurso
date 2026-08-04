@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Pagination consistency wave** (the silent-truncation bug class, from the
+  backlog): the customer portal's invoice and dispute lists, the high-churn-
+  risk list, and a subscription's unbilled-charges list were unbounded — they
+  now take clamped `limit`/`offset` (DoS-bound at 1000; every realistic
+  caller's results are unchanged). Compare-report history was hardcoded to 50
+  with no way to page — `limit` is now caller-controllable (default 50, cap
+  200). The accounting sync-log endpoint had its default and cap inverted
+  (any requested limit above 25 was silently forced to 200) — it now honors
+  the contract its OpenAPI spec always documented (default 25, cap 200). Ten
+  list endpoints gained the paging parameters their spec entries were
+  missing. Billing-side reads (invoice generation's unbilled-charge sweep,
+  churn scoring) deliberately stay unbounded — a paged read there would
+  silently leave charges unbilled.
+
 ## [0.10.1] - 2026-08-04 — The write-off release
 
 Bad debt stops lying. Yesterday's close-pack tie-out flagged a $7,345 delta it

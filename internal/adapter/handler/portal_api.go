@@ -226,7 +226,11 @@ func (h *PortalAPIHandler) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	invoices, err := h.portalService.GetCustomerInvoices(c.Request.Context(), customerID.(uuid.UUID))
+	// DoS-bound only: def=max=1000 leaves every realistic customer's full
+	// history in one response while capping runaway sets (house convention
+	// for previously-unbounded lists).
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	invoices, err := h.portalService.GetCustomerInvoices(c.Request.Context(), customerID.(uuid.UUID), limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -609,7 +613,8 @@ func (h *PortalAPIHandler) GetDisputes(c *gin.Context) {
 		return
 	}
 
-	disputes, err := h.portalService.GetCustomerDisputes(c.Request.Context(), customerID.(uuid.UUID))
+	limit, offset := parseLimitOffset(c, 1000, 1000)
+	disputes, err := h.portalService.GetCustomerDisputes(c.Request.Context(), customerID.(uuid.UUID), limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

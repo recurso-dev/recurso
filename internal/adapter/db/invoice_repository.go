@@ -536,8 +536,20 @@ func scanRetryInvoices(rows *sql.Rows) ([]*domain.Invoice, error) {
 }
 
 func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
+	return r.getByCustomerID(ctx, customerID, ``)
+}
+
+// GetByCustomerIDPaged bounds the customer-scoped list by limit/offset — the
+// portal-facing variant, so an untrusted portal session can never pull an
+// unbounded set. GetByCustomerID stays unbounded for internal consumers that
+// need the full set (churn scoring).
+func (r *InvoiceRepository) GetByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	return r.getByCustomerID(ctx, customerID, ` LIMIT $2 OFFSET $3`, limit, offset)
+}
+
+func (r *InvoiceRepository) getByCustomerID(ctx context.Context, customerID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.Invoice, error) {
 	query := `
-		SELECT 
+		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
 			currency, subtotal, tax_amount, total, amount_paid, COALESCE(credit_applied, 0),
 			igst_amount, cgst_amount, sgst_amount, hsn_code, irn, ack_no,
@@ -546,9 +558,9 @@ func (r *InvoiceRepository) GetByCustomerID(ctx context.Context, customerID uuid
 			COALESCE(billing_reason, '')
 		FROM invoices
 		WHERE customer_id = $1
-		ORDER BY created_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, query, customerID)
+		ORDER BY created_at DESC` + pageClause
+	args := append([]interface{}{customerID}, pageArgs...)
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch customer invoices: %w", err)
 	}

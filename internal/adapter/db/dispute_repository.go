@@ -88,6 +88,17 @@ func (r *DisputeRepository) ListByCustomerID(ctx context.Context, customerID uui
 	return scanDisputeRows(rows)
 }
 
+// ListByCustomerIDPaged bounds the portal-facing dispute list.
+func (r *DisputeRepository) ListByCustomerIDPaged(ctx context.Context, customerID uuid.UUID, limit, offset int) ([]*domain.InvoiceDispute, error) {
+	query := `SELECT ` + disputeColumns + ` FROM invoice_disputes WHERE customer_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	rows, err := r.db.QueryContext(ctx, query, customerID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanDisputeRows(rows)
+}
+
 func (r *DisputeRepository) ListByTenant(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]*domain.InvoiceDispute, error) {
 	query := `SELECT ` + disputeColumns + ` FROM invoice_disputes WHERE tenant_id = $1`
 	args := []interface{}{tenantID}

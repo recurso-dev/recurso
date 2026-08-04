@@ -37,13 +37,23 @@ func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 }
 
 func (r *UnbilledChargeRepository) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+	return r.listBySubscriptionID(subscriptionID, ``)
+}
+
+// ListBySubscriptionIDPaged bounds the API-facing list (see the port comment:
+// invoice generation stays unbounded by design).
+func (r *UnbilledChargeRepository) ListBySubscriptionIDPaged(subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
+	return r.listBySubscriptionID(subscriptionID, ` LIMIT $2 OFFSET $3`, limit, offset)
+}
+
+func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.UnbilledCharge, error) {
 	query := `
 		SELECT id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at
 		FROM unbilled_charges
 		WHERE subscription_id = $1 AND status = 'pending'
-		ORDER BY created_at ASC
-	`
-	rows, err := r.DB.Query(query, subscriptionID)
+		ORDER BY created_at ASC` + pageClause
+	args := append([]interface{}{subscriptionID}, pageArgs...)
+	rows, err := r.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
