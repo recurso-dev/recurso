@@ -1657,6 +1657,11 @@ func main() {
 	// load — they get their own, roomier bucket so normal dashboard use can
 	// never lock a user out of their session.
 	sessionLimit := middleware.RateLimitMiddleware(rdb, "session", 120, time.Minute)
+	// Expensive endpoints (import commit/preview/compare — each reprocesses a
+	// whole external billing account; PDF/HTML renders; GL export) get a tight
+	// per-tenant bucket so one API key can't hammer the CPU/IO-heavy paths. The
+	// bucket keys per-tenant on the authed v1 routes.
+	expensiveLimit := middleware.RateLimitMiddleware(rdb, "expensive", 30, time.Minute)
 
 	r.GET("/checkout/:id", publicLimit, checkoutHandler.ShowCheckout)
 	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
@@ -1763,21 +1768,21 @@ func main() {
 		v1.GET("/customers", customerHandler.ListCustomers)
 
 		// Migration: dry-run preview (no writes) then idempotent commit.
-		v1.POST("/import/stripe/preview", stripeImportHandler.Preview)
-		v1.POST("/import/stripe/commit", stripeImportHandler.Commit)
-		v1.POST("/import/stripe/compare", stripeImportHandler.Compare)
+		v1.POST("/import/stripe/preview", expensiveLimit, stripeImportHandler.Preview)
+		v1.POST("/import/stripe/commit", expensiveLimit, stripeImportHandler.Commit)
+		v1.POST("/import/stripe/compare", expensiveLimit, stripeImportHandler.Compare)
 		// Chargebee migration: dry-run preview then idempotent commit.
-		v1.POST("/import/chargebee/preview", chargebeeImportHandler.Preview)
-		v1.POST("/import/chargebee/commit", chargebeeImportHandler.Commit)
-		v1.POST("/import/chargebee/compare", chargebeeImportHandler.Compare)
+		v1.POST("/import/chargebee/preview", expensiveLimit, chargebeeImportHandler.Preview)
+		v1.POST("/import/chargebee/commit", expensiveLimit, chargebeeImportHandler.Commit)
+		v1.POST("/import/chargebee/compare", expensiveLimit, chargebeeImportHandler.Compare)
 		// RevenueCat migration: dry-run preview then idempotent commit.
-		v1.POST("/import/revenuecat/preview", revenuecatImportHandler.Preview)
-		v1.POST("/import/revenuecat/commit", revenuecatImportHandler.Commit)
-		v1.POST("/import/revenuecat/compare", revenuecatImportHandler.Compare)
+		v1.POST("/import/revenuecat/preview", expensiveLimit, revenuecatImportHandler.Preview)
+		v1.POST("/import/revenuecat/commit", expensiveLimit, revenuecatImportHandler.Commit)
+		v1.POST("/import/revenuecat/compare", expensiveLimit, revenuecatImportHandler.Compare)
 
 		v1.GET("/import/compare-reports", compareReportHandler.List)
 		v1.GET("/import/compare-reports/:id", compareReportHandler.Get)
-		v1.GET("/import/compare-reports/:id/document", compareReportHandler.Document)
+		v1.GET("/import/compare-reports/:id/document", expensiveLimit, compareReportHandler.Document)
 		v1.GET("/customers/:id", customerHandler.GetCustomer)
 		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
@@ -1796,8 +1801,8 @@ func main() {
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
-		v1.GET("/invoices/:id/pdf", pdfHandler.DownloadPDF)
-		v1.GET("/invoices/:id/preview", pdfHandler.PreviewHTML)
+		v1.GET("/invoices/:id/pdf", expensiveLimit, pdfHandler.DownloadPDF)
+		v1.GET("/invoices/:id/preview", expensiveLimit, pdfHandler.PreviewHTML)
 		v1.POST("/invoices/:id/send", advancedBillingHandler.SendInvoice) // email the invoice + Pay Now link
 
 		// Usage Platform v1
@@ -1931,7 +1936,7 @@ func main() {
 		v1.GET("/ledger/entries", ledgerHandler.GetEntries)
 		// Provable-ledger auditor outputs (ENG-192): trial balance + GL export
 		v1.GET("/ledger/trial-balance", reportCache, ledgerHandler.GetTrialBalance)
-		v1.GET("/ledger/export", ledgerHandler.ExportGL)
+		v1.GET("/ledger/export", expensiveLimit, ledgerHandler.ExportGL)
 		v1.GET("/ledger/deferred-rollforward", reportCache, ledgerHandler.GetDeferredRollforward)
 
 		// Ledger Reconciliation — on-demand drift report for the caller's tenant
@@ -1945,7 +1950,7 @@ func main() {
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
-		v1.GET("/credit-notes/:id/pdf", creditNoteHandler.DownloadPDF)
+		v1.GET("/credit-notes/:id/pdf", expensiveLimit, creditNoteHandler.DownloadPDF)
 		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
 		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
 		v1.POST("/credit-notes/:id/void", creditNoteHandler.VoidCreditNote)

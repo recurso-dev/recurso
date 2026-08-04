@@ -32,6 +32,14 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #8 (expensive-endpoint rate limits) shipping. #466 Track B +
+  #7a **MERGED (#486)**. Added the **#466 Track A epic design** below — and the
+  key finding that Track A is *coupled to #477* (bad-debt on recognized
+  revenue): schedule-at-issuance recognizes revenue on unpaid invoices, so any
+  write-off then hits already-recognized revenue and needs a Bad Debt Expense
+  leg. They must ship together or Track A over-recognizes on every unpaid
+  invoice.
+
 - **2026-08-04** — #466 Track B (tie-out reframe) + #7a (Usage error state)
   shipping as a frontend PR. **Correction on #7a**: on verification,
   OfflinePayments and Churn *already* render retryable error states (via
@@ -103,11 +111,52 @@ fixes the audit counted as done.
   out" and non-zero shows the awaiting-recognition framing, never "unexplained".
 - **Acceptance**: no screen ever shows the word "unexplained" to a customer;
   a healthy tenant shows a green tie-out.
-- **Effort**: Track B S–M, Track A L. **Deps**: Track A needs the demo reseed
-  (to confirm residual is data-only) + founder decision.
-- **Status**: 🧭 Track A awaiting decision; 🔧 Track B shipping now.
+- **Effort**: Track B S–M, Track A L. **Deps**: Track A needs the founder
+  decision on accrual + bad-debt tax treatment (see the Track A epic below).
+- **Status**: ✅ Track B MERGED #486; 🧭 Track A designed (see epic below).
 
-### #7a — Three pages render nothing on API error ⬜
+### #466 Track A — accrual: build recognition schedules at issuance (EPIC) 🧭
+- **Goal**: every subscription invoice gets its recognition schedule at
+  *issuance*, so `ledger_deferred == scheduled` structurally and the tie-out is
+  always zero (no `awaiting_payment` residual). This is the enterprise/ASC-606
+  expectation the founder prefers.
+- **Feasibility**: `CreateScheduleForInvoice` is already idempotent per invoice
+  and already called at generation for wallet/credit-covered invoices — so
+  moving the call to issuance for ALL subscription invoices is mechanically
+  small.
+- **THE COUPLING (critical)**: recognizing revenue on an *unpaid* invoice means
+  a later write-off (#474) hits revenue that is already (partly) recognized.
+  Reversing it from Deferred (as today) understates Deferred and overstates the
+  reversal; the recognized portion must instead be **expensed as bad debt**
+  (DR Bad Debt Expense / CR AR). This is exactly issue **#477**. Track A without
+  #477 would over-recognize on every unpaid invoice that later fails — worse
+  than today. **They are one epic.**
+- **Increments (each its own PR, invariant-harness gated)**:
+  1. **#477 foundation** — add a Bad Debt Expense account (e.g. 5200); on a
+     write-off of a partially-recognized invoice, split the reversal: recognized
+     portion → Bad Debt Expense, unrecognized portion → Deferred; unwind the
+     schedule's pending events (reuse the `UnwindOnRefund` mechanism). Policy
+     fork for the founder: **bad-debt tax treatment** (GST/VAT bad-debt relief
+     varies by jurisdiction) — needs a decision before the tax leg is written.
+  2. **Schedule at issuance** — call `CreateScheduleForInvoice` at invoice
+     generation for subscription invoices (not just when already paid). Guard:
+     don't double-create at payment (idempotent per invoice already handles it).
+  3. **Migration/backfill** — create schedules for existing open invoices so the
+     tie-out is zero on day one; reconciler alignment; retire/repurpose the
+     `awaiting_payment` bucket in the tie-out identity (it collapses to ~0).
+  4. **Tie-out identity update** — `ledger_deferred == scheduled` (drop the
+     awaiting term once every issued invoice is scheduled); update the close
+     pack + Track-B UI wording accordingly.
+- **Migration risk**: HIGH — changes revenue *timing* (recognized over the
+  period regardless of payment) and touches the reconciler invariants. The
+  invariant harness + reconciler are the safety net; every increment must keep
+  all seeds green.
+- **Effort**: L (4 PRs). **Deps**: founder decision on (a) proceed with accrual,
+  (b) bad-debt tax treatment. **Status**: 🧭 designed, awaiting the go-ahead on
+  the two policy points; Track B already shipped so no customer sees
+  "unexplained" in the meantime.
+
+### #7a — Three pages render nothing on API error ✅
 - **Impact**: `Usage`, `OfflinePayments`, `Churn` show a blank/empty view when
   the fetch fails → users read "no data" and file a ticket.
 - **Root cause**: hand-rolled `useEffect` fetch with no error branch in render.
@@ -156,7 +205,7 @@ fixes the audit counted as done.
   legitimate callers stay well under the cap; log when throttled. **Tests**:
   middleware test — Nth+1 request in the window gets 429. **Acceptance**: the
   named routes 429 past the bucket; normal use unaffected. **Effort**: M.
-  **Deps**: none. **Status**: ⬜.
+  **Deps**: none. **Status**: 🔧 shipping now (expensive bucket 30/min per tenant, 14 routes).
 
 ### #10 — Request/tenant IDs absent from service logs ⬜
 - **Impact**: a production incident can't be reconstructed — ledger/sync/email
