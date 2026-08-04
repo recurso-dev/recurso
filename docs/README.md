@@ -15,7 +15,8 @@ Where a doc and the code disagree, the code wins (see
 |---|---|---|
 | [PRODUCT.md](PRODUCT.md) | What Recurso is + a code-cited feature inventory | any product decision |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | Package map, flows, jobs, security (code-derived) | changing structure |
-| [DESIGN.md](DESIGN.md) | Design intent vs. the real tokens + deltas | building UI |
+| [DESIGN.md](DESIGN.md) | The token/system constraints — which values are legal | building UI |
+| [ART_DIRECTION.md](ART_DIRECTION.md) | What Recurso *looks like* — the creative direction, hero philosophy, what to show, what's banned | designing a page/section, the website |
 | [BRAND.md](BRAND.md) | How it sounds — voice, words to use/avoid | writing any copy |
 | [UX_RULES.md](UX_RULES.md) | The behavioral contract + UI audit | building a page |
 | [ANTI_PATTERNS.md](ANTI_PATTERNS.md) | What never to build | anything money/UX |
