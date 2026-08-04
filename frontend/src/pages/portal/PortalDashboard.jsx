@@ -15,7 +15,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { API_ROOT as API_BASE } from "../../lib/api";
+import { API_ROOT as API_BASE, portalCsrfHeader } from "../../lib/api";
 import PortalPaymentMethod from "./PortalPaymentMethod";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -70,8 +70,11 @@ const PortalDashboard = () => {
   // The portal session lives in an httpOnly cookie the server set at login, so
   // it is invisible to JS (immune to XSS) — every request authenticates by
   // sending that cookie (credentials: "include"), never a token read from JS
-  // storage. authHeaders now carries only the content type.
-  const authHeaders = { "Content-Type": "application/json" };
+  // storage. authHeaders carries the content type plus the double-submit CSRF
+  // header (read from the non-httpOnly portal_csrf cookie); it's recomputed each
+  // render, so once the server has issued the cookie (at login or on the first
+  // authenticated GET) every state-changing call echoes it. Harmless on GETs.
+  const authHeaders = { "Content-Type": "application/json", ...portalCsrfHeader() };
 
   // Open the invoice PDF (ENG-152). Fetches the cookie-authed portal endpoint and
   // opens the rendered invoice in a new tab.
@@ -191,6 +194,7 @@ const PortalDashboard = () => {
       await fetch(`${API_BASE}/portal/api/logout`, {
         method: "POST",
         credentials: "include",
+        headers: { ...portalCsrfHeader() },
       });
     } catch (err) {
       // Ignore errors

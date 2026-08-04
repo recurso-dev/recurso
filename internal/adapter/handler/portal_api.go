@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
 	"github.com/recurso-dev/recurso/internal/service"
@@ -232,6 +234,12 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 	secureCookie := os.Getenv("APP_ENV") != "development"
 	c.SetSameSite(http.SameSiteLaxMode)
 	c.SetCookie("portal_session", session.Token, 60*60*24*7, "/", "", secureCookie, true)
+
+	// Issue the double-submit CSRF token alongside the session so a fresh login
+	// can make a state-changing call (e.g. redeem) without first loading a page
+	// that would lazily mint it. Non-httpOnly by design — the page JS reads it
+	// and echoes it in X-CSRF-Token (see middleware.PortalCSRFMiddleware).
+	middleware.SetPortalCSRFCookie(c, db.GenerateSecureToken(), secureCookie)
 
 	// The session is delivered ONLY via the httpOnly cookie above — never in the
 	// JSON body, so it is never readable by page JavaScript (XSS-safe). The

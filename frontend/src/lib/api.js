@@ -8,6 +8,16 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || '/v1';
 // Server root for non-/v1 routes (/auth, /portal, /checkout).
 export const API_ROOT = API_BASE.replace(/\/v1\/?$/, '');
 
+// portalCsrfHeader reads the non-httpOnly portal_csrf cookie the server sets on
+// login (and lazily on the first authenticated GET) and returns it as the
+// X-CSRF-Token header. The customer portal's state-changing fetches spread this
+// in so the server's double-submit check passes. Returns {} when the cookie is
+// absent (pre-auth / server without CSRF yet) so callers can spread it safely.
+export function portalCsrfHeader() {
+  const m = document.cookie.match(/(?:^|;\s*)portal_csrf=([^;]+)/);
+  return m ? { 'X-CSRF-Token': decodeURIComponent(m[1]) } : {};
+}
+
 // Send the httpOnly session cookie on every request (same-origin behind the
 // nginx proxy). Applies to the `api` instance and direct axios calls (/auth).
 axios.defaults.withCredentials = true;

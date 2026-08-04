@@ -24,6 +24,21 @@ describe("PortalRedeem (money path)", () => {
     expect(JSON.parse(opts.body)).toEqual({ code: "GIFT-ABCD1234" });
   });
 
+  it("echoes the portal_csrf cookie in the X-CSRF-Token header (#25 double-submit)", async () => {
+    document.cookie = "portal_csrf=tok-abc123";
+    global.fetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    render(<PortalRedeem />, { wrapper });
+
+    fireEvent.change(screen.getByPlaceholderText(/GIFT-/i), { target: { value: "GIFT-ABCD1234" } });
+    fireEvent.click(screen.getByRole("button", { name: /redeem gift/i }));
+
+    await waitFor(() => expect(global.fetch).toHaveBeenCalled());
+    const [, opts] = global.fetch.mock.calls[0];
+    expect(opts.headers["X-CSRF-Token"]).toBe("tok-abc123");
+    // clean up so other tests start with no cookie
+    document.cookie = "portal_csrf=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  });
+
   it("shows the error message on an invalid code", async () => {
     global.fetch.mockResolvedValue({
       ok: false,
