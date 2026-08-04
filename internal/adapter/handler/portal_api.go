@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -167,18 +168,22 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 		return
 	}
 
+	// One generic message for every outcome so the response can't be used to
+	// enumerate which emails are customers. A real customer gets a link; an
+	// unknown email gets the same 200 and body, with no link sent.
+	const genericMsg = "If an account exists for that email, a login link has been sent."
+
 	link, err := h.portalService.RequestMagicLink(c.Request.Context(), req.Email)
 	if err != nil {
 		if err == service.ErrCustomerNotFound {
-			// Don't reveal if email exists - security best practice
-			c.JSON(http.StatusOK, gin.H{"message": "If this email exists, a login link has been sent"})
+			c.JSON(http.StatusOK, gin.H{"message": genericMsg})
 			return
 		}
 		respondInternalError(c, err)
 		return
 	}
 
-	resp := gin.H{"message": "Login link sent to your email"}
+	resp := gin.H{"message": genericMsg}
 	// Expose the link in the response only in development; in production the
 	// token must travel exclusively via email.
 	if os.Getenv("APP_ENV") == "development" {
@@ -649,8 +654,21 @@ func (h *PortalAPIHandler) RedeemGift(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Gift redeemed successfully"})
 }
 
-// Logout invalidates the session
+// Logout invalidates the session — both the cookie AND the server-side row,
+// so a token captured by a non-cookie client (the X-Portal-Session header path)
+// cannot be replayed for the rest of its TTL after logout.
 func (h *PortalAPIHandler) Logout(c *gin.Context) {
+	// Revoke the session server-side. The auth middleware put the resolved
+	// session on the context; delete its row so the token dies now, not in 7
+	// days. Best-effort: a failed delete still clears the cookie, and the
+	// error is logged for follow-up rather than blocking logout.
+	if v, ok := c.Get("portal_session"); ok {
+		if sess, ok := v.(*domain.PortalSession); ok && sess != nil {
+			if err := h.portalService.RevokeSession(c.Request.Context(), sess.ID); err != nil {
+				slog.Error("portal logout: failed to revoke session server-side", "session_id", sess.ID, "error", err)
+			}
+		}
+	}
 	// Match the SameSite attribute used when the cookie was set so the deletion
 	// cookie is a reliable overwrite rather than a second, differently-scoped one.
 	c.SetSameSite(http.SameSiteLaxMode)
