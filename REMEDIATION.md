@@ -354,7 +354,16 @@ fixes the audit counted as done.
   concurrency test on the shared static provider + a doc comment on the
   normalizer stating the single-goroutine contract.
 - **#23** — verify CI provisions Postgres so `_pg_test.go` coverage is real,
-  not skipped. S (CI config).
+  not skipped. S (CI config). **Status**: ✅ shipping — VERIFIED: `ci.yml`
+  provisions a `postgres:15` service (+ redis:7), creates the `recurso_repo_test`
+  scratch DB, exports `TEST_DATABASE_URL`/`TEST_REDIS_URL`, and runs
+  `go test -race ./...`, so the PG suites genuinely run. Added a **guard step**
+  closing the real latent risk: because the invariant harness *skips* (not fails)
+  when `TEST_DATABASE_URL` is unset, dropping the service would leave CI green
+  with the money-path net silently off. The step runs
+  `TestLedgerInvariants_RandomizedBillingSequences` explicitly and fails the
+  build unless it PASSED (grep asserts no `--- SKIP`, requires `--- PASS`).
+  Both branches validated locally (skip→red, pass→green).
 - **#24** — unit tests for `subscription_payment/cancel/pause/retention/
   upgrade`, `smart_retry`, `salestax_resolver`. L (spread across PRs).
 - **#26** — remove stray `console.*`; use shared `formatDate`. S.

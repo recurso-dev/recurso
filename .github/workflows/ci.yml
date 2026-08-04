@@ -105,6 +105,29 @@ jobs:
           APP_ENV: test
         run: go test -v -race -coverprofile=coverage.out ./...
 
+      # Guard against a silent false-green: the ledger invariant harness is the
+      # money-path safety net, but it SKIPS when TEST_DATABASE_URL is unset. If
+      # someone ever drops the postgres service or that env, `go test ./...`
+      # above would still pass with the harness quietly skipped. This step runs
+      # it explicitly and fails the build unless it actually PASSED — so the
+      # accrual/ledger coverage can never be disabled without turning CI red.
+      - name: Assert ledger invariant harness ran (not skipped)
+        env:
+          TEST_DATABASE_URL: postgres://user:password@localhost:5432/recurso_repo_test?sslmode=disable
+          APP_ENV: test
+        run: |
+          out=$(go test -run '^TestLedgerInvariants_RandomizedBillingSequences$' -v ./internal/service/ 2>&1) || {
+            echo "$out"; echo "FATAL: ledger invariant harness failed"; exit 1;
+          }
+          echo "$out"
+          if echo "$out" | grep -q -- '--- SKIP.*TestLedgerInvariants_RandomizedBillingSequences'; then
+            echo "FATAL: ledger invariant harness SKIPPED — Postgres not provisioned for tests"; exit 1
+          fi
+          echo "$out" | grep -q -- '--- PASS: TestLedgerInvariants_RandomizedBillingSequences' || {
+            echo "FATAL: ledger invariant harness did not run to a PASS"; exit 1;
+          }
+          echo "OK: ledger invariant harness executed against Postgres"
+
       - name: Upload coverage
         uses: actions/upload-artifact@v5
         with:
