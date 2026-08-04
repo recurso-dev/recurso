@@ -31,6 +31,16 @@ func (r *InvoiceRepository) SumUnscheduledDeferral(ctx context.Context, tenantID
 		FROM invoices i
 		WHERE i.tenant_id = $1
 		  AND i.subscription_id IS NOT NULL
+		  -- Exclude invoices that already have an active recognition schedule:
+		  -- their deferred is counted in the SCHEDULED bucket (recognition
+		  -- report's deferred balance), so counting them here too would double-
+		  -- count. Under the cash model an unpaid invoice has no schedule → still
+		  -- counted; under accrual (schedule at issuance) it moves to scheduled →
+		  -- excluded here, and the tie-out (ledger == scheduled + awaiting) stays
+		  -- exact and goes to zero.
+		  AND NOT EXISTS (
+		    SELECT 1 FROM revenue_schedules s
+		    WHERE s.invoice_id = i.id AND s.status = 'active')
 		  AND (
 		    i.status IN ('open', 'past_due', 'void')
 		    -- Written-off invoices whose ledger reversal (code 22) was never
