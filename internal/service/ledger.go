@@ -560,6 +560,85 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 	return nil
 }
 
+// RecordWriteOffRecovery re-establishes the books for a written-off invoice
+// that the customer paid after all (a stale checkout link or a late bank
+// transfer can still flip an uncollectible invoice to paid). It is the exact
+// mirror of RecordInvoiceWriteOff:
+//
+//	DR customer AR / CR Deferred (or Revenue, for a one-off) — pre-tax (code 24)
+//	DR customer AR / CR Tax Payable — the tax portion, when present (code 25)
+//
+// Only posts when a code-22 write-off leg exists; idempotent per (invoice,
+// code 24). Must run BEFORE the payment's cash leg so code-3 settles a real
+// receivable instead of driving AR negative — and so the recognition schedule
+// the payment creates draws from a re-established Deferred balance.
+func (s *LedgerService) RecordWriteOffRecovery(ctx context.Context, invoice *domain.Invoice) error {
+	if s.pgRepo == nil {
+		return nil
+	}
+	writeOff, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeInvoiceWriteOff)
+	if err != nil {
+		return fmt.Errorf("write-off recovery lookup failed for invoice %s: %w", invoice.ID, err)
+	}
+	if writeOff == nil {
+		return nil // never written off — nothing to recover
+	}
+	already, err := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeWriteOffRecovery)
+	if err != nil {
+		return fmt.Errorf("write-off recovery lookup failed for invoice %s: %w", invoice.ID, err)
+	}
+	if already != nil {
+		return nil // already recovered
+	}
+
+	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
+	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
+	arID := s.arAccountID(ent, invoice.CustomerID)
+
+	var revenueAccountID uuid.UUID
+	if invoice.SubscriptionID != nil {
+		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+	} else {
+		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+	}
+	if err != nil {
+		return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, err)
+	}
+
+	preTax := invoice.Total - invoice.TaxAmount
+	amt, err := ledgerAmount(preTax)
+	if err != nil {
+		return fmt.Errorf("invoice %s write-off recovery: %w", invoice.ID, err)
+	}
+	transfers := []*domain.LedgerTransaction{{
+		ID: uuid.New(), DebitAccountID: arID, CreditAccountID: revenueAccountID,
+		Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecovery, ReferenceID: invoice.ID,
+		Description: "Write-off recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+	}}
+	if invoice.TaxAmount > 0 {
+		taxAccountID, terr := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
+		if terr != nil {
+			return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, terr)
+		}
+		taxAmt, aerr := ledgerAmount(invoice.TaxAmount)
+		if aerr != nil {
+			return fmt.Errorf("invoice %s write-off recovery: %w", invoice.ID, aerr)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID: uuid.New(), DebitAccountID: arID, CreditAccountID: taxAccountID,
+			Amount: taxAmt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecoveryTax, ReferenceID: invoice.ID,
+			Description: "Tax re-established on recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+		})
+	}
+	if err := s.pgRepo.CreateTransactions(ctx, transfers); err != nil {
+		return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, err)
+	}
+	if s.tbClient != nil {
+		return s.tbClient.CreateTransfers(ctx, transfers)
+	}
+	return nil
+}
+
 func (s *LedgerService) RecordPaymentReversal(ctx context.Context, invoice *domain.Invoice) error {
 	if s.pgRepo == nil {
 		return nil // no PG ledger — nothing to invert or post

@@ -114,4 +114,81 @@ func TestInvoiceWriteOff_Postgres(t *testing.T) {
 	if count != 1 {
 		t.Errorf("write-off legs = %d, want exactly 1", count)
 	}
+
+	// Late recovery: the customer pays after all (stale checkout link / late
+	// bank transfer — MarkPaid deliberately allows uncollectible → paid). The
+	// recovery must re-establish AR, Deferred, and Tax Payable (codes 24/25,
+	// exact mirror of 22/23) so the payment's cash leg settles a real
+	// receivable instead of driving AR negative.
+	if err := svc.RecordWriteOffRecovery(ctx, inv); err != nil {
+		t.Fatalf("write-off recovery: %v", err)
+	}
+	if got := balance(2100); got != 100000 {
+		t.Errorf("Deferred after recovery = %d, want 100000 (re-established)", got)
+	}
+	if got := balance(2200); got != 18000 {
+		t.Errorf("Tax Payable after recovery = %d, want 18000 (re-established)", got)
+	}
+	arBalance := func() int64 {
+		var n int64
+		if err := conn.QueryRowContext(ctx, `
+			SELECT COALESCE(SUM(CASE WHEN t.debit_account_id=a.id THEN t.amount ELSE -t.amount END),0)
+			FROM ledger_accounts a
+			JOIN ledger_transactions t ON t.credit_account_id=a.id OR t.debit_account_id=a.id
+			WHERE a.tenant_id=$1 AND a.code=1100`, tenantID).Scan(&n); err != nil {
+			t.Fatalf("ar balance: %v", err)
+		}
+		return n
+	}
+	if got := arBalance(); got != 118000 {
+		t.Errorf("AR after recovery = %d, want 118000 (receivable re-established)", got)
+	}
+
+	// Idempotent: a redelivered webhook can't double-post the recovery.
+	if err := svc.RecordWriteOffRecovery(ctx, inv); err != nil {
+		t.Fatalf("second recovery: %v", err)
+	}
+	var recCount int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id=$1 AND code=$2`,
+		inv.ID, int(domain.LedgerCodeWriteOffRecovery)).Scan(&recCount); err != nil {
+		t.Fatalf("recovery count: %v", err)
+	}
+	if recCount != 1 {
+		t.Errorf("recovery legs = %d, want exactly 1", recCount)
+	}
+
+	// The normal payment cash leg then zeroes AR — the end state of the full
+	// write-off → pay-after-all arc is identical to a plain paid invoice.
+	if err := svc.RecordPayment(ctx, inv); err != nil {
+		t.Fatalf("record payment: %v", err)
+	}
+	if got := arBalance(); got != 0 {
+		t.Errorf("AR after payment = %d, want 0", got)
+	}
+	if got := balance(2100); got != 100000 {
+		t.Errorf("Deferred after payment = %d, want 100000 (awaiting recognition)", got)
+	}
+
+	// A never-written-off invoice is a no-op for recovery.
+	other := &domain.Invoice{
+		ID: uuid.New(), TenantID: tenantID, CustomerID: customerID,
+		SubscriptionID: &subID, InvoiceNumber: "INV-WOFF-2", Currency: "INR",
+		Subtotal: 50000, TaxAmount: 9000, Total: 59000, CreatedAt: time.Now(),
+	}
+	if err := svc.RecordInvoice(ctx, other); err != nil {
+		t.Fatalf("record other invoice: %v", err)
+	}
+	if err := svc.RecordWriteOffRecovery(ctx, other); err != nil {
+		t.Fatalf("recovery on never-written-off invoice: %v", err)
+	}
+	var otherRec int
+	if err := conn.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM ledger_transactions WHERE reference_id=$1 AND code=$2`,
+		other.ID, int(domain.LedgerCodeWriteOffRecovery)).Scan(&otherRec); err != nil {
+		t.Fatalf("other recovery count: %v", err)
+	}
+	if otherRec != 0 {
+		t.Errorf("recovery legs on never-written-off invoice = %d, want 0", otherRec)
+	}
 }

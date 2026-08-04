@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pack's awaiting-payment bucket counts legacy un-reversed write-offs so the
   deferred tie-out stays exact either way. Found by the tie-out's
   unexplained-delta on its first day live.
+- **Paying a written-off invoice now recovers its books.** An uncollectible
+  invoice can still get paid — a stale checkout link or a late bank transfer
+  deliberately flips it to paid. But after the write-off reversal above, the
+  payment's cash leg would have settled a receivable that no longer existed
+  (driving AR negative) and the recognition schedule would have drained an
+  already-reversed Deferred balance. Settlement now re-establishes AR,
+  Deferred (or Revenue), and Tax Payable first (codes 24/25 — the exact
+  mirror of 22/23; idempotent, posted only when a write-off leg exists), so
+  the end state of the write-off → paid-after-all arc is identical to a plain
+  paid invoice. Proven end-to-end by the Postgres write-off test.
 
 ## [0.10.0] - 2026-08-03 — The receipts release
 

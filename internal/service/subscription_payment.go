@@ -37,6 +37,15 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	// freshly-loaded invoice, before MarkPaid / the AmountPaid overwrite below.
 	walletSettled := inv.AmountPaid
 
+	// A written-off invoice can still get paid (a stale checkout link or a late
+	// bank transfer) — MarkPaid deliberately allows uncollectible → paid.
+	// Capture the pre-transition status so the write-off reversal (code 22/23)
+	// can be recovered below BEFORE the cash leg posts; without it the payment
+	// would settle a receivable the write-off already relieved, driving AR
+	// negative, and the recognition schedule would drain an already-reversed
+	// Deferred balance.
+	wasWrittenOff := inv.Status == domain.InvoiceStatusUncollectible
+
 	now := time.Now().UTC()
 	// Atomically claim the paid transition. Only the settler whose conditional
 	// UPDATE actually flips the row runs the side-effects below; concurrent
@@ -59,6 +68,18 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	// to get paid, record it as recovered revenue (idempotent, non-fatal).
 	if s.recoveryRecorder != nil {
 		s.recoveryRecorder.RecordIfRecovered(ctx, inv)
+	}
+
+	// Late recovery: if the invoice had been written off, re-establish AR /
+	// Deferred / Tax Payable (codes 24/25, mirror of the write-off's 22/23)
+	// BEFORE the cash leg — the payment must settle a real receivable. Failure
+	// is logged loudly, not fatal: the invoice is correctly paid either way,
+	// and the close pack's tie-out keeps an un-recovered write-off visible.
+	if wasWrittenOff && s.ledger != nil {
+		if err := s.ledger.RecordWriteOffRecovery(ctx, inv); err != nil {
+			s.logger.Error("write-off recovery posting failed — books understate AR/Deferred until reposted",
+				"error", err, "invoice_id", inv.ID)
+		}
 	}
 
 	// Record payment in ledger — cash leg net of the wallet portion already
