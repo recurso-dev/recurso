@@ -18,7 +18,7 @@ import {
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -398,7 +398,7 @@ export default function Developers() {
       header: "Created",
       cell: (k) => (
         <span className="text-muted-foreground">
-          {k.created_at ? new Date(k.created_at).toLocaleDateString() : "—"}
+          {formatDate(k.created_at)}
         </span>
       ),
     },

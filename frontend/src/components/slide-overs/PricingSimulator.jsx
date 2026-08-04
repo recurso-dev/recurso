@@ -78,7 +78,7 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
 
       {result && (
         <div className="mt-3 flex flex-col gap-3">
-          <div className="overflow-hidden rounded-md border border-border bg-background">
+          <div className="overflow-x-auto rounded-md border border-border bg-background">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
@@ -123,7 +123,7 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
                   </Badge>
                 )}
               </div>
-              <div className="overflow-hidden rounded-md border border-border bg-background">
+              <div className="overflow-x-auto rounded-md border border-border bg-background">
                 <table className="w-full text-xs">
                   <tbody>
                     {result.gl_preview.map((g, i) => (

@@ -6,7 +6,7 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency, toMinorUnits } from "@/lib/utils";
+import { formatCurrency, toMinorUnits, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ const statusVariant = (status) =>
     status
   ] || "neutral";
 
-const fmtDate = (v) => (v ? new Date(v).toLocaleDateString() : "—");
+const fmtDate = (v) => formatDate(v);
 
 const emptyForm = { customer_id: "", currency: "INR", vpa: "", max_amount: "", frequency: "monthly", subscription_id: "" };
 
