@@ -54,6 +54,11 @@ func (r recordEventRequest) toEvent() (*domain.UsageEvent, error) {
 	if err != nil {
 		return nil, errInvalidCustomerID
 	}
+	// A negative dynamic price would bill the customer a negative amount over the
+	// period — never valid. Enforce the "non-negative" contract the field documents.
+	if r.DynamicAmount < 0 {
+		return nil, errNegativeDynamicAmount
+	}
 	return &domain.UsageEvent{
 		ID:             uuid.New(),
 		SubscriptionID: subID,
@@ -70,6 +75,7 @@ func (r recordEventRequest) toEvent() (*domain.UsageEvent, error) {
 var (
 	errInvalidSubscriptionID = errors.New("invalid subscription_id")
 	errInvalidCustomerID     = errors.New("invalid customer_id")
+	errNegativeDynamicAmount = errors.New("dynamic_amount must be zero or positive")
 )
 
 func (h *UsageHandler) RecordEvent(c *gin.Context) {

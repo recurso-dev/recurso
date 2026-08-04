@@ -59,6 +59,10 @@ func (h *ReferralHandler) CreateReferral(c *gin.Context) {
 		return
 	}
 
+	if req.RewardAmount < 0 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "reward_amount must be zero or positive")
+		return
+	}
 	if req.Currency == "" {
 		req.Currency = "USD"
 	}

@@ -340,7 +340,10 @@ fixes the audit counted as done.
 - **#19** — response-envelope consistency (`{data:}`), 2 raw error escapes,
   ~16 missing `operationId`. S–M; API-contract care.
 - **#20** — add `>=0` guards to `dispute.CreditAmount`, `referral.RewardAmount`,
-  `usage.DynamicAmount`, `plan.Amount`. S.
+  `usage.DynamicAmount`, `plan.Amount`. S. **Status**: ✅ shipping — all four
+  reject negatives at the API edge (400) before any ledger/credit-note/billing
+  path sees them; `usage.DynamicAmount` enforced in `toEvent` (the field already
+  documented "non-negative"). Tests cover each guard.
 - **#21** — confirm `fxNormalizer.rates` is per-report (or add a mutex). S.
 - **#23** — verify CI provisions Postgres so `_pg_test.go` coverage is real,
   not skipped. S (CI config).
