@@ -158,11 +158,13 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=general-ledger.csv")
 
 	w := csv.NewWriter(c.Writer)
+	// accounting_version is appended last so existing column positions are
+	// unchanged for any downstream parser (ADR-008 journal provenance).
 	_ = w.Write([]string{
 		"transaction_id", "timestamp", "code",
 		"debit_account_code", "debit_account_name",
 		"credit_account_code", "credit_account_name",
-		"amount", "reference_id", "description",
+		"amount", "reference_id", "description", "accounting_version",
 	})
 	for _, e := range entries {
 		_ = w.Write([]string{
@@ -174,6 +176,7 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 			fmt.Sprintf("%d", e.Amount),
 			e.ReferenceID.String(),
 			e.Description,
+			strconv.Itoa(e.AccountingVersion),
 		})
 	}
 	w.Flush()

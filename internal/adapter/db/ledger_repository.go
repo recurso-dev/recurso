@@ -133,6 +133,7 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 		`SELECT t.id, t.created_at, t.code,
 		        da.code, da.name, ca.code, ca.name,
 		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
+		        t.accounting_version,
 		        e.id, COALESCE(e.name, '')
 		 FROM ledger_transactions t
 		 JOIN ledger_accounts da ON da.id = t.debit_account_id
@@ -151,7 +152,7 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 		var entityID uuid.NullUUID
 		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
 			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
-			&g.Amount, &g.ReferenceID, &g.Description, &entityID, &g.EntityName); err != nil {
+			&g.Amount, &g.ReferenceID, &g.Description, &g.AccountingVersion, &entityID, &g.EntityName); err != nil {
 			return nil, fmt.Errorf("failed to scan general ledger row: %w", err)
 		}
 		if entityID.Valid {

@@ -32,6 +32,16 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — **Accounting versioning: surfaced in the GL export.** The
+  journal-level `accounting_version` (increment 2) now flows through the
+  general-ledger export an auditor pulls: `GetGeneralLedgerRows` selects it,
+  `domain.GeneralLedgerRow` carries it, and the GL **CSV export** appends an
+  `accounting_version` column (last, so existing column positions are unchanged).
+  PG test asserts a V2-stamped journal surfaces as V2 in the export; db + handler
+  + mcp suites green. This closes the founder's request #2 end-to-end: the
+  accounting-model provenance is stamped on both schedules and journals, and is
+  now **visible** to auditors.
+
 - **2026-08-04** — **Accounting-model versioning increment 2: journal-level
   provenance.** Every ledger journal is now stamped with the accounting model in
   force when it was posted (`ledger_transactions.accounting_version`, migration
