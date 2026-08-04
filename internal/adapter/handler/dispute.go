@@ -79,6 +79,12 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "outcome must be 'accept' or 'reject'")
 		return
 	}
+	// A negative credit would mint a credit note that debits the customer — never
+	// valid. 0 is allowed (means "the invoice's amount due"); reject <0 at the edge.
+	if req.CreditAmount < 0 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "credit_amount must be zero or positive")
+		return
+	}
 
 	credit, err := h.service.ResolveWithOutcome(
 		c.Request.Context(), tenantID, middleware.GetUserID(c), func() string {

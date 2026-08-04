@@ -34,6 +34,12 @@ func (h *CatalogHandler) CreatePlan(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 		return
 	}
+	// `required` already rejects a zero amount; also reject a negative one so a
+	// plan can never bill a negative recurring charge.
+	if req.Amount < 0 {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "amount must be positive")
+		return
+	}
 
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {
