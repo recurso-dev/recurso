@@ -1,73 +1,123 @@
 # Recurso — API Guidelines
 
-> The contract the public API keeps. Recurso is API-first; the dashboard is one
-> client. Grounded in the conventions in `CLAUDE.md` and `cmd/api/openapi.yaml`.
+> **Code-derived.** Every statement cites a file; implementation wins. §1–10 are
+> the contract as implemented; the audit callouts flag real inconsistencies.
+> Recurso is API-first; the dashboard is one client.
 
-## Shape
+## 1. Response envelope
 
-- **REST + JSON.** Resources are nouns, verbs are HTTP methods. No destructive
-  GETs, ever.
-- **Envelope:** successful responses wrap data as `{ "data": ... }`. (A few
-  legacy endpoints are unwrapped — dunning-campaign and cancel-flow — documented
-  quirks; new endpoints wrap. Reducing the drift is tracked in REMEDIATION.md.)
-- **Errors:** canonical `{ "error": { "code": "...", "message": "..." } }` via
-  the shared `httperr` helpers. The message is human-actionable; driver detail
-  is never leaked. No raw `gin.H{"error": ...}`.
-- **Every route is in `openapi.yaml`** — a hard CI gate. Adding a verb to an
-  existing path merges under the existing key (a duplicate path key is invalid
-  YAML). Every operation has an `operationId`.
+Success payloads wrap as `{"data": ...}`. It is a **convention, not enforced
+middleware** — two helpers coexist (`internal/adapter/handler/response.go:52-71`
+`RespondSuccess`/`RespondList`; most handlers inline `c.JSON(status,
+gin.H{"data": ...})`). Used in 53 handler files.
 
-## Money & correctness
+**Deviations (audit):**
+- Bare-object success responses: `auth.go` (Register `:108`, Login `:152`, MFA
+  gate `:144`), the three import handlers (`stripe_import.go:48,74,93` etc.),
+  `billing.go:113`, `dispute.go:110`, `portal_api.go:193,279`,
+  `gift_handler.go:54`.
+- Action responses (`{status:"deleted"}`, `{message:...}`,
+  `{success,message}`): dunning-campaign/cancel-flow delete, einvoice, auth
+  flows.
+- `{data:}` + sibling keys: `gst.go`, `einvoice.go`, `eu_einvoice.go` add
+  `gov_schema`/`message`.
 
-- Amounts are `int64` **minor units**; currency is an ISO-4217 code (validated —
-  `internal/validate`). Reject a non-ISO or reserved (XXX/XTS) code at bind.
-- Money-moving POSTs validate amounts (`> 0` / `>= 0` as appropriate) at the
-  binding layer **and** the service layer (defense in depth).
-- **Idempotency:** money-moving POSTs accept an idempotency key; settlement and
-  ledger posting are idempotent so a redelivered webhook can't double-post.
+## 2. Errors
 
-## Pagination
+Canonical `{"error":{"code","message"}}` — defined in
+`internal/adapter/httperr/httperr.go` (`envelope`/`APIError` `:39-48`, `Respond`
+`:51`, `Abort` `:57`, stable snake_case codes `:22-37`). **Driver detail is
+hidden on 500s:** `respondInternalError` (`respond.go:49-53`) logs the real error
+server-side and returns a fixed `internal_error` body.
 
-- Use `ParsePagination` / `clampLimitOffset`. Bound every *display* list; clamp
-  abusive values. Document the default and cap in OpenAPI.
-- **Never paginate a processing/billing sweep** — that silently drops work. Bound
-  what's displayed, not what's computed.
+**Deviations (audit):** three raw `{"error":"..."}` sites bypass the envelope —
+`webhook.go:153`, `webhook_gocardless.go:87`, `main.go:1583` (founder endpoint).
 
-## Auth & tenancy
+## 3. Authentication
 
-- Bearer API key or session cookie; live vs test keys (`rsk_live_`/`rsk_test_`)
-  must match server mode.
-- **Tenant scoping is mandatory** on every query — a handler resolves the tenant
-  from auth and every repository call is scoped by it. IDOR is a release blocker.
-- BYO credentials (gateways, tax, CRM, storage) are sealed in the vault, never
-  returned, and SSRF-guarded (no tenant-controlled internal URLs).
+Three mechanisms (`internal/adapter/middleware/`): Bearer API key
+(`AuthMiddleware`, `auth.go:143`; `rsk_live_`/`rsk_test_`, bcrypt + 5-min
+SHA-256 cache; mode mismatch → `401 key_mode_mismatch`); session-or-key
+(`SessionOrAPIKeyMiddleware`, `auth.go:184`, guards `/v1`); portal session
+(`portal_auth.go:12`, `portal_session` cookie or `X-Portal-Session`). All abort
+through the canonical envelope.
 
-## Rate limiting (ADR-001)
+## 4. Pagination
 
-- Scoped buckets: `api` (global), `public` (auth/brute-force), `session`,
-  `expensive` (import commit/compare, PDF/GL renders). Different limits use
-  different scopes — a shared key makes the strictest limiter judge the total.
+`internal/adapter/handler/pagination.go` — **three conventions coexist:**
+`ParsePagination` (page/per_page, default 50, cap 250), `parsePageLimit` (default
+50, cap 1000; tier-1 lists), `parseLimitOffset`/`clampLimitOffset` (DoS-bound,
+house convention def=max=1000). Bound every *display* list; document defaults in
+OpenAPI.
 
-## Observability
+**Never paginate a billing/processing sweep** — a paged read there silently
+drops work. The precharge sweep (`GetSubscriptionsDueTomorrow`,
+`subscription_repository.go:360`) is unbounded by design; renewal/resume claims
+ARE batched (`ClaimDueForRenewal :499`).
 
-- Every request carries a `request_id`; it flows on the context so service logs
-  (`slog.*Context`) are stamped with `request_id` / `tenant_id` / `user_id`. A
-  production incident must be reconstructable from a trace.
+## 5. Validation
 
-## Webhooks
+gin binding tags at the edge. Money POSTs use `binding:"required,gt=0"`
+(`coupon.go:27`, `mandate.go:29`, `offline_payment.go:24,95`). The new
+`internal/validate` package registers `currency`/`country` tags backed by
+`golang.org/x/text` (rejects `XXX`/`XTS`), wired at `main.go:1475`.
 
-- Delivery is retried with backoff; consumers must be idempotent. Inbound
-  gateway webhooks are tenant-bound (a foreign connection's event is ignored)
-  and dedup-guarded fail-closed.
+**Audit:** currency validation is **split** — the new `currency` tag on 3
+handlers (`advanced_billing.go:37`, `plan.go:27`, `mandate.go:33`) vs legacy
+`len==3` in 4 services (`catalog.go:50`, `euinvoice_ubl.go:198`,
+`pricing_simulator.go:83`, `wallet.go:121`). The registered `country` tag has
+zero adopters yet.
 
-## Versioning & compatibility
+## 6. Idempotency
 
-- Breaking changes are additive-first; when a shape must change, keep the old
-  path one release (see the portal magic-link GET→POST migration). SDKs
-  (Go/Node/Python) are generated from the OpenAPI spec — keep it accurate.
+**HTTP** (`middleware/idempotency.go`): applies to mutating methods on `/v1`
+(wired `main.go:1761`); `Idempotency-Key` is *recommended, not required*; keyed
+`idem:<tenant>:<method>:<path>:<key>`; atomic `Claim` → replay (`X-Idempotency-Hit`)
+or `409` on in-flight duplicate; 5xx/panic release the reservation. **Ledger**
+(deeper layer): unique `(reference_id, code)`, extended to `(reference_id, code,
+occurrence)` for settle→reverse cycles (`domain/ledger.go:333`,
+`docs/design-ledger-occurrence.md`).
 
-## Related
+## 7. Rate limiting (ADR-001)
 
-- `CLAUDE.md` (repo conventions), `cmd/api/openapi.yaml` (the spec)
-- `ACCOUNTING_PRINCIPLES.md` — the money invariants the API must not break
-- `ANTI_PATTERNS.md` — never silently retry money; never leak state
+`middleware/rate_limit.go` — fixed-window, Redis + in-memory fallback, keyed per
+**scope** by tenant-or-IP. Four scopes (`main.go`): `api` (global 500/min),
+`public` (20/min, brute-forceable auth/checkout), `session` (120/min,
+per-page-load), `expensive` (30/min per tenant — import commit/compare, PDF/GL
+renders).
+
+## 8. OpenAPI drift gate
+
+`cmd/api/openapi_drift_test.go` fails CI if any registered `method path` is
+absent from the embedded `openapi.yaml`. Spec has 246 paths / 304 operations /
+288 operationIds → **~16 operations lack an operationId** (drift gate doesn't
+catch that). Adding a verb to an existing path merges under the existing key.
+
+## 9. Versioning
+
+Single `/v1` group (`main.go:1759`); no `/v2`. Root-level unversioned:
+`/auth/*`, `/portal/*`, `/checkout/*`, `/webhooks/*`, `/health`, `/version`.
+**Breaking-change idiom:** add the new verb, keep the old one one release for
+in-flight clients, then remove — as done for portal magic-link (`GET`→`POST
+/portal/auth/verify`, both live at `main.go:1731-1732`).
+
+## 10. Webhooks
+
+**Inbound** (`handler/webhook*.go`, public, outside `/v1`): tenant-bound (load
+the referenced invoice, inject its tenant; a foreign BYO-connection tenant is
+ignored). Dedup **fail-closed** — a lookup error returns `503` so the gateway
+retries (`webhook.go:151`). **Outbound** (`worker/webhook_worker.go`): atomic
+claim (10-min lease, batch 10), SSRF-hardened (no redirects, connect-time IP
+re-check), HMAC-SHA256 signature, exponential backoff `2^n·30s` capped 24h, max 5
+attempts.
+
+## Source of truth
+
+- **Code:** `internal/adapter/handler/{httperr,respond,response,pagination}.go`,
+  `internal/adapter/middleware/{auth,idempotency,rate_limit}.go`,
+  `internal/validate/`, `cmd/api/{main.go,openapi.yaml,openapi_drift_test.go}`.
+- **ADRs:** ADR-001 (rate-limit scoping), ADR-002 (ledger posting), ADR-003
+  (claim-based workers), ADR-006 (token connections).
+- **Evidence file:** `docs/evidence/api-contract.md`.
+- **Related:** `ARCHITECTURE.md`, `ACCOUNTING_PRINCIPLES.md`,
+  `DOCUMENTATION_RULES.md`.
