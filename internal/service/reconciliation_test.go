@@ -41,6 +41,10 @@ type mockReconciliationRepo struct {
 	pendingEvents    int64
 	pendingEventsErr error
 
+	overruns     []db.RecognitionOverrun
+	overrunTotal int
+	overrunErr   error
+
 	accounts    []*domain.LedgerAccount
 	accountsErr error
 
@@ -104,6 +108,14 @@ func (m *mockReconciliationRepo) SumPendingRecognitionEvents(ctx context.Context
 		return 0, m.pendingEventsErr
 	}
 	return m.pendingEvents, nil
+}
+
+func (m *mockReconciliationRepo) GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error) {
+	m.gotLimits = append(m.gotLimits, limit)
+	if m.overrunErr != nil {
+		return nil, 0, m.overrunErr
+	}
+	return m.overruns, m.overrunTotal, nil
 }
 
 func (m *mockReconciliationRepo) GetAccountsByTenant(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.LedgerAccount, error) {
