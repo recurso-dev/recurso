@@ -32,6 +32,17 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 accrual epic **Increment 4 shipping** (tie-out
+  exclusion + verification): `SumUnscheduledDeferral` now EXCLUDES invoices with
+  an active recognition schedule — the load-bearing fix, without which an
+  accrual invoice would be double-counted (in scheduled AND awaiting-payment)
+  and the tie-out would go negative. New PG test drives the real
+  `ClosePackService.Generate` and PROVES the deferred tie-out is exactly zero
+  under accrual (`ledger 100000 = scheduled 100000 + awaiting 0, delta 0`), and
+  that the cash model still ties via the awaiting bucket. This is the
+  verification the founder asked for. Increment 3 **MERGED (#496)** — accrual is
+  now available end-to-end (opt-in via RECURSO_ACCRUAL_RECOGNITION).
+
 - **2026-08-04** — #466 accrual epic **Increment 3 shipping** (the switch,
   opt-in): `RECURSO_ACCRUAL_RECOGNITION=true` builds the recognition schedule at
   invoice ISSUANCE for subscription invoices, so revenue recognizes over the
