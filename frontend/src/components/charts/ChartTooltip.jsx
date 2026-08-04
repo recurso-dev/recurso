@@ -67,7 +67,21 @@ export const chartCategoryColors = ["emerald", "blue", "amber", "violet", "red"]
  * duration gives the deliberate, unhurried reveal that reads as premium
  * rather than the default snap-in.
  */
+// Animate only when the document is actually visible and the user hasn't
+// asked for reduced motion. Chrome freezes requestAnimationFrame in hidden or
+// occluded windows, so a chart that mounts there gets stuck at the entry
+// animation's first frame — sub-pixel bars over a correctly scaled axis (an
+// empty-looking chart with real data). Booting hidden (bg-tab open, capture
+// tooling) therefore renders charts at full height immediately; the animated
+// reveal stays for the normal foreground case.
+const motionOK =
+  typeof document !== "undefined" &&
+  document.visibilityState === "visible" &&
+  typeof window !== "undefined" &&
+  (typeof window.matchMedia !== "function" ||
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
 export const chartDefaults = {
-  showAnimation: true,
+  showAnimation: motionOK,
   animationDuration: 900,
 };
