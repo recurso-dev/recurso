@@ -1,12 +1,13 @@
 ---
 name: Recurso Design Language
 description: >-
-  Accounting-first fintech UI in the Stripe / Linear light-UI tradition (the
-  code comment in src/index.css names both). Warm-stone neutrals, an emerald
-  accent used sparingly, Inter with tabular figures wherever money appears, soft
-  shadows and an 8px base radius. Light-only by deliberate choice. Tokens below
-  are the REAL values from src/index.css + tailwind.config.js (hex is an approx
-  of the source HSL); the founder-set target direction and its deltas are in §A/§C.
+  Recurso's own accounting-first design language — a hybrid (~45% Linear / 35%
+  Stripe / 20% Vercel, principles not copies) optimized for trust, clarity,
+  auditability, and data density. Every UI decision answers "would a CFO trust
+  this with their revenue?". Warm-stone neutrals, Inter with tabular figures for
+  money, soft shadows, 8px radius, light-only. Tokens below are the REAL shipped
+  values from src/index.css + tailwind.config.js (the accent is emerald today);
+  the founder-set target direction (blue accent) and its deltas are in §A/§I.
 tokens_source:
   - frontend/src/index.css
   - frontend/tailwind.config.js
@@ -57,13 +58,41 @@ dark-mode: disabled   # light-only, index.css:8
 
 ## §A. Design intent (target language)
 
+**Recurso is its own system — a hybrid, not a copy of any brand.** Extract the
+principles below, don't imitate the aesthetic. The blend that fits an
+accounting-first developer platform:
+
+| Surface | Blend (principles, not brand copies) |
+|---|---|
+| **Dashboard** | 70% Linear · 20% Stripe · 10% GitHub — data density, spacing, keyboard-first, enterprise tables |
+| **Website** | 50% Stripe · 30% Vercel · 20% Mercury — financial trust + clean marketing |
+| **Docs** | 80% Mintlify · 20% Stripe Docs |
+| **Customer portal** | 70% Stripe Billing · 30% Linear |
+| **This doc's basis** | ~45% Linear · 35% Stripe · 20% Vercel |
+
+**The filter for every UI decision:** *"Would a CFO, finance manager, or
+engineering leader trust this product with their revenue?"* Recurso isn't trying
+to be the most visually striking SaaS — it's trying to be the most **trustworthy**
+billing and accounting platform.
+
 **Personality:** enterprise · professional · modern · trustworthy · minimal ·
 fast · calm · premium. Never playful, never consumer, never "startup landing
-page." **Inspiration:** Stripe · Linear · Mercury · Vercel · Ramp · Notion ·
-Raycast · Anthropic. **Intended color:** almost-white ground, lots of
-whitespace, **blue accents**, green *only* for success, red *only* for
-destructive, no gradients unless illustrating value. **Cards:** rounded 12px.
-**Tables:** virtualized, dense mode.
+page."
+
+**Optimize for:** trust · clarity · auditability · data density · speed ·
+accessibility.
+
+**Prioritize:** readable tables · tabular numbers · accounting layouts ·
+enterprise navigation · keyboard-first workflows · responsive dashboards · high
+information density without clutter.
+
+**Avoid:** flashy gradients · oversized hero sections · decorative animations ·
+unnecessary whitespace · consumer aesthetics.
+
+**Intended color:** almost-white ground with generous (not wasteful) whitespace,
+**blue/indigo accent** (the Linear/Stripe lineage), green *only* for success,
+red *only* for destructive, gradients only when they illustrate value.
+**Cards:** rounded ~12px. **Tables:** virtualized, dense mode.
 
 ---
 
