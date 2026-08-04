@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -192,9 +193,23 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// VerifyMagicLink verifies the magic link and creates a session
+// verifyMagicLinkRequest carries the token in a POST body, so it is not written
+// to Referer headers, browser history, or proxy/access logs the way a query
+// string is.
+type verifyMagicLinkRequest struct {
+	Token string `json:"token"`
+}
+
+// VerifyMagicLink verifies the magic link and creates a session. The token is
+// read from the JSON body (preferred) or, for one release of backward
+// compatibility with links already in flight, the query string.
 func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
-	token := c.Query("token")
+	var body verifyMagicLinkRequest
+	_ = c.ShouldBindJSON(&body) // optional body; empty is fine, we fall back to query
+	token := strings.TrimSpace(body.Token)
+	if token == "" {
+		token = strings.TrimSpace(c.Query("token"))
+	}
 	if token == "" {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "token required")
 		return
@@ -202,7 +217,10 @@ func (h *PortalAPIHandler) VerifyMagicLink(c *gin.Context) {
 
 	session, err := h.portalService.VerifyMagicLink(c.Request.Context(), token)
 	if err != nil {
-		respondError(c, http.StatusUnauthorized, codeUnauthorized, err.Error())
+		// One generic message for every failure (invalid / expired / already
+		// used) so the response can't be used to probe a token's state.
+		respondError(c, http.StatusUnauthorized, codeUnauthorized,
+			"This sign-in link is invalid or has expired. Please request a new one.")
 		return
 	}
 
