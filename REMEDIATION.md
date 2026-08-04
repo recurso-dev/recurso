@@ -32,6 +32,22 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — **Accounting-model versioning (founder request #2), increment 1.**
+  Every revenue schedule is now stamped with the accounting model that produced
+  it — `AccountingModelV1` (cash, built at payment) or `V2` (accrual, built at
+  issuance) — so the books can always answer "which accounting rules created this
+  recognition?" (historical reproducibility / per-tenant migration / rollback).
+  Migration 000166 adds `revenue_schedules.accounting_version SMALLINT NOT NULL
+  DEFAULT 1`, backfilling every existing schedule as V1 (all were cash) with no
+  data migration. Derived, not a drift-prone second field:
+  `AccountingPolicy.ModelVersion()` maps accrual→V2/cash→V1, and
+  `scheduleModelVersion(invoice)` stamps subscription schedules from the invoice's
+  paid state at creation (unpaid = issuance = V2; paid = payment = V1); one-offs
+  carry the V1 baseline. Additive and reversible: the invariant harness (10 seeds)
+  stays green, the column round-trips (PG test), and the down-migration drops
+  cleanly. Future increment: stamp the policy version on the ledger journals
+  themselves (ADR-008's journal-level provenance).
+
 - **2026-08-04** — **Accrual invariant (founder request): "Revenue Recognized ≤
   recognizable amount" now fails CI.** The reconciler gained a
   `recognized_exceeds_invoice` discrepancy: any revenue schedule whose recognized

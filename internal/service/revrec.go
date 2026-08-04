@@ -338,6 +338,20 @@ func (s *RevRecService) ReduceScheduleForDowngrade(ctx context.Context, tenantID
 	return reduced, nil
 }
 
+// scheduleModelVersion stamps a subscription schedule with the accounting model
+// that produced it (ADR-008). The discriminator is the invoice's paid state at
+// creation time: the accrual model builds the schedule at issuance while the
+// invoice is still unpaid (V2); the cash model builds it once payment posts and
+// the invoice is paid (V1). This is derivable with no extra state threading
+// because the two models create schedules at different points in the invoice's
+// life.
+func scheduleModelVersion(invoice *domain.Invoice) int {
+	if invoice.Status == domain.InvoiceStatusPaid {
+		return domain.AccountingModelV1
+	}
+	return domain.AccountingModelV2
+}
+
 // CreateScheduleForInvoice generates a recognition schedule for a paid invoice.
 // If sub is provided, its period dates are used; otherwise the subscription is looked up.
 func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *domain.Invoice, sub *domain.Subscription) error {
@@ -424,8 +438,12 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 		StartDate:      startDate,
 		EndDate:        endDate,
 		Status:         domain.RevRecStatusActive,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		// Accounting-model stamp (ADR-008): a schedule built while the invoice is
+		// still unpaid is the accrual model (built at issuance, V2); one built once
+		// the invoice is paid is the cash model (built at payment, V1).
+		AccountingVersion: scheduleModelVersion(invoice),
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	if err := s.repo.CreateSchedule(ctx, schedule); err != nil {
@@ -459,8 +477,11 @@ func (s *RevRecService) createImmediateRecognition(ctx context.Context, invoice 
 		StartDate:   invoice.CreatedAt,
 		EndDate:     invoice.CreatedAt,
 		Status:      domain.RevRecStatusActive,
-		CreatedAt:   time.Now(),
-		UpdatedAt:   time.Now(),
+		// One-off invoices recognize immediately and are unaffected by the accrual
+		// switch, so they carry the V1 baseline (see scheduleModelVersion).
+		AccountingVersion: domain.AccountingModelV1,
+		CreatedAt:         time.Now(),
+		UpdatedAt:         time.Now(),
 	}
 
 	if err := s.repo.CreateSchedule(ctx, schedule); err != nil {
