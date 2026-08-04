@@ -3866,6 +3866,40 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+    post:
+      operationId: verifyPortalMagicLinkPost
+      tags: [Customer Portal]
+      summary: Verify a magic link (token in body) and start a session
+      description: >-
+        Preferred over the GET form: the token travels in the request body, not
+        the URL, so it is not written to Referer headers, browser history, or
+        access logs. Exchanges the token for a 7-day portal session set as the
+        `portal_session` cookie.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /portal/api/profile:
     get:
