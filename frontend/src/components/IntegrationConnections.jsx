@@ -26,7 +26,8 @@ const SECTIONS = [
   {
     category: "tax",
     title: "Tax",
-    blurb: "Use your own sales-tax account for US tax calculation.",
+    blurb:
+      "Use your own sales-tax account for US tax calculation. One tax provider is active at a time — connecting a new one replaces the current.",
     providers: [
       {
         id: "taxjar",

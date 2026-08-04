@@ -44,10 +44,16 @@ func (r *IntegrationConnectionRepository) Upsert(ctx context.Context, conn *doma
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// Deactivate every active connection in this CATEGORY, not just the same
+	// provider — one active provider per category per tenant. For tax (the only
+	// category with more than one provider) this makes the connect action the
+	// selection: connecting Ziptax deactivates TaxJar/Avalara, so the resolver
+	// never has to silently pick between two, and the dashboard shows exactly
+	// one Connected badge per category.
 	if _, err := tx.ExecContext(ctx,
 		`UPDATE integration_connections SET active = FALSE, updated_at = now()
-		 WHERE tenant_id = $1 AND category = $2 AND provider = $3 AND active`,
-		conn.TenantID, conn.Category, conn.Provider); err != nil {
+		 WHERE tenant_id = $1 AND category = $2 AND active`,
+		conn.TenantID, conn.Category); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx,
