@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Expensive endpoints now have a dedicated rate-limit bucket.** Import
+  preview/commit/compare (each reprocesses an entire external billing
+  account), invoice/credit-note PDF + HTML renders, the GL export, and the
+  compare-report document previously sat only under the generous global
+  500/min limit — one API key could issue 500 GL exports or import commits a
+  minute. They now share a tight per-tenant `expensive` bucket (30/min); a
+  caller past it gets 429, normal use is unaffected.
+
 ### Security
 
 - **Portal logout now revokes the session server-side.** Logging out of the
