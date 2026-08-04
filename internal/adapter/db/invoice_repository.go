@@ -28,10 +28,18 @@ func (r *InvoiceRepository) SumUnscheduledDeferral(ctx context.Context, tenantID
 	var n int64
 	err := r.db.QueryRowContext(ctx, `
 		SELECT COALESCE(SUM(subtotal), 0)
-		FROM invoices
-		WHERE tenant_id = $1
-		  AND subscription_id IS NOT NULL
-		  AND status IN ('open', 'past_due', 'void')`, tenantID).Scan(&n)
+		FROM invoices i
+		WHERE i.tenant_id = $1
+		  AND i.subscription_id IS NOT NULL
+		  AND (
+		    i.status IN ('open', 'past_due', 'void')
+		    -- Written-off invoices whose ledger reversal (code 22) was never
+		    -- posted (legacy write-offs, or a failed posting) still sit in the
+		    -- ledger's Deferred — count them so the tie-out stays exact.
+		    OR (i.status = 'uncollectible' AND NOT EXISTS (
+		      SELECT 1 FROM ledger_transactions t
+		      WHERE t.reference_id = i.id AND t.code = 22))
+		  )`, tenantID).Scan(&n)
 	if err != nil {
 		return 0, fmt.Errorf("sum unscheduled deferral: %w", err)
 	}

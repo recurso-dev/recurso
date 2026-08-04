@@ -43,6 +43,26 @@ type CollectionsActionService struct {
 	repo     collectionsActionRepo
 	attempts collectionsInFlightChecker // nil-safe
 	logger   *slog.Logger
+	// Write-off ledger reversal (nil-safe): without these a write-off is a
+	// status flip that leaves AR and Deferred overstated forever.
+	ledger   writeOffLedgerPoster
+	invoices writeOffInvoiceReader
+}
+
+// writeOffLedgerPoster is satisfied by *LedgerService.
+type writeOffLedgerPoster interface {
+	RecordInvoiceWriteOff(ctx context.Context, invoice *domain.Invoice) error
+}
+
+// writeOffInvoiceReader is satisfied by *db.InvoiceRepository.
+type writeOffInvoiceReader interface {
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
+}
+
+// SetWriteOffLedger wires the ledger reversal posted on write-off. Nil-safe.
+func (s *CollectionsActionService) SetWriteOffLedger(l writeOffLedgerPoster, r writeOffInvoiceReader) {
+	s.ledger = l
+	s.invoices = r
 }
 
 func NewCollectionsActionService(repo collectionsActionRepo) *CollectionsActionService {
@@ -111,7 +131,9 @@ func (s *CollectionsActionService) SetPaused(ctx context.Context, tenantID, invo
 	return nil
 }
 
-// MarkUncollectible is the operator-initiated write-off (status change only).
+// MarkUncollectible is the operator-initiated write-off: the status flip plus
+// the ledger reversal (DR Deferred/Revenue + Tax Payable, CR AR) so the books
+// stop carrying money that will never arrive.
 func (s *CollectionsActionService) MarkUncollectible(ctx context.Context, tenantID, invoiceID uuid.UUID) error {
 	ok, err := s.repo.MarkUncollectibleScoped(ctx, tenantID, invoiceID)
 	if err != nil {
@@ -119,6 +141,17 @@ func (s *CollectionsActionService) MarkUncollectible(ctx context.Context, tenant
 	}
 	if !ok {
 		return ErrCollectionInvoiceNotFound
+	}
+	if s.ledger != nil && s.invoices != nil {
+		inv, ierr := s.invoices.GetByID(ctx, invoiceID)
+		if ierr != nil || inv == nil || inv.TenantID != tenantID {
+			s.logger.Error("write-off ledger reversal skipped: invoice lookup failed",
+				"invoice_id", invoiceID, "error", ierr)
+		} else if lerr := s.ledger.RecordInvoiceWriteOff(ctx, inv); lerr != nil {
+			// Surface loudly for reconciliation; the status change stands — the
+			// tie-out's unscheduled bucket keeps un-reversed write-offs visible.
+			s.logger.Error("write-off ledger reversal failed", "invoice_id", invoiceID, "error", lerr)
+		}
 	}
 	s.logger.Info("invoice manually marked uncollectible", "invoice_id", invoiceID, "tenant_id", tenantID)
 	return nil

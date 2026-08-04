@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Invoice write-offs now post their ledger reversal.** Marking an invoice
+  uncollectible — manually or via the dunning scheduler — was a bare status
+  flip: AR kept carrying money that would never arrive and Deferred kept
+  revenue that would never be earned, both overstated forever. Write-offs now
+  post DR Deferred (or Revenue, for one-off invoices) + DR Tax Payable /
+  CR the customer's AR (codes 22/23, idempotent per invoice); the close
+  pack's awaiting-payment bucket counts legacy un-reversed write-offs so the
+  deferred tie-out stays exact either way. Found by the tie-out's
+  unexplained-delta on its first day live.
+
 ## [0.10.0] - 2026-08-03 — The receipts release
 
 Nothing here asks to be believed. A migration into Recurso now proves itself
