@@ -18,6 +18,26 @@ type InvoiceRepository struct {
 	items *InvoiceItemRepository
 }
 
+// SumUnscheduledDeferral totals the pre-tax value of subscription invoices
+// that funded Deferred Revenue at issuance but have no recognition schedule —
+// i.e. everything not yet paid (schedules are created on payment). 'void' is
+// included: no flow reverses a void invoice's Code-1 today, so its deferral
+// still sits in the ledger. Used by the close pack's deferred tie-out
+// (recurso-dev/recurso#466).
+func (r *InvoiceRepository) SumUnscheduledDeferral(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	var n int64
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(subtotal), 0)
+		FROM invoices
+		WHERE tenant_id = $1
+		  AND subscription_id IS NOT NULL
+		  AND status IN ('open', 'past_due', 'void')`, tenantID).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("sum unscheduled deferral: %w", err)
+	}
+	return n, nil
+}
+
 func NewInvoiceRepository(db *sql.DB) port.InvoiceRepository {
 	return &InvoiceRepository{db: db, items: NewInvoiceItemRepository(db)}
 }

@@ -132,6 +132,8 @@ export default function MonthEndClose() {
   const rollforward = pack?.deferred_revenue?.rollforward;
   const recognition = pack?.deferred_revenue?.recognition;
   const ties = pack?.deferred_revenue?.ties;
+  const awaiting = pack?.deferred_revenue?.awaiting_payment || 0;
+  const unexplained = pack?.deferred_revenue?.unexplained_delta || 0;
   // Reporting currency (tenant base currency) for exponent-correct formatting.
   const cur = pack?.reporting_currency || "USD";
   const money = (minor) => formatCurrency(minor, cur);
@@ -246,19 +248,19 @@ export default function MonthEndClose() {
                   ) : ties ? (
                     <Badge variant="success">
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      Ledger = schedule
+                      Deferred ties out
                     </Badge>
                   ) : (
                     <Badge variant="warning">
                       <AlertTriangle className="h-3.5 w-3.5" />
-                      Ledger ≠ schedule
+                      Unexplained delta {money(unexplained)}
                     </Badge>
                   )}
                 </div>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {recognition == null
                     ? "Only the ledger rollforward is shown."
-                    : `Schedule deferred balance ${money(recognition.deferred_balance)}`}
+                    : `Scheduled ${money(recognition.deferred_balance)} + awaiting payment ${money(awaiting)}`}
                 </p>
               </Card>
             </div>
