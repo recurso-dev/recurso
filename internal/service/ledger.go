@@ -28,6 +28,18 @@ type LedgerService struct {
 	// unset, every posting resolves to the tenant's primary ledger (LedgerID 1),
 	// which is byte-identical to single-entity behavior.
 	entities entityLedgerReader
+	// recognized returns how much of an invoice's revenue has already been
+	// recognized (moved Deferred → Recognized). The write-off split uses it to
+	// expense the recognized portion as Bad Debt (code 26) rather than reverse
+	// it from Deferred (accrual epic #466/#477). Optional and nil-safe: unset,
+	// recognized is treated as 0, so a write-off reverses the full pre-tax from
+	// Deferred — byte-identical to the pre-accrual behavior.
+	recognized recognizedAmountReader
+}
+
+// recognizedAmountReader returns the recognized (earned) revenue for an invoice.
+type recognizedAmountReader interface {
+	SumRecognizedByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) (int64, error)
 }
 
 // entityLedgerReader is the slice of the entity repository the ledger needs.
@@ -43,6 +55,37 @@ func NewLedgerService(tbClient *tigerbeetle.LedgerClient, pgRepo port.LedgerRepo
 // SetEntityReader wires per-entity ledger resolution (Multi-Entity Books).
 // nil-safe: without it, postings use the primary ledger.
 func (s *LedgerService) SetEntityReader(r entityLedgerReader) { s.entities = r }
+
+// SetRecognizedReader wires the recognized-revenue lookup used by the write-off
+// bad-debt split. nil-safe: without it, recognized is treated as 0.
+func (s *LedgerService) SetRecognizedReader(r recognizedAmountReader) { s.recognized = r }
+
+// recognizedForInvoice returns the recognized (earned) pre-tax revenue for an
+// invoice, capped at preTax, or 0 when no reader is wired / on error (fail safe:
+// the write-off then reverses the full amount from Deferred, the pre-accrual
+// behavior). A one-off invoice books Revenue directly at issuance (nothing sits
+// in Deferred), so its whole pre-tax is treated as recognized → Bad Debt.
+func (s *LedgerService) recognizedForInvoice(ctx context.Context, invoice *domain.Invoice, preTax int64) int64 {
+	if invoice.SubscriptionID == nil {
+		return preTax // one-off: revenue already recognized at issuance
+	}
+	if s.recognized == nil {
+		return 0
+	}
+	r, err := s.recognized.SumRecognizedByInvoice(ctx, invoice.TenantID, invoice.ID)
+	if err != nil {
+		slog.WarnContext(ctx, "write-off: recognized-amount lookup failed; reversing full amount from Deferred",
+			"invoice_id", invoice.ID, "error", err)
+		return 0
+	}
+	if r < 0 {
+		return 0
+	}
+	if r > preTax {
+		return preTax
+	}
+	return r
+}
 
 // ledgerEntity is the resolved posting entity: its TigerBeetle ledger id and
 // whether it's the tenant's primary (whose books stay byte-identical to today).
@@ -525,41 +568,62 @@ func (s *LedgerService) RecordInvoiceWriteOff(ctx context.Context, invoice *doma
 		return nil // current cycle already written off (and not yet recovered)
 	}
 	occurrence := uint16(nWO)
-	if occurrence > 0 {
-		// A repeat write-off means the invoice settled once and the money later
-		// left (bank return). If recognition progressed in between, the mirror
-		// legs below reverse the recognized portion from Deferred instead of
-		// expensing it as bad debt — balanced and visible, but a policy call
-		// (tracked as a designed follow-up). Flag it for review.
-		slog.Warn("repeat write-off cycle: recognized revenue (if any) is reversed from Deferred, not expensed as bad debt — review the books",
-			"invoice_id", invoice.ID, "occurrence", occurrence)
-	}
 
 	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
 	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
 	arID := s.arAccountID(ent, invoice.CustomerID)
 
-	var revenueAccountID uuid.UUID
+	// The still-DEFERRED portion of the write-off reverses out of Deferred
+	// (subscription) or Revenue (one-off, though a one-off's revenue is already
+	// recognized — see below). The RECOGNIZED portion cannot be un-deferred;
+	// it is expensed as Bad Debt (#466/#477).
+	var deferredAccountID uuid.UUID
 	if invoice.SubscriptionID != nil {
-		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
+		deferredAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
 	} else {
-		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
+		deferredAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
 	}
 	if err != nil {
 		return fmt.Errorf("write-off ledger failed for invoice %s: %w", invoice.ID, err)
 	}
 
 	preTax := invoice.Total - invoice.TaxAmount
-	amt, err := ledgerAmount(preTax)
-	if err != nil {
-		return fmt.Errorf("invoice %s write-off: %w", invoice.ID, err)
+	// Split pre-tax by what has already been recognized. Under the cash model a
+	// subscription invoice being written off has no schedule → recognized 0 →
+	// the whole pre-tax reverses from Deferred (byte-identical to before). Under
+	// accrual, the recognized part is expensed as Bad Debt instead.
+	recognized := s.recognizedForInvoice(ctx, invoice, preTax)
+	deferred := preTax - recognized
+
+	var transfers []*domain.LedgerTransaction
+	if deferred > 0 {
+		amt, aerr := ledgerAmount(deferred)
+		if aerr != nil {
+			return fmt.Errorf("invoice %s write-off: %w", invoice.ID, aerr)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID: uuid.New(), DebitAccountID: deferredAccountID, CreditAccountID: arID,
+			Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeInvoiceWriteOff, ReferenceID: invoice.ID,
+			Occurrence:  occurrence,
+			Description: "Write-off (deferred portion) of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+		})
 	}
-	transfers := []*domain.LedgerTransaction{{
-		ID: uuid.New(), DebitAccountID: revenueAccountID, CreditAccountID: arID,
-		Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeInvoiceWriteOff, ReferenceID: invoice.ID,
-		Occurrence:  occurrence,
-		Description: "Write-off of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
-	}}
+	if recognized > 0 {
+		badDebtID, berr := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeBadDebtExpense, "Bad Debt Expense", domain.AccountTypeExpense)
+		if berr != nil {
+			return fmt.Errorf("write-off ledger failed for invoice %s: %w", invoice.ID, berr)
+		}
+		amt, aerr := ledgerAmount(recognized)
+		if aerr != nil {
+			return fmt.Errorf("invoice %s write-off: %w", invoice.ID, aerr)
+		}
+		transfers = append(transfers, &domain.LedgerTransaction{
+			ID: uuid.New(), DebitAccountID: badDebtID, CreditAccountID: arID,
+			Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeBadDebtWriteOff, ReferenceID: invoice.ID,
+			Occurrence:  occurrence,
+			Description: "Write-off (bad debt on recognized revenue) of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
+		})
+	}
 	if invoice.TaxAmount > 0 {
 		taxAccountID, terr := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
 		if terr != nil {
@@ -618,46 +682,46 @@ func (s *LedgerService) RecordWriteOffRecovery(ctx context.Context, invoice *dom
 	}
 	occurrence := uint16(nRec)
 
-	ent := s.resolveEntity(ctx, invoice.TenantID, invoice.EntityID)
-	s.ensureEntityAR(ctx, invoice.TenantID, ent, invoice.CustomerID)
-	arID := s.arAccountID(ent, invoice.CustomerID)
-
-	var revenueAccountID uuid.UUID
-	if invoice.SubscriptionID != nil {
-		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeDeferredRevenue, "Deferred Revenue", domain.AccountTypeLiability)
-	} else {
-		revenueAccountID, err = s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeRevenue, "Revenue", domain.AccountTypeRevenue)
-	}
-	if err != nil {
-		return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, err)
-	}
-
-	preTax := invoice.Total - invoice.TaxAmount
-	amt, err := ledgerAmount(preTax)
-	if err != nil {
-		return fmt.Errorf("invoice %s write-off recovery: %w", invoice.ID, err)
-	}
-	transfers := []*domain.LedgerTransaction{{
-		ID: uuid.New(), DebitAccountID: arID, CreditAccountID: revenueAccountID,
-		Amount: amt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecovery, ReferenceID: invoice.ID,
-		Occurrence:  occurrence,
-		Description: "Write-off recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
-	}}
-	if invoice.TaxAmount > 0 {
-		taxAccountID, terr := s.getOrCreateEntityAccount(ctx, invoice.TenantID, ent, domain.AccountCodeTaxPayable, "Tax Payable", domain.AccountTypeLiability)
-		if terr != nil {
-			return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, terr)
+	// Recovery INVERTS the actual write-off legs of the current cycle rather
+	// than recomputing a split — so it is exactly correct regardless of how the
+	// write-off split recognized (code 26 → Bad Debt) vs deferred (code 22).
+	// Each recovery leg swaps its source leg's debit/credit at the same amount:
+	// 22→24 (re-establish Deferred), 26→27 (reverse Bad Debt Expense), 23→25
+	// (re-establish Tax Payable). GetLatest returns the current cycle's leg.
+	invert := func(sourceCode, recoveryCode uint16, desc string) (*domain.LedgerTransaction, error) {
+		leg, gerr := s.pgRepo.GetLatestTransactionByReferenceAndCode(ctx, invoice.ID, sourceCode)
+		if gerr != nil {
+			return nil, gerr
 		}
-		taxAmt, aerr := ledgerAmount(invoice.TaxAmount)
-		if aerr != nil {
-			return fmt.Errorf("invoice %s write-off recovery: %w", invoice.ID, aerr)
+		if leg == nil {
+			return nil, nil
 		}
-		transfers = append(transfers, &domain.LedgerTransaction{
-			ID: uuid.New(), DebitAccountID: arID, CreditAccountID: taxAccountID,
-			Amount: taxAmt, LedgerID: ent.LedgerID, Code: domain.LedgerCodeWriteOffRecoveryTax, ReferenceID: invoice.ID,
-			Occurrence:  occurrence,
-			Description: "Tax re-established on recovery of invoice " + invoice.InvoiceNumber, Timestamp: time.Now(),
-		})
+		return &domain.LedgerTransaction{
+			ID: uuid.New(), DebitAccountID: leg.CreditAccountID, CreditAccountID: leg.DebitAccountID,
+			Amount: leg.Amount, LedgerID: leg.LedgerID, Code: recoveryCode, ReferenceID: invoice.ID,
+			Occurrence: occurrence, Description: desc + invoice.InvoiceNumber, Timestamp: time.Now(),
+		}, nil
+	}
+
+	var transfers []*domain.LedgerTransaction
+	for _, spec := range []struct {
+		src, rec uint16
+		desc     string
+	}{
+		{domain.LedgerCodeInvoiceWriteOff, domain.LedgerCodeWriteOffRecovery, "Write-off recovery (deferred) of invoice "},
+		{domain.LedgerCodeBadDebtWriteOff, domain.LedgerCodeBadDebtRecovery, "Write-off recovery (bad debt reversed) of invoice "},
+		{domain.LedgerCodeWriteOffTaxReversal, domain.LedgerCodeWriteOffRecoveryTax, "Tax re-established on recovery of invoice "},
+	} {
+		leg, ierr := invert(spec.src, spec.rec, spec.desc)
+		if ierr != nil {
+			return fmt.Errorf("write-off recovery lookup failed for invoice %s: %w", invoice.ID, ierr)
+		}
+		if leg != nil {
+			transfers = append(transfers, leg)
+		}
+	}
+	if len(transfers) == 0 {
+		return nil // nothing to recover
 	}
 	if err := s.pgRepo.CreateTransactions(ctx, transfers); err != nil {
 		return fmt.Errorf("write-off recovery failed for invoice %s: %w", invoice.ID, err)

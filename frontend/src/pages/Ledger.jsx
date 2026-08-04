@@ -53,6 +53,8 @@ const CODE_LABEL = {
   23: "Write-off — tax reversal",
   24: "Write-off recovery",
   25: "Write-off recovery — tax",
+  26: "Bad debt (write-off)",
+  27: "Bad debt recovery",
 };
 const codeLabel = (c) => CODE_LABEL[c] || `Code ${c}`;
 

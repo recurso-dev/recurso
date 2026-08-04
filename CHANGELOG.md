@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Write-offs of already-recognized revenue now expense Bad Debt, not reverse
+  Deferred.** Part of the accrual revenue-recognition epic (#466/#477): when an
+  invoice's revenue has been (partly) recognized, writing it off can't
+  un-recognize that revenue — the service was delivered; the non-payment is a
+  bad-debt expense. The write-off now splits — the recognized portion posts to a
+  new Bad Debt Expense account (ledger code 26), the still-deferred portion
+  reverses from Deferred (code 22) as before — and a later recovery inverts
+  both. One-off invoices (whose revenue is recognized at issuance) now correctly
+  expense bad debt on write-off instead of reversing Revenue. No behavior change
+  under the current cash-recognition model (recognized is 0), and the invariant
+  harness stays green.
+
 ### Security
 
 - **Portal magic-link hardening.** The sign-in token now travels in a POST
