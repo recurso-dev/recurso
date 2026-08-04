@@ -132,6 +132,7 @@ const (
 	AccountCodeRefunds           = 5000 // Refunds (Expense)
 	AccountCodeCreditsIssued     = 5100 // Credits & Adjustments (Expense) — cost of manually-issued account credit (ENG-154)
 	AccountCodeTDSReceivable     = 1200 // TDS Receivable (Asset) — tax deducted at source by customers, recoverable against income tax (India)
+	AccountCodeBadDebtExpense    = 5200 // Bad Debt Expense (Expense) — recognized revenue an uncollectible write-off must expense rather than reverse from Deferred (#477, accrual epic #466)
 )
 
 // Ledger transaction codes (LedgerTransaction.Code): 1 = invoice, 2 = revenue
@@ -250,6 +251,20 @@ const LedgerCodeWriteOffRecovery uint16 = 24
 // DR customer AR / CR Tax Payable — the collected invoice's tax is owed again.
 const LedgerCodeWriteOffRecoveryTax uint16 = 25
 
+// LedgerCodeBadDebtWriteOff expenses the RECOGNIZED portion of an uncollectible
+// invoice: DR Bad Debt Expense / CR customer AR. Under accrual (schedules built
+// at issuance, #466), an invoice can recognize revenue before it is paid; a
+// later write-off of the recognized part cannot reverse Deferred (that revenue
+// already moved to Recognized), so it is expensed as bad debt. The still-
+// deferred part continues to use code 22. Reserved here; the split logic lands
+// with the accrual switch (accrual epic increment 2).
+const LedgerCodeBadDebtWriteOff uint16 = 26
+
+// LedgerCodeBadDebtRecovery mirrors code 26 when a bad-debt-written-off invoice
+// is paid after all: DR customer AR / CR Bad Debt Expense — the expense is
+// reversed and the receivable re-established. Reserved (increment 2).
+const LedgerCodeBadDebtRecovery uint16 = 27
+
 // StandardChartOfAccounts returns the default accounts for a tenant
 func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 	return []*LedgerAccount{
@@ -262,6 +277,7 @@ func TenantChartOfAccounts(tenantID uuid.UUID) []*LedgerAccount {
 		{ID: uuid.New(), TenantID: tenantID, Name: "Recognized Revenue", Type: AccountTypeRevenue, Code: AccountCodeRecognizedRevenue, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Refunds", Type: AccountTypeExpense, Code: AccountCodeRefunds, LedgerID: 1},
 		{ID: uuid.New(), TenantID: tenantID, Name: "Credits & Adjustments", Type: AccountTypeExpense, Code: AccountCodeCreditsIssued, LedgerID: 1},
+		{ID: uuid.New(), TenantID: tenantID, Name: "Bad Debt Expense", Type: AccountTypeExpense, Code: AccountCodeBadDebtExpense, LedgerID: 1},
 	}
 }
 

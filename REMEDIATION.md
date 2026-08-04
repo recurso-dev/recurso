@@ -32,6 +32,16 @@ fixes the audit counted as done.
 
 ## Progress log (newest first)
 
+- **2026-08-04** — #466 Track A (accrual) epic **Increment 1 shipping**:
+  Bad Debt Expense account (5200, seeded + on-demand), reserved codes 26/27,
+  the `AccountingPolicy` seam (interface + US default adapter + resolver,
+  keeping accounting/tax/jurisdiction engines separate per founder direction),
+  and `SumRecognizedByInvoice` (the query the write-off split needs). Pure
+  additive scaffolding — no money behavior changes; invariant harness green.
+  Increment 2 = the accrual switch (schedule at issuance) + write-off split
+  (recognized→Bad Debt, unrecognized→Deferred) + recovery mirror +
+  pending-event cancel, one invariant-gated change. Docs **#492 MERGED**.
+
 - **2026-08-04** — #18 (portal magic-link hardening) shipping: token moves to
   a POST body (kept GET one release for links in flight), the frontend strips
   the token from the URL/history immediately, and verify returns ONE generic
