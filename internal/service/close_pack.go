@@ -31,7 +31,15 @@ type ClosePackPeriod struct {
 type ClosePackDeferred struct {
 	Rollforward *domain.DeferredRollforward   `json:"rollforward"`           // ledger-sourced (Deferred Revenue account movement)
 	Recognition *domain.DeferredRevenueReport `json:"recognition,omitempty"` // schedule-sourced; nil when rev-rec is not wired
-	Ties        bool                          `json:"ties"`                  // rollforward.Closing == recognition.DeferredBalance
+	// AwaitingPayment is the pre-tax deferral funded by unpaid subscription
+	// invoices — Deferred the ledger rightly carries but no schedule covers
+	// yet, because schedules are created on payment. The tie-out identity is
+	// ledger closing == schedule deferred + awaiting payment; comparing the
+	// first two directly made the tie-out structurally amber for any tenant
+	// with open invoices (recurso-dev/recurso#466).
+	AwaitingPayment  int64 `json:"awaiting_payment"`
+	UnexplainedDelta int64 `json:"unexplained_delta"` // ledger − (schedule + awaiting); 0 when the books tie
+	Ties             bool  `json:"ties"`
 }
 
 // ClosePackGL points at the streaming CSV export instead of embedding the full
@@ -69,6 +77,22 @@ type ClosePackService struct {
 	ledger *LedgerService
 	recon  *ReconciliationService
 	revrec *RevRecService
+	// unscheduledDeferral sums the pre-tax value of subscription invoices that
+	// funded Deferred at issuance but have no recognition schedule yet
+	// (schedules are created on payment) — the "awaiting payment" bucket the
+	// tie-out must account for. Nil-safe; without it the tie-out falls back to
+	// the raw (structurally amber) comparison.
+	unscheduledDeferral unscheduledDeferralReader
+}
+
+// unscheduledDeferralReader is satisfied by *db.InvoiceRepository.
+type unscheduledDeferralReader interface {
+	SumUnscheduledDeferral(ctx context.Context, tenantID uuid.UUID) (int64, error)
+}
+
+// SetUnscheduledDeferralReader wires the awaiting-payment bucket. Nil-safe.
+func (s *ClosePackService) SetUnscheduledDeferralReader(r unscheduledDeferralReader) {
+	s.unscheduledDeferral = r
 }
 
 // NewClosePackService creates a close-pack service over the ledger and
@@ -111,7 +135,17 @@ func (s *ClosePackService) Generate(ctx context.Context, tenantID uuid.UUID, mon
 			return nil, fmt.Errorf("close pack revrec report: %w", err)
 		}
 		deferred.Recognition = recognition
-		deferred.Ties = recognition != nil && rollforward.Closing == recognition.DeferredBalance
+		if s.unscheduledDeferral != nil {
+			awaiting, aerr := s.unscheduledDeferral.SumUnscheduledDeferral(ctx, tenantID)
+			if aerr != nil {
+				return nil, fmt.Errorf("close pack awaiting-payment deferral: %w", aerr)
+			}
+			deferred.AwaitingPayment = awaiting
+		}
+		if recognition != nil {
+			deferred.UnexplainedDelta = rollforward.Closing - recognition.DeferredBalance - deferred.AwaitingPayment
+			deferred.Ties = deferred.UnexplainedDelta == 0
+		}
 	}
 
 	blockers := closeBlockers(tb, recon)

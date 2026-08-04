@@ -1286,6 +1286,7 @@ func main() {
 	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
 	closePackService := service.NewClosePackService(ledgerService, reconciliationService)               // B2: month-end close pack
 	closePackService.SetRevRecService(revrecService)                                                    // optional schedule-sourced deferred view
+	closePackService.SetUnscheduledDeferralReader(invoiceRepo)                                          // awaiting-payment bucket for the deferred tie-out (#466)
 	closePackHandler := handler.NewClosePackHandler(closePackService)
 	creditNoteHandler := handler.NewCreditNoteHandler(creditNoteService)      // P23
 	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService) // P24

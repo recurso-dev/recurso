@@ -19,6 +19,7 @@ type PlanRepository interface {
 }
 
 type InvoiceRepository interface {
+	SumUnscheduledDeferral(ctx context.Context, tenantID uuid.UUID) (int64, error)
 	Create(ctx context.Context, invoice *domain.Invoice) error
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
 	GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Invoice, error)
