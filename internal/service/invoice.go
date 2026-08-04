@@ -11,6 +11,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/telemetry"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/safego"
 )
 
 type InvoiceService struct {
@@ -177,7 +178,7 @@ func (s *InvoiceService) notifyInvoiceCreated(inv *domain.Invoice) {
 	if s.NotificationService == nil || inv == nil || inv.Total <= 0 {
 		return
 	}
-	go func() {
+	safego.Go("invoice.notifyInvoiceCreated", func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		customer, err := s.CustomerRepo.GetByID(ctx, inv.CustomerID)
@@ -187,7 +188,7 @@ func (s *InvoiceService) notifyInvoiceCreated(inv *domain.Invoice) {
 		if err := s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(inv, customer)); err != nil {
 			slog.Error("failed to send invoice email", "error", err, "invoice_id", inv.ID)
 		}
-	}()
+	})
 }
 
 // SendInvoiceEmail (re)sends the invoice email on demand — the manual "Send
