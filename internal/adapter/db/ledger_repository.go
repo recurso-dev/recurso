@@ -120,6 +120,21 @@ func (r *LedgerRepository) SumPendingRecognitionEvents(ctx context.Context, tena
 	return total, nil
 }
 
+// SumSpendableCreditNoteBalance returns the total outstanding balance of
+// spendable (adjustment-type) credit notes for a tenant — the liability the
+// Customer-Credit ledger account must equal. Refund-type notes are excluded:
+// they return cash, not spendable balance, and post to Cash, not Customer-Credit.
+func (r *LedgerRepository) SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	var total int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(balance), 0)::bigint FROM credit_notes
+		 WHERE tenant_id = $1 AND type = $2`, tenantID, domain.CreditNoteTypeAdjustment).Scan(&total)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to sum spendable credit-note balance: %w", err)
+	}
+	return total, nil
+}
+
 // GetGeneralLedgerRows returns every posted transaction for a tenant, flattened
 // with both account codes and names, ordered oldest first. Tenant-scoped via the
 // debit account (both sides of a transfer always belong to the same tenant).

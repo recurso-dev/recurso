@@ -45,6 +45,9 @@ type mockReconciliationRepo struct {
 	pendingEvents    int64
 	pendingEventsErr error
 
+	spendableCredit    int64
+	spendableCreditErr error
+
 	overruns     []db.RecognitionOverrun
 	overrunTotal int
 	overrunErr   error
@@ -119,6 +122,13 @@ func (m *mockReconciliationRepo) SumPendingRecognitionEvents(ctx context.Context
 		return 0, m.pendingEventsErr
 	}
 	return m.pendingEvents, nil
+}
+
+func (m *mockReconciliationRepo) SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	if m.spendableCreditErr != nil {
+		return 0, m.spendableCreditErr
+	}
+	return m.spendableCredit, nil
 }
 
 func (m *mockReconciliationRepo) GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error) {

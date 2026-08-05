@@ -65,6 +65,15 @@ const (
 	// amount has fabricated revenue on the P&L. Must never happen; surfaced per
 	// offending schedule.
 	DiscrepancyRecognizedExceedsInvoice = "recognized_exceeds_invoice"
+	// Customer-Credit liability integrity: the Customer-Credit account balance
+	// must equal the sum of outstanding spendable (adjustment-type) credit-note
+	// balances. Every spendable credit — manual adjustment or downgrade proration
+	// — credits Customer-Credit for its balance; every drawdown (application,
+	// expiry, void) debits it and lowers the note's balance in lockstep. A gap
+	// means a best-effort drawdown/reversal leg was dropped: the liability is
+	// overstated while the books still balance and no sign goes abnormal — the
+	// class of drift no count- or threshold-based check catches (R-001/008/009).
+	DiscrepancyCustomerCreditMismatch = "customer_credit_liability_mismatch"
 )
 
 // ReconciliationRepository is the narrow, read-only view of the ledger store
@@ -80,6 +89,9 @@ type ReconciliationRepository interface {
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
 	// SumPendingRecognitionEvents feeds the deferred-vs-scheduled invariant.
 	SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error)
+	// SumSpendableCreditNoteBalance feeds the Customer-Credit liability invariant:
+	// the sum of outstanding balances of adjustment-type (spendable) credit notes.
+	SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error)
 	// GetRecognitionOverruns feeds the "recognized ≤ recognizable" invariant.
 	GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error)
 
@@ -262,6 +274,32 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		deferredShort = 1
 	}
 
+	// Customer-Credit liability invariant: the Customer-Credit balance must equal
+	// the outstanding spendable (adjustment-type) credit-note balances. A gap
+	// means a drawdown/reversal leg (application/expiry/void) was dropped —
+	// liability overstated, books still balanced. Prepended so it survives
+	// truncation, like the other integrity findings.
+	creditMismatch := 0
+	var customerCreditBalance int64
+	for _, l := range tb.Lines {
+		if l.Code == domain.AccountCodeCustomerCredit {
+			customerCreditBalance += l.Balance
+		}
+	}
+	spendableCredit, err := s.repo.SumSpendableCreditNoteBalance(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("spendable credit-note balance for tenant %s: %w", tenantID, err)
+	}
+	if customerCreditBalance != spendableCredit {
+		report.Discrepancies = append([]ReconciliationDiscrepancy{{
+			Type:           DiscrepancyCustomerCreditMismatch,
+			AccountCode:    domain.AccountCodeCustomerCredit,
+			ExpectedAmount: spendableCredit,       // the notes say this much is owed
+			FoundAmount:    customerCreditBalance, // the ledger says this
+		}}, report.Discrepancies...)
+		creditMismatch = 1
+	}
+
 	// Recognized-vs-recognizable invariant: no schedule may recognize MORE than
 	// its total recognizable amount. A violation fabricates revenue on the P&L.
 	// Prepended (like the other integrity findings) so it survives truncation.
@@ -284,7 +322,7 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		report.Discrepancies = append(overrunDiscrepancies, report.Discrepancies...)
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + creditAppTotal + orphanTotal + len(integrity) + deferredShort + overrunTotal
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + creditAppTotal + orphanTotal + len(integrity) + deferredShort + creditMismatch + overrunTotal
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"
