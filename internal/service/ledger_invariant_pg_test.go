@@ -286,13 +286,15 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
-		switch rng.Intn(3) {
+		switch rng.Intn(4) {
 		case 0:
 			return h.opWalletTopUp(rng)
 		case 1:
 			return h.opWalletDrain(rng)
-		default:
+		case 2:
 			return h.opWalletExpire(rng)
+		default:
+			return h.opWalletClose(rng)
 		}
 	case p < 99:
 		return h.opTrialConversion(rng)
@@ -505,6 +507,56 @@ func (h *invariantHarness) opWalletExpire(rng *rand.Rand) string {
 		t.Fatalf("ExpireOverdueCredits swept %d wallets, want >= 1", n)
 	}
 	return "wallet_expire"
+}
+
+// opWalletClose exercises the wallet CLOSURE settlement through the real
+// WalletService.CloseWallet — the last two wallet legs in one op. A wallet is
+// funded with BOTH a manual (paid, refundable) top-up and a promotional
+// (non-refundable) top-up, then closed: the paid residue refunds (code 13,
+// DR Customer-Credit / CR Cash) and the promotional residue forfeits (code 14,
+// DR Customer-Credit / CR Credits & Adjustments). Net once closed: Customer-
+// Credit, Cash's wallet delta, Credits & Adjustments, and wallets.balance all
+// return to zero, so the R-014 invariant ties and the trial balance stays
+// balanced. A dropped refund OR forfeit leg leaves Customer-Credit above the
+// (now-zero) wallet balance — flagged.
+func (h *invariantHarness) opWalletClose(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Wallet Close Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("wclose-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	w, err := h.walletSvc.CreateWallet(h.tctx, h.tenantID, CreateWalletInput{
+		CustomerID: customerID.String(),
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("CreateWallet (close, cust %s): %v", customerID, err)
+	}
+
+	// Paid (refundable) residue.
+	paid := int64(4000 + rng.Intn(15000))
+	if _, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{Amount: paid, Source: domain.WalletSourceManual}); err != nil {
+		t.Fatalf("TopUp (close/manual, wallet %s): %v", w.ID, err)
+	}
+	// Promotional (non-refundable, forfeitable) residue — no expiry, so it sits
+	// until closure rather than being swept.
+	promo := int64(2000 + rng.Intn(10000))
+	if _, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{Amount: promo, Source: domain.WalletSourcePromotional}); err != nil {
+		t.Fatalf("TopUp (close/promo, wallet %s): %v", w.ID, err)
+	}
+
+	res, err := h.walletSvc.CloseWallet(h.tctx, h.tenantID, w.ID)
+	if err != nil {
+		t.Fatalf("CloseWallet (wallet %s): %v", w.ID, err)
+	}
+	if res.Refunded != paid || res.Forfeited != promo {
+		t.Fatalf("CloseWallet settled refund=%d forfeit=%d, want refund=%d forfeit=%d",
+			res.Refunded, res.Forfeited, paid, promo)
+	}
+	return "wallet_close"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —

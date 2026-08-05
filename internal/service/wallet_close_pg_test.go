@@ -102,10 +102,18 @@ func TestWalletClose_RefundForfeitAndLedger_Postgres(t *testing.T) {
 		t.Errorf("closed wallet still returned by the drainable lookup")
 	}
 
-	// Ledger legs: refund (code 13) = 50000, forfeit (code 14) = 20000.
+	// Ledger legs: refund (code 13) = 50000, forfeit (code 14) = 20000. Scope the
+	// sum to THIS tenant's accounts — ledger_transactions has no tenant_id, so an
+	// unscoped SUM also counts other tests' wallet-close legs in the shared test
+	// DB (e.g. the invariant harness), which flakes this assertion.
+	const tenantLegSum = `
+		SELECT COALESCE(SUM(t.amount),0) FROM ledger_transactions t
+		WHERE t.code=$1 AND EXISTS (
+			SELECT 1 FROM ledger_accounts la
+			WHERE la.tenant_id=$2 AND (la.id=t.debit_account_id OR la.id=t.credit_account_id))`
 	var refundAmt, forfeitAmt int64
-	_ = conn.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM ledger_transactions WHERE code=$1`, domain.LedgerCodeWalletRefund).Scan(&refundAmt)
-	_ = conn.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount),0) FROM ledger_transactions WHERE code=$1`, domain.LedgerCodeWalletForfeit).Scan(&forfeitAmt)
+	_ = conn.QueryRowContext(ctx, tenantLegSum, domain.LedgerCodeWalletRefund, tenantID).Scan(&refundAmt)
+	_ = conn.QueryRowContext(ctx, tenantLegSum, domain.LedgerCodeWalletForfeit, tenantID).Scan(&forfeitAmt)
 	if refundAmt != 50000 {
 		t.Errorf("ledger refund total = %d, want 50000", refundAmt)
 	}
