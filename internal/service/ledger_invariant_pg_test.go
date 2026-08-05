@@ -144,6 +144,7 @@ type invariantHarness struct {
 	quoteSvc  *QuoteService
 	giftSvc   *GiftService
 	creditSvc *CreditNoteService
+	walletSvc *WalletService
 	recon     *ReconciliationService
 	closePack *ClosePackService
 
@@ -220,6 +221,15 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	// as production does — the full refund money path, ledger + revrec.
 	h.creditSvc.SetRevRecService(h.revrec)
 
+	// Real wallet service driving prepaid top-ups through the entity-scoped
+	// ledger. Wired with the entity reader so CreateWallet resolves the tenant's
+	// primary entity (the wallets.entity_id FK is NOT NULL) instead of nil. A
+	// top-up posts DR Cash / CR Customer-Credit (code 11), so the wallet balance
+	// must show up in the reconciler's Customer-Credit invariant (R-014) — a
+	// dropped top-up leg diverges the ledger from wallets.balance and is flagged.
+	h.walletSvc = NewWalletService(db.NewWalletRepository(conn), db.NewCustomerRepository(dbx), h.ledger)
+	h.walletSvc.SetEntityReader(db.NewEntityRepository(conn))
+
 	h.recon = NewReconciliationService(db.NewLedgerRepository(conn), nil)
 
 	// Layer 2 of the safety net: the month-end close-pack Deferred identity
@@ -276,6 +286,8 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
+		return h.opWalletTopUp(rng)
+	case p < 99:
 		return h.opTrialConversion(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
@@ -331,6 +343,43 @@ func (h *invariantHarness) opApplyCredit(rng *rand.Rand) string {
 		t.Fatalf("ApplyAdjustmentCredits (inv %s): %v", invID, err)
 	}
 	return "apply_credit"
+}
+
+// opWalletTopUp exercises the prepaid-wallet money path through the REAL
+// WalletService: a fresh customer gets a wallet (resolved to the tenant's
+// primary entity via the entity reader) and a top-up. The top-up posts
+// DR Cash / CR Customer-Credit (code 11) and denormalizes wallets.balance in the
+// same movement — so the reconciler's Customer-Credit invariant must count the
+// wallet balance alongside adjustment credit notes (R-014). A dropped top-up leg
+// leaves wallets.balance funded but Customer-Credit short, which the reconciler
+// now flags as customer_credit_liability_mismatch. Never exercised against real
+// Postgres before — the entity_id FK made a raw insert awkward; the service
+// resolves it correctly.
+func (h *invariantHarness) opWalletTopUp(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Wallet Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("wallet-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	w, err := h.walletSvc.CreateWallet(h.tctx, h.tenantID, CreateWalletInput{
+		CustomerID: customerID.String(),
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("CreateWallet (cust %s): %v", customerID, err)
+	}
+
+	amount := int64(5000 + rng.Intn(50000))
+	if _, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{
+		Amount: amount,
+		Source: domain.WalletSourceManual,
+	}); err != nil {
+		t.Fatalf("TopUp (wallet %s): %v", w.ID, err)
+	}
+	return "wallet_topup"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —
