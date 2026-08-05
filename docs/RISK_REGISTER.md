@@ -72,11 +72,12 @@ The harness issues adjustment credits but not gateway refunds (needs a fake
 `PaymentGateway`). The refund + tax-reversal legs and the over-refund guard are
 not property-tested.
 
-### R-004 — Ledger code 7 (credit application) is a magic number · Low · OPEN
-Sibling codes are named constants (`LedgerCodeWalletDrain=12`,
-`LedgerCodePaymentReversal=19`); credit application uses a bare `7` in
-`RecordCreditApplication` and now the reconciler query. Add
-`LedgerCodeCreditApplication uint16 = 7` and reference it in both.
+### R-004 — Ledger code 7 (credit application) is a magic number · Low · CLOSED
+Added `LedgerCodeCreditApplication uint16 = 7` in `domain/ledger.go` (it was the
+only unnamed ledger code); `RecordCreditApplication` now passes the named
+constant, and the reconciler query's `t.code = 7` carries a `-- domain.Ledger
+CodeCreditApplication` comment (SQL literals match the existing payment-query
+pattern). Pure refactor — harness green. (PR: ledger-code-7-constant)
 
 ### Systemic root cause behind R-001/008/009/010/011 — reversal/drawdown legs are unguarded
 

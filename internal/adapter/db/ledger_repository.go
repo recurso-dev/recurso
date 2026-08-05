@@ -566,7 +566,7 @@ func (r *LedgerRepository) GetCreditApplicationLedgerMismatches(ctx context.Cont
 			       COALESCE(SUM(t.amount::bigint), 0) AS found,
 			       COUNT(t.id) AS tx_count
 			FROM invoices i
-			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 7
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 7 -- domain.LedgerCodeCreditApplication
 			WHERE i.tenant_id = $1 AND COALESCE(i.credit_applied, 0) > 0
 			GROUP BY i.id, i.credit_applied
 		) sub

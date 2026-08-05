@@ -1113,7 +1113,7 @@ func (s *LedgerService) RecordCreditApplication(ctx context.Context, tenantID uu
 	}
 	// AR is a per-(entity,customer) sub-ledger; the primary entity keeps using
 	// the customer id directly so its books stay byte-identical.
-	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, 7, referenceID, description)
+	return s.postEntityTransfer(ctx, ent, creditAccountID, s.arAccountID(ent, customerID), amt, domain.LedgerCodeCreditApplication, referenceID, description)
 }
 
 // RecordWalletTopUp books money received into a prepaid wallet (B1):
