@@ -52,6 +52,9 @@ type mockReconciliationRepo struct {
 	spendableCredit    int64
 	spendableCreditErr error
 
+	walletBalance    int64
+	walletBalanceErr error
+
 	overruns     []db.RecognitionOverrun
 	overrunTotal int
 	overrunErr   error
@@ -140,6 +143,13 @@ func (m *mockReconciliationRepo) SumSpendableCreditNoteBalance(ctx context.Conte
 		return 0, m.spendableCreditErr
 	}
 	return m.spendableCredit, nil
+}
+
+func (m *mockReconciliationRepo) SumWalletBalance(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	if m.walletBalanceErr != nil {
+		return 0, m.walletBalanceErr
+	}
+	return m.walletBalance, nil
 }
 
 func (m *mockReconciliationRepo) GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error) {
@@ -239,6 +249,67 @@ func TestReconciliationCleanBooks(t *testing.T) {
 	}
 	if report.FinishedAt.Before(report.StartedAt) {
 		t.Error("FinishedAt must not precede StartedAt")
+	}
+}
+
+// balancedCustomerCreditLines builds a minimal, balanced trial balance whose
+// only non-zero liability is Customer-Credit at `credit` minor units (funded by
+// an equal Cash debit so the books balance and no ledger_unbalanced fires).
+func balancedCustomerCreditLines(credit int64) []domain.TrialBalanceLine {
+	return []domain.TrialBalanceLine{
+		{Code: domain.AccountCodeCash, Type: domain.AccountTypeAsset, Debits: credit},
+		{Code: domain.AccountCodeCustomerCredit, Type: domain.AccountTypeLiability, Credits: credit},
+	}
+}
+
+// R-014: wallets post to the SAME Customer-Credit account as adjustment credit
+// notes, so the liability invariant must count BOTH. A tenant whose entire
+// Customer-Credit balance is a prepaid wallet must reconcile cleanly — before
+// the fix this false-positived a customer_credit_liability_mismatch on every
+// wallet tenant.
+func TestReconciliationWalletFundsCustomerCredit(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		trialBalanceLines: balancedCustomerCreditLines(100),
+		spendableCredit:   60, // credit notes owed
+		walletBalance:     40, // prepaid wallet owed — 60+40 == 100 ledger balance
+	}
+	svc := NewReconciliationService(repo, nil)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if report.TotalDiscrepancies != 0 || len(report.Discrepancies) != 0 {
+		t.Fatalf("wallet-funded Customer-Credit must reconcile clean, got %d: %+v",
+			report.TotalDiscrepancies, report.Discrepancies)
+	}
+}
+
+// R-014: when the Customer-Credit ledger balance does NOT equal credit notes +
+// wallets, a dropped drawdown/reversal leg overstates the liability while the
+// books still balance. Exactly one customer_credit_liability_mismatch must fire
+// with Expected = credit notes + wallets, Found = the ledger balance.
+func TestReconciliationCustomerCreditMismatchIncludesWallet(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		trialBalanceLines: balancedCustomerCreditLines(100),
+		spendableCredit:   60,
+		walletBalance:     30, // 60+30 == 90, but ledger says 100 → overstated by 10
+	}
+	svc := NewReconciliationService(repo, nil)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(report.Discrepancies) != 1 || report.Discrepancies[0].Type != DiscrepancyCustomerCreditMismatch {
+		t.Fatalf("expected 1 %s discrepancy, got %+v", DiscrepancyCustomerCreditMismatch, report.Discrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.ExpectedAmount != 90 {
+		t.Errorf("ExpectedAmount = %d, want 90 (credit notes 60 + wallet 30)", d.ExpectedAmount)
+	}
+	if d.FoundAmount != 100 {
+		t.Errorf("FoundAmount = %d, want 100 (ledger balance)", d.FoundAmount)
 	}
 }
 
