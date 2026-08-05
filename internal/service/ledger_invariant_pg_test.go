@@ -281,8 +281,10 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		return h.opVoidCredit(rng)
 	case p < 94:
 		return h.opExpireCredit(rng)
-	case p < 96:
+	case p < 95:
 		return h.opRefund(rng)
+	case p < 96:
+		return h.opPaymentReversal(rng)
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
@@ -557,6 +559,67 @@ func (h *invariantHarness) opWalletClose(rng *rand.Rand) string {
 			res.Refunded, res.Forfeited, paid, promo)
 	}
 	return "wallet_close"
+}
+
+// opPaymentReversal exercises the full bank-return → dunning → re-collect cycle
+// through the REAL LedgerService reversal path (code 19) — a settled payment the
+// bank claws back (ACH return, card chargeback), then re-collected. A fresh
+// one-off invoice is paid in cash (DR Cash / CR AR via RecordPayment, code 3);
+// the bank reverses it (invoice reopens to past_due, amount_paid=0, and
+// RecordPaymentReversal inverts the cash leg — DR AR reinstated / CR Cash
+// removed, code 19, inheriting the cash leg's occurrence); then dunning
+// re-collects (a second code-3 leg at the next occurrence). Net for the now-'paid'
+// invoice: `code3 + code3 − code19 == amount_paid` — the occurrence-cycle guard
+// (docs/design-ledger-occurrence.md) settling exactly once.
+//
+// Teeth (proven): a mere DROPPED reversal leg is self-healing — the re-collect's
+// occurrence is derived from the code-19 count, so with no reversal the re-collect
+// dedups as the original payment and the math stays consistent. The reconciler
+// instead guards the reversal's AMOUNT: a wrong-amount reversal reinstates too
+// little AR, so after re-collection AR goes NEGATIVE and the abnormal_account_
+// balance check fires (account 1100, e.g. {Found:-5444} on a halved reversal).
+func (h *invariantHarness) opPaymentReversal(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Reversal Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("rev-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	// A paid one-off invoice (no subscription → CR Revenue, not Deferred).
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-REV-%d", h.run, h.n)
+	total := int64(3000 + rng.Intn(20000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$4,$4,'paid',$5,NOW(),NOW())`,
+		invID, h.tenantID, customerID, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: customerID,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (reversal): %v", err)
+	}
+	if err := h.ledger.RecordPayment(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPayment (reversal): %v", err)
+	}
+
+	// 1) The bank claws the payment back: reopen the invoice (ReverseToUnpaid)
+	//    and invert the cash leg (code 19).
+	mustExec(t, h.conn, `UPDATE invoices SET status='past_due', amount_paid=0, paid_at=NULL WHERE id=$1`, invID)
+	if err := h.ledger.RecordPaymentReversal(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPaymentReversal (inv %s): %v", invID, err)
+	}
+
+	// 2) Dunning re-collects: a fresh cash leg (code 3, occurrence 2) settles it
+	//    again. The net (code3 + code3 − code19 == amount_paid) is what gives a
+	//    dropped reversal leg teeth on the now-'paid' invoice.
+	if err := h.ledger.RecordPayment(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPayment re-collect (inv %s): %v", invID, err)
+	}
+	mustExec(t, h.conn, `UPDATE invoices SET status='paid', amount_paid=$2 WHERE id=$1`, invID, total)
+	return "payment_reversal"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —

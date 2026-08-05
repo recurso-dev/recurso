@@ -239,11 +239,27 @@ assertion. Teeth: neutering the forfeit `RecordRecognition` →
 silent. (PR: harness-closepack-tieout)
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
-Not yet driven through the harness / dedicated adversarial tests: disputes &
-chargebacks, ~~the entire wallet/prepaid subsystem~~ (**now fully covered** —
-top-up 11, drain 12, refund 13, forfeit 14, expiry 15 — see below), tax
-(GST/VAT/US nexus) edge rounding, importers, multi-tenant isolation under
-concurrency, RBAC on money-out. Pick the highest-financial-impact next.
+Not yet driven through the harness / dedicated adversarial tests:
+~~chargebacks / payment reversals~~ (**now covered**, code 19 — see below),
+~~the entire wallet/prepaid subsystem~~ (**now fully covered** — top-up 11,
+drain 12, refund 13, forfeit 14, expiry 15 — see below), dispute credit issuance
+(reuses the already-covered adjustment credit-note path, R-012), tax (GST/VAT/US
+nexus) edge rounding, importers, multi-tenant isolation under concurrency, RBAC
+on money-out. Pick the highest-financial-impact next.
+
+**Payment reversal / chargeback now exercised (`opPaymentReversal`):** drives the
+real bank-return → dunning → re-collect cycle. A cash-paid one-off invoice is
+clawed back (`RecordPaymentReversal`, code 19 — DR AR reinstated / CR Cash
+removed, inheriting the cash leg's occurrence), then re-collected (a second code-3
+leg at the next occurrence). Net for the 'paid' invoice: `code3 + code3 − code19
+== amount_paid`. **Subtle finding:** a mere *dropped* reversal leg is self-healing
+— the re-collect's occurrence derives from the code-19 count, so with no reversal
+the re-collect dedups as the original payment and the math stays consistent. What
+the reconciler actually guards is the reversal's AMOUNT: a wrong-amount reversal
+reinstates too little AR, so after re-collection AR goes NEGATIVE and
+`abnormal_account_balance` fires. **Teeth:** halving the reversal amount →
+`abnormal_account_balance {AccountCode:1100 Found:-5444}` on the
+`payment_reversal` step (seeds 1-4). (PR: harness-payment-reversal-op)
 
 **Wallet top-up now exercised (`opWalletTopUp`):** the harness drives a real
 `WalletService.CreateWallet` + `TopUp` through Postgres (entity reader resolves
