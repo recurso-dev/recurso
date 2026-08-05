@@ -137,6 +137,30 @@ missing expiry/void reversal leg now diverges Customer-Credit from the notes and
 is flagged — and adds a second line of defense over R-001.
 (PR: harness-customer-credit-invariant)
 
+### R-014 — Customer-Credit invariant omitted wallets → false-positive on every wallet tenant · High · CLOSED
+The R-012 invariant compared the Customer-Credit ledger balance against *only*
+`Σ adjustment-type credit-note balances`. But **prepaid wallets post to the SAME
+`AccountCodeCustomerCredit` (2300) account** — `RecordWalletTopUp` credits it
+(code 11), `RecordWalletDrain` debits it (code 12). So a tenant whose
+Customer-Credit balance was funded by a wallet (with no credit notes) would show
+`ledger balance = wallet balance` but `expected = 0`, tripping a false
+`customer_credit_liability_mismatch` on **every production tenant with a wallet.**
+A safety check that cries wolf on healthy books is worse than none — it trains
+operators to ignore the reconciler.
+**Fix:** the invariant now sums both funding sources —
+`expected = SumSpendableCreditNoteBalance + SumWalletBalance` (new
+`SumWalletBalance` = `SELECT COALESCE(SUM(balance),0) FROM wallets WHERE
+tenant_id=$1`). A dropped drawdown leg on *either* a credit note or a wallet
+still diverges the ledger from the expected sum and is flagged.
+**Regression/teeth:** `TestReconciliationWalletFundsCustomerCredit` (ledger 100 =
+credit-notes 60 + wallet 40 → clean) fails on the pre-fix code with
+`customer_credit_liability_mismatch {Expected:60 Found:100}` and passes on the
+new code; `TestReconciliationCustomerCreditMismatchIncludesWallet` proves a real
+gap (ledger 100 ≠ 60+30) still fires with `Expected:90 Found:100`.
+**Impact:** the R-012 invariant is now correct for the wallet subsystem — no
+false positives, and wallet drawdown-leg drops are now in scope of detection.
+(PR: reconciler-wallet-in-customer-credit)
+
 ### R-008 — Credit-expiry reversal leg unguarded · Medium · CLOSED
 Detection by R-012 + now exercised end-to-end: `opExpireCredit` issues a credit
 past its `expires_at` and runs `ExpireDueCredits`. Teeth: neutering the expiry

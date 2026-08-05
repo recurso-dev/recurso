@@ -100,6 +100,9 @@ type ReconciliationRepository interface {
 	// SumSpendableCreditNoteBalance feeds the Customer-Credit liability invariant:
 	// the sum of outstanding balances of adjustment-type (spendable) credit notes.
 	SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error)
+	// SumWalletBalance feeds the same invariant: prepaid wallets post to the SAME
+	// Customer-Credit account as credit notes, so their balances count too.
+	SumWalletBalance(ctx context.Context, tenantID uuid.UUID) (int64, error)
 	// GetRecognitionOverruns feeds the "recognized ≤ recognizable" invariant.
 	GetRecognitionOverruns(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.RecognitionOverrun, int, error)
 
@@ -292,10 +295,11 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 	}
 
 	// Customer-Credit liability invariant: the Customer-Credit balance must equal
-	// the outstanding spendable (adjustment-type) credit-note balances. A gap
-	// means a drawdown/reversal leg (application/expiry/void) was dropped —
-	// liability overstated, books still balanced. Prepended so it survives
-	// truncation, like the other integrity findings.
+	// the outstanding spendable balances that fund it — adjustment-type credit
+	// notes AND prepaid wallets (wallets post to the SAME Customer-Credit account,
+	// so they count too; omitting them false-positives on any tenant with a
+	// wallet). A gap means a drawdown/reversal leg was dropped — liability
+	// overstated, books still balanced. Prepended so it survives truncation.
 	creditMismatch := 0
 	var customerCreditBalance int64
 	for _, l := range tb.Lines {
@@ -307,12 +311,17 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 	if err != nil {
 		return nil, fmt.Errorf("spendable credit-note balance for tenant %s: %w", tenantID, err)
 	}
-	if customerCreditBalance != spendableCredit {
+	walletBalance, err := s.repo.SumWalletBalance(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("wallet balance for tenant %s: %w", tenantID, err)
+	}
+	expectedCustomerCredit := spendableCredit + walletBalance
+	if customerCreditBalance != expectedCustomerCredit {
 		report.Discrepancies = append([]ReconciliationDiscrepancy{{
 			Type:           DiscrepancyCustomerCreditMismatch,
 			AccountCode:    domain.AccountCodeCustomerCredit,
-			ExpectedAmount: spendableCredit,       // the notes say this much is owed
-			FoundAmount:    customerCreditBalance, // the ledger says this
+			ExpectedAmount: expectedCustomerCredit, // credit notes + wallets owed
+			FoundAmount:    customerCreditBalance,  // the ledger says this
 		}}, report.Discrepancies...)
 		creditMismatch = 1
 	}

@@ -135,6 +135,21 @@ func (r *LedgerRepository) SumSpendableCreditNoteBalance(ctx context.Context, te
 	return total, nil
 }
 
+// SumWalletBalance returns the total outstanding prepaid-wallet balance for a
+// tenant. Wallets post to the same Customer-Credit liability account as credit
+// notes (top-up: CR Customer-Credit; drain: DR Customer-Credit), so the
+// Customer-Credit invariant must add this to the credit-note balances. Closed
+// wallets carry balance 0, so summing all rows is correct.
+func (r *LedgerRepository) SumWalletBalance(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+	var total int64
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COALESCE(SUM(balance), 0)::bigint FROM wallets WHERE tenant_id = $1`, tenantID).Scan(&total)
+	if err != nil && err != sql.ErrNoRows {
+		return 0, fmt.Errorf("failed to sum wallet balance: %w", err)
+	}
+	return total, nil
+}
+
 // GetGeneralLedgerRows returns every posted transaction for a tenant, flattened
 // with both account codes and names, ordered oldest first. Tenant-scoped via the
 // debit account (both sides of a transfer always belong to the same tenant).
