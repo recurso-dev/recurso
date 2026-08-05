@@ -76,6 +76,34 @@ const HISTORY_CAP = 25;
 
 // ---- helpers --------------------------------------------------------------
 
+// Postgres NUMERIC/DECIMAL columns (any SUM/AVG/revenue total) come back over
+// database/sql as raw bytes and reach us as strings like "234820.000000000000".
+// Coerce clean numeric strings to real numbers at ingestion so formatting,
+// right-alignment, and charting all treat them like any other measure. Guards:
+// leave leading-zero codes (zip, account no.) as text, and bail on anything
+// that would lose integer precision as a float64.
+const NUMERIC_STRING = /^-?\d+(\.\d+)?$/;
+
+function coerceNumeric(v) {
+  if (typeof v !== "string") return v;
+  if (!NUMERIC_STRING.test(v)) return v;
+  if (/^-?0\d/.test(v)) return v; // leading-zero codes stay strings
+  const n = Number(v);
+  if (!Number.isFinite(n) || Math.abs(n) > Number.MAX_SAFE_INTEGER) return v;
+  return n;
+}
+
+function normalizeRows(data) {
+  if (!Array.isArray(data)) return data;
+  return data.map((row) =>
+    row && typeof row === "object" && !Array.isArray(row)
+      ? Object.fromEntries(
+          Object.entries(row).map(([k, val]) => [k, coerceNumeric(val)]),
+        )
+      : row,
+  );
+}
+
 // Group integers/decimals for readability; leave strings alone.
 function formatCell(v) {
   if (v == null) return "—";
@@ -102,7 +130,10 @@ function inferChart(rows) {
   const labels = cols.filter((c) => !numeric.includes(c));
   if (labels.length === 0 || numeric.length === 0) return null;
 
-  const index = labels[0];
+  // Prefer a human label over an id column for the category axis — charting
+  // "top customers by revenue" keyed on a UUID is unreadable.
+  const idLike = (c) => /^id$|_id$|uuid/i.test(c);
+  const index = labels.find((c) => !idLike(c)) ?? labels[0];
   // Distinct-ish labels only — charting a column that's the same value every
   // row (or all unique ids) is noise.
   const distinct = new Set(rows.map((r) => String(r[index]))).size;
@@ -258,7 +289,8 @@ function ResultBody({ data }) {
 
 function ResultCard({ entry, onRerun, onRemove }) {
   const [showSql, setShowSql] = useState(false);
-  const rowCount = Array.isArray(entry.data) ? entry.data.length : null;
+  const rows = useMemo(() => normalizeRows(entry.data), [entry.data]);
+  const rowCount = Array.isArray(rows) ? rows.length : null;
   return (
     <Card>
       <CardContent className="space-y-4 p-5">
@@ -278,11 +310,11 @@ function ResultCard({ entry, onRerun, onRemove }) {
             <Button variant="ghost" size="sm" onClick={() => onRerun(entry.question)} title="Ask again">
               <RotateCw className="h-3.5 w-3.5" />
             </Button>
-            {Array.isArray(entry.data) && entry.data.length > 0 && (
+            {Array.isArray(rows) && rows.length > 0 && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => downloadCSV(entry.data, "recurso-answer")}
+                onClick={() => downloadCSV(rows, "recurso-answer")}
                 title="Download CSV"
               >
                 <Download className="h-3.5 w-3.5" />
@@ -300,7 +332,7 @@ function ResultCard({ entry, onRerun, onRemove }) {
           </div>
         </div>
 
-        <ResultBody data={entry.data} />
+        <ResultBody data={rows} />
 
         {entry.query && (
           <div>

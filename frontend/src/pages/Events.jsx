@@ -3,6 +3,7 @@ import { Webhook, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { endpoints as api } from "../lib/api";
+import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,20 @@ const FAMILY_VARIANT = {
   usage: "info",
 };
 const familyVariant = (type) => FAMILY_VARIANT[(type || "").split(".")[0]] || "neutral";
+
+// A one-line, human summary pulled from the event payload — so the stream is
+// readable without opening every event. Money is shown in the currency's own
+// units (990000 minor → $9,900.00), never the raw minor-unit integer.
+const MONEY_KEYS = ["amount_paid", "amount_due", "amount_refunded", "amount", "total"];
+const summarizeEvent = (ev) => {
+  const d = ev.data || {};
+  const parts = [];
+  if (d.invoice_number) parts.push(String(d.invoice_number));
+  const moneyKey = MONEY_KEYS.find((k) => typeof d[k] === "number");
+  if (moneyKey) parts.push(formatCurrency(d[moneyKey], d.currency));
+  if (!parts.length && d.status) parts.push(String(d.status));
+  return parts.join(" · ");
+};
 
 // Webhook event inspector: recent outbound events, their payloads, and per-endpoint
 // delivery attempts — with one-click redelivery. Backed by GET /events,
@@ -122,6 +137,8 @@ const Events = () => {
     {
       key: "when",
       header: "When",
+      headerClassName: "whitespace-nowrap",
+      className: "whitespace-nowrap",
       cell: (e) => (
         <span className="whitespace-nowrap text-xs text-muted-foreground">
           {fmtWhen(e.created_at)}
@@ -131,6 +148,8 @@ const Events = () => {
     {
       key: "type",
       header: "Type",
+      headerClassName: "whitespace-nowrap",
+      className: "whitespace-nowrap",
       cell: (e) => (
         <Badge variant={familyVariant(e.type)} className="font-mono text-[11px]">
           {e.type}
@@ -138,8 +157,26 @@ const Events = () => {
       ),
     },
     {
+      // Flexible column: absorbs the remaining width so the row isn't a few
+      // short cells stranded across an empty table.
+      key: "summary",
+      header: "Summary",
+      className: "w-full",
+      headerClassName: "w-full",
+      cell: (e) => {
+        const s = summarizeEvent(e);
+        return s ? (
+          <span className="text-xs text-foreground">{s}</span>
+        ) : (
+          <span className="text-xs text-muted-foreground">—</span>
+        );
+      },
+    },
+    {
       key: "object",
       header: "Object",
+      headerClassName: "whitespace-nowrap",
+      className: "whitespace-nowrap",
       cell: (e) => (
         <span className="text-xs text-muted-foreground">
           {e.object_type}

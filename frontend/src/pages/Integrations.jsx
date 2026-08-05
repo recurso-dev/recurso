@@ -80,6 +80,24 @@ const syncStatusVariant = (status) =>
 
 const fmtDateTime = (v) => (v ? new Date(v).toLocaleString() : "—");
 
+// Turn a raw provider error into an actionable next step. Matches on common
+// substrings so a failed sync tells the operator what to actually do, not just
+// that it failed.
+const errorHint = (msg) => {
+  const m = String(msg || "").toLowerCase();
+  if (m.includes("email"))
+    return "The record is missing a valid email address, which this provider requires before it will accept it. Fix the customer's email, then re-sync.";
+  if (m.includes("token") || m.includes("unauthor") || m.includes("401") || m.includes("expired") || m.includes("revoked"))
+    return "The connection's authorization has expired or been revoked. Reconnect the provider above, then re-sync.";
+  if (m.includes("rate") || m.includes("429") || m.includes("throttl"))
+    return "The provider throttled the request. Recurso retries automatically on the next sync — or re-sync manually in a moment.";
+  if (m.includes("duplicate") || m.includes("already exists"))
+    return "The provider already has a record with this identifier. This usually clears once IDs reconcile on the next sync.";
+  if (m.includes("not found") || m.includes("404"))
+    return "A referenced record doesn't exist on the provider yet. Sync its parent record first (e.g. the customer before the invoice), then re-sync.";
+  return null;
+};
+
 // Where in the app a synced record actually lives — the "track it down" link.
 const ENTITY_PAGES = {
   invoice: { to: "/invoices", label: "Open Invoices" },
@@ -560,29 +578,57 @@ const Integrations = () => {
                         )}
                       </dd>
                     </div>
-                    <div className="col-span-2">
+                    <div>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Direction</dt>
+                      <dd className="mt-0.5 text-sm">
+                        Recurso <span className="text-muted-foreground">→</span>{" "}
+                        <span className="capitalize">{selectedLog.provider}</span>
+                      </dd>
+                    </div>
+                    <div>
                       <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Synced</dt>
                       <dd className="mt-0.5 text-sm">{fmtDateTime(selectedLog.synced_at)}</dd>
                     </div>
                   </dl>
 
                   {selectedLog.error_message && (
-                    <div>
-                      <p className="mb-1 text-xs font-medium text-foreground">What went wrong</p>
-                      <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs leading-relaxed text-red-800">
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-foreground">What went wrong</p>
+                      <p className="rounded-md border border-red-200 bg-red-50 p-3 font-mono text-xs leading-relaxed text-red-800">
                         {selectedLog.error_message}
                       </p>
+                      {errorHint(selectedLog.error_message) && (
+                        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                          <span className="font-semibold">How to fix: </span>
+                          {errorHint(selectedLog.error_message)}
+                        </p>
+                      )}
                     </div>
                   )}
 
-                  {ENTITY_PAGES[selectedLog.entity_type] && (
-                    <Button variant="outline" size="sm" asChild>
-                      <Link to={ENTITY_PAGES[selectedLog.entity_type].to}>
-                        <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                        {ENTITY_PAGES[selectedLog.entity_type].label}
-                      </Link>
-                    </Button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {syncStatusVariant(selectedLog.status) === "destructive" && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          handleSync(selectedLog.provider);
+                          setSelectedLog(null);
+                        }}
+                        disabled={syncing}
+                      >
+                        <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+                        Re-sync {selectedLog.provider}
+                      </Button>
+                    )}
+                    {ENTITY_PAGES[selectedLog.entity_type] && (
+                      <Button variant="outline" size="sm" asChild>
+                        <Link to={ENTITY_PAGES[selectedLog.entity_type].to}>
+                          <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                          {ENTITY_PAGES[selectedLog.entity_type].label}
+                        </Link>
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </>
             )}
