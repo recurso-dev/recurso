@@ -33,10 +33,16 @@ const (
 	DiscrepancyMissingPaymentTx      = "missing_payment_transaction"
 	DiscrepancyPaymentAmountMismatch = "payment_amount_mismatch"
 	DiscrepancyMissingCreditNoteTx   = "missing_credit_note_transaction"
-	DiscrepancyOrphanedTransaction   = "orphaned_transaction"
-	DiscrepancyMissingInTigerBeetle  = "missing_in_tigerbeetle"
-	DiscrepancyMissingInPostgres     = "missing_in_postgres"
-	DiscrepancyTBAmountMismatch      = "tb_amount_mismatch"
+	// Credit-application (account-credit drawdown) completeness: an invoice with
+	// credit_applied > 0 must carry code-7 drawdown legs (DR Customer-Credit /
+	// CR AR) summing to it. A dropped leg silently overstates AR and the
+	// Customer-Credit liability with the books still balanced.
+	DiscrepancyMissingCreditApplicationTx      = "missing_credit_application_transaction"
+	DiscrepancyCreditApplicationAmountMismatch = "credit_application_amount_mismatch"
+	DiscrepancyOrphanedTransaction             = "orphaned_transaction"
+	DiscrepancyMissingInTigerBeetle            = "missing_in_tigerbeetle"
+	DiscrepancyMissingInPostgres               = "missing_in_postgres"
+	DiscrepancyTBAmountMismatch                = "tb_amount_mismatch"
 	// Trial-balance integrity: the double-entry books must always balance and
 	// no account may carry a wrong-sign balance (e.g. Deferred Revenue going
 	// net-debit — the ENG-191 class). These make the trial balance a standing
@@ -68,6 +74,7 @@ type ReconciliationRepository interface {
 	GetInvoiceLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetPaymentLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetCreditNoteLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.CreditNoteLedgerMismatch, int, error)
+	GetCreditApplicationLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error)
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
 	// GetTrialBalanceLines feeds the double-entry integrity assertion.
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
@@ -194,6 +201,15 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		})
 	}
 
+	creditAppRows, creditAppTotal, err := s.repo.GetCreditApplicationLedgerMismatches(ctx, tenantID, s.maxListed)
+	if err != nil {
+		return nil, fmt.Errorf("credit-application ledger mismatches for tenant %s: %w", tenantID, err)
+	}
+	for _, row := range creditAppRows {
+		report.Discrepancies = append(report.Discrepancies,
+			invoiceDiscrepancy(row, DiscrepancyMissingCreditApplicationTx, DiscrepancyCreditApplicationAmountMismatch))
+	}
+
 	orphanRows, orphanTotal, err := s.repo.GetOrphanLedgerTransactions(ctx, tenantID, s.maxListed)
 	if err != nil {
 		return nil, fmt.Errorf("orphan ledger transactions for tenant %s: %w", tenantID, err)
@@ -268,7 +284,7 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		report.Discrepancies = append(overrunDiscrepancies, report.Discrepancies...)
 	}
 
-	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + orphanTotal + len(integrity) + deferredShort + overrunTotal
+	report.TotalDiscrepancies = invoiceTotal + paymentTotal + creditNoteTotal + creditAppTotal + orphanTotal + len(integrity) + deferredShort + overrunTotal
 
 	if s.tb == nil {
 		report.TBSkipReason = "TigerBeetle not connected; nothing to compare"

@@ -534,6 +534,33 @@ func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenan
 	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
 }
 
+// GetCreditApplicationLedgerMismatches finds invoices whose account-credit
+// drawdown legs don't reconcile. When adjustment credit is applied to an
+// invoice the repo sets credit_applied and books a code-7 leg
+// (DR Customer-Credit / CR AR) for the same amount; that ledger post is
+// best-effort. So an invoice with credit_applied > 0 MUST carry code-7 legs
+// summing to it — a dropped or wrong-amount drawdown leg silently overstates
+// both AR and the Customer-Credit liability while the books still balance and no
+// sign goes abnormal, so nothing else catches it. Mirrors the payment check:
+// expected = credit_applied, found = sum of code-7 legs referencing the invoice.
+func (r *LedgerRepository) GetCreditApplicationLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
+		FROM (
+			SELECT i.id, COALESCE(i.credit_applied, 0) AS expected,
+			       COALESCE(SUM(t.amount::bigint), 0) AS found,
+			       COUNT(t.id) AS tx_count
+			FROM invoices i
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 7
+			WHERE i.tenant_id = $1 AND COALESCE(i.credit_applied, 0) > 0
+			GROUP BY i.id, i.credit_applied
+		) sub
+		WHERE (sub.tx_count = 0 AND sub.expected > 0) OR sub.found <> sub.expected
+		ORDER BY sub.id
+		LIMIT $2`
+	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
+}
+
 func (r *LedgerRepository) queryInvoiceMismatches(ctx context.Context, query string, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
 	rows, err := r.db.QueryContext(ctx, query, tenantID, limit)
 	if err != nil {
