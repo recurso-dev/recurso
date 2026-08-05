@@ -286,10 +286,14 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
-		if rng.Intn(2) == 0 {
+		switch rng.Intn(3) {
+		case 0:
 			return h.opWalletTopUp(rng)
+		case 1:
+			return h.opWalletDrain(rng)
+		default:
+			return h.opWalletExpire(rng)
 		}
-		return h.opWalletDrain(rng)
 	case p < 99:
 		return h.opTrialConversion(rng)
 	default:
@@ -447,6 +451,60 @@ func (h *invariantHarness) opWalletDrain(rng *rand.Rand) string {
 	// amount as amount_paid (code 12 is a payment-shaped leg in the reconciler).
 	mustExec(t, h.conn, `UPDATE invoices SET status='paid', amount_paid=$2 WHERE id=$1`, invID, drained)
 	return "wallet_drain"
+}
+
+// opWalletExpire exercises the promotional-credit EXPIRY sweep through the REAL
+// WalletService.ExpireOverdueCredits. A promotional top-up posts DR
+// Credits & Adjustments (expense) / CR Customer-Credit and denormalizes
+// wallets.balance; when its residue expires the sweep zeroes the balance and
+// posts the discharging leg (code 15, DR Customer-Credit / CR Credits &
+// Adjustments) — reversing the liability so the GL doesn't leave promo credit
+// standing after it lapsed. Net effect once fully expired: Customer-Credit and
+// wallets.balance both return to zero, so the R-014 invariant ties. The op tops
+// up with a valid future expiry (TopUp rejects past ones), backdates the residue
+// to overdue, then runs the sweep. A dropped expiry leg would leave
+// Customer-Credit funded while wallets.balance dropped — flagged.
+func (h *invariantHarness) opWalletExpire(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Wallet Expire Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("wexp-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	w, err := h.walletSvc.CreateWallet(h.tctx, h.tenantID, CreateWalletInput{
+		CustomerID: customerID.String(),
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("CreateWallet (expire, cust %s): %v", customerID, err)
+	}
+
+	// Promotional top-up with a valid future expiry (only promo may expire, and
+	// the expiry must be in the future at top-up time).
+	amount := int64(3000 + rng.Intn(20000))
+	future := time.Now().UTC().Add(time.Hour)
+	wtx, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{
+		Amount:    amount,
+		Source:    domain.WalletSourcePromotional,
+		ExpiresAt: &future,
+	})
+	if err != nil {
+		t.Fatalf("TopUp (promo, wallet %s): %v", w.ID, err)
+	}
+
+	// Backdate the residue so the sweep sees it as overdue, then run the real
+	// expiry sweep (posts code 15 for the reclaimed residue).
+	mustExec(t, h.conn, `UPDATE wallet_transactions SET expires_at = NOW() - INTERVAL '1 hour' WHERE id = $1`, wtx.ID)
+	n, err := h.walletSvc.ExpireOverdueCredits(h.ctx)
+	if err != nil {
+		t.Fatalf("ExpireOverdueCredits (wallet %s): %v", w.ID, err)
+	}
+	if n < 1 {
+		t.Fatalf("ExpireOverdueCredits swept %d wallets, want >= 1", n)
+	}
+	return "wallet_expire"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —
