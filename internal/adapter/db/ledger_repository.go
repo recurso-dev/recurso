@@ -549,6 +549,33 @@ func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenan
 	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
 }
 
+// GetWriteOffLedgerMismatches finds `uncollectible` invoices whose write-off
+// legs don't reconcile. RecordInvoiceWriteOff clears A/R with up to three legs —
+// code 22 (deferred portion), code 26 (bad-debt on the recognized portion), and
+// code 23 (tax) — which together sum to the invoice total. The post is
+// best-effort, so an uncollectible invoice MUST carry those legs summing to its
+// total; a dropped leg leaves A/R + Deferred overstated, which the reconciler
+// otherwise misses (A/R positive is normal-sign) and the close-pack Deferred
+// identity absorbs into AwaitingPayment. expected = total, found = sum of the
+// write-off legs. Mirrors the payment check.
+func (r *LedgerRepository) GetWriteOffLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
+		FROM (
+			SELECT i.id, COALESCE(i.total, 0) AS expected,
+			       COALESCE(SUM(t.amount::bigint), 0) AS found,
+			       COUNT(t.id) AS tx_count
+			FROM invoices i
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code IN (22, 23, 26)
+			WHERE i.tenant_id = $1 AND i.status = 'uncollectible'
+			GROUP BY i.id, i.total
+		) sub
+		WHERE (sub.tx_count = 0 AND sub.expected > 0) OR sub.found <> sub.expected
+		ORDER BY sub.id
+		LIMIT $2`
+	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
+}
+
 // GetCreditApplicationLedgerMismatches finds invoices whose account-credit
 // drawdown legs don't reconcile. When adjustment credit is applied to an
 // invoice the repo sets credit_applied and books a code-7 leg

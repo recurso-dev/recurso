@@ -269,10 +269,12 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		return h.opApplyCredit(rng)
 	case p < 93:
 		return h.opVoidCredit(rng)
-	case p < 95:
+	case p < 94:
 		return h.opExpireCredit(rng)
-	case p < 97:
+	case p < 96:
 		return h.opRefund(rng)
+	case p < 97:
+		return h.opWriteOff(rng)
 	case p < 98:
 		return h.opTrialConversion(rng)
 	default:
@@ -537,6 +539,42 @@ func (h *invariantHarness) opRefund(rng *rand.Rand) string {
 	return "refund"
 }
 
+// opWriteOff exercises the bad-debt write-off path: it posts an OPEN, unpaid
+// subscription invoice (RecordInvoice funds Deferred, no schedule since schedules
+// are created on payment), flips it to `uncollectible` (mirroring
+// MarkUncollectibleScoped), then writes it off (RecordInvoiceWriteOff: code-22
+// deferred / code-26 bad-debt / code-23 tax legs, all CR A/R, summing to total).
+// The new GetWriteOffLedgerMismatches check requires those legs sum to total; a
+// dropped leg (the post is best-effort) is caught as missing_write_off_transaction
+// — the hard-detection R-010 needed (the close-pack identity absorbs it).
+func (h *invariantHarness) opWriteOff(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "write_off_skipped"
+	}
+	t := h.t
+	h.n++
+	s := h.subs[rng.Intn(len(h.subs))]
+
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-WO-%d", h.run, h.n)
+	total := int64(4000 + rng.Intn(25000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, subscription_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,$4,'USD',$5,$5,0,'open',$6,NOW(),NOW())`,
+		invID, h.tenantID, s.customer, s.id, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: s.customer, SubscriptionID: &s.id,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (write-off): %v", err)
+	}
+	mustExec(t, h.conn, `UPDATE invoices SET status='uncollectible', marked_uncollectible_at=NOW(), updated_at=NOW() WHERE id=$1`, invID)
+	if err := h.ledger.RecordInvoiceWriteOff(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoiceWriteOff (inv %s): %v", invID, err)
+	}
+	return "write_off"
+}
+
 // opNewSubscription seeds a customer + active mid-period subscription on the
 // cheap plan with a PAID first invoice, fully posted: invoice leg, cash leg,
 // and its recognition schedule — the same baseline every production
@@ -735,6 +773,7 @@ func (h *invariantHarness) assertAuditGrade(label string) {
 			DiscrepancyMissingPaymentTx, DiscrepancyPaymentAmountMismatch,
 			DiscrepancyMissingCreditNoteTx,
 			DiscrepancyMissingCreditApplicationTx, DiscrepancyCreditApplicationAmountMismatch,
+			DiscrepancyMissingWriteOffTx, DiscrepancyWriteOffAmountMismatch,
 			DiscrepancyCustomerCreditMismatch,
 			DiscrepancyOrphanedTransaction,
 			DiscrepancyRecognizedExceedsInvoice,
