@@ -195,16 +195,27 @@ const DunningDashboard = () => {
             label="Total Retries"
             value={formatNumber(overview?.total_retries || 0)}
             icon={RefreshCw}
+            hint="retry attempts on failed payments"
           />
           <StatCard
             label="Successful Recoveries"
             value={formatNumber(overview?.total_successes || 0)}
             icon={CheckCircle2}
+            hint={
+              overview?.total_retries
+                ? `of ${formatNumber(overview.total_retries)} retries`
+                : "retries that recovered payment"
+            }
           />
           <StatCard
             label="Success Rate"
             value={overview?.success_rate ? `${(overview.success_rate * 100).toFixed(1)}%` : "0%"}
             icon={Percent}
+            hint={
+              overview?.total_retries
+                ? `${formatNumber(overview.total_successes || 0)} of ${formatNumber(overview.total_retries)} succeeded`
+                : "no retries yet"
+            }
           />
         </div>
       )}
@@ -359,8 +370,18 @@ const DunningDashboard = () => {
                     <TableCell className="pl-6 whitespace-nowrap text-sm text-muted-foreground">
                       {fmtWhen(h.created_at)}
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-muted-foreground" title={h.invoice_id}>
-                      {h.invoice_id?.substring(0, 8)}…
+                    <TableCell className="font-mono text-sm" title={h.invoice_id}>
+                      {h.invoice_id ? (
+                        <Link
+                          to="/invoices"
+                          state={{ openInvoiceId: h.invoice_id }}
+                          className="text-emerald-700 hover:text-emerald-800 hover:underline"
+                        >
+                          {h.invoice_id.substring(0, 8)}…
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {segmentLabel(h.context_key)}
