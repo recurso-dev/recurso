@@ -286,7 +286,10 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
-		return h.opWalletTopUp(rng)
+		if rng.Intn(2) == 0 {
+			return h.opWalletTopUp(rng)
+		}
+		return h.opWalletDrain(rng)
 	case p < 99:
 		return h.opTrialConversion(rng)
 	default:
@@ -380,6 +383,70 @@ func (h *invariantHarness) opWalletTopUp(rng *rand.Rand) string {
 		t.Fatalf("TopUp (wallet %s): %v", w.ID, err)
 	}
 	return "wallet_topup"
+}
+
+// opWalletDrain exercises the invoice-time DRAWDOWN through the REAL
+// WalletService.DrainForInvoice: a customer with a funded wallet gets a fresh
+// one-off invoice (DR AR / CR Revenue — no subscription, so it earns immediately
+// and never touches Deferred), then the wallet drains against it. The drain posts
+// DR Customer-Credit / CR AR (code 12) and decrements wallets.balance in lockstep,
+// so the R-014 Customer-Credit invariant stays tied (Customer-Credit == wallet
+// balance) AND the payment-leg check sees code 12 settle the now-paid invoice
+// (amount_paid == Σ code {3,10,12}). The wallet is sized to fully cover the
+// invoice, so the drain clears AR and the invoice is marked paid — a wallet-
+// settled invoice with no cash leg. A dropped drain leg would leave Customer-
+// Credit above wallets.balance (flagged) and the paid invoice short a settling
+// leg (flagged).
+func (h *invariantHarness) opWalletDrain(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Wallet Drain Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("wdrain-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	w, err := h.walletSvc.CreateWallet(h.tctx, h.tenantID, CreateWalletInput{
+		CustomerID: customerID.String(),
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("CreateWallet (drain, cust %s): %v", customerID, err)
+	}
+
+	// Fund the wallet ABOVE the invoice total so the drain fully settles it.
+	total := int64(2000 + rng.Intn(15000))
+	topUp := total + int64(1000+rng.Intn(5000))
+	if _, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{Amount: topUp, Source: domain.WalletSourceManual}); err != nil {
+		t.Fatalf("TopUp (drain, wallet %s): %v", w.ID, err)
+	}
+
+	// A one-off invoice (no subscription → CR Revenue, not Deferred).
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-WD-%d", h.run, h.n)
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$4,0,'open',$5,NOW(),NOW())`,
+		invID, h.tenantID, customerID, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: customerID,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (wallet drain): %v", err)
+	}
+
+	// Drain the wallet against the invoice (DR Customer-Credit / CR AR, code 12).
+	drained, err := h.walletSvc.DrainForInvoice(h.tctx, inv)
+	if err != nil {
+		t.Fatalf("DrainForInvoice (inv %s): %v", invID, err)
+	}
+	if drained != total {
+		t.Fatalf("DrainForInvoice drained %d, want full %d", drained, total)
+	}
+	// The wallet settled the invoice in full — mark it paid, with the drained
+	// amount as amount_paid (code 12 is a payment-shaped leg in the reconciler).
+	mustExec(t, h.conn, `UPDATE invoices SET status='paid', amount_paid=$2 WHERE id=$1`, invID, drained)
+	return "wallet_drain"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —
