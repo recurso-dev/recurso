@@ -141,6 +141,12 @@ const (
 // collide with the invoice's Code-1 row under uq_ledger_tx_reference_code.
 const LedgerCodeOutputTax uint16 = 6
 
+// LedgerCodeCreditApplication books drawing a customer's account credit down
+// against an invoice (DR Customer-Credit / CR A/R). Distinct code so it stays
+// idempotent and attributable per (reference_id, code); the reconciler's
+// Customer-Credit and credit-application checks key on it.
+const LedgerCodeCreditApplication uint16 = 7
+
 // LedgerCodeRefundTaxReversal reverses the GST portion of a refund out of Tax
 // Payable (ENG-191b): a refund returns the tax to the customer, so the output-
 // tax liability booked at invoice time (LedgerCodeOutputTax) must come back
