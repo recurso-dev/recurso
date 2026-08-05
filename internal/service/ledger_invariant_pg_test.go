@@ -498,7 +498,11 @@ func (h *invariantHarness) assertAuditGrade(label string) {
 	}
 	for _, d := range report.Discrepancies {
 		switch d.Type {
-		case DiscrepancyMissingInvoiceTx, DiscrepancyMissingCreditNoteTx, DiscrepancyLedgerUnbalanced, DiscrepancyAbnormalBalance, DiscrepancyDeferredBelowScheduled:
+		case DiscrepancyMissingInvoiceTx, DiscrepancyInvoiceAmountMismatch,
+			DiscrepancyMissingPaymentTx, DiscrepancyPaymentAmountMismatch,
+			DiscrepancyMissingCreditNoteTx, DiscrepancyOrphanedTransaction,
+			DiscrepancyRecognizedExceedsInvoice,
+			DiscrepancyLedgerUnbalanced, DiscrepancyAbnormalBalance, DiscrepancyDeferredBelowScheduled:
 			h.t.Fatalf("[%s] ledger not audit-grade: %s %+v", label, d.Type, d)
 		}
 	}
