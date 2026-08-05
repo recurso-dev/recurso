@@ -59,13 +59,44 @@ teeth verified by neutering the issuance leg. (recurso#516)
 
 ## Open
 
-### R-005 — Harness is USD-only; multi-currency / FX-exponent paths unguarded · Medium · OPEN
+### R-005 — Multi-currency: balance invariants safe; aggregate-inequality masking is the real gap · Medium · OPEN (analyzed 2026-08-05)
 No non-USD currency runs through the property test, so exponent-aware money math
 (JPY 0-decimal, KWD 3-decimal) and FX are not covered by the harness.
-**Risk before doing it:** the reconciler sums minor units and may not be
-per-currency — mixing currencies in one tenant could produce *false*
-`ledger_unbalanced`/`abnormal_account_balance`. Needs per-currency books or
-per-currency tenants first. Deferred as higher-risk; do it carefully.
+
+**Original hypothesis DISPROVEN by analysis** — the feared "reconciler sums minor
+units → *false* `ledger_unbalanced` / `abnormal_account_balance`" is NOT real:
+- `ledger_accounts` ARE per-currency (`currency` column, since migration 000013),
+  and the trial balance groups by `a.id` (per account), so each currency is its
+  own line.
+- Every transaction posts equal debit and credit in the SAME currency, so
+  `totalDebits == totalCredits` survives cross-currency summation → no false
+  `ledger_unbalanced`.
+- `abnormal_account_balance` is evaluated per-account (each single-currency), so
+  no cross-currency mixing.
+- The Customer-Credit invariant (R-012/R-014) is a sum of per-currency-balanced
+  equalities (`CC_c == credits_c + wallets_c` for each currency c), so the
+  aggregate equality holds too.
+
+**The REAL (narrow) gap — aggregate-inequality masking:**
+`deferred_below_scheduled_revenue` compares an AGGREGATE `deferredBalance`
+(Σ Deferred-code trial-balance lines across ALL currencies AND ALL entities —
+`GetTrialBalanceLines(…, nil)`) against an aggregate `pending`
+(`SumPendingRecognitionEvents`, also cross-currency/entity). Because this is an
+*inequality* over a cross-dimension SUM, a per-currency **or per-entity** Deferred
+shortfall (positive but < that slice's scheduled) can be MASKED by another
+slice's excess: e.g. USD Deferred 50 < USD pending 100 (a real shortfall) is
+hidden when JPY Deferred 1000 ≥ JPY pending 0 → aggregate 1050 ≥ 100, no
+discrepancy. The `abnormal_account_balance` backstop only catches wrong-SIGN
+(net-debit) accounts, not positive-but-insufficient ones. Multi-ENTITY is a
+shipped feature, so the per-entity variant is the more reachable of the two.
+`recognized_exceeds_invoice` is NOT affected — it is evaluated per-schedule
+(`GetRecognitionOverruns`), each schedule single-currency/entity.
+
+**Fix (own focused increment):** make the deferred-vs-scheduled check per
+(entity, currency) group instead of one tenant-wide aggregate — mirror the
+per-schedule granularity the overrun check already uses — and add a multi-currency
+/ multi-entity dimension to the harness to exercise it (would also close the
+JPY/KWD exponent coverage gap). Sizable; do it carefully with its own teeth proof.
 
 ### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · CLOSED
 `opRefund` posts a fresh PAID invoice with a `gateway_payment_id` (so the refund
