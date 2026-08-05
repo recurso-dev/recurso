@@ -59,44 +59,49 @@ teeth verified by neutering the issuance leg. (recurso#516)
 
 ## Open
 
-### R-005 — Multi-currency: balance invariants safe; aggregate-inequality masking is the real gap · Medium · OPEN (analyzed 2026-08-05)
-No non-USD currency runs through the property test, so exponent-aware money math
-(JPY 0-decimal, KWD 3-decimal) and FX are not covered by the harness.
+### R-005 — Multi-currency: reconciler equality invariants EMPIRICALLY safe; open items are product-scope (multi-currency GL) + exponent coverage · Low/Medium · OPEN (analyzed + empirically tested 2026-08-05)
 
-**Original hypothesis DISPROVEN by analysis** — the feared "reconciler sums minor
-units → *false* `ledger_unbalanced` / `abnormal_account_balance`" is NOT real:
-- `ledger_accounts` ARE per-currency (`currency` column, since migration 000013),
-  and the trial balance groups by `a.id` (per account), so each currency is its
-  own line.
-- Every transaction posts equal debit and credit in the SAME currency, so
-  `totalDebits == totalCredits` survives cross-currency summation → no false
-  `ledger_unbalanced`.
-- `abnormal_account_balance` is evaluated per-account (each single-currency), so
-  no cross-currency mixing.
-- The Customer-Credit invariant (R-012/R-014) is a sum of per-currency-balanced
-  equalities (`CC_c == credits_c + wallets_c` for each currency c), so the
-  aggregate equality holds too.
+**Two corrections to earlier hypotheses, then an empirical test.**
 
-**The REAL (narrow) gap — aggregate-inequality masking:**
-`deferred_below_scheduled_revenue` compares an AGGREGATE `deferredBalance`
-(Σ Deferred-code trial-balance lines across ALL currencies AND ALL entities —
-`GetTrialBalanceLines(…, nil)`) against an aggregate `pending`
-(`SumPendingRecognitionEvents`, also cross-currency/entity). Because this is an
-*inequality* over a cross-dimension SUM, a per-currency **or per-entity** Deferred
-shortfall (positive but < that slice's scheduled) can be MASKED by another
-slice's excess: e.g. USD Deferred 50 < USD pending 100 (a real shortfall) is
-hidden when JPY Deferred 1000 ≥ JPY pending 0 → aggregate 1050 ≥ 100, no
-discrepancy. The `abnormal_account_balance` backstop only catches wrong-SIGN
-(net-debit) accounts, not positive-but-insufficient ones. Multi-ENTITY is a
-shipped feature, so the per-entity variant is the more reachable of the two.
-`recognized_exceeds_invoice` is NOT affected — it is evaluated per-schedule
-(`GetRecognitionOverruns`), each schedule single-currency/entity.
+*Correction 1 (account keying):* ledger accounts are NOT per-currency. Despite the
+`currency` column (migration 000013), `getOrCreate*Account` keys strictly by
+`GetAccountByTenantAndCode` / `GetAccountByEntityAndCode` — **no currency
+parameter**. So there is exactly ONE account per (tenant/entity, code), and a JPY
+posting and a USD posting land in the SAME Customer-Credit (2300) / Cash (1000)
+account, mixing minor units. (My PR #534 claim "accounts are per-currency, each
+currency its own trial-balance line" was WRONG.)
 
-**Fix (own focused increment):** make the deferred-vs-scheduled check per
-(entity, currency) group instead of one tenant-wide aggregate — mirror the
-per-schedule granularity the overrun check already uses — and add a multi-currency
-/ multi-entity dimension to the harness to exercise it (would also close the
-JPY/KWD exponent coverage gap). Sizable; do it carefully with its own teeth proof.
+*Correction 2 (the feared false-unbalance is still DISPROVEN, and by the stronger
+route):* even with all currencies mixed into one account per code, the
+reconciler's EQUALITY invariants hold —
+- every transaction posts equal debit and credit in the SAME currency and equal
+  amount, so `totalDebits == totalCredits` survives the mix → no false
+  `ledger_unbalanced`;
+- the Customer-Credit invariant sums the SAME mixed postings on both sides
+  (`CustomerCredit` account balance vs `SumWalletBalance` + credit notes, all raw
+  `SUM(minor units)`), so the equality is identity-preserving under mixing;
+- `abnormal_account_balance` only asserts a sign, unaffected by magnitude mixing.
+
+**Empirically confirmed (`opWalletTopUpJPY`):** the harness now tops up a JPY
+(0-decimal) wallet in the same tenant as its USD activity, mixing currencies in the
+2300/1000 accounts. A forced-every-step JPY run AND the normal rotation both
+reconcile **clean** across all seeds — no false `ledger_unbalanced` /
+`customer_credit_liability_mismatch`. So the original R-005 risk is closed by
+evidence, not just argument.
+
+**What actually remains (both LOWER severity than a reconciler bug):**
+1. *Product-scope:* because accounts mix currencies, a genuinely multi-currency
+   tenant's GL account balances / trial balance / financial reports are
+   semantically a mixed-minor-unit total (e.g. `$1.00 + ¥1000 = "1100"`). This is
+   a ledger-design **scope** question (Recurso today assumes a single reporting
+   currency per tenant; true multi-currency GL + FX is a known non-goal), NOT a
+   reconciler correctness defect. Decide whether multi-currency GL is in scope.
+2. *Coverage:* JPY top-up is now exercised, but KWD (3-decimal) and exponent-aware
+   invoice/recognition math (not just raw wallet minor units) are still untested.
+   The `deferred_below_scheduled` inequality is a cross-dimension aggregate, but
+   since the ledger does not separate currencies at all, there is no per-currency
+   "line" to mask — the per-ENTITY aggregation is the only live masking axis and is
+   tracked separately under the multi-entity work, not here.
 
 ### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · CLOSED
 `opRefund` posts a fresh PAID invoice with a `gateway_payment_id` (so the refund

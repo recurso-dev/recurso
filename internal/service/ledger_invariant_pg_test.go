@@ -288,15 +288,17 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 97:
 		return h.opWriteOff(rng)
 	case p < 98:
-		switch rng.Intn(4) {
+		switch rng.Intn(5) {
 		case 0:
 			return h.opWalletTopUp(rng)
 		case 1:
 			return h.opWalletDrain(rng)
 		case 2:
 			return h.opWalletExpire(rng)
-		default:
+		case 3:
 			return h.opWalletClose(rng)
+		default:
+			return h.opWalletTopUpJPY(rng)
 		}
 	case p < 99:
 		return h.opTrialConversion(rng)
@@ -391,6 +393,45 @@ func (h *invariantHarness) opWalletTopUp(rng *rand.Rand) string {
 		t.Fatalf("TopUp (wallet %s): %v", w.ID, err)
 	}
 	return "wallet_topup"
+}
+
+// opWalletTopUpJPY tops up a wallet in a NON-USD, ZERO-decimal currency (JPY),
+// so the tenant's books mix currencies. This empirically validates the R-005
+// analysis: ledger accounts are keyed per (tenant/entity, code) — NOT per
+// currency — so a JPY top-up posts to the SAME Customer-Credit (2300) and Cash
+// (1000) accounts as USD, mixing minor units. The reconciler's equality
+// invariants must still hold: every transaction is balanced within its own
+// currency (DR Cash / CR Customer-Credit, same amount), so `totalDebits ==
+// totalCredits` survives the mix, and the Customer-Credit invariant sums the same
+// mixed postings on both sides (`SumWalletBalance` counts JPY wallet balances
+// too). JPY amounts are whole yen (0-decimal), so no exponent conversion applies
+// to the raw minor-unit ledger. A clean run confirms multi-currency does not
+// produce false `ledger_unbalanced` / `customer_credit_liability_mismatch`.
+func (h *invariantHarness) opWalletTopUpJPY(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'JPY Wallet Cust','Japan','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("jpywallet-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	w, err := h.walletSvc.CreateWallet(h.tctx, h.tenantID, CreateWalletInput{
+		CustomerID: customerID.String(),
+		Currency:   "JPY",
+	})
+	if err != nil {
+		t.Fatalf("CreateWallet JPY (cust %s): %v", customerID, err)
+	}
+
+	amount := int64(3000 + rng.Intn(90000)) // whole yen — JPY is 0-decimal
+	if _, err := h.walletSvc.TopUp(h.tctx, h.tenantID, w.ID, TopUpInput{
+		Amount: amount,
+		Source: domain.WalletSourceManual,
+	}); err != nil {
+		t.Fatalf("TopUp JPY (wallet %s): %v", w.ID, err)
+	}
+	return "wallet_topup_jpy"
 }
 
 // opWalletDrain exercises the invoice-time DRAWDOWN through the REAL
