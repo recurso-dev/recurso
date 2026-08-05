@@ -211,15 +211,68 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		return "one_off_invoice"
 	case p < 80:
 		return h.opQuoteConversion(rng)
-	case p < 87:
+	case p < 86:
 		return h.opGiftPurchase(rng)
-	case p < 93:
+	case p < 91:
 		return h.opIssueCreditNote(rng)
-	case p < 97:
+	case p < 95:
+		return h.opApplyCredit(rng)
+	case p < 98:
 		return h.opTrialConversion(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
 	}
+}
+
+// opApplyCredit exercises the account-credit DRAWDOWN path: it issues spendable
+// adjustment credit to a customer, posts a fresh OPEN invoice's AR leg, then
+// draws the credit down against that invoice through the real
+// CreditNoteService.ApplyAdjustmentCredits (DR Customer-Credit / CR AR, code 7).
+// When the credit fully covers the invoice the repo marks it status='paid' with
+// amount_paid=0 (settled by credit, no cash) — a state the payment-leg and
+// abnormal-balance checks must handle without a false discrepancy. The harness
+// issued credits but never applied them, so the whole drawdown + credit-paid
+// interaction was previously unexercised.
+func (h *invariantHarness) opApplyCredit(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "apply_credit_skipped"
+	}
+	t := h.t
+	s := h.subs[rng.Intn(len(h.subs))]
+
+	// 1. Give the customer spendable adjustment credit.
+	creditAmt := int64(3000 + rng.Intn(15000))
+	if _, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		Amount:     creditAmt,
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeAdjustment),
+		Reason:     "harness credit for application",
+	}); err != nil {
+		t.Fatalf("issue credit for application (cust %s): %v", s.customer, err)
+	}
+
+	// 2. Post a fresh OPEN invoice with its AR leg (DR AR / CR Deferred).
+	h.n++
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-CA-%d", h.run, h.n)
+	total := int64(2000 + rng.Intn(20000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$4,0,'open',$5,NOW(),NOW())`,
+		invID, h.tenantID, s.customer, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: s.customer,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (credit-app): %v", err)
+	}
+
+	// 3. Draw the credit down against the invoice.
+	if _, err := h.creditSvc.ApplyAdjustmentCredits(h.tctx, h.tenantID, s.customer, nil, "USD", invID, total); err != nil {
+		t.Fatalf("ApplyAdjustmentCredits (inv %s): %v", invID, err)
+	}
+	return "apply_credit"
 }
 
 // opTrialConversion drives the REAL SubscriptionService.ConvertTrialToActive —
@@ -498,7 +551,13 @@ func (h *invariantHarness) assertAuditGrade(label string) {
 	}
 	for _, d := range report.Discrepancies {
 		switch d.Type {
-		case DiscrepancyMissingInvoiceTx, DiscrepancyMissingCreditNoteTx, DiscrepancyLedgerUnbalanced, DiscrepancyAbnormalBalance, DiscrepancyDeferredBelowScheduled:
+		case DiscrepancyMissingInvoiceTx, DiscrepancyInvoiceAmountMismatch,
+			DiscrepancyMissingPaymentTx, DiscrepancyPaymentAmountMismatch,
+			DiscrepancyMissingCreditNoteTx,
+			DiscrepancyMissingCreditApplicationTx, DiscrepancyCreditApplicationAmountMismatch,
+			DiscrepancyOrphanedTransaction,
+			DiscrepancyRecognizedExceedsInvoice,
+			DiscrepancyLedgerUnbalanced, DiscrepancyAbnormalBalance, DiscrepancyDeferredBelowScheduled:
 			h.t.Fatalf("[%s] ledger not audit-grade: %s %+v", label, d.Type, d)
 		}
 	}

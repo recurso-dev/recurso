@@ -31,6 +31,10 @@ type mockReconciliationRepo struct {
 	creditNoteTotal int
 	creditNoteErr   error
 
+	creditAppRows  []db.InvoiceLedgerMismatch
+	creditAppTotal int
+	creditAppErr   error
+
 	orphanRows  []db.OrphanLedgerTransaction
 	orphanTotal int
 	orphanErr   error
@@ -86,6 +90,13 @@ func (m *mockReconciliationRepo) GetCreditNoteLedgerMismatches(ctx context.Conte
 		return nil, 0, m.creditNoteErr
 	}
 	return m.creditNoteRows, m.creditNoteTotal, nil
+}
+func (m *mockReconciliationRepo) GetCreditApplicationLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error) {
+	m.gotLimits = append(m.gotLimits, limit)
+	if m.creditAppErr != nil {
+		return nil, 0, m.creditAppErr
+	}
+	return m.creditAppRows, m.creditAppTotal, nil
 }
 
 func (m *mockReconciliationRepo) GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error) {
