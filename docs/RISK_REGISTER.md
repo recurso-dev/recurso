@@ -240,6 +240,17 @@ silent. (PR: harness-closepack-tieout)
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
-chargebacks, wallets/prepaid drawdown, tax (GST/VAT/US nexus) edge rounding,
+chargebacks, ~~wallets/prepaid top-up~~ (now covered — see below), wallet
+*drain*/forfeit/expiry drawdown, tax (GST/VAT/US nexus) edge rounding,
 importers, multi-tenant isolation under concurrency, RBAC on money-out. Pick the
 highest-financial-impact next.
+
+**Wallet top-up now exercised (`opWalletTopUp`):** the harness drives a real
+`WalletService.CreateWallet` + `TopUp` through Postgres (entity reader resolves
+the primary entity, so the `wallets.entity_id` FK is satisfied). Top-up posts
+DR Cash / CR Customer-Credit (code 11) and denormalizes `wallets.balance`, so the
+R-014 Customer-Credit invariant (which now counts wallet balances) is exercised
+end-to-end. **Teeth:** neutering the top-up leg → `customer_credit_liability_
+mismatch {Expected:32887 Found:0}` on the `wallet_topup` step (seeds 1-4). Still
+open under R-007: the *drain* path (code 12, invoice-time), forfeit (14), and
+expiry (15). (PR: harness-wallet-topup-op)
