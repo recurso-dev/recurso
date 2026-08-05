@@ -20,10 +20,10 @@ import (
 // harness planned in the rev-rec/ledger audit (archive PR #82 scope): it
 // drives RANDOMIZED sequences of real billing operations — new paid
 // subscriptions, mid-cycle upgrades and downgrades, one-off invoices,
-// recognition runs, and cancels with unwind — through the real services, and
-// after EVERY step asserts the reconciliation oracle finds an audit-grade
-// ledger: no missing invoice legs, no unbalanced ledger, no abnormal account
-// balances.
+// recognition runs, credit-note issuance, and cancels with unwind — through the
+// real services, and after EVERY step asserts the reconciliation oracle finds
+// an audit-grade ledger: no missing invoice OR credit-note legs, no unbalanced
+// ledger, no abnormal account balances.
 //
 // This is the class of test that would have caught F1 (missing invoice legs
 // on upgrade/mandate paths) and F3 (one-off recognition draining unfunded
@@ -100,12 +100,13 @@ type invariantHarness struct {
 	priceyPlan uuid.UUID // 200000 USD/month
 	couponID   uuid.UUID // 80% off, forever — some subs are created discounted
 
-	ledger   *LedgerService
-	revrec   *RevRecService
-	subSvc   *SubscriptionService
-	quoteSvc *QuoteService
-	giftSvc  *GiftService
-	recon    *ReconciliationService
+	ledger    *LedgerService
+	revrec    *RevRecService
+	subSvc    *SubscriptionService
+	quoteSvc  *QuoteService
+	giftSvc   *GiftService
+	creditSvc *CreditNoteService
+	recon     *ReconciliationService
 
 	subs []*invariantSub
 	run  string
@@ -169,6 +170,14 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	giftInvSvc := &InvoiceService{InvoiceRepo: db.NewInvoiceRepository(conn), LedgerPoster: h.ledger}
 	h.giftSvc = NewGiftService(db.NewGiftRepository(dbx), subRepo, giftInvSvc, db.NewPlanRepository(conn), nil)
 
+	// Real credit-note service (no gateway — the harness issues standalone
+	// adjustment credits, not gateway refunds). Create books
+	// RecordAdjustmentCreditIssued referencing the note, so an issued credit note
+	// that loses its leg is caught as missing_credit_note_transaction — the check
+	// that had no op to exercise it until now.
+	h.creditSvc = NewCreditNoteService(db.NewCreditNoteRepository(dbx), db.NewCustomerRepository(dbx), db.NewInvoiceRepository(conn), nil)
+	h.creditSvc.SetLedgerService(h.ledger)
+
 	h.recon = NewReconciliationService(db.NewLedgerRepository(conn), nil)
 	return h
 }
@@ -200,11 +209,13 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 72:
 		h.opOneOffInvoice(rng)
 		return "one_off_invoice"
-	case p < 81:
+	case p < 80:
 		return h.opQuoteConversion(rng)
-	case p < 89:
+	case p < 87:
 		return h.opGiftPurchase(rng)
-	case p < 95:
+	case p < 93:
+		return h.opIssueCreditNote(rng)
+	case p < 97:
 		return h.opTrialConversion(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
@@ -280,6 +291,36 @@ func (h *invariantHarness) opGiftPurchase(rng *rand.Rand) string {
 		h.t.Fatalf("PurchaseGift (buyer %s): %v", s.customer, err)
 	}
 	return "gift_purchase"
+}
+
+// opIssueCreditNote issues a standalone adjustment credit note through the REAL
+// CreditNoteService.Create on the API-key path (creatorRole "" bypasses
+// maker-checker → issued immediately). Create books the note as an
+// account-credit liability via RecordAdjustmentCreditIssued referencing the
+// note (DR Credits & Adjustments / CR Customer-Credit — balanced, so it never
+// trips the balance checks). The issued note then REQUIRES that leg: because
+// the post is best-effort (a failure only logs), a credit-note create path
+// that forgets its ledger leg fails the next assertAuditGrade as
+// missing_credit_note_transaction. Until this op existed the harness created no
+// credit notes, so that reconciler check could never fire — this gives it teeth.
+func (h *invariantHarness) opIssueCreditNote(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "credit_note_skipped"
+	}
+	s := h.subs[rng.Intn(len(h.subs))]
+	amount := int64(1000 + rng.Intn(20000))
+	// tctx: the credit-note service reads the tenant from context (customer
+	// lookup is tenant-scoped).
+	if _, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		Amount:     amount,
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeAdjustment),
+		Reason:     "harness adjustment credit",
+	}); err != nil {
+		h.t.Fatalf("Create credit note (cust %s): %v", s.customer, err)
+	}
+	return "credit_note"
 }
 
 // opNewSubscription seeds a customer + active mid-period subscription on the
