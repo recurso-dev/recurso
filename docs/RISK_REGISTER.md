@@ -89,29 +89,47 @@ first instance found & fixed; the ones below share its exact shape. There are
 ~25 best-effort ledger posts (`grep "reconciliation needed" internal/service`);
 these are the ones whose absence is currently invisible.
 
-**Recommended fix (systemic, verify before shipping):** a single balance-vs-source
-invariant — the **Customer-Credit ledger balance per (tenant, entity) must equal
-the sum of outstanding `credit_notes.balance`**. This would catch R-001, R-008,
-and R-009 together (a missing drawdown/expiry/void leg leaves the ledger balance
-above the summed note balances). **Caveat that must be resolved first:** the
-downgrade-proration path (`subscription_upgrade.go`) creates a credit *note* but
-posts to **Deferred**, not Customer-Credit — so confirm exactly which paths feed
-the Customer-Credit account before asserting this equality, or it will
-false-positive. Until verified, the safe fallback is per-path amount checks like
-R-001's `GetCreditApplicationLedgerMismatches`.
+**Systemic fix — IMPLEMENTED (R-012 below).** The balance-vs-source invariant
+**Customer-Credit ledger balance == Σ outstanding adjustment-type
+`credit_notes.balance`** now runs in `ReconciliationService.Run`. The two caveats
+were investigated and resolved: (1) the downgrade path debits Deferred but
+**credits** Customer-Credit (`RecordDowngradeCredit` + `RecordDowngradeRevenueReversal`
+both `CR Customer-Credit`), so downgrade credits reconcile; (2) refund-type notes
+also carry a balance but post to Cash, so the query filters `type='adjustment'`.
+Empirically verified across all seeds, teeth-proven by neutering the drawdown leg.
 
-### R-008 — Credit-expiry reversal leg unguarded · Medium · OPEN (hypothesis, not yet confirmed by neuter-test)
-`RecordCreditExpiry` reverses the Customer-Credit liability when a credit
-expires; the post is best-effort. The credit-note completeness check is
-count-based over txns referencing `cn.ID`, but the *issuance* leg already
-satisfies it — so a missing expiry leg leaves the liability overstated, uncaught.
-Next: add an `expire_credit` harness op (issue credit with past `expires_at` →
-`ExpireDueCredits`), neuter the expiry leg to confirm green (gap), then fix.
+### R-012 — Customer-Credit liability invariant (systemic fix for the drawdown-leg class) · High · CLOSED
+One reconciler check that catches the whole reversal/drawdown-leg class:
+**Customer-Credit account balance must equal Σ outstanding adjustment-type
+credit-note balances** (`SumSpendableCreditNoteBalance`, compared against the
+Customer-Credit trial-balance line in `Run`). Every spendable credit (manual or
+downgrade) credits Customer-Credit for its balance; every drawdown
+(application/expiry/void) debits it and lowers the note balance in lockstep, so a
+dropped leg leaves the ledger balance above the notes.
+**Regression/teeth:** neutering `RecordCreditApplication` →
+`customer_credit_liability_mismatch {Expected:0 Found:11221}` on the
+`apply_credit` step (seeds 1, 2). Clean run green (invariant holds across
+issuance, application, and downgrade).
+**Impact:** closes the *detection* gap for R-008 (expiry) and R-009 (void) — a
+missing expiry/void reversal leg now diverges Customer-Credit from the notes and
+is flagged — and adds a second line of defense over R-001.
+(PR: harness-customer-credit-invariant)
 
-### R-009 — Credit-void reversal leg unguarded · Medium · OPEN (hypothesis)
-`Void` sets status `void` (NOT in the checked set `issued/used/expired`) and
-posts a best-effort reversal. A voided credit is not checked at all, so a missing
-void leg leaves Customer-Credit overstated. Confirm + fix as R-008.
+### R-008 — Credit-expiry reversal leg unguarded · Medium · detection CLOSED by R-012; harness exercise pending
+Detection is now covered (a missing expiry leg diverges Customer-Credit from the
+notes → `customer_credit_liability_mismatch`). Still worth adding an
+`expire_credit` harness op (issue with past `expires_at` → `ExpireDueCredits`) to
+exercise the specific path end-to-end and pin it with a dedicated neuter-test.
+
+Mechanism (why it was a gap): `RecordCreditExpiry` reverses the Customer-Credit
+liability best-effort; the count-based credit-note check is satisfied by the
+*issuance* leg, so a missing expiry leg was uncaught. R-012 now catches it.
+
+### R-009 — Credit-void reversal leg unguarded · Medium · detection CLOSED by R-012; harness exercise pending
+`Void` sets status `void` (not in the count-check set) and posts a best-effort
+reversal; a missing void leg left Customer-Credit overstated. Detection is now
+covered by R-012 (ledger diverges from the notes). Still worth a `void_credit`
+harness op to exercise the path and pin it with a neuter-test.
 
 ### R-010 — Write-off (bad-debt) reversal leg unguarded · Medium · OPEN (hypothesis)
 `collections_actions.go` posts a best-effort write-off reversal; a missing leg

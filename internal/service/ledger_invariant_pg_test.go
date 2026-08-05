@@ -555,6 +555,7 @@ func (h *invariantHarness) assertAuditGrade(label string) {
 			DiscrepancyMissingPaymentTx, DiscrepancyPaymentAmountMismatch,
 			DiscrepancyMissingCreditNoteTx,
 			DiscrepancyMissingCreditApplicationTx, DiscrepancyCreditApplicationAmountMismatch,
+			DiscrepancyCustomerCreditMismatch,
 			DiscrepancyOrphanedTransaction,
 			DiscrepancyRecognizedExceedsInvoice,
 			DiscrepancyLedgerUnbalanced, DiscrepancyAbnormalBalance, DiscrepancyDeferredBelowScheduled:
