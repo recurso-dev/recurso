@@ -74,6 +74,27 @@ describe("AskAnalytics", () => {
     });
   });
 
+  it("formats NUMERIC columns that arrive as strings instead of dumping trailing zeros", async () => {
+    // Postgres NUMERIC/DECIMAL sums reach the client as strings like
+    // "234820.000000000000". A single row renders as a table (no chart), so we
+    // can assert the cell is grouped and de-zeroed.
+    endpoints.askAnalytics.mockResolvedValue({
+      data: {
+        data: [{ name: "Sirius Systems", total_revenue: "234820.000000000000" }],
+        query: "SELECT name, SUM(amount) AS total_revenue FROM ...",
+      },
+    });
+
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Question"), {
+      target: { value: "Top customer by revenue" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ask/i }));
+
+    await waitFor(() => expect(screen.getByText("234,820")).toBeInTheDocument());
+    expect(screen.queryByText(/234820\.0+/)).not.toBeInTheDocument();
+  });
+
   it("restores history from localStorage on mount", () => {
     localStorage.setItem(
       "recurso.ask.history.v1",
