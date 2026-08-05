@@ -163,19 +163,27 @@ The safety net has **two** layers, and the harness only asserts the first:
    **This is what the harness asserts after every op.**
 2. `ClosePackService` (month-end close, recurso#473) — the **Deferred identity**
    `rollforward.Closing - recognition.DeferredBalance - AwaitingPayment ==
-   UnexplainedDelta` (must be 0). This catches any posting that leaves Deferred
-   wrong — including write-off and forfeit reversals.
-Because R-010 and R-011 both reverse **Deferred**, a dropped leg leaves Deferred
-too high → non-zero `UnexplainedDelta` → **caught by the close-pack tie-out**.
+   UnexplainedDelta` (must be 0).
 
 **DONE (PR: harness-closepack-tieout):** the harness now asserts layer 2 —
 `assertClosePackTies` runs `ClosePackService.Generate` once per seed and requires
 `Deferred.Ties` (UnexplainedDelta == 0). Wired with revrec + the unscheduled-
-deferral reader so the identity is exact. Empirically the identity holds across
-all seeds on clean books. Teeth: neutering the cancel-forfeit leg
-(`UnwindOnCancel`'s `RecordRecognition`) → `close-pack Deferred tie-out broken:
-UnexplainedDelta=100000` on `seed=7 final`, while `DeferredBelowScheduled` stayed
-silent (Deferred too HIGH). **This closes R-011 and gives R-010 detection.**
+deferral reader so the identity is exact. Holds across all seeds on clean books.
+
+**IMPORTANT ASYMMETRY (corrected — my earlier "layer-2 catches write-off too" was
+WRONG):** the identity catches a dropped **forfeit** leg but NOT a dropped
+**write-off** leg. Why: `SumUnscheduledDeferral` (AwaitingPayment) *re-includes*
+an `uncollectible` invoice when it has **no** code-22 write-off leg
+(`i.status='uncollectible' AND NOT EXISTS (… t.code=22)`). So a missing write-off
+leg is **absorbed** by AwaitingPayment → Deferred-not-reduced == schedule +
+AwaitingPayment-that-still-counts-it → `UnexplainedDelta` stays 0. The amount is
+report-*visible* (it lingers in AwaitingPayment — the code comment's "keeps
+un-reversed write-offs visible") but there is **no hard failure**. Forfeit is on
+*paid+scheduled* invoices, which AwaitingPayment does NOT cover, so a dropped
+forfeit leg *does* break the identity. **Teeth (forfeit):** neutering
+`UnwindOnCancel`'s `RecordRecognition` → `UnexplainedDelta=100000` on `seed=7
+final`. **This closes R-011.** R-010 (write-off) needs its own hard check —
+see below.
 
 **Recommended next (highest-value):** wire `ClosePackService` into the harness
 and assert `UnexplainedDelta == 0` (and trial-balance `Balanced`) after each op —
@@ -183,13 +191,20 @@ this makes the property test cover BOTH safety-net layers and would exercise+pin
 write-off (R-010) and forfeit (R-011) end-to-end. Requires wiring the close-pack
 deps (rollforward reader, recognition summary, `SumUnscheduledDeferral`, tb).
 
-### R-010 — Write-off (bad-debt) reversal leg · Medium · detection CLOSED (layer-2); exercise pending
-`RecordInvoiceWriteOff` clears A/R and reverses the deferred/recognized portions
-(best-effort). A dropped leg leaves A/R + Deferred wrong — invisible to the
-*reconciler* but **now caught by the harness's close-pack Deferred-identity
-assertion** (layer-2, above). Fully close by adding a `write_off` op
-(`MarkUncollectible` on a paid invoice with a schedule) to exercise the path and
-pin it with a dedicated neuter-test.
+### R-010 — Write-off (bad-debt) reversal leg · Medium · OPEN (still a hard-detection gap)
+`MarkUncollectible` flips an open/past_due invoice to `uncollectible` and posts a
+best-effort `RecordInvoiceWriteOff` (code 22: DR Bad-Debt/Deferred, CR A/R). A
+dropped leg leaves A/R + Deferred overstated. It is NOT hard-detected: the
+reconciler doesn't check it (A/R positive is normal-sign), and the close-pack
+identity absorbs it (AwaitingPayment re-includes uncollectible invoices lacking a
+code-22 leg — see the asymmetry note above), so `UnexplainedDelta` stays 0. The
+amount is only *report-visible* in the AwaitingPayment bucket.
+**Real fix (per-invoice completeness, R-001-style):** a reconciler check that
+every `status='uncollectible'` invoice carries a code-22 write-off leg summing to
+its (pre-write-off) receivable — mirrors `GetPaymentLedgerMismatches`. Then a
+`write_off` op (drive the real `CollectionsActionService.MarkUncollectible`, or
+flip status + `RecordInvoiceWriteOff`) to exercise + prove teeth. This is the
+next money-path hard-detection gap to close.
 
 ### R-011 — Cancel forfeit / deferred-reversal leg · Medium · CLOSED
 On cancel-with-unwind the forfeit leg drains still-deferred revenue; a missing leg
