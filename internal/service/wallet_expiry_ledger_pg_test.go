@@ -88,9 +88,16 @@ func TestWalletExpiry_PostsLedgerLeg_Postgres(t *testing.T) {
 	}
 
 	// The GL now carries the discharging leg (code 15) for the written-off amount.
+	// Scope the sum to THIS tenant's accounts — ledger_transactions has no
+	// tenant_id, so an unscoped SUM also counts other tests' code-15 legs in the
+	// shared test DB (e.g. the invariant harness's wallet-expiry op).
 	var expiryPosted int64
 	_ = conn.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(amount),0) FROM ledger_transactions WHERE code=$1`, domain.LedgerCodeWalletExpiry).Scan(&expiryPosted)
+		`SELECT COALESCE(SUM(t.amount),0) FROM ledger_transactions t
+		 WHERE t.code=$1 AND EXISTS (
+			SELECT 1 FROM ledger_accounts la
+			WHERE la.tenant_id=$2 AND (la.id=t.debit_account_id OR la.id=t.credit_account_id))`,
+		domain.LedgerCodeWalletExpiry, tenantID).Scan(&expiryPosted)
 	if expiryPosted != 15000 {
 		t.Errorf("ledger expiry total = %d, want 15000 (liability discharged)", expiryPosted)
 	}
