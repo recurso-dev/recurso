@@ -67,10 +67,31 @@ per-currency — mixing currencies in one tenant could produce *false*
 `ledger_unbalanced`/`abnormal_account_balance`. Needs per-currency books or
 per-currency tenants first. Deferred as higher-risk; do it carefully.
 
-### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · OPEN
-The harness issues adjustment credits but not gateway refunds (needs a fake
-`PaymentGateway`). The refund + tax-reversal legs and the over-refund guard are
-not property-tested.
+### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · CLOSED
+`opRefund` posts a fresh PAID invoice with a `gateway_payment_id` (so the refund
+takes the gateway path, not the manual one) + a recognition schedule, then issues
+a partial refund credit note. A `harnessGateway` fake (Refund → success) and
+`SetRevRecService` wire the full production path: gateway Refund → `RecordRefund`
+(DR Refunds / CR Cash) → rev-rec deferred unwind → over-refund guard. Runs green
+across all seeds. Teeth: neutering `RecordRefund` → `missing_credit_note_
+transaction` on the `refund` step (seed 7) — the issued refund note references
+the leg, so the credit-note check (R-003) catches its absence.
+(PR: harness-refund-op)
+
+NOTE surfaced while doing this — a *manual* refund (invoice with no
+`gateway_payment_id`) creates an `issued` refund note but posts **no** ledger leg
+(createRefund returns early at RefundStatusManualRequired). Such a note WOULD be
+flagged `missing_credit_note_transaction` by the reconciler. Is that intended (a
+"post the manual refund's ledger entry" signal) or a false-positive? → **R-013,
+open** below.
+
+### R-013 — Manual refunds create issued notes with no ledger leg · Low/Medium · OPEN (surfaced by R-006)
+`createRefund` for an invoice without a `gateway_payment_id` marks the note
+`RefundStatusManualRequired` and returns before any ledger post — but the note is
+`status=issued`, so the reconciler's credit-note completeness check would report
+it as `missing_credit_note_transaction`. Decide: (a) intended tripwire that a
+human must post the manual refund's journal entry, or (b) the check should exclude
+`RefundStatusManualRequired` notes. Confirm against a real manual-refund tenant.
 
 ### R-004 — Ledger code 7 (credit application) is a magic number · Low · CLOSED
 Added `LedgerCodeCreditApplication uint16 = 7` in `domain/ledger.go` (it was the

@@ -15,7 +15,40 @@ import (
 
 	"github.com/recurso-dev/recurso/internal/adapter/db"
 	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
 )
+
+// harnessGateway is a no-op PaymentGateway whose Refund always succeeds — the
+// only method the harness exercises (gateway-path refunds). The rest return
+// zero values; they are never called on the refund path.
+type harnessGateway struct{}
+
+var _ port.PaymentGateway = harnessGateway{}
+
+func (harnessGateway) CreateOrder(context.Context, int64, string, string, string) (*port.PaymentOrder, error) {
+	return nil, nil
+}
+func (harnessGateway) VerifyPayment(context.Context, string, string, string) error { return nil }
+func (harnessGateway) CreateSubscription(context.Context, string, int, string, *int64, string) (string, error) {
+	return "", nil
+}
+func (harnessGateway) RetryPayment(context.Context, string, int64, string) (*port.PaymentResult, error) {
+	return nil, nil
+}
+func (harnessGateway) CreateMandate(context.Context, string, string, string, int64, string, string) (*port.MandateResult, error) {
+	return nil, nil
+}
+func (harnessGateway) ExecuteMandateDebit(context.Context, port.MandateDebitRequest) (*port.PaymentResult, error) {
+	return nil, nil
+}
+func (harnessGateway) RevokeMandate(context.Context, string, string, string) error { return nil }
+func (harnessGateway) CreateVirtualAccount(context.Context, string, string, int64, string) (*port.VirtualAccountResult, error) {
+	return nil, nil
+}
+func (harnessGateway) CancelSubscription(context.Context, string) error { return nil }
+func (harnessGateway) Refund(context.Context, string, int64, string) (*port.RefundResult, error) {
+	return &port.RefundResult{RefundID: "rfnd_harness", Status: "processed"}, nil
+}
 
 // TestLedgerInvariants_RandomizedBillingSequences is the invariant property
 // harness planned in the rev-rec/ledger audit (archive PR #82 scope): it
@@ -176,8 +209,11 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	// RecordAdjustmentCreditIssued referencing the note, so an issued credit note
 	// that loses its leg is caught as missing_credit_note_transaction — the check
 	// that had no op to exercise it until now.
-	h.creditSvc = NewCreditNoteService(db.NewCreditNoteRepository(dbx), db.NewCustomerRepository(dbx), db.NewInvoiceRepository(conn), nil)
+	h.creditSvc = NewCreditNoteService(db.NewCreditNoteRepository(dbx), db.NewCustomerRepository(dbx), db.NewInvoiceRepository(conn), harnessGateway{})
 	h.creditSvc.SetLedgerService(h.ledger)
+	// Wire rev-rec so gateway refunds unwind the still-deferred portion, exactly
+	// as production does — the full refund money path, ledger + revrec.
+	h.creditSvc.SetRevRecService(h.revrec)
 
 	h.recon = NewReconciliationService(db.NewLedgerRepository(conn), nil)
 	return h
@@ -218,10 +254,12 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		return h.opIssueCreditNote(rng)
 	case p < 92:
 		return h.opApplyCredit(rng)
-	case p < 94:
+	case p < 93:
 		return h.opVoidCredit(rng)
-	case p < 96:
+	case p < 95:
 		return h.opExpireCredit(rng)
+	case p < 97:
+		return h.opRefund(rng)
 	case p < 98:
 		return h.opTrialConversion(rng)
 	default:
@@ -431,6 +469,59 @@ func (h *invariantHarness) opExpireCredit(rng *rand.Rand) string {
 		h.t.Fatalf("ExpireDueCredits: %v", err)
 	}
 	return "expire_credit"
+}
+
+// opRefund exercises the gateway money-out path: it posts a fresh PAID invoice
+// WITH a gateway_payment_id (so the refund takes the gateway path, not the
+// manual one) and a recognition schedule, then issues a partial refund credit
+// note through the real CreditNoteService.Create (type=refund). That drives the
+// gateway Refund, RecordRefund (DR Refunds / CR Cash) referencing the note, and
+// the rev-rec deferred unwind. The refund note is 'issued' and references the
+// note, so a dropped RecordRefund leg is caught by the credit-note check as
+// missing_credit_note_transaction. Previously the harness issued adjustment
+// credits but never a gateway refund.
+func (h *invariantHarness) opRefund(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "refund_skipped"
+	}
+	t := h.t
+	h.n++
+	s := h.subs[rng.Intn(len(h.subs))]
+
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-RF-%d", h.run, h.n)
+	total := int64(6000 + rng.Intn(30000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, gateway_payment_id, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$4,$4,'paid',$5,$6,NOW(),NOW())`,
+		invID, h.tenantID, s.customer, total, invNo, "pay_"+h.run+"_"+strconv.Itoa(h.n))
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: s.customer,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (refund): %v", err)
+	}
+	if err := h.ledger.RecordPayment(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPayment (refund): %v", err)
+	}
+	if err := h.revrec.CreateScheduleForInvoice(h.tctx, inv, nil); err != nil {
+		t.Fatalf("CreateScheduleForInvoice (refund): %v", err)
+	}
+
+	// Partial refund (≤ half) so the over-refund guard passes and full-refund
+	// clamps aren't the only case exercised.
+	amount := int64(1000 + rng.Intn(int(total/2)))
+	if _, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		InvoiceID:  &invID,
+		Amount:     amount,
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeRefund),
+		Reason:     "harness refund",
+	}); err != nil {
+		t.Fatalf("Create refund (inv %s): %v", invID, err)
+	}
+	return "refund"
 }
 
 // opNewSubscription seeds a customer + active mid-period subscription on the
