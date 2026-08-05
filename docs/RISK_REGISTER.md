@@ -101,7 +101,52 @@ evidence, not just argument.
    The `deferred_below_scheduled` inequality is a cross-dimension aggregate, but
    since the ledger does not separate currencies at all, there is no per-currency
    "line" to mask — the per-ENTITY aggregation is the only live masking axis and is
-   tracked separately under the multi-entity work, not here.
+   tracked as R-015 below.
+
+### R-015 — `deferred_below_scheduled` aggregates across entities → a per-entity Deferred shortfall can be masked · Medium · OPEN (analyzed 2026-08-05; fix has a false-positive landmine — do NOT rush)
+The Deferred-vs-scheduled invariant compares one tenant-wide aggregate
+`deferredBalance` (Σ all Deferred trial-balance lines, `GetTrialBalanceLines(…,
+nil)` = all entities) against one aggregate `pending`
+(`SumPendingRecognitionEvents`, all entities). Multi-Entity Books is shipped and
+recognition IS entity-scoped (`revenue_schedules.entity_id`, migration 000138;
+recognition posts to the schedule's entity per `TestRevRecRecognition_ScopedToInvoiceEntity`),
+so per-entity Deferred/pending are well-defined and independent. Because the check
+is an *inequality over a cross-entity SUM*, a real per-entity shortfall
+(entity A: Deferred 50 < pending 100) is MASKED when another entity carries excess
+(entity B: Deferred 1000 ≥ pending 0 → aggregate 1050 ≥ 100, no discrepancy). The
+`abnormal_account_balance` backstop only catches wrong-SIGN accounts, not
+positive-but-insufficient ones. `recognized_exceeds_invoice` is NOT affected (it is
+per-schedule via `GetRecognitionOverruns`). Reachability: needs a multi-entity
+tenant AND a per-entity Deferred corruption — narrow, but the whole point of the
+invariant is to catch exactly that corruption, and for multi-entity tenants it
+can't.
+
+**Fix recipe:** group Deferred by entity (trial-balance lines already carry
+`EntityID`) and pending by entity (new query:
+`SELECT s.entity_id, SUM(e.amount) FROM recognition_events e JOIN
+revenue_schedules s ON e.revenue_schedule_id = s.id WHERE e.tenant_id=$1 AND
+e.status='pending' GROUP BY s.entity_id`), then compare per entity.
+
+**⚠ FALSE-POSITIVE LANDMINE (verified by code reading — a naive fix breaks prod):**
+the entity convention is **`NULL ⇒ primary entity`**. `revenue_schedules.entity_id`
+is **NULL** for primary-entity schedules (migration 000138 backfills from
+`invoices.entity_id`, itself NULL for primary; `CreateScheduleForInvoice` sets
+`EntityID: invoice.EntityID`). BUT the trial-balance query resolves the primary
+Deferred line's `EntityID` to the primary entity's **UUID** (via `LEFT JOIN entities
+ON e.tb_ledger_id = a.ledger_id`, and the primary entity row has tb_ledger_id=1).
+So the two sides key the primary entity differently (pending: NULL; deferred:
+primary-UUID). A naive group-and-match would put primary pending in a NULL bucket
+with zero matching Deferred → a false `deferred_below_scheduled` on **every tenant
+with primary-entity subscriptions (essentially all of them)**. The fix MUST
+normalize the key first (resolve the primary entity UUID and coalesce NULL →
+primary-UUID on the pending side, or vice-versa).
+
+**Why deferred, not done now:** this changes a core reconciler inequality that runs
+on every tenant in prod; given the landmine, it needs the same rigor the wallet/
+reversal fixes got — a **multi-entity harness dimension** (2nd entity + entity-tagged
+subscriptions, randomized) proving (a) legitimate all-primary AND mixed books stay
+clean, (b) a per-entity shortfall is now caught (teeth) — before shipping. Unit
+tests alone can't cover the attribution-alignment space. Its own focused increment.
 
 ### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · CLOSED
 `opRefund` posts a fresh PAID invoice with a `gateway_payment_id` (so the refund
