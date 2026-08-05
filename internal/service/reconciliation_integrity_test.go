@@ -106,6 +106,79 @@ func TestReconciliationRun_DeferredBelowScheduled(t *testing.T) {
 	}
 }
 
+// TestReconciliationRun_PerEntityDeferredMaskingCaught (R-015): a per-entity
+// Deferred shortfall must be flagged even when the tenant-wide aggregate is
+// healthy. The PRIMARY entity is short (Deferred 50 < scheduled 100) while a
+// second entity carries excess (Deferred 1000 ≥ scheduled 0). The old aggregate
+// check (pending 100 ≤ deferred 1050) would MISS this; the per-entity check
+// catches exactly the primary entity's shortfall.
+func TestReconciliationRun_PerEntityDeferredMaskingCaught(t *testing.T) {
+	primary, entityB := uuid.New(), uuid.New()
+	repo := &mockReconciliationRepo{
+		nonDraft: 1, paid: 1,
+		primaryEntityID: primary,
+		trialBalanceLines: []domain.TrialBalanceLine{
+			// Balanced books: Cash debit 1050 == Deferred credits 50 + 1000.
+			{Code: domain.AccountCodeCash, Type: domain.AccountTypeAsset, Debits: 1050},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Credits: 50, EntityID: &primary},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Credits: 1000, EntityID: &entityB},
+		},
+		// Primary needs 100 (short by 50); entity B needs 0 (healthy).
+		pendingByEntity: map[uuid.UUID]int64{uuid.Nil: 100, entityB: 0},
+	}
+	svc := NewReconciliationService(nil, nil)
+	svc.repo = repo
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if report.TotalDiscrepancies != 1 {
+		t.Fatalf("want exactly 1 discrepancy (the primary entity's shortfall), got %d: %+v",
+			report.TotalDiscrepancies, report.Discrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.Type != DiscrepancyDeferredBelowScheduled {
+		t.Fatalf("want %q, got %q", DiscrepancyDeferredBelowScheduled, d.Type)
+	}
+	if d.ExpectedAmount != 100 || d.FoundAmount != 50 {
+		t.Errorf("finding = scheduled %d / deferred %d, want 100 / 50 (primary entity)", d.ExpectedAmount, d.FoundAmount)
+	}
+}
+
+// TestReconciliationRun_PerEntityDeferredNoFalsePositive (R-015 landmine): when
+// every entity's Deferred covers its own schedule, NO discrepancy fires — even
+// though the primary entity keys as its resolved UUID on the trial-balance side
+// but as NULL⇒uuid.Nil on the pending side. This guards the normalization: a
+// naive group-and-match would key the primary differently on each side and
+// false-positive here (primary pending 40 vs a phantom zero Deferred).
+func TestReconciliationRun_PerEntityDeferredNoFalsePositive(t *testing.T) {
+	primary, entityB := uuid.New(), uuid.New()
+	repo := &mockReconciliationRepo{
+		nonDraft: 1, paid: 1,
+		primaryEntityID: primary,
+		trialBalanceLines: []domain.TrialBalanceLine{
+			{Code: domain.AccountCodeCash, Type: domain.AccountTypeAsset, Debits: 1050},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Credits: 50, EntityID: &primary},
+			{Code: domain.AccountCodeDeferredRevenue, Type: domain.AccountTypeLiability, Credits: 1000, EntityID: &entityB},
+		},
+		// Each entity's schedule is fully funded: primary 40 ≤ 50, entity B 900 ≤ 1000.
+		pendingByEntity: map[uuid.UUID]int64{uuid.Nil: 40, entityB: 900},
+	}
+	svc := NewReconciliationService(nil, nil)
+	svc.repo = repo
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, d := range report.Discrepancies {
+		if d.Type == DiscrepancyDeferredBelowScheduled {
+			t.Fatalf("false-positive deferred_below_scheduled on healthy multi-entity books: %+v", d)
+		}
+	}
+}
+
 // TestReconciliationRun_RecognizedExceedsInvoice: a schedule that recognized
 // more than its recognizable total (fabricated revenue) surfaces as a
 // recognized_exceeds_invoice discrepancy carrying the schedule + invoice ids and

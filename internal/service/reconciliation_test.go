@@ -46,8 +46,10 @@ type mockReconciliationRepo struct {
 	trialBalanceLines []domain.TrialBalanceLine
 	trialBalanceErr   error
 
-	pendingEvents    int64
+	pendingEvents    int64               // back-compat: aggregate → {uuid.Nil: pendingEvents}
+	pendingByEntity  map[uuid.UUID]int64 // explicit per-entity pending (overrides pendingEvents)
 	pendingEventsErr error
+	primaryEntityID  uuid.UUID // canonicalizes the primary Deferred line (default uuid.Nil)
 
 	spendableCredit    int64
 	spendableCreditErr error
@@ -131,11 +133,20 @@ func (m *mockReconciliationRepo) GetTrialBalanceLines(ctx context.Context, tenan
 	return m.trialBalanceLines, nil
 }
 
-func (m *mockReconciliationRepo) SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error) {
+func (m *mockReconciliationRepo) SumPendingRecognitionEventsByEntity(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int64, error) {
 	if m.pendingEventsErr != nil {
-		return 0, m.pendingEventsErr
+		return nil, m.pendingEventsErr
 	}
-	return m.pendingEvents, nil
+	if m.pendingByEntity != nil {
+		return m.pendingByEntity, nil
+	}
+	// Back-compat: single-entity tests set the aggregate `pendingEvents`; key it
+	// to uuid.Nil, matching the primary-entity Deferred lines (EntityID nil).
+	return map[uuid.UUID]int64{uuid.Nil: m.pendingEvents}, nil
+}
+
+func (m *mockReconciliationRepo) GetPrimaryEntityID(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error) {
+	return m.primaryEntityID, nil
 }
 
 func (m *mockReconciliationRepo) SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error) {

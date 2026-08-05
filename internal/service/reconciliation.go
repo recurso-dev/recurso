@@ -95,8 +95,14 @@ type ReconciliationRepository interface {
 	GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error)
 	// GetTrialBalanceLines feeds the double-entry integrity assertion.
 	GetTrialBalanceLines(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.TrialBalanceLine, error)
-	// SumPendingRecognitionEvents feeds the deferred-vs-scheduled invariant.
-	SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error)
+	// SumPendingRecognitionEventsByEntity feeds the deferred-vs-scheduled
+	// invariant PER ENTITY (Multi-Entity Books): a tenant-wide aggregate would
+	// let one entity's Deferred excess mask another's shortfall (R-015). The
+	// primary entity keys as uuid.Nil (schedules use the NULL⇒primary convention).
+	SumPendingRecognitionEventsByEntity(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int64, error)
+	// GetPrimaryEntityID canonicalizes the primary entity's Deferred line (which
+	// the trial balance resolves to the primary UUID) to the same uuid.Nil key.
+	GetPrimaryEntityID(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error)
 	// SumSpendableCreditNoteBalance feeds the Customer-Credit liability invariant:
 	// the sum of outstanding balances of adjustment-type (spendable) credit notes.
 	SumSpendableCreditNoteBalance(ctx context.Context, tenantID uuid.UUID) (int64, error)
@@ -270,28 +276,62 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		report.Discrepancies = append(integrity, report.Discrepancies...)
 	}
 
-	// Deferred-vs-scheduled invariant: the Deferred Revenue balance must be at
-	// least the revenue still scheduled to be recognized. Prepended (like the
-	// other integrity findings) so it survives the maxListed truncation.
+	// Deferred-vs-scheduled invariant, PER ENTITY: each entity's Deferred Revenue
+	// balance must be at least the revenue still scheduled to recognize on THAT
+	// entity. A tenant-wide aggregate would let one entity's Deferred excess mask
+	// another entity's shortfall under Multi-Entity Books (R-015). Prepended (like
+	// the other integrity findings) so it survives the maxListed truncation.
+	//
+	// Both sides key the primary entity as uuid.Nil: the pending map uses the
+	// schedule's entity_id (NULL⇒primary → uuid.Nil), and the primary Deferred
+	// trial-balance line — which the trial-balance query resolves to the primary
+	// entity's UUID — is canonicalized back to uuid.Nil here. Without this
+	// normalization the primary entity would key differently on each side and
+	// false-positive on every tenant with primary-entity subscriptions.
 	deferredShort := 0
-	pending, err := s.repo.SumPendingRecognitionEvents(ctx, tenantID)
+	pendingByEntity, err := s.repo.SumPendingRecognitionEventsByEntity(ctx, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("pending recognition events for tenant %s: %w", tenantID, err)
 	}
-	var deferredBalance int64
+	primaryEntityID, err := s.repo.GetPrimaryEntityID(ctx, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("primary entity for tenant %s: %w", tenantID, err)
+	}
+	deferredByEntity := make(map[uuid.UUID]int64)
 	for _, l := range tb.Lines {
 		if l.Code == domain.AccountCodeDeferredRevenue {
-			deferredBalance += l.Balance
+			deferredByEntity[canonicalEntityKey(l.EntityID, primaryEntityID)] += l.Balance
 		}
 	}
-	if pending > deferredBalance {
-		report.Discrepancies = append([]ReconciliationDiscrepancy{{
-			Type:           DiscrepancyDeferredBelowScheduled,
-			AccountCode:    domain.AccountCodeDeferredRevenue,
-			ExpectedAmount: pending,         // Deferred must be at least this
-			FoundAmount:    deferredBalance, // what it actually is
-		}}, report.Discrepancies...)
-		deferredShort = 1
+	// Compare per entity over the union of keys, deterministically ordered so the
+	// report is stable across runs (map iteration order is randomized).
+	entityKeys := make(map[uuid.UUID]struct{})
+	for k := range pendingByEntity {
+		entityKeys[k] = struct{}{}
+	}
+	for k := range deferredByEntity {
+		entityKeys[k] = struct{}{}
+	}
+	ordered := make([]uuid.UUID, 0, len(entityKeys))
+	for k := range entityKeys {
+		ordered = append(ordered, k)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].String() < ordered[j].String() })
+	var deferredDiscrepancies []ReconciliationDiscrepancy
+	for _, k := range ordered {
+		pending, deferred := pendingByEntity[k], deferredByEntity[k]
+		if pending > deferred {
+			deferredDiscrepancies = append(deferredDiscrepancies, ReconciliationDiscrepancy{
+				Type:           DiscrepancyDeferredBelowScheduled,
+				AccountCode:    domain.AccountCodeDeferredRevenue,
+				ExpectedAmount: pending,  // this entity's Deferred must be at least this
+				FoundAmount:    deferred, // what this entity's Deferred actually is
+			})
+		}
+	}
+	if len(deferredDiscrepancies) > 0 {
+		report.Discrepancies = append(deferredDiscrepancies, report.Discrepancies...)
+		deferredShort = len(deferredDiscrepancies)
 	}
 
 	// Customer-Credit liability invariant: the Customer-Credit balance must equal
@@ -363,6 +403,20 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 
 	report.FinishedAt = time.Now().UTC()
 	return report, nil
+}
+
+// canonicalEntityKey maps a Deferred trial-balance line's entity to the same key
+// space the pending-by-entity map uses: the primary entity (whether the line
+// carries a nil pointer or the resolved primary UUID) collapses to uuid.Nil,
+// matching the NULL⇒primary schedules; every other entity keeps its own UUID.
+func canonicalEntityKey(lineEntity *uuid.UUID, primaryEntityID uuid.UUID) uuid.UUID {
+	if lineEntity == nil {
+		return uuid.Nil
+	}
+	if *lineEntity == primaryEntityID {
+		return uuid.Nil
+	}
+	return *lineEntity
 }
 
 // trialBalanceDiscrepancies asserts double-entry integrity over a computed
