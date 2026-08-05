@@ -103,7 +103,31 @@ evidence, not just argument.
    "line" to mask — the per-ENTITY aggregation is the only live masking axis and is
    tracked as R-015 below.
 
-### R-015 — `deferred_below_scheduled` aggregates across entities → a per-entity Deferred shortfall can be masked · Medium · OPEN (analyzed 2026-08-05; fix has a false-positive landmine — do NOT rush)
+### R-015 — `deferred_below_scheduled` aggregated across entities → per-entity shortfall masked · Medium · CLOSED (2026-08-05)
+**FIXED.** The check is now evaluated per entity: `SumPendingRecognitionEvents`
+was replaced by `SumPendingRecognitionEventsByEntity` (`… JOIN revenue_schedules
+GROUP BY entity_id`), Deferred is grouped by trial-balance-line entity, and each
+entity's pending is compared to its own Deferred. The NULL⇒primary landmine is
+handled by `canonicalEntityKey`, which collapses both the nil-pointer line and the
+resolved-primary-UUID line to `uuid.Nil` (via a new `GetPrimaryEntityID`),
+matching the NULL-keyed primary schedules — so single-entity tenants are
+unchanged and primary-entity subscriptions never false-positive. Reports one
+`deferred_below_scheduled` per offending entity, deterministically ordered.
+
+Validation: unit tests `TestReconciliationRun_PerEntityDeferredMaskingCaught`
+(masking flagged) and `…NoFalsePositive` (landmine guard); real-Postgres
+multi-entity `TestReconciliation_PerEntityDeferred_Postgres` (phase 1: two funded
+entities reconcile clean; phase 2: a second-entity shortfall of 50, masked in the
+aggregate 140≤1050, is caught). **Teeth proven:** temporarily collapsing the maps
+to the old aggregate makes BOTH the unit and PG masking tests find 0 discrepancies.
+Ongoing randomized coverage: `opEntity2Subscription` in the invariant harness posts
+a second-entity subscription with a balanced Deferred/schedule pair each seed
+(reconciler + close-pack stay clean, guarding against a regression to the
+aggregate + against a normalization false-positive). Full `internal/service` PG
+suite green. (PR: reconciler-per-entity-deferred)
+
+<details><summary>original analysis (OPEN)</summary>
+
 The Deferred-vs-scheduled invariant compares one tenant-wide aggregate
 `deferredBalance` (Σ all Deferred trial-balance lines, `GetTrialBalanceLines(…,
 nil)` = all entities) against one aggregate `pending`
@@ -147,6 +171,7 @@ reversal fixes got — a **multi-entity harness dimension** (2nd entity + entity
 subscriptions, randomized) proving (a) legitimate all-primary AND mixed books stay
 clean, (b) a per-entity shortfall is now caught (teeth) — before shipping. Unit
 tests alone can't cover the attribution-alignment space. Its own focused increment.
+</details>
 
 ### R-006 — Gateway refunds (`RecordRefund` money-out) unexercised · Medium · CLOSED
 `opRefund` posts a fresh PAID invoice with a `gateway_payment_id` (so the refund

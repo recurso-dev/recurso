@@ -102,22 +102,62 @@ func (r *LedgerRepository) GetDeferredRollforward(ctx context.Context, tenantID 
 	return opening, added, released, nil
 }
 
-// SumPendingRecognitionEvents returns the total (net) revenue still scheduled to
-// be recognized for a tenant: the sum of every pending recognition event across
-// all its active schedules. The reconciler compares this against the Deferred
-// Revenue balance — Deferred must always be at least this large, since it funds
-// exactly this future recognition (plus any recorded-but-unpaid invoice
-// deferrals). A Deferred balance below it means a posting drained Deferred past
-// what the schedule holds (e.g. a downgrade credit over-debiting Deferred).
-func (r *LedgerRepository) SumPendingRecognitionEvents(ctx context.Context, tenantID uuid.UUID) (int64, error) {
-	var total int64
-	err := r.db.QueryRowContext(ctx,
-		`SELECT COALESCE(SUM(amount), 0)::bigint FROM recognition_events
-		 WHERE tenant_id = $1 AND status = 'pending'`, tenantID).Scan(&total)
-	if err != nil && err != sql.ErrNoRows {
-		return 0, fmt.Errorf("failed to sum pending recognition events: %w", err)
+// SumPendingRecognitionEventsByEntity returns the revenue still scheduled to be
+// recognized, GROUPED BY the schedule's legal entity — the sum of pending
+// recognition events per entity. The reconciler compares each entity's total
+// against that entity's Deferred Revenue balance: Deferred must always be at
+// least this large PER ENTITY, since it funds exactly this future recognition.
+// A per-entity comparison (rather than one tenant-wide aggregate) is required
+// under Multi-Entity Books — recognition is entity-scoped
+// (revenue_schedules.entity_id, migration 000138), so a tenant-wide sum would let
+// one entity's Deferred excess mask another entity's shortfall (R-015).
+//
+// The primary entity keys as the NULL/zero UUID: `revenue_schedules.entity_id`
+// is NULL for primary-entity schedules (the `NULL ⇒ primary` convention), which
+// scans to uuid.Nil here. The reconciler canonicalizes the primary Deferred
+// account's entity to the same zero UUID, so the two sides align.
+func (r *LedgerRepository) SumPendingRecognitionEventsByEntity(ctx context.Context, tenantID uuid.UUID) (map[uuid.UUID]int64, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT s.entity_id, COALESCE(SUM(e.amount), 0)::bigint
+		   FROM recognition_events e
+		   JOIN revenue_schedules s ON s.id = e.revenue_schedule_id
+		  WHERE e.tenant_id = $1 AND e.status = 'pending'
+		  GROUP BY s.entity_id`, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sum pending recognition events by entity: %w", err)
 	}
-	return total, nil
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[uuid.UUID]int64)
+	for rows.Next() {
+		var entityID uuid.NullUUID
+		var amount int64
+		if err := rows.Scan(&entityID, &amount); err != nil {
+			return nil, fmt.Errorf("failed to scan pending recognition by entity: %w", err)
+		}
+		// NULL entity_id (primary) → uuid.Nil; non-primary keeps its UUID.
+		out[entityID.UUID] += amount
+	}
+	return out, rows.Err()
+}
+
+// GetPrimaryEntityID returns the tenant's primary legal-entity id, or uuid.Nil if
+// none exists (nil-safe: every tenant gets a primary entity via trigger since
+// migration 000128, but a legacy/degenerate tenant returns the zero UUID and the
+// caller treats primary as the zero key). Used to canonicalize the primary
+// entity's Deferred trial-balance line (which the trial-balance query resolves to
+// the primary entity's UUID) to the same zero key the pending-by-entity map uses.
+func (r *LedgerRepository) GetPrimaryEntityID(ctx context.Context, tenantID uuid.UUID) (uuid.UUID, error) {
+	var id uuid.UUID
+	err := r.db.QueryRowContext(ctx,
+		`SELECT id FROM entities WHERE tenant_id = $1 AND is_primary LIMIT 1`, tenantID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return uuid.Nil, nil
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("failed to get primary entity: %w", err)
+	}
+	return id, nil
 }
 
 // SumSpendableCreditNoteBalance returns the total outstanding balance of

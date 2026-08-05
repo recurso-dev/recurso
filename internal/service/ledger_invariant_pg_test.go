@@ -137,6 +137,7 @@ type invariantHarness struct {
 	cheapPlan  uuid.UUID // 100000 USD/month
 	priceyPlan uuid.UUID // 200000 USD/month
 	couponID   uuid.UUID // 80% off, forever — some subs are created discounted
+	entity2    uuid.UUID // a non-primary legal entity (tb_ledger_id=2) for multi-entity ops
 
 	ledger    *LedgerService
 	revrec    *RevRecService
@@ -190,6 +191,17 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 		h.couponID, tenantID, "INV80-"+h.run)
 
 	h.ledger = NewLedgerService(nil, db.NewLedgerRepository(conn))
+	// Multi-Entity Books: wire the entity reader so entity-tagged invoices post to
+	// their own ledger, and create a second (non-primary) entity on tb_ledger_id=2.
+	// This is safe for the existing USD/JPY ops — a nil-EntityID posting resolves
+	// Primary:true and still takes the primary tenant-account path (byte-identical).
+	h.ledger.SetEntityReader(db.NewEntityRepository(conn))
+	if err := conn.QueryRowContext(ctx,
+		`INSERT INTO entities (tenant_id, name, legal_name, is_primary, tb_ledger_id, invoice_prefix)
+		 VALUES ($1, $2, $2, FALSE, 2, $3) RETURNING id`,
+		tenantID, "Entity2-"+h.run, "E2-"+h.run).Scan(&h.entity2); err != nil {
+		t.Fatalf("seed second entity: %v", err)
+	}
 	subRepo := db.NewSubscriptionRepository(conn)
 	h.revrec = NewRevRecService(db.NewRevRecRepository(conn), h.ledger, subRepo)
 	// A US-seller tax resolver (customers here are US/USD → 0 tax, no provider):
@@ -301,7 +313,10 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 			return h.opWalletTopUpJPY(rng)
 		}
 	case p < 99:
-		return h.opTrialConversion(rng)
+		if rng.Intn(2) == 0 {
+			return h.opTrialConversion(rng)
+		}
+		return h.opEntity2Subscription(rng)
 	default:
 		return h.opCancelWithUnwind(rng)
 	}
@@ -600,6 +615,61 @@ func (h *invariantHarness) opWalletClose(rng *rand.Rand) string {
 			res.Refunded, res.Forfeited, paid, promo)
 	}
 	return "wallet_close"
+}
+
+// opEntity2Subscription exercises Multi-Entity Books through the reconciler's
+// PER-ENTITY deferred-vs-scheduled invariant (R-015). It posts a subscription
+// invoice tagged to the SECOND legal entity (RecordInvoice credits Deferred on
+// that entity's own ledger, tb_ledger_id=2) and attaches a recognition schedule
+// whose pending events exactly equal that Deferred. So the second entity carries
+// a live, balanced Deferred/pending pair on its own ledger, alongside the primary
+// entity's activity — the reconciler must reconcile clean (each entity's Deferred
+// covers its own schedule) AND must NOT false-positive from the NULL⇒primary
+// entity-key convention. A regression that reverted the per-entity check to a
+// tenant-wide aggregate would still pass here (legitimate books); the dedicated
+// TestReconciliation_PerEntityDeferred_Postgres carries the masking teeth.
+func (h *invariantHarness) opEntity2Subscription(rng *rand.Rand) string {
+	t := h.t
+	h.n++
+
+	customerID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO customers (id, tenant_id, email, name, country, tax_type, ledger_account_id, created_at, updated_at)
+		VALUES ($1,$2,$3,'Entity2 Cust','United States','individual',$4,NOW(),NOW())`,
+		customerID, h.tenantID, fmt.Sprintf("e2sub-%s-%d@t.com", h.run, h.n), uuid.New())
+
+	subID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO subscriptions (id, tenant_id, customer_id, plan_id, entity_id, status, current_period_start, current_period_end, billing_anchor, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,'active', NOW() - INTERVAL '1 month', NOW(), NOW() - INTERVAL '1 month', NOW(), NOW())`,
+		subID, h.tenantID, customerID, h.cheapPlan, h.entity2)
+
+	invID := uuid.New()
+	invNo := fmt.Sprintf("E2-%s-%d", h.run, h.n)
+	total := int64(50000 + rng.Intn(100000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, subscription_id, entity_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,$4,$5,'USD',$6,$6,0,'open',$7,NOW(),NOW())`,
+		invID, h.tenantID, customerID, subID, h.entity2, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: customerID,
+		EntityID: &h.entity2, SubscriptionID: &subID,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (entity2): %v", err)
+	}
+
+	// A schedule on the second entity whose pending recognition exactly equals the
+	// Deferred just funded — the entity's per-entity invariant holds (pending <=
+	// deferred), and the close-pack Deferred identity ties (Deferred == schedule
+	// deferred, invoice excluded from AwaitingPayment because it has an active
+	// schedule).
+	schedID := uuid.New()
+	mustExec(t, h.conn, `INSERT INTO revenue_schedules (id, tenant_id, invoice_id, subscription_id, entity_id, total_amount, currency, start_date, end_date, status, created_at, updated_at)
+		VALUES ($1,$2,$3,$4,$5,$6,'USD', NOW() - INTERVAL '1 month', NOW() + INTERVAL '11 months', 'active', NOW(), NOW())`,
+		schedID, h.tenantID, invID, subID, h.entity2, total)
+	mustExec(t, h.conn, `INSERT INTO recognition_events (id, revenue_schedule_id, tenant_id, amount, recognition_date, status, created_at)
+		VALUES ($1,$2,$3,$4, NOW() + INTERVAL '1 month', 'pending', NOW())`,
+		uuid.New(), schedID, h.tenantID, total)
+	return "entity2_subscription"
 }
 
 // opPaymentReversal exercises the full bank-return → dunning → re-collect cycle
