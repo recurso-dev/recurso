@@ -134,16 +134,37 @@ caught by R-012 (identical mechanism to the R-008 teeth-test). `Void` sets statu
 `void` (not in the count-check set), which is exactly why the old count-based
 check missed it. (PR: harness-expire-void-ops)
 
-### R-010 — Write-off (bad-debt) reversal leg unguarded · Medium · OPEN (hypothesis)
-`collections_actions.go` posts a best-effort write-off reversal; a missing leg
-leaves A/R overstated (positive A/R is normal-sign, so no abnormal-balance flag,
-and `amount_paid` is unaffected so the payment check is silent). Confirm + fix.
+### TWO-LAYER SAFETY NET (correction to R-010/R-011 hypotheses)
+The safety net has **two** layers, and the harness only asserts the first:
+1. `ReconciliationService.Run` — invoice/payment/credit-note/credit-application
+   completeness, trial-balance integrity, deferred≥scheduled, recognized≤invoice.
+   **This is what the harness asserts after every op.**
+2. `ClosePackService` (month-end close, recurso#473) — the **Deferred identity**
+   `rollforward.Closing - recognition.DeferredBalance - AwaitingPayment ==
+   UnexplainedDelta` (must be 0). This catches any posting that leaves Deferred
+   wrong — including write-off and forfeit reversals.
+Because R-010 and R-011 both reverse **Deferred**, a dropped leg leaves Deferred
+too high → non-zero `UnexplainedDelta` → **caught by the close-pack tie-out**.
+They are therefore **not silent-corruption gaps** in production; the real gap is
+that the **harness doesn't assert the close-pack tie-out**, only the reconciler.
 
-### R-011 — Cancel forfeit / deferred-reversal leg unguarded · Medium · OPEN (hypothesis)
-On cancel-with-unwind the forfeit leg drains still-deferred revenue; a missing
-leg leaves Deferred *too high*, and `DeferredBelowScheduled` only catches Deferred
-going *too low*. The harness already cancels (`opCancelWithUnwind`) but can't
-catch this without a leg-completeness check. Confirm + fix.
+**Recommended next (highest-value):** wire `ClosePackService` into the harness
+and assert `UnexplainedDelta == 0` (and trial-balance `Balanced`) after each op —
+this makes the property test cover BOTH safety-net layers and would exercise+pin
+write-off (R-010) and forfeit (R-011) end-to-end. Requires wiring the close-pack
+deps (rollforward reader, recognition summary, `SumUnscheduledDeferral`, tb).
+
+### R-010 — Write-off (bad-debt) reversal leg · Medium · downgraded — covered by close-pack tie-out; harness assertion pending
+`RecordInvoiceWriteOff` clears A/R and reverses the deferred/recognized portions;
+the post is best-effort. A dropped leg leaves A/R + Deferred wrong — invisible to
+the *reconciler* (A/R positive is normal-sign) but **caught by the close-pack
+Deferred identity** (the code comment: "the tie-out's unscheduled bucket keeps
+un-reversed write-offs visible"). Close via the two-layer harness assertion above.
+
+### R-011 — Cancel forfeit / deferred-reversal leg · Medium · downgraded — covered by close-pack tie-out; harness assertion pending
+On cancel-with-unwind the forfeit leg drains still-deferred revenue; a missing leg
+leaves Deferred too high. `DeferredBelowScheduled` only catches too-LOW, but the
+close-pack `UnexplainedDelta` catches too-high. Close via the two-layer assertion.
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
