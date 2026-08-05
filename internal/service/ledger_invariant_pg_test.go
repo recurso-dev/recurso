@@ -111,6 +111,10 @@ func TestLedgerInvariants_RandomizedBillingSequences(t *testing.T) {
 				name := h.randomOp(rng)
 				h.assertAuditGrade(fmt.Sprintf("seed=%d step=%d op=%s", seed, step, name))
 			}
+			// Layer-2 assertion: after the full sequence, the month-end close-pack
+			// Deferred identity must tie. A dropped forfeit/write-off/refund leg
+			// leaves Deferred too high — invisible to the reconciler, caught here.
+			h.assertClosePackTies(fmt.Sprintf("seed=%d final", seed))
 		})
 	}
 }
@@ -141,6 +145,7 @@ type invariantHarness struct {
 	giftSvc   *GiftService
 	creditSvc *CreditNoteService
 	recon     *ReconciliationService
+	closePack *ClosePackService
 
 	subs []*invariantSub
 	run  string
@@ -216,6 +221,14 @@ func newInvariantHarness(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *invariantHar
 	h.creditSvc.SetRevRecService(h.revrec)
 
 	h.recon = NewReconciliationService(db.NewLedgerRepository(conn), nil)
+
+	// Layer 2 of the safety net: the month-end close-pack Deferred identity
+	// (ledger Closing == schedule deferred + awaiting-payment). Wired with revrec
+	// (schedule side) and the unscheduled-deferral reader (open-invoice deferrals)
+	// so the tie-out is exact, not structurally amber. Asserted once per seed.
+	h.closePack = NewClosePackService(h.ledger, h.recon)
+	h.closePack.SetRevRecService(h.revrec)
+	h.closePack.SetUnscheduledDeferralReader(db.NewInvoiceRepository(conn))
 	return h
 }
 
@@ -687,6 +700,25 @@ func (h *invariantHarness) opCancelWithUnwind(rng *rand.Rand) string {
 	}
 	s.active = false
 	return "cancel+unwind"
+}
+
+// assertClosePackTies runs the month-end close pack for the current period and
+// fails if the Deferred identity doesn't tie (ledger Closing == schedule
+// deferred + awaiting-payment). This is the second safety-net layer: a dropped
+// Deferred-reversal leg (forfeit on cancel, write-off, refund unwind) leaves
+// Deferred too high — the reconciler's DeferredBelowScheduled only catches
+// too-LOW, so only this identity catches too-high.
+func (h *invariantHarness) assertClosePackTies(label string) {
+	h.t.Helper()
+	now := time.Now().UTC()
+	pack, err := h.closePack.Generate(h.ctx, h.tenantID, int(now.Month()), now.Year())
+	if err != nil {
+		h.t.Fatalf("[%s] close pack generate: %v", label, err)
+	}
+	if !pack.Deferred.Ties {
+		h.t.Fatalf("[%s] close-pack Deferred tie-out broken: UnexplainedDelta=%d (closing=%d, awaiting=%d)",
+			label, pack.Deferred.UnexplainedDelta, pack.Deferred.Rollforward.Closing, pack.Deferred.AwaitingPayment)
+	}
 }
 
 // assertAuditGrade runs the reconciliation oracle and fails on any
