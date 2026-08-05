@@ -78,6 +78,52 @@ Sibling codes are named constants (`LedgerCodeWalletDrain=12`,
 `RecordCreditApplication` and now the reconciler query. Add
 `LedgerCodeCreditApplication uint16 = 7` and reference it in both.
 
+### Systemic root cause behind R-001/008/009/010/011 — reversal/drawdown legs are unguarded
+
+The reconciler's completeness checks are **count-based** ("does *a* tx reference
+X?") or **threshold-based** ("Deferred ≥ pending"). Neither catches a missing
+**reversal / drawdown** leg that leaves a balance *overstated*: the books still
+balance (the omitted leg is itself balanced), no sign goes abnormal, and any
+count/threshold check is already satisfied by the *original* leg. R-001 was the
+first instance found & fixed; the ones below share its exact shape. There are
+~25 best-effort ledger posts (`grep "reconciliation needed" internal/service`);
+these are the ones whose absence is currently invisible.
+
+**Recommended fix (systemic, verify before shipping):** a single balance-vs-source
+invariant — the **Customer-Credit ledger balance per (tenant, entity) must equal
+the sum of outstanding `credit_notes.balance`**. This would catch R-001, R-008,
+and R-009 together (a missing drawdown/expiry/void leg leaves the ledger balance
+above the summed note balances). **Caveat that must be resolved first:** the
+downgrade-proration path (`subscription_upgrade.go`) creates a credit *note* but
+posts to **Deferred**, not Customer-Credit — so confirm exactly which paths feed
+the Customer-Credit account before asserting this equality, or it will
+false-positive. Until verified, the safe fallback is per-path amount checks like
+R-001's `GetCreditApplicationLedgerMismatches`.
+
+### R-008 — Credit-expiry reversal leg unguarded · Medium · OPEN (hypothesis, not yet confirmed by neuter-test)
+`RecordCreditExpiry` reverses the Customer-Credit liability when a credit
+expires; the post is best-effort. The credit-note completeness check is
+count-based over txns referencing `cn.ID`, but the *issuance* leg already
+satisfies it — so a missing expiry leg leaves the liability overstated, uncaught.
+Next: add an `expire_credit` harness op (issue credit with past `expires_at` →
+`ExpireDueCredits`), neuter the expiry leg to confirm green (gap), then fix.
+
+### R-009 — Credit-void reversal leg unguarded · Medium · OPEN (hypothesis)
+`Void` sets status `void` (NOT in the checked set `issued/used/expired`) and
+posts a best-effort reversal. A voided credit is not checked at all, so a missing
+void leg leaves Customer-Credit overstated. Confirm + fix as R-008.
+
+### R-010 — Write-off (bad-debt) reversal leg unguarded · Medium · OPEN (hypothesis)
+`collections_actions.go` posts a best-effort write-off reversal; a missing leg
+leaves A/R overstated (positive A/R is normal-sign, so no abnormal-balance flag,
+and `amount_paid` is unaffected so the payment check is silent). Confirm + fix.
+
+### R-011 — Cancel forfeit / deferred-reversal leg unguarded · Medium · OPEN (hypothesis)
+On cancel-with-unwind the forfeit leg drains still-deferred revenue; a missing
+leg leaves Deferred *too high*, and `DeferredBelowScheduled` only catches Deferred
+going *too low*. The harness already cancels (`opCancelWithUnwind`) but can't
+catch this without a leg-completeness check. Confirm + fix.
+
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
 chargebacks, wallets/prepaid drawdown, tax (GST/VAT/US nexus) edge rounding,
