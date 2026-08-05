@@ -240,8 +240,8 @@ silent. (PR: harness-closepack-tieout)
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
-chargebacks, ~~wallets/prepaid top-up + drain + promo expiry~~ (now covered — see
-below), wallet forfeit (manual refund of unspent balance, code 14), tax
+chargebacks, ~~the entire wallet/prepaid subsystem~~ (**now fully covered** —
+top-up 11, drain 12, refund 13, forfeit 14, expiry 15 — see below), tax
 (GST/VAT/US nexus) edge rounding, importers, multi-tenant isolation under
 concurrency, RBAC on money-out. Pick the highest-financial-impact next.
 
@@ -277,5 +277,17 @@ invariant ties. The op tops up with a valid future expiry (TopUp rejects past
 ones), backdates the residue to overdue, then runs the sweep. **Teeth:** neutering
 the expiry leg → `customer_credit_liability_mismatch {Expected:0 Found:10887}` on
 the `wallet_expire` step (seeds 1-4) — the liability stays funded while
-`wallets.balance` zeroed. Still open under R-007: wallet forfeit (code 14, manual
-refund of unspent balance). (PR: harness-wallet-expiry-op)
+`wallets.balance` zeroed. (PR: harness-wallet-expiry-op)
+
+**Wallet closure now exercised (`opWalletClose`) — closes out the subsystem:**
+drives real `WalletService.CloseWallet`, the last two wallet legs in one op. A
+wallet funded with BOTH a manual (paid, refundable) and a promotional
+(non-refundable) top-up is closed: the paid residue refunds (code 13,
+DR Customer-Credit / CR Cash) and the promo residue forfeits (code 14,
+DR Customer-Credit / CR Credits & Adjustments). Net once closed: Customer-Credit,
+the wallet's Cash delta, Credits & Adjustments, and `wallets.balance` all return
+to zero — R-014 ties, trial balance balanced. **Teeth:** neutering the forfeit
+leg → `customer_credit_liability_mismatch {Expected:0 Found:3847}` on the
+`wallet_close` step (seeds 1-4). **The wallet subsystem is now fully property-
+tested** end-to-end (codes 11-15), every leg teeth-proven against the R-014
+invariant. (PR: harness-wallet-close-op)
