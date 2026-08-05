@@ -240,10 +240,10 @@ silent. (PR: harness-closepack-tieout)
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
-chargebacks, ~~wallets/prepaid top-up + drain~~ (now covered — see below), wallet
-forfeit/expiry drawdown, tax (GST/VAT/US nexus) edge rounding, importers,
-multi-tenant isolation under concurrency, RBAC on money-out. Pick the
-highest-financial-impact next.
+chargebacks, ~~wallets/prepaid top-up + drain + promo expiry~~ (now covered — see
+below), wallet forfeit (manual refund of unspent balance, code 14), tax
+(GST/VAT/US nexus) edge rounding, importers, multi-tenant isolation under
+concurrency, RBAC on money-out. Pick the highest-financial-impact next.
 
 **Wallet top-up now exercised (`opWalletTopUp`):** the harness drives a real
 `WalletService.CreateWallet` + `TopUp` through Postgres (entity reader resolves
@@ -264,5 +264,18 @@ R-014 invariant (Customer-Credit == wallet balance) and the payment-leg check
 (Σ code {3,10,12} == amount_paid) guard it. **Teeth:** neutering the drain leg →
 `customer_credit_liability_mismatch {Expected:2847 Found:12734}` on the
 `wallet_drain` step (seeds 1-4) — the ledger holds the full top-up while
-`wallets.balance` dropped. Still open under R-007: wallet forfeit (code 14) and
-promotional expiry (code 15). (PR: harness-wallet-drain-op)
+`wallets.balance` dropped. (PR: harness-wallet-drain-op)
+
+**Wallet promotional expiry now exercised (`opWalletExpire`):** drives real
+`WalletService.ExpireOverdueCredits`. A promotional top-up posts DR Credits &
+Adjustments (expense) / CR Customer-Credit (free credit granted); when its
+residue lapses the sweep zeroes `wallets.balance` and posts the discharging leg
+(code 15, DR Customer-Credit / CR Credits & Adjustments), reclaiming the
+liability so lapsed promo credit doesn't linger in the GL. Net once fully
+expired: Customer-Credit and `wallets.balance` both return to zero, so the R-014
+invariant ties. The op tops up with a valid future expiry (TopUp rejects past
+ones), backdates the residue to overdue, then runs the sweep. **Teeth:** neutering
+the expiry leg → `customer_credit_liability_mismatch {Expected:0 Found:10887}` on
+the `wallet_expire` step (seeds 1-4) — the liability stays funded while
+`wallets.balance` zeroed. Still open under R-007: wallet forfeit (code 14, manual
+refund of unspent balance). (PR: harness-wallet-expiry-op)
