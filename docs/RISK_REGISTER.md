@@ -240,9 +240,9 @@ silent. (PR: harness-closepack-tieout)
 
 ### R-007 — Audit-checklist areas not yet property-tested · backlog · OPEN
 Not yet driven through the harness / dedicated adversarial tests: disputes &
-chargebacks, ~~wallets/prepaid top-up~~ (now covered — see below), wallet
-*drain*/forfeit/expiry drawdown, tax (GST/VAT/US nexus) edge rounding,
-importers, multi-tenant isolation under concurrency, RBAC on money-out. Pick the
+chargebacks, ~~wallets/prepaid top-up + drain~~ (now covered — see below), wallet
+forfeit/expiry drawdown, tax (GST/VAT/US nexus) edge rounding, importers,
+multi-tenant isolation under concurrency, RBAC on money-out. Pick the
 highest-financial-impact next.
 
 **Wallet top-up now exercised (`opWalletTopUp`):** the harness drives a real
@@ -251,6 +251,18 @@ the primary entity, so the `wallets.entity_id` FK is satisfied). Top-up posts
 DR Cash / CR Customer-Credit (code 11) and denormalizes `wallets.balance`, so the
 R-014 Customer-Credit invariant (which now counts wallet balances) is exercised
 end-to-end. **Teeth:** neutering the top-up leg → `customer_credit_liability_
-mismatch {Expected:32887 Found:0}` on the `wallet_topup` step (seeds 1-4). Still
-open under R-007: the *drain* path (code 12, invoice-time), forfeit (14), and
-expiry (15). (PR: harness-wallet-topup-op)
+mismatch {Expected:32887 Found:0}` on the `wallet_topup` step (seeds 1-4).
+(PR: harness-wallet-topup-op)
+
+**Wallet drain now exercised (`opWalletDrain`):** drives real
+`WalletService.DrainForInvoice` — a funded wallet drains against a one-off
+invoice (CR Revenue, not Deferred, so the close-pack identity is untouched). The
+drain posts DR Customer-Credit / CR AR (code 12) and decrements `wallets.balance`
+in lockstep; the wallet fully covers the invoice, which is then marked paid with
+`amount_paid` = the drained amount (code 12 is a payment-shaped leg). So BOTH the
+R-014 invariant (Customer-Credit == wallet balance) and the payment-leg check
+(Σ code {3,10,12} == amount_paid) guard it. **Teeth:** neutering the drain leg →
+`customer_credit_liability_mismatch {Expected:2847 Found:12734}` on the
+`wallet_drain` step (seeds 1-4) — the ledger holds the full top-up while
+`wallets.balance` dropped. Still open under R-007: wallet forfeit (code 14) and
+promotional expiry (code 15). (PR: harness-wallet-drain-op)
