@@ -191,20 +191,20 @@ this makes the property test cover BOTH safety-net layers and would exercise+pin
 write-off (R-010) and forfeit (R-011) end-to-end. Requires wiring the close-pack
 deps (rollforward reader, recognition summary, `SumUnscheduledDeferral`, tb).
 
-### R-010 — Write-off (bad-debt) reversal leg · Medium · OPEN (still a hard-detection gap)
+### R-010 — Write-off (bad-debt) reversal leg · Medium · CLOSED
 `MarkUncollectible` flips an open/past_due invoice to `uncollectible` and posts a
-best-effort `RecordInvoiceWriteOff` (code 22: DR Bad-Debt/Deferred, CR A/R). A
-dropped leg leaves A/R + Deferred overstated. It is NOT hard-detected: the
-reconciler doesn't check it (A/R positive is normal-sign), and the close-pack
-identity absorbs it (AwaitingPayment re-includes uncollectible invoices lacking a
-code-22 leg — see the asymmetry note above), so `UnexplainedDelta` stays 0. The
-amount is only *report-visible* in the AwaitingPayment bucket.
-**Real fix (per-invoice completeness, R-001-style):** a reconciler check that
-every `status='uncollectible'` invoice carries a code-22 write-off leg summing to
-its (pre-write-off) receivable — mirrors `GetPaymentLedgerMismatches`. Then a
-`write_off` op (drive the real `CollectionsActionService.MarkUncollectible`, or
-flip status + `RecordInvoiceWriteOff`) to exercise + prove teeth. This is the
-next money-path hard-detection gap to close.
+best-effort `RecordInvoiceWriteOff`; a dropped leg leaves A/R + Deferred
+overstated, missed by the reconciler (A/R positive is normal-sign) AND by the
+close-pack identity (AwaitingPayment absorbs it). **Fix (hard, per-invoice,
+R-001-style):** new reconciler check `GetWriteOffLedgerMismatches` — every
+`status='uncollectible'` invoice must carry write-off legs (codes 22 deferred + 26
+bad-debt + 23 tax, all CR A/R) summing to its **total**. Key insight that made it
+clean: the three codes together always sum to `preTax + tax = total`, regardless
+of the deferred/recognized split, so `expected = i.total`. Exercised by a new
+`opWriteOff` (open subscription invoice → `uncollectible` → `RecordInvoiceWriteOff`).
+Teeth: neutering `RecordInvoiceWriteOff` → `missing_write_off_transaction
+{ExpectedAmount:12281 FoundAmount:0}` on the `write_off` step (seed 7).
+(PR: harness-writeoff-check)
 
 ### R-011 — Cancel forfeit / deferred-reversal leg · Medium · CLOSED
 On cancel-with-unwind the forfeit leg drains still-deferred revenue; a missing leg
