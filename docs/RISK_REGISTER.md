@@ -115,21 +115,24 @@ missing expiry/void reversal leg now diverges Customer-Credit from the notes and
 is flagged — and adds a second line of defense over R-001.
 (PR: harness-customer-credit-invariant)
 
-### R-008 — Credit-expiry reversal leg unguarded · Medium · detection CLOSED by R-012; harness exercise pending
-Detection is now covered (a missing expiry leg diverges Customer-Credit from the
-notes → `customer_credit_liability_mismatch`). Still worth adding an
-`expire_credit` harness op (issue with past `expires_at` → `ExpireDueCredits`) to
-exercise the specific path end-to-end and pin it with a dedicated neuter-test.
+### R-008 — Credit-expiry reversal leg unguarded · Medium · CLOSED
+Detection by R-012 + now exercised end-to-end: `opExpireCredit` issues a credit
+past its `expires_at` and runs `ExpireDueCredits`. Teeth: neutering the expiry
+post → `customer_credit_liability_mismatch {Expected:5059 Found:9221}` on the
+`expire_credit` step (seeds 1, 4). (PR: harness-expire-void-ops)
 
 Mechanism (why it was a gap): `RecordCreditExpiry` reverses the Customer-Credit
 liability best-effort; the count-based credit-note check is satisfied by the
-*issuance* leg, so a missing expiry leg was uncaught. R-012 now catches it.
+*issuance* leg, so a missing expiry leg was uncaught. R-012 catches it and
+`opExpireCredit` exercises it.
 
-### R-009 — Credit-void reversal leg unguarded · Medium · detection CLOSED by R-012; harness exercise pending
-`Void` sets status `void` (not in the count-check set) and posts a best-effort
-reversal; a missing void leg left Customer-Credit overstated. Detection is now
-covered by R-012 (ledger diverges from the notes). Still worth a `void_credit`
-harness op to exercise the path and pin it with a neuter-test.
+### R-009 — Credit-void reversal leg unguarded · Medium · CLOSED
+Detection by R-012 + exercised end-to-end: `opVoidCredit` issues a credit and
+voids it (`CreditNoteService.Void` → `RecordCreditVoid`, DR Customer-Credit). A
+dropped void-reversal leg diverges Customer-Credit from the zeroed note balance —
+caught by R-012 (identical mechanism to the R-008 teeth-test). `Void` sets status
+`void` (not in the count-check set), which is exactly why the old count-based
+check missed it. (PR: harness-expire-void-ops)
 
 ### R-010 — Write-off (bad-debt) reversal leg unguarded · Medium · OPEN (hypothesis)
 `collections_actions.go` posts a best-effort write-off reversal; a missing leg

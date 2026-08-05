@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
@@ -213,10 +214,14 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		return h.opQuoteConversion(rng)
 	case p < 86:
 		return h.opGiftPurchase(rng)
-	case p < 91:
+	case p < 89:
 		return h.opIssueCreditNote(rng)
-	case p < 95:
+	case p < 92:
 		return h.opApplyCredit(rng)
+	case p < 94:
+		return h.opVoidCredit(rng)
+	case p < 96:
+		return h.opExpireCredit(rng)
 	case p < 98:
 		return h.opTrialConversion(rng)
 	default:
@@ -374,6 +379,58 @@ func (h *invariantHarness) opIssueCreditNote(rng *rand.Rand) string {
 		h.t.Fatalf("Create credit note (cust %s): %v", s.customer, err)
 	}
 	return "credit_note"
+}
+
+// opVoidCredit issues a spendable adjustment credit then voids it through the
+// real CreditNoteService.Void, which reverses the Customer-Credit liability
+// (RecordCreditVoid, DR Customer-Credit). With R-012's Customer-Credit invariant
+// in place, a dropped void-reversal leg is caught — the ledger liability stays
+// above the now-zero note balance. Exercises R-009 end to end.
+func (h *invariantHarness) opVoidCredit(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "void_credit_skipped"
+	}
+	s := h.subs[rng.Intn(len(h.subs))]
+	cn, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		Amount:     int64(1000 + rng.Intn(15000)),
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeAdjustment),
+		Reason:     "harness void",
+	})
+	if err != nil {
+		h.t.Fatalf("issue credit to void (cust %s): %v", s.customer, err)
+	}
+	if _, err := h.creditSvc.Void(h.tctx, h.tenantID, cn.ID, uuid.Nil); err != nil {
+		h.t.Fatalf("Void credit %s: %v", cn.ID, err)
+	}
+	return "void_credit"
+}
+
+// opExpireCredit issues a spendable adjustment credit already past its expiry,
+// then runs ExpireDueCredits — which zeroes the balance and posts
+// RecordCreditExpiry to reverse the Customer-Credit liability. R-012 catches a
+// dropped expiry leg (ledger above the zeroed note balance). Exercises R-008.
+func (h *invariantHarness) opExpireCredit(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "expire_credit_skipped"
+	}
+	s := h.subs[rng.Intn(len(h.subs))]
+	past := time.Now().Add(-24 * time.Hour)
+	if _, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		Amount:     int64(1000 + rng.Intn(15000)),
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeAdjustment),
+		Reason:     "harness expire",
+		ExpiresAt:  &past,
+	}); err != nil {
+		h.t.Fatalf("issue credit to expire (cust %s): %v", s.customer, err)
+	}
+	if _, err := h.creditSvc.ExpireDueCredits(h.ctx); err != nil {
+		h.t.Fatalf("ExpireDueCredits: %v", err)
+	}
+	return "expire_credit"
 }
 
 // opNewSubscription seeds a customer + active mid-period subscription on the
