@@ -8,7 +8,6 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
-  Copy,
   AlertTriangle,
   CheckCircle2,
   Send,
@@ -29,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { CodeSample } from "@/components/ui/code-sample";
+import { CopyableSecret } from "@/components/ui/copyable-secret";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -848,18 +848,7 @@ export default function Developers() {
                 see it again.
               </p>
             </div>
-            <div className="flex gap-2">
-              <Input readOnly value={generatedKey || ""} className="font-mono" />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => navigator.clipboard.writeText(generatedKey)}
-                title="Copy to clipboard"
-                aria-label="Copy API key to clipboard"
-              >
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
+            <CopyableSecret value={generatedKey || ""} ariaLabel="Secret API key" />
           </div>
           <DialogFooter>
             <Button onClick={() => setIsModalOpen(false)}>Done</Button>
@@ -897,18 +886,10 @@ export default function Developers() {
                 <p className="text-xs text-muted-foreground">
                   Store this securely. You won't be able to see it again.
                 </p>
-                <div className="flex gap-2">
-                  <Input readOnly value={createdWebhookSecret} className="font-mono" />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => navigator.clipboard.writeText(createdWebhookSecret)}
-                    title="Copy to clipboard"
-                    aria-label="Copy webhook signing secret to clipboard"
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                </div>
+                <CopyableSecret
+                  value={createdWebhookSecret}
+                  ariaLabel="Webhook signing secret"
+                />
               </div>
               <SheetFooter className="px-0">
                 <Button onClick={closeWebhookModal}>Done</Button>
