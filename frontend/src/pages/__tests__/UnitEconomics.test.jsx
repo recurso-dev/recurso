@@ -26,6 +26,9 @@ describe("UnitEconomics page", () => {
     expect(screen.getByText("$50.00")).toBeInTheDocument(); // ARPA
     expect(screen.getByText("$30.00")).toBeInTheDocument(); // ARPU
     expect(screen.getByText("$600.00")).toBeInTheDocument(); // LTV
+    // Each metric explains how it's computed.
+    expect(screen.getByRole("button", { name: /what does arpa mean/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /what does ltv mean/i })).toBeInTheDocument();
   });
 
   it("shows a dash for LTV when it can't be computed", async () => {
