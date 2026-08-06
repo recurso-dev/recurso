@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Banknote, Landmark } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -53,29 +54,20 @@ const emptyVA = { customer_id: "", invoice_id: "", amount: "" };
 // Record money received outside the gateway (NEFT/cash/cheque) and issue
 // virtual accounts customers can transfer into. Amounts are minor units.
 const OfflinePayments = () => {
-  const [payments, setPayments] = useState([]);
-  const [paymentsLoading, setPaymentsLoading] = useState(true);
-  const [paymentsError, setPaymentsError] = useState(null);
-  const [vas, setVAs] = useState([]);
-  const [vasLoading, setVAsLoading] = useState(true);
-  const [vasError, setVAsError] = useState(null);
+  const queryClient = useQueryClient();
   const [recordOpen, setRecordOpen] = useState(false);
   const [payForm, setPayForm] = useState(emptyPayment);
-  const [recording, setRecording] = useState(false);
   const [vaOpen, setVAOpen] = useState(false);
   const [vaForm, setVAForm] = useState(emptyVA);
-  const [creatingVA, setCreatingVA] = useState(false);
   const [tab, setTab] = useState("payments");
   const { customers, names } = useCustomers();
-  const [invoices, setInvoices] = useState([]);
 
   // Invoices back the "settle this invoice" pickers; unpaid ones are offered.
-  useEffect(() => {
-    api
-      .getInvoices()
-      .then((res) => setInvoices(res?.data?.data || []))
-      .catch(() => {});
-  }, []);
+  // Best-effort: on failure the pickers just offer nothing.
+  const { data: invoices = [] } = useQuery({
+    queryKey: ["invoices", "offline-pickers"],
+    queryFn: async () => (await api.getInvoices())?.data?.data || [],
+  });
 
   const openInvoicesFor = (customerId) =>
     invoices.filter(
@@ -90,80 +82,81 @@ const OfflinePayments = () => {
     return inv ? inv.invoice_number || String(id).slice(0, 8) : null;
   };
 
-  const fetchPayments = async () => {
-    setPaymentsLoading(true);
-    setPaymentsError(null);
-    try {
-      const res = await api.getOfflinePayments();
-      setPayments(res.data.data || []);
-    } catch (err) {
-      setPaymentsError(err?.response?.data?.error?.message || "Failed to load payments");
-    } finally {
-      setPaymentsLoading(false);
-    }
-  };
+  const {
+    data: payments = [],
+    isLoading: paymentsLoading,
+    error: paymentsQueryError,
+    refetch: refetchPayments,
+  } = useQuery({
+    queryKey: ["offline-payments"],
+    queryFn: async () => (await api.getOfflinePayments()).data.data || [],
+  });
+  const paymentsError = paymentsQueryError
+    ? paymentsQueryError?.response?.data?.error?.message || "Failed to load payments"
+    : null;
 
-  const fetchVAs = async () => {
-    setVAsLoading(true);
-    setVAsError(null);
-    try {
-      const res = await api.getVirtualAccounts();
-      setVAs(res.data.data || []);
-    } catch (err) {
-      setVAsError(err?.response?.data?.error?.message || "Failed to load virtual accounts");
-    } finally {
-      setVAsLoading(false);
-    }
-  };
+  const {
+    data: vas = [],
+    isLoading: vasLoading,
+    error: vasQueryError,
+    refetch: refetchVAs,
+  } = useQuery({
+    queryKey: ["virtual-accounts"],
+    queryFn: async () => (await api.getVirtualAccounts()).data.data || [],
+  });
+  const vasError = vasQueryError
+    ? vasQueryError?.response?.data?.error?.message || "Failed to load virtual accounts"
+    : null;
 
-  useEffect(() => {
-    fetchPayments();
-    fetchVAs();
-  }, []);
-
-  const submitRecord = async () => {
-    setRecording(true);
-    try {
-      const body = {
-        customer_id: payForm.customer_id.trim(),
-        payment_type: payForm.payment_type,
-        amount: toMinorUnits(payForm.amount, payForm.currency),
-        currency: payForm.currency,
-        reference_number: payForm.reference_number.trim(),
-        notes: payForm.notes.trim(),
-      };
-      if (payForm.invoice_id.trim()) body.invoice_id = payForm.invoice_id.trim();
-      if (payForm.tds_amount) body.tds_amount = toMinorUnits(payForm.tds_amount, payForm.currency);
-      await api.recordOfflinePayment(body);
+  const recordMutation = useMutation({
+    mutationFn: (body) => api.recordOfflinePayment(body),
+    onSuccess: () => {
       toast.success("Payment recorded.");
       setRecordOpen(false);
       setPayForm(emptyPayment);
-      fetchPayments();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to record payment");
-    } finally {
-      setRecording(false);
-    }
+      // A recorded payment settles an invoice — refresh both feeds.
+      queryClient.invalidateQueries({ queryKey: ["offline-payments"] });
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to record payment"),
+  });
+  const recording = recordMutation.isPending;
+
+  const submitRecord = () => {
+    const body = {
+      customer_id: payForm.customer_id.trim(),
+      payment_type: payForm.payment_type,
+      amount: toMinorUnits(payForm.amount, payForm.currency),
+      currency: payForm.currency,
+      reference_number: payForm.reference_number.trim(),
+      notes: payForm.notes.trim(),
+    };
+    if (payForm.invoice_id.trim()) body.invoice_id = payForm.invoice_id.trim();
+    if (payForm.tds_amount) body.tds_amount = toMinorUnits(payForm.tds_amount, payForm.currency);
+    recordMutation.mutate(body);
   };
 
-  const submitVA = async () => {
-    setCreatingVA(true);
-    try {
-      const body = {
-        customer_id: vaForm.customer_id.trim(),
-        amount: toMinorUnits(vaForm.amount, vaForm.currency),
-      };
-      if (vaForm.invoice_id.trim()) body.invoice_id = vaForm.invoice_id.trim();
-      await api.createVirtualAccount(body);
+  const vaMutation = useMutation({
+    mutationFn: (body) => api.createVirtualAccount(body),
+    onSuccess: () => {
       toast.success("Virtual account created.");
       setVAOpen(false);
       setVAForm(emptyVA);
-      fetchVAs();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to create virtual account");
-    } finally {
-      setCreatingVA(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["virtual-accounts"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to create virtual account"),
+  });
+  const creatingVA = vaMutation.isPending;
+
+  const submitVA = () => {
+    const body = {
+      customer_id: vaForm.customer_id.trim(),
+      amount: toMinorUnits(vaForm.amount, vaForm.currency),
+    };
+    if (vaForm.invoice_id.trim()) body.invoice_id = vaForm.invoice_id.trim();
+    vaMutation.mutate(body);
   };
 
   const paymentColumns = [
@@ -293,7 +286,7 @@ const OfflinePayments = () => {
             data={payments}
             loading={paymentsLoading}
             error={paymentsError}
-            onRetry={fetchPayments}
+            onRetry={refetchPayments}
             empty={{
               icon: Banknote,
               title: "No offline payments recorded",
@@ -308,7 +301,7 @@ const OfflinePayments = () => {
             data={vas}
             loading={vasLoading}
             error={vasError}
-            onRetry={fetchVAs}
+            onRetry={refetchVAs}
             empty={{
               icon: Landmark,
               title: "No virtual accounts",
