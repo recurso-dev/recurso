@@ -46,6 +46,7 @@ export default function Team() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", role: "member" });
   const [removeTarget, setRemoveTarget] = useState(null);
+  const [roleTarget, setRoleTarget] = useState(null); // { id, name, from, to }
   const queryClient = useQueryClient();
 
   const canManage = user?.role === "owner" || user?.role === "admin";
@@ -77,7 +78,10 @@ export default function Team() {
 
   const roleMutation = useMutation({
     mutationFn: ({ id, role }) => endpoints.updateUserRole(id, role),
-    onSuccess: invalidateTeam,
+    onSuccess: () => {
+      setRoleTarget(null);
+      invalidateTeam();
+    },
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to update role"),
   });
@@ -96,7 +100,16 @@ export default function Team() {
     inviteMutation.mutate(form);
   };
 
-  const changeRole = (id, role) => roleMutation.mutate({ id, role });
+  // A role change is a privilege change — confirm it rather than applying it
+  // the instant the select changes.
+  const requestRoleChange = (u, role) => {
+    if (role === u.role) return;
+    setRoleTarget({ id: u.id, name: u.name || u.email, from: u.role, to: role });
+  };
+  const confirmRoleChange = () => {
+    if (!roleTarget) return;
+    roleMutation.mutate({ id: roleTarget.id, role: roleTarget.to });
+  };
 
   const remove = () => {
     if (!removeTarget) return;
@@ -154,7 +167,7 @@ export default function Team() {
                   <TableCell className="text-muted-foreground">{u.email}</TableCell>
                   <TableCell>
                     {canManage && u.id !== user?.id ? (
-                      <Select value={u.role} onValueChange={(r) => changeRole(u.id, r)}>
+                      <Select value={u.role} onValueChange={(r) => requestRoleChange(u, r)}>
                         <SelectTrigger className="h-8 w-28">
                           <SelectValue />
                         </SelectTrigger>
@@ -249,6 +262,19 @@ export default function Team() {
         confirmLabel="Remove teammate"
         destructive
         onConfirm={remove}
+      />
+
+      <ConfirmDialog
+        open={!!roleTarget}
+        onOpenChange={(open) => !open && setRoleTarget(null)}
+        title="Change this teammate's role?"
+        description={
+          roleTarget
+            ? `${roleTarget.name} will go from ${roleTarget.from} to ${roleTarget.to}. This changes what they can see and do across the workspace, effective immediately.`
+            : ""
+        }
+        confirmLabel={`Make ${roleTarget?.to || ""}`}
+        onConfirm={confirmRoleChange}
       />
     </div>
   );
