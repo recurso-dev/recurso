@@ -96,7 +96,7 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
       >
         {submitting
           ? "Processing..."
-          : `Pay ${invoice.currency} ${invoice.display_amount}`}
+          : `Pay ${formatCurrency(invoice.total, invoice.currency)}`}
       </Button>
     </form>
   );
@@ -359,7 +359,7 @@ export default function Checkout() {
         <div className="flex items-center justify-between">
           <span className="text-sm text-stone-500">Total</span>
           <span className="text-lg font-bold tabular-nums text-stone-900">
-            {invoice.currency} {invoice.display_amount}
+            {formatCurrency(invoice.total, invoice.currency)}
           </span>
         </div>
         <SummaryRow label="Due date" value={invoice.due_date} />
@@ -394,7 +394,7 @@ export default function Checkout() {
             size="lg"
             className="w-full"
           >
-            {`Pay ${invoice.currency} ${invoice.display_amount}`}
+            {`Pay ${formatCurrency(invoice.total, invoice.currency)}`}
           </Button>
           <p className="text-center text-xs text-stone-400">
             A secure Razorpay window opens to complete your payment (UPI, cards,
@@ -415,7 +415,7 @@ export default function Checkout() {
         >
           {initiating
             ? "Starting..."
-            : `Pay ${invoice.currency} ${invoice.display_amount}`}
+            : `Pay ${formatCurrency(invoice.total, invoice.currency)}`}
         </Button>
       )}
 

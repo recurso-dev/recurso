@@ -113,6 +113,10 @@ export default function Dashboard() {
         customerNames: names,
         // MRR endpoint may return { mrr } or { data: { mrr } }; null => unavailable.
         mrr: (mrrRes?.data?.mrr ?? mrrRes?.data?.data?.mrr) ?? null,
+        // ...alongside the reporting currency the figure is denominated in, so
+        // the hero metric isn't mislabeled for a non-USD tenant.
+        mrrCurrency:
+          mrrRes?.data?.reporting_currency ?? mrrRes?.data?.data?.reporting_currency ?? "USD",
         recovered: rec?.reporting_total ?? null,
         recoveredCurrency: rec?.reporting_currency || "USD",
         openDisputes: (dispRes?.data?.data || []).length,
@@ -129,6 +133,7 @@ export default function Dashboard() {
   const invoices = useMemo(() => data?.invoices ?? [], [data]);
   const customerNames = data?.customerNames ?? {};
   const mrr = data?.mrr ?? null;
+  const mrrCurrency = data?.mrrCurrency ?? "USD";
   const recovered = data?.recovered ?? null;
   const recoveredCurrency = data?.recoveredCurrency ?? "USD";
   const openDisputes = data?.openDisputes ?? 0;
@@ -343,7 +348,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={mrr != null ? formatCurrencyHeadline(mrr, "USD") : "—"}
+            value={mrr != null ? formatCurrencyHeadline(mrr, mrrCurrency) : "—"}
             icon={DollarSign}
             hint="Monthly recurring revenue"
             to="/overview"
