@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Wallet2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -51,9 +52,7 @@ const TX_SOURCE = { manual: "Manual", promotional: "Promotional credit", auto_re
 
 // Prepaid wallets (Lago-parity B1): balances, top-ups, and movement history.
 const Wallets = () => {
-  const [wallets, setWallets] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
 
   const [createOpen, setCreateOpen] = useState(false);
@@ -63,31 +62,24 @@ const Wallets = () => {
   const [autoWallet, setAutoWallet] = useState(null);
   const [autoForm, setAutoForm] = useState({ threshold: "", amount: "" });
   const [txWallet, setTxWallet] = useState(null);
-  const [txs, setTxs] = useState([]);
-  const [txsLoading, setTxsLoading] = useState(false);
   const [closingWallet, setClosingWallet] = useState(null);
-  const [closing, setClosing] = useState(false);
   const [closeResult, setCloseResult] = useState(null);
   const [actionError, setActionError] = useState(null);
-  const [creating, setCreating] = useState(false);
   const { customers, names } = useCustomers();
 
-  const fetchWallets = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getWallets();
-      setWallets(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || err?.message || "Failed to load wallets");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchWallets();
-  }, []);
+  const {
+    data: wallets = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["wallets"],
+    queryFn: async () => (await api.getWallets()).data.data || [],
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load wallets"
+    : null;
+  const invalidateWallets = () => queryClient.invalidateQueries({ queryKey: ["wallets"] });
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -100,34 +92,38 @@ const Wallets = () => {
     );
   }, [wallets, search, names]);
 
-  const submitCreate = async () => {
-    setActionError(null);
-    setCreating(true);
-    try {
-      await api.createWallet(createForm);
+  const createMutation = useMutation({
+    mutationFn: () => api.createWallet(createForm),
+    onSuccess: () => {
       setCreateOpen(false);
       setCreateForm({ customer_id: "", currency: "INR" });
-      fetchWallets();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to create wallet");
-    } finally {
-      setCreating(false);
-    }
+      invalidateWallets();
+    },
+    onError: (err) =>
+      setActionError(err?.response?.data?.error?.message || "Failed to create wallet"),
+  });
+  const creating = createMutation.isPending;
+  const submitCreate = () => {
+    setActionError(null);
+    createMutation.mutate();
   };
 
-  const submitTopUp = async () => {
-    setActionError(null);
-    try {
-      await api.topUpWallet(topUpWallet.id, {
+  const topUpMutation = useMutation({
+    mutationFn: () =>
+      api.topUpWallet(topUpWallet.id, {
         amount: toMinorUnits(topUpForm.amount, topUpWallet.currency),
         source: topUpForm.source,
-      });
+      }),
+    onSuccess: () => {
       setTopUpWallet(null);
       setTopUpForm({ amount: "", source: "manual" });
-      fetchWallets();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Top-up failed");
-    }
+      invalidateWallets();
+    },
+    onError: (err) => setActionError(err?.response?.data?.error?.message || "Top-up failed"),
+  });
+  const submitTopUp = () => {
+    setActionError(null);
+    topUpMutation.mutate();
   };
 
   const openAutoRecharge = (wallet) => {
@@ -140,56 +136,59 @@ const Wallets = () => {
   };
 
   // Backend requires threshold+amount together (both positive) or both null to clear.
-  const submitAutoRecharge = async (disable = false) => {
-    setActionError(null);
-    try {
-      const body = disable
-        ? { auto_recharge_threshold: null, auto_recharge_amount: null }
-        : {
-            auto_recharge_threshold: toMinorUnits(autoForm.threshold, autoWallet.currency),
-            auto_recharge_amount: toMinorUnits(autoForm.amount, autoWallet.currency),
-          };
-      await api.setWalletAutoRecharge(autoWallet.id, body);
+  const autoMutation = useMutation({
+    mutationFn: (disable) =>
+      api.setWalletAutoRecharge(
+        autoWallet.id,
+        disable
+          ? { auto_recharge_threshold: null, auto_recharge_amount: null }
+          : {
+              auto_recharge_threshold: toMinorUnits(autoForm.threshold, autoWallet.currency),
+              auto_recharge_amount: toMinorUnits(autoForm.amount, autoWallet.currency),
+            }
+      ),
+    onSuccess: () => {
       setAutoWallet(null);
-      fetchWallets();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to update auto-recharge");
-    }
+      invalidateWallets();
+    },
+    onError: (err) =>
+      setActionError(err?.response?.data?.error?.message || "Failed to update auto-recharge"),
+  });
+  const submitAutoRecharge = (disable = false) => {
+    setActionError(null);
+    autoMutation.mutate(disable);
   };
 
   // Closing settles the wallet: paid balance is refunded to the customer,
   // promotional balance is forfeited. Irreversible, so it goes through a
   // ConfirmDialog and the settlement result is surfaced afterward.
-  const submitClose = async () => {
-    if (!closingWallet) return;
-    setActionError(null);
-    setClosing(true);
-    try {
-      const res = await api.closeWallet(closingWallet.id);
+  const closeMutation = useMutation({
+    mutationFn: () => api.closeWallet(closingWallet.id),
+    onSuccess: (res) => {
       const { refunded = 0, forfeited = 0 } = res.data?.data || {};
       setCloseResult({ currency: closingWallet.currency, refunded, forfeited });
       setClosingWallet(null);
-      fetchWallets();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to close wallet");
-    } finally {
-      setClosing(false);
-    }
+      invalidateWallets();
+    },
+    onError: (err) =>
+      setActionError(err?.response?.data?.error?.message || "Failed to close wallet"),
+  });
+  const closing = closeMutation.isPending;
+  const submitClose = () => {
+    if (!closingWallet) return;
+    setActionError(null);
+    closeMutation.mutate();
   };
 
-  const openTransactions = async (wallet) => {
-    setTxWallet(wallet);
-    setTxs([]);
-    setTxsLoading(true);
-    try {
-      const res = await api.getWalletTransactions(wallet.id, { limit: 50 });
-      setTxs(res.data.data || []);
-    } catch {
-      setTxs([]);
-    } finally {
-      setTxsLoading(false);
-    }
-  };
+  // Transactions for the open wallet's sheet; cached per wallet.
+  const { data: txs = [], isLoading: txsLoading } = useQuery({
+    queryKey: ["wallet-transactions", txWallet?.id],
+    queryFn: async () =>
+      (await api.getWalletTransactions(txWallet.id, { limit: 50 })).data.data || [],
+    enabled: !!txWallet,
+  });
+
+  const openTransactions = (wallet) => setTxWallet(wallet);
 
   const columns = [
     {
@@ -285,7 +284,7 @@ const Wallets = () => {
         data={filtered}
         loading={loading}
         error={error}
-        onRetry={fetchWallets}
+        onRetry={refetch}
         onRowClick={openTransactions}
         search={{ value: search, onChange: setSearch, placeholder: "Search by customer or currency..." }}
         empty={{
