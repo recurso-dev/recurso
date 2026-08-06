@@ -7,6 +7,7 @@ import { COUNTRIES } from "@/lib/countries";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -139,10 +140,9 @@ export default function Register() {
               </FormField>
 
               <FormField label="Password" htmlFor="password" required>
-                <Input
+                <PasswordInput
                   id="password"
                   name="password"
-                  type="password"
                   autoComplete="new-password"
                   required
                   value={formData.password}

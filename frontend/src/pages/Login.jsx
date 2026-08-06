@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthProvider";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function Login() {
@@ -191,9 +192,8 @@ export default function Login() {
                   />
                 </FormField>
                 <FormField label="Password" htmlFor="password" required>
-                  <Input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     autoComplete="current-password"
                     required
                     value={password}
@@ -253,9 +253,8 @@ export default function Login() {
             ) : (
               <form onSubmit={handleApiKeyLogin} className="space-y-5">
                 <FormField label="API secret key" htmlFor="apiKey" required>
-                  <Input
+                  <PasswordInput
                     id="apiKey"
-                    type="password"
                     required
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
