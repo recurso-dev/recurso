@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Building2, Trash2, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -23,114 +24,109 @@ import {
 // Multi-tenant admin: group tenants under an organization and see
 // consolidated MRR across them.
 const Organizations = () => {
-  const [orgs, setOrgs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [savingRename, setSavingRename] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", owner_email: "" });
-  const [creating, setCreating] = useState(false);
 
   // Detail sheet state
   const [selected, setSelected] = useState(null);
-  const [tenants, setTenants] = useState([]);
-  const [mrr, setMRR] = useState(null);
-  const [detailLoading, setDetailLoading] = useState(false);
   const [addTenantId, setAddTenantId] = useState("");
-  const [addingTenant, setAddingTenant] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
 
-  const fetchOrgs = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getOrganizations();
-      setOrgs(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load organizations");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: orgs = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["organizations"],
+    queryFn: async () => (await api.getOrganizations()).data.data || [],
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load organizations"
+    : null;
 
-  useEffect(() => {
-    fetchOrgs();
-  }, []);
-
-  const openDetail = async (org) => {
-    setSelected(org);
-    setTenants([]);
-    setMRR(null);
-    setDetailLoading(true);
-    try {
+  // Tenants + consolidated MRR for the open organization, fetched together
+  // (allSettled: a failed MRR read still shows the tenant list).
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["org-detail", selected?.id],
+    queryFn: async () => {
       const [t, m] = await Promise.allSettled([
-        api.getOrgTenants(org.id),
-        api.getOrgMRR(org.id),
+        api.getOrgTenants(selected.id),
+        api.getOrgMRR(selected.id),
       ]);
-      if (t.status === "fulfilled") setTenants(t.value.data.data || []);
-      if (m.status === "fulfilled") setMRR(m.value.data.data);
-    } finally {
-      setDetailLoading(false);
-    }
-  };
+      return {
+        tenants: t.status === "fulfilled" ? t.value.data.data || [] : [],
+        mrr: m.status === "fulfilled" ? m.value.data.data : null,
+      };
+    },
+    enabled: !!selected,
+  });
+  const tenants = detail?.tenants ?? [];
+  const mrr = detail?.mrr ?? null;
 
-  const submitCreate = async () => {
-    setCreating(true);
-    try {
-      await api.createOrganization(createForm);
+  const invalidateOrgs = () => queryClient.invalidateQueries({ queryKey: ["organizations"] });
+  const invalidateDetail = () =>
+    queryClient.invalidateQueries({ queryKey: ["org-detail", selected?.id] });
+
+  const openDetail = (org) => setSelected(org);
+
+  const createMutation = useMutation({
+    mutationFn: () => api.createOrganization(createForm),
+    onSuccess: () => {
       toast.success("Organization created.");
       setCreateOpen(false);
       setCreateForm({ name: "", owner_email: "" });
-      fetchOrgs();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to create organization");
-    } finally {
-      setCreating(false);
-    }
-  };
+      invalidateOrgs();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to create organization"),
+  });
+  const creating = createMutation.isPending;
+  const submitCreate = () => createMutation.mutate();
 
-  const submitAddTenant = async () => {
-    if (!selected || !addTenantId.trim()) return;
-    setAddingTenant(true);
-    try {
-      await api.addOrgTenant(selected.id, addTenantId.trim());
+  const addTenantMutation = useMutation({
+    mutationFn: () => api.addOrgTenant(selected.id, addTenantId.trim()),
+    onSuccess: () => {
       toast.success("Tenant added.");
       setAddTenantId("");
-      openDetail(selected);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to add tenant");
-    } finally {
-      setAddingTenant(false);
-    }
+      invalidateDetail();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to add tenant"),
+  });
+  const addingTenant = addTenantMutation.isPending;
+  const submitAddTenant = () => {
+    if (!selected || !addTenantId.trim()) return;
+    addTenantMutation.mutate();
   };
 
-  const removeTenant = async (tenantId) => {
-    try {
-      await api.removeOrgTenant(selected.id, tenantId);
+  const removeTenantMutation = useMutation({
+    mutationFn: (tenantId) => api.removeOrgTenant(selected.id, tenantId),
+    onSuccess: () => {
       toast.success("Tenant removed.");
-      openDetail(selected);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to remove tenant");
-    }
-  };
+      invalidateDetail();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to remove tenant"),
+  });
+  const removeTenant = (tenantId) => removeTenantMutation.mutate(tenantId);
 
-  const confirmDelete = async () => {
-    setDeleting(true);
-    try {
-      await api.deleteOrganization(selected.id);
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deleteOrganization(selected.id),
+    onSuccess: () => {
       toast.success("Organization deleted.");
       setDeleteOpen(false);
       setSelected(null);
-      fetchOrgs();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to delete organization");
-    } finally {
-      setDeleting(false);
-    }
-  };
+      invalidateOrgs();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to delete organization"),
+  });
+  const deleting = deleteMutation.isPending;
+  const confirmDelete = () => deleteMutation.mutate();
 
   const columns = [
     {
@@ -158,23 +154,24 @@ const Organizations = () => {
     </Button>
   );
 
-  const submitRename = async () => {
-    if (!selected || !renameValue.trim()) return;
-    setSavingRename(true);
-    try {
-      await api.updateOrganization(selected.id, {
+  const renameMutation = useMutation({
+    mutationFn: () =>
+      api.updateOrganization(selected.id, {
         name: renameValue.trim(),
         owner_email: selected.owner_email,
-      });
+      }),
+    onSuccess: () => {
       toast.success("Organization renamed.");
-      setSelected({ ...selected, name: renameValue.trim() });
+      setSelected((prev) => ({ ...prev, name: renameValue.trim() }));
       setRenaming(false);
-      fetchOrgs();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to rename");
-    } finally {
-      setSavingRename(false);
-    }
+      invalidateOrgs();
+    },
+    onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to rename"),
+  });
+  const savingRename = renameMutation.isPending;
+  const submitRename = () => {
+    if (!selected || !renameValue.trim()) return;
+    renameMutation.mutate();
   };
 
   return (
@@ -190,7 +187,7 @@ const Organizations = () => {
         data={orgs}
         loading={loading}
         error={error}
-        onRetry={fetchOrgs}
+        onRetry={refetch}
         onRowClick={openDetail}
         empty={{
           icon: Building2,

@@ -1,5 +1,6 @@
 import { shortId } from "@/lib/utils";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { BarChart } from "@tremor/react";
 import { Activity, Download, Gauge, Layers, RefreshCw, Users } from "lucide-react";
 
@@ -29,38 +30,28 @@ const unitsFormatter = (v) => v.toLocaleString();
 const unitsTooltip = makeChartTooltip(unitsFormatter);
 
 export default function Usage() {
-  const [usageStats, setUsageStats] = useState([]);
-  const [meteredCount, setMeteredCount] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [statsError, setStatsError] = useState(null);
   const { names: customerNames } = useCustomers();
-  const [events, setEvents] = useState([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [eventsError, setEventsError] = useState(null);
   const [eventDimension, setEventDimension] = useState("all");
 
   // Raw ingestion stream — answers "did my usage events actually land?".
-  const fetchEvents = useCallback(async () => {
-    setEventsLoading(true);
-    setEventsError(null);
-    try {
+  const {
+    data: events = [],
+    isLoading: eventsLoading,
+    error: eventsQueryError,
+    refetch: refetchEvents,
+  } = useQuery({
+    queryKey: ["usage-events", eventDimension],
+    queryFn: async () => {
       const params = { limit: 50 };
       if (eventDimension !== "all") params.dimension = eventDimension;
-      const res = await api.getUsageEvents(params);
-      setEvents(res?.data?.data || []);
-    } catch (err) {
-      setEvents([]);
-      setEventsError(
-        err?.response?.data?.error?.message || err?.message || "Failed to load events"
-      );
-    } finally {
-      setEventsLoading(false);
-    }
-  }, [eventDimension]);
-
-  useEffect(() => {
-    fetchEvents();
-  }, [fetchEvents]);
+      return (await api.getUsageEvents(params))?.data?.data || [];
+    },
+  });
+  const eventsError = eventsQueryError
+    ? eventsQueryError?.response?.data?.error?.message ||
+      eventsQueryError?.message ||
+      "Failed to load events"
+    : null;
 
   const eventDimensions = useMemo(
     () => [...new Set(events.map((e) => e.dimension))].sort(),
@@ -102,28 +93,30 @@ export default function Usage() {
     },
   ];
 
-  const fetchUsage = useCallback(async () => {
-    setLoading(true);
-    setStatsError(null);
-    try {
+  // Stats carry two values (per-dimension rows + the metered-customer count),
+  // so the query returns both as one cached object.
+  const {
+    data: statsData,
+    isLoading: loading,
+    error: statsQueryError,
+    refetch: refetchUsage,
+  } = useQuery({
+    queryKey: ["usage-stats"],
+    queryFn: async () => {
       const response = await api.getUsageStats();
-      setUsageStats(response.data.data || []);
-      setMeteredCount(response.data.customers_metered ?? null);
-    } catch (error) {
-      setUsageStats([]);
-      setStatsError(
-        error?.response?.data?.error?.message ||
-          error?.message ||
-          "Failed to load usage metering"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchUsage();
-  }, [fetchUsage]);
+      return {
+        stats: response.data.data || [],
+        meteredCount: response.data.customers_metered ?? null,
+      };
+    },
+  });
+  const usageStats = statsData?.stats ?? [];
+  const meteredCount = statsData?.meteredCount ?? null;
+  const statsError = statsQueryError
+    ? statsQueryError?.response?.data?.error?.message ||
+      statsQueryError?.message ||
+      "Failed to load usage metering"
+    : null;
 
 
   const filteredData = usageStats;
@@ -242,7 +235,7 @@ export default function Usage() {
         <ErrorState
           title="Unable to load usage metering"
           message={statsError}
-          onRetry={fetchUsage}
+          onRetry={refetchUsage}
         />
       ) : (
       <>
@@ -341,7 +334,7 @@ export default function Usage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="sm" onClick={fetchEvents} disabled={eventsLoading}>
+            <Button variant="outline" size="sm" onClick={() => refetchEvents()} disabled={eventsLoading}>
               <RefreshCw className={`h-4 w-4 ${eventsLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
@@ -352,7 +345,7 @@ export default function Usage() {
           data={events}
           loading={eventsLoading}
           error={eventsError}
-          onRetry={fetchEvents}
+          onRetry={refetchEvents}
           getRowId={(e) => e.id}
           empty={{
             icon: Activity,

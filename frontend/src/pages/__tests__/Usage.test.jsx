@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Usage from "../Usage";
 import { endpoints } from "../../lib/api";
@@ -15,7 +16,15 @@ vi.mock("@/lib/useCustomers", () => ({ useCustomers: () => ({ names: {} }) }));
 // jsdom has no ResizeObserver; recharts' ResponsiveContainer needs it.
 global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} };
 
-const wrapper = ({ children }) => <MemoryRouter>{children}</MemoryRouter>;
+const wrapper = ({ children }) => (
+  <MemoryRouter>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </MemoryRouter>
+);
 
 describe("Usage — top-level fetch error state (#7a)", () => {
   beforeEach(() => vi.clearAllMocks());
