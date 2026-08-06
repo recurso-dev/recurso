@@ -129,11 +129,13 @@ export default function MRRWaterfall() {
                   label="Net Dollar Retention"
                   value={`${(wf.net_dollar_retention || 0).toFixed(1)}%`}
                   hint="Revenue kept from existing customers, expansion included"
+                  definition="Revenue retained from customers you had at the start, expansion included — (starting + expansion − contraction − churn) ÷ starting MRR. Above 100% means expansion outweighed losses. New customers are excluded."
                 />
                 <StatCard
                   label="Gross Dollar Retention"
                   value={`${(wf.gross_dollar_retention || 0).toFixed(1)}%`}
                   hint="Revenue kept before expansion — churn &amp; contraction only"
+                  definition="Revenue retained from existing customers before any expansion — (starting − contraction − churn) ÷ starting MRR. Cannot exceed 100%."
                 />
               </div>
             )}

@@ -49,11 +49,13 @@ export default function UnitEconomics() {
                 label="ARPA"
                 value={money(data.arpa)}
                 hint="Avg. revenue per account (customer) / month"
+                definition="Average recurring revenue per customer account per month — MRR ÷ active customers."
               />
               <StatCard
                 label="ARPU"
                 value={money(data.arpu)}
                 hint="Avg. revenue per subscription / month"
+                definition="Average recurring revenue per subscription per month — MRR ÷ active subscriptions. Differs from ARPA when customers hold more than one subscription."
               />
               <StatCard
                 label="LTV"
@@ -63,6 +65,7 @@ export default function UnitEconomics() {
                     ? `at ${(data.monthly_churn_rate || 0).toFixed(1)}% monthly churn`
                     : "Needs a few weeks of MRR history"
                 }
+                definition="Estimated customer lifetime value — ARPA ÷ monthly churn rate. Requires enough MRR history to estimate churn."
               />
             </div>
 
