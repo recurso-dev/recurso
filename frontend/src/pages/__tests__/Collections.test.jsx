@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import Collections from '../Collections';
 import { endpoints } from '../../lib/api';
+import { money } from '@/test/money';
 
 vi.mock('../../lib/api', () => ({
     endpoints: {
@@ -105,6 +106,8 @@ describe('Collections page', () => {
         // Returned ACH attempt chip.
         expect(screen.getByText('returned')).toBeInTheDocument();
         expect(screen.getByText('Globex')).toBeInTheDocument();
+        // The queue's outstanding amount renders in the tabular-mono <Money>.
+        expect(screen.getByText(money('$125.00'))).toBeInTheDocument();
 
         // Funnel stats + failure breakdown (tenant-wide, FX-normalized).
         expect(screen.getByText('Recovery rate')).toBeInTheDocument();

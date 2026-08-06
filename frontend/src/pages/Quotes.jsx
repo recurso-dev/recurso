@@ -7,9 +7,10 @@ import { endpoints } from "../lib/api";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import QuoteDetail from "../components/slide-overs/QuoteDetail";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { Money } from "@/components/ui/money";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -131,9 +132,7 @@ const Quotes = () => {
       key: "amount",
       header: "Amount",
       align: "right",
-      cell: (q) => (
-        <span className="tabular-nums">{formatCurrency(q.total, q.currency)}</span>
-      ),
+      cell: (q) => <Money amountMinor={q.total} currency={q.currency} />,
     },
     {
       key: "status",

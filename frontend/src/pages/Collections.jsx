@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Money } from "@/components/ui/money";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { toast } from "@/components/ui/sonner";
@@ -402,8 +403,8 @@ const Collections = () => {
                       <TableCell className="font-mono text-sm text-muted-foreground">
                         {it.invoice_number}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">
-                        {formatCurrency(it.amount_remaining, it.currency)}
+                      <TableCell className="text-right font-medium">
+                        <Money amountMinor={it.amount_remaining} currency={it.currency} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         <span
