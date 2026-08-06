@@ -87,6 +87,7 @@ export default function Register() {
                 <Input
                   id="company_name"
                   name="company_name"
+                  autoFocus
                   required
                   value={formData.company_name}
                   onChange={handleChange}

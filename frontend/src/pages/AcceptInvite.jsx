@@ -95,6 +95,7 @@ export default function AcceptInvite() {
                   <PasswordInput
                     id="password"
                     autoComplete="new-password"
+                    autoFocus
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
