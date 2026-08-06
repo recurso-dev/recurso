@@ -375,6 +375,7 @@ export default function Dashboard() {
             icon={DollarSign}
             hint="Monthly recurring revenue"
             to="/overview"
+            definition="Monthly recurring revenue across active subscriptions, normalized to your reporting currency."
           />
           <StatCard
             label="Active Subscriptions"
@@ -389,6 +390,7 @@ export default function Dashboard() {
             icon={TrendingDown}
             hint="Canceled vs. total"
             to="/churn"
+            definition="Canceled subscriptions as a share of active + canceled. Count-based, not revenue-weighted."
           />
           <StatCard
             label="Recovered Revenue"
@@ -396,6 +398,7 @@ export default function Dashboard() {
             icon={RotateCcw}
             hint="Via smart dunning"
             to="/dunning"
+            definition="Revenue collected by automatic dunning retries after an initial payment failure."
           />
         </div>
       )}
