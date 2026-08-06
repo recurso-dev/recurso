@@ -287,24 +287,28 @@ const Collections = () => {
             value={formatCurrency(funnel?.past_due?.amount || 0, reportingCurrency)}
             icon={CircleDollarSign}
             hint={`${(funnel?.past_due?.count || 0).toLocaleString()} invoices in dunning`}
+            definition="The amount still owed on past-due invoices currently being retried in dunning."
           />
           <StatCard
             label="Recovery rate"
             value={funnel ? `${(funnel.recovery_rate * 100).toFixed(1)}%` : "—"}
             icon={Percent}
             hint={`cases concluded, last ${funnel?.rate_window_days || 90} days`}
+            definition={`Of the dunning cases that concluded in the last ${funnel?.rate_window_days || 90} days, the share that ended in payment rather than being written off.`}
           />
           <StatCard
             label="Recovered (all-time)"
             value={formatCurrency(funnel?.recovered?.amount || 0, reportingCurrency)}
             icon={RotateCcw}
             hint={`${(funnel?.recovered?.count || 0).toLocaleString()} invoices`}
+            definition="Total collected by dunning retries after an initial payment failure."
           />
           <StatCard
             label="Written off"
             value={formatCurrency(funnel?.uncollectible?.amount || 0, reportingCurrency)}
             icon={Ban}
             hint={`${(funnel?.uncollectible?.count || 0).toLocaleString()} uncollectible`}
+            definition="Past-due invoices marked uncollectible and removed from receivables as bad debt."
           />
         </div>
       )}

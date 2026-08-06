@@ -1,8 +1,14 @@
 import { Link } from "react-router";
-import { ArrowDownRight, ArrowUpRight } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 /**
  * StatCard — a KPI tile: small uppercase label, large numeral, optional delta.
@@ -17,6 +23,9 @@ import { Card } from "@/components/ui/card";
  *  - loading:    boolean (renders a skeleton value)
  *  - to:         route path — makes the whole tile a link (hover + focus ring)
  *  - tone:       "danger" | "warning" — tints the value when the number needs attention
+ *  - definition: string — explains what the metric measures, via an info tooltip
+ *                next to the label (native title fallback on linked tiles, to
+ *                avoid nesting an interactive trigger inside the tile's <a>)
  */
 export function StatCard({
   label,
@@ -28,6 +37,7 @@ export function StatCard({
   loading = false,
   to,
   tone,
+  definition,
   className,
 }) {
   const deltaStyles = {
@@ -50,9 +60,34 @@ export function StatCard({
       )}
     >
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {label}
-        </p>
+        <div className="flex items-center gap-1.5">
+          <p
+            className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+            // On a linked tile we can't nest an interactive tooltip trigger in
+            // the <a>, so the definition rides along as a native tooltip.
+            title={definition && to ? definition : undefined}
+          >
+            {label}
+          </p>
+          {definition && !to && (
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`What does ${label} mean?`}
+                    className="text-stone-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-left font-normal normal-case tracking-normal">
+                  {definition}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
         {Icon && <Icon className="h-4 w-4 text-stone-400" />}
       </div>
       <div className="mt-3 flex items-end justify-between gap-2">

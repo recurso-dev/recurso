@@ -43,4 +43,22 @@ describe("StatCard", () => {
     render(<StatCard label="Customers" value="12" />);
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
+
+  it("exposes an info trigger for `definition` on a non-link tile", () => {
+    render(<StatCard label="Churn" value="2.1%" definition="Canceled over active + canceled." />);
+    expect(
+      screen.getByRole("button", { name: /what does churn mean/i })
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to a native title (no nested button) when the tile is a link", () => {
+    render(
+      <MemoryRouter>
+        <StatCard label="Churn" value="2.1%" to="/churn" definition="Canceled over active + canceled." />
+      </MemoryRouter>
+    );
+    // No interactive tooltip trigger nested inside the tile's <a>.
+    expect(screen.queryByRole("button", { name: /what does churn mean/i })).not.toBeInTheDocument();
+    expect(screen.getByText("Churn")).toHaveAttribute("title", "Canceled over active + canceled.");
+  });
 });
