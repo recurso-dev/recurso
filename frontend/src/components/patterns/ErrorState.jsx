@@ -12,8 +12,8 @@ import { Button } from "@/components/ui/button";
  *  - onRetry: () => void
  */
 export function ErrorState({
-  title = "Something went wrong",
-  message = "We couldn't load this data. Please try again.",
+  title = "Couldn't load this",
+  message = "We couldn't load this data. Check your connection and try again.",
   onRetry,
   className,
 }) {

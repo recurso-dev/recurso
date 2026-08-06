@@ -92,3 +92,20 @@ kbd {
   background: hsl(var(--muted));
   color: hsl(var(--muted-foreground));
 }
+
+/*
+ * Motion accessibility (DESIGN §8/§9). Respect the OS "reduce motion" setting
+ * across the whole app chrome — spinners, animate-pulse skeletons, and Radix
+ * dialog/sheet/select/dropdown enter-exit — not just the charts (which already
+ * gate on it). Near-instant instead of fully 0 so state changes still register.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
