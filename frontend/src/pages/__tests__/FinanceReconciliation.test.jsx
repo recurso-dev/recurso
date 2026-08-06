@@ -67,7 +67,10 @@ describe('FinanceReconciliation page', () => {
         expect(screen.getByText('Missing in TigerBeetle')).toBeInTheDocument();
         expect(screen.getByText('5,000')).toBeInTheDocument();
         expect(screen.getByText('4,500')).toBeInTheDocument();
-        expect(screen.getByText('aaaaaaaa…')).toBeInTheDocument();
+        // The invoice id drills through to that invoice's detail on the
+        // Invoices page (not a dead UUID).
+        const invoiceLink = screen.getByRole('link', { name: 'aaaaaaaa…' });
+        expect(invoiceLink).toHaveAttribute('href', '/invoices');
     });
 
     it('shows the skipped TigerBeetle badge with the skip reason', async () => {

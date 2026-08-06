@@ -1,5 +1,6 @@
 import { shortId, formatDate } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldCheck } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -206,7 +207,17 @@ export default function FinanceReconciliation() {
                           className="font-mono text-xs text-muted-foreground"
                           title={d.invoice_id || undefined}
                         >
-                          {shortId(d.invoice_id)}
+                          {d.invoice_id ? (
+                            <Link
+                              to="/invoices"
+                              state={{ openInvoiceId: d.invoice_id }}
+                              className="text-primary underline-offset-2 hover:underline"
+                            >
+                              {shortId(d.invoice_id)}
+                            </Link>
+                          ) : (
+                            shortId(d.invoice_id)
+                          )}
                         </TableCell>
                         <TableCell
                           className="font-mono text-xs text-muted-foreground"
