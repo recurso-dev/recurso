@@ -39,6 +39,10 @@ type mockReconciliationRepo struct {
 	writeOffTotal int
 	writeOffErr   error
 
+	taxRows  []db.InvoiceLedgerMismatch
+	taxTotal int
+	taxErr   error
+
 	orphanRows  []db.OrphanLedgerTransaction
 	orphanTotal int
 	orphanErr   error
@@ -116,6 +120,14 @@ func (m *mockReconciliationRepo) GetWriteOffLedgerMismatches(ctx context.Context
 		return nil, 0, m.writeOffErr
 	}
 	return m.writeOffRows, m.writeOffTotal, nil
+}
+
+func (m *mockReconciliationRepo) GetTaxLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.InvoiceLedgerMismatch, int, error) {
+	m.gotLimits = append(m.gotLimits, limit)
+	if m.taxErr != nil {
+		return nil, 0, m.taxErr
+	}
+	return m.taxRows, m.taxTotal, nil
 }
 
 func (m *mockReconciliationRepo) GetOrphanLedgerTransactions(ctx context.Context, tenantID uuid.UUID, limit int) ([]db.OrphanLedgerTransaction, int, error) {
@@ -354,6 +366,43 @@ func TestReconciliationMissingInvoiceTransaction(t *testing.T) {
 	}
 	if d.ExpectedAmount != 118000 || d.FoundAmount != 0 {
 		t.Errorf("amounts = (%d, %d), want (118000, 0)", d.ExpectedAmount, d.FoundAmount)
+	}
+}
+
+func TestReconciliationMissingTaxTransaction(t *testing.T) {
+	invoiceID := uuid.New()
+	repo := &mockReconciliationRepo{
+		taxRows:  []db.InvoiceLedgerMismatch{{InvoiceID: invoiceID, Expected: 1800, Found: 0, TxCount: 0}},
+		taxTotal: 1,
+	}
+	svc := NewReconciliationService(repo, nil)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(report.Discrepancies) != 1 || report.Discrepancies[0].Type != DiscrepancyMissingTaxTx {
+		t.Fatalf("expected 1 %s discrepancy, got %+v", DiscrepancyMissingTaxTx, report.Discrepancies)
+	}
+	d := report.Discrepancies[0]
+	if d.InvoiceID == nil || *d.InvoiceID != invoiceID || d.ExpectedAmount != 1800 || d.FoundAmount != 0 {
+		t.Errorf("finding = %+v, want invoice %v tax 1800/0", d, invoiceID)
+	}
+}
+
+func TestReconciliationTaxAmountMismatch(t *testing.T) {
+	repo := &mockReconciliationRepo{
+		taxRows:  []db.InvoiceLedgerMismatch{{InvoiceID: uuid.New(), Expected: 1800, Found: 1500, TxCount: 1}},
+		taxTotal: 1,
+	}
+	svc := NewReconciliationService(repo, nil)
+
+	report, err := svc.Run(context.Background(), uuid.New())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(report.Discrepancies) != 1 || report.Discrepancies[0].Type != DiscrepancyTaxAmountMismatch {
+		t.Fatalf("expected 1 %s discrepancy, got %+v", DiscrepancyTaxAmountMismatch, report.Discrepancies)
 	}
 }
 

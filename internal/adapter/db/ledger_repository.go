@@ -629,6 +629,32 @@ func (r *LedgerRepository) GetPaymentLedgerMismatches(ctx context.Context, tenan
 // otherwise misses (A/R positive is normal-sign) and the close-pack Deferred
 // identity absorbs into AwaitingPayment. expected = total, found = sum of the
 // write-off legs. Mirrors the payment check.
+// GetTaxLedgerMismatches finds non-draft invoices carrying tax whose Output-Tax
+// reclassification leg (code 6, Revenue/Deferred → Tax Payable) is missing or the
+// wrong amount. RecordInvoice posts this leg atomically with the AR leg whenever
+// tax_amount > 0, so the invoice-leg check (code 1) alone can't catch a dropped
+// tax leg — the books still balance per-leg (AR = Revenue gross) while Revenue is
+// overstated and Tax Payable understated. This closes that gap: the Output-Tax
+// legs for an invoice must sum to its tax_amount. Zero-tax invoices (reverse
+// charge, zero-rated exports, US no-nexus) carry no such leg and are excluded.
+func (r *LedgerRepository) GetTaxLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
+	const query = `
+		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total
+		FROM (
+			SELECT i.id, COALESCE(i.tax_amount, 0) AS expected,
+			       COALESCE(SUM(t.amount::bigint), 0) AS found,
+			       COUNT(t.id) AS tx_count
+			FROM invoices i
+			LEFT JOIN ledger_transactions t ON t.reference_id = i.id AND t.code = 6
+			WHERE i.tenant_id = $1 AND i.status <> 'draft' AND COALESCE(i.tax_amount, 0) > 0
+			GROUP BY i.id, i.tax_amount
+		) sub
+		WHERE sub.tx_count = 0 OR sub.found <> sub.expected
+		ORDER BY sub.id
+		LIMIT $2`
+	return r.queryInvoiceMismatches(ctx, query, tenantID, limit)
+}
+
 func (r *LedgerRepository) GetWriteOffLedgerMismatches(ctx context.Context, tenantID uuid.UUID, limit int) ([]InvoiceLedgerMismatch, int, error) {
 	const query = `
 		SELECT sub.id, sub.expected, sub.found, sub.tx_count, COUNT(*) OVER () AS total

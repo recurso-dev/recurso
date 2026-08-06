@@ -279,6 +279,9 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 		h.opRecognize()
 		return "backdate+recognize"
 	case p < 72:
+		if rng.Intn(3) == 0 {
+			return h.opTaxedInvoice(rng)
+		}
 		h.opOneOffInvoice(rng)
 		return "one_off_invoice"
 	case p < 80:
@@ -722,6 +725,42 @@ func (h *invariantHarness) opManualRefund(rng *rand.Rand) string {
 		t.Fatalf("Create manual refund (inv %s): %v", invID, err)
 	}
 	return "manual_refund"
+}
+
+// opTaxedInvoice exercises the Output-Tax ledger leg (code 6) — never posted by
+// the rest of the harness because its tenant is a US seller with 0 tax. A paid
+// one-off invoice carries tax: RecordInvoice posts AR at the gross total (code 1)
+// AND reclassifies the tax out of Revenue into Tax Payable (code 6 = tax_amount).
+// The reconciler must reconcile clean AND (new) verify the tax leg sums to
+// tax_amount. A dropped tax leg leaves Revenue gross and Tax Payable understated
+// with the books still balanced — invisible to every other check.
+func (h *invariantHarness) opTaxedInvoice(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "taxed_invoice_skipped"
+	}
+	t := h.t
+	h.n++
+	s := h.subs[rng.Intn(len(h.subs))]
+
+	net := int64(10000 + rng.Intn(50000))
+	tax := int64(500 + rng.Intn(5000)) // arbitrary positive output tax
+	total := net + tax
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-TAX-%d", h.run, h.n)
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, tax_amount, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$5,$6,$5,'paid',$7,NOW(),NOW())`,
+		invID, h.tenantID, s.customer, net, total, tax, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: s.customer,
+		InvoiceNumber: invNo, Total: total, TaxAmount: tax, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (taxed): %v", err)
+	}
+	if err := h.ledger.RecordPayment(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPayment (taxed): %v", err)
+	}
+	return "taxed_invoice"
 }
 
 // opPaymentReversal exercises the full bank-return → dunning → re-collect cycle
@@ -1226,6 +1265,7 @@ func (h *invariantHarness) assertAuditGrade(label string) {
 			DiscrepancyMissingCreditNoteTx,
 			DiscrepancyMissingCreditApplicationTx, DiscrepancyCreditApplicationAmountMismatch,
 			DiscrepancyMissingWriteOffTx, DiscrepancyWriteOffAmountMismatch,
+			DiscrepancyMissingTaxTx, DiscrepancyTaxAmountMismatch,
 			DiscrepancyCustomerCreditMismatch,
 			DiscrepancyOrphanedTransaction,
 			DiscrepancyRecognizedExceedsInvoice,

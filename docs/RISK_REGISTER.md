@@ -396,9 +396,24 @@ Not yet driven through the harness / dedicated adversarial tests:
 ~~chargebacks / payment reversals~~ (**now covered**, code 19 — see below),
 ~~the entire wallet/prepaid subsystem~~ (**now fully covered** — top-up 11,
 drain 12, refund 13, forfeit 14, expiry 15 — see below), dispute credit issuance
-(reuses the already-covered adjustment credit-note path, R-012), tax (GST/VAT/US
-nexus) edge rounding, importers, multi-tenant isolation under concurrency, RBAC
-on money-out. Pick the highest-financial-impact next.
+(reuses the already-covered adjustment credit-note path, R-012),
+~~the Output-Tax ledger leg~~ (**now covered** — see below), multi-entity primary
+vs non-primary posting (covered — see R-016), tax-rate edge rounding, importers,
+multi-tenant isolation under concurrency, RBAC on money-out (verified intact:
+wallet Close → requireManagerRole; refunds → maker-checker). Pick the
+highest-financial-impact next.
+
+**Output-Tax leg now exercised (`opTaxedInvoice`) + hard-checked
+(`GetTaxLedgerMismatches`):** the harness tenant is a US 0-tax seller, so the
+Revenue → Tax-Payable reclassification leg (code 6) was never posted through the
+reconciler. `opTaxedInvoice` posts a paid one-off invoice carrying tax (AR at gross
++ code-6 tax reclass), and a new reconciler check asserts each non-draft taxed
+invoice's code-6 legs sum to its `tax_amount`. Like R-010 (write-off), a dropped
+tax leg leaves the books balanced (AR = Revenue gross) with Revenue overstated and
+Tax Payable understated — invisible to every other check. **Teeth:** neutering the
+tax leg in `RecordInvoice` → `missing_tax_transaction {Expected:4559 Found:0}` on
+the `taxed_invoice` step; unit tests cover the missing + amount-mismatch cases.
+(PR: reconciler-tax-leg-check)
 
 **Payment reversal / chargeback now exercised (`opPaymentReversal`):** drives the
 real bank-return → dunning → re-collect cycle. A cash-paid one-off invoice is
