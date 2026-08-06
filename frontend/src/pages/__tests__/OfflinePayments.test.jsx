@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import OfflinePayments from "../OfflinePayments";
 import { endpoints } from "../../lib/api";
+import { money } from "@/test/money";
 
 vi.mock("../../lib/api", () => ({
   endpoints: {
@@ -34,7 +35,7 @@ describe("OfflinePayments page", () => {
     });
     render(<OfflinePayments />, { wrapper });
     // $2,500.00
-    await waitFor(() => expect(screen.getByText(/2,500/)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(money("$2,500.00"))).toBeInTheDocument());
   });
 
   it("shows the empty state with no offline payments", async () => {
