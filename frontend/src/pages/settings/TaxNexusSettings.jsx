@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/patterns/PageHeader";
 import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -52,6 +53,7 @@ export default function TaxNexusSettings() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [confirmClearOpen, setConfirmClearOpen] = useState(false);
   const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState(null);
@@ -139,10 +141,10 @@ export default function TaxNexusSettings() {
     };
   }, [liabYear]);
 
-  const save = async () => {
+  const performSave = async (kept) => {
     setSaving(true);
     try {
-      await api.setTaxNexus(rows.filter((r) => r.state_code.trim()), entityId);
+      await api.setTaxNexus(kept, entityId);
       toast.success("Nexus states saved.");
       load();
     } catch (err) {
@@ -150,6 +152,17 @@ export default function TaxNexusSettings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const save = async () => {
+    const kept = rows.filter((r) => r.state_code.trim());
+    // Saving an empty list wipes every declared nexus state — a tax-compliance
+    // change (it stops tax collection in those states). Confirm before clearing.
+    if (kept.length === 0) {
+      setConfirmClearOpen(true);
+      return;
+    }
+    performSave(kept);
   };
 
   const setRow = (i, patch) =>
@@ -466,6 +479,19 @@ export default function TaxNexusSettings() {
           </Button>
         </CardContent>
       </Card>
+
+      <ConfirmDialog
+        open={confirmClearOpen}
+        onOpenChange={setConfirmClearOpen}
+        title="Clear all declared nexus?"
+        description="You haven't declared any states. Saving now removes every declared nexus, so tax will no longer be calculated or collected for them. This is a compliance change — only do it if you truly have no nexus."
+        confirmLabel="Clear all nexus"
+        destructive
+        onConfirm={() => {
+          setConfirmClearOpen(false);
+          performSave([]);
+        }}
+      />
     </div>
   );
 }
