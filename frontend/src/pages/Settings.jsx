@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router";
-import { Save, ShieldCheck, ChevronRight, Receipt, FileCheck2, MapPinned, Globe, Bot, Building2, ArrowDownToLine, CreditCard, Palette } from "lucide-react";
+import { Save } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
@@ -10,7 +9,6 @@ import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
@@ -20,21 +18,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-
-const EU = new Set([
-  "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR",
-  "HU", "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK",
-  "SI", "ES", "SE",
-]);
-// The tax regime an ISO-2 country maps to — mirrors the backend's
-// RegimeForCountry so the hub highlights the setup that matches.
-const regionOf = (cc) => {
-  const c = (cc || "").toUpperCase();
-  if (c === "IN") return "IN";
-  if (c === "US") return "US";
-  if (c === "GB" || EU.has(c)) return "EU";
-  return "other";
-};
 
 export default function Settings() {
   const queryClient = useQueryClient();
@@ -58,7 +41,6 @@ export default function Settings() {
   });
   const primary = entities.find((e) => e.is_primary) || entities[0] || null;
   const businessCountry = primary?.country_code || "";
-  const region = regionOf(businessCountry);
 
   const saveMutation = useMutation({
     mutationFn: (payload) => endpoints.updateAccount(payload),
@@ -94,112 +76,11 @@ export default function Settings() {
     },
   });
 
-  // Each tax setup declares the regions it's relevant to; the hub badges and
-  // floats the ones matching the business region without hiding the rest.
-  // Links carry a group so the hub reads as three short sections instead of
-  // one undifferentiated list.
-  const settingsLinks = [
-    {
-      to: "/security",
-      group: "Account & platform",
-      icon: ShieldCheck,
-      title: "Security",
-      description: "Two-factor authentication and active sessions.",
-    },
-    {
-      to: "/settings/invoice-branding",
-      group: "Billing documents",
-      icon: Palette,
-      title: "Invoice branding",
-      description: "Company name, logo, signature, bank details and terms on your invoices.",
-    },
-    {
-      to: "/settings/gst",
-      group: "Taxes & compliance",
-      icon: Receipt,
-      title: "GST configuration",
-      description: "GSTIN, business details, and tax rates for invoices.",
-      regions: ["IN"],
-    },
-    {
-      to: "/settings/irp",
-      group: "Taxes & compliance",
-      icon: FileCheck2,
-      title: "E-invoicing (IRP)",
-      description: "Connect the Invoice Registration Portal for e-invoices.",
-      regions: ["IN"],
-    },
-    {
-      to: "/settings/eu-einvoice",
-      group: "Taxes & compliance",
-      icon: Globe,
-      title: "EU e-invoicing",
-      description: "EN 16931 (UBL) structured invoices and your seller identity.",
-      regions: ["EU"],
-    },
-    {
-      to: "/settings/tax-nexus",
-      group: "Taxes & compliance",
-      icon: MapPinned,
-      title: "US sales-tax nexus",
-      description: "Declare collection states and monitor economic thresholds.",
-      regions: ["US"],
-    },
-    {
-      to: "/settings/tax-us",
-      group: "Taxes & compliance",
-      icon: Receipt,
-      title: "US tax identity (W-9)",
-      description: "Legal name and EIN shown as the seller on US invoices.",
-      regions: ["US"],
-    },
-    {
-      to: "/settings/mcp",
-      group: "Account & platform",
-      icon: Bot,
-      title: "MCP server",
-      description: "Let AI agents operate your billing, and gate money-path actions.",
-    },
-    {
-      to: "/settings/entities",
-      group: "Billing documents",
-      icon: Building2,
-      title: "Legal entities",
-      description: "Bill under multiple legal entities with per-entity books and invoice series.",
-    },
-    {
-      to: "/settings/import",
-      group: "Account & platform",
-      icon: ArrowDownToLine,
-      title: "Import data",
-      description: "Migrate customers, plans, and subscriptions from Stripe or Chargebee — preview before importing.",
-    },
-    {
-      to: "/settings/billing",
-      group: "Account & platform",
-      icon: CreditCard,
-      title: "Billing & plan",
-      description: "Your managed-cloud plan, trial status, and the options available.",
-    },
-  ];
-  // Float the region-relevant tax setups to the top of their section, keeping
-  // everything else in place. Stable within each group.
-  const relevant = (l) => (region !== "other" && l.regions?.includes(region) ? 0 : 1);
-  const GROUPS = ["Billing documents", "Taxes & compliance", "Account & platform"];
-  const grouped = GROUPS.map((g) => ({
-    group: g,
-    links: settingsLinks
-      .map((l, i) => ({ l, i }))
-      .filter(({ l }) => l.group === g)
-      .sort((a, b) => relevant(a.l) - relevant(b.l) || a.i - b.i)
-      .map(({ l }) => l),
-  }));
-
   return (
     <div>
       <PageHeader
-        title="Settings"
-        description="Your account, billing documents, taxes, and platform configuration."
+        title="General"
+        description="Your company identity and business country. Pick a section on the left for taxes, branding, and platform settings."
       />
 
       <div className="max-w-2xl">
@@ -259,46 +140,6 @@ export default function Settings() {
             </div>
           </CardContent>
         </Card>
-
-        {grouped.map(({ group, links }) => (
-          <div key={group} className="mt-6">
-            <h2 className="mb-2 px-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              {group}
-            </h2>
-            <Card>
-              <CardContent className="divide-y divide-border p-0">
-                {links.map(({ to, icon: Icon, title, description, regions }) => {
-                  const isRelevant = region !== "other" && regions?.includes(region);
-                  return (
-                    <Link
-                      key={to}
-                      to={to}
-                      className="flex items-center justify-between gap-4 px-6 py-4 transition-colors hover:bg-muted/50"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
-                          <Icon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <p className="flex items-center gap-2 text-sm font-medium text-foreground">
-                            {title}
-                            {isRelevant && (
-                              <Badge variant="success" className="text-[10px]">
-                                For your region
-                              </Badge>
-                            )}
-                          </p>
-                          <p className="text-xs text-muted-foreground">{description}</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                    </Link>
-                  );
-                })}
-              </CardContent>
-            </Card>
-          </div>
-        ))}
       </div>
     </div>
   );
