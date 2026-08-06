@@ -78,5 +78,11 @@ describe("PortalDashboard money totals", () => {
     // (118000+5000 minor as USD) or the JPY value mangled by /100.
     expect(screen.queryByText(/\$1,230\.00/)).toBeNull();
     expect(screen.queryByText(/\$50\.00/)).toBeNull();
+
+    // Invoices are identified by their human invoice number, never a
+    // truncated raw UUID ("i1…").
+    expect(await screen.findByText("INV-1")).toBeTruthy();
+    expect(screen.getByText("INV-3")).toBeTruthy();
+    expect(screen.queryByText(/^i1…$/)).toBeNull();
   });
 });
