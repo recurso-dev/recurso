@@ -142,8 +142,18 @@ export default function TrialBalance() {
             )}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <StatCard label="Total debits" value={money(tb.total_debits)} hint="Sum across all accounts" />
-              <StatCard label="Total credits" value={money(tb.total_credits)} hint="Sum across all accounts" />
+              <StatCard
+                label="Total debits"
+                value={money(tb.total_debits)}
+                hint="Sum across all accounts"
+                definition="Sum of every account's debit postings. Under double-entry bookkeeping this must equal total credits — if it doesn't, the books don't balance."
+              />
+              <StatCard
+                label="Total credits"
+                value={money(tb.total_credits)}
+                hint="Sum across all accounts"
+                definition="Sum of every account's credit postings. Must equal total debits — every transaction posts an equal debit and credit."
+              />
               <StatCard
                 label="Status"
                 value={tb.balanced ? "Balanced" : "Unbalanced"}
