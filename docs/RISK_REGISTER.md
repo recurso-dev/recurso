@@ -398,10 +398,23 @@ Not yet driven through the harness / dedicated adversarial tests:
 drain 12, refund 13, forfeit 14, expiry 15 — see below), dispute credit issuance
 (reuses the already-covered adjustment credit-note path, R-012),
 ~~the Output-Tax ledger leg~~ (**now covered** — see below), multi-entity primary
-vs non-primary posting (covered — see R-016), tax-rate edge rounding, importers,
-multi-tenant isolation under concurrency, RBAC on money-out (verified intact:
-wallet Close → requireManagerRole; refunds → maker-checker). Pick the
+vs non-primary posting (covered — see R-016),
+~~recognition-worker concurrency~~ (**now tested** — see below), tax-rate edge
+rounding, importers, other worker-claim concurrency, RBAC on money-out (verified
+intact: wallet Close → requireManagerRole; refunds → maker-checker). Pick the
 highest-financial-impact next.
+
+**Recognition-worker concurrency now tested
+(`TestRevRecService_ProcessDueEvents_ConcurrentClaimsExclusive_Postgres`):** two
+`ProcessDueEvents` loops race the same due events under `-race`; each event must be
+recognized exactly once (else duplicated DR Deferred / CR Recognized fabricates
+revenue and over-drains Deferred). **Finding: recognition is defended IN DEPTH** —
+(1) the atomic claim `UPDATE … SET status='processing' WHERE status='pending'
+RETURNING` (ADR-003) and (2) the ledger's idempotent insert on (reference_id=event
+id, code 2, occurrence). Verified: neutering the claim guard alone does NOT
+double-post — layer 2 backstops it; a regression must defeat both. Other
+claim-based workers already have concurrency tests (dunning, renewal, einvoice,
+cancel-flow, trial-activation); recognition was the gap. (PR: revrec-concurrency-test)
 
 **Output-Tax leg now exercised (`opTaxedInvoice`) + hard-checked
 (`GetTaxLedgerMismatches`):** the harness tenant is a US 0-tax seller, so the
