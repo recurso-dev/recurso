@@ -28,6 +28,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
+import { CodeSample } from "@/components/ui/code-sample";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -140,6 +141,34 @@ function EventDeliveries({ state }) {
     </div>
   );
 }
+
+// Authenticated-request quickstart shown under the API keys tab, in the three
+// languages most teams reach for first. Keys are `rsk_live_`/`rsk_test_` and
+// authenticate via a Bearer header (docs/API_GUIDELINES.md).
+const QUICKSTART_TABS = [
+  {
+    label: "cURL",
+    code: `curl https://api.recurso.dev/v1/customers \\
+  -H "Authorization: Bearer rsk_live_..."`,
+  },
+  {
+    label: "Node",
+    code: `const res = await fetch("https://api.recurso.dev/v1/customers", {
+  headers: { Authorization: "Bearer rsk_live_..." },
+});
+const { data } = await res.json();`,
+  },
+  {
+    label: "Python",
+    code: `import requests
+
+res = requests.get(
+    "https://api.recurso.dev/v1/customers",
+    headers={"Authorization": "Bearer rsk_live_..."},
+)
+data = res.json()["data"]`,
+  },
+];
 
 export default function Developers() {
   const queryClient = useQueryClient();
@@ -496,6 +525,19 @@ export default function Developers() {
               ),
             }}
           />
+
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold text-foreground">Make your first request</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Authenticate with a secret key in the <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">Authorization</code>{" "}
+              header. Every list endpoint returns a <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">data</code> array.
+            </p>
+            <CodeSample
+              className="mt-3"
+              tabs={QUICKSTART_TABS}
+              caption="Replace rsk_live_… with a key from the table above. Base URL: https://api.recurso.dev/v1"
+            />
+          </div>
         </TabsContent>
 
         {/* Webhooks */}
