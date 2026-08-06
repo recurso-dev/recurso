@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import CreditNotes from "../CreditNotes";
+import { money } from "@/test/money";
 import { endpoints } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
@@ -37,7 +38,7 @@ describe("CreditNotes page", () => {
     render(<CreditNotes />, { wrapper });
     await waitFor(() => expect(screen.getByText("CN-001")).toBeInTheDocument());
     expect(screen.getByText("Acme")).toBeInTheDocument();
-    expect(screen.getByText("$50.00")).toBeInTheDocument();
+    expect(screen.getByText(money("$50.00"))).toBeInTheDocument();
   });
 
   it("opens the detail sheet on row click", async () => {

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Plans from "../Plans";
 import { endpoints } from "../../lib/api";
+import { money } from "@/test/money";
 
 vi.mock("../../lib/api", () => ({
   endpoints: { getPlans: vi.fn() },
@@ -44,8 +45,8 @@ describe("Plans page", () => {
     render(<Plans />, { wrapper });
     await waitFor(() => expect(screen.getByText("Pro")).toBeInTheDocument());
     expect(screen.getByText("Enterprise")).toBeInTheDocument();
-    expect(screen.getByText("$49.00")).toBeInTheDocument();
-    expect(screen.getByText("$9,900.00")).toBeInTheDocument();
+    expect(screen.getByText(money("$49.00"))).toBeInTheDocument();
+    expect(screen.getByText(money("$9,900.00"))).toBeInTheDocument();
   });
 
   it("shows the empty state when there are no plans", async () => {

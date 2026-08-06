@@ -8,7 +8,7 @@ import { queryClient } from "@/lib/queryClient";
 import { useDebounce } from "../hooks/useDebounce";
 import BuyGiftModal from "../components/BuyGiftModal";
 import PlanDetail from "../components/slide-overs/PlanDetail";
-import { formatCurrency } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -131,9 +131,7 @@ export default function Plans() {
       align: "right",
       cell: (p) =>
         p.prices && p.prices.length > 0 ? (
-          <span className="tabular-nums text-foreground">
-            {formatCurrency(p.prices[0].amount, p.prices[0].currency)}
-          </span>
+          <Money amountMinor={p.prices[0].amount} currency={p.prices[0].currency} />
         ) : (
           <span className="text-muted-foreground">Free</span>
         ),
