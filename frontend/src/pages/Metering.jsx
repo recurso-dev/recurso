@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Gauge, Trash2, BellRing, Pencil } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -29,10 +30,8 @@ import {
 // Usage-based billing configuration: billable metrics and usage alerts.
 // Plan charges are edited per plan from this page's charge editor.
 const Metering = () => {
-  const [metrics, setMetrics] = useState([]);
-  const [alerts, setAlerts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
+  const [pageError, setPageError] = useState(null); // delete-failure banner
   const [actionError, setActionError] = useState(null);
 
   const [metricOpen, setMetricOpen] = useState(false);
@@ -54,9 +53,7 @@ const Metering = () => {
     threshold_type: "quantity",
     threshold: "",
   });
-  const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting] = useState(false);
 
   // Subscriptions + names label the alert dialog's picker (replaces the old
   // paste-a-UUID input); all three lists come from the shared query cache.
@@ -70,28 +67,33 @@ const Metering = () => {
     return `${cust} — ${plan}`;
   };
 
-  const fetchAll = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // Metrics + alerts load together; one cache entry for the page.
+  const {
+    data: metering,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["metering"],
+    queryFn: async () => {
       const [m, a] = await Promise.all([api.getBillableMetrics(), api.getUsageAlerts()]);
-      setMetrics(m.data.data || []);
-      setAlerts(a.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || err?.message || "Failed to load metering");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return { metrics: m.data.data || [], alerts: a.data.data || [] };
+    },
+  });
+  const metrics = metering?.metrics ?? [];
+  const alerts = metering?.alerts ?? [];
+  // A failed delete surfaces in the same page-level banner as a failed load.
+  const error =
+    (queryError
+      ? queryError?.response?.data?.error?.message ||
+        queryError?.message ||
+        "Failed to load metering"
+      : null) || pageError;
 
-  useEffect(() => {
-    fetchAll();
-  }, []);
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["metering"] });
 
-  const submitMetric = async () => {
-    setActionError(null);
-    setSaving(true);
-    try {
+  const metricMutation = useMutation({
+    mutationFn: () => {
       const body = { ...metricForm };
       // field_name carries the counted property (unique) or the percentile
       // 1-99 (percentile); every other aggregation takes no field_name.
@@ -100,23 +102,25 @@ const Metering = () => {
       // expression is only for the custom aggregation; the API rejects it
       // elsewhere.
       if (body.aggregation_type !== "custom") delete body.expression;
-      if (editingMetric) {
-        await api.updateBillableMetric(editingMetric.id, body);
-      } else {
-        await api.createBillableMetric(body);
-      }
+      return editingMetric
+        ? api.updateBillableMetric(editingMetric.id, body)
+        : api.createBillableMetric(body);
+    },
+    onSuccess: () => {
       setMetricOpen(false);
       setEditingMetric(null);
       setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "", expression: "" });
-      fetchAll();
-    } catch (err) {
+      invalidate();
+    },
+    onError: (err) =>
       setActionError(
         err?.response?.data?.error?.message ||
           (editingMetric ? "Failed to update metric" : "Failed to create metric")
-      );
-    } finally {
-      setSaving(false);
-    }
+      ),
+  });
+  const submitMetric = () => {
+    setActionError(null);
+    metricMutation.mutate();
   };
 
   const startEditMetric = (metric) => {
@@ -132,50 +136,48 @@ const Metering = () => {
     setMetricOpen(true);
   };
 
-  const removeMetric = async () => {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      await api.deleteBillableMetric(deleteTarget.id);
+  const deleteMetricMutation = useMutation({
+    mutationFn: () => api.deleteBillableMetric(deleteTarget.id),
+    onSuccess: () => {
       setDeleteTarget(null);
-      fetchAll();
-    } catch (err) {
+      invalidate();
+    },
+    onError: (err) => {
       setDeleteTarget(null);
-      setError(
+      setPageError(
         err?.response?.data?.error?.message ||
           "Delete failed — the metric may be referenced by a plan charge."
       );
-    } finally {
-      setDeleting(false);
-    }
+    },
+  });
+  const deleting = deleteMetricMutation.isPending;
+  const removeMetric = () => {
+    if (!deleteTarget) return;
+    setPageError(null);
+    deleteMetricMutation.mutate();
   };
 
-  const submitAlert = async () => {
-    setActionError(null);
-    setSaving(true);
-    try {
-      await api.createUsageAlert({
-        ...alertForm,
-        threshold: parseInt(alertForm.threshold, 10),
-      });
+  const alertMutation = useMutation({
+    mutationFn: () =>
+      api.createUsageAlert({ ...alertForm, threshold: parseInt(alertForm.threshold, 10) }),
+    onSuccess: () => {
       setAlertOpen(false);
       setAlertForm({ subscription_id: "", metric_code: "", threshold_type: "quantity", threshold: "" });
-      fetchAll();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to create alert");
-    } finally {
-      setSaving(false);
-    }
+      invalidate();
+    },
+    onError: (err) =>
+      setActionError(err?.response?.data?.error?.message || "Failed to create alert"),
+  });
+  const submitAlert = () => {
+    setActionError(null);
+    alertMutation.mutate();
   };
 
-  const removeAlert = async (alert) => {
-    try {
-      await api.deleteUsageAlert(alert.id);
-      fetchAll();
-    } catch {
-      /* refetch shows state */
-    }
-  };
+  const removeAlertMutation = useMutation({
+    mutationFn: (alert) => api.deleteUsageAlert(alert.id),
+    onSettled: invalidate, // refetch shows state either way
+  });
+  const removeAlert = (alert) => removeAlertMutation.mutate(alert);
 
   const openEditAlert = (alert) => {
     setActionError(null);
@@ -186,22 +188,26 @@ const Metering = () => {
     });
   };
 
-  const submitEditAlert = async () => {
-    setActionError(null);
-    setSaving(true);
-    try {
-      await api.updateUsageAlert(editAlert.id, {
+  const editAlertMutation = useMutation({
+    mutationFn: () =>
+      api.updateUsageAlert(editAlert.id, {
         threshold_type: editAlertForm.threshold_type,
         threshold: parseInt(editAlertForm.threshold, 10),
-      });
+      }),
+    onSuccess: () => {
       setEditAlert(null);
-      fetchAll();
-    } catch (err) {
-      setActionError(err?.response?.data?.error?.message || "Failed to update alert");
-    } finally {
-      setSaving(false);
-    }
+      invalidate();
+    },
+    onError: (err) =>
+      setActionError(err?.response?.data?.error?.message || "Failed to update alert"),
+  });
+  const submitEditAlert = () => {
+    setActionError(null);
+    editAlertMutation.mutate();
   };
+
+  const saving =
+    metricMutation.isPending || alertMutation.isPending || editAlertMutation.isPending;
 
   const metricColumns = [
     {
@@ -287,7 +293,7 @@ const Metering = () => {
         data={metrics}
         loading={loading}
         error={error}
-        onRetry={fetchAll}
+        onRetry={refetch}
         empty={{
           icon: Gauge,
           title: "No billable metrics yet",
