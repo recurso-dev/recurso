@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import InvoiceAging from "../InvoiceAging";
@@ -22,9 +23,11 @@ const report = {
 };
 
 const wrapper = ({ children }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
-    {children}
-  </QueryClientProvider>
+  <MemoryRouter>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+      {children}
+    </QueryClientProvider>
+  </MemoryRouter>
 );
 
 describe("InvoiceAging page", () => {
@@ -37,6 +40,9 @@ describe("InvoiceAging page", () => {
     // $1,500.00 total outstanding
     expect(screen.getByText("$1,500.00")).toBeInTheDocument();
     expect(screen.getByText("1–30 days")).toBeInTheDocument();
+    // Each bucket drills through to the invoices in it.
+    const bucketLink = screen.getByText("1–30 days").closest("a");
+    expect(bucketLink).toHaveAttribute("href", "/invoices?aging=1-30");
   });
 
   it("shows an all-clear empty state when nothing is outstanding", async () => {

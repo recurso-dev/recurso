@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { FileClock } from "lucide-react";
 
@@ -93,7 +94,12 @@ export default function InvoiceAging() {
                 <h2 className="mb-4 text-base font-semibold text-foreground">By age</h2>
                 <div className="flex flex-col gap-3">
                   {buckets.map((b) => (
-                    <div key={b.label} className="flex items-center gap-3">
+                    <Link
+                      key={b.label}
+                      to={`/invoices?aging=${encodeURIComponent(b.label)}`}
+                      title={`Show the ${b.count} invoice${b.count === 1 ? "" : "s"} in this bucket`}
+                      className="flex items-center gap-3 rounded-md -mx-2 px-2 py-1 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
                       <span className="w-24 shrink-0 text-sm text-muted-foreground">
                         {BUCKET_LABELS[b.label] || b.label}
                       </span>
@@ -110,7 +116,7 @@ export default function InvoiceAging() {
                       <span className="w-16 shrink-0 text-right text-xs text-muted-foreground">
                         {b.count} inv
                       </span>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               </Card>

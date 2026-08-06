@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { FileText, Download } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -29,6 +29,30 @@ const matchesStatus = (inv, key) => {
   if (key === "past_due") return inv.status === "past_due" || inv.status === "overdue";
   return inv.status === key;
 };
+
+// AR aging bucket for one invoice — mirrors the backend's aging SQL exactly
+// (GetInvoiceAgingRows): outstanding open/past_due rows, bucketed by how far
+// past due_date they are. Lets the aging report's buckets deep-link here.
+const AGING_LABELS = {
+  current: "Current (not yet due)",
+  "1-30": "Overdue 1–30 days",
+  "31-60": "Overdue 31–60 days",
+  "61-90": "Overdue 61–90 days",
+  "90+": "Overdue 90+ days",
+};
+const agingBucketOf = (inv) => {
+  const due = inv.due_date ? new Date(inv.due_date) : null;
+  if (!due || due >= new Date()) return "current";
+  const days = (Date.now() - due.getTime()) / 86400000;
+  if (days <= 30) return "1-30";
+  if (days <= 60) return "31-60";
+  if (days <= 90) return "61-90";
+  return "90+";
+};
+const matchesAging = (inv, bucket) =>
+  ["open", "past_due", "overdue"].includes(inv.status) &&
+  (inv.total || 0) - (inv.amount_paid || 0) > 0 &&
+  agingBucketOf(inv) === bucket;
 
 function toCSV(rows) {
   if (rows.length === 0) return "";
@@ -85,6 +109,9 @@ const Invoices = () => {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  // ?aging=<bucket> deep-links from the invoice-aging report's buckets.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const agingFilter = AGING_LABELS[searchParams.get("aging")] ? searchParams.get("aging") : null;
   const queryClient = useQueryClient();
 
   // Invoices come from the shared query cache (60s fresh — revisiting the
@@ -126,6 +153,7 @@ const Invoices = () => {
   }, [loading, invoices]);
 
   const filteredInvoices = invoices.filter((inv) => {
+    if (agingFilter && !matchesAging(inv, agingFilter)) return false;
     if (!matchesStatus(inv, statusFilter)) return false;
     if (!search) return true;
     const s = search.toLowerCase();
@@ -240,6 +268,16 @@ const Invoices = () => {
         }}
         toolbar={
           <div className="flex flex-wrap gap-1.5">
+            {agingFilter && (
+              <button
+                type="button"
+                onClick={() => setSearchParams({}, { replace: true })}
+                title="Clear the aging filter"
+                className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                {AGING_LABELS[agingFilter]} ×
+              </button>
+            )}
             {STATUS_FILTERS.map((f) => (
               <button
                 key={f.key}
