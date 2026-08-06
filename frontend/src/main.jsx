@@ -8,6 +8,16 @@ import { AuthProvider } from './auth/AuthProvider'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './lib/queryClient'
 import { Toaster } from '@/components/ui/sonner'
+// Self-hosted fonts (no CDN): Inter for the UI, JetBrains Mono for money/code/IDs
+// — so the ledger's numbers render identically on every OS.
+import '@fontsource/inter/400.css'
+import '@fontsource/inter/500.css'
+import '@fontsource/inter/600.css'
+import '@fontsource/inter/700.css'
+import '@fontsource/inter/800.css'
+import '@fontsource/jetbrains-mono/400.css'
+import '@fontsource/jetbrains-mono/500.css'
+import '@fontsource/jetbrains-mono/600.css'
 import './index.css'
 
 // Error tracking (Sentry): inert unless VITE_SENTRY_DSN is set at build time,

@@ -96,6 +96,9 @@ export default {
       fontFamily: {
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
         display: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        // `font-mono` utility (IDs, code, tokens) uses the self-hosted JetBrains
+        // Mono, matching the .money signature.
+        mono: ["JetBrains Mono", "ui-monospace", "SF Mono", "Menlo", "monospace"],
       },
       borderRadius: {
         lg: "var(--radius)",
