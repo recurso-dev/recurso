@@ -6,7 +6,7 @@ import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent } from "@/components/ui/card";
 
 // AcceptInvite lets a newly-invited teammate set their own password. The invite
@@ -92,9 +92,8 @@ export default function AcceptInvite() {
                   required
                   description="At least 8 characters."
                 >
-                  <Input
+                  <PasswordInput
                     id="password"
-                    type="password"
                     autoComplete="new-password"
                     required
                     value={password}
@@ -103,9 +102,8 @@ export default function AcceptInvite() {
                   />
                 </FormField>
                 <FormField label="Confirm password" htmlFor="confirm" required>
-                  <Input
+                  <PasswordInput
                     id="confirm"
-                    type="password"
                     autoComplete="new-password"
                     required
                     value={confirm}
