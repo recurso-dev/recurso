@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -61,5 +62,47 @@ describe("Developers page — API keys", () => {
     expect(endpoints.revokeKey).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /revoke key/i }));
     await waitFor(() => expect(endpoints.revokeKey).toHaveBeenCalledWith("key_1"));
+  });
+});
+
+// A failed fetch must never look like an empty list — that would tempt an
+// operator to mint a duplicate key or assume their integration is broken.
+describe("Developers page — failed reads surface a retryable error, not an empty list", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // jsdom lacks these; Radix (Tabs/Select) touches them.
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    endpoints.getWebhooks.mockResolvedValue({ data: { data: [] } });
+    endpoints.getEventTypes.mockResolvedValue({ data: { data: [] } });
+    endpoints.getEvents.mockResolvedValue({ data: { data: [] } });
+  });
+
+  it("shows an error (not 'No API keys') when the key list fails", async () => {
+    endpoints.getAPIKeys.mockRejectedValue(new Error("key service down"));
+    render(<Developers />, { wrapper });
+    await waitFor(() => expect(screen.getByText(/key service down/)).toBeInTheDocument());
+    expect(screen.queryByText(/no api keys/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("shows an error (not the empty state) when the webhook list fails", async () => {
+    const user = userEvent.setup();
+    endpoints.getAPIKeys.mockResolvedValue({ data: { data: keys } });
+    endpoints.getWebhooks.mockRejectedValue(new Error("hook service down"));
+    render(<Developers />, { wrapper });
+    await user.click(screen.getByRole("tab", { name: /webhooks/i }));
+    await waitFor(() => expect(screen.getByText(/hook service down/)).toBeInTheDocument());
+    expect(screen.queryByText(/no webhook endpoints configured/i)).not.toBeInTheDocument();
+  });
+
+  it("shows an error (not 'No events yet') when the event log fails", async () => {
+    const user = userEvent.setup();
+    endpoints.getAPIKeys.mockResolvedValue({ data: { data: keys } });
+    endpoints.getEvents.mockRejectedValue(new Error("event service down"));
+    render(<Developers />, { wrapper });
+    await user.click(screen.getByRole("tab", { name: /event logs/i }));
+    await waitFor(() => expect(screen.getByText(/event service down/)).toBeInTheDocument());
+    expect(screen.queryByText(/no events yet/i)).not.toBeInTheDocument();
   });
 });

@@ -22,6 +22,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -158,23 +159,49 @@ export default function Developers() {
   const [deliveriesSheet, setDeliveriesSheet] = useState(null); // the webhook endpoint, or null
   const [endpointStatusFilter, setEndpointStatusFilter] = useState("all");
 
-  // Reads (errors leave the list empty, matching the prior console-only behavior).
-  const { data: keys = [], isLoading: loading } = useQuery({
+  // Reads. A failed fetch must never render as an empty list — an operator who
+  // sees "No API keys" when the call actually failed may mint a duplicate key
+  // or assume their integration is broken. Surface a retryable error instead.
+  const {
+    data: keys = [],
+    isLoading: loading,
+    isError: keysIsError,
+    error: keysErr,
+    refetch: refetchKeys,
+  } = useQuery({
     queryKey: ["api-keys"],
     queryFn: async () => (await endpoints.getAPIKeys()).data.data || [],
   });
-  const { data: webhooks = [] } = useQuery({
+  const keysError = keysIsError
+    ? keysErr?.response?.data?.error?.message || keysErr?.message || "Failed to load API keys"
+    : null;
+  const {
+    data: webhooks = [],
+    isError: webhooksIsError,
+    error: webhooksErr,
+    refetch: refetchWebhooks,
+  } = useQuery({
     queryKey: ["webhooks"],
     queryFn: async () => (await endpoints.getWebhooks()).data.data || [],
   });
+  const webhooksError = webhooksIsError
+    ? webhooksErr?.response?.data?.error?.message ||
+      webhooksErr?.message ||
+      "Failed to load webhook endpoints"
+    : null;
   const {
     data: events = [],
     isLoading: eventsLoading,
+    isError: eventsIsError,
+    error: eventsErr,
     refetch: refetchEvents,
   } = useQuery({
     queryKey: ["events", { limit: 50 }],
     queryFn: async () => (await endpoints.getEvents({ limit: 50 })).data.data || [],
   });
+  const eventsError = eventsIsError
+    ? eventsErr?.response?.data?.error?.message || eventsErr?.message || "Failed to load events"
+    : null;
   const { data: eventTypes = [] } = useQuery({
     queryKey: ["event-types"],
     queryFn: async () => (await endpoints.getEventTypes()).data.data || [],
@@ -456,6 +483,8 @@ export default function Developers() {
             columns={keyColumns}
             data={keys}
             loading={loading}
+            error={keysError}
+            onRetry={refetchKeys}
             empty={{
               title: "No API keys found",
               description: "Generate one to start authenticating your API requests.",
@@ -471,7 +500,15 @@ export default function Developers() {
 
         {/* Webhooks */}
         <TabsContent value="webhooks" className="mt-6">
-          {webhooks.length === 0 ? (
+          {webhooksError ? (
+            <Card>
+              <ErrorState
+                title="Couldn't load webhook endpoints"
+                message={webhooksError}
+                onRetry={refetchWebhooks}
+              />
+            </Card>
+          ) : webhooks.length === 0 ? (
             <Card>
               <EmptyState
                 icon={Webhook}
@@ -586,7 +623,13 @@ export default function Developers() {
           </div>
 
           <Card className="overflow-hidden">
-            {eventsLoading ? (
+            {eventsError ? (
+              <ErrorState
+                title="Couldn't load events"
+                message={eventsError}
+                onRetry={refetchEvents}
+              />
+            ) : eventsLoading ? (
               <div className="py-12 text-center text-sm text-muted-foreground">
                 Loading events...
               </div>
