@@ -6,6 +6,7 @@ import { BookOpen } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
 import { formatCurrency } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -200,9 +201,7 @@ export default function Ledger() {
       header: "Amount",
       align: "right",
       cell: (e) => (
-        <span className="font-medium tabular-nums text-foreground">
-          {formatCurrency(e.amount, selectedAccount?.currency)}
-        </span>
+        <Money amountMinor={e.amount} currency={selectedAccount?.currency} className="font-medium" />
       ),
     },
   ];

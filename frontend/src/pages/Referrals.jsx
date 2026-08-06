@@ -6,6 +6,7 @@ import { Plus, Users, DollarSign, Clock, Share2 } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency, formatDate, toMinorUnits } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -125,11 +126,8 @@ function Referrals() {
     {
       key: "reward",
       header: "Reward",
-      cell: (r) => (
-        <span className="tabular-nums text-foreground">
-          {formatCurrency(r.reward_amount, r.currency || "USD")}
-        </span>
-      ),
+      align: "right",
+      cell: (r) => <Money amountMinor={r.reward_amount} currency={r.currency || "USD"} />,
     },
     {
       key: "created",
