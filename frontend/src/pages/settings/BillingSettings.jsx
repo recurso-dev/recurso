@@ -3,6 +3,7 @@ import { Check, Clock, CreditCard, Loader2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
@@ -77,21 +78,35 @@ export default function BillingSettings() {
   const [status, setStatus] = useState(null);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
     Promise.allSettled([endpoints.getBillingStatus(), endpoints.getBillingPlans()]).then(
       ([s, p]) => {
         if (!active) return;
         if (s.status === "fulfilled") setStatus(s.value.data || null);
         if (p.status === "fulfilled") setPlans(p.value.data?.plans || []);
+        // The plans catalog is the load-bearing content; billing status is
+        // supplementary (it's legitimately absent on self-host). Only surface a
+        // retryable error when the catalog itself failed — a status-only failure
+        // degrades gracefully (the trial pill just doesn't render).
+        if (p.status === "rejected") {
+          setError(
+            p.reason?.response?.data?.error?.message ||
+              "We couldn't load the available plans."
+          );
+        }
         setLoading(false);
       }
     );
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   return (
     <div className="space-y-6">
@@ -105,6 +120,12 @@ export default function BillingSettings() {
           <Loader2 className="h-4 w-4 animate-spin" />
           Loading your billing status…
         </div>
+      ) : error ? (
+        <ErrorState
+          title="Couldn't load billing"
+          message={error}
+          onRetry={() => setReloadKey((k) => k + 1)}
+        />
       ) : (
         <>
           <CurrentPlan status={status} />
