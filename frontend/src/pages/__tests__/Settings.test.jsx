@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -36,47 +36,26 @@ const primary = (country) => ({
   },
 });
 
-describe("Settings — region-aware tax setup", () => {
+describe("Settings — General section", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     endpoints.getAccount.mockResolvedValue({ data: { data: { name: "Acme", email: "a@b.co" } } });
-  });
-
-  it("badges the US sales-tax setup for a US business", async () => {
     endpoints.getEntities.mockResolvedValue(primary("US"));
-    render(<Settings />, { wrapper });
+  });
 
-    // The business-country control is present.
+  it("renders the company identity form with the business-country control", async () => {
+    render(<Settings />, { wrapper });
     expect(await screen.findByText("Business country")).toBeInTheDocument();
-
-    // The US-region setups (sales-tax nexus + W-9 identity) are badged.
-    await waitFor(() => expect(screen.getAllByText("For your region")).toHaveLength(2));
-    const badgedTitles = screen
-      .getAllByText("For your region")
-      .map((b) => b.closest("a").textContent);
-    expect(badgedTitles.some((t) => t.includes("US sales-tax nexus"))).toBe(true);
-    expect(badgedTitles.some((t) => t.includes("US tax identity"))).toBe(true);
-    // GST is present but not badged for a US seller.
-    expect(screen.getByText("GST configuration").closest("a")).not.toHaveTextContent("For your region");
+    expect(screen.getByLabelText("Company name")).toBeInTheDocument();
+    expect(screen.getByLabelText("Support email")).toBeInTheDocument();
+    // The section-navigation cards moved to the persistent SettingsLayout nav.
+    expect(screen.queryByText(/For your region/)).not.toBeInTheDocument();
   });
 
-  it("badges GST + IRP for an India business", async () => {
-    endpoints.getEntities.mockResolvedValue(primary("IN"));
+  it("hydrates the account fields from the API", async () => {
     render(<Settings />, { wrapper });
-
-    await waitFor(() => expect(screen.getAllByText("For your region")).toHaveLength(2));
-    const badgedTitles = screen
-      .getAllByText("For your region")
-      .map((b) => b.closest("a").textContent);
-    expect(badgedTitles.some((t) => t.includes("GST configuration"))).toBe(true);
-    expect(badgedTitles.some((t) => t.includes("E-invoicing (IRP)"))).toBe(true);
-  });
-
-  it("badges nothing when the business country is unset", async () => {
-    endpoints.getEntities.mockResolvedValue(primary(""));
-    render(<Settings />, { wrapper });
-
     await screen.findByText("Business country");
-    expect(screen.queryByText("For your region")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Company name")).toHaveValue("Acme");
+    expect(screen.getByLabelText("Support email")).toHaveValue("a@b.co");
   });
 });

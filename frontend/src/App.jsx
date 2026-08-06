@@ -50,6 +50,7 @@ const Ledger = lazy(() => import('./pages/Ledger'))
 const CreditNotes = lazy(() => import('./pages/CreditNotes'))
 const CreateCreditNote = lazy(() => import('./pages/CreateCreditNote'))
 const Settings = lazy(() => import('./pages/Settings'))
+const SettingsLayout = lazy(() => import('./components/settings/SettingsLayout'))
 const Team = lazy(() => import('./pages/Team'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const Profile = lazy(() => import('./pages/Profile'))
@@ -184,7 +185,20 @@ function App() {
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/quotes/:id/edit" element={<CreateQuote />} />
-                            <Route path="/settings" element={<Settings />} />
+                            <Route path="/settings" element={<SettingsLayout />}>
+                              <Route index element={<Settings />} />
+                              <Route path="irp" element={<IRPSettings />} />
+                              <Route path="eu-einvoice" element={<EUEInvoiceSettings />} />
+                              <Route path="gst" element={<GSTSettings />} />
+                              <Route path="tax-nexus" element={<TaxNexusSettings />} />
+                              <Route path="tax-us" element={<USTaxSettings />} />
+                              <Route path="invoice-branding" element={<InvoiceBranding />} />
+                              <Route path="mcp" element={<MCPSettings />} />
+                              <Route path="entities" element={<EntitiesSettings />} />
+                              <Route path="import" element={<ImportData />} />
+                              <Route path="import-stripe" element={<Navigate to="/settings/import" replace />} />
+                              <Route path="billing" element={<BillingSettings />} />
+                            </Route>
                             <Route path="/security" element={<Security />} />
                             <Route path="/team" element={<Team />} />
                             <Route path="/notifications" element={<Notifications />} />
@@ -199,17 +213,6 @@ function App() {
                             <Route path="/mandates" element={<Mandates />} />
                             <Route path="/disputes" element={<Disputes />} />
                             <Route path="/payments/offline" element={<OfflinePayments />} />
-                            <Route path="/settings/irp" element={<IRPSettings />} />
-                            <Route path="/settings/eu-einvoice" element={<EUEInvoiceSettings />} />
-                            <Route path="/settings/gst" element={<GSTSettings />} />
-                            <Route path="/settings/tax-nexus" element={<TaxNexusSettings />} />
-                            <Route path="/settings/tax-us" element={<USTaxSettings />} />
-                            <Route path="/settings/invoice-branding" element={<InvoiceBranding />} />
-                            <Route path="/settings/mcp" element={<MCPSettings />} />
-                            <Route path="/settings/entities" element={<EntitiesSettings />} />
-                            <Route path="/settings/import" element={<ImportData />} />
-                            <Route path="/settings/import-stripe" element={<Navigate to="/settings/import" replace />} />
-                            <Route path="/settings/billing" element={<BillingSettings />} />
                             <Route path="/organizations" element={<Organizations />} />
                             <Route path="/finance/gst-returns" element={<GSTReturns />} />
                             <Route path="/ask" element={<AskAnalytics />} />
