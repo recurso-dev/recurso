@@ -17,7 +17,7 @@ import {
 
 import { API_ROOT as API_BASE, portalCsrfHeader } from "../../lib/api";
 import PortalPaymentMethod from "./PortalPaymentMethod";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatCurrency, formatDate, shortId } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -435,7 +435,7 @@ const PortalDashboard = () => {
                     return (
                       <TableRow key={invoice.id} className="hover:bg-muted/40">
                         <TableCell className="pl-6 font-medium text-foreground">
-                          {invoice.id ? `${invoice.id.substring(0, 8)}…` : "—"}
+                          {invoice.invoice_number || (invoice.id ? shortId(invoice.id) : "—")}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
                           {formatDate(invoice.created_at)}
@@ -523,10 +523,9 @@ const PortalDashboard = () => {
               <DialogTitle>Query this invoice</DialogTitle>
               <DialogDescription>
                 {disputeInvoice
-                  ? `Raise a query or dispute on invoice ${disputeInvoice.id?.substring(
-                      0,
-                      8,
-                    )}…. Our team will review and get back to you.`
+                  ? `Raise a query or dispute on invoice ${
+                      disputeInvoice.invoice_number || shortId(disputeInvoice.id)
+                    }. Our team will review and get back to you.`
                   : ""}
               </DialogDescription>
             </DialogHeader>
