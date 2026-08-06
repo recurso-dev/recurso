@@ -56,6 +56,9 @@ describe('Dashboard (redesign)', () => {
         expect(screen.getByText('Active Subscriptions')).toBeInTheDocument();
         expect(screen.getByText('Churn')).toBeInTheDocument();
         expect(screen.getByText('Recovered Revenue')).toBeInTheDocument();
+        // Ambiguous metrics carry a plain-language definition (native title on
+        // these linked tiles).
+        expect(screen.getByText('Churn')).toHaveAttribute('title', expect.stringContaining('not revenue-weighted'));
     });
 
     it('shows formatted MRR, active subs and churn from the API', async () => {
