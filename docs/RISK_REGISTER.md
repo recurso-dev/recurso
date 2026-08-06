@@ -103,6 +103,35 @@ evidence, not just argument.
    "line" to mask — the per-ENTITY aggregation is the only live masking axis and is
    tracked as R-015 below.
 
+### R-016 — Primary ledger postings could route to a non-primary entity's account · High · CLOSED (2026-08-06)
+**Found by the R-015 multi-entity harness.** `getOrCreateTenantAccount` — the
+PRIMARY posting path (every nil-entity invoice/payment/recognition) — resolved its
+account via `GetAccountByTenantAndCode`, whose query was
+`WHERE tenant_id=$1 AND code=$2` with **no entity/ledger filter and no ORDER BY**.
+In a Multi-Entity Books tenant there is one account per code PER ENTITY, so this
+unordered lookup could return a NON-primary entity's account — routing a primary
+invoice's Revenue/Deferred onto the wrong entity's ledger. The books still balance
+globally (double-entry), and no per-invoice check notices, so it is invisible to
+everything except a per-entity view: **per-entity P&L / Deferred is silently
+wrong** — the exact guarantee Multi-Entity Books exists to provide.
+
+Surfaced when the invariant harness's `opEntity2Subscription` (a second entity)
+combined with the RNG shift from new ops drove seed 7 into a state where a primary
+subscription's Deferred landed on the second entity's ledger (primary Deferred 0,
+second-entity Deferred in excess) — caught by the R-015 per-entity
+`deferred_below_scheduled` check (which the aggregate would have masked).
+
+**Fix:** `GetAccountByTenantAndCode` now filters `AND entity_id IS NULL ORDER BY
+ledger_id LIMIT 1` — the tenant/primary account is the entity-less one on ledger 1.
+Its sole caller is the primary path, which always wants that account; single-entity
+tenants are unaffected.
+
+**Teeth:** `TestLedger_PrimaryPostingRoutedToPrimaryLedger_Postgres` funds a second
+entity's Deferred FIRST (so the only code-2100 account is non-primary), then posts
+a primary subscription invoice. With the bug the primary's 40000 lands on the
+second entity's ledger (primary 0 / entity2 130000); the fix routes it correctly
+(primary 40000 / entity2 90000). (PR: ledger-primary-account-routing)
+
 ### R-015 — `deferred_below_scheduled` aggregated across entities → per-entity shortfall masked · Medium · CLOSED (2026-08-05)
 **FIXED.** The check is now evaluated per entity: `SumPendingRecognitionEvents`
 was replaced by `SumPendingRecognitionEventsByEntity` (`… JOIN revenue_schedules
