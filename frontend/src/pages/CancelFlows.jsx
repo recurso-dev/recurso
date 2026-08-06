@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, HeartHandshake, Settings2 } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
@@ -23,48 +24,48 @@ import {
 import CancelFlowDetail from "@/components/slide-overs/CancelFlowDetail";
 
 const CancelFlows = () => {
-  const [flows, setFlows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", is_default: false, cooldown_days: 30 });
-  const [creating, setCreating] = useState(false);
   const [detailId, setDetailId] = useState(null);
 
-  const fetchFlows = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  const {
+    data: flows = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["cancel-flows"],
+    queryFn: async () => {
       const res = await api.getCancelFlows();
-      setFlows(Array.isArray(res.data) ? res.data : res.data?.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load cancel flows");
-    } finally {
-      setLoading(false);
-    }
-  };
+      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+    },
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || "Failed to load cancel flows"
+    : null;
 
-  useEffect(() => {
-    fetchFlows();
-  }, []);
+  const invalidateFlows = () => queryClient.invalidateQueries({ queryKey: ["cancel-flows"] });
 
-  const submitCreate = async () => {
-    if (!createForm.name.trim()) return;
-    setCreating(true);
-    try {
-      const res = await api.createCancelFlow({
-        ...createForm,
-        cooldown_days: Number(createForm.cooldown_days) || 30,
-      });
+  const createMutation = useMutation({
+    mutationFn: (payload) => api.createCancelFlow(payload),
+    onSuccess: (res) => {
       setCreateOpen(false);
       setCreateForm({ name: "", is_default: false, cooldown_days: 30 });
-      await fetchFlows();
+      invalidateFlows();
       if (res.data?.id) setDetailId(res.data.id);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to create flow");
-    } finally {
-      setCreating(false);
-    }
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to create flow"),
+  });
+  const creating = createMutation.isPending;
+
+  const submitCreate = () => {
+    if (!createForm.name.trim()) return;
+    createMutation.mutate({
+      ...createForm,
+      cooldown_days: Number(createForm.cooldown_days) || 30,
+    });
   };
 
   const createButton = (
@@ -85,7 +86,7 @@ const CancelFlows = () => {
       {loading ? (
         <CardGridSkeleton count={3} />
       ) : error ? (
-        <ErrorState message={error} onRetry={fetchFlows} />
+        <ErrorState message={error} onRetry={refetch} />
       ) : flows.length === 0 ? (
         <EmptyState
           icon={HeartHandshake}
@@ -174,7 +175,7 @@ const CancelFlows = () => {
         flowId={detailId}
         isOpen={!!detailId}
         onClose={() => setDetailId(null)}
-        onChanged={fetchFlows}
+        onChanged={invalidateFlows}
       />
     </div>
   );

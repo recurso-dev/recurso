@@ -1,10 +1,22 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Churn from "../Churn";
 import { endpoints as api } from "../../lib/api";
 
-const renderChurn = () => render(<Churn />, { wrapper: ({ children }) => <MemoryRouter>{children}</MemoryRouter> });
+const renderChurn = () =>
+  render(<Churn />, {
+    wrapper: ({ children }) => (
+      <MemoryRouter>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+        >
+          {children}
+        </QueryClientProvider>
+      </MemoryRouter>
+    ),
+  });
 
 vi.mock("../../lib/api", () => ({
   endpoints: {
@@ -19,6 +31,7 @@ vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.
 describe("Churn page", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.getCustomers.mockResolvedValue({ data: { data: [] } });
     api.getHighRiskCustomers.mockResolvedValue({
       data: { data: [{ customer_id: "cus_1", score: 82, risk_level: "high", model_version: "v2" }] },
     });
