@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Mandates from "../Mandates";
 import { endpoints } from "../../lib/api";
+import { money } from "@/test/money";
 
 vi.mock("../../lib/api", () => ({
   endpoints: {
@@ -49,7 +50,7 @@ describe("Mandates page", () => {
     render(<Mandates />, { wrapper });
     await waitFor(() => expect(screen.getByText("user@upi")).toBeInTheDocument());
     // 500000 paise = ₹5,000.00
-    expect(screen.getByText(/5,000/)).toBeInTheDocument();
+    expect(screen.getByText(money("₹5,000.00"))).toBeInTheDocument();
   });
 
   it("revokes only after confirmation", async () => {

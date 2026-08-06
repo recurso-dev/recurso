@@ -5,7 +5,8 @@ import { Plus, Receipt } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import CreditNoteDetail from "../components/slide-overs/CreditNoteDetail";
-import { formatCurrency, formatDate } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -76,21 +77,13 @@ const CreditNotes = () => {
       key: "amount",
       header: "Amount",
       align: "right",
-      cell: (cn) => (
-        <span className="tabular-nums font-medium text-foreground">
-          {formatCurrency(cn.amount, cn.currency)}
-        </span>
-      ),
+      cell: (cn) => <Money amountMinor={cn.amount} currency={cn.currency} />,
     },
     {
       key: "balance",
       header: "Balance",
       align: "right",
-      cell: (cn) => (
-        <span className="tabular-nums text-muted-foreground">
-          {formatCurrency(cn.balance, cn.currency)}
-        </span>
-      ),
+      cell: (cn) => <Money amountMinor={cn.balance} currency={cn.currency} className="text-muted-foreground" />,
     },
     {
       key: "status",

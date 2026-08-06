@@ -6,7 +6,8 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
-import { formatCurrency, toMinorUnits, formatDate } from "@/lib/utils";
+import { toMinorUnits, formatDate } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -168,11 +169,7 @@ const Mandates = () => {
       key: "max",
       header: "Max / cycle",
       align: "right",
-      cell: (m) => (
-        <span className="tabular-nums font-medium">
-          {formatCurrency(m.max_amount, m.currency || "INR")}
-        </span>
-      ),
+      cell: (m) => <Money amountMinor={m.max_amount} currency={m.currency || "INR"} />,
     },
     { key: "frequency", header: "Frequency", cell: (m) => <span className="capitalize">{m.frequency}</span> },
     {
