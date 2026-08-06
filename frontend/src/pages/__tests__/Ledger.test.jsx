@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -25,6 +25,7 @@ const ENTRIES = [
     id: "txn-1",
     timestamp: "2026-08-01T00:00:00Z",
     amount: 12500,
+    code: 1, // invoice raised → reference_id is an invoice
     // Debit: a per-customer AR sub-account, named via the entry's own fields.
     debit_account_id: "cust-1",
     debit_account_name: "Accounts Receivable",
@@ -70,5 +71,19 @@ describe("Ledger — account naming", () => {
     // No raw truncated account UUID leaks into the row.
     expect(screen.queryByText(/^cust-1…$/)).toBeNull();
     expect(screen.queryByText(/^acc-rev…$/)).toBeNull();
+  });
+
+  it("drills from an invoice-referencing entry to that invoice", async () => {
+    render(wrap(<Ledger />));
+    await waitFor(() =>
+      expect(screen.getByText("Accounts Receivable — Acme Inc (1100)")).toBeInTheDocument()
+    );
+
+    // Open the entry's detail sheet (code 1 = invoice raised → reference is
+    // an invoice, so it links through to the Invoices page).
+    fireEvent.click(screen.getByText("Accounts Receivable — Acme Inc (1100)"));
+    const refLink = await screen.findByRole("link", { name: "inv-1" });
+    expect(refLink).toHaveAttribute("href", "/invoices");
+    expect(screen.getByText("Reference (invoice)")).toBeInTheDocument();
   });
 });

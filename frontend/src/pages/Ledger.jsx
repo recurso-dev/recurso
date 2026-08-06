@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen } from "lucide-react";
 
@@ -58,6 +58,22 @@ const CODE_LABEL = {
   27: "Bad debt recovery",
 };
 const codeLabel = (c) => CODE_LABEL[c] || `Code ${c}`;
+
+// What a transaction's reference_id points at, derived from its code (each
+// posting site in service/ledger.go stamps one reference kind per code).
+// Invoice references drill through to the invoice; the rest are labeled
+// honestly rather than the old ambiguous "invoice / payment".
+const REF_KIND = {
+  1: "invoice", 3: "invoice", 6: "invoice", 10: "invoice", 12: "invoice",
+  19: "invoice", 22: "invoice", 23: "invoice", 24: "invoice", 25: "invoice",
+  26: "invoice", 27: "invoice",
+  4: "credit note", 5: "credit note", 9: "credit note", 16: "credit note",
+  17: "credit note", 18: "credit note", 20: "credit note", 21: "credit note",
+  2: "recognition entry",
+  11: "wallet transaction", 13: "wallet transaction", 14: "wallet transaction",
+  15: "wallet transaction",
+};
+const refKind = (c) => REF_KIND[c] || "source record";
 
 const fmtWhen = (x) =>
   x ? new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
@@ -369,8 +385,22 @@ export default function Ledger() {
                   </div>
                   {selectedEntry.reference_id && (
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Reference (invoice / payment)</dt>
-                      <dd className="mt-0.5 font-mono text-xs text-foreground">{selectedEntry.reference_id}</dd>
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Reference ({refKind(selectedEntry.code)})
+                      </dt>
+                      <dd className="mt-0.5 font-mono text-xs text-foreground">
+                        {refKind(selectedEntry.code) === "invoice" ? (
+                          <Link
+                            to="/invoices"
+                            state={{ openInvoiceId: selectedEntry.reference_id }}
+                            className="text-primary underline-offset-2 hover:underline"
+                          >
+                            {selectedEntry.reference_id}
+                          </Link>
+                        ) : (
+                          selectedEntry.reference_id
+                        )}
+                      </dd>
                     </div>
                   )}
                   <div>
