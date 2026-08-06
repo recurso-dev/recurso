@@ -416,6 +416,17 @@ double-post — layer 2 backstops it; a regression must defeat both. Other
 claim-based workers already have concurrency tests (dunning, renewal, einvoice,
 cancel-flow, trial-activation); recognition was the gap. (PR: revrec-concurrency-test)
 
+**Dunning-retry-worker concurrency now tested
+(`TestClaimDueForRetry_ConcurrentClaimsDisjoint_Postgres`):** the retry claim
+re-collects (CHARGES) invoices, so a double-claim double-charges the customer.
+Several `ClaimDueForRetry` workers race behind a start barrier under `-race`;
+claims must be DISJOINT and cover every eligible invoice once. **Finding: the
+exclusivity mechanism is the `next_retry_at` LEASE, not `FOR UPDATE SKIP LOCKED`**
+— under READ COMMITTED a concurrent claimer's EvalPlanQual re-check sees the leased
+row as no-longer-due and drops it; SKIP LOCKED is only a non-blocking optimization.
+Verified: removing SKIP LOCKED keeps claims disjoint, while removing the lease bump
+makes the test fail reliably (double-claim). (PR: retry-claim-concurrency-test)
+
 **Output-Tax leg now exercised (`opTaxedInvoice`) + hard-checked
 (`GetTaxLedgerMismatches`):** the harness tenant is a US 0-tax seller, so the
 Revenue → Tax-Payable reclassification leg (code 6) was never posted through the
