@@ -459,6 +459,14 @@ func (r *LedgerRepository) GetCreditNoteLedgerMismatches(ctx context.Context, te
 			LEFT JOIN ledger_transactions t ON t.reference_id = cn.id
 			WHERE cn.tenant_id = $1
 			  AND cn.status IN ('issued', 'used', 'expired')
+			  -- Refund notes where NO money moved carry no ledger leg by design and
+			  -- must not be flagged: 'manual_required' (invoice had no gateway payment
+			  -- id, so no API refund was attempted) and 'refund_failed' (the gateway
+			  -- declined). These are workflow to-dos, not books discrepancies — the
+			  -- refund is not yet a financial event. Adjustment credits (refund_status
+			  -- 'none') and completed refunds ('processed'/'pending', which DO post the
+			  -- DR Refunds / CR Cash leg) stay checked.
+			  AND cn.refund_status NOT IN ('manual_required', 'refund_failed')
 			GROUP BY cn.id
 		) sub
 		WHERE sub.tx_count = 0

@@ -294,7 +294,10 @@ func (h *invariantHarness) randomOp(rng *rand.Rand) string {
 	case p < 94:
 		return h.opExpireCredit(rng)
 	case p < 95:
-		return h.opRefund(rng)
+		if rng.Intn(2) == 0 {
+			return h.opRefund(rng)
+		}
+		return h.opManualRefund(rng)
 	case p < 96:
 		return h.opPaymentReversal(rng)
 	case p < 97:
@@ -670,6 +673,55 @@ func (h *invariantHarness) opEntity2Subscription(rng *rand.Rand) string {
 		VALUES ($1,$2,$3,$4, NOW() + INTERVAL '1 month', 'pending', NOW())`,
 		uuid.New(), schedID, h.tenantID, total)
 	return "entity2_subscription"
+}
+
+// opManualRefund exercises the MANUAL refund path (R-013): a refund on an invoice
+// with NO gateway payment id (offline / pre-tracking payment) cannot be sent to a
+// gateway, so CreditNoteService.Create issues the note with refund_status
+// 'manual_required' and posts NO ledger leg — no money has moved yet. The
+// reconciler's credit-note leg check must NOT flag such a note: it is a workflow
+// to-do, not a books discrepancy (the refund is not yet a financial event). This
+// op both covers the manual path and, with the exclusion reverted, is the teeth
+// for the fix (the issued no-leg note would otherwise trip
+// missing_credit_note_transaction).
+func (h *invariantHarness) opManualRefund(rng *rand.Rand) string {
+	if len(h.subs) == 0 {
+		return "manual_refund_skipped"
+	}
+	t := h.t
+	h.n++
+	s := h.subs[rng.Intn(len(h.subs))]
+
+	// A PAID one-off invoice with NO gateway_payment_id → the refund is manual.
+	invID := uuid.New()
+	invNo := fmt.Sprintf("INV-%s-MR-%d", h.run, h.n)
+	total := int64(6000 + rng.Intn(30000))
+	mustExec(t, h.conn, `INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, status, invoice_number, created_at, due_date)
+		VALUES ($1,$2,$3,'USD',$4,$4,$4,'paid',$5,NOW(),NOW())`,
+		invID, h.tenantID, s.customer, total, invNo)
+	inv := &domain.Invoice{
+		ID: invID, TenantID: h.tenantID, CustomerID: s.customer,
+		InvoiceNumber: invNo, Total: total, Currency: "USD",
+	}
+	if err := h.ledger.RecordInvoice(h.ctx, inv); err != nil {
+		t.Fatalf("RecordInvoice (manual refund): %v", err)
+	}
+	if err := h.ledger.RecordPayment(h.ctx, inv); err != nil {
+		t.Fatalf("RecordPayment (manual refund): %v", err)
+	}
+
+	amount := int64(1000 + rng.Intn(int(total/2)))
+	if _, err := h.creditSvc.Create(h.tctx, h.tenantID, uuid.Nil, "", domain.CreateCreditNoteRequest{
+		CustomerID: s.customer,
+		InvoiceID:  &invID,
+		Amount:     amount,
+		Currency:   "USD",
+		Type:       string(domain.CreditNoteTypeRefund),
+		Reason:     "harness manual refund",
+	}); err != nil {
+		t.Fatalf("Create manual refund (inv %s): %v", invID, err)
+	}
+	return "manual_refund"
 }
 
 // opPaymentReversal exercises the full bank-return → dunning → re-collect cycle
