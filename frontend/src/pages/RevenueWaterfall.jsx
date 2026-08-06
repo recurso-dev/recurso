@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Link } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart } from "@tremor/react";
 import { TrendingUp } from "lucide-react";
@@ -95,7 +96,20 @@ export default function RevenueWaterfall() {
     <div>
       <PageHeader
         title="Revenue Waterfall"
-        description="The recognition curve — revenue already recognized and revenue still scheduled — plus the deferred-revenue rollforward for a chosen month."
+        description={
+          <>
+            The recognition curve — revenue already recognized and revenue still scheduled — plus
+            the deferred-revenue rollforward for a chosen month. For one month&apos;s close detail
+            and its ledger postings, see{" "}
+            <Link
+              to="/finance/revenue-recognition"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Revenue Recognition
+            </Link>
+            .
+          </>
+        }
         actions={
           <div className="flex items-center gap-2">
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>

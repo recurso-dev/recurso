@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import RevenueWaterfall from "../RevenueWaterfall";
@@ -12,9 +13,11 @@ vi.mock("../../lib/api", () => ({
 }));
 
 const wrapper = ({ children }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
-    {children}
-  </QueryClientProvider>
+  <MemoryRouter>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+      {children}
+    </QueryClientProvider>
+  </MemoryRouter>
 );
 
 describe("RevenueWaterfall page", () => {
