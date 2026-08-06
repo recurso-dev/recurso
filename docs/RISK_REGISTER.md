@@ -191,13 +191,31 @@ flagged `missing_credit_note_transaction` by the reconciler. Is that intended (a
 "post the manual refund's ledger entry" signal) or a false-positive? → **R-013,
 open** below.
 
-### R-013 — Manual refunds create issued notes with no ledger leg · Low/Medium · OPEN (surfaced by R-006)
-`createRefund` for an invoice without a `gateway_payment_id` marks the note
-`RefundStatusManualRequired` and returns before any ledger post — but the note is
-`status=issued`, so the reconciler's credit-note completeness check would report
-it as `missing_credit_note_transaction`. Decide: (a) intended tripwire that a
-human must post the manual refund's journal entry, or (b) the check should exclude
-`RefundStatusManualRequired` notes. Confirm against a real manual-refund tenant.
+### R-013 — Manual refunds create issued notes with no ledger leg → reconciler false-positive · Low/Medium · CLOSED (2026-08-06)
+`createRefund` (and the maker-checker `executeRefundGatewayAndLedger`) for an
+invoice without a `gateway_payment_id` marks the note `manual_required` and
+returns before any ledger post — but the note is `status=issued`, so the
+credit-note completeness check reported it as `missing_credit_note_transaction`
+on any tenant using manual refunds.
+
+**Resolved as (b) — reconciler false-positive, fixed.** A `manual_required`
+refund (no gateway call attempted) and a `refund_failed` refund (gateway
+declined) both represent NO money movement, so no ledger leg should exist: the
+note is a workflow to-do, not a books discrepancy — the refund is not yet a
+financial event. `GetCreditNoteLedgerMismatches` now excludes
+`refund_status IN ('manual_required','refund_failed')`. Adjustment credits
+(`none`, which post `RecordAdjustmentCreditIssued`) and completed refunds
+(`processed`/`pending`, which post DR Refunds / CR Cash) stay checked, so the
+R-003 completeness guarantee is unchanged for every note where a leg IS expected.
+(The accounting-first read: the reconciler asserts books integrity; a
+manual-required refund's books are correct. Surfacing "process this refund"
+belongs in an operator worklist, not the reconciler.)
+
+**Validation:** `opManualRefund` in the invariant harness posts a paid invoice
+with no gateway payment id and issues a refund note (→ `manual_required`, issued,
+no leg). Clean across all seeds. **Teeth:** reverting the exclusion makes the
+forced `manual_refund` step fail with `missing_credit_note_transaction`
+(ReferenceID = the note). (PR: reconciler-exclude-manual-refund-noleg)
 
 ### R-004 — Ledger code 7 (credit application) is a magic number · Low · CLOSED
 Added `LedgerCodeCreditApplication uint16 = 7` in `domain/ledger.go` (it was the
