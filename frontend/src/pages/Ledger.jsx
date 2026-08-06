@@ -117,6 +117,19 @@ export default function Ledger() {
     return null;
   };
 
+  // Prefer a human account label over the raw UUID. Per-customer AR sub-accounts
+  // aren't in the tenant `accounts` list, so accountLabelById() misses them —
+  // but every ledger entry carries its own account name + code (joined
+  // server-side), so we can still name them (and, for AR, tag the customer).
+  const accountLabelFromEntry = (id, name, code) => {
+    const viaAccounts = accountLabelById(id);
+    if (viaAccounts) return viaAccounts;
+    if (name) {
+      return customerNames[id] ? `${name} — ${customerNames[id]} (${code})` : `${name} (${code})`;
+    }
+    return null;
+  };
+
   // Auto-select once accounts load: an explicit ?account_code picks the
   // matching tenant-level account when it's unambiguous (per-customer AR
   // sub-accounts all share 1100, so that code stays ambiguous and falls
@@ -179,22 +192,34 @@ export default function Ledger() {
     {
       key: "debit",
       header: "Debit",
-      cell: (e) =>
-        accountLabelById(e.debit_account_id) ? (
-          <span className="text-sm text-foreground">{accountLabelById(e.debit_account_id)}</span>
+      cell: (e) => {
+        const label = accountLabelFromEntry(
+          e.debit_account_id,
+          e.debit_account_name,
+          e.debit_account_code
+        );
+        return label ? (
+          <span className="text-sm text-foreground">{label}</span>
         ) : (
           <span className="font-mono text-xs text-muted-foreground">{String(e.debit_account_id).slice(0, 8)}…</span>
-        ),
+        );
+      },
     },
     {
       key: "credit",
       header: "Credit",
-      cell: (e) =>
-        accountLabelById(e.credit_account_id) ? (
-          <span className="text-sm text-foreground">{accountLabelById(e.credit_account_id)}</span>
+      cell: (e) => {
+        const label = accountLabelFromEntry(
+          e.credit_account_id,
+          e.credit_account_name,
+          e.credit_account_code
+        );
+        return label ? (
+          <span className="text-sm text-foreground">{label}</span>
         ) : (
           <span className="font-mono text-xs text-muted-foreground">{String(e.credit_account_id).slice(0, 8)}…</span>
-        ),
+        );
+      },
     },
     {
       key: "amount",
@@ -321,7 +346,11 @@ export default function Ledger() {
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Debit account</dt>
                     <dd className="mt-0.5 text-sm text-foreground">
-                      {accountLabelById(selectedEntry.debit_account_id) || (
+                      {accountLabelFromEntry(
+                        selectedEntry.debit_account_id,
+                        selectedEntry.debit_account_name,
+                        selectedEntry.debit_account_code
+                      ) || (
                         <span className="font-mono text-xs">{selectedEntry.debit_account_id}</span>
                       )}
                     </dd>
@@ -329,7 +358,11 @@ export default function Ledger() {
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Credit account</dt>
                     <dd className="mt-0.5 text-sm text-foreground">
-                      {accountLabelById(selectedEntry.credit_account_id) || (
+                      {accountLabelFromEntry(
+                        selectedEntry.credit_account_id,
+                        selectedEntry.credit_account_name,
+                        selectedEntry.credit_account_code
+                      ) || (
                         <span className="font-mono text-xs">{selectedEntry.credit_account_id}</span>
                       )}
                     </dd>
