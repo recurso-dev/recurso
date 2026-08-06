@@ -170,6 +170,42 @@ data = res.json()["data"]`,
   },
 ];
 
+// Signature-verification sample shown under the Webhooks tab. Deliveries carry
+// `X-Recurso-Signature: hex(HMAC-SHA256(endpoint secret, raw body))`; verify
+// against the RAW body with a constant-time compare (see webhook_worker.go).
+const WEBHOOK_VERIFY_TABS = [
+  {
+    label: "Node",
+    code: `import crypto from "node:crypto";
+
+// Mount express.raw({ type: "application/json" }) so req.body is the raw Buffer.
+export function verifyWebhook(req, secret) {
+  const signature = req.headers["x-recurso-signature"];
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(req.body)
+    .digest("hex");
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected),
+  );
+}`,
+  },
+  {
+    label: "Python",
+    code: `import hmac, hashlib
+
+def verify_webhook(request, secret):
+    signature = request.headers.get("X-Recurso-Signature", "")
+    expected = hmac.new(
+        secret.encode(),
+        request.get_data(),  # the raw request body, not a re-serialized dict
+        hashlib.sha256,
+    ).hexdigest()
+    return hmac.compare_digest(signature, expected)`,
+  },
+];
+
 export default function Developers() {
   const queryClient = useQueryClient();
 
@@ -629,6 +665,21 @@ export default function Developers() {
               ))}
             </div>
           )}
+
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold text-foreground">Verify webhook signatures</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Every delivery is signed with{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">X-Recurso-Signature</code>{" "}
+              — an HMAC-SHA256 of the raw request body keyed with your endpoint&apos;s signing
+              secret. Compute the same digest and compare in constant time before trusting a payload.
+            </p>
+            <CodeSample
+              className="mt-3"
+              tabs={WEBHOOK_VERIFY_TABS}
+              caption="Verify against the raw body — a re-serialized JSON object won't match the signature."
+            />
+          </div>
         </TabsContent>
 
         {/* Event Logs */}
