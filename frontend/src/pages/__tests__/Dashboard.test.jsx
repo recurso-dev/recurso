@@ -151,4 +151,31 @@ describe('Dashboard (redesign)', () => {
         ).toBeInTheDocument();
         expect(screen.getByText('paid')).toBeInTheDocument();
     });
+
+    it('shows a retryable error (not a page of zeros) when every core read fails', async () => {
+        // Simulate a total outage: the core reads all reject. An empty tenant
+        // (data: []) must NOT trip this — only genuine failures do.
+        endpoints.getSubscriptions.mockRejectedValue(new Error('down'));
+        endpoints.getInvoices.mockRejectedValue(new Error('down'));
+        endpoints.getCustomers.mockRejectedValue(new Error('down'));
+        endpoints.getMRR.mockRejectedValue(new Error('down'));
+
+        renderDashboard();
+
+        await waitFor(() =>
+            expect(screen.getByText(/couldn't load your dashboard/i)).toBeInTheDocument()
+        );
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+        // The misleading $0 KPI tiles must not render.
+        expect(screen.queryByText('MRR')).not.toBeInTheDocument();
+        expect(screen.queryByText('Active Subscriptions')).not.toBeInTheDocument();
+    });
+
+    it('still renders the dashboard for a genuinely empty tenant (no error)', async () => {
+        // All reads succeed but return empty — this is a real, empty account,
+        // not an outage, so the KPI tiles must show (as zeros), not an error.
+        renderDashboard();
+        await waitFor(() => expect(screen.getByText('MRR')).toBeInTheDocument());
+        expect(screen.queryByText(/couldn't load your dashboard/i)).not.toBeInTheDocument();
+    });
 });

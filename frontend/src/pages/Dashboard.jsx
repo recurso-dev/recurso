@@ -26,6 +26,7 @@ import {
 } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { StatCard } from "@/components/patterns/StatCard";
 import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -83,9 +84,12 @@ export default function Dashboard() {
   const navigate = useNavigate();
 
   // One aggregate query for the whole overview. Each endpoint catches to null so
-  // Promise.all never rejects — a failed tile degrades rather than blanking the
-  // page (there's no error state, matching the original).
-  const { data, isLoading: loading } = useQuery({
+  // Promise.all never rejects — a single failed tile degrades rather than
+  // blanking the page. But if the core reads ALL fail (a real outage, not a
+  // genuinely empty tenant), we surface a page-level error instead of a
+  // dashboard of zeros that reads as a healthy, empty business — `null` means
+  // the fetch failed, `[]` means it succeeded with no rows.
+  const { data, isLoading: loading, refetch } = useQuery({
     queryKey: ["dashboard-overview"],
     queryFn: async () => {
       const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes] =
@@ -108,6 +112,8 @@ export default function Dashboard() {
       // per-currency map would add ₹ and $ minor units together.
       const rec = recRes?.data?.data ?? recRes?.data;
       return {
+        // A systemic failure: every core read failed (not one empty tenant).
+        loadFailed: [subsRes, invRes, custRes, mrrRes].every((r) => r === null),
         subscriptions: subsRes?.data?.data || [],
         invoices: invRes?.data?.data || [],
         customerNames: names,
@@ -138,6 +144,7 @@ export default function Dashboard() {
   const recoveredCurrency = data?.recoveredCurrency ?? "USD";
   const openDisputes = data?.openDisputes ?? 0;
   const churnAlerts = data?.churnAlerts ?? 0;
+  const loadFailed = data?.loadFailed ?? false;
 
   const activeSubs = useMemo(
     () => subscriptions.filter((s) => s.status === "active").length,
@@ -251,6 +258,22 @@ export default function Dashboard() {
       count: byLabel[band.key]?.count ?? 0,
     }));
   }, [aging]);
+
+  // Total outage: header stays (so the page isn't blank) but the tiles are
+  // replaced by a retryable error — never a page of zeros that looks like a
+  // real, empty business.
+  if (loadFailed) {
+    return (
+      <div>
+        <PageHeader title="Home" description="A snapshot of your billing performance." />
+        <ErrorState
+          title="Couldn't load your dashboard"
+          message="We couldn't reach your billing data. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      </div>
+    );
+  }
 
   return (
     <div>
