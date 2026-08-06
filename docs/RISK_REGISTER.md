@@ -90,6 +90,7 @@ reconcile **clean** across all seeds — no false `ledger_unbalanced` /
 evidence, not just argument.
 
 **What actually remains (both LOWER severity than a reconciler bug):**
+**RESOLVED by ADR-010** (GL is single-functional-currency; multi-currency GL out of scope, use entity-per-currency).
 1. *Product-scope:* because accounts mix currencies, a genuinely multi-currency
    tenant's GL account balances / trial balance / financial reports are
    semantically a mixed-minor-unit total (e.g. `$1.00 + ¥1000 = "1100"`). This is
