@@ -37,7 +37,7 @@ describe("TaxNexusSettings — clearing nexus is guarded", () => {
   it("confirms before saving an empty list (which clears all nexus)", async () => {
     render(<TaxNexusSettings />, { wrapper });
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: /save states/i })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /save states/i })).toBeEnabled()
     );
 
     fireEvent.click(screen.getByRole("button", { name: /save states/i }));

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Save, X, MapPinned } from "lucide-react";
 
 import { endpoints as api } from "../../lib/api";
@@ -49,112 +50,101 @@ function StateSelect({ value, onChange, ariaLabel }) {
 // US sales-tax nexus: declare where you must collect, and watch economic
 // thresholds per state (crossings auto-establish nexus server-side).
 export default function TaxNexusSettings() {
+  const queryClient = useQueryClient();
   const [entityId, setEntityId] = useState("");
   const [rows, setRows] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
-  const [status, setStatus] = useState(null);
-  const [statusLoading, setStatusLoading] = useState(true);
-  const [statusError, setStatusError] = useState(null);
   const currentYear = new Date().getFullYear();
   const [liabYear, setLiabYear] = useState(currentYear);
-  const [liability, setLiability] = useState(null);
-  const [liabLoading, setLiabLoading] = useState(true);
   const [regs, setRegs] = useState([]);
-  const [regSaving, setRegSaving] = useState(false);
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await api.getTaxNexus(entityId);
-      setRows(
-        (res.data.data || []).map((n) => ({
-          state_code: n.state_code,
-          nexus_type: n.nexus_type || "physical",
-        }))
-      );
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
-    }
-    setStatusLoading(true);
-    setStatusError(null);
-    try {
-      const res = await api.getTaxNexusStatus();
-      setStatus(res.data.data);
-    } catch (err) {
-      setStatusError(
-        err?.response?.status === 503
-          ? "Economic-nexus tracking isn't available on this deployment."
-          : err?.response?.data?.error?.message || "Failed to load nexus status"
-      );
-    } finally {
-      setStatusLoading(false);
-    }
-    try {
-      const res = await api.getTaxRegistrations();
-      setRegs(
-        (res.data.data || []).map((r) => ({
-          state_code: r.state_code,
-          registration_number: r.registration_number || "",
-          status: r.status || "registered",
-        }))
-      );
-    } catch {
-      setRegs([]);
-    }
+  // Declared nexus states — server truth hydrates the editable rows below.
+  const { data: nexusData, isLoading: loading } = useQuery({
+    queryKey: ["tax-nexus", entityId],
+    queryFn: async () =>
+      ((await api.getTaxNexus(entityId)).data.data || []).map((n) => ({
+        state_code: n.state_code,
+        nexus_type: n.nexus_type || "physical",
+      })),
+  });
+  useEffect(() => {
+    setRows(nexusData || []);
+  }, [nexusData]);
+
+  const {
+    data: status = null,
+    isLoading: statusLoading,
+    error: statusQueryError,
+  } = useQuery({
+    queryKey: ["tax-nexus-status"],
+    queryFn: async () => (await api.getTaxNexusStatus()).data.data,
+  });
+  const statusError = statusQueryError
+    ? statusQueryError?.response?.status === 503
+      ? "Economic-nexus tracking isn't available on this deployment."
+      : statusQueryError?.response?.data?.error?.message || "Failed to load nexus status"
+    : null;
+
+  // Registrations — also hydrates an editable list.
+  const { data: regsData } = useQuery({
+    queryKey: ["tax-registrations"],
+    queryFn: async () =>
+      ((await api.getTaxRegistrations()).data.data || []).map((r) => ({
+        state_code: r.state_code,
+        registration_number: r.registration_number || "",
+        status: r.status || "registered",
+      })),
+  });
+  useEffect(() => {
+    setRegs(regsData || []);
+  }, [regsData]);
+
+  // Estimated liability for the picked year; a failed read renders as "—".
+  const { data: liability = null, isLoading: liabLoading } = useQuery({
+    queryKey: ["tax-liability", liabYear],
+    queryFn: async () => {
+      try {
+        return (await api.getTaxLiability({ year: liabYear })).data.data;
+      } catch {
+        return null;
+      }
+    },
+  });
+
+  const invalidateAll = () => {
+    queryClient.invalidateQueries({ queryKey: ["tax-nexus", entityId] });
+    queryClient.invalidateQueries({ queryKey: ["tax-nexus-status"] });
+    queryClient.invalidateQueries({ queryKey: ["tax-registrations"] });
   };
 
-  const saveRegs = async () => {
-    setRegSaving(true);
-    try {
-      await api.setTaxRegistrations(regs.filter((r) => r.state_code.trim()));
+  const regsMutation = useMutation({
+    mutationFn: () => api.setTaxRegistrations(regs.filter((r) => r.state_code.trim())),
+    onSuccess: () => {
       toast.success("Registrations saved.");
-      load();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to save registrations");
-    } finally {
-      setRegSaving(false);
-    }
-  };
+      invalidateAll();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to save registrations"),
+  });
+  const regSaving = regsMutation.isPending;
+  const saveRegs = () => regsMutation.mutate();
 
   const setRegRow = (i, patch) =>
     setRegs((prev) => prev.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityId]);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLiabLoading(true);
-    api
-      .getTaxLiability({ year: liabYear })
-      .then((res) => !cancelled && setLiability(res.data.data))
-      .catch(() => !cancelled && setLiability(null))
-      .finally(() => !cancelled && setLiabLoading(false));
-    return () => {
-      cancelled = true;
-    };
-  }, [liabYear]);
-
-  const performSave = async (kept) => {
-    setSaving(true);
-    try {
-      await api.setTaxNexus(kept, entityId);
+  const nexusMutation = useMutation({
+    mutationFn: (kept) => api.setTaxNexus(kept, entityId),
+    onSuccess: () => {
       toast.success("Nexus states saved.");
-      load();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to save nexus states");
-    } finally {
-      setSaving(false);
-    }
-  };
+      invalidateAll();
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to save nexus states"),
+  });
+  const saving = nexusMutation.isPending;
+  const performSave = (kept) => nexusMutation.mutate(kept);
 
-  const save = async () => {
+  const save = () => {
     const kept = rows.filter((r) => r.state_code.trim());
     // Saving an empty list wipes every declared nexus state — a tax-compliance
     // change (it stops tax collection in those states). Confirm before clearing.
