@@ -167,6 +167,7 @@ const Mandates = () => {
     {
       key: "max",
       header: "Max / cycle",
+      align: "right",
       cell: (m) => (
         <span className="tabular-nums font-medium">
           {formatCurrency(m.max_amount, m.currency || "INR")}

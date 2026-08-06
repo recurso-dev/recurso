@@ -169,7 +169,8 @@ export default function Subscriptions() {
     },
     {
       key: "amount",
-      header: "Amount",
+      header: "List price",
+      align: "right",
       cell: (s) => {
         const plan = plans[s.plan_id];
         if (!plan && plansLoading) {

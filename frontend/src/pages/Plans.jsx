@@ -128,6 +128,7 @@ export default function Plans() {
     {
       key: "price",
       header: "Price",
+      align: "right",
       cell: (p) =>
         p.prices && p.prices.length > 0 ? (
           <span className="tabular-nums text-foreground">
