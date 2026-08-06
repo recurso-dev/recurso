@@ -1,8 +1,9 @@
 import { shortId } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ArrowUpRight } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -18,60 +19,35 @@ const riskVariant = (level) =>
 
 const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
 
+const errMsg = (err, fallback) =>
+  err ? err?.response?.data?.error?.message || err?.message || fallback : null;
+
 const Churn = () => {
-  const [alerts, setAlerts] = useState([]);
-  const [alertsLoading, setAlertsLoading] = useState(true);
-  const [alertsError, setAlertsError] = useState(null);
-  const [highRisk, setHighRisk] = useState([]);
-  const [hrLoading, setHrLoading] = useState(true);
-  const [hrError, setHrError] = useState(null);
-  const [acking, setAcking] = useState(null);
-  const [customerNames, setCustomerNames] = useState({});
+  const queryClient = useQueryClient();
+  // Shared cached customer directory (ADR-005) — ids stay the fallback label.
+  const { names: customerNames } = useCustomers();
 
-  const fetchAlerts = async () => {
-    setAlertsLoading(true);
-    setAlertsError(null);
-    try {
-      const res = await api.getChurnAlerts();
-      setAlerts(res.data.data || []);
-    } catch (err) {
-      setAlerts([]);
-      setAlertsError(
-        err?.response?.data?.error?.message || err?.message || "Failed to load churn alerts"
-      );
-    } finally {
-      setAlertsLoading(false);
-    }
-  };
+  const {
+    data: alerts = [],
+    isLoading: alertsLoading,
+    error: alertsQueryError,
+    refetch: refetchAlerts,
+  } = useQuery({
+    queryKey: ["churn-alerts"],
+    queryFn: async () => (await api.getChurnAlerts()).data.data || [],
+  });
+  const alertsError = errMsg(alertsQueryError, "Failed to load churn alerts");
 
-  const fetchHighRisk = async () => {
-    setHrLoading(true);
-    setHrError(null);
-    try {
-      const res = await api.getHighRiskCustomers();
-      setHighRisk(res.data.data || []);
-    } catch (err) {
-      setHrError(err?.response?.data?.error?.message || "Failed to load high-risk customers");
-    } finally {
-      setHrLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchAlerts();
-    fetchHighRisk();
-    // Resolve customer ids to names (best-effort; ids remain the fallback).
-    api
-      .getCustomers({ limit: 1000 })
-      .then((res) => {
-        const names = {};
-        (res?.data?.data || []).forEach((c) => {
-          names[c.id] = c.name;
-        });
-        setCustomerNames(names);
-      })
-      .catch(() => {});
-  }, []);
+  const {
+    data: highRisk = [],
+    isLoading: hrLoading,
+    error: hrQueryError,
+    refetch: refetchHighRisk,
+  } = useQuery({
+    queryKey: ["high-risk-customers"],
+    queryFn: async () => (await api.getHighRiskCustomers()).data.data || [],
+  });
+  const hrError = errMsg(hrQueryError, "Failed to load high-risk customers");
 
   const customerLabel = (id) =>
     customerNames[id] ? (
@@ -80,18 +56,21 @@ const Churn = () => {
       <span className="font-mono text-xs text-muted-foreground">{shortId(id)}</span>
     );
 
-  const acknowledge = async (id) => {
-    setAcking(id);
-    try {
-      await api.acknowledgeChurnAlert(id);
-      setAlerts((prev) => prev.filter((a) => a.id !== id));
+  const ackMutation = useMutation({
+    mutationFn: (id) => api.acknowledgeChurnAlert(id),
+    onSuccess: (_res, id) => {
+      // Drop the acknowledged alert from the cache immediately; the Dashboard's
+      // needs-attention count reads the same feed, so refresh it too.
+      queryClient.setQueryData(["churn-alerts"], (prev) =>
+        (prev || []).filter((a) => a.id !== id)
+      );
+      queryClient.invalidateQueries({ queryKey: ["dashboard-overview"] });
       toast.success("Alert acknowledged.");
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to acknowledge");
-    } finally {
-      setAcking(null);
-    }
-  };
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to acknowledge"),
+  });
+  const acking = ackMutation.isPending ? ackMutation.variables : null;
 
   const hrColumns = [
     {
@@ -133,7 +112,7 @@ const Churn = () => {
       ) : alertsError ? (
         <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
           {alertsError}{" "}
-          <button className="underline" onClick={fetchAlerts}>
+          <button className="underline" onClick={() => refetchAlerts()}>
             Retry
           </button>
         </p>
@@ -166,7 +145,7 @@ const Churn = () => {
                   size="sm"
                   variant="outline"
                   className="self-start"
-                  onClick={() => acknowledge(a.id)}
+                  onClick={() => ackMutation.mutate(a.id)}
                   disabled={acking === a.id}
                 >
                   <Check className="h-4 w-4" />
@@ -185,7 +164,7 @@ const Churn = () => {
         data={highRisk}
         loading={hrLoading}
         error={hrError}
-        onRetry={fetchHighRisk}
+        onRetry={refetchHighRisk}
         getRowId={(r) => r.customer_id}
         empty={{
           icon: AlertTriangle,
