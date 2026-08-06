@@ -10,6 +10,8 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { CustomerName } from "@/components/patterns/CustomerSelect";
+import { useCustomers } from "@/lib/useCustomers";
 import {
   Dialog,
   DialogContent,
@@ -43,6 +45,7 @@ const Disputes = () => {
   const [resolveTarget, setResolveTarget] = useState(null);
   const [note, setNote] = useState("");
   const [issueCredit, setIssueCredit] = useState(false);
+  const { names } = useCustomers();
   const queryClient = useQueryClient();
 
   const openReview = (d) => {
@@ -115,7 +118,7 @@ const Disputes = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (d) => <span className="font-mono text-xs text-muted-foreground">{shortId(d.customer_id)}</span>,
+      cell: (d) => <CustomerName id={d.customer_id} names={names} />,
     },
     {
       key: "reason",
