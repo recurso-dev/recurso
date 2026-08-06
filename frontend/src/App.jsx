@@ -1,7 +1,8 @@
 import ErrorBoundary from './components/ErrorBoundary'
-import { Routes, Route, Navigate, Outlet } from 'react-router'
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router'
 import { lazy, Suspense } from 'react'
 import Login from './pages/Login'
+import Landing from './pages/Landing'
 import DashboardLayout from "./components/layout/DashboardLayout"
 import { useAuth } from './auth/AuthProvider'
 
@@ -103,16 +104,21 @@ const PageFallback = () => (
 
 const PrivateRoute = () => {
     const { isAuthenticated, loading } = useAuth();
+    const location = useLocation();
 
     if (loading) {
         return (
-            <div className="flex h-screen w-full items-center justify-center bg-gray-50 dark:bg-stone-950">
+            <div className="flex h-screen w-full items-center justify-center bg-stone-50">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
             </div>
         )
     }
 
-    return isAuthenticated ? <Outlet /> : <Navigate to="/login" />;
+    if (isAuthenticated) return <Outlet />;
+    // Signed-out visitors see the marketing landing at the app root ("/"); every
+    // other protected route sends them to sign in (preserving where they came from).
+    if (location.pathname === "/") return <Landing />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
 };
 
 function App() {
