@@ -43,9 +43,10 @@ describe("Checkout (money-critical public flow)", () => {
             Promise.resolve({ ok: true, json: () => Promise.resolve({ data: invoice() }) })
         );
         renderAt("inv_1");
-        // The pay CTA and the totals both carry the amount.
-        await waitFor(() => expect(screen.getAllByText(/42\.00/).length).toBeGreaterThan(0));
-        expect(screen.getAllByText(/USD/).length).toBeGreaterThan(0);
+        // The pay CTA and the totals both carry the amount, rendered through the
+        // exponent-aware formatter so the currency shows as its symbol ($ for
+        // USD) consistently — not a mix of "$42.00" and "USD 42.00".
+        await waitFor(() => expect(screen.getAllByText(/\$42\.00/).length).toBeGreaterThan(0));
     });
 
     it("shows a not-found error when the invoice can't be loaded", async () => {
