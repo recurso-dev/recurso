@@ -102,7 +102,8 @@ const Coupons = () => {
     {
       key: "discount",
       header: "Discount",
-      cell: (c) => <span className="text-muted-foreground">{c.discount}</span>,
+      align: "right",
+      cell: (c) => <span className="tabular-nums text-foreground">{c.discount}</span>,
     },
     {
       key: "duration",
