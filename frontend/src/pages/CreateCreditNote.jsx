@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
-import { toMinorUnits } from "@/lib/utils";
+import { toMinorUnits, formatCurrency, shortId } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -41,10 +41,44 @@ const CreateCreditNote = () => {
     expires_at: "", // Optional — blank means the credit never expires
   });
 
+  // Invoices for the invoice picker. Fetched once and filtered client-side to
+  // the selected customer — a credit note may only link one of that customer's
+  // own invoices, never a UUID typed by hand (which risked cross-customer links
+  // and mismatched currencies).
+  const { data: allInvoices = [] } = useQuery({
+    queryKey: ["invoices", "for-credit-note"],
+    queryFn: async () => (await endpoints.getInvoices({ per_page: 250 })).data?.data || [],
+  });
+  const customerInvoices = useMemo(
+    () =>
+      formData.customer_id
+        ? allInvoices.filter((i) => i.customer_id === formData.customer_id)
+        : [],
+    [allInvoices, formData.customer_id]
+  );
+
   const close = () => navigate("/credit-notes");
 
-  const setField = (name, value) =>
-    setFormData((prev) => ({ ...prev, [name]: value }));
+  // Selecting a customer resets any linked invoice (the list changes) and
+  // returns the currency to the USD default for a standalone credit.
+  const selectCustomer = (id) =>
+    setFormData((prev) => ({ ...prev, customer_id: id, invoice_id: "", currency: "USD" }));
+
+  // Linking an invoice locks the credit to that invoice's currency — a credit
+  // against an invoice must be issued in the same currency.
+  const NONE = "__none__";
+  const selectInvoice = (value) => {
+    if (value === NONE) {
+      setFormData((prev) => ({ ...prev, invoice_id: "", currency: "USD" }));
+      return;
+    }
+    const inv = customerInvoices.find((i) => i.id === value);
+    setFormData((prev) => ({
+      ...prev,
+      invoice_id: value,
+      currency: inv?.currency || prev.currency,
+    }));
+  };
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -127,7 +161,7 @@ const CreateCreditNote = () => {
           >
             <Select
               value={formData.customer_id}
-              onValueChange={(v) => setField("customer_id", v)}
+              onValueChange={selectCustomer}
             >
               <SelectTrigger id="customer_id">
                 <SelectValue placeholder="Select a customer..." />
@@ -151,7 +185,7 @@ const CreateCreditNote = () => {
             >
               <div className="relative">
                 <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                  USD
+                  {formData.currency}
                 </span>
                 <Input
                   id="amount"
@@ -166,15 +200,41 @@ const CreateCreditNote = () => {
               </div>
             </FormField>
 
-            <FormField label="Linked invoice (optional)" htmlFor="invoice_id">
-              <Input
-                id="invoice_id"
-                type="text"
-                name="invoice_id"
-                value={formData.invoice_id}
-                onChange={handleChange}
-                placeholder="Invoice ID (UUID)..."
-              />
+            <FormField
+              label="Linked invoice (optional)"
+              htmlFor="invoice_id"
+              description={
+                formData.invoice_id
+                  ? "The credit is issued in this invoice's currency."
+                  : undefined
+              }
+            >
+              <Select
+                value={
+                  formData.customer_id ? formData.invoice_id || NONE : undefined
+                }
+                onValueChange={selectInvoice}
+                disabled={!formData.customer_id}
+              >
+                <SelectTrigger id="invoice_id">
+                  <SelectValue
+                    placeholder={
+                      formData.customer_id
+                        ? "No linked invoice"
+                        : "Select a customer first"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No linked invoice</SelectItem>
+                  {customerInvoices.map((inv) => (
+                    <SelectItem key={inv.id} value={inv.id}>
+                      {(inv.invoice_number || shortId(inv.id))} —{" "}
+                      {formatCurrency(inv.total, inv.currency)} · {inv.status}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </FormField>
           </div>
 
