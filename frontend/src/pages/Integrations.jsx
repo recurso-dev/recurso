@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { Landmark, RefreshCw, Check, Copy, ExternalLink } from "lucide-react";
 
@@ -116,72 +117,62 @@ const copyId = async (v, label) => {
 };
 
 const Integrations = () => {
-  const [connections, setConnections] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [logs, setLogs] = useState([]);
-  const [logsLoading, setLogsLoading] = useState(true);
-  const [logsError, setLogsError] = useState(null);
-  const [logTotal, setLogTotal] = useState(0);
+  const queryClient = useQueryClient();
   const [logOffset, setLogOffset] = useState(0);
   const [logProvider, setLogProvider] = useState("all");
   const [logStatus, setLogStatus] = useState("all");
   const [logSearch, setLogSearch] = useState("");
   const [logSearchInput, setLogSearchInput] = useState("");
   const [connecting, setConnecting] = useState(null);
-  const [syncing, setSyncing] = useState(false);
   const [selectedLog, setSelectedLog] = useState(null);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [tokenProvider, setTokenProvider] = useState(null); // provider being connected via sheet
   const [tokenForm, setTokenForm] = useState({ account_id: "", access_token: "" });
-  const [disconnecting, setDisconnecting] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const fetchConnections = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getAccountingConnections();
-      setConnections(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || "Failed to load connections");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: connections = [],
+    isLoading: loading,
+    error: connQueryError,
+  } = useQuery({
+    queryKey: ["accounting-connections"],
+    queryFn: async () => (await api.getAccountingConnections()).data.data || [],
+  });
+  const error = connQueryError
+    ? connQueryError?.response?.data?.error?.message || "Failed to load connections"
+    : null;
 
   const LOG_PAGE_SIZE = 25;
 
-  const fetchLogs = async (offset = logOffset) => {
-    setLogsLoading(true);
-    setLogsError(null);
-    try {
+  // One cache entry per filter+search+page combination; previous rows stay
+  // visible while the next page loads.
+  const {
+    data: logData,
+    isLoading: logsLoading,
+    error: logsQueryError,
+    refetch: refetchLogs,
+  } = useQuery({
+    queryKey: ["accounting-sync-logs", { logProvider, logStatus, logSearch, logOffset }],
+    queryFn: async () => {
       const res = await api.getAccountingSyncStatus({
         limit: LOG_PAGE_SIZE,
-        offset,
+        offset: logOffset,
         ...(logProvider !== "all" && { provider: logProvider }),
         ...(logStatus !== "all" && { status: logStatus }),
         ...(logSearch && { search: logSearch }),
       });
-      setLogs(res.data.data || []);
-      setLogTotal(res.data.total ?? (res.data.data || []).length);
-    } catch (err) {
-      setLogsError(err?.response?.data?.error?.message || "Failed to load sync activity");
-    } finally {
-      setLogsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchConnections();
-  }, []);
-
-  // Refetch one page whenever a filter, the search, or the page changes;
-  // filter/search changes reset to the first page.
-  useEffect(() => {
-    fetchLogs(logOffset);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logProvider, logStatus, logSearch, logOffset]);
+      return {
+        logs: res.data.data || [],
+        total: res.data.total ?? (res.data.data || []).length,
+      };
+    },
+    placeholderData: keepPreviousData,
+  });
+  const logs = logData?.logs ?? [];
+  const logTotal = logData?.total ?? 0;
+  const logsError = logsQueryError
+    ? logsQueryError?.response?.data?.error?.message || "Failed to load sync activity"
+    : null;
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -237,41 +228,45 @@ const Integrations = () => {
     }
   };
 
-  const submitTokenConnect = async () => {
-    if (!tokenProvider) return;
-    setConnecting(tokenProvider.id);
-    try {
-      const body = tokenProvider.mode === "token" ? tokenForm : {};
-      await api.connectAccountingToken(tokenProvider.id, body);
+  const tokenConnectMutation = useMutation({
+    mutationFn: () =>
+      api.connectAccountingToken(
+        tokenProvider.id,
+        tokenProvider.mode === "token" ? tokenForm : {}
+      ),
+    onSuccess: () => {
       toast.success(`${tokenProvider.name} connected.`);
       setTokenProvider(null);
-      fetchConnections();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to connect");
-    } finally {
-      setConnecting(null);
-    }
+      queryClient.invalidateQueries({ queryKey: ["accounting-connections"] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to connect"),
+    onSettled: () => setConnecting(null),
+  });
+  const submitTokenConnect = () => {
+    if (!tokenProvider) return;
+    setConnecting(tokenProvider.id);
+    tokenConnectMutation.mutate();
   };
 
-  const handleDisconnect = async () => {
-    if (!disconnectTarget) return;
-    setDisconnecting(true);
-    try {
-      await api.disconnectAccounting(disconnectTarget.id);
+  const disconnectMutation = useMutation({
+    mutationFn: () => api.disconnectAccounting(disconnectTarget.id),
+    onSuccess: () => {
       toast.success("Disconnected.");
       setDisconnectTarget(null);
-      fetchConnections();
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Failed to disconnect");
-    } finally {
-      setDisconnecting(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["accounting-connections"] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Failed to disconnect"),
+  });
+  const disconnecting = disconnectMutation.isPending;
+  const handleDisconnect = () => {
+    if (!disconnectTarget) return;
+    disconnectMutation.mutate();
   };
 
-  const handleSync = async (provider) => {
-    setSyncing(true);
-    try {
-      const res = await api.triggerAccountingSync(provider);
+  const syncMutation = useMutation({
+    mutationFn: (provider) => api.triggerAccountingSync(provider),
+    onSuccess: (res, provider) => {
       if (res.data?.status === "sync_already_running") {
         toast.message("A sync is already running — watch Sync activity for progress.");
       } else if (provider) {
@@ -281,13 +276,14 @@ const Integrations = () => {
       } else {
         toast.success("Sync started in the background. Activity will update as records push.");
       }
-      fetchLogs(0);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
+      // Jump back to the newest activity.
+      setLogOffset(0);
+      queryClient.invalidateQueries({ queryKey: ["accounting-sync-logs"] });
+    },
+    onError: (err) => toast.error(err?.response?.data?.error?.message || "Sync failed"),
+  });
+  const syncing = syncMutation.isPending;
+  const handleSync = (provider) => syncMutation.mutate(provider);
 
   const logColumns = [
     {
@@ -505,7 +501,7 @@ const Integrations = () => {
           data={logs}
           loading={logsLoading}
           error={logsError}
-          onRetry={fetchLogs}
+          onRetry={refetchLogs}
           onRowClick={(l) => setSelectedLog(l)}
           getRowId={(l) => l.id}
           empty={{
