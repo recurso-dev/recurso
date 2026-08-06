@@ -11,6 +11,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -199,7 +200,12 @@ const Collections = () => {
 
   // Funnel + failure breakdown are tenant-wide and FX-normalized — independent of
   // the queue's status filter / page, so they get their own cached query.
-  const { data: analytics } = useQuery({
+  const {
+    data: analytics,
+    isError: analyticsIsError,
+    error: analyticsErrorObj,
+    refetch: refetchAnalytics,
+  } = useQuery({
     queryKey: ["collections-analytics"],
     queryFn: async () => {
       const [funnelRes, failuresRes] = await Promise.all([
@@ -222,6 +228,13 @@ const Collections = () => {
 
   const funnel = analytics?.funnel ?? null;
   const failures = analytics?.failures ?? [];
+  // Never let a failed analytics fetch render as $0 revenue-at-risk — that reads
+  // as a healthy business. Surface a retryable error instead of silent zeros.
+  const analyticsError = analyticsIsError
+    ? analyticsErrorObj?.response?.data?.error?.message ||
+      analyticsErrorObj?.message ||
+      "The revenue-at-risk figures are unavailable right now."
+    : null;
   const reportingCurrency = funnel?.reporting_currency || "USD";
   const maxFailureAmount = failures.reduce((m, f) => Math.max(m, f.amount_at_risk || 0), 0);
 
@@ -258,32 +271,42 @@ const Collections = () => {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          label="Revenue at risk"
-          value={formatCurrency(funnel?.past_due?.amount || 0, reportingCurrency)}
-          icon={CircleDollarSign}
-          hint={`${(funnel?.past_due?.count || 0).toLocaleString()} invoices in dunning`}
-        />
-        <StatCard
-          label="Recovery rate"
-          value={funnel ? `${(funnel.recovery_rate * 100).toFixed(1)}%` : "—"}
-          icon={Percent}
-          hint={`cases concluded, last ${funnel?.rate_window_days || 90} days`}
-        />
-        <StatCard
-          label="Recovered (all-time)"
-          value={formatCurrency(funnel?.recovered?.amount || 0, reportingCurrency)}
-          icon={RotateCcw}
-          hint={`${(funnel?.recovered?.count || 0).toLocaleString()} invoices`}
-        />
-        <StatCard
-          label="Written off"
-          value={formatCurrency(funnel?.uncollectible?.amount || 0, reportingCurrency)}
-          icon={Ban}
-          hint={`${(funnel?.uncollectible?.count || 0).toLocaleString()} uncollectible`}
-        />
-      </div>
+      {analyticsError ? (
+        <Card>
+          <ErrorState
+            title="Couldn't load collections analytics"
+            message={analyticsError}
+            onRetry={refetchAnalytics}
+          />
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="Revenue at risk"
+            value={formatCurrency(funnel?.past_due?.amount || 0, reportingCurrency)}
+            icon={CircleDollarSign}
+            hint={`${(funnel?.past_due?.count || 0).toLocaleString()} invoices in dunning`}
+          />
+          <StatCard
+            label="Recovery rate"
+            value={funnel ? `${(funnel.recovery_rate * 100).toFixed(1)}%` : "—"}
+            icon={Percent}
+            hint={`cases concluded, last ${funnel?.rate_window_days || 90} days`}
+          />
+          <StatCard
+            label="Recovered (all-time)"
+            value={formatCurrency(funnel?.recovered?.amount || 0, reportingCurrency)}
+            icon={RotateCcw}
+            hint={`${(funnel?.recovered?.count || 0).toLocaleString()} invoices`}
+          />
+          <StatCard
+            label="Written off"
+            value={formatCurrency(funnel?.uncollectible?.amount || 0, reportingCurrency)}
+            icon={Ban}
+            hint={`${(funnel?.uncollectible?.count || 0).toLocaleString()} uncollectible`}
+          />
+        </div>
+      )}
 
       {/* Failure reasons ranked by money at risk */}
       {failures.length > 0 && (

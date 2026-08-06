@@ -129,4 +129,20 @@ describe('Collections page', () => {
             expect(screen.getByText('Nothing in collections')).toBeInTheDocument()
         );
     });
+
+    it('surfaces a retryable error instead of $0 KPIs when analytics fails', async () => {
+        endpoints.getCollectionsQueue.mockResolvedValue({
+            data: { data: [], meta: { page: 1, per_page: 25, total: 0 } },
+        });
+        endpoints.getCollectionsFunnel.mockRejectedValue(new Error('boom'));
+
+        render(wrap(<Collections />));
+
+        await waitFor(() =>
+            expect(screen.getByText(/couldn't load collections analytics/i)).toBeInTheDocument()
+        );
+        // Never render the misleading "$0.00 revenue at risk" on a failed fetch.
+        expect(screen.queryByText('Revenue at risk')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    });
 });
