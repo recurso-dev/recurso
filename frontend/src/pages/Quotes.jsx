@@ -10,6 +10,7 @@ import QuoteDetail from "../components/slide-overs/QuoteDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,14 +56,20 @@ const Quotes = () => {
     },
     placeholderData: (prev) => prev,
   });
-  const error = queryError ? "Failed to load quotes" : null;
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load quotes"
+    : null;
 
   const invalidateQuotes = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
   const sendMutation = useMutation({
     mutationFn: (id) => endpoints.sendQuote(id),
-    onSuccess: invalidateQuotes,
-    onError: (err) => console.error("Failed to send quote:", err),
+    onSuccess: () => {
+      invalidateQuotes();
+      toast.success("Quote sent.");
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || err?.message || "Failed to send quote"),
   });
   const convertMutation = useMutation({
     mutationFn: (id) => endpoints.convertQuoteToInvoice(id),
@@ -70,8 +77,12 @@ const Quotes = () => {
       invalidateQuotes();
       // A converted quote becomes an invoice — refresh the invoices list too.
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success("Quote converted to an invoice.");
     },
-    onError: (err) => console.error("Failed to convert quote:", err),
+    onError: (err) =>
+      toast.error(
+        err?.response?.data?.error?.message || err?.message || "Failed to convert quote"
+      ),
   });
 
   const handleSend = (id, e) => {
