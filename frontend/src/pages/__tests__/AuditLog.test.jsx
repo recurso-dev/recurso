@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { BrowserRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import AuditLog from "../AuditLog";
 import { endpoints } from "../../lib/api";
@@ -8,7 +9,15 @@ vi.mock("../../lib/api", () => ({
   endpoints: { getAuditLogs: vi.fn() },
 }));
 
-const wrapper = ({ children }) => <BrowserRouter>{children}</BrowserRouter>;
+const wrapper = ({ children }) => (
+  <BrowserRouter>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </BrowserRouter>
+);
 
 describe("AuditLog", () => {
   beforeEach(() => {

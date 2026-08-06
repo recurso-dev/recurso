@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { BrowserRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Events from "../Events";
 import { endpoints } from "../../lib/api";
@@ -13,7 +14,15 @@ vi.mock("../../lib/api", () => ({
 }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const wrapper = ({ children }) => <BrowserRouter>{children}</BrowserRouter>;
+const wrapper = ({ children }) => (
+  <BrowserRouter>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </BrowserRouter>
+);
 
 const sampleEvent = {
   id: "evt_1",
