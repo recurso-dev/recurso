@@ -11,6 +11,7 @@ import { FormField } from "@/components/patterns/FormField";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -88,28 +89,20 @@ export default function IRPSettings() {
               {/* Enable Toggle */}
               <div className="flex items-center justify-between rounded-lg border border-border p-4">
                 <div>
-                  <h3 className="text-sm font-medium text-foreground">Enable e-invoicing</h3>
+                  <h3 id="irp-enable-label" className="text-sm font-medium text-foreground">
+                    Enable e-invoicing
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     Generate IRN for B2B invoices via NIC IRP.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.is_enabled}
-                  onClick={() => setConfig((prev) => ({ ...prev, is_enabled: !prev.is_enabled }))}
-                  className={cn(
-                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    config.is_enabled ? "bg-primary" : "bg-stone-200"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      config.is_enabled ? "translate-x-5" : "translate-x-0"
-                    )}
-                  />
-                </button>
+                <Switch
+                  aria-labelledby="irp-enable-label"
+                  checked={config.is_enabled}
+                  onCheckedChange={(next) =>
+                    setConfig((prev) => ({ ...prev, is_enabled: next }))
+                  }
+                />
               </div>
 
               <FormField label="Environment" htmlFor="environment">

@@ -3,7 +3,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Save } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
@@ -11,6 +10,7 @@ import { FormField } from "@/components/patterns/FormField";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 
 const EMPTY = {
@@ -70,29 +70,19 @@ export default function EUEInvoiceSettings() {
             <CardContent className="space-y-6 pt-6">
               <div className="flex items-center justify-between rounded-lg border border-border p-4">
                 <div>
-                  <h3 className="text-sm font-medium text-foreground">Enable EU e-invoicing</h3>
+                  <h3 id="eu-einvoice-enable-label" className="text-sm font-medium text-foreground">
+                    Enable EU e-invoicing
+                  </h3>
                   <p className="text-sm text-muted-foreground">
                     Generate an EN 16931 UBL document on each invoice, delivered via the
                     configured transport.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={config.enabled}
-                  onClick={() => set({ enabled: !config.enabled })}
-                  className={cn(
-                    "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    config.enabled ? "bg-primary" : "bg-stone-200",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out",
-                      config.enabled ? "translate-x-5" : "translate-x-0",
-                    )}
-                  />
-                </button>
+                <Switch
+                  aria-labelledby="eu-einvoice-enable-label"
+                  checked={config.enabled}
+                  onCheckedChange={(next) => set({ enabled: next })}
+                />
               </div>
 
               <p className="text-xs text-muted-foreground">
