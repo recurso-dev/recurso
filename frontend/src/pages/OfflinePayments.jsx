@@ -6,6 +6,7 @@ import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSele
 import { useCustomers } from "@/lib/useCustomers";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency, toMinorUnits, fromMinorUnits, shortId } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
@@ -179,12 +180,13 @@ const OfflinePayments = () => {
     {
       key: "amount",
       header: "Amount",
+      align: "right",
       cell: (p) => (
         <div>
-          <span className="tabular-nums font-medium">{formatCurrency(p.amount, p.currency)}</span>
+          <Money amountMinor={p.amount} currency={p.currency} className="font-medium" />
           {p.tds_amount > 0 && (
             <p className="text-xs text-muted-foreground">
-              + TDS {formatCurrency(p.tds_amount, p.currency)}
+              + TDS <Money amountMinor={p.tds_amount} currency={p.currency} className="text-xs" />
             </p>
           )}
         </div>
@@ -208,9 +210,8 @@ const OfflinePayments = () => {
     {
       key: "recorded",
       header: "Recorded",
-      align: "right",
       cell: (p) => (
-        <div className="text-right">
+        <div>
           <span className="text-sm text-muted-foreground">{fmtDate(p.recorded_at)}</span>
           {p.recorded_by && <p className="text-xs text-muted-foreground">by {p.recorded_by}</p>}
         </div>
@@ -239,13 +240,15 @@ const OfflinePayments = () => {
     {
       key: "expected",
       header: "Expected",
-      cell: (v) => <span className="tabular-nums">{formatCurrency(v.amount_expected, "INR")}</span>,
+      align: "right",
+      cell: (v) => <Money amountMinor={v.amount_expected} currency={v.currency || "INR"} />,
     },
     {
       key: "received",
       header: "Received",
+      align: "right",
       cell: (v) => (
-        <span className="tabular-nums font-medium">{formatCurrency(v.amount_received, "INR")}</span>
+        <Money amountMinor={v.amount_received} currency={v.currency || "INR"} className="font-medium" />
       ),
     },
     {
