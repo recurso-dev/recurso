@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Organizations from "../Organizations";
 import { endpoints as api } from "../../lib/api";
@@ -17,7 +18,15 @@ vi.mock("../../lib/api", () => ({
 }));
 vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-const wrapper = ({ children }) => <BrowserRouter>{children}</BrowserRouter>;
+const wrapper = ({ children }) => (
+  <BrowserRouter>
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+    >
+      {children}
+    </QueryClientProvider>
+  </BrowserRouter>
+);
 
 describe("Organizations page", () => {
   beforeEach(() => vi.clearAllMocks());
