@@ -79,7 +79,19 @@ export default function RevenueRecognition() {
     <div>
       <PageHeader
         title="Revenue Recognition"
-        description="Deferred revenue still on the books, and the schedule for when it recognizes."
+        description={
+          <>
+            Deferred revenue still on the books, and the schedule for when it recognizes. For the
+            recognized-vs-scheduled curve across all months, see the{" "}
+            <Link
+              to="/finance/revenue-waterfall"
+              className="text-primary underline-offset-2 hover:underline"
+            >
+              Revenue Waterfall
+            </Link>
+            .
+          </>
+        }
         actions={
           <div className="flex items-center gap-2">
             <Select value={String(month)} onValueChange={(v) => setMonth(Number(v))}>
