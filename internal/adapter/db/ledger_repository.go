@@ -294,9 +294,17 @@ func (r *LedgerRepository) GetAccountByEntityAndCode(ctx context.Context, tenant
 
 func (r *LedgerRepository) GetAccountByTenantAndCode(ctx context.Context, tenantID uuid.UUID, code int) (*domain.LedgerAccount, error) {
 	a := &domain.LedgerAccount{}
+	// The tenant/primary account for a code is the one with NO entity (entity_id
+	// NULL, on the primary ledger 1). WITHOUT this filter, a multi-entity tenant
+	// has several accounts sharing a code — one per entity — and this unordered
+	// lookup could return a NON-primary entity's account, misrouting a primary
+	// posting onto the wrong entity's ledger (books still balance globally, but
+	// per-entity Revenue/Deferred is wrong). The primary path (getOrCreateTenant
+	// Account) is the only caller and always wants the entity-less account.
 	err := r.db.QueryRowContext(ctx,
 		`SELECT id, tenant_id, name, type, code, ledger_id, COALESCE(currency, ''), debits_posted, credits_posted, balance, created_at
-		 FROM ledger_accounts WHERE tenant_id = $1 AND code = $2`,
+		 FROM ledger_accounts WHERE tenant_id = $1 AND code = $2 AND entity_id IS NULL
+		 ORDER BY ledger_id LIMIT 1`,
 		tenantID, code).Scan(&a.ID, &a.TenantID, &a.Name, &a.Type, &a.Code,
 		&a.LedgerID, &a.Currency, &a.DebitsPosted, &a.CreditsPosted, &a.Balance, &a.CreatedAt)
 	if err == sql.ErrNoRows {
