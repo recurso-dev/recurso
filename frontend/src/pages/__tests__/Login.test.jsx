@@ -32,11 +32,14 @@ const signIn = () => {
 describe("Login page", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("renders the login form", () => {
+  it("renders the login form and focuses the email field", () => {
     renderLogin();
     expect(screen.getByText("Log in to Recurso")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("you@company.com")).toBeInTheDocument();
+    const email = screen.getByPlaceholderText("you@company.com");
+    expect(email).toBeInTheDocument();
     expect(screen.getByPlaceholderText("••••••••")).toBeInTheDocument();
+    // The email field is focused on load — type without clicking first.
+    expect(email).toHaveFocus();
   });
 
   it("logs in and navigates home when no MFA is required", async () => {

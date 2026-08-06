@@ -99,6 +99,7 @@ export default function ResetPassword() {
                   <PasswordInput
                     id="password"
                     autoComplete="new-password"
+                    autoFocus
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}

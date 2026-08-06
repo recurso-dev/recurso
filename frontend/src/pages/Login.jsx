@@ -185,6 +185,7 @@ export default function Login() {
                     id="email"
                     type="email"
                     autoComplete="email"
+                    autoFocus
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -255,6 +256,7 @@ export default function Login() {
                 <FormField label="API secret key" htmlFor="apiKey" required>
                   <PasswordInput
                     id="apiKey"
+                    autoFocus
                     required
                     value={key}
                     onChange={(e) => setKey(e.target.value)}
