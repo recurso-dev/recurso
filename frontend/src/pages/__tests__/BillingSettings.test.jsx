@@ -46,4 +46,13 @@ describe("BillingSettings", () => {
     render(<BillingSettings />);
     expect(await screen.findByText("Cloud")).toBeInTheDocument();
   });
+
+  it("shows a retryable error when the plan catalog fails to load", async () => {
+    endpoints.getBillingStatus.mockResolvedValue({ data: null });
+    endpoints.getBillingPlans.mockRejectedValue(new Error("boom"));
+
+    render(<BillingSettings />);
+    expect(await screen.findByText(/couldn't load the available plans/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
 });
