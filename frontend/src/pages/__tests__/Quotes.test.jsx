@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Quotes from "../Quotes";
 import { endpoints } from "../../lib/api";
+import { money } from "@/test/money";
 
 vi.mock("../../lib/api", () => ({
   endpoints: {
@@ -41,6 +42,9 @@ describe("Quotes page", () => {
     await waitFor(() => expect(screen.getByText("Q-001")).toBeInTheDocument());
     expect(screen.getByText("Q-002")).toBeInTheDocument();
     expect(screen.getByText("draft")).toBeInTheDocument();
+    // Amounts render in the tabular-mono <Money> component.
+    expect(screen.getByText(money("$500.00"))).toBeInTheDocument();
+    expect(screen.getByText(money("$900.00"))).toBeInTheDocument();
   });
 
   it("shows the empty state with no quotes", async () => {
