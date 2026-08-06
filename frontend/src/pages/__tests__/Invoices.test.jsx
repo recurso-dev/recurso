@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import Invoices from '../Invoices';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { endpoints } from '../../lib/api';
-import { BrowserRouter } from 'react-router';
+import { BrowserRouter, MemoryRouter } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../lib/api', () => ({
@@ -149,5 +149,34 @@ describe('Invoices Page', () => {
             expect(screen.getByText('INV-001')).toBeInTheDocument();
         });
         expect(screen.getByRole('button', { name: /export csv/i })).toBeEnabled();
+    });
+
+    it('filters to one aging bucket when deep-linked with ?aging=', async () => {
+        const day = 86400000;
+        endpoints.getInvoices.mockResolvedValue({
+            data: {
+                data: [
+                    // 45 days overdue and unpaid → the 31-60 bucket.
+                    { id: 'inv-old', invoice_number: 'INV-OLD', customer_id: 'c1', total: 10000, amount_paid: 0, currency: 'USD', status: 'past_due', due_date: new Date(Date.now() - 45 * day).toISOString(), created_at: '2026-06-01T00:00:00Z' },
+                    // Due tomorrow → current, filtered out.
+                    { id: 'inv-fresh', invoice_number: 'INV-FRESH', customer_id: 'c2', total: 5000, amount_paid: 0, currency: 'USD', status: 'open', due_date: new Date(Date.now() + day).toISOString(), created_at: '2026-08-01T00:00:00Z' },
+                ],
+            },
+        });
+
+        render(<Invoices />, {
+            wrapper: ({ children }) => (
+                <MemoryRouter initialEntries={['/invoices?aging=31-60']}>
+                    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+                        {children}
+                    </QueryClientProvider>
+                </MemoryRouter>
+            ),
+        });
+
+        await waitFor(() => expect(screen.getByText('INV-OLD')).toBeInTheDocument());
+        expect(screen.queryByText('INV-FRESH')).not.toBeInTheDocument();
+        // The active bucket shows as a clearable chip.
+        expect(screen.getByRole('button', { name: /Overdue 31–60 days/ })).toBeInTheDocument();
     });
 });
