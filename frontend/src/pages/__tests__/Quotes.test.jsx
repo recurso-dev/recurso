@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -9,8 +9,12 @@ vi.mock("../../lib/api", () => ({
   endpoints: {
     getQuotes: vi.fn(),
     getCustomers: vi.fn().mockResolvedValue({ data: { data: [] } }),
+    sendQuote: vi.fn(),
+    convertQuoteToInvoice: vi.fn(),
   },
 }));
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
+vi.mock("@/components/ui/sonner", () => ({ toast: toastMock }));
 vi.mock("../../components/slide-overs/QuoteDetail", () => ({ default: () => <div /> }));
 
 const quotes = [
@@ -43,5 +47,32 @@ describe("Quotes page", () => {
     endpoints.getQuotes.mockResolvedValue({ data: { data: [] } });
     render(<Quotes />, { wrapper });
     await waitFor(() => expect(screen.getByText(/no quotes/i)).toBeInTheDocument());
+  });
+
+  it("toasts (never silently console-logs) when convert-to-invoice fails", async () => {
+    endpoints.convertQuoteToInvoice.mockRejectedValue({
+      response: { data: { error: { message: "quote already converted" } } },
+    });
+    render(<Quotes />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Q-002")).toBeInTheDocument());
+
+    // Q-002 is accepted → the "Convert to invoice" action is available.
+    fireEvent.click(screen.getByTitle("Convert to invoice"));
+
+    await waitFor(() =>
+      expect(toastMock.error).toHaveBeenCalledWith("quote already converted")
+    );
+  });
+
+  it("confirms success when a quote converts to an invoice", async () => {
+    endpoints.convertQuoteToInvoice.mockResolvedValue({ data: { data: { id: "inv_1" } } });
+    render(<Quotes />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Q-002")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTitle("Convert to invoice"));
+
+    await waitFor(() =>
+      expect(toastMock.success).toHaveBeenCalledWith("Quote converted to an invoice.")
+    );
   });
 });
