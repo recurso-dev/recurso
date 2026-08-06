@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/patterns/PageHeader";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // The money-path tools an agent gains when Tier-3 is enabled — shown so the
@@ -24,6 +26,7 @@ const TIER3_TOOLS = [
 export default function MCPSettings() {
   const queryClient = useQueryClient();
   const [tier3Enabled, setTier3Enabled] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const {
     data,
@@ -48,7 +51,15 @@ export default function MCPSettings() {
     onError: () => toast.error("Failed to save MCP settings."),
   });
   const saving = saveMutation.isPending;
-  const save = () => saveMutation.mutate({ tier3_enabled: tier3Enabled });
+  const persist = () =>
+    saveMutation.mutate(
+      { tier3_enabled: tier3Enabled },
+      { onSettled: () => setConfirmOpen(false) }
+    );
+  // Newly granting money-path tools is a high-consequence change — confirm it.
+  // Turning them off, or saving with no change to the grant, saves directly.
+  const enablingMoneyTools = tier3Enabled && !data?.tier3_enabled;
+  const save = () => (enablingMoneyTools ? setConfirmOpen(true) : persist());
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -97,22 +108,22 @@ export default function MCPSettings() {
                 </p>
               </div>
 
-              <label className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={tier3Enabled}
-                  onChange={(e) => setTier3Enabled(e.target.checked)}
-                  className="mt-0.5 h-4 w-4 rounded border-input accent-emerald-600 focus:ring-ring"
-                />
+              <div className="flex items-start justify-between gap-3">
                 <span className="text-sm">
-                  <span className="font-medium text-foreground">
+                  <span id="mcp-tier3-label" className="font-medium text-foreground">
                     Allow money-path tools
                   </span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
                     Grants an authenticated agent the actions listed below.
                   </span>
                 </span>
-              </label>
+                <Switch
+                  aria-labelledby="mcp-tier3-label"
+                  checked={tier3Enabled}
+                  onCheckedChange={setTier3Enabled}
+                  className="mt-0.5"
+                />
+              </div>
 
               <div className="rounded-lg border border-border bg-muted/40 p-4">
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -130,6 +141,17 @@ export default function MCPSettings() {
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title="Allow agents to move money?"
+        description="Connected agents will be able to issue refunds and credit notes, top up wallets, add charges, cancel subscriptions, and bill usage on your account. Only enable this for trusted, supervised agents."
+        confirmLabel="Enable money-path tools"
+        destructive
+        busy={saving}
+        onConfirm={persist}
+      />
     </div>
   );
 }

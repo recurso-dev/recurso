@@ -58,14 +58,19 @@ export default function Profile() {
         actions={
           <Button variant="outline" onClick={() => navigate("/settings")}>
             <Pencil className="h-4 w-4" />
-
-      {loadError && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{loadError}</p>
-      )}
             Edit profile
           </Button>
         }
       />
+
+      {loadError && (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {loadError}
+        </p>
+      )}
 
       <div className="max-w-2xl space-y-6">
         <Card>

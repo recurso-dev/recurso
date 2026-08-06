@@ -41,8 +41,6 @@ const Coupons = () => {
       return (response.data.data || []).map((c) => ({
         ...c,
         status: c.active ? "active" : "inactive",
-        redemptions: 0,
-        max_redemptions: null,
         // "percentage" is a legacy alias from pre-normalization seed data
         // (migration 000104 rewrites it; tolerated here for older rows).
         discount:
@@ -116,15 +114,6 @@ const Coupons = () => {
               ? `For ${c.duration_in_months} months`
               : "Repeating"
             : c.duration}
-        </span>
-      ),
-    },
-    {
-      key: "redemptions",
-      header: "Redemptions",
-      cell: (c) => (
-        <span className="tabular-nums text-muted-foreground">
-          {c.redemptions} {c.max_redemptions ? `/ ${c.max_redemptions}` : ""}
         </span>
       ),
     },
