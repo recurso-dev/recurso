@@ -1,7 +1,17 @@
-import { render, screen } from "@testing-library/react";
+import { render as rtlRender, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import BillingSettings from "../settings/BillingSettings";
 import { endpoints } from "@/lib/api";
+
+const render = (ui) =>
+  rtlRender(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+    >
+      {ui}
+    </QueryClientProvider>
+  );
 
 vi.mock("@/lib/api", () => ({
   endpoints: {

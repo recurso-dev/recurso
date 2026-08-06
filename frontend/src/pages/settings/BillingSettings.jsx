@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Clock, CreditCard, Loader2 } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
@@ -75,38 +75,32 @@ function PlanCard({ plan }) {
 }
 
 export default function BillingSettings() {
-  const [status, setStatus] = useState(null);
-  const [plans, setPlans] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    Promise.allSettled([endpoints.getBillingStatus(), endpoints.getBillingPlans()]).then(
-      ([s, p]) => {
-        if (!active) return;
-        if (s.status === "fulfilled") setStatus(s.value.data || null);
-        if (p.status === "fulfilled") setPlans(p.value.data?.plans || []);
-        // The plans catalog is the load-bearing content; billing status is
-        // supplementary (it's legitimately absent on self-host). Only surface a
-        // retryable error when the catalog itself failed — a status-only failure
-        // degrades gracefully (the trial pill just doesn't render).
-        if (p.status === "rejected") {
-          setError(
-            p.reason?.response?.data?.error?.message ||
+  // One query for status + catalog. The plans catalog is the load-bearing
+  // content; billing status is supplementary (it's legitimately absent on
+  // self-host). Only surface a retryable error when the catalog itself failed —
+  // a status-only failure degrades gracefully (the trial pill just doesn't
+  // render).
+  const { data, isLoading: loading, refetch } = useQuery({
+    queryKey: ["billing-settings"],
+    queryFn: async () => {
+      const [s, p] = await Promise.allSettled([
+        endpoints.getBillingStatus(),
+        endpoints.getBillingPlans(),
+      ]);
+      return {
+        status: s.status === "fulfilled" ? s.value.data || null : null,
+        plans: p.status === "fulfilled" ? p.value.data?.plans || [] : [],
+        error:
+          p.status === "rejected"
+            ? p.reason?.response?.data?.error?.message ||
               "We couldn't load the available plans."
-          );
-        }
-        setLoading(false);
-      }
-    );
-    return () => {
-      active = false;
-    };
-  }, [reloadKey]);
+            : null,
+      };
+    },
+  });
+  const status = data?.status ?? null;
+  const plans = data?.plans ?? [];
+  const error = data?.error ?? null;
 
   return (
     <div className="space-y-6">
@@ -124,7 +118,7 @@ export default function BillingSettings() {
         <ErrorState
           title="Couldn't load billing"
           message={error}
-          onRetry={() => setReloadKey((k) => k + 1)}
+          onRetry={() => refetch()}
         />
       ) : (
         <>
