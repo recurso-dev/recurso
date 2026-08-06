@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ShieldCheck, Copy } from "lucide-react";
 import { toast } from "sonner";
 
@@ -74,36 +75,35 @@ const prettyBody = (body) => {
 // mutation, immutable at the database level. Click a row to inspect the full
 // actor, IDs, and the exact request payload that changed.
 const AuditLog = () => {
-  const [logs, setLogs] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [entityFilter, setEntityFilter] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(0); // 0-based
   const [selected, setSelected] = useState(null);
 
-  const fetchLogs = async () => {
-    setLoading(true);
-    setError(null);
-    try {
+  // Each filter+page combination is its own cache entry; placeholderData keeps
+  // the current rows visible while the next page loads.
+  const {
+    data: logs = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["audit-logs", { entityFilter, from, to, page }],
+    queryFn: async () => {
       const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
       if (entityFilter) params.entity_type = entityFilter;
       if (from) params.from = new Date(`${from}T00:00:00`).toISOString();
       if (to) params.to = new Date(`${to}T23:59:59`).toISOString();
-      const res = await api.getAuditLogs(params);
-      setLogs(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || err?.message || "Failed to load audit trail");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLogs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityFilter, from, to, page]);
+      return (await api.getAuditLogs(params)).data.data || [];
+    },
+    placeholderData: keepPreviousData,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message ||
+      queryError?.message ||
+      "Failed to load audit trail"
+    : null;
 
   // Reset to the first page whenever a filter changes.
   useEffect(() => {
@@ -189,7 +189,7 @@ const AuditLog = () => {
         data={logs}
         loading={loading}
         error={error}
-        onRetry={fetchLogs}
+        onRetry={refetch}
         onRowClick={setSelected}
         toolbar={
           <div className="flex flex-wrap items-center gap-2">

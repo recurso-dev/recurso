@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Webhook, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -69,68 +70,54 @@ const summarizeEvent = (ev) => {
 // delivery attempts — with one-click redelivery. Backed by GET /events,
 // GET /events/:id/deliveries, POST /events/:id/redeliver.
 const Events = () => {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
   const [typeFilter, setTypeFilter] = useState("all");
-
   const [selected, setSelected] = useState(null); // event whose detail sheet is open
-  const [deliveries, setDeliveries] = useState([]);
-  const [delLoading, setDelLoading] = useState(false);
-  const [redelivering, setRedelivering] = useState(false);
 
-  const fetchEvents = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await api.getEvents({ limit: PAGE_SIZE, offset: page * PAGE_SIZE });
-      setEvents(res.data.data || []);
-    } catch (err) {
-      setError(err?.response?.data?.error?.message || err?.message || "Failed to load events");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: events = [],
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
+    queryKey: ["events", { page, limit: PAGE_SIZE }],
+    queryFn: async () =>
+      (await api.getEvents({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })).data.data || [],
+    placeholderData: keepPreviousData,
+  });
+  const error = queryError
+    ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load events"
+    : null;
 
-  useEffect(() => {
-    fetchEvents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  // Deliveries for the open event — same ["event-deliveries", id] cache the
+  // Developers page uses, so the two views stay consistent.
+  const { data: deliveries = [], isLoading: delLoading } = useQuery({
+    queryKey: ["event-deliveries", selected?.id],
+    queryFn: async () => {
+      const res = await api.getEventDeliveries(selected.id);
+      return res.data.data || res.data || [];
+    },
+    enabled: !!selected,
+  });
 
-  const loadDeliveries = async (eventId) => {
-    setDelLoading(true);
-    try {
-      const res = await api.getEventDeliveries(eventId);
-      setDeliveries(res.data.data || res.data || []);
-    } catch {
-      setDeliveries([]);
-    } finally {
-      setDelLoading(false);
-    }
-  };
+  const openEvent = (ev) => setSelected(ev);
 
-  const openEvent = (ev) => {
-    setSelected(ev);
-    setDeliveries([]);
-    loadDeliveries(ev.id);
-  };
-
-  const redeliver = async () => {
-    if (!selected) return;
-    setRedelivering(true);
-    try {
-      const res = await api.redeliverEvent(selected.id);
+  const redeliverMutation = useMutation({
+    mutationFn: () => api.redeliverEvent(selected.id),
+    onSuccess: (res) => {
       const queued = res?.data?.queued ?? res?.data?.data?.queued;
       toast.success(
         queued != null ? `Re-queued delivery to ${queued} endpoint(s)` : "Event re-queued for delivery"
       );
-      await loadDeliveries(selected.id);
-    } catch (err) {
-      toast.error(err?.response?.data?.error?.message || "Redelivery failed");
-    } finally {
-      setRedelivering(false);
-    }
+      queryClient.invalidateQueries({ queryKey: ["event-deliveries", selected?.id] });
+    },
+    onError: (err) =>
+      toast.error(err?.response?.data?.error?.message || "Redelivery failed"),
+  });
+  const redelivering = redeliverMutation.isPending;
+  const redeliver = () => {
+    if (selected) redeliverMutation.mutate();
   };
 
   const columns = [
@@ -224,7 +211,7 @@ const Events = () => {
         data={visible}
         loading={loading}
         error={error}
-        onRetry={fetchEvents}
+        onRetry={refetch}
         onRowClick={openEvent}
         pagination={{
           page: page + 1,
