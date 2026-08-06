@@ -216,6 +216,7 @@ const DunningDashboard = () => {
                 ? `${formatNumber(overview.total_successes || 0)} of ${formatNumber(overview.total_retries)} succeeded`
                 : "no retries yet"
             }
+            definition="Share of individual retry attempts that recovered a payment — successful recoveries ÷ total retries. Per-attempt, not per-invoice (one invoice may take several retries)."
           />
         </div>
       )}
