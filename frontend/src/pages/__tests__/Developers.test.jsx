@@ -47,6 +47,28 @@ describe("Developers page — API keys", () => {
     await waitFor(() => expect(screen.getByText(/sk_live_abcd/)).toBeInTheDocument());
   });
 
+  it("shows a copy-ready authenticated-request quickstart", async () => {
+    render(<Developers />, { wrapper });
+    await waitFor(() => expect(screen.getByText(/make your first request/i)).toBeInTheDocument());
+    // The cURL tab is shown by default with a real authenticated request.
+    expect(screen.getByRole("tab", { name: "cURL" })).toBeInTheDocument();
+    expect(
+      screen.getByText((t) => t.includes("Authorization: Bearer rsk_live_"))
+    ).toBeInTheDocument();
+  });
+
+  it("documents webhook signature verification on the webhooks tab", async () => {
+    const user = userEvent.setup();
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    render(<Developers />, { wrapper });
+    await user.click(screen.getByRole("tab", { name: /webhooks/i }));
+    expect(
+      await screen.findByText(/verify webhook signatures/i)
+    ).toBeInTheDocument();
+    expect(screen.getByText(/X-Recurso-Signature/)).toBeInTheDocument();
+  });
+
   it("creates a new API key", async () => {
     render(<Developers />, { wrapper });
     await waitFor(() => expect(screen.getByText(/sk_live_abcd/)).toBeInTheDocument());
