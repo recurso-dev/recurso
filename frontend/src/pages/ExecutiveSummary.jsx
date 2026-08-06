@@ -170,14 +170,15 @@ export default function ExecutiveSummary() {
         m && (
           <div className="flex flex-col gap-8">
             <Section title="Revenue">
-              <StatCard label="MRR" value={money(mrrVal)} hint="Monthly recurring revenue" to="/finance/mrr-waterfall" />
-              <StatCard label="ARR" value={money(m?.mrr?.arr)} hint="Annual run-rate" to="/finance/revenue-by-plan" />
+              <StatCard label="MRR" value={money(mrrVal)} hint="Monthly recurring revenue" to="/finance/mrr-waterfall" definition="Monthly recurring revenue across active subscriptions, in your reporting currency." />
+              <StatCard label="ARR" value={money(m?.mrr?.arr)} hint="Annual run-rate" to="/finance/revenue-by-plan" definition="Annual run-rate — current MRR × 12. A projection of the next year at today's rate, not booked annual revenue." />
               <StatCard
                 label={`Net change (${days}d)`}
                 value={signed(netChange)}
                 hint="Ending vs. starting MRR"
                 tone={netChange != null && netChange < 0 ? "danger" : undefined}
                 to="/finance/mrr-waterfall"
+                definition={`Change in MRR over the last ${days} days — ending MRR minus starting MRR (new + expansion − contraction − churn).`}
               />
               <StatCard
                 label="Net dollar retention"
@@ -185,6 +186,7 @@ export default function ExecutiveSummary() {
                 hint={ndr == null ? "Needs MRR history" : `Trailing ${days} days`}
                 tone={ndr != null && ndr < 100 ? "warning" : undefined}
                 to="/finance/mrr-waterfall"
+                definition="Revenue retained from existing customers including expansion, excluding new — above 100% means expansion outweighed contraction and churn."
               />
             </Section>
 
@@ -303,13 +305,14 @@ export default function ExecutiveSummary() {
             </Section>
 
             <Section title="Unit economics">
-              <StatCard label="ARPA" value={money(m?.ue?.arpa)} hint="Per account / month" to="/finance/unit-economics" />
-              <StatCard label="ARPU" value={money(m?.ue?.arpu)} hint="Per subscription / month" to="/finance/unit-economics" />
+              <StatCard label="ARPA" value={money(m?.ue?.arpa)} hint="Per account / month" to="/finance/unit-economics" definition="Average recurring revenue per customer account per month — MRR ÷ active customers." />
+              <StatCard label="ARPU" value={money(m?.ue?.arpu)} hint="Per subscription / month" to="/finance/unit-economics" definition="Average recurring revenue per subscription per month — MRR ÷ active subscriptions." />
               <StatCard
                 label="LTV"
                 value={m?.ue?.has_ltv ? money(m.ue.ltv) : "—"}
                 hint={m?.ue?.has_ltv ? "At current churn" : "Needs history"}
                 to="/finance/unit-economics"
+                definition="Estimated customer lifetime value — ARPA ÷ monthly churn rate. Requires enough MRR history to estimate churn."
               />
               <StatCard
                 label="Active customers"
@@ -338,12 +341,14 @@ export default function ExecutiveSummary() {
                 value={money(m?.rev?.deferred_balance)}
                 hint="Unearned, still to recognize"
                 to="/finance/revenue-recognition"
+                definition="Cash collected for service not yet delivered — a liability that converts to revenue as you recognize it over the subscription term."
               />
               <StatCard
                 label="Recognized (MTD)"
                 value={money(m?.rev?.recognized_amount)}
                 hint="This month"
                 to="/finance/revenue-recognition"
+                definition="Revenue earned and booked so far this month as deferred balances are recognized over time — not cash collected this month."
               />
             </Section>
           </div>
