@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 import { Plus, Repeat } from "lucide-react";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers, usePlans } from "@/lib/useCustomers";
 import { useDebounce } from "../hooks/useDebounce";
-import SubscriptionDetail from "../components/slide-overs/SubscriptionDetail";
 import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -34,15 +33,6 @@ export default function Subscriptions() {
   const [dateFilter, setDateFilter] = useState("all");
   const debouncedSearch = useDebounce(search, 500);
 
-  // URL-driven detail (/subscriptions/:id) — shareable, refresh/back-safe.
-  const { id: routeId } = useParams();
-  const { data: routedObject } = useQuery({
-    queryKey: ["subscription", routeId],
-    queryFn: async () => (await endpoints.getSubscription(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
-
-  const queryClient = useQueryClient();
   // Every filter is server-driven (q/page/status/plan/date) — filtering only
   // the fetched page client-side silently hid matches on other pages. Each
   // param combination is its own cache entry; customers and plans come from
@@ -111,10 +101,6 @@ export default function Subscriptions() {
     setPage(1);
   }, [debouncedSearch, statusFilter, planFilter, dateFilter]);
 
-
-  const closeDetail = () => navigate("/subscriptions");
-  const isDetailOpen = Boolean(routeId);
-  const selectedSub = routedObject || null;
 
   const hasFilters =
     search || statusFilter !== "all" || planFilter !== "all" || dateFilter !== "all";
@@ -282,21 +268,6 @@ export default function Subscriptions() {
         }}
       />
 
-      <SubscriptionDetail
-        subscription={selectedSub}
-        customer={selectedSub ? customers[selectedSub.customer_id] : null}
-        plan={selectedSub ? plans[selectedSub.plan_id] : null}
-        isOpen={isDetailOpen}
-        onClose={closeDetail}
-        onRefresh={() => {
-          queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-          // The open sheet is served by the routed ["subscription", id]
-          // query — refresh it too or pause/resume/cancel appear to no-op.
-          if (routeId) {
-            queryClient.invalidateQueries({ queryKey: ["subscription", routeId] });
-          }
-        }}
-      />
     </div>
   );
 }

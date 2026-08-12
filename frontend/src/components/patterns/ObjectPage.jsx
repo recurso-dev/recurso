@@ -141,3 +141,24 @@ export function AttributeList({ items, columns = 2, className }) {
     </dl>
   );
 }
+
+/**
+ * RelatedRow — one row of a related-objects section (use inside an
+ * ObjectSection with flush): the whole row is a real link to the related
+ * object's route.
+ */
+export function RelatedRow({ to, children }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center justify-between gap-3 px-6 py-3 text-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** RelatedEmpty — the quiet empty state for a related-objects section. */
+export function RelatedEmpty({ children }) {
+  return <p className="px-6 py-4 text-sm text-muted-foreground">{children}</p>;
+}
