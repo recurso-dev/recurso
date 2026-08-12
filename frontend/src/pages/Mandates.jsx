@@ -9,20 +9,13 @@ import { toast } from "@/components/ui/sonner";
 import { toMinorUnits, formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -232,16 +225,22 @@ const Mandates = () => {
         }}
       />
 
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>New mandate</SheetTitle>
-            <SheetDescription>
-              A standing authorization to debit the customer up to a cap per cycle — UPI for
-              INR, SEPA/Bacs bank debit for EUR/GBP.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+      <FormSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="New mandate"
+        description="A standing authorization to debit the customer up to a cap per cycle — UPI for INR, SEPA/Bacs bank debit for EUR/GBP."
+        onSubmit={submitCreate}
+        submitLabel="Create mandate"
+        busyLabel="Creating…"
+        busy={creating}
+        canSubmit={Boolean(
+          form.customer_id.trim() &&
+            (form.currency !== "INR" || form.vpa.trim()) &&
+            form.max_amount
+        )}
+        dirty={Boolean(form.customer_id || form.vpa || form.max_amount)}
+      >
             <div>
               <Label>Customer</Label>
               <CustomerSelect
@@ -336,17 +335,7 @@ const Mandates = () => {
                 </SelectContent>
               </Select>
             </div>
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitCreate}
-              disabled={creating || !form.customer_id.trim() || (form.currency === "INR" && !form.vpa.trim()) || !form.max_amount}
-            >
-              {creating ? "Creating…" : "Create mandate"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
 
       <ConfirmDialog
         open={!!revokeTarget}
