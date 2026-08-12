@@ -2,9 +2,8 @@
 import colors from "tailwindcss/colors";
 
 export default {
-  // Light-only enterprise theme (Stripe / Linear style). Dark mode intentionally
-  // disabled for the redesign — surfaces are white / zinc-50.
-  darkMode: ["class"],
+  // Light-only enterprise theme. Dark mode is intentionally not configured —
+  // `dark:` variants must never be written (DESIGN.md §3) and no longer compile.
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -37,10 +36,29 @@ export default {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
         },
+        // Status tokens (DASHBOARD_UI_AUDIT §11): success/warning/info were the
+        // missing tier that forced ~641 raw-palette classes. Tint backgrounds
+        // and borders via opacity (bg-success/10, border-warning/20) — no
+        // separate "subtle" tokens.
+        success: {
+          DEFAULT: "hsl(var(--success))",
+          foreground: "hsl(var(--success-foreground))",
+        },
+        warning: {
+          DEFAULT: "hsl(var(--warning))",
+          foreground: "hsl(var(--warning-foreground))",
+        },
+        info: {
+          DEFAULT: "hsl(var(--info))",
+          foreground: "hsl(var(--info-foreground))",
+        },
         muted: {
           DEFAULT: "hsl(var(--muted))",
           foreground: "hsl(var(--muted-foreground))",
         },
+        // Readable-but-secondary text/icon tier (7.25:1) — replaces the
+        // failing text-stone-400 habit for meaningful content.
+        subtle: "hsl(var(--foreground-subtle))",
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
@@ -53,20 +71,8 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // ---- Legacy tokens (kept so not-yet-redesigned pages still render).
-        // Remapped to the light palette; `primary` above now resolves to
-        // emerald, so `bg-primary` on old pages picks up the new accent. ----
-        "primary-hover": "#059669", // emerald-600
-        "background-light": "#FAFAFA",
-        "background-dark": "#FAFAFA",
-        "surface-light": "#FFFFFF",
-        "surface-dark": "#FFFFFF",
-        "border-light": "#E4E4E7",
-        "border-dark": "#E4E4E7",
-        "text-light-primary": "#18181B",
-        "text-light-secondary": "#71717A",
-        "dark-primary": "#18181B",
-        // ---- Tremor tokens (light) — mapped to emerald accent ----
+        // ---- Tremor tokens (light) — mapped to emerald accent. These are
+        // consumed by Tremor's own compiled classes, not app code — keep. ----
         tremor: {
           brand: {
             faint: colors.emerald[50],
@@ -101,9 +107,15 @@ export default {
         mono: ["JetBrains Mono", "ui-monospace", "SF Mono", "Menlo", "monospace"],
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
+        // Controlled ladder — every step derives from --radius so the whole
+        // app moves with one token (rounded-xl/rounded no longer Tailwind
+        // defaults that ignore it). Resolved today: 4/4/6/8/12/16px.
+        DEFAULT: "calc(var(--radius) - 4px)",
         sm: "calc(var(--radius) - 4px)",
+        md: "calc(var(--radius) - 2px)",
+        lg: "var(--radius)",
+        xl: "calc(var(--radius) + 4px)",
+        "2xl": "calc(var(--radius) + 8px)",
         // Tremor
         "tremor-small": "0.375rem",
         "tremor-default": "0.5rem",
@@ -116,6 +128,14 @@ export default {
         "tremor-metric": ["1.875rem", { lineHeight: "2.25rem" }],
       },
       boxShadow: {
+        // Elevation ladder (DASHBOARD_UI_AUDIT §11): three levels only.
+        // raised   — cards, inputs, buttons (content sitting on the canvas)
+        // overlay  — dialogs, sheets, toasts (blocking surfaces)
+        // popover  — menus, selects, tooltips, palettes (anchored floats)
+        raised: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        overlay: "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)",
+        popover: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+        // Tremor aliases (consumed by Tremor's compiled classes — keep).
         "tremor-input": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
         "tremor-card": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
         "tremor-dropdown": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",

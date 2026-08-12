@@ -127,13 +127,13 @@ export default function TrialBalance() {
           <div className="flex flex-col gap-6">
             {/* Integrity banner — the standing double-entry assertion. */}
             {tb.balanced && abnormal.length === 0 ? (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-600/30 bg-emerald-600/10 px-4 py-3 text-sm text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-sm text-success">
                 <CheckCircle2 className="h-4 w-4" />
                 Books balance — total debits equal total credits, and every account
                 carries its expected sign.
               </div>
             ) : (
-              <div className="flex items-center gap-2 rounded-lg border border-red-600/30 bg-red-600/10 px-4 py-3 text-sm text-red-700 dark:text-red-400">
+              <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                 <AlertTriangle className="h-4 w-4" />
                 {!tb.balanced
                   ? "Out of balance — total debits do not equal total credits."
@@ -226,7 +226,7 @@ export default function TrialBalance() {
                             {money(l.credits)}
                           </TableCell>
                           <TableCell
-                            className={`text-right font-mono text-sm tabular-nums ${l.abnormal ? "text-red-600 dark:text-red-400" : "text-foreground"}`}
+                            className={`text-right font-mono text-sm tabular-nums ${l.abnormal ? "text-destructive" : "text-foreground"}`}
                           >
                             {money(l.balance)}
                           </TableCell>

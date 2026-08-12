@@ -126,7 +126,7 @@ function App() {
     const { isAuthenticated } = useAuth();
 
     return (
-        <div className="bg-background-dark min-h-screen">
+        <div className="min-h-screen bg-background">
             <ErrorBoundary>
                 <Suspense fallback={<PageFallback />}>
                 <Routes>

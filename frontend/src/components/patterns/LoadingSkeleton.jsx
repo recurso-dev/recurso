@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 export function Skeleton({ className, ...props }) {
   return (
     <div
-      className={cn("animate-pulse rounded-md bg-stone-100", className)}
+      className={cn("animate-pulse rounded-md bg-muted", className)}
       {...props}
     />
   );
@@ -16,10 +16,18 @@ export function Skeleton({ className, ...props }) {
 
 /**
  * TableSkeleton — placeholder rows for a DataTable while loading.
+ * Announced to assistive tech as a busy status region (WCAG 4.1.3) — without
+ * it every fetch, filter change, and page turn is silent.
  */
 export function TableSkeleton({ rows = 6, columns = 4 }) {
   return (
-    <div className="divide-y divide-border">
+    <div
+      className="divide-y divide-border"
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label="Loading"
+    >
       {Array.from({ length: rows }).map((_, r) => (
         <div key={r} className="flex items-center gap-4 px-4 py-3.5">
           {Array.from({ length: columns }).map((_, c) => (
@@ -39,7 +47,13 @@ export function TableSkeleton({ rows = 6, columns = 4 }) {
  */
 export function CardGridSkeleton({ count = 4 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div
+      className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4"
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      aria-label="Loading"
+    >
       {Array.from({ length: count }).map((_, i) => (
         <div key={i} className="rounded-xl border border-border bg-card p-5">
           <Skeleton className="h-3 w-20" />
