@@ -1,46 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import {
-  Home, LayoutDashboard, Users, Package, Layers, Repeat, Receipt, ScrollText, FileMinus,
-  Ticket, Megaphone, Gift, Brain, Landmark, Scale, CalendarClock, TrendingUp, FileClock, Gauge, BarChart3, Code2,
-  Settings, ShieldCheck, UserCog, Plus, Search, PieChart, Globe, BookOpen, Library, ExternalLink,
-} from "lucide-react";
+import { ArrowRight, Plus, Search, BookOpen, Library, Code2, ExternalLink } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { ALL_DESTINATIONS } from "@/lib/navigation";
 import { DOCS_HOME, DOCS_GUIDES, DOCS_API_REFERENCE } from "@/lib/docsLinks";
 
+// Derived from the canonical navigation definition (lib/navigation.js) —
+// the palette can no longer drift from the sidebar (audit IA finding #13:
+// the old hand-coded list was 18 destinations stale and duplicated
+// Products/Plans).
 const DESTINATIONS = [
-  { group: "Go to", label: "Home", to: "/", icon: Home },
-  { group: "Go to", label: "Overview", to: "/overview", icon: LayoutDashboard },
-  { group: "Go to", label: "Customers", to: "/customers", icon: Users },
-  { group: "Go to", label: "Products", to: "/products", icon: Package },
-  { group: "Go to", label: "Plans", to: "/plans", icon: Layers },
-  { group: "Go to", label: "Subscriptions", to: "/subscriptions", icon: Repeat },
-  { group: "Go to", label: "Invoices", to: "/invoices", icon: Receipt },
-  { group: "Go to", label: "Quotes", to: "/quotes", icon: ScrollText },
-  { group: "Go to", label: "Credit Notes", to: "/credit-notes", icon: FileMinus },
-  { group: "Go to", label: "Coupons", to: "/coupons", icon: Ticket },
-  { group: "Go to", label: "Referrals", to: "/referrals", icon: Megaphone },
-  { group: "Go to", label: "Gifts", to: "/gifts", icon: Gift },
-  { group: "Go to", label: "Dunning", to: "/dunning", icon: Brain },
-  { group: "Go to", label: "Ledger", to: "/ledger", icon: Landmark },
-  { group: "Go to", label: "Reconciliation", to: "/finance/reconciliation", icon: Scale },
-  { group: "Go to", label: "Revenue Recognition", to: "/finance/revenue-recognition", icon: CalendarClock },
-  { group: "Go to", label: "MRR Waterfall", to: "/finance/mrr-waterfall", icon: TrendingUp },
-  { group: "Go to", label: "Invoice Aging", to: "/finance/invoice-aging", icon: FileClock },
-  { group: "Go to", label: "Unit Economics", to: "/finance/unit-economics", icon: Gauge },
-  { group: "Go to", label: "Revenue by Plan", to: "/finance/revenue-by-plan", icon: PieChart },
-  { group: "Go to", label: "Revenue by Geography", to: "/finance/revenue-by-geography", icon: Globe },
-  { group: "Go to", label: "Usage", to: "/usage", icon: BarChart3 },
-  { group: "Go to", label: "Developers", to: "/developers", icon: Code2 },
-  { group: "Go to", label: "Settings", to: "/settings", icon: Settings },
-  { group: "Go to", label: "Security", to: "/security", icon: ShieldCheck },
-  { group: "Go to", label: "Team", to: "/team", icon: UserCog },
+  ...ALL_DESTINATIONS.map((d) => ({
+    group: "Go to",
+    label: d.label,
+    to: d.to,
+    icon: d.icon || ArrowRight,
+  })),
   { group: "Create", label: "New customer", to: "/customers/new", icon: Plus },
   { group: "Create", label: "New plan", to: "/plans/new", icon: Plus },
   { group: "Create", label: "New subscription", to: "/subscriptions/new", icon: Plus },
   { group: "Create", label: "New coupon", to: "/coupons/new", icon: Plus },
+  { group: "Create", label: "New quote", to: "/quotes/new", icon: Plus },
+  { group: "Create", label: "New credit note", to: "/credit-notes/new", icon: Plus },
   { group: "Help", label: "Documentation", href: DOCS_HOME, icon: BookOpen },
   { group: "Help", label: "Dashboard guides", href: DOCS_GUIDES, icon: Library },
   { group: "Help", label: "API reference", href: DOCS_API_REFERENCE, icon: Code2 },

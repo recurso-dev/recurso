@@ -34,6 +34,7 @@ const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
 const Security = lazy(() => import('./pages/Security'))
+const NotFound = lazy(() => import("./pages/NotFound"));
 const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const CreateSubscription = lazy(() => import('./pages/CreateSubscription'))
 const Invoices = lazy(() => import('./pages/Invoices'))
@@ -199,8 +200,13 @@ function App() {
                               <Route path="import-stripe" element={<Navigate to="/settings/import" replace />} />
                               <Route path="billing" element={<BillingSettings />} />
                             </Route>
-                            <Route path="/security" element={<Security />} />
-                            <Route path="/team" element={<Team />} />
+                            {/* Settings-family pages outside /settings/* keep their URLs
+                                but render inside the settings sub-nav (path-less layout
+                                route) — clicking "Security" no longer destroys context. */}
+                            <Route element={<SettingsLayout />}>
+                              <Route path="/security" element={<Security />} />
+                              <Route path="/team" element={<Team />} />
+                            </Route>
                             <Route path="/notifications" element={<Notifications />} />
                             <Route path="/profile" element={<Profile />} />
                             <Route path="/referrals" element={<Referrals />} />
@@ -216,11 +222,14 @@ function App() {
                             <Route path="/organizations" element={<Organizations />} />
                             <Route path="/finance/gst-returns" element={<GSTReturns />} />
                             <Route path="/ask" element={<AskAnalytics />} />
+                            {/* Authed 404 renders inside the shell so the nav
+                                stays available. */}
+                            <Route path="*" element={<NotFound />} />
                         </Route>
                     </Route>
 
-                    {/* Fallback */}
-                    <Route path="*" element={<Navigate to="/" replace />} />
+                    {/* A real 404 — the silent redirect hid broken links. */}
+                    <Route path="*" element={<NotFound />} />
                 </Routes>
                 </Suspense>
             </ErrorBoundary>

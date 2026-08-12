@@ -221,7 +221,7 @@ export default function Usage() {
   return (
     <div>
       <PageHeader
-        title="Usage Metering"
+        title="Usage Explorer"
         description="Metered usage aggregated by customer, plan, and dimension."
         actions={
           <Button variant="outline" onClick={exportCsv}>

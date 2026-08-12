@@ -162,7 +162,7 @@ const DunningDashboard = () => {
   return (
     <div>
       <PageHeader
-        title="Smart Dunning"
+        title="Dunning"
         description="Failed-payment retries that learn the best timing from your own outcomes."
         actions={
           <Button variant="outline" asChild>

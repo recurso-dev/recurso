@@ -522,7 +522,7 @@ export default function Developers() {
   return (
     <div>
       <PageHeader
-        title="Developer settings"
+        title="Developers"
         description="Manage your API keys, webhooks, and view event logs."
         actions={headerAction}
       />
