@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   FileQuestion,
   CheckCircle2,
+  Activity,
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -22,6 +23,7 @@ import {
   formatCurrency,
   formatCurrencyHeadline,
   formatDate,
+  formatDateTime,
   fromMinorUnits,
 } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -83,7 +85,7 @@ export default function Dashboard() {
   const { data, isLoading: loading, refetch } = useQuery({
     queryKey: ["dashboard-overview"],
     queryFn: async () => {
-      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes] =
+      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes, eventsRes] =
         await Promise.all([
           endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
           endpoints.getInvoices({ limit: 1000 }).catch(() => null),
@@ -93,6 +95,7 @@ export default function Dashboard() {
           endpoints.getDisputes("open").catch(() => null),
           endpoints.getChurnAlerts().catch(() => null),
           endpoints.getInvoiceAging().catch(() => null),
+          endpoints.getEvents({ limit: 8 }).catch(() => null),
         ]);
       const names = {};
       (custRes?.data?.data || []).forEach((c) => {
@@ -121,6 +124,8 @@ export default function Dashboard() {
         // Receivables aging, already normalized server-side into the reporting
         // currency (so buckets are summable, unlike raw per-invoice amounts).
         aging: agingRes?.data?.data ?? agingRes?.data ?? null,
+        // Latest business events for the activity feed; null = unavailable.
+        events: eventsRes?.data?.data || [],
       };
     },
   });
@@ -213,6 +218,61 @@ export default function Dashboard() {
         .slice(0, 6),
     [invoices]
   );
+
+  // Period comparison — last 30 days vs the 30 before, computed from the
+  // loaded sets (honest client-side deltas; MRR gets none because no history
+  // endpoint exists to compare against).
+  const DAY = 86_400_000;
+  const now = Date.now();
+  const inWindow = (ts, start, end) => {
+    const t = new Date(ts).getTime();
+    return t >= start && t < end;
+  };
+  const newSubs30 = useMemo(
+    () => subscriptions.filter((s) => inWindow(s.created_at, now - 30 * DAY, now)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subscriptions]
+  );
+  const newSubsPrev30 = useMemo(
+    () =>
+      subscriptions.filter((s) => inWindow(s.created_at, now - 60 * DAY, now - 30 * DAY)).length,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [subscriptions]
+  );
+  const subsDelta =
+    newSubsPrev30 > 0
+      ? Math.round(((newSubs30 - newSubsPrev30) / newSubsPrev30) * 100)
+      : null;
+
+  // Billed revenue in the selected chart currency: this 30d window vs prior.
+  const revenueDelta = useMemo(() => {
+    if (!revenueCur) return null;
+    let cur30 = 0;
+    let prev30 = 0;
+    invoices.forEach((inv) => {
+      if ((inv.currency || "USD").toUpperCase() !== revenueCur) return;
+      if (inWindow(inv.created_at, now - 30 * DAY, now)) cur30 += inv.total || 0;
+      else if (inWindow(inv.created_at, now - 60 * DAY, now - 30 * DAY)) prev30 += inv.total || 0;
+    });
+    if (prev30 <= 0) return null;
+    return Math.round(((cur30 - prev30) / prev30) * 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoices, revenueCur]);
+
+  // Activity feed: event type -> the object's addressable route.
+  const OBJECT_ROUTES = {
+    invoice: (id) => `/invoices/${id}`,
+    subscription: (id) => `/subscriptions/${id}`,
+    customer: (id) => `/customers/${id}`,
+    plan: (id) => `/plans/${id}`,
+    quote: (id) => `/quotes/${id}`,
+    credit_note: (id) => `/credit-notes/${id}`,
+  };
+  const events = data?.events ?? [];
+  const humanizeEvent = (type = "") =>
+    type
+      .replace(/[._]/g, " ")
+      .replace(/^./, (c) => c.toUpperCase());
 
   // Subscription mix — current (non-canceled) subs by status. Count-based, so
   // it needs no FX and is honest across currencies.
@@ -372,8 +432,11 @@ export default function Dashboard() {
             label="Active Subscriptions"
             value={activeSubs.toLocaleString()}
             icon={Users}
-            hint="Currently active"
+            delta={subsDelta != null ? `${subsDelta > 0 ? "+" : ""}${subsDelta}%` : undefined}
+            deltaType={subsDelta > 0 ? "positive" : subsDelta < 0 ? "negative" : "neutral"}
+            hint={`${newSubs30} new in last 30 days`}
             to="/subscriptions"
+            definition="Currently active subscriptions. The delta compares new subscriptions in the last 30 days against the 30 days before."
           />
           <StatCard
             label="Churn"
@@ -395,10 +458,23 @@ export default function Dashboard() {
       )}
 
       {/* Charts row: revenue trend (wide) + live subscription mix */}
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card className="lg:col-span-8">
+      <div className="mt-6 grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <Card className="xl:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
-            <CardTitle className="text-base">Revenue over time</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-base">Revenue over time</CardTitle>
+              {revenueDelta != null && (
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
+                    revenueDelta >= 0 ? "bg-success/5 text-success" : "bg-destructive/5 text-destructive"
+                  )}
+                  title="Billed in the selected currency, last 30 days vs the 30 before"
+                >
+                  {revenueDelta >= 0 ? "↑" : "↓"} {Math.abs(revenueDelta)}% vs prior 30d
+                </span>
+              )}
+            </div>
             {revenueCurrencies.length > 1 && (
               <div className="flex items-center gap-1 rounded-lg bg-muted p-0.5" role="group" aria-label="Chart currency">
                 {revenueCurrencies.map((c) => (
@@ -450,7 +526,7 @@ export default function Dashboard() {
         </Card>
 
         {/* Subscription mix — a live donut of who's paying you right now */}
-        <Card className="lg:col-span-4">
+        <Card className="xl:col-span-4">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Subscription mix</CardTitle>
             <Link
@@ -509,8 +585,8 @@ export default function Dashboard() {
       </div>
 
       {/* Operational row: latest activity + where the money is stuck */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        <Card className="lg:col-span-8">
+      <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-12">
+        <Card className="xl:col-span-5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Recent invoices</CardTitle>
             <Link to="/invoices" className="text-sm font-medium text-success hover:underline">
@@ -539,24 +615,24 @@ export default function Dashboard() {
                   {recentInvoices.map((inv) => (
                     <TableRow
                       key={inv.id}
-                      role="button"
-                      tabIndex={0}
                       onClick={() => navigate(`/invoices/${inv.id}`)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          navigate(`/invoices/${inv.id}`);
-                        }
-                      }}
-                      className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="cursor-pointer"
                     >
+                      {/* The row's ONE activation point is a real link (same
+                          semantics as DataTable v2 — no role=button on tr). */}
                       <TableCell className="pl-6">
-                        <div className="truncate text-sm font-medium text-foreground">
-                          {customerNames[inv.customer_id] || "Customer"}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {formatDate(inv.created_at)}
-                        </div>
+                        <Link
+                          to={`/invoices/${inv.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="block rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <div className="truncate text-sm font-medium text-foreground">
+                            {customerNames[inv.customer_id] || "Customer"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {formatDate(inv.created_at)}
+                          </div>
+                        </Link>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         <Money amountMinor={inv.total} currency={inv.currency} />
@@ -572,8 +648,63 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        {/* Activity — the latest business events, each linking to its object */}
+        <Card className="xl:col-span-4">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Activity</CardTitle>
+            <Link to="/events" className="text-sm font-medium text-success hover:underline">
+              View all
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="space-y-3">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-8 w-full" />
+                ))}
+              </div>
+            ) : events.length === 0 ? (
+              <EmptyState
+                icon={Activity}
+                title="No activity yet"
+                description="Business events appear here as they happen."
+              />
+            ) : (
+              <ol className="space-y-3">
+                {events.map((ev) => {
+                  const route = OBJECT_ROUTES[ev.object_type]?.(ev.object_id);
+                  const row = (
+                    <>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {humanizeEvent(ev.type)}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatDateTime(ev.created_at)}
+                      </p>
+                    </>
+                  );
+                  return (
+                    <li key={ev.id}>
+                      {route ? (
+                        <Link
+                          to={route}
+                          className="block rounded-md px-2 py-1 -mx-2 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          {row}
+                        </Link>
+                      ) : (
+                        <div className="px-2 py-1 -mx-2">{row}</div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </CardContent>
+        </Card>
+
         {/* Receivables aging — how much is owed and how stale it's getting */}
-        <Card className="lg:col-span-4">
+        <Card className="xl:col-span-3">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Receivables</CardTitle>
             <Link

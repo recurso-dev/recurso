@@ -17,6 +17,7 @@ vi.mock('../../lib/api', () => ({
         getDisputes: vi.fn(),
         getChurnAlerts: vi.fn(),
         getInvoiceAging: vi.fn(),
+        getEvents: vi.fn(),
     }
 }));
 
@@ -43,6 +44,7 @@ describe('Dashboard (redesign)', () => {
         endpoints.getDunningRecovered.mockResolvedValue({ data: { recovered: 0 } });
         endpoints.getDisputes.mockResolvedValue({ data: { data: [] } });
         endpoints.getChurnAlerts.mockResolvedValue({ data: { data: [] } });
+        endpoints.getEvents.mockResolvedValue({ data: { data: [] } });
         endpoints.getInvoiceAging.mockResolvedValue({
             data: { data: { reporting_currency: 'USD', buckets: [], total_outstanding: 0, total_count: 0 } },
         });
@@ -153,6 +155,39 @@ describe('Dashboard (redesign)', () => {
           screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$250.00")
         ).toBeInTheDocument();
         expect(screen.getByText('Paid')).toBeInTheDocument();
+    });
+
+    it('renders the activity feed with links to each event object', async () => {
+        endpoints.getEvents.mockResolvedValue({
+            data: {
+                data: [
+                    { id: 'ev1', type: 'invoice.paid', object_type: 'invoice', object_id: 'inv_9', created_at: '2026-08-12T10:00:00Z' },
+                    { id: 'ev2', type: 'subscription.created', object_type: 'subscription', object_id: 'sub_9', created_at: '2026-08-12T09:00:00Z' },
+                ],
+            },
+        });
+        renderDashboard();
+        await waitFor(() => expect(screen.getByText('Invoice paid')).toBeInTheDocument());
+        expect(screen.getByText('Invoice paid').closest('a')).toHaveAttribute('href', '/invoices/inv_9');
+        expect(screen.getByText('Subscription created').closest('a')).toHaveAttribute('href', '/subscriptions/sub_9');
+    });
+
+    it('shows the 30-day new-subscription comparison on the Active Subscriptions card', async () => {
+        const now = Date.now();
+        const iso = (daysAgo) => new Date(now - daysAgo * 86_400_000).toISOString();
+        endpoints.getSubscriptions.mockResolvedValue({
+            data: {
+                data: [
+                    // two new this window, one in the prior window → +100%
+                    { id: 's1', status: 'active', created_at: iso(5) },
+                    { id: 's2', status: 'active', created_at: iso(10) },
+                    { id: 's3', status: 'active', created_at: iso(45) },
+                ],
+            },
+        });
+        renderDashboard();
+        await waitFor(() => expect(screen.getByText('2 new in last 30 days')).toBeInTheDocument());
+        expect(screen.getByText('+100%')).toBeInTheDocument();
     });
 
     it('shows a retryable error (not a page of zeros) when every core read fails', async () => {
