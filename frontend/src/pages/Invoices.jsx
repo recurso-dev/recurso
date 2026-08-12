@@ -124,14 +124,35 @@ const Invoices = () => {
   } = useQuery({
     queryKey: ["invoices", "all"],
     queryFn: async () => {
-      // The endpoint is now server-paginated (bounded ≤250/page). The dashboard
-      // requests the max page and lets DataTable paginate client-side; a
-      // full page-through UI for very large accounts is a follow-up.
-      const res = await endpoints.getInvoices({ per_page: 250 });
-      return res?.data?.data || [];
+      // Page through the server-paginated endpoint (≤250/page) so the status
+      // chips, the aging math, and above all the CSV export see EVERY invoice
+      // — one max-size page silently truncated all three past 250 invoices.
+      // Beyond the safety cap we keep the newest pages and say so on the page
+      // instead of pretending the set is complete.
+      const PER_PAGE = 250;
+      const MAX_PAGES = 40; // 10k invoices
+      const first = await endpoints.getInvoices({ per_page: PER_PAGE, page: 1 });
+      const rows = [...(first?.data?.data || [])];
+      const totalPages = first?.data?.pagination?.total_pages || 1;
+      const pages = Math.min(totalPages, MAX_PAGES);
+      if (pages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: pages - 1 }, (_, i) =>
+            endpoints.getInvoices({ per_page: PER_PAGE, page: i + 2 })
+          )
+        );
+        for (const res of rest) rows.push(...(res?.data?.data || []));
+      }
+      return {
+        rows,
+        truncated: totalPages > MAX_PAGES,
+        total: first?.data?.pagination?.total ?? rows.length,
+      };
     },
   });
-  const invoices = data || [];
+  const invoices = data?.rows || [];
+  const truncated = data?.truncated || false;
+  const totalCount = data?.total ?? invoices.length;
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load invoices"
     : null;
@@ -253,6 +274,17 @@ const Invoices = () => {
           </Button>
         }
       />
+
+      {truncated && (
+        <p
+          role="status"
+          className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+        >
+          Showing the newest {invoices.length.toLocaleString()} of{" "}
+          {totalCount.toLocaleString()} invoices — filters and the CSV export cover only
+          these. Use the API for a complete export.
+        </p>
+      )}
 
       <DataTable
         columns={columns}

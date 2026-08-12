@@ -48,6 +48,32 @@ describe('Invoices Page', () => {
         endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
     });
 
+    // The list/filters/CSV must see the WHOLE invoice set — one max-size page
+    // silently truncated all three past 250 invoices.
+    it('pages through the server-paginated endpoint to load every invoice', async () => {
+        const page2Invoice = {
+            id: 'inv-old', invoice_number: 'INV-OLD', customer_id: 'cust-old',
+            total: 1000, currency: 'USD', status: 'paid', created_at: '2025-01-01T00:00:00Z'
+        };
+        endpoints.getInvoices.mockImplementation(({ page }) =>
+            Promise.resolve(
+                page === 1
+                    ? { data: { data: mockInvoices, pagination: { total_pages: 2, total: 4 } } }
+                    : { data: { data: [page2Invoice], pagination: { total_pages: 2, total: 4 } } }
+            )
+        );
+        render(<Invoices />, { wrapper });
+
+        // Rows from BOTH pages render.
+        await waitFor(() => expect(screen.getByText('INV-001')).toBeInTheDocument());
+        expect(screen.getByText('INV-OLD')).toBeInTheDocument();
+        expect(endpoints.getInvoices).toHaveBeenCalledWith(
+            expect.objectContaining({ page: 2 })
+        );
+        // The full set loaded, so no truncation notice.
+        expect(screen.queryByText(/Showing the newest/)).toBeNull();
+    });
+
     it('shows loading skeleton initially', async () => {
         let resolvePromise;
         const pending = new Promise(resolve => { resolvePromise = resolve; });
