@@ -2898,16 +2898,9 @@ paths:
       summary: List deliveries for a webhook endpoint
       description: Recent delivery attempts to this endpoint, newest first.
       parameters:
+        - $ref: '#/components/parameters/PathID'
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
-        - $ref: '#/components/parameters/PathID'
-        - $ref: '#/components/parameters/Limit'
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
         - name: status
           in: query
           description: Filter by derived delivery status.
