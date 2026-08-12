@@ -333,7 +333,7 @@ export default function Dashboard() {
         title="Home"
         description="A snapshot of your billing performance."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" asChild>
               <Link to="/customers/new">
                 <Plus className="h-4 w-4" />
