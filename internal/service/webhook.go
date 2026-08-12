@@ -153,9 +153,10 @@ func (s *WebhookService) PublishEvent(ctx context.Context, input PublishEventInp
 	return event, nil
 }
 
-// ListEvents returns events for a tenant with pagination
-func (s *WebhookService) ListEvents(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Event, error) {
-	return s.eventRepo.ListByTenantID(ctx, tenantID, limit, offset)
+// ListEvents returns events for a tenant with pagination, optionally
+// filtered to one event type ("" = all).
+func (s *WebhookService) ListEvents(ctx context.Context, tenantID uuid.UUID, eventType string, limit, offset int) ([]*domain.Event, error) {
+	return s.eventRepo.ListByTenantID(ctx, tenantID, eventType, limit, offset)
 }
 
 // GetEvent returns a single event by ID

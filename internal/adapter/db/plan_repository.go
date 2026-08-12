@@ -143,6 +143,18 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 		argIdx++
 	}
 
+	if filter.Currency != "" {
+		query += fmt.Sprintf(" AND EXISTS (SELECT 1 FROM prices pr WHERE pr.plan_id = plans.id AND pr.currency = $%d)", argIdx)
+		args = append(args, filter.Currency)
+		argIdx++
+	}
+
+	if filter.IntervalUnit != "" {
+		query += fmt.Sprintf(" AND interval_unit = $%d", argIdx)
+		args = append(args, filter.IntervalUnit)
+		argIdx++
+	}
+
 	query += " ORDER BY created_at DESC"
 
 	if filter.Limit > 0 {

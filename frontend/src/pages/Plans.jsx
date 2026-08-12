@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { Plus, Gift, Package } from "lucide-react";
@@ -38,19 +38,26 @@ export default function Plans() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
-  // Server-driven list keyed by (page, q); placeholderData keeps the current
-  // page rendered while the next loads. The backend defaults to limit 10, so
-  // paging must be explicit or the list silently truncates past ten plans.
+  // Fully server-driven list keyed by (page, q, currency, interval) —
+  // filtering only the fetched page client-side silently hid matches on other
+  // pages. placeholderData keeps the current page rendered while the next
+  // loads. The backend defaults to limit 10, so paging must be explicit or
+  // the list silently truncates past ten plans.
   const {
     data: plans = [],
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["plans", { page, q: debouncedSearch }],
+    queryKey: [
+      "plans",
+      { page, q: debouncedSearch, currency: currencyFilter, interval: intervalFilter },
+    ],
     queryFn: async () => {
       const params = { page, limit: PAGE_SIZE };
       if (debouncedSearch) params.q = debouncedSearch;
+      if (currencyFilter !== "all") params.currency = currencyFilter;
+      if (intervalFilter !== "all") params.interval_unit = intervalFilter;
       return (await endpoints.getPlans(params)).data.data || [];
     },
     placeholderData: (prev) => prev,
@@ -59,32 +66,10 @@ export default function Plans() {
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load plans"
     : null;
 
-  // Reset to page 1 whenever the query changes.
+  // Reset to page 1 whenever any filter changes.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch]);
-
-  // Filter logic — preserved from the original (currency over prices, interval unit),
-  // plus a client-side name/code search over the already-fetched list.
-  const filteredPlans = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return plans.filter((p) => {
-      if (currencyFilter !== "all") {
-        const hasCurrency = (p.prices || []).some(
-          (price) => price.currency === currencyFilter
-        );
-        if (!hasCurrency) return false;
-      }
-      if (intervalFilter !== "all" && p.interval_unit !== intervalFilter) {
-        return false;
-      }
-      if (q) {
-        const haystack = `${p.name || ""} ${p.code || ""}`.toLowerCase();
-        if (!haystack.includes(q)) return false;
-      }
-      return true;
-    });
-  }, [plans, search, currencyFilter, intervalFilter]);
+  }, [debouncedSearch, currencyFilter, intervalFilter]);
 
   const handleRowClick = (plan) => {
     setSelectedPlan(plan);
@@ -175,7 +160,7 @@ export default function Plans() {
 
       <DataTable
         columns={columns}
-        data={filteredPlans}
+        data={plans}
         loading={loading}
         error={error}
         onRetry={refetch}

@@ -54,4 +54,26 @@ describe("Plans page", () => {
     render(<Plans />, { wrapper });
     await waitFor(() => expect(screen.getByText("No plans yet")).toBeInTheDocument());
   });
+
+  // The currency filter must reach the server — filtering only the fetched
+  // page silently hid matching plans on other pages.
+  it("sends the currency filter to the server", async () => {
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    const { default: userEvent } = await import("@testing-library/user-event");
+    const user = userEvent.setup();
+
+    render(<Plans />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Pro")).toBeInTheDocument());
+
+    // Toolbar selects in order: currency, interval.
+    await user.click(screen.getAllByRole("combobox")[0]);
+    await user.click(await screen.findByRole("option", { name: "Currency: INR" }));
+
+    await waitFor(() =>
+      expect(endpoints.getPlans).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "INR", page: 1 })
+      )
+    );
+  });
 });

@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -53,5 +54,30 @@ describe("Subscriptions page", () => {
     endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
     render(<Subscriptions />, { wrapper });
     await waitFor(() => expect(screen.getByText("No subscriptions yet")).toBeInTheDocument());
+  });
+
+  // The plan filter must reach the server — filtering only the fetched page
+  // silently hid matching subscriptions on other pages.
+  it("sends the plan filter to the server", async () => {
+    endpoints.getCustomers.mockResolvedValue({ data: { data: [] } });
+    endpoints.getPlans.mockResolvedValue({
+      data: { data: [{ id: "pl_pro", name: "Pro" }] },
+    });
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    const user = userEvent.setup();
+
+    render(<Subscriptions />, { wrapper });
+    await waitFor(() => expect(screen.getByText("active")).toBeInTheDocument());
+
+    // Toolbar selects in order: status, plan, date.
+    await user.click(screen.getAllByRole("combobox")[1]);
+    await user.click(await screen.findByRole("option", { name: "Pro" }));
+
+    await waitFor(() =>
+      expect(endpoints.getSubscriptions).toHaveBeenCalledWith(
+        expect.objectContaining({ plan_id: "pl_pro", page: 1 })
+      )
+    );
   });
 });

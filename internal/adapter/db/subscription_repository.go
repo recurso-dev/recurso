@@ -245,6 +245,18 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 		argIdx++
 	}
 
+	if filter.PlanID != uuid.Nil {
+		query += fmt.Sprintf(" AND s.plan_id = $%d", argIdx)
+		args = append(args, filter.PlanID)
+		argIdx++
+	}
+
+	if filter.StartedAfter != nil {
+		query += fmt.Sprintf(" AND s.current_period_start >= $%d", argIdx)
+		args = append(args, *filter.StartedAfter)
+		argIdx++
+	}
+
 	query += " ORDER BY s.created_at DESC"
 
 	if filter.Limit > 0 {

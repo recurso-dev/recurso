@@ -210,17 +210,17 @@ func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ev
 	return &event, nil
 }
 
-func (r *EventRepository) ListByTenantID(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Event, error) {
+func (r *EventRepository) ListByTenantID(ctx context.Context, tenantID uuid.UUID, eventType string, limit, offset int) ([]*domain.Event, error) {
 	if limit <= 0 {
 		limit = 50
 	}
 	query := `
 		SELECT id, tenant_id, type, object_type, object_id, data, created_at
-		FROM events WHERE tenant_id = $1
+		FROM events WHERE tenant_id = $1 AND ($2 = '' OR type = $2)
 		ORDER BY created_at DESC
-		LIMIT $2 OFFSET $3
+		LIMIT $3 OFFSET $4
 	`
-	rows, err := r.db.QueryContext(ctx, query, tenantID, limit, offset)
+	rows, err := r.db.QueryContext(ctx, query, tenantID, eventType, limit, offset)
 	if err != nil {
 		return nil, err
 	}

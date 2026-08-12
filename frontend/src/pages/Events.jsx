@@ -81,10 +81,24 @@ const Events = () => {
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["events", { page, limit: PAGE_SIZE }],
+    queryKey: ["events", { page, limit: PAGE_SIZE, type: typeFilter }],
     queryFn: async () =>
-      (await api.getEvents({ limit: PAGE_SIZE, offset: page * PAGE_SIZE })).data.data || [],
+      (
+        await api.getEvents({
+          limit: PAGE_SIZE,
+          offset: page * PAGE_SIZE,
+          type: typeFilter === "all" ? "" : typeFilter,
+        })
+      ).data.data || [],
     placeholderData: keepPreviousData,
+  });
+
+  // The full catalog of event types the server can emit — so the filter offers
+  // every type, not just the ones that happen to be on the loaded page.
+  const { data: allTypes = [] } = useQuery({
+    queryKey: ["event-types"],
+    queryFn: async () => (await api.getEventTypes()).data.data || [],
+    staleTime: 60 * 60 * 1000,
   });
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load events"
@@ -173,10 +187,9 @@ const Events = () => {
     },
   ];
 
-  // Distinct types on the loaded page — a cheap, zero-request way to narrow the
-  // stream while hunting a specific event.
-  const types = [...new Set(events.map((e) => e.type))].sort();
-  const visible = typeFilter === "all" ? events : events.filter((e) => e.type === typeFilter);
+  // Server-filtered by type — filtering only the loaded page hid matches on
+  // other pages. Options come from the server's type catalog.
+  const types = [...allTypes].sort();
 
   const deliveryBadge = (d) => {
     if (!d.status_code) return <Badge variant="neutral">pending</Badge>;
@@ -190,8 +203,14 @@ const Events = () => {
         title="Events"
         description="Outbound webhook events, their payloads, and delivery attempts. Click an event to inspect it and redeliver in one click."
         actions={
-          types.length > 1 ? (
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
+          types.length > 0 ? (
+            <Select
+              value={typeFilter}
+              onValueChange={(v) => {
+                setTypeFilter(v);
+                setPage(0);
+              }}
+            >
               <SelectTrigger className="w-[220px]" aria-label="Filter by event type">
                 <SelectValue />
               </SelectTrigger>
@@ -208,7 +227,7 @@ const Events = () => {
 
       <DataTable
         columns={columns}
-        data={visible}
+        data={events}
         loading={loading}
         error={error}
         onRetry={refetch}
@@ -223,7 +242,7 @@ const Events = () => {
           icon: Webhook,
           title:
             typeFilter !== "all"
-              ? "No events of this type on this page"
+              ? "No events of this type"
               : page > 0
                 ? "No more events"
                 : "No events yet",

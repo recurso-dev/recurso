@@ -48,22 +48,40 @@ export default function Subscriptions() {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
   const queryClient = useQueryClient();
-  // The subscription page itself is server-driven (q/page/status) — each
+  // Every filter is server-driven (q/page/status/plan/date) — filtering only
+  // the fetched page client-side silently hid matches on other pages. Each
   // param combination is its own cache entry; customers and plans come from
   // the shared reference-data hooks.
+  const startedAfter = useMemo(() => {
+    if (dateFilter === "30_days") {
+      const d = new Date();
+      d.setDate(d.getDate() - 30);
+      return d.toISOString();
+    }
+    if (dateFilter === "this_month") {
+      const now = new Date();
+      return new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    }
+    return "";
+  }, [dateFilter]);
   const {
     data: subsData,
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["subscriptions", { q: debouncedSearch, page, status: statusFilter }],
+    queryKey: [
+      "subscriptions",
+      { q: debouncedSearch, page, status: statusFilter, plan: planFilter, startedAfter },
+    ],
     queryFn: async () => {
       const res = await endpoints.getSubscriptions({
         q: debouncedSearch,
         page,
         limit: PAGE_SIZE,
         status: statusFilter === "all" ? "" : statusFilter,
+        plan_id: planFilter === "all" ? "" : planFilter,
+        started_after: startedAfter,
       });
       return res?.data?.data || [];
     },
@@ -93,30 +111,10 @@ export default function Subscriptions() {
     return map;
   }, [planList]);
 
-  // Reset to page 1 when the query/status change.
+  // Reset to page 1 when any filter changes.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, statusFilter]);
-
-  // Client-side plan + date filters over the fetched page (logic preserved).
-  const filteredSubs = useMemo(() => {
-    return subs.filter((s) => {
-      if (planFilter !== "all" && s.plan_id !== planFilter) return false;
-      if (dateFilter !== "all") {
-        const start = new Date(s.current_period_start);
-        const now = new Date();
-        if (dateFilter === "30_days") {
-          const thirtyDaysAgo = new Date(new Date().setDate(now.getDate() - 30));
-          if (start < thirtyDaysAgo) return false;
-        }
-        if (dateFilter === "this_month") {
-          const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          if (start < firstOfMonth) return false;
-        }
-      }
-      return true;
-    });
-  }, [subs, planFilter, dateFilter]);
+  }, [debouncedSearch, statusFilter, planFilter, dateFilter]);
 
   const handleRowClick = (sub) => {
     setSelectedSub(sub);
@@ -223,7 +221,7 @@ export default function Subscriptions() {
 
       <DataTable
         columns={columns}
-        data={filteredSubs}
+        data={subs}
         loading={loading}
         error={error}
         onRetry={refetch}

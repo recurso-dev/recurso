@@ -102,13 +102,35 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	status := c.Query("status")
 	search := c.Query("q")
 
+	var planID uuid.UUID
+	if s := c.Query("plan_id"); s != "" {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid plan_id")
+			return
+		}
+		planID = id
+	}
+
+	var startedAfter *time.Time
+	if s := c.Query("started_after"); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "started_after must be RFC 3339")
+			return
+		}
+		startedAfter = &t
+	}
+
 	limit, offset := parsePageLimit(c)
 
 	filter := domain.SubscriptionFilter{
-		Status: status,
-		Search: search,
-		Limit:  limit,
-		Offset: offset,
+		Status:       status,
+		Search:       search,
+		PlanID:       planID,
+		StartedAfter: startedAfter,
+		Limit:        limit,
+		Offset:       offset,
 	}
 
 	subs, err := h.service.ListSubscriptions(ctx, tenantID, filter)
