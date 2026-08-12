@@ -1,11 +1,28 @@
 # Engineering backlog
 
-Ranked by ROI (impact ÷ effort). Updated 2026-07-28 (overnight session).
-Struck as already-shipped on re-audit: per-entity GSTR-1/3B (`?entity_id=` +
-primary-aware GSTIN, #205/#208) and per-entity MRR UI (ExecutiveSummary +
-Entities pages).
+Ranked by ROI (impact ÷ effort). Updated 2026-08-12 (post-v0.11.0 re-sync;
+previous full update 2026-07-28).
 Items marked **founder** are blocked on credentials/infrastructure only the
 founder can provide; everything else is engineering-ready.
+
+## 2026-08-12 state: engineering-ready queue is EMPTY
+
+Everything actionable below is done, struck, or founder-blocked. Since the
+last update: the money-path audit converged (R-001…R-016, see
+`docs/RISK_REGISTER.md`), the full design review closed (all 13 themes,
+`docs/design-review-2026-08.md` status table) and shipped as **v0.11.0**,
+and the SDKs (go v1.5.0 / node 1.7.0 / python 1.9.0) + docs api-reference
+are synced to the current spec.
+
+**Open items, all founder decisions or credentials:**
+- Organizations add-tenant picker — needs a founder-level tenant-enumeration
+  endpoint (cross-tenant authz design).
+- L2 pause/arrears semantics (below) and S4's Idempotency-Key half (below).
+- Website positioning: "never a cut of your revenue" vs Cloud's 0.4%; whether
+  to surface churn prediction.
+- Credentials: QuickBooks OAuth (#3), GoCardless webhook (#4), telemetry
+  deploy (#5), `TRAFFIC_TOKEN` (#6), Peppol AP (#7), demo hosting (#8),
+  npm/PyPI publish secrets.
 
 ## P0 — money-path correctness
 
