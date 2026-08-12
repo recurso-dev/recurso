@@ -1,5 +1,58 @@
 # Progress log
 
+## 2026-08-05 → 08-12 — the design initiative → v0.11.0, then SDK/docs sync
+
+**`v0.11.0 — The design release` published 2026-08-12.** The arc: a founder
+pivot to "VP of Design at Stripe" mode produced a code-grounded review of all
+~60 screens (`docs/design-review-2026-08.md`, verdict ~74/100, thirteen
+cross-cutting themes) — then ~60 PRs (#543–#602) closed every theme:
+
+- **State contract (T1)** — silent failures that rendered as a healthy
+  business (Dashboard total-outage $0 tiles, Collections analytics zeros,
+  Developers empty-on-error) all route to explicit retryable errors.
+- **Money (T2)** — every monetary cell renders through tabular-mono `Money`,
+  right-aligned, in its real currency; Inter + JetBrains Mono self-hosted.
+- **Correctness-of-trust (T9)** — the standouts: GSTReturns (scored 55; a
+  statutory filing rendered as a raw JSON dump) rebuilt as GSTR-1/3B sections;
+  the month-named GL export actually contained the ALL-TIME ledger →
+  `/v1/ledger/export?month=&year=` (basis verified identical to the deferred
+  rollforward, so the export ties to the close pack); amount-off coupons
+  assumed USD (typed 500 on a JPY catalog → ¥50,000 coupon); three list pages
+  filtered ONE fetched page client-side → real server-side filter params;
+  Invoices loaded only the newest 250 so the CSV silently truncated.
+- **Forms (T4)** — shared `useFormErrors` (inline role=alert + focus-first-
+  invalid); settings gained a persistent sub-nav (T12); dev pages gained real
+  code samples (T13); destructive actions confirm (T11); UUIDs became names
+  and pickers (T5/T6); the remaining hand-rolled pages moved to react-query
+  (T8, ADR-005 now universal).
+
+**Then the supply chain synced to the new surface**: Go SDK v1.5.0, Node
+1.7.0 (full schema regen), Python 1.9.0 (full regen), docs api-reference
+resynced + a new ledger/export page. The sync itself found bugs upstream:
+`listWebhookEndpointDeliveries` had duplicate params in openapi.yaml and the
+Python generator SILENTLY dropped the whole endpoint (#600); the docs
+advertised two query filters (`customer_id` on subscriptions, `active` on
+plans) that no handler ever parsed.
+
+**Post-release adversarial self-review (same day) caught 3 defects in the
+session's own work**: the coupon form's dominant-currency default read
+`p.currency` but currency lives on `prices[]` — inert for every tenant, and
+the test had mocked the wrong shape (#602); the new filter SQL had zero
+real-Postgres coverage → PG test added, which also exposed a hardcoded
+unique id in the payment-attempt test (#601); the Python regen clobbered the
+README and the `raise_on_unexpected_status=True` deviation (python#14 — the
+generator resets three things every regen; checklist recorded).
+
+Also: a fresh nanoid CVE broke Trivy on every PR mid-session (#593 unblocked
+the train), and the week-old #590 (T10: dead portal code, revenue-view
+cross-links) finally merged once the GitHub Actions outage cleared.
+
+Remaining queue is founder-only: Organizations tenant-enumeration endpoint
+design, pause/arrears semantics (L2), Idempotency-Key contract (S4), the
+0.4%-vs-"never a cut" positioning, and the standing credentials list
+(QuickBooks OAuth, GoCardless webhook, telemetry deploy, Peppol, demo
+hosting, npm/PyPI publish secrets).
+
 ## 2026-08-03 owner-mode session — v0.8.0 released + product-grade polish wave
 
 **`v0.8.0 — The correctness release` published** (tag at #427's changelog cut;
