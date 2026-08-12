@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 import { Plus, Users, Link2 } from "lucide-react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,7 +7,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { useDebounce } from "../hooks/useDebounce";
-import CustomerDetail from "../components/slide-overs/CustomerDetail";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -43,16 +42,6 @@ export default function Customers() {
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 500);
-
-  // The open detail is URL-driven (/customers/:id) — shareable, ⌘-clickable,
-  // refresh- and back/forward-safe (DASHBOARD_REDESIGN.md Stage 5). Fetch by
-  // id so a deep link works even when the row isn't on the loaded page.
-  const { id: routeId } = useParams();
-  const { data: routedCustomer } = useQuery({
-    queryKey: ["customer", routeId],
-    queryFn: async () => (await endpoints.getCustomer(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
 
   const queryClient = useQueryClient();
   // Server-driven list: every (page, q, status) combination is its own cache
@@ -91,22 +80,6 @@ export default function Customers() {
   useEffect(() => {
     setPage(1);
   }, [debouncedSearch, status]);
-
-  const closeDetail = () => navigate("/customers");
-  const selected =
-    (routeId && customers.find((c) => c.id === routeId)) || routedCustomer || null;
-  const detailOpen = Boolean(routeId);
-
-  // After an edit/archive in the detail sheet: show the server's version
-  // immediately and refresh the list behind it.
-  const handleCustomerChanged = (updated) => {
-    // The open detail is served by the ["customer", id] query — refresh it
-    // alongside the list so the sheet shows the server's version.
-    if (updated?.id) {
-      queryClient.invalidateQueries({ queryKey: ["customer", updated.id] });
-    }
-    fetchCustomers();
-  };
 
   const copyPortalLink = useCallback(
     (e, customer) => {
@@ -243,12 +216,6 @@ export default function Customers() {
         }}
       />
 
-      <CustomerDetail
-        customer={selected}
-        isOpen={detailOpen}
-        onClose={closeDetail}
-        onChanged={handleCustomerChanged}
-      />
     </div>
   );
 }
