@@ -1,11 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { useNavigate } from "react-router";
 import { Sparkles } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { cn, toMinorUnits } from "@/lib/utils";
+import { cn, toMinorUnits, currencyDecimals } from "@/lib/utils";
+import { usePlans } from "@/lib/useCustomers";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// Currency choices when the tenant has no plans yet (mirrors CreatePlan).
+const FALLBACK_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
+
+const symbolFor = (cur) => {
+  try {
+    return (
+      new Intl.NumberFormat("en-US", { style: "currency", currency: cur })
+        .formatToParts(0)
+        .find((p) => p.type === "currency")?.value || cur
+    );
+  } catch {
+    return cur;
+  }
+};
+
 const CreateCoupon = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -41,6 +57,24 @@ const CreateCoupon = () => {
 
   const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
   const close = () => navigate("/coupons");
+
+  // Amount-off coupons apply as raw minor units against the invoice subtotal,
+  // so the major→minor conversion must use a real currency's exponent — a USD
+  // assumption made a "¥500 off" coupon worth ¥50,000 (100×) and a KWD one 10×
+  // small. Offer the currencies the catalog actually bills in, most common
+  // first, and convert with the selected one.
+  const { plans } = usePlans();
+  const currencies = useMemo(() => {
+    const counts = new Map();
+    for (const p of plans) {
+      if (p.currency) counts.set(p.currency, (counts.get(p.currency) || 0) + 1);
+    }
+    const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
+    return sorted.length ? sorted : FALLBACK_CURRENCIES;
+  }, [plans]);
+  const [pickedCurrency, setPickedCurrency] = useState(null);
+  const currency = pickedCurrency || currencies[0];
+  const isPercent = formData.discount_type.toLowerCase().includes("percent");
 
   const generateCode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -66,16 +100,16 @@ const CreateCoupon = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const isPercent = formData.discount_type.toLowerCase().includes("percent");
     createMutation.mutate({
       code: formData.code,
       discount_type: isPercent ? "percent" : "amount",
       // Amount-off is typed in major units (e.g. 25 = $25) but the API expects
       // minor units, so "$25 off" must send 2500 — sending 25 created a $0.25
-      // coupon (ENG-152). Percent stays a plain integer.
+      // coupon (ENG-152). The exponent is the selected currency's (¥500 → 500,
+      // KWD 25 → 25000). Percent stays a plain integer.
       discount_value: isPercent
         ? parseInt(formData.discount_value)
-        : toMinorUnits(formData.discount_value),
+        : toMinorUnits(formData.discount_value, currency),
       duration: formData.duration.toLowerCase(),
       duration_months:
         formData.duration === "repeating" && formData.duration_months
@@ -148,13 +182,14 @@ const CreateCoupon = () => {
               <FormField label="Discount value" htmlFor="discount_value" required>
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-muted-foreground">
-                    {formData.discount_type === "percent" ? "%" : "$"}
+                    {isPercent ? "%" : symbolFor(currency)}
                   </span>
                   <Input
                     id="discount_value"
                     name="discount_value"
                     type="number"
-                    min="1"
+                    min={isPercent ? "1" : String(10 ** -currencyDecimals(currency))}
+                    step={isPercent ? "1" : String(10 ** -currencyDecimals(currency))}
                     required
                     placeholder="25"
                     value={formData.discount_value}
@@ -164,6 +199,27 @@ const CreateCoupon = () => {
                 </div>
               </FormField>
             </div>
+
+            {!isPercent && (
+              <FormField
+                label="Currency"
+                htmlFor="coupon_currency"
+                description="The fixed amount is denominated in this currency and deducted from the invoice subtotal."
+              >
+                <Select value={currency} onValueChange={setPickedCurrency}>
+                  <SelectTrigger id="coupon_currency" className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {currencies.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FormField>
+            )}
           </section>
 
           <Separator />
