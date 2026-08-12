@@ -134,6 +134,8 @@ func (h *LedgerHandler) GetDeferredRollforward(c *gin.Context) {
 
 // ExportGL streams the caller's tenant general ledger as CSV — every posted
 // transaction with both account codes/names, amount, and provenance. Read-only.
+// Pass ?month=&year= (both together) to export one calendar month's postings —
+// what the month-end close pack links to; omit both for the full ledger.
 func (h *LedgerHandler) ExportGL(c *gin.Context) {
 	tenantID, ok := c.Get("tenant_id")
 	if !ok {
@@ -147,7 +149,26 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 		return
 	}
 
-	entries, err := h.service.GeneralLedger(c.Request.Context(), tenantID.(uuid.UUID), entityID)
+	var from, to *time.Time
+	filename := "general-ledger.csv"
+	if c.Query("month") != "" || c.Query("year") != "" {
+		month, err := strconv.Atoi(c.Query("month"))
+		if err != nil || month < 1 || month > 12 {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid month (1-12); pass month and year together")
+			return
+		}
+		year, err := strconv.Atoi(c.Query("year"))
+		if err != nil || year < 2000 {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid year; pass month and year together")
+			return
+		}
+		start := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		end := start.AddDate(0, 1, 0)
+		from, to = &start, &end
+		filename = fmt.Sprintf("general-ledger-%04d-%02d.csv", year, month)
+	}
+
+	entries, err := h.service.GeneralLedger(c.Request.Context(), tenantID.(uuid.UUID), entityID, from, to)
 	if err != nil {
 		slog.Error("ledger ExportGL error", "error", err)
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to export general ledger")
@@ -155,7 +176,7 @@ func (h *LedgerHandler) ExportGL(c *gin.Context) {
 	}
 
 	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", "attachment; filename=general-ledger.csv")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
 
 	w := csv.NewWriter(c.Writer)
 	// accounting_version is appended last so existing column positions are

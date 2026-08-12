@@ -9,9 +9,10 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/domain"
 )
 
-// glExportPath is where the full general ledger streams as CSV. The close pack
+// glExportPath is where the general ledger streams as CSV. The close pack
 // links to it rather than embedding every posting, which would make the JSON
-// unbounded for a busy tenant.
+// unbounded for a busy tenant. The pack's link carries its own period so the
+// export contains exactly the postings being closed.
 const glExportPath = "/v1/ledger/export"
 
 // ClosePackPeriod is the calendar month a close pack covers.
@@ -159,7 +160,7 @@ func (s *ClosePackService) Generate(ctx context.Context, tenantID uuid.UUID, mon
 		TrialBalance:      tb,
 		Reconciliation:    recon,
 		Deferred:          deferred,
-		GeneralLedger:     ClosePackGL{Format: "csv", ExportURL: glExportPath},
+		GeneralLedger:     ClosePackGL{Format: "csv", ExportURL: fmt.Sprintf("%s?month=%d&year=%d", glExportPath, month, year)},
 		ReportingCurrency: tb.ReportingCurrency,
 	}, nil
 }

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/adapter/db"
@@ -65,12 +66,32 @@ func TestGeneralLedger_Postgres(t *testing.T) {
 		t.Fatalf("RecordInvoice(other): %v", err)
 	}
 
-	rows, err := svc.GeneralLedger(ctx, tenantID, nil)
+	rows, err := svc.GeneralLedger(ctx, tenantID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("GeneralLedger: %v", err)
 	}
 	if len(rows) == 0 {
 		t.Fatal("expected general-ledger rows, got none")
+	}
+
+	// Period filter: postings were created just now, so a window covering today
+	// returns them and a window entirely in the past returns none.
+	nowT := time.Now().UTC()
+	from, to := nowT.AddDate(0, 0, -1), nowT.AddDate(0, 0, 1)
+	inWindow, err := svc.GeneralLedger(ctx, tenantID, nil, &from, &to)
+	if err != nil {
+		t.Fatalf("GeneralLedger(window): %v", err)
+	}
+	if len(inWindow) != len(rows) {
+		t.Errorf("window covering now returned %d rows, want all %d", len(inWindow), len(rows))
+	}
+	pastFrom, pastTo := nowT.AddDate(-1, 0, 0), nowT.AddDate(0, 0, -7)
+	past, err := svc.GeneralLedger(ctx, tenantID, nil, &pastFrom, &pastTo)
+	if err != nil {
+		t.Fatalf("GeneralLedger(past window): %v", err)
+	}
+	if len(past) != 0 {
+		t.Errorf("past window returned %d rows, want 0", len(past))
 	}
 
 	var sawInvoicePosting, sawPaymentPosting bool

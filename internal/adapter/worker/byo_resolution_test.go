@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -102,7 +103,7 @@ func TestCRMWorker_SkipsWhenNoClient(t *testing.T) {
 
 type fakeLedger struct{ rows []domain.GeneralLedgerRow }
 
-func (f fakeLedger) GeneralLedger(_ context.Context, _ uuid.UUID, _ *uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+func (f fakeLedger) GeneralLedger(_ context.Context, _ uuid.UUID, _ *uuid.UUID, _, _ *time.Time) ([]domain.GeneralLedgerRow, error) {
 	return f.rows, nil
 }
 

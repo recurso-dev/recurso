@@ -65,10 +65,12 @@ export default function MonthEndClose() {
     ? queryError?.response?.data?.error?.message || "Failed to build the close pack"
     : null;
 
+  // Scope the export to the period being closed — the file is named by month,
+  // so it must contain exactly that month's postings.
   const exportGL = async () => {
     setExporting(true);
     try {
-      const res = await endpoints.exportGeneralLedger();
+      const res = await endpoints.exportGeneralLedger(undefined, { month, year });
       const url = URL.createObjectURL(new Blob([res.data], { type: "text/csv" }));
       const a = document.createElement("a");
       a.href = url;
