@@ -9,20 +9,13 @@ import { toast } from "@/components/ui/sonner";
 import { formatCurrency, toMinorUnits, fromMinorUnits, shortId, formatDateTime } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -312,15 +305,18 @@ const OfflinePayments = () => {
       </Tabs>
 
       {/* Record offline payment */}
-      <Sheet open={recordOpen} onOpenChange={setRecordOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Record offline payment</SheetTitle>
-            <SheetDescription>
-              Money received outside the gateway — NEFT, cash, or cheque.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+      <FormSheet
+        open={recordOpen}
+        onOpenChange={setRecordOpen}
+        title="Record offline payment"
+        description="Money received outside the gateway — NEFT, cash, or cheque."
+        onSubmit={submitRecord}
+        submitLabel="Record payment"
+        busyLabel="Recording…"
+        busy={recording}
+        canSubmit={Boolean(payForm.customer_id.trim() && payForm.amount)}
+        dirty={Boolean(payForm.customer_id || payForm.amount)}
+      >
             <div>
               <Label>Customer</Label>
               <CustomerSelect
@@ -427,28 +423,21 @@ const OfflinePayments = () => {
                 placeholder="Anything worth remembering"
               />
             </div>
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitRecord}
-              disabled={recording || !payForm.customer_id.trim() || !payForm.amount}
-            >
-              {recording ? "Recording…" : "Record payment"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
 
       {/* New virtual account */}
-      <Sheet open={vaOpen} onOpenChange={setVAOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>New virtual account</SheetTitle>
-            <SheetDescription>
-              A dedicated account number the customer can transfer into.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+      <FormSheet
+        open={vaOpen}
+        onOpenChange={setVAOpen}
+        title="New virtual account"
+        description="A dedicated account number the customer can transfer into."
+        onSubmit={submitVA}
+        submitLabel="Create account"
+        busyLabel="Creating…"
+        busy={creatingVA}
+        canSubmit={Boolean(vaForm.customer_id.trim() && vaForm.amount)}
+        dirty={Boolean(vaForm.customer_id || vaForm.amount)}
+      >
             <div>
               <Label>Customer</Label>
               <CustomerSelect
@@ -503,17 +492,7 @@ const OfflinePayments = () => {
                 placeholder="25000.00"
               />
             </div>
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitVA}
-              disabled={creatingVA || !vaForm.customer_id.trim() || !vaForm.amount}
-            >
-              {creatingVA ? "Creating…" : "Create account"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
     </div>
   );
 };

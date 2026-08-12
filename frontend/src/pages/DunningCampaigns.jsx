@@ -5,6 +5,7 @@ import { Plus, Megaphone, Settings2 } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
@@ -13,14 +14,6 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -136,49 +129,45 @@ const DunningCampaigns = () => {
         </div>
       )}
 
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>New dunning campaign</SheetTitle>
-            <SheetDescription>
-              Steps run in order after the trigger until payment is recovered.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
-            <div>
-              <Label>Name</Label>
-              <Input
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                placeholder="Failed payment recovery"
-              />
-            </div>
-            <div>
-              <Label>Trigger</Label>
-              <Select
-                value={createForm.trigger_event}
-                onValueChange={(v) => setCreateForm({ ...createForm, trigger_event: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TRIGGERS.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <SheetFooter>
-            <Button onClick={submitCreate} disabled={creating || !createForm.name.trim()}>
-              {creating ? "Creating…" : "Create campaign"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <FormSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="New dunning campaign"
+        description="Steps run in order after the trigger until payment is recovered."
+        onSubmit={submitCreate}
+        submitLabel="Create campaign"
+        busyLabel="Creating…"
+        busy={creating}
+        canSubmit={Boolean(createForm.name.trim())}
+        dirty={Boolean(createForm.name)}
+      >
+        <div>
+          <Label>Name</Label>
+          <Input
+            value={createForm.name}
+            onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+            placeholder="Failed payment recovery"
+          />
+        </div>
+        <div>
+          <Label>Trigger</Label>
+          <Select
+            value={createForm.trigger_event}
+            onValueChange={(v) => setCreateForm({ ...createForm, trigger_event: v })}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TRIGGERS.map((t) => (
+                <SelectItem key={t.value} value={t.value}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </FormSheet>
 
       <DunningCampaignDetail
         campaignId={detailId}

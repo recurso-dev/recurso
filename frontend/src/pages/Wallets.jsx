@@ -23,10 +23,10 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  SheetFooter,
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import {
   Select,
   SelectContent,
@@ -303,42 +303,38 @@ const Wallets = () => {
       />
 
       {/* Create wallet */}
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Create wallet</SheetTitle>
-            <SheetDescription>
-              A prepaid balance drained before credit notes and the payment gateway.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
-            <div>
-              <Label>Customer</Label>
-              <CustomerSelect
-                value={createForm.customer_id}
-                onChange={(v) => setCreateForm({ ...createForm, customer_id: v })}
-                customers={customers}
-              />
-            </div>
-            <div>
-              <Label>Currency</Label>
-              <Input
-                value={createForm.currency}
-                onChange={(e) =>
-                  setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })
-                }
-                maxLength={3}
-              />
-            </div>
-            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-          </div>
-          <SheetFooter>
-            <Button onClick={submitCreate} disabled={creating || !createForm.customer_id}>
-              {creating ? "Creating…" : "Create wallet"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <FormSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="Create wallet"
+        description="A prepaid balance drained before credit notes and the payment gateway."
+        onSubmit={submitCreate}
+        submitLabel="Create wallet"
+        busyLabel="Creating…"
+        busy={creating}
+        canSubmit={Boolean(createForm.customer_id)}
+        dirty={Boolean(createForm.customer_id)}
+        error={actionError}
+      >
+        <div>
+          <Label>Customer</Label>
+          <CustomerSelect
+            value={createForm.customer_id}
+            onChange={(v) => setCreateForm({ ...createForm, customer_id: v })}
+            customers={customers}
+          />
+        </div>
+        <div>
+          <Label>Currency</Label>
+          <Input
+            value={createForm.currency}
+            onChange={(e) =>
+              setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })
+            }
+            maxLength={3}
+          />
+        </div>
+      </FormSheet>
 
       {/* Top up */}
       <Dialog open={!!topUpWallet} onOpenChange={(open) => !open && setTopUpWallet(null)}>
