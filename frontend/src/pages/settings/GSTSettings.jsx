@@ -262,7 +262,7 @@ export default function GSTSettings() {
                   type="checkbox"
                   checked={config.has_lut}
                   onChange={(e) => setConfig({ ...config, has_lut: e.target.checked })}
-                  className="mt-0.5 h-4 w-4 rounded border-input accent-emerald-600 focus:ring-ring"
+                  className="mt-0.5 h-4 w-4 rounded border-input accent-primary focus:ring-ring"
                 />
                 <label htmlFor="has_lut" className="text-sm">
                   <span className="font-medium text-foreground">

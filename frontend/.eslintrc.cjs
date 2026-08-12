@@ -28,7 +28,7 @@ module.exports = {
       'error',
       {
         selector:
-          "Literal[value=/(?:^|[\\s\"'`])(?:hover:|focus:|focus-visible:|group-hover:|active:|disabled:)?(?:text|bg|border|ring|divide|fill|stroke|from|to|via)-(?:red|emerald|amber|stone|sky|blue|rose|teal|cyan|indigo|orange|green|gray|zinc|slate|neutral|lime|yellow|violet|purple|fuchsia|pink)-[0-9]/]",
+          "Literal[value=/(?:^|[\\s\"'`])(?:hover:|focus:|focus-visible:|group-hover:|active:|disabled:)?(?:text|bg|border|ring|divide|fill|stroke|from|to|via|accent|caret|outline|decoration|shadow)-(?:red|emerald|amber|stone|sky|blue|rose|teal|cyan|indigo|orange|green|gray|zinc|slate|neutral|lime|yellow|violet|purple|fuchsia|pink)-[0-9]/]",
         message:
           'Raw Tailwind palette class — use the semantic design tokens instead (see DESIGN.md). Chart/severity ramps may disable this rule per-line with a justification.',
       },

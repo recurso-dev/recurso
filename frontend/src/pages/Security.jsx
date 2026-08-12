@@ -610,7 +610,7 @@ function SSOSection() {
                   onChange={(e) =>
                     setForm({ ...form, enabled: e.target.checked })
                   }
-                  className="h-4 w-4 rounded border-input accent-emerald-600"
+                  className="h-4 w-4 rounded border-input accent-primary"
                 />
                 Enable SSO for this workspace
               </label>

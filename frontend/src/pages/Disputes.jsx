@@ -225,7 +225,7 @@ const Disputes = () => {
             <label className="flex items-start gap-2.5 rounded-md border border-border p-3 text-sm">
               <input
                 type="checkbox"
-                className="mt-0.5 h-4 w-4 accent-emerald-600"
+                className="mt-0.5 h-4 w-4 accent-primary"
                 checked={issueCredit}
                 onChange={(e) => setIssueCredit(e.target.checked)}
               />

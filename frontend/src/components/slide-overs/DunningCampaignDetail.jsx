@@ -318,7 +318,7 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                   <label className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
-                      className="h-4 w-4 rounded border-input accent-emerald-600"
+                      className="h-4 w-4 rounded border-input accent-primary"
                       checked={form.is_payment_wall}
                       onChange={(e) => setForm({ ...form, is_payment_wall: e.target.checked })}
                     />

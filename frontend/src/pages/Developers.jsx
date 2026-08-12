@@ -914,7 +914,7 @@ export default function Developers() {
                         type="checkbox"
                         checked={newWebhook.events.includes(eventType)}
                         onChange={() => toggleEventType(eventType)}
-                        className="h-4 w-4 rounded border-input accent-emerald-600 focus:ring-ring"
+                        className="h-4 w-4 rounded border-input accent-primary focus:ring-ring"
                       />
                       <code className="text-xs text-muted-foreground">{eventType}</code>
                     </label>
