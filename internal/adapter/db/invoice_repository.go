@@ -692,6 +692,36 @@ func (r *InvoiceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUI
 	return n, err
 }
 
+// ListByCustomerPaginated returns one page of a customer's invoices within the
+// tenant (newest first). Unlike GetByCustomerIDPaged — the portal path, where
+// customer-token auth does the guarding — this is the dashboard path, so the
+// tenant predicate lives in the SQL.
+func (r *InvoiceRepository) ListByCustomerPaginated(ctx context.Context, tenantID, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	query := `SELECT ` + invoiceListColumns + ` FROM invoices WHERE tenant_id = $1 AND customer_id = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, customerID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch customer invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	invoices, err := scanInvoiceList(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
+	return invoices, nil
+}
+
+// CountByCustomer returns one customer's invoice count within the tenant (for
+// pagination metadata alongside ListByCustomerPaginated).
+func (r *InvoiceRepository) CountByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND customer_id = $2`, tenantID, customerID).Scan(&n)
+	return n, err
+}
+
 // GetOverdueInvoices returns unpaid invoices that are past due
 func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error) {
 	query := `

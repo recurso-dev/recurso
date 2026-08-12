@@ -35,6 +35,11 @@ type InvoiceRepository interface {
 	// large account can't return every invoice in one response.
 	ListPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
 	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	// ListByCustomerPaginated / CountByCustomer are the dashboard's
+	// customer-scoped list (tenant predicate in SQL — unlike the portal's
+	// GetByCustomerIDPaged, which relies on customer-token auth).
+	ListByCustomerPaginated(ctx context.Context, tenantID, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
+	CountByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) (int, error)
 	Update(ctx context.Context, invoice *domain.Invoice) error
 	// MarkPaid atomically transitions an invoice to paid only if it is not
 	// already paid, in a single conditional UPDATE. It returns true when this

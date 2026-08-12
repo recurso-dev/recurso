@@ -565,6 +565,21 @@ func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantI
 	return invs, total, nil
 }
 
+// ListInvoicesByCustomerPaginated returns one page of a customer's invoices
+// within the tenant plus the customer-scoped total. Serves the dashboard's
+// customer object page (GET /invoices?customer_id=).
+func (s *SubscriptionService) ListInvoicesByCustomerPaginated(ctx context.Context, tenantID, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {
+	invs, err := s.invoiceRepo.ListByCustomerPaginated(ctx, tenantID, customerID, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.invoiceRepo.CountByCustomer(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return invs, total, nil
+}
+
 // GetByID retrieves a subscription by ID
 func (s *SubscriptionService) GetByID(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
