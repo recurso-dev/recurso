@@ -194,7 +194,9 @@ const Wallets = () => {
     {
       key: "customer",
       header: "Customer",
-      cell: (w) => <CustomerName id={w.customer_id} names={names} />,
+      // First cell of an onRowClick table — DataTable wraps it in the row's
+      // activation <button>, so the name must not nest its own link.
+      cell: (w) => <CustomerName id={w.customer_id} names={names} link={false} />,
     },
     {
       key: "balance",

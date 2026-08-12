@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import {
   Select,
   SelectContent,
@@ -6,10 +7,24 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// CustomerName renders a resolved customer name, falling back to a mono
-// short id while (or if) the lookup hasn't resolved.
-export function CustomerName({ id, names }) {
+// CustomerName renders a resolved customer name as a link to the customer's
+// detail (/customers/:id), falling back to a mono short id while (or if) the
+// lookup hasn't resolved. Pass link={false} where the cell already lives
+// inside another interactive element (e.g. the first cell of an onRowClick
+// table, which DataTable wraps in a <button>).
+export function CustomerName({ id, names, link = true }) {
   if (id && names[id]) {
+    if (link) {
+      return (
+        <Link
+          to={`/customers/${id}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-sm text-foreground underline-offset-2 hover:text-primary hover:underline"
+        >
+          {names[id]}
+        </Link>
+      );
+    }
     return <span className="text-sm text-foreground">{names[id]}</span>;
   }
   return (

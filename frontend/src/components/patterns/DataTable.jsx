@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { Search, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -43,6 +43,9 @@ import { TableSkeleton } from "./LoadingSkeleton";
  *    on a nested action button no longer also activates the row) and stops
  *    flattening row/cell semantics for screen readers. A trailing chevron
  *    signals clickability (rowChevron={false} to opt out).
+ *  - rowHref(row) — real link semantics: the first cell renders a <Link>
+ *    (⌘-click, middle-click, copy-address all work) and a plain row click
+ *    navigates. Prefer this over onRowClick wherever the object has a URL.
  *  - sort / onSortChange — controlled (server) sorting: sort={{key,dir}}.
  *    Omit both and mark columns sortable for built-in CLIENT sorting; only
  *    do that on fully-loaded lists (sorting one server page misleads).
@@ -67,6 +70,7 @@ export function DataTable({
   error = null,
   onRetry,
   onRowClick,
+  rowHref,
   rowChevron = true,
   sort,
   onSortChange,
@@ -83,6 +87,7 @@ export function DataTable({
   className,
 }) {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [internalSort, setInternalSort] = useState(null);
   const alignClass = {
     left: "text-left",
@@ -126,7 +131,8 @@ export function DataTable({
   }, [data, clientSorted, internalSort, columns]);
 
   const showToolbar = Boolean(search || toolbar);
-  const interactive = Boolean(onRowClick);
+  const interactive = Boolean(onRowClick || rowHref);
+  const activateRow = (row) => (rowHref ? navigate(rowHref(row)) : onRowClick(row));
   const showChevron = interactive && rowChevron;
   const cellPad = density === "compact" ? "[&_td]:py-2 [&_th]:h-9" : "";
 
@@ -254,7 +260,7 @@ export function DataTable({
                 return (
                   <RowGroup key={id}>
                     <TableRow
-                      onClick={interactive ? () => onRowClick(row) : undefined}
+                      onClick={interactive ? () => activateRow(row) : undefined}
                       className={cn(interactive && "cursor-pointer")}
                       data-state={expandedId === id ? "expanded" : undefined}
                     >
@@ -268,19 +274,31 @@ export function DataTable({
                           )}
                         >
                           {interactive && i === 0 ? (
-                            // The row's ONE keyboard/AT activation point. A
-                            // real button: no role=button on the <tr>, no
-                            // double-fire with nested action buttons.
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onRowClick(row);
-                              }}
-                              className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              {col.cell ? col.cell(row) : row[col.key]}
-                            </button>
+                            // The row's ONE keyboard/AT activation point:
+                            // a real <Link> when the object has a URL
+                            // (⌘-click works), else a real <button>. Never
+                            // role=button on the <tr>; no double-fire with
+                            // nested action buttons.
+                            rowHref ? (
+                              <Link
+                                to={rowHref(row)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="block w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                {col.cell ? col.cell(row) : row[col.key]}
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onRowClick(row);
+                                }}
+                                className="w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                {col.cell ? col.cell(row) : row[col.key]}
+                              </button>
+                            )
                           ) : col.cell ? (
                             col.cell(row)
                           ) : (

@@ -37,7 +37,8 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
     mutationFn: () => endpoints.voidCreditNote(creditNote.id),
     onSuccess: () => {
       toast.success("Credit note voided.");
-      queryClient.invalidateQueries(["credit-notes"]);
+      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+      queryClient.invalidateQueries({ queryKey: ["creditNote", creditNote.id] });
       setConfirmVoid(false);
       onClose();
     },
@@ -73,7 +74,8 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
     mutationFn: () => endpoints.approveCreditNote(creditNote.id),
     onSuccess: () => {
       toast.success("Credit note approved successfully.");
-      queryClient.invalidateQueries(["credit-notes"]);
+      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+      queryClient.invalidateQueries({ queryKey: ["creditNote", creditNote.id] });
       onClose();
     },
     onError: (err) => {
@@ -85,7 +87,8 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
     mutationFn: () => endpoints.rejectCreditNote(creditNote.id),
     onSuccess: () => {
       toast.success("Credit note rejected.");
-      queryClient.invalidateQueries(["credit-notes"]);
+      queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+      queryClient.invalidateQueries({ queryKey: ["creditNote", creditNote.id] });
       onClose();
     },
     onError: (err) => {

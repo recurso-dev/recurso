@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { BrowserRouter } from "react-router";
+import { BrowserRouter, MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import CreditNotes from "../CreditNotes";
@@ -8,7 +8,7 @@ import { money } from "@/test/money";
 import { endpoints } from "../../lib/api";
 
 vi.mock("../../lib/api", () => ({
-  endpoints: { getCreditNotes: vi.fn() },
+  endpoints: { getCreditNotes: vi.fn(), getCreditNote: vi.fn() },
 }));
 vi.mock("../../components/slide-overs/CreditNoteDetail", () => ({
   default: ({ creditNote }) =>
@@ -41,11 +41,26 @@ describe("CreditNotes page", () => {
     expect(screen.getByText(money("$50.00"))).toBeInTheDocument();
   });
 
+  // Row activation navigates to /credit-notes/:id (URL-driven detail), so
+  // the test mounts real routes and the sheet is fed by the single GET.
   it("opens the detail sheet on row click", async () => {
-    render(<CreditNotes />, { wrapper });
+    endpoints.getCreditNote.mockResolvedValue({ data: { data: notes[0] } });
+    render(
+      <MemoryRouter initialEntries={["/credit-notes"]}>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+        >
+          <Routes>
+            <Route path="/credit-notes" element={<CreditNotes />} />
+            <Route path="/credit-notes/:id" element={<CreditNotes />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
     await waitFor(() => expect(screen.getByText("CN-001")).toBeInTheDocument());
     fireEvent.click(screen.getByText("CN-001"));
     await waitFor(() => expect(screen.getByTestId("cn-detail")).toHaveTextContent("cn_1"));
+    expect(endpoints.getCreditNote).toHaveBeenCalledWith("cn_1");
   });
 
   it("filters by customer name via search", async () => {

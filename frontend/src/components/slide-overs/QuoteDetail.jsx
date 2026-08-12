@@ -51,7 +51,14 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
     setConfirmDelete(false);
   }, [quote?.id]);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
+  // The open sheet is served by the routed ["quote", id] query — refresh it
+  // alongside the list so status changes show without a reopen.
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["quotes"] });
+    if (quote?.id) {
+      queryClient.invalidateQueries({ queryKey: ["quote", quote.id] });
+    }
+  };
   const onActionError = (verb) => (err) => {
     setActionError(
       err?.response?.data?.error?.message || `Failed to ${verb} quote`,

@@ -83,7 +83,7 @@ describe("Ledger — account naming", () => {
     // an invoice, so it links through to the Invoices page).
     fireEvent.click(screen.getByText("Accounts Receivable — Acme Inc (1100)"));
     const refLink = await screen.findByRole("link", { name: "inv-1" });
-    expect(refLink).toHaveAttribute("href", "/invoices");
+    expect(refLink).toHaveAttribute("href", "/invoices/inv-1");
     expect(screen.getByText("Reference (invoice)")).toBeInTheDocument();
   });
 });

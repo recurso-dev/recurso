@@ -1,6 +1,6 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { BrowserRouter } from "react-router";
+import { BrowserRouter, MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import Subscriptions from "../Subscriptions";
@@ -9,6 +9,7 @@ import { endpoints } from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   endpoints: {
     getSubscriptions: vi.fn(),
+    getSubscription: vi.fn(),
     getCustomers: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getPlans: vi.fn().mockResolvedValue({ data: { data: [] } }),
   },
@@ -43,11 +44,26 @@ describe("Subscriptions page", () => {
     expect(screen.getByText("Canceled")).toBeInTheDocument();
   });
 
+  // Row activation navigates to /subscriptions/:id (URL-driven detail), so
+  // the test mounts real routes and the sheet is fed by the single GET.
   it("opens the detail sheet on row click", async () => {
-    render(<Subscriptions />, { wrapper });
+    endpoints.getSubscription.mockResolvedValue({ data: { data: subs[0] } });
+    render(
+      <MemoryRouter initialEntries={["/subscriptions"]}>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+        >
+          <Routes>
+            <Route path="/subscriptions" element={<Subscriptions />} />
+            <Route path="/subscriptions/:id" element={<Subscriptions />} />
+          </Routes>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
     await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
     fireEvent.click(screen.getByText("Active"));
     await waitFor(() => expect(screen.getByTestId("sub-detail")).toHaveTextContent("sub_1"));
+    expect(endpoints.getSubscription).toHaveBeenCalledWith("sub_1");
   });
 
   it("shows the empty state with no subscriptions", async () => {

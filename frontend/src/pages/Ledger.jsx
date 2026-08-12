@@ -391,8 +391,7 @@ export default function Ledger() {
                       <dd className="mt-0.5 font-mono text-xs text-foreground">
                         {refKind(selectedEntry.code) === "invoice" ? (
                           <Link
-                            to="/invoices"
-                            state={{ openInvoiceId: selectedEntry.reference_id }}
+                            to={`/invoices/${selectedEntry.reference_id}`}
                             className="text-primary underline-offset-2 hover:underline"
                           >
                             {selectedEntry.reference_id}
