@@ -149,6 +149,26 @@ func (h *CreditNoteHandler) ListCreditNotes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": cns})
 }
 
+// GetCreditNote returns one credit note by id, tenant-scoped. Foreign or
+// missing notes are a flat 404. Serves the dashboard's addressable
+// /credit-notes/:id route.
+// GET /v1/credit-notes/:id
+func (h *CreditNoteHandler) GetCreditNote(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	cnID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	cn, _, _, err := h.service.GetForDocument(ctx, tenantID, cnID)
+	if err != nil || cn == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "credit note not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": cn})
+}
+
 func (h *CreditNoteHandler) ApproveCreditNote(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	cnIDStr := c.Param("id")

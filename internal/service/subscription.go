@@ -545,6 +545,14 @@ func (s *SubscriptionService) ListInvoices(ctx context.Context, tenantID uuid.UU
 // ListInvoicesPaginated returns one page of the tenant's invoices plus the total
 // count (for pagination metadata). The API list endpoint uses this instead of
 // the unbounded List.
+// GetInvoice returns one invoice by id. The repository enforces tenant
+// scoping from the context tenant key, so a foreign or missing invoice
+// returns (nil, err) and the handler responds with a flat 404. Serves the
+// dashboard's addressable /invoices/:id route.
+func (s *SubscriptionService) GetInvoice(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	return s.invoiceRepo.GetByID(ctx, id)
+}
+
 func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {
 	invs, err := s.invoiceRepo.ListPaginated(ctx, tenantID, limit, offset)
 	if err != nil {
