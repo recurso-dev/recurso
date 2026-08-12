@@ -125,6 +125,8 @@ export const endpoints = {
   getCustomerConsents: (id) => api.get(`/customers/${id}/consents`),
   // A customer's effective feature entitlements (from their active plans).
   getCustomerEntitlements: (id) => api.get(`/customers/${id}/entitlements`),
+  // A customer's wallets (customer object page rail).
+  getCustomerWallets: (id) => api.get(`/customers/${id}/wallets`),
   // Ledger-backed credits: a customer's consolidated account-credit statement.
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),

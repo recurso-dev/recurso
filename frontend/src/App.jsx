@@ -25,6 +25,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 // loads on demand, so the entry chunk stays small and Tremor/recharts land in
 // route chunks. All pages are default exports, which lazy() consumes directly.
 const Customers = lazy(() => import('./pages/Customers'))
+const CustomerPage = lazy(() => import('./pages/CustomerPage'))
 const CreateCustomer = lazy(() => import('./pages/CreateCustomer'))
 const Plans = lazy(() => import('./pages/Plans'))
 const CreatePlan = lazy(() => import('./pages/CreatePlan'))
@@ -153,7 +154,7 @@ function App() {
                             <Route path="/" element={<Dashboard />} />
                             <Route path="/customers" element={<Customers />} />
                             <Route path="/customers/new" element={<CreateCustomer />} />
-                            <Route path="/customers/:id" element={<Customers />} />
+                            <Route path="/customers/:id" element={<CustomerPage />} />
                             <Route path="/plans" element={<Plans />} />
                             <Route path="/plans/new" element={<CreatePlan />} />
                             <Route path="/plans/:id" element={<Plans />} />
