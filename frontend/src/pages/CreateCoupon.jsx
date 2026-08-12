@@ -67,9 +67,15 @@ const CreateCoupon = () => {
   // first, and convert with the selected one.
   const { plans } = usePlans();
   const currencies = useMemo(() => {
+    // Currency lives on each plan's PRICES (a plan has no top-level currency
+    // field) — reading p.currency here silently produced an empty count map
+    // and a USD-first fallback for everyone, defeating the dominant-currency
+    // default for non-USD catalogs.
     const counts = new Map();
     for (const p of plans) {
-      if (p.currency) counts.set(p.currency, (counts.get(p.currency) || 0) + 1);
+      for (const price of p.prices || []) {
+        if (price.currency) counts.set(price.currency, (counts.get(price.currency) || 0) + 1);
+      }
     }
     const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([c]) => c);
     return sorted.length ? sorted : FALLBACK_CURRENCIES;

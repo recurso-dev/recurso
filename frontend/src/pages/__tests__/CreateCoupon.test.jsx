@@ -24,8 +24,17 @@ const wrapper = ({ children }) => (
   </MemoryRouter>
 );
 
+// Real plan shape: currency lives on the prices array, NOT the plan — a
+// top-level `currency` here previously masked a bug where the dominant-
+// currency default never worked.
 const plansOf = (...currencies) => ({
-  data: { data: currencies.map((c, i) => ({ id: `p${i}`, name: `Plan ${i}`, currency: c })) },
+  data: {
+    data: currencies.map((c, i) => ({
+      id: `p${i}`,
+      name: `Plan ${i}`,
+      prices: [{ id: `pr${i}`, currency: c, amount: 1000 }],
+    })),
+  },
 });
 
 // Switch the discount type to "Amount off" through the Radix select.
