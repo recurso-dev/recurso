@@ -300,7 +300,13 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
           <Separator />
 
           {isEditing ? (
-            <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/40 p-4">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!saving && form.email.trim()) save();
+              }}
+              className="flex flex-col gap-4 rounded-lg border border-border bg-muted/40 p-4"
+            >
               <EditField label="Name" value={form.name} onChange={set("name")} />
               <EditField label="Email" type="email" value={form.email} onChange={set("email")} />
               <EditField label="Phone" value={form.phone} onChange={set("phone")} />
@@ -369,14 +375,20 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                 </div>
               )}
               <div className="flex justify-end gap-2">
-                <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={saving}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsEditing(false)}
+                  disabled={saving}
+                >
                   Cancel
                 </Button>
-                <Button size="sm" onClick={save} disabled={saving || !form.email.trim()}>
+                <Button type="submit" size="sm" disabled={saving || !form.email.trim()}>
                   {saving ? "Saving…" : "Save customer"}
                 </Button>
               </div>
-            </div>
+            </form>
           ) : (
             <>
               {/* Contact */}
