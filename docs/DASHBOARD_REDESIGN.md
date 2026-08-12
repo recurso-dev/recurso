@@ -156,3 +156,30 @@ product feels like one coherent system. Before declaring completion, perform a
 final "design director" review of the entire dashboard and fix anything that
 looks amateur, inconsistent, generic, overly decorative, or unnecessarily
 complicated. Do not stop at "good enough."
+
+---
+
+## Execution log (2026-08-12)
+
+Every phase above shipped as green-CI PRs, in charter order. The audit
+(`docs/DASHBOARD_UI_AUDIT.md`) is the findings ledger; this is the receipts.
+
+| Stage | PRs | What landed |
+|---|---|---|
+| 0 · Audit | #604 | `DASHBOARD_UI_AUDIT.md` — 6 gap systems, 12 WCAG findings, 8 shipped bugs, migration plan |
+| 1 · Tokens | #605 | `--success/--warning/--info/--foreground-subtle/--canvas`; `--primary` darkened in-family to 5.60:1 (a11y fix, **not** the deferred rebrand); radius/shadow ladders; menu focus ring; dark-mode config removed |
+| 2 · Primitives + codemod | #606 #607 | StatusBadge registry (retired 14 duplicated maps), Alert, Textarea, CopyableId, `formatDateTime`; 641→0 raw-palette occurrences; ESLint palette guard ON |
+| 3 · Shell + IA | #608 | `lib/navigation.js` canon (sidebar/palette/topbar all derive), mobile drawer, skip link, real 404, IA regroup, one h1 per page |
+| 4 · Tables | #609 | DataTable v2: sorting (`aria-sort`, server+client), honest pagination totals, real row semantics (no `role="button"` on `<tr>`), column priority, cells/columns helpers |
+| 5 · Addressability | #610 #611 #612 | Backend GET /invoices/:id + /credit-notes/:id; six real `/x/:id` routes; `location.state.openInvoiceId` dead; rowHref link rows; customer-scoped list filters |
+| 6 · Object pages | #613 #614 #615 #616 | ObjectPage system + AuditTrail; Customer, Subscription (1011-line sheet deleted), Invoice (643-line sheet deleted) full pages; subscription-scoped invoices |
+| 7 · Forms & safety | #617 #618 #619 #621 | All six audit §7 bugs dead; confirm-guards on one-click money ops; FormSheet (form/autofocus/dirty-guard) + 10 sheet migrations; accent-palette guard gap closed |
+| 8 · Home | #620 | Operations console: honest 30d comparisons, activity feed with object links, 5/4/3 operational row, xl stacking |
+| 9 · Accessibility | #622 | 65+ labels associated, palette = real combobox/listbox, every chart has a text alternative, `type="button"` sweep, `h-dvh` shell |
+| 10 · Visual QA | #623 | Live pass at 320/375/768/1440 against a seeded stack; topbar chip + PageHeader action-wrap fixes |
+
+Deliberately not done (with reasons): the emerald→blue rebrand (founder-deferred,
+DESIGN.md §13); MRR delta on Home (no history endpoint — a fabricated trend is
+worse than none); coupon max-redemptions and plan description fields (backend
+has no such concepts — the lying inputs were removed instead); per-object event
+timelines (needs an `object_id` filter on `/events`).
