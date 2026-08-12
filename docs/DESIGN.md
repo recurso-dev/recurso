@@ -10,22 +10,29 @@ tokens_source:
   - frontend/src/index.css
   - frontend/tailwind.config.js
 colors:
-  # accent — emerald (implemented). --primary: 161 94% 30%
-  primary: "#05946A"            # deep emerald, interactive elements
-  primary-hover: "#059669"      # emerald-600, tailwind.config.js:59
+  # accent — emerald (implemented). --primary: 161 94% 24%
+  # (darkened from 30% L on 2026-08-12 for WCAG AA — white-on-primary was
+  # 3.84:1, now 5.60:1. An a11y correction, NOT the deferred rebrand.)
+  primary: "#047752"            # deep emerald, interactive elements
   chart-accent: "#10B981"       # emerald-500, charts (index.css:20 comment)
-  ring: "#05946A"               # focus ring = --ring (emerald)
+  ring: "#047752"               # focus ring = --ring (emerald)
   # neutrals — warm stone, not cool gray
   background: "#FFFFFF"         # --background 0 0% 100%
   foreground: "#1C1A17"        # --foreground 24 10% 10% (warm near-black)
   muted: "#F5F5F4"             # --muted 60 5% 96%
-  muted-foreground: "#78736E"  # --muted-foreground 25 5% 45%
+  muted-foreground: "#6B6561"  # --muted-foreground 25 5% 40% (5.27:1 on muted)
+  foreground-subtle: "#5B5652" # --foreground-subtle 25 5% 34% — `text-subtle`,
+                               # the readable-but-secondary tier (7.25:1);
+                               # replaces the failing text-stone-400 habit
   border: "#E7E5E1"            # --border/--input 20 6% 90% (hairline)
   body-canvas: "#FAFAF9"       # body bg-stone-50
-  # semantic
-  success: "#047857"           # emerald-700 (badge success)
-  warning: "#B45309"           # amber-700 (badge warning)
-  destructive: "#DC4444"       # --destructive 0 72% 51%
+  # status tier — real CSS vars since 2026-08-12 (were doc-only before).
+  # All ≥4.5:1 as text on white AND on their /10 tints. Tint via opacity:
+  # bg-success/10, border-warning/20 — no separate subtle tokens.
+  success: "#047754"           # --success 162 94% 24%
+  warning: "#A54C09"           # --warning 26 90% 34%
+  info: "#036396"              # --info 201 96% 30%
+  destructive: "#C52020"       # --destructive 0 72% 45% (dual-role: fill+text)
 typography:
   font-family: "Inter, ui-sans-serif, system-ui, sans-serif"   # tailwind.config.js:96-99
   mono: "ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo"      # .money / kbd
@@ -37,14 +44,15 @@ typography:
   money: { feature: "tnum", family: "mono" }   # tabular, monospace (index.css:69-79)
 spacing:                       # Tailwind scale (rem × 16)
   scale: [4, 8, 12, 16, 24, 32, 48, 64]   # px — the only step values used
-radius:
-  base: 8px      # --radius 0.5rem
-  md: 6px        # calc(radius - 2px), buttons
-  sm: 4px        # calc(radius - 4px)
-shadows:         # tailwind.config.js:115-119
-  input: "0 1px 2px 0 rgb(0 0 0 / 0.05)"
-  card: "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)"
-  dropdown: "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)"
+radius:          # full ladder derives from --radius (2026-08-12) — one token
+  base: 8px      # --radius 0.5rem → rounded-lg
+  xl: 12px       # calc(radius + 4px) — cards
+  md: 6px        # calc(radius - 2px), buttons/inputs
+  sm: 4px        # calc(radius - 4px); bare `rounded` = same
+shadows:         # elevation ladder (tailwind.config.js) — three levels only
+  raised: "0 1px 2px 0 rgb(0 0 0 / 0.05)"                    # cards/inputs/buttons
+  overlay: "0 10px 15px -3px rgb(0 0 0/0.1), 0 4px 6px -4px rgb(0 0 0/0.1)"  # dialogs/sheets/toasts
+  popover: "0 4px 6px -1px rgb(0 0 0/0.1), 0 2px 4px -2px rgb(0 0 0/0.1)"    # menus/selects/tooltips
 motion:          # target standard (§8); reduced-motion always respected
   hover: 100ms
   press: 80ms
@@ -129,8 +137,9 @@ motion) drawn from `src/index.css` and `tailwind.config.js`. Rules of use:
   — never divide by `/100`. JPY has 0 decimals, KWD/BHD have 3.
 - **Semantic color is never the sole signal** — always pair with a text label or
   icon (`ui/badge.jsx:12-17`).
-- **Known token debt:** emerald currently does double duty as accent *and*
-  success. When it's resolved, success may shift; until then, keep pairing
+- **Status tokens are live** (2026-08-12): `success`/`warning`/`info` are real
+  CSS vars — use them, never raw emerald/amber/sky classes. Accent and success
+  remain adjacent emeralds by design until the deferred rebrand; keep pairing
   success with its label so meaning never rests on hue alone.
 
 ## §5. Layout & spacing
@@ -306,13 +315,13 @@ paginate a billing sweep; use color as the only signal. (Full list:
 
 ## §13. Implementation notes
 
-- **Accent = emerald** (`index.css:20`), not blue. **Brand refresh (emerald→blue)
+- **Accent = emerald** (`index.css`), not blue. **Brand refresh (emerald→blue)
   is DEFERRED until post-GA** (founder decision, 2026-08-04): recoloring now would
-  inject noise into screenshots, docs, marketing, and visual-regression baselines
-  during the accrual-accounting work. Emerald is the shipped and documented
-  identity — do not begin the rebrand.
-- **Card radius** is 8px today; the target is ~12px — a one-token change to make
-  when the accent decision is made.
+  inject noise into screenshots, docs, marketing, and visual-regression baselines.
+  Emerald is the shipped and documented identity — do not begin the rebrand.
+  (The 2026-08-12 darkening of `--primary` within emerald is an AA-contrast
+  correction, not the rebrand.)
+- **Card radius** is 12px (`rounded-xl`, now token-derived as radius+4px).
 - **Tables** are not yet virtualized; large lists use server pagination
   (`clampLimitOffset`).
 

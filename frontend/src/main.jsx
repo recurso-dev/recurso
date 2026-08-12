@@ -8,6 +8,7 @@ import { AuthProvider } from './auth/AuthProvider'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from './lib/queryClient'
 import { Toaster } from '@/components/ui/sonner'
+import { TooltipProvider } from '@/components/ui/tooltip'
 // Self-hosted fonts (no CDN): Inter for the UI, JetBrains Mono for money/code/IDs
 // — so the ledger's numbers render identically on every OS.
 import '@fontsource/inter/400.css'
@@ -46,8 +47,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <BrowserRouter>
             <QueryClientProvider client={queryClient}>
                 <AuthProvider>
-                    <App />
-                    <Toaster />
+                    {/* App-wide tooltip context: individual components must not
+                        scope their own provider (StatCard's local one predates
+                        this and can now be removed when touched). */}
+                    <TooltipProvider delayDuration={200}>
+                        <App />
+                        <Toaster />
+                    </TooltipProvider>
                 </AuthProvider>
             </QueryClientProvider>
         </BrowserRouter>

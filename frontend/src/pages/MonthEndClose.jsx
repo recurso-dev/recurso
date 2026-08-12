@@ -191,7 +191,7 @@ export default function MonthEndClose() {
           <div className="flex flex-col gap-6">
             {/* Ready-to-close verdict — the headline of the page. */}
             {pack.ready_to_close ? (
-              <div className="flex items-start gap-3 rounded-lg border border-emerald-600/30 bg-emerald-600/10 px-4 py-3 text-emerald-700 dark:text-emerald-400">
+              <div className="flex items-start gap-3 rounded-lg border border-success/30 bg-success/10 px-4 py-3 text-success">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold">
@@ -204,7 +204,7 @@ export default function MonthEndClose() {
                 </div>
               </div>
             ) : (
-              <div className="flex items-start gap-3 rounded-lg border border-red-600/30 bg-red-600/10 px-4 py-3 text-red-700 dark:text-red-400">
+              <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-destructive">
                 <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold">
@@ -318,10 +318,10 @@ export default function MonthEndClose() {
                 <TableBody>
                   <TableRow>
                     <TableCell className="font-mono text-sm tabular-nums">{money(rollforward?.opening)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm tabular-nums text-emerald-600 dark:text-emerald-400">
+                    <TableCell className="text-right font-mono text-sm tabular-nums text-success">
                       +{money(rollforward?.added)}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm tabular-nums text-amber-600 dark:text-amber-400">
+                    <TableCell className="text-right font-mono text-sm tabular-nums text-warning">
                       −{money(rollforward?.released)}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm font-semibold tabular-nums">
@@ -383,7 +383,7 @@ export default function MonthEndClose() {
                         <TableCell className="text-right font-mono text-sm tabular-nums">{money(l.debits)}</TableCell>
                         <TableCell className="text-right font-mono text-sm tabular-nums">{money(l.credits)}</TableCell>
                         <TableCell
-                          className={`text-right font-mono text-sm tabular-nums ${l.abnormal ? "text-red-600 dark:text-red-400" : "text-foreground"}`}
+                          className={`text-right font-mono text-sm tabular-nums ${l.abnormal ? "text-destructive" : "text-foreground"}`}
                         >
                           {money(l.balance)}
                         </TableCell>

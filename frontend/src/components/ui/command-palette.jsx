@@ -133,7 +133,7 @@ export function CommandPalette({ open, onOpenChange }) {
                   className={cn(
                     "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm",
                     i === active
-                      ? "bg-stone-100 text-foreground"
+                      ? "bg-accent text-foreground ring-2 ring-inset ring-ring"
                       : "text-stone-600"
                   )}
                 >
