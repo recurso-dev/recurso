@@ -90,4 +90,17 @@ describe("CustomerDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: /save customer/i }));
     await waitFor(() => expect(endpoints.updateCustomer).toHaveBeenCalledWith("cus_1", expect.any(Object)));
   });
+  it("submits the edit form on Enter (real <form> semantics)", async () => {
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: /edit customer/i }));
+    const form = screen.getByRole("button", { name: /save customer/i }).closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(endpoints.updateCustomer).toHaveBeenCalledWith(
+        "cus_1",
+        expect.objectContaining({ email: "billing@acme.com" })
+      )
+    );
+  });
 });
