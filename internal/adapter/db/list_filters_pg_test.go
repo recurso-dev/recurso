@@ -246,6 +246,14 @@ func TestListFilters_Postgres(t *testing.T) {
 			t.Errorf("type filter leaked event of type %q", e.Type)
 		}
 	}
+	events, err = eventRepo.ListByTenantID(ctx, tenantID, "", 50, 0)
+	if err != nil {
+		t.Fatalf("ListByTenantID(all): %v", err)
+	}
+	if len(events) != 3 {
+		t.Errorf("unfiltered list returned %d events, want 3", len(events))
+	}
+
 	// Per-object timeline: two events share one object id; a foreign tenant
 	// with the same object id sees nothing.
 	timelineObj := uuid.New()
@@ -267,11 +275,4 @@ func TestListFilters_Postgres(t *testing.T) {
 		t.Errorf("foreign-tenant object timeline returned %d events, want 0", len(foreign))
 	}
 
-	events, err = eventRepo.ListByTenantID(ctx, tenantID, "", 50, 0)
-	if err != nil {
-		t.Fatalf("ListByTenantID(all): %v", err)
-	}
-	if len(events) != 3 {
-		t.Errorf("unfiltered list returned %d events, want 3", len(events))
-	}
 }
