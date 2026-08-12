@@ -1,11 +1,10 @@
 import { useState } from "react";
-import {  useNavigate, useSearchParams, useParams } from "react-router";
+import { useSearchParams } from "react-router";
 import { FileText, Download } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
-import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { moneyColumn } from "@/components/patterns/columns";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -85,15 +84,9 @@ function EInvoiceBadge({ status }) {
 const Invoices = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  // URL-driven detail (/invoices/:id) — replaces the location.state
-  // openInvoiceId hack, which only worked for rows on the loaded page.
-  // Fetch by id so ANY invoice deep-links, regardless of age or page.
-  const { id: routeId } = useParams();
-  const navigate = useNavigate();
   // ?aging=<bucket> deep-links from the invoice-aging report's buckets.
   const [searchParams, setSearchParams] = useSearchParams();
   const agingFilter = AGING_LABELS[searchParams.get("aging")] ? searchParams.get("aging") : null;
-  const queryClient = useQueryClient();
 
   // Invoices come from the shared query cache (60s fresh — revisiting the
   // page reuses the cached list); customer names from the shared hook.
@@ -139,15 +132,6 @@ const Invoices = () => {
     : null;
   const { names: customerNames } = useCustomers();
 
-  const { data: routedInvoice } = useQuery({
-    queryKey: ["invoice", routeId],
-    queryFn: async () => (await endpoints.getInvoice(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
-  const selectedInvoice =
-    (routeId && invoices.find((i) => i.id === routeId)) || routedInvoice || null;
-  const isDetailOpen = Boolean(routeId);
-
   const filteredInvoices = invoices.filter((inv) => {
     if (agingFilter && !matchesAging(inv, agingFilter)) return false;
     if (!matchesStatus(inv, statusFilter)) return false;
@@ -172,9 +156,6 @@ const Invoices = () => {
     }));
     downloadCSV(toCSV(rows), `invoices-${new Date().toISOString().slice(0, 10)}.csv`);
   };
-
-  const closeDetail = () =>
-    navigate({ pathname: "/invoices", search: searchParams.toString() });
 
   // Client sorting is honest here: this page loads the COMPLETE invoice set
   // (page-through fetch), so sorting spans everything, not one server page.
@@ -313,19 +294,6 @@ const Invoices = () => {
         }}
       />
 
-      <InvoiceDetail
-        invoice={selectedInvoice}
-        isOpen={isDetailOpen}
-        onClose={closeDetail}
-        onChanged={() => {
-          queryClient.invalidateQueries({ queryKey: ["invoices"] });
-          // The open sheet may be served by the routed ["invoice", id] query
-          // (deep link to a row outside the loaded list) — refresh it too.
-          if (routeId) {
-            queryClient.invalidateQueries({ queryKey: ["invoice", routeId] });
-          }
-        }}
-      />
     </div>
   );
 };

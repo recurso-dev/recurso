@@ -27,6 +27,7 @@ const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Customers = lazy(() => import('./pages/Customers'))
 const CustomerPage = lazy(() => import('./pages/CustomerPage'))
 const SubscriptionPage = lazy(() => import('./pages/SubscriptionPage'))
+const InvoicePage = lazy(() => import('./pages/InvoicePage'))
 const CreateCustomer = lazy(() => import('./pages/CreateCustomer'))
 const Plans = lazy(() => import('./pages/Plans'))
 const CreatePlan = lazy(() => import('./pages/CreatePlan'))
@@ -163,7 +164,7 @@ function App() {
                             <Route path="/subscriptions/new" element={<CreateSubscription />} />
                             <Route path="/subscriptions/:id" element={<SubscriptionPage />} />
                             <Route path="/invoices" element={<Invoices />} />
-                            <Route path="/invoices/:id" element={<Invoices />} />
+                            <Route path="/invoices/:id" element={<InvoicePage />} />
                             <Route path="/products" element={<Navigate to="/plans" replace />} />
                             <Route path="/coupons" element={<Coupons />} />
                             <Route path="/coupons/new" element={<CreateCoupon />} />
