@@ -37,11 +37,18 @@ func TestPaymentAttempt_Lifecycle_Postgres(t *testing.T) {
 	}
 	defer func() { _, _ = database.ExecContext(ctx, `DELETE FROM tenants WHERE id = $1`, tenantID) }()
 
+	// Per-run suffix: the payment-intent id hits a unique index
+	// (idx_payment_attempts_pi), so a hardcoded value fails on any REUSED
+	// test database even though the tenant row is cleaned up (the ON DELETE
+	// path doesn't cover payment_attempts' unique key from a crashed run).
+	run := tenantID.String()[:8]
+	piID := "pi_test_ach_" + run
+
 	invoiceID := uuid.New()
 	if _, err := database.ExecContext(ctx,
 		`INSERT INTO invoices (id, tenant_id, currency, subtotal, total, invoice_number, status, created_at)
 		 VALUES ($1,$2,'USD',100000,108750,$3,'open',NOW())`,
-		invoiceID, tenantID, "INV-PA-1"); err != nil {
+		invoiceID, tenantID, "INV-PA-"+run); err != nil {
 		t.Fatalf("seed invoice: %v", err)
 	}
 
@@ -53,7 +60,7 @@ func TestPaymentAttempt_Lifecycle_Postgres(t *testing.T) {
 		InvoiceID:              invoiceID,
 		Gateway:                "stripe",
 		Method:                 "us_bank_account",
-		GatewayPaymentIntentID: "pi_test_ach_1",
+		GatewayPaymentIntentID: piID,
 		Status:                 domain.PaymentAttemptProcessing,
 		Amount:                 108750,
 	}
@@ -62,7 +69,7 @@ func TestPaymentAttempt_Lifecycle_Postgres(t *testing.T) {
 	}
 
 	// Webhook resolves it by PaymentIntent id.
-	got, err := repo.GetByPaymentIntentID(ctx, "pi_test_ach_1")
+	got, err := repo.GetByPaymentIntentID(ctx, piID)
 	if err != nil || got == nil {
 		t.Fatalf("get by pi: %v (got=%v)", err, got)
 	}
@@ -77,10 +84,10 @@ func TestPaymentAttempt_Lifecycle_Postgres(t *testing.T) {
 
 	// Settle it (payment_intent.succeeded).
 	now := time.Now().UTC()
-	if err := repo.UpdateStatusByPaymentIntent(ctx, "pi_test_ach_1", domain.PaymentAttemptSucceeded, "", &now); err != nil {
+	if err := repo.UpdateStatusByPaymentIntent(ctx, piID, domain.PaymentAttemptSucceeded, "", &now); err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	got, _ = repo.GetByPaymentIntentID(ctx, "pi_test_ach_1")
+	got, _ = repo.GetByPaymentIntentID(ctx, piID)
 	if got.Status != domain.PaymentAttemptSucceeded || got.InFlight() {
 		t.Fatalf("expected settled succeeded, got %+v", got)
 	}
