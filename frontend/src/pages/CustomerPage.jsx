@@ -13,6 +13,8 @@ import {
   ObjectPageLayout,
   ObjectSection,
   AttributeList,
+  RelatedRow,
+  RelatedEmpty,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -21,22 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
-
-// One row of a related-objects section: the whole row is a real link.
-function RelatedRow({ to, children }) {
-  return (
-    <Link
-      to={to}
-      className="flex items-center justify-between gap-3 px-6 py-3 text-sm transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      {children}
-    </Link>
-  );
-}
-
-function RelatedEmpty({ children }) {
-  return <p className="px-6 py-4 text-sm text-muted-foreground">{children}</p>;
-}
 
 function billingAddress(addr) {
   if (!addr) return null;

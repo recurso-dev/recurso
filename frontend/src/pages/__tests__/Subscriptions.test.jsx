@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BrowserRouter, MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -44,10 +44,10 @@ describe("Subscriptions page", () => {
     expect(screen.getByText("Canceled")).toBeInTheDocument();
   });
 
-  // Row activation navigates to /subscriptions/:id (URL-driven detail), so
-  // the test mounts real routes and the sheet is fed by the single GET.
-  it("opens the detail sheet on row click", async () => {
-    endpoints.getSubscription.mockResolvedValue({ data: { data: subs[0] } });
+  // Row activation navigates to the subscription's own object page
+  // (/subscriptions/:id renders SubscriptionPage, tested in its own suite);
+  // here we assert the row carries the real link.
+  it("links each row to its subscription page", async () => {
     render(
       <MemoryRouter initialEntries={["/subscriptions"]}>
         <QueryClientProvider
@@ -55,15 +55,15 @@ describe("Subscriptions page", () => {
         >
           <Routes>
             <Route path="/subscriptions" element={<Subscriptions />} />
-            <Route path="/subscriptions/:id" element={<Subscriptions />} />
           </Routes>
         </QueryClientProvider>
       </MemoryRouter>
     );
     await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("Active"));
-    await waitFor(() => expect(screen.getByTestId("sub-detail")).toHaveTextContent("sub_1"));
-    expect(endpoints.getSubscription).toHaveBeenCalledWith("sub_1");
+    const link = screen.getAllByRole("link").find(
+      (a) => a.getAttribute("href") === "/subscriptions/sub_1"
+    );
+    expect(link).toBeTruthy();
   });
 
   it("shows the empty state with no subscriptions", async () => {
