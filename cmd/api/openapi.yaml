@@ -558,8 +558,9 @@ paths:
               schema:
                 type: object
                 properties:
-                  message:
+                  status:
                     type: string
+                    example: removed
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
