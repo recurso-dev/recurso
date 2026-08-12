@@ -18,6 +18,7 @@ vi.mock('../../lib/api', () => ({
         getChurnAlerts: vi.fn(),
         getInvoiceAging: vi.fn(),
         getEvents: vi.fn(),
+        getMRRWaterfall: vi.fn(),
     }
 }));
 
@@ -45,6 +46,7 @@ describe('Dashboard (redesign)', () => {
         endpoints.getDisputes.mockResolvedValue({ data: { data: [] } });
         endpoints.getChurnAlerts.mockResolvedValue({ data: { data: [] } });
         endpoints.getEvents.mockResolvedValue({ data: { data: [] } });
+        endpoints.getMRRWaterfall.mockResolvedValue({ data: { data: null } });
         endpoints.getInvoiceAging.mockResolvedValue({
             data: { data: { reporting_currency: 'USD', buckets: [], total_outstanding: 0, total_count: 0 } },
         });
@@ -170,6 +172,25 @@ describe('Dashboard (redesign)', () => {
         await waitFor(() => expect(screen.getByText('Invoice paid')).toBeInTheDocument());
         expect(screen.getByText('Invoice paid').closest('a')).toHaveAttribute('href', '/invoices/inv_9');
         expect(screen.getByText('Subscription created').closest('a')).toHaveAttribute('href', '/subscriptions/sub_9');
+    });
+
+    it('shows an honest MRR delta from the waterfall (starting → ending)', async () => {
+        endpoints.getMRR.mockResolvedValue({ data: { mrr: 110000, reporting_currency: 'USD' } });
+        endpoints.getMRRWaterfall.mockResolvedValue({
+            data: { data: { starting_mrr: 100000, ending_mrr: 110000 } },
+        });
+        renderDashboard();
+        await waitFor(() => expect(screen.getByText('+10%')).toBeInTheDocument());
+        expect(screen.getByText('vs 30 days ago')).toBeInTheDocument();
+    });
+
+    it('shows no MRR delta when there is no starting base to compare against', async () => {
+        endpoints.getMRRWaterfall.mockResolvedValue({
+            data: { data: { starting_mrr: 0, ending_mrr: 110000 } },
+        });
+        renderDashboard();
+        await waitFor(() => expect(screen.getByText('MRR')).toBeInTheDocument());
+        expect(screen.queryByText('vs 30 days ago')).not.toBeInTheDocument();
     });
 
     it('shows the 30-day new-subscription comparison on the Active Subscriptions card', async () => {

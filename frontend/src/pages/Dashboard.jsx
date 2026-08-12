@@ -85,7 +85,7 @@ export default function Dashboard() {
   const { data, isLoading: loading, refetch } = useQuery({
     queryKey: ["dashboard-overview"],
     queryFn: async () => {
-      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes, eventsRes] =
+      const [subsRes, invRes, custRes, mrrRes, recRes, dispRes, churnRes, agingRes, eventsRes, wfRes] =
         await Promise.all([
           endpoints.getSubscriptions({ limit: 1000 }).catch(() => null),
           endpoints.getInvoices({ limit: 1000 }).catch(() => null),
@@ -96,6 +96,9 @@ export default function Dashboard() {
           endpoints.getChurnAlerts().catch(() => null),
           endpoints.getInvoiceAging().catch(() => null),
           endpoints.getEvents({ limit: 8 }).catch(() => null),
+          // Trailing-month MRR movement (starting → ending) — the honest
+          // source for the MRR card's delta.
+          endpoints.getMRRWaterfall().catch(() => null),
         ]);
       const names = {};
       (custRes?.data?.data || []).forEach((c) => {
@@ -126,6 +129,7 @@ export default function Dashboard() {
         aging: agingRes?.data?.data ?? agingRes?.data ?? null,
         // Latest business events for the activity feed; null = unavailable.
         events: eventsRes?.data?.data || [],
+        mrrWaterfall: wfRes?.data?.data ?? null,
       };
     },
   });
@@ -242,6 +246,14 @@ export default function Dashboard() {
   const subsDelta =
     newSubsPrev30 > 0
       ? Math.round(((newSubs30 - newSubsPrev30) / newSubsPrev30) * 100)
+      : null;
+
+  // MRR month-over-month, from the ledger's own movement math
+  // (waterfall: starting → ending over the trailing month).
+  const wf = data?.mrrWaterfall;
+  const mrrDelta =
+    wf && wf.starting_mrr > 0
+      ? Math.round(((wf.ending_mrr - wf.starting_mrr) / wf.starting_mrr) * 100)
       : null;
 
   // Billed revenue in the selected chart currency: this 30d window vs prior.
@@ -424,9 +436,11 @@ export default function Dashboard() {
             label="MRR"
             value={mrr != null ? formatCurrencyHeadline(mrr, mrrCurrency) : "—"}
             icon={DollarSign}
-            hint="Monthly recurring revenue"
+            delta={mrrDelta != null ? `${mrrDelta > 0 ? "+" : ""}${mrrDelta}%` : undefined}
+            deltaType={mrrDelta > 0 ? "positive" : mrrDelta < 0 ? "negative" : "neutral"}
+            hint={mrrDelta != null ? "vs 30 days ago" : "Monthly recurring revenue"}
             to="/overview"
-            definition="Monthly recurring revenue across active subscriptions, normalized to your reporting currency."
+            definition="Monthly recurring revenue across active subscriptions, normalized to your reporting currency. The delta compares against the trailing month's starting MRR (from the MRR movement waterfall)."
           />
           <StatCard
             label="Active Subscriptions"
