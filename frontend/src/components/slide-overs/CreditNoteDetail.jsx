@@ -32,6 +32,9 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
   const queryClient = useQueryClient();
   const [downloading, setDownloading] = useState(false);
   const [confirmVoid, setConfirmVoid] = useState(false);
+  // "approve" | "reject" | null — approving MOVES MONEY (issues the credit or
+  // refund); it must be at least as guarded as its sibling void (audit §7).
+  const [confirmDecision, setConfirmDecision] = useState(null);
 
   const voidMutation = useMutation({
     mutationFn: () => endpoints.voidCreditNote(creditNote.id),
@@ -131,18 +134,18 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
                 This credit note is pending review. You can approve it to issue the credit or refund, or reject it.
               </p>
               <div className="mt-4 flex gap-3">
-                <Button 
-                  size="sm" 
-                  onClick={() => approveMutation.mutate()}
+                <Button
+                  size="sm"
+                  onClick={() => setConfirmDecision("approve")}
                   disabled={approveMutation.isPending || rejectMutation.isPending}
                 >
                   <Check className="mr-2 h-4 w-4" />
                   Approve
                 </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => rejectMutation.mutate()}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setConfirmDecision("reject")}
                   disabled={approveMutation.isPending || rejectMutation.isPending}
                 >
                   <X className="mr-2 h-4 w-4" />
@@ -271,6 +274,32 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
           </div>
         </div>
 
+        <ConfirmDialog
+          open={confirmDecision === "approve"}
+          onOpenChange={(o) => !o && setConfirmDecision(null)}
+          title="Approve this credit note?"
+          description={`Approving issues ${formatCurrency(
+            creditNote.amount,
+            currency
+          )} of credit to the customer — it becomes spendable (or refundable) immediately.`}
+          confirmLabel="Approve credit note"
+          busy={approveMutation.isPending}
+          onConfirm={() =>
+            approveMutation.mutate(undefined, { onSettled: () => setConfirmDecision(null) })
+          }
+        />
+        <ConfirmDialog
+          open={confirmDecision === "reject"}
+          onOpenChange={(o) => !o && setConfirmDecision(null)}
+          title="Reject this credit note?"
+          description="The credit note is rejected and no credit is issued. This can't be undone."
+          confirmLabel="Reject credit note"
+          destructive
+          busy={rejectMutation.isPending}
+          onConfirm={() =>
+            rejectMutation.mutate(undefined, { onSettled: () => setConfirmDecision(null) })
+          }
+        />
         <ConfirmDialog
           open={confirmVoid}
           onOpenChange={setConfirmVoid}

@@ -16,6 +16,7 @@ import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Alert } from "@/components/ui/alert";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -100,6 +101,7 @@ export default function InvoicePage() {
   const [previewHtml, setPreviewHtml] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [confirmSend, setConfirmSend] = useState(false);
 
   if (isLoading) {
     return (
@@ -234,6 +236,7 @@ export default function InvoicePage() {
   };
 
   const handleSend = async () => {
+    setConfirmSend(false);
     setSending(true);
     setActionMessage(null);
     try {
@@ -283,7 +286,7 @@ export default function InvoicePage() {
         }
         actions={
           <>
-            <Button variant="outline" onClick={handleSend} disabled={sending}>
+            <Button variant="outline" onClick={() => setConfirmSend(true)} disabled={sending}>
               <Send className="h-4 w-4" />
               {sending ? "Sending…" : "Send"}
             </Button>
@@ -583,6 +586,16 @@ export default function InvoicePage() {
           </ObjectSection>
         )}
       </ObjectPageLayout>
+
+      <ConfirmDialog
+        open={confirmSend}
+        onOpenChange={setConfirmSend}
+        title="Send this invoice to the customer?"
+        description="The invoice is emailed to the customer's billing address."
+        confirmLabel="Send invoice"
+        busy={sending}
+        onConfirm={handleSend}
+      />
 
       {/* HTML invoice preview */}
       <Dialog open={previewHtml !== null} onOpenChange={(o) => !o && setPreviewHtml(null)}>

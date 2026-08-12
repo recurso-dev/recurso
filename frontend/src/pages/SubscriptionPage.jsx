@@ -153,6 +153,7 @@ export default function SubscriptionPage() {
   const [chargeAmount, setChargeAmount] = useState("");
   const [chargeDesc, setChargeDesc] = useState("");
   const [billingUsage, setBillingUsage] = useState(false);
+  const [confirmBillUsage, setConfirmBillUsage] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFeedback, setCancelFeedback] = useState("");
@@ -345,6 +346,7 @@ export default function SubscriptionPage() {
   };
 
   const billUsageNow = async () => {
+    setConfirmBillUsage(false);
     setBillingUsage(true);
     try {
       const res = await endpoints.billUsageNow(subscription.id);
@@ -601,7 +603,12 @@ export default function SubscriptionPage() {
               >
                 One-off charge
               </Button>
-              <Button variant="outline" size="sm" disabled={billingUsage} onClick={billUsageNow}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={billingUsage}
+                onClick={() => setConfirmBillUsage(true)}
+              >
                 {billingUsage ? "Billing…" : "Bill usage now"}
               </Button>
             </div>
@@ -987,6 +994,15 @@ export default function SubscriptionPage() {
         </ObjectSection>
       </ObjectPageLayout>
 
+      <ConfirmDialog
+        open={confirmBillUsage}
+        onOpenChange={setConfirmBillUsage}
+        title="Bill accrued usage now?"
+        description="An interim invoice is generated for the usage accrued this period (if any is past the billing threshold). It is charged like any other invoice."
+        confirmLabel="Bill usage now"
+        busy={billingUsage}
+        onConfirm={billUsageNow}
+      />
       <ConfirmDialog
         open={!!confirmAction}
         onOpenChange={(open) => !open && setConfirmAction(null)}

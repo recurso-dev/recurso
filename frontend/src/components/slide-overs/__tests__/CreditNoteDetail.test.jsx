@@ -79,6 +79,24 @@ describe("CreditNoteDetail", () => {
     expect(screen.queryByRole("button", { name: /^void$/i })).not.toBeInTheDocument();
   });
 
+  it("approves only after confirmation — approving moves money", async () => {
+    renderCN({ ...base, status: "pending_approval" });
+    fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    // Confirm dialog appears; the mutation hasn't fired yet (audit §7:
+    // approve used to be one-click while its sibling void was guarded).
+    expect(endpoints.approveCreditNote).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /approve credit note/i }));
+    await waitFor(() => expect(endpoints.approveCreditNote).toHaveBeenCalledWith("cn_123"));
+  });
+
+  it("rejects only after confirmation", async () => {
+    renderCN({ ...base, status: "pending_approval" });
+    fireEvent.click(screen.getByRole("button", { name: /^reject$/i }));
+    expect(endpoints.rejectCreditNote).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /reject credit note/i }));
+    await waitFor(() => expect(endpoints.rejectCreditNote).toHaveBeenCalledWith("cn_123"));
+  });
+
   it("voids only after confirmation", async () => {
     renderCN({ ...base, status: "issued" });
     fireEvent.click(screen.getByRole("button", { name: /^void$/i }));

@@ -45,6 +45,8 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
   const [statusOverride, setStatusOverride] = useState(null);
   const [actionError, setActionError] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // Converting creates an invoice (money) — confirm like delete is (audit §7).
+  const [confirmConvert, setConfirmConvert] = useState(false);
   useEffect(() => {
     setStatusOverride(null);
     setActionError(null);
@@ -310,7 +312,7 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
                 {canConvert && (
                   <Button
                     disabled={busy}
-                    onClick={() => convertMutation.mutate(quote.id)}
+                    onClick={() => setConfirmConvert(true)}
                   >
                     Convert to invoice
                     <ArrowRight className="h-4 w-4" />
@@ -332,6 +334,17 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
           )}
         </div>
 
+        <ConfirmDialog
+          open={confirmConvert}
+          onOpenChange={setConfirmConvert}
+          title="Convert this quote to an invoice?"
+          description="An invoice is created for the quoted amount and the quote is locked. This can't be undone."
+          confirmLabel="Convert to invoice"
+          busy={convertMutation.isPending}
+          onConfirm={() =>
+            convertMutation.mutate(quote.id, { onSettled: () => setConfirmConvert(false) })
+          }
+        />
         <ConfirmDialog
           open={confirmDelete}
           onOpenChange={setConfirmDelete}
