@@ -112,6 +112,16 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		planID = id
 	}
 
+	var customerID uuid.UUID
+	if s := c.Query("customer_id"); s != "" {
+		id, err := uuid.Parse(s)
+		if err != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
+			return
+		}
+		customerID = id
+	}
+
 	var startedAfter *time.Time
 	if s := c.Query("started_after"); s != "" {
 		t, err := time.Parse(time.RFC3339, s)
@@ -128,6 +138,7 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 		Status:       status,
 		Search:       search,
 		PlanID:       planID,
+		CustomerID:   customerID,
 		StartedAfter: startedAfter,
 		Limit:        limit,
 		Offset:       offset,
@@ -213,7 +224,25 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	// Server-side pagination: a large account must not return every invoice in
 	// one response. Defaults page=1/per_page=50, capped at 250 (ParsePagination).
 	p := ParsePagination(c)
-	invs, total, err := h.service.ListInvoicesPaginated(ctx, tenantID, p.PerPage, p.Offset)
+
+	var (
+		invs  []*domain.Invoice
+		total int
+		err   error
+	)
+	if s := c.Query("customer_id"); s != "" {
+		// Customer-scoped list for the customer object page. The repo query
+		// carries the tenant predicate, so a foreign customer id yields an
+		// empty page, never another tenant's invoices.
+		customerID, perr := uuid.Parse(s)
+		if perr != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer_id")
+			return
+		}
+		invs, total, err = h.service.ListInvoicesByCustomerPaginated(ctx, tenantID, customerID, p.PerPage, p.Offset)
+	} else {
+		invs, total, err = h.service.ListInvoicesPaginated(ctx, tenantID, p.PerPage, p.Offset)
+	}
 	if err != nil {
 		respondInternalError(c, err)
 		return

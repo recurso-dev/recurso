@@ -111,6 +111,61 @@ func TestListFilters_Postgres(t *testing.T) {
 		t.Errorf("plan+date filter returned %d subs, want 0", len(got))
 	}
 
+	// CustomerID filter (customer object page): both subs belong to custID; a
+	// customer with none → empty, not an error.
+	got, err = subRepo.List(ctx, tenantID, domain.SubscriptionFilter{CustomerID: custID})
+	if err != nil {
+		t.Fatalf("List(customer): %v", err)
+	}
+	if len(got) != 2 {
+		t.Errorf("customer filter returned %d subs, want 2", len(got))
+	}
+	got, err = subRepo.List(ctx, tenantID, domain.SubscriptionFilter{CustomerID: uuid.New()})
+	if err != nil {
+		t.Fatalf("List(customer miss): %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("unknown-customer filter returned %d subs, want 0", len(got))
+	}
+
+	// Invoices by customer (dashboard path): the tenant predicate must live in
+	// the SQL — an identical customer id under another tenant contributes
+	// nothing.
+	invRepo := NewInvoiceRepository(conn)
+	seedInvoice := func(tid uuid.UUID) {
+		id := uuid.New()
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, amount_paid, credit_applied, status, invoice_number, created_at, due_date)
+			 VALUES ($1, $2, $3, 'USD', 1000, 1000, 0, 0, 'open', $4, NOW(), NOW())`,
+			id, tid, custID, "INV-"+id.String()[:8]); err != nil {
+			t.Fatalf("seed invoice: %v", err)
+		}
+	}
+	otherTenant := uuid.New()
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())`,
+		otherTenant, "Filters2-"+run, "filters2-"+run+"@t.com"); err != nil {
+		t.Fatalf("seed other tenant: %v", err)
+	}
+	seedInvoice(tenantID)
+	seedInvoice(tenantID)
+	seedInvoice(otherTenant) // same customer id, foreign tenant — must not leak
+
+	invs, err := invRepo.ListByCustomerPaginated(ctx, tenantID, custID, 10, 0)
+	if err != nil {
+		t.Fatalf("ListByCustomerPaginated: %v", err)
+	}
+	if len(invs) != 2 {
+		t.Errorf("customer invoices returned %d rows, want 2 (tenant-scoped)", len(invs))
+	}
+	n, err := invRepo.CountByCustomer(ctx, tenantID, custID)
+	if err != nil {
+		t.Fatalf("CountByCustomer: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("CountByCustomer = %d, want 2", n)
+	}
+
 	planRepo := NewPlanRepository(conn)
 
 	// Currency filter goes through the prices EXISTS.

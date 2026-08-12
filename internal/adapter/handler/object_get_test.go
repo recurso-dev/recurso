@@ -115,3 +115,55 @@ func TestGetCreditNoteCrossTenantIs404(t *testing.T) {
 		t.Fatalf("cross-tenant read: got %d want 404", got)
 	}
 }
+
+// --- GET /v1/invoices?customer_id= ------------------------------------------
+
+// customerScopedInvoiceRepo proves the handler routes a customer_id query to
+// the tenant-scoped customer list, not the whole-tenant list.
+type customerScopedInvoiceRepo struct {
+	port.InvoiceRepository
+	tenantID   uuid.UUID
+	customerID uuid.UUID
+	rows       []*domain.Invoice
+}
+
+func (r *customerScopedInvoiceRepo) ListByCustomerPaginated(_ context.Context, tenantID, customerID uuid.UUID, _, _ int) ([]*domain.Invoice, error) {
+	if tenantID == r.tenantID && customerID == r.customerID {
+		return r.rows, nil
+	}
+	return nil, nil
+}
+
+func (r *customerScopedInvoiceRepo) CountByCustomer(_ context.Context, tenantID, customerID uuid.UUID) (int, error) {
+	if tenantID == r.tenantID && customerID == r.customerID {
+		return len(r.rows), nil
+	}
+	return 0, nil
+}
+
+func doListInvoices(h *SubscriptionHandler, tenantID uuid.UUID, query string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/invoices"+query, nil)
+	c.Set("tenant_id", tenantID)
+	h.ListInvoices(c)
+	return w
+}
+
+func TestListInvoicesCustomerFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID, customerID := uuid.New(), uuid.New()
+	repo := &customerScopedInvoiceRepo{
+		tenantID:   tenantID,
+		customerID: customerID,
+		rows:       []*domain.Invoice{{ID: uuid.New(), TenantID: tenantID, CustomerID: customerID}},
+	}
+	h := NewSubscriptionHandler(service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil))
+
+	if got := doListInvoices(h, tenantID, "?customer_id="+customerID.String()).Code; got != http.StatusOK {
+		t.Fatalf("customer-scoped list: got %d want 200", got)
+	}
+	if got := doListInvoices(h, tenantID, "?customer_id=nope").Code; got != http.StatusBadRequest {
+		t.Fatalf("bad customer_id: got %d want 400", got)
+	}
+}
