@@ -90,10 +90,10 @@ func (m *mockEventRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Even
 	return nil, sql.ErrNoRows
 }
 
-func (m *mockEventRepo) ListByTenantID(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Event, error) {
+func (m *mockEventRepo) ListByTenantID(ctx context.Context, tenantID uuid.UUID, eventType string, limit, offset int) ([]*domain.Event, error) {
 	var out []*domain.Event
 	for _, e := range m.events {
-		if e.TenantID == tenantID {
+		if e.TenantID == tenantID && (eventType == "" || e.Type == eventType) {
 			out = append(out, e)
 		}
 	}

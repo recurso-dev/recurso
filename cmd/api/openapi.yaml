@@ -597,6 +597,16 @@ paths:
       summary: List plans
       parameters:
         - $ref: '#/components/parameters/SearchQuery'
+        - name: currency
+          in: query
+          description: Keep plans that have a price in this currency.
+          schema:
+            type: string
+        - name: interval_unit
+          in: query
+          description: Filter by billing interval unit (e.g. `month`, `year`).
+          schema:
+            type: string
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Page'
       responses:
@@ -1447,6 +1457,20 @@ paths:
           description: Filter by subscription status.
           schema:
             $ref: '#/components/schemas/SubscriptionStatus'
+        - name: plan_id
+          in: query
+          description: Filter to one plan's subscriptions.
+          schema:
+            type: string
+            format: uuid
+        - name: started_after
+          in: query
+          description: >-
+            Keep subscriptions whose current period started at or after this
+            RFC 3339 instant.
+          schema:
+            type: string
+            format: date-time
         - $ref: '#/components/parameters/SearchQuery'
         - $ref: '#/components/parameters/Limit'
         - $ref: '#/components/parameters/Page'
@@ -2916,15 +2940,9 @@ paths:
       summary: List events
       description: Chronological feed of billing events emitted for this tenant.
       parameters:
+        - { name: type, in: query, schema: { type: string }, description: Filter to one event type (e.g. `invoice.paid`). }
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
-        - $ref: '#/components/parameters/Limit'
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            minimum: 0
-            default: 0
       responses:
         '200':
           description: Events for the tenant.

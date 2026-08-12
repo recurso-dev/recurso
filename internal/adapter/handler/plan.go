@@ -159,9 +159,11 @@ func (h *CatalogHandler) ListPlans(c *gin.Context) {
 	limit, offset := parsePageLimit(c)
 
 	filter := domain.PlanFilter{
-		Search: search,
-		Limit:  limit,
-		Offset: offset,
+		Search:       search,
+		Currency:     c.Query("currency"),
+		IntervalUnit: c.Query("interval_unit"),
+		Limit:        limit,
+		Offset:       offset,
 	}
 
 	plans, err := h.service.ListPlans(ctx, tenantID, filter)

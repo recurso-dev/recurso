@@ -161,7 +161,13 @@ func daysInMonth(year int, m time.Month) int {
 type SubscriptionFilter struct {
 	Status     string // "active", "trialing", etc.
 	CustomerID uuid.UUID
-	Search     string
-	Limit      int
-	Offset     int
+	// PlanID filters to one plan's subscriptions (uuid.Nil = all plans).
+	PlanID uuid.UUID
+	// StartedAfter keeps subscriptions whose current period started at/after
+	// this instant (nil = no lower bound). Serves the list page's date filter
+	// server-side so it isn't quietly applied to a single fetched page.
+	StartedAfter *time.Time
+	Search       string
+	Limit        int
+	Offset       int
 }

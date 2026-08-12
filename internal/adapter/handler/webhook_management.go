@@ -192,7 +192,7 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 	// default, and a huge ?limit= can't force an unbounded read.
 	limit, offset := parseLimitOffset(c, 50, 500)
 
-	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), limit, offset)
+	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), c.Query("type"), limit, offset)
 	if err != nil {
 		respondInternalError(c, err)
 		return

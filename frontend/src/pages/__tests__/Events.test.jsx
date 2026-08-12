@@ -8,10 +8,12 @@ import { endpoints } from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   endpoints: {
     getEvents: vi.fn(),
+    getEventTypes: vi.fn(),
     getEventDeliveries: vi.fn(),
     redeliverEvent: vi.fn(),
   },
 }));
+import userEvent from "@testing-library/user-event";
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const wrapper = ({ children }) => (
@@ -37,8 +39,31 @@ describe("Events (webhook inspector)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     endpoints.getEvents.mockResolvedValue({ data: { data: [sampleEvent] } });
+    endpoints.getEventTypes.mockResolvedValue({
+      data: { data: ["invoice.created", "invoice.paid"] },
+    });
     endpoints.getEventDeliveries.mockResolvedValue({ data: { data: [] } });
     endpoints.redeliverEvent.mockResolvedValue({ data: { queued: 2 } });
+  });
+
+  // The type filter must reach the server — filtering only the loaded page
+  // hid matching events on other pages.
+  it("sends the type filter to the server and resets to the first page", async () => {
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    const user = userEvent.setup();
+
+    render(<Events />, { wrapper });
+    await waitFor(() => expect(screen.getByText("invoice.created")).toBeInTheDocument());
+
+    await user.click(screen.getByRole("combobox", { name: /filter by event type/i }));
+    await user.click(await screen.findByRole("option", { name: "invoice.paid" }));
+
+    await waitFor(() =>
+      expect(endpoints.getEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "invoice.paid", offset: 0 })
+      )
+    );
   });
 
   it("lists events and requests the first page", async () => {

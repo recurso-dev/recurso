@@ -44,6 +44,10 @@ type Price struct {
 
 type PlanFilter struct {
 	Search string
-	Limit  int
-	Offset int
+	// Currency keeps plans that have a price in this currency ("" = all).
+	Currency string
+	// IntervalUnit filters by billing interval, e.g. "month" ("" = all).
+	IntervalUnit string
+	Limit        int
+	Offset       int
 }
