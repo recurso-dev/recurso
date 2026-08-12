@@ -8,7 +8,7 @@ import { useMemo } from "react";
 import { endpoints } from "../lib/api";
 import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { Button } from "@/components/ui/button";
-import { formatNumber, fromMinorUnits } from "@/lib/utils";
+import { formatNumber, fromMinorUnits, formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -56,7 +56,7 @@ const lastTwelveMonths = () => {
 const segmentLabel = (k) => (k || "").replace(":", " · ").replace(/_/g, " ");
 
 const fmtWhen = (x) =>
-  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  formatDateTime(x);
 
 const DunningDashboard = () => {
   const {

@@ -1,14 +1,15 @@
-import { shortId } from "@/lib/utils";
+import { shortId, formatDateTime } from "@/lib/utils";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { FileQuestion, Check, X } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Label } from "@/components/ui/label";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
@@ -27,13 +28,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
+const fmtDate = (v) => formatDateTime(v);
 
 const textareaClass =
   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
-
-const statusVariant = (s) =>
-  ({ open: "warning", resolved: "success", rejected: "destructive" })[s] || "neutral";
 
 // Customer-raised invoice disputes; admins accept (optionally issuing a credit)
 // or reject them.
@@ -134,7 +132,7 @@ const Disputes = () => {
       header: "Status",
       cell: (d) => (
         <div>
-          <Badge variant={statusVariant(d.status)}>{d.status}</Badge>
+          <StatusBadge status={d.status} kind="dispute" />
           {d.note && (
             <p className="mt-1 max-w-xs truncate text-xs text-muted-foreground" title={d.note}>
               {d.note}
@@ -244,7 +242,7 @@ const Disputes = () => {
 
             <div>
               <Label>Note (optional)</Label>
-              <textarea
+              <Textarea
                 className={textareaClass}
                 rows={3}
                 value={note}

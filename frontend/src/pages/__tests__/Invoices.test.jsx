@@ -119,9 +119,13 @@ describe('Invoices Page', () => {
         ).toBeInTheDocument();
 
         // Check status badges
-        expect(screen.getByText('paid')).toBeInTheDocument();
-        expect(screen.getByText('open')).toBeInTheDocument();
-        expect(screen.getByText('void')).toBeInTheDocument();
+        // Status labels are canonical (StatusBadge); the filter chips share
+        // the same text, so assert the badge inside the table specifically.
+        const { within } = await import('@testing-library/react');
+        const table = screen.getByRole('table');
+        expect(within(table).getByText('Paid')).toBeInTheDocument();
+        expect(within(table).getByText('Open')).toBeInTheDocument();
+        expect(within(table).getByText('Void')).toBeInTheDocument();
     });
 
     it('search filters by invoice number', async () => {

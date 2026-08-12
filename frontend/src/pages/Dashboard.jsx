@@ -31,7 +31,7 @@ import { StatCard } from "@/components/patterns/StatCard";
 import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -51,15 +51,6 @@ const revenueTooltip = makeChartTooltip(revenueFormatter);
 const subMixTooltip = makeChartTooltip((v) => `${v.toLocaleString()} subscriptions`);
 
 // Map an invoice status to a Badge variant.
-const invoiceStatusVariant = (status) =>
-  ({
-    paid: "success",
-    open: "info",
-    past_due: "destructive",
-    void: "neutral",
-    draft: "neutral",
-  })[status] || "neutral";
-
 // Subscription-mix donut: current (non-canceled) statuses, healthiest first.
 // Tremor color names must stay in the Tailwind safelist; the hex twins drive
 // the custom legend swatches so donut and legend agree exactly.
@@ -571,12 +562,7 @@ export default function Dashboard() {
                         <Money amountMinor={inv.total} currency={inv.currency} />
                       </TableCell>
                       <TableCell className="pr-6 text-right">
-                        <Badge
-                          variant={invoiceStatusVariant(inv.status)}
-                          className={cn("capitalize")}
-                        >
-                          {(inv.status || "unknown").replace("_", " ")}
-                        </Badge>
+                        <StatusBadge status={inv.status || "unknown"} />
                       </TableCell>
                     </TableRow>
                   ))}

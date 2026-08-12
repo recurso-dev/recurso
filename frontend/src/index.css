@@ -52,6 +52,9 @@
     --info: 201 96% 30%;
     --info-foreground: 0 0% 100%;
 
+    /* Page canvas behind cards/tables — the one non-white surface. */
+    --canvas: 60 9% 98%;
+
     --border: 20 6% 90%;
     --input: 20 6% 90%;
     --ring: 161 94% 24%;
@@ -69,7 +72,7 @@
 body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  @apply bg-stone-50;
+  background-color: hsl(var(--canvas));
 }
 
 

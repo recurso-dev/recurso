@@ -4,6 +4,7 @@ import { Save, Upload, X } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
@@ -187,7 +188,7 @@ export default function InvoiceBranding() {
                 htmlFor="bank_details"
                 description="Remittance details shown in the invoice footer — bank, account, IFSC/routing."
               >
-                <textarea
+                <Textarea
                   id="bank_details"
                   value={config.bank_details}
                   onChange={(e) => set({ bank_details: e.target.value })}
@@ -203,7 +204,7 @@ export default function InvoiceBranding() {
                 htmlFor="terms"
                 description="Shown at the bottom of every invoice."
               >
-                <textarea
+                <Textarea
                   id="terms"
                   value={config.terms}
                   onChange={(e) => set({ terms: e.target.value })}

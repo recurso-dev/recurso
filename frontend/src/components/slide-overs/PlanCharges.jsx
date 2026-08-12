@@ -3,6 +3,7 @@ import { Calculator, Pencil, Plus, Trash2 } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Alert } from "@/components/ui/alert";
 import PricingSimulator from "./PricingSimulator";
 import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -424,10 +425,10 @@ export default function PlanCharges({ planId, currency }) {
       {isEditing ? (
         <div className="flex flex-col gap-4">
           {metrics.length === 0 && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <Alert variant="warning">
               No billable metrics yet. Create one on the Metering page before adding usage
               charges.
-            </p>
+            </Alert>
           )}
           {rows.length === 0 && metrics.length > 0 && (
             <p className="text-sm text-muted-foreground">

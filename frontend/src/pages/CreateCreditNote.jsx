@@ -7,6 +7,7 @@ import { useCustomers } from "@/lib/useCustomers";
 import { toMinorUnits, formatCurrency, shortId } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import {
   Sheet,
@@ -254,14 +255,13 @@ const CreateCreditNote = () => {
           </FormField>
 
           <FormField label="Reason for credit" htmlFor="reason">
-            <textarea
+            <Textarea
               id="reason"
               name="reason"
               rows={4}
               value={formData.reason}
               onChange={handleChange}
               placeholder="e.g. Service downtime compensation"
-              className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
             />
           </FormField>
         </form>

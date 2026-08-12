@@ -88,6 +88,25 @@ export function formatDate(input, options = { month: "short", day: "numeric", ye
   return d.toLocaleDateString("en-US", options);
 }
 
+/**
+ * formatDateTime — the one timestamp format ("Aug 12, 2026, 9:41 AM").
+ * The audit found six competing date treatments, four of them raw
+ * `toLocaleString()` (locale-dependent widths that break column alignment).
+ * Fixed en-US locale to match formatDate; use this for every timestamp cell.
+ */
+export function formatDateTime(input) {
+  if (!input) return "—";
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 // shortId renders the first 8 characters of a UUID for tables where the full
 // id is noise — one canonical form ("abcd1234…", em-dash when absent) so every
 // page truncates ids the same way.

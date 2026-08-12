@@ -9,17 +9,8 @@ import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
-
-const creditStatusVariant = (status) =>
-  ({
-    issued: "info",
-    used: "success",
-    active: "success",
-    pending_approval: "warning",
-    rejected: "destructive",
-  })[status] || "neutral";
 
 const CreditNotes = () => {
   const navigate = useNavigate();
@@ -89,9 +80,7 @@ const CreditNotes = () => {
       key: "status",
       header: "Status",
       cell: (cn) => (
-        <Badge variant={creditStatusVariant(cn.status)} className="capitalize">
-          {(cn.status || "").replace("_", " ")}
-        </Badge>
+        <StatusBadge status={cn.status} />
       ),
     },
     {

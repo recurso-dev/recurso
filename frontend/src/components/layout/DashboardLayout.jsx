@@ -72,6 +72,15 @@ const PATH_TITLES = {
   "/payments/offline": "Offline Payments",
 };
 
+// Initials for the account menu — derived from the signed-in user (the
+// fallback was hardcoded "AD" for everyone).
+function initialsOf(user) {
+  const src = user?.name || user?.email || "";
+  const parts = src.replace(/@.*/, "").split(/[\s._-]+/).filter(Boolean);
+  const chars = (parts.length >= 2 ? parts[0][0] + parts[1][0] : src.slice(0, 2)) || "?";
+  return chars.toUpperCase();
+}
+
 function usePageTitle() {
   const { pathname } = useLocation();
   const segment = pathname.split("/").filter(Boolean)[0] || "";
@@ -113,28 +122,28 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-stone-50 font-sans text-foreground">
+    <div className="flex h-screen w-full overflow-hidden bg-canvas font-sans text-foreground">
       <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
         {isDemo && (
-          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-xs text-amber-800">
+          <div className="flex shrink-0 items-center justify-center gap-2 border-b border-warning/20 bg-warning/5 px-4 py-1.5 text-xs text-warning">
             <span className="font-semibold">Demo environment</span>
             <span className="hidden sm:inline">
               — data is public and resets every hour. API key for curl:
             </span>
-            <code className="hidden rounded bg-amber-100 px-1.5 py-0.5 font-mono sm:inline">sk_test_12345</code>
+            <code className="hidden rounded bg-warning/10 px-1.5 py-0.5 font-mono sm:inline">sk_test_12345</code>
           </div>
         )}
         <VerifyEmailBanner />
         <TrialBanner />
         {/* Top bar */}
-        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-white/80 px-6 backdrop-blur">
+        <header className="flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/80 px-6 backdrop-blur">
           <h1 className="text-sm font-semibold text-foreground">{title}</h1>
 
           <div className="flex flex-1 items-center justify-end gap-3">
             {gatewayMode === "test" && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/5 px-2.5 py-1 text-xs font-medium text-warning">
                 <FlaskConical className="h-3 w-3" />
                 Test mode
               </span>
@@ -143,7 +152,7 @@ export function DashboardLayout() {
             <button
               type="button"
               onClick={() => setPaletteOpen(true)}
-              className="hidden h-9 w-full max-w-xs items-center gap-2 rounded-md border border-border bg-stone-50 px-3 text-sm text-stone-400 transition-colors hover:border-stone-300 hover:text-stone-500 md:flex"
+              className="hidden h-9 w-full max-w-xs items-center gap-2 rounded-md border border-border bg-muted px-3 text-sm text-muted-foreground transition-colors hover:border-input hover:text-foreground md:flex"
             >
               <Search className="h-4 w-4" />
               <span className="flex-1 text-left">Search…</span>
@@ -154,7 +163,7 @@ export function DashboardLayout() {
 
             <Link
               to="/notifications"
-              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-white text-stone-500 transition-colors hover:bg-stone-50 hover:text-stone-900"
+              className="flex h-9 w-9 items-center justify-center rounded-md border border-border bg-background text-subtle transition-colors hover:bg-muted hover:text-foreground"
               aria-label="Notifications"
             >
               <Bell className="h-4 w-4" />
@@ -163,21 +172,21 @@ export function DashboardLayout() {
             <DropdownMenu>
               <DropdownMenuTrigger className="flex items-center gap-1.5 rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <Avatar className="h-8 w-8">
-                  <AvatarFallback>AD</AvatarFallback>
+                  <AvatarFallback>{initialsOf(user)}</AvatarFallback>
                 </Avatar>
-                <ChevronDown className="h-4 w-4 text-stone-400" />
+                <ChevronDown className="h-4 w-4 text-subtle" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel>My Account</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => navigate("/profile")}>
-                  <User className="text-stone-500" />
+                  <User className="text-subtle" />
                   Profile
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={handleLogout}
-                  className="text-red-600 focus:bg-red-50 focus:text-red-700"
+                  className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                 >
                   <LogOut />
                   Log out

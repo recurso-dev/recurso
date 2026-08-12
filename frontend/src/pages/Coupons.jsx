@@ -10,13 +10,10 @@ import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const STATUS_FILTERS = ["all", "active", "inactive"];
-
-const statusVariant = (status) =>
-  ({ active: "success", inactive: "neutral" })[status] || "neutral";
 
 const Coupons = () => {
   const navigate = useNavigate();
@@ -122,9 +119,7 @@ const Coupons = () => {
       key: "status",
       header: "Status",
       cell: (c) => (
-        <Badge variant={statusVariant(c.status)} className="capitalize">
-          {c.status}
-        </Badge>
+        <StatusBadge status={c.status} />
       ),
     },
     {

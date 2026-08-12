@@ -13,7 +13,7 @@ import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -23,16 +23,6 @@ import {
 } from "@/components/ui/select";
 
 const PAGE_SIZE = 10;
-
-// Map a subscription status to a Badge variant.
-const statusVariant = (status) =>
-  ({
-    active: "success",
-    paused: "warning",
-    trialing: "info",
-    past_due: "destructive",
-    canceled: "neutral",
-  })[status] || "neutral";
 
 export default function Subscriptions() {
   const navigate = useNavigate();
@@ -151,9 +141,7 @@ export default function Subscriptions() {
       key: "status",
       header: "Status",
       cell: (s) => (
-        <Badge variant={statusVariant(s.status)} className="capitalize">
-          {(s.status || "unknown").replace("_", " ")}
-        </Badge>
+        <StatusBadge status={s.status || "unknown"} />
       ),
     },
     {

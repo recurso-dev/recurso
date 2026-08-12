@@ -7,6 +7,7 @@ import { endpoints as api } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
+import { CopyableId } from "@/components/ui/copyable-id";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 
@@ -38,19 +39,6 @@ const copyText = async (v, label) => {
     toast.error("Couldn't copy to clipboard.");
   }
 };
-
-// A copyable, monospace id — the workhorse of a "referenceable" audit trail.
-const CopyableId = ({ value, label }) => (
-  <button
-    type="button"
-    onClick={() => copyText(value, label)}
-    className="group inline-flex max-w-full items-center gap-1.5 text-left"
-    title={`Copy ${label.toLowerCase()}`}
-  >
-    <span className="truncate font-mono text-xs">{value}</span>
-    <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-  </button>
-);
 
 const Field = ({ label, children, span }) => (
   <div className={span ? "col-span-2" : undefined}>
@@ -268,7 +256,7 @@ const AuditLog = () => {
                     {selected.actor === "api_key" ? (
                       <Badge variant="neutral">API key</Badge>
                     ) : (
-                      <CopyableId value={selected.actor} label="Actor ID" />
+                      <CopyableId value={selected.actor} label="actor id" full />
                     )}
                   </Field>
                   <Field label="Entity">
@@ -276,7 +264,7 @@ const AuditLog = () => {
                   </Field>
                   {selected.entity_id ? (
                     <Field label="Entity ID">
-                      <CopyableId value={selected.entity_id} label="Entity ID" />
+                      <CopyableId value={selected.entity_id} label="entity id" full />
                     </Field>
                   ) : (
                     <Field label="Entity ID">
@@ -289,7 +277,7 @@ const AuditLog = () => {
                     </Field>
                   )}
                   <Field label="Audit ID" span>
-                    <CopyableId value={selected.id} label="Audit ID" />
+                    <CopyableId value={selected.id} label="audit id" full />
                   </Field>
                 </dl>
 

@@ -4,6 +4,7 @@ import { Save, Check, AlertCircle } from "lucide-react";
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EntityScopeSelect } from "@/components/patterns/EntityScopeSelect";
 import { FormField } from "@/components/patterns/FormField";
@@ -206,7 +207,7 @@ export default function GSTSettings() {
               </div>
 
               <FormField label="Registered address" htmlFor="address">
-                <textarea
+                <Textarea
                   id="address"
                   value={config.address}
                   onChange={(e) => setConfig({ ...config, address: e.target.value })}

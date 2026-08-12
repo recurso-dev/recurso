@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { endpoints } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { useFormErrors } from "@/lib/useFormErrors";
 import { FormField } from "@/components/patterns/FormField";
@@ -168,7 +169,7 @@ export default function CreateCustomer() {
           <section className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground">Billing details</h3>
             <FormField label="Billing address" htmlFor="address">
-              <textarea
+              <Textarea
                 id="address"
                 rows={3}
                 placeholder="123 Main Street, Anytown, USA 12345"

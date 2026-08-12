@@ -34,7 +34,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { toMinorUnits, fromMinorUnits, currencyDecimals } from "@/lib/utils";
+import { toMinorUnits, fromMinorUnits, currencyDecimals, formatDateTime } from "@/lib/utils";
 
 const fmtMoney = (minor, currency) => {
   const d = currencyDecimals(currency);
@@ -42,7 +42,7 @@ const fmtMoney = (minor, currency) => {
 };
 
 const fmtWhen = (x) =>
-  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  formatDateTime(x);
 
 // Human labels for movement types; unknown types fall back to a cleaned slug.
 const TX_LABEL = { top_up: "Top-up", drain: "Drain", refund: "Refund", forfeit: "Forfeit" };

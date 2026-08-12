@@ -41,13 +41,13 @@ export function StatCard({
   className,
 }) {
   const deltaStyles = {
-    positive: "text-emerald-600",
-    negative: "text-red-600",
+    positive: "text-success",
+    negative: "text-destructive",
     neutral: "text-muted-foreground",
   };
   const toneStyles = {
-    danger: "text-red-600",
-    warning: "text-amber-600",
+    danger: "text-destructive",
+    warning: "text-warning",
   };
   const DeltaArrow = deltaType === "negative" ? ArrowDownRight : ArrowUpRight;
 
@@ -76,7 +76,7 @@ export function StatCard({
                   <button
                     type="button"
                     aria-label={`What does ${label} mean?`}
-                    className="text-stone-400 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
+                    className="text-subtle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
                   >
                     <Info className="h-3.5 w-3.5" />
                   </button>
@@ -88,11 +88,11 @@ export function StatCard({
             </TooltipProvider>
           )}
         </div>
-        {Icon && <Icon className="h-4 w-4 text-stone-400" />}
+        {Icon && <Icon className="h-4 w-4 text-subtle" />}
       </div>
       <div className="mt-3 flex items-end justify-between gap-2">
         {loading ? (
-          <div className="h-8 w-24 animate-pulse rounded bg-stone-100" />
+          <div className="h-8 w-24 animate-pulse rounded bg-muted" />
         ) : (
           <p
             className={cn(

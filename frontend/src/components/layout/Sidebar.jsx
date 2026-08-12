@@ -105,8 +105,8 @@ function SidebarItem({ to, label, icon: Icon, end }) {
         cn(
           "group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
-            ? "bg-emerald-50 text-emerald-700"
-            : "text-stone-600 hover:bg-stone-100 hover:text-stone-900"
+            ? "bg-primary/10 text-primary"
+            : "text-muted-foreground hover:bg-muted hover:text-foreground"
         )
       }
     >
@@ -115,7 +115,7 @@ function SidebarItem({ to, label, icon: Icon, end }) {
           <Icon
             className={cn(
               "h-4 w-4 shrink-0",
-              isActive ? "text-emerald-600" : "text-stone-400 group-hover:text-stone-600"
+              isActive ? "text-primary" : "text-subtle group-hover:text-foreground"
             )}
           />
           <span className="truncate">{label}</span>
@@ -127,13 +127,13 @@ function SidebarItem({ to, label, icon: Icon, end }) {
 
 export function Sidebar() {
   return (
-    <aside className="flex h-full w-60 flex-col border-r border-border bg-white">
+    <aside className="flex h-full w-60 flex-col border-r border-border bg-background">
       {/* Brand */}
       <div className="flex h-16 items-center gap-2.5 border-b border-border px-5">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500 text-white">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary text-primary-foreground">
           <Layers className="h-4 w-4" />
         </div>
-        <span className="text-[15px] font-semibold tracking-tight text-foreground">
+        <span className="text-sm font-semibold tracking-tight text-foreground">
           Recurso
         </span>
       </div>
@@ -143,7 +143,7 @@ export function Sidebar() {
         {NAV_GROUPS.map((group, i) => (
           <div key={group.label || i} className="mb-5 last:mb-0">
             {group.label && (
-              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400">
+              <p className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {group.label}
               </p>
             )}
@@ -162,11 +162,11 @@ export function Sidebar() {
           href={DOCS_HOME}
           target="_blank"
           rel="noopener noreferrer"
-          className="group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium text-stone-600 transition-colors hover:bg-stone-100 hover:text-stone-900"
+          className="group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
-          <BookOpen className="h-4 w-4 shrink-0 text-stone-400 group-hover:text-stone-600" />
+          <BookOpen className="h-4 w-4 shrink-0 text-subtle group-hover:text-foreground" />
           <span className="flex-1 truncate">Documentation</span>
-          <ArrowUpRight className="h-3.5 w-3.5 text-stone-300 group-hover:text-stone-500" />
+          <ArrowUpRight className="h-3.5 w-3.5 text-subtle/60 group-hover:text-subtle" />
         </a>
       </div>
     </aside>

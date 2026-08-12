@@ -12,7 +12,7 @@ import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Money } from "@/components/ui/money";
 import { toast } from "@/components/ui/sonner";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -21,15 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const quoteStatusVariant = (status) =>
-  ({
-    draft: "neutral",
-    sent: "info",
-    accepted: "success",
-    declined: "destructive",
-    expired: "warning",
-  })[status] || "neutral";
 
 const Quotes = () => {
   const { names: customerNames } = useCustomers();
@@ -137,7 +128,7 @@ const Quotes = () => {
     {
       key: "status",
       header: "Status",
-      cell: (q) => <Badge variant={quoteStatusVariant(q.status)}>{q.status}</Badge>,
+      cell: (q) => <StatusBadge status={q.status} />,
     },
     {
       key: "created",

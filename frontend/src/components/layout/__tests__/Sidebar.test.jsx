@@ -42,15 +42,15 @@ describe('Sidebar (redesign)', () => {
         expect(docsLink).toHaveAttribute('target', '_blank');
     });
 
-    it('applies the emerald active style to the current route', () => {
+    it('applies the primary-token active style to the current route', () => {
         renderWithRouter(<Sidebar />, { route: '/customers' });
 
         const customersLink = screen.getByText('Customers').closest('a');
-        expect(customersLink).toHaveClass('bg-emerald-50');
-        expect(customersLink).toHaveClass('text-emerald-700');
+        expect(customersLink).toHaveClass('bg-primary/10');
+        expect(customersLink).toHaveClass('text-primary');
 
         // Home uses exact matching, so it must NOT be active on /customers.
         const homeLink = screen.getByText('Home').closest('a');
-        expect(homeLink).not.toHaveClass('bg-emerald-50');
+        expect(homeLink).not.toHaveClass('bg-primary/10');
     });
 });

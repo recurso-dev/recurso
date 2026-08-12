@@ -39,14 +39,14 @@ describe("Subscriptions page", () => {
 
   it("renders subscription rows with status badges", async () => {
     render(<Subscriptions />, { wrapper });
-    await waitFor(() => expect(screen.getByText("active")).toBeInTheDocument());
-    expect(screen.getByText("canceled")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
+    expect(screen.getByText("Canceled")).toBeInTheDocument();
   });
 
   it("opens the detail sheet on row click", async () => {
     render(<Subscriptions />, { wrapper });
-    await waitFor(() => expect(screen.getByText("active")).toBeInTheDocument());
-    fireEvent.click(screen.getByText("active"));
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Active"));
     await waitFor(() => expect(screen.getByTestId("sub-detail")).toHaveTextContent("sub_1"));
   });
 
@@ -68,7 +68,7 @@ describe("Subscriptions page", () => {
     const user = userEvent.setup();
 
     render(<Subscriptions />, { wrapper });
-    await waitFor(() => expect(screen.getByText("active")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("Active")).toBeInTheDocument());
 
     // Toolbar selects in order: status, plan, date.
     await user.click(screen.getAllByRole("combobox")[1]);

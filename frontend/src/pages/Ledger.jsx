@@ -5,7 +5,7 @@ import { BookOpen } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -76,7 +76,7 @@ const REF_KIND = {
 const refKind = (c) => REF_KIND[c] || "source record";
 
 const fmtWhen = (x) =>
-  x ? new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—";
+  formatDateTime(x);
 
 const PAGE_SIZE = 50;
 
