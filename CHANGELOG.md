@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-08-12 — The operating-system release
+
+The dashboard grew a structural layer. Where 0.11.0 judged every screen,
+0.12.0 rebuilt the system underneath them: a full design-token tier, one
+status registry, one table system, one form system — and, for the first
+time, every core business object is a *place*: a real URL with an identity
+header, related objects one click away, its business-event timeline, and
+its audit trail. The work ran audit-first (`docs/DASHBOARD_UI_AUDIT.md`)
+and shipped as twenty-four green-CI PRs (#604–#627); the charter carries
+the full execution log.
+
+### Added
+
+- **Addressable objects.** `/customers/:id`, `/subscriptions/:id`,
+  `/invoices/:id`, `/plans/:id`, `/quotes/:id`, `/credit-notes/:id` are
+  real, shareable, refresh-safe routes. New backend reads:
+  `GET /v1/invoices/{id}` and `GET /v1/credit-notes/{id}` (tenant-scoped,
+  flat 404).
+- **Object pages.** Customer, Subscription, and Invoice are full pages
+  built on a shared object-page system (identity header, summary
+  attributes, related-object rails with honest totals, metadata). The
+  1,000-line subscription sheet and 640-line invoice sheet are gone;
+  their capabilities moved onto the pages intact (billing controls,
+  proration-previewed plan change, usage, add-ons, statutory e-invoice
+  sections).
+- **Per-object provenance.** Every object page shows its audit trail
+  (`/v1/audit-logs?entity_type&entity_id`) and its business-event
+  timeline via the new `GET /v1/events?object_id=` filter — who changed
+  the configuration, and what happened to the object.
+- **Customer- and subscription-scoped lists.** `GET /v1/subscriptions`
+  and `GET /v1/invoices` accept `customer_id`; invoices also accept
+  `subscription_id` — all tenant-scoped in SQL.
+- **Mobile navigation.** The dashboard previously had no mobile nav at
+  all (87px of content at 375px). There is now a drawer shell, skip link,
+  real 404 page, and a navigation canon that the sidebar, ⌘K palette, and
+  topbar all derive from.
+- **Table system.** Sorting everywhere (server- and client-mode with
+  `aria-sort`), honest pagination totals ("21–40 of 132"), real row
+  semantics (rows are links — ⌘-click works), column responsive
+  priorities.
+- **Form system.** FormSheet: every create/edit sheet gets a real form
+  (Enter submits), first-field autofocus, and an unsaved-changes guard —
+  closing a half-built form now asks before discarding.
+- **Home is an operations console.** Honest 30-day comparisons (new
+  subscriptions, billed revenue per currency, and MRR month-over-month
+  from the waterfall's own movement math — shown only when a comparison
+  base exists), plus an activity feed where every event links to its
+  object's page.
+
+### Changed
+
+- **Design tokens.** Semantic `--success/--warning/--info` tiers, radius
+  and shadow ladders; ~641 raw Tailwind palette occurrences reduced to
+  three sanctioned data-viz ramps, with an ESLint guard so drift cannot
+  compile. `--primary` darkened within the emerald family to meet WCAG AA
+  (5.60:1) — an accessibility correction, distinct from the deferred
+  rebrand.
+- **One status language.** Fourteen duplicated status→color maps replaced
+  by a single registry with kind-scoped collisions and humanized labels.
+- **Financial safety.** Every one-click operation that moves money,
+  emails a customer, or switches a statutory regime now confirms with the
+  consequence stated: credit-note approve/reject, quote send/convert,
+  invoice send, bill-usage-now, and the business-country change (which no
+  longer auto-saves on select).
+- **Accessibility.** 65+ form controls labeled, every chart carries a
+  text alternative, the ⌘K palette is a real combobox/listbox with
+  announced result counts, primary-action contrast fixed, focus states
+  visible in menus and dropdowns.
+
+### Fixed
+
+- Collections' customer link no longer silently redirects to Home; broken
+  URLs show a real 404.
+- Cross-page invoice links work for any invoice, not just page 1 (the
+  `location.state` hack is gone).
+- Team and tax-nexus screens no longer render a failed load as an empty
+  list — on the nexus screen, saving that empty list would have cleared
+  every declared nexus state.
+- The Ledger's error/retry now belong to the entries query it renders.
+- Coupon creation honors the active toggle; the max-redemptions and plan
+  description fields — which the backend never supported — were removed
+  rather than left collecting input silently.
+- Gift purchase, API-key creation, and referral creation failures are
+  told to the operator instead of the console.
+
+
 ## [0.11.0] - 2026-08-12 — The design release
 
 Every screen, judged. This release closes out a full code-grounded design
