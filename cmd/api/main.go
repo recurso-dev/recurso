@@ -1832,6 +1832,7 @@ func main() {
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/subscriptions/:id", subscriptionHandler.GetSubscription)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
+		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
 		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
 		v1.GET("/invoices/:id/pdf", expensiveLimit, pdfHandler.DownloadPDF)
@@ -1983,6 +1984,7 @@ func main() {
 		// Credit Notes (P23)
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
+		v1.GET("/credit-notes/:id", creditNoteHandler.GetCreditNote)
 		v1.GET("/credit-notes/:id/pdf", expensiveLimit, creditNoteHandler.DownloadPDF)
 		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
 		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)

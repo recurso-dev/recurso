@@ -130,6 +130,9 @@ export const endpoints = {
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   getInvoices: (params) => api.get('/invoices', { params }),
+  // Single reads powering the addressable /invoices/:id and /credit-notes/:id
+  // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).
+  getInvoice: (id) => api.get(`/invoices/${id}`),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
@@ -226,6 +229,7 @@ export const endpoints = {
 
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
+  getCreditNote: (id) => api.get(`/credit-notes/${id}`),
   getCreditNotePdf: (id) => api.get(`/credit-notes/${id}/pdf`, { responseType: 'blob' }),
   createCreditNote: (data) => api.post('/credit-notes', data),
   approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),

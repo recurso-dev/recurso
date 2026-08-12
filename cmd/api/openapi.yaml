@@ -1901,6 +1901,31 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [Invoices]
+      summary: Get an invoice by id
+      description: >-
+        One invoice, tenant-scoped. A foreign or missing invoice is a flat
+        404. Serves the dashboard's addressable /invoices/:id route.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The invoice.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invoice'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/invoices/{id}/pdf:
     get:
       operationId: downloadInvoicePDF
@@ -2473,6 +2498,31 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /v1/credit-notes/{id}:
+    get:
+      operationId: getCreditNote
+      tags: [Credit Notes]
+      summary: Get a credit note by id
+      description: >-
+        One credit note, tenant-scoped. A foreign or missing note is a flat
+        404. Serves the dashboard's addressable /credit-notes/:id route.
+      parameters:
+        - $ref: '#/components/parameters/PathID'
+      responses:
+        '200':
+          description: The credit note.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CreditNote'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /v1/credit-notes/{id}/approve:
     post:

@@ -144,6 +144,41 @@ func (h *SubscriptionHandler) ListSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": subs})
 }
 
+// GetInvoice returns one invoice by id, scoped to the caller's tenant (the
+// repository enforces the tenant from context). Foreign or missing invoices
+// are a flat 404 — never leak existence across tenants. Stamps the same
+// presentation regime the list endpoint stamps so the dashboard renders GST
+// artifacts consistently.
+// GET /v1/invoices/:id
+func (h *SubscriptionHandler) GetInvoice(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	invID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	inv, err := h.service.GetInvoice(ctx, invID)
+	if err != nil || inv == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	if h.seller != nil {
+		if regime := service.RegimeForCountry(h.seller.SellerCountry(ctx, tenantID)); regime != "" {
+			inv.TaxRegime = regime
+		} else {
+			inv.TaxRegime = inv.RegimeFallback()
+		}
+	} else {
+		inv.TaxRegime = inv.RegimeFallback()
+	}
+	c.JSON(http.StatusOK, gin.H{"data": inv})
+}
+
 // GetSubscription returns one subscription by id, scoped to the caller's
 // tenant. A subscription owned by another tenant (or a missing one) is a flat
 // 404 — never leak existence across tenants.
