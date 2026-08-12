@@ -9,6 +9,29 @@
 > sequenced into waves below; this document is the plan of record and is updated
 > as waves land.
 
+## Status — 2026-08-12: all 13 themes closed
+
+Every cross-cutting theme below has since been implemented and merged:
+
+| Theme | Closed by |
+|---|---|
+| T1 state contract | #545, #557–#563 (ErrorState default, silent-fail sweeps) |
+| T2 money not universal | #549–#555, #564 (`<Money>` + right-align + currency fixes) |
+| T3 missing primitives / definitions | #546–#547, #567–#575 (Switch, CodeSample, CopyableSecret, PasswordInput, StatCard `definition` sweep) |
+| T4 form a11y & validation | #546 (FormField wiring) + #596 (`useFormErrors`, focus-first-error, toast/native paths standardized) |
+| T5 drill-to-source | #556, #562, #565–#566, #588–#589 (Ledger reference kinds, aging buckets) |
+| T6 raw UUIDs | #556, #559, #562, #565 (pickers + name resolution) |
+| T7 global polish | #545 (reduced motion), #552 (fonts), #575, #578 (password toggle, autofocus) |
+| T8 ADR-005 react-query drift | #580–#587 (12 pages, 8 batches) |
+| T9 correctness-of-trust | #548–#550 + 2026-08-12 sweep: #591 (GSTReturns structured), #592 (GL export period-scoped), #594 (coupon currency), #595 (server-side list filters), #597 (Invoices full set) |
+| T10 redundant surfaces | #590 (claims code-inspected: revenue views are distinct → cross-linked; dead portal code deleted) |
+| T11 destructive guards | #548, #576–#577 (MCP money tools, role change, nexus clear) |
+| T12 settings sub-nav | #579 (SettingsLayout) |
+| T13 developer code samples | #567–#568 (CodeSample + quickstart + webhook verification) |
+
+Open: the Organizations add-tenant picker still needs a founder-level
+tenant-enumeration endpoint (security-sensitive; awaiting founder input).
+
 ## Verdict
 
 **Overall product: ~74/100 — "trustworthy but uneven."** The architecture is
