@@ -158,7 +158,7 @@ export default function Register() {
                   name="terms"
                   type="checkbox"
                   required
-                  className="mt-0.5 h-4 w-4 rounded border-input text-primary accent-emerald-600 focus:ring-ring"
+                  className="mt-0.5 h-4 w-4 rounded border-input text-primary accent-primary focus:ring-ring"
                 />
                 <label htmlFor="terms" className="text-sm text-muted-foreground">
                   I agree to the{" "}

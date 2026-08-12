@@ -6,6 +6,7 @@ import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency, shortId } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,6 @@ import {
   SheetHeader,
   SheetTitle,
   SheetDescription,
-  SheetFooter,
 } from "@/components/ui/sheet";
 
 
@@ -198,43 +198,36 @@ const Organizations = () => {
       />
 
       {/* Create */}
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>New organization</SheetTitle>
-            <SheetDescription>
-              Group related tenants under one umbrella with consolidated MRR.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
-            <div>
-              <Label>Name</Label>
-              <Input
-                value={createForm.name}
-                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                placeholder="Acme Group"
-              />
-            </div>
-            <div>
-              <Label>Owner email</Label>
-              <Input
-                type="email"
-                value={createForm.owner_email}
-                onChange={(e) => setCreateForm({ ...createForm, owner_email: e.target.value })}
-                placeholder="owner@example.com"
-              />
-            </div>
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitCreate}
-              disabled={creating || !createForm.name.trim() || !createForm.owner_email.trim()}
-            >
-              {creating ? "Creating…" : "Create organization"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      <FormSheet
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        title="New organization"
+        description="Group related tenants under one umbrella with consolidated MRR."
+        onSubmit={submitCreate}
+        submitLabel="Create organization"
+        busyLabel="Creating…"
+        busy={creating}
+        canSubmit={Boolean(createForm.name.trim() && createForm.owner_email.trim())}
+        dirty={Boolean(createForm.name || createForm.owner_email)}
+      >
+        <div>
+          <Label>Name</Label>
+          <Input
+            value={createForm.name}
+            onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+            placeholder="Acme Group"
+          />
+        </div>
+        <div>
+          <Label>Owner email</Label>
+          <Input
+            type="email"
+            value={createForm.owner_email}
+            onChange={(e) => setCreateForm({ ...createForm, owner_email: e.target.value })}
+            placeholder="owner@example.com"
+          />
+        </div>
+      </FormSheet>
 
       {/* Detail */}
       <Sheet open={!!selected} onOpenChange={(o) => !o && setSelected(null)}>

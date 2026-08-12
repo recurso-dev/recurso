@@ -5,20 +5,13 @@ import { Plus, Gauge, Trash2, BellRing, Pencil } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { useCustomers, usePlans, useSubscriptions } from "@/lib/useCustomers";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { FormSheet } from "@/components/patterns/FormSheet";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
 import {
   Select,
   SelectContent,
@@ -349,7 +342,7 @@ const Metering = () => {
       </div>
 
       {/* New / edit metric */}
-      <Sheet
+      <FormSheet
         open={metricOpen}
         onOpenChange={(o) => {
           setMetricOpen(o);
@@ -358,15 +351,23 @@ const Metering = () => {
             setMetricForm({ name: "", code: "", aggregation_type: "sum", field_name: "", expression: "" });
           }
         }}
+        title={editingMetric ? "Edit billable metric" : "New billable metric"}
+        description="A metric's code doubles as the usage-event dimension it aggregates."
+        onSubmit={submitMetric}
+        submitLabel={editingMetric ? "Save changes" : "Create metric"}
+        busyLabel="Saving…"
+        busy={saving}
+        canSubmit={Boolean(metricForm.name && metricForm.code)}
+        dirty={
+          editingMetric
+            ? metricForm.name !== (editingMetric.name || "") ||
+              metricForm.aggregation_type !== (editingMetric.aggregation_type || "sum") ||
+              metricForm.field_name !== (editingMetric.field_name || "") ||
+              metricForm.expression !== (editingMetric.expression || "")
+            : Boolean(metricForm.name || metricForm.code)
+        }
+        error={actionError}
       >
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>{editingMetric ? "Edit billable metric" : "New billable metric"}</SheetTitle>
-            <SheetDescription>
-              A metric&apos;s code doubles as the usage-event dimension it aggregates.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
             <div>
               <Label>Name</Label>
               <Input
@@ -454,29 +455,22 @@ const Metering = () => {
                 period start is counted from the start.
               </p>
             )}
-            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitMetric}
-              disabled={saving || !metricForm.name || !metricForm.code}
-            >
-              {saving ? "Saving…" : editingMetric ? "Save changes" : "Create metric"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
 
       {/* New alert */}
-      <Sheet open={alertOpen} onOpenChange={setAlertOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>New usage alert</SheetTitle>
-            <SheetDescription>
-              Fires once per billing period via webhook and email when the threshold is crossed.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+      <FormSheet
+        open={alertOpen}
+        onOpenChange={setAlertOpen}
+        title="New usage alert"
+        description="Fires once per billing period via webhook and email when the threshold is crossed."
+        onSubmit={submitAlert}
+        submitLabel="Create alert"
+        busyLabel="Creating…"
+        busy={saving}
+        canSubmit={Boolean(alertForm.subscription_id && alertForm.metric_code && alertForm.threshold)}
+        dirty={Boolean(alertForm.subscription_id || alertForm.metric_code || alertForm.threshold)}
+        error={actionError}
+      >
             <div>
               <Label>Subscription</Label>
               <Select
@@ -545,32 +539,26 @@ const Metering = () => {
                 onChange={(e) => setAlertForm({ ...alertForm, threshold: e.target.value })}
               />
             </div>
-            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-          </div>
-          <SheetFooter>
-            <Button
-              onClick={submitAlert}
-              disabled={
-                saving || !alertForm.subscription_id || !alertForm.metric_code || !alertForm.threshold
-              }
-            >
-              {saving ? "Creating…" : "Create alert"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
 
       {/* Edit alert — threshold only; subscription + metric are the alert's identity */}
-      <Sheet open={!!editAlert} onOpenChange={(o) => !o && setEditAlert(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          <SheetHeader>
-            <SheetTitle>Edit usage alert</SheetTitle>
-            <SheetDescription>
-              Re-aim the threshold. Editing lets the alert fire again this period against
-              the new line. To change the subscription or metric, delete and re-create.
-            </SheetDescription>
-          </SheetHeader>
-          <div className="flex-1 space-y-4 overflow-y-auto px-6">
+      <FormSheet
+        open={!!editAlert}
+        onOpenChange={(o) => !o && setEditAlert(null)}
+        title="Edit usage alert"
+        description="Re-aim the threshold. Editing lets the alert fire again this period against the new line. To change the subscription or metric, delete and re-create."
+        onSubmit={submitEditAlert}
+        submitLabel="Save changes"
+        busyLabel="Saving…"
+        busy={saving}
+        canSubmit={Boolean(editAlertForm.threshold)}
+        dirty={
+          Boolean(editAlert) &&
+          (String(editAlertForm.threshold) !== String(editAlert?.threshold ?? "") ||
+            editAlertForm.threshold_type !== (editAlert?.threshold_type || "quantity"))
+        }
+        error={actionError}
+      >
             <div className="rounded-md bg-muted/40 p-3 text-sm">
               <span className="font-mono">{editAlert?.metric_code}</span>
               <span className="ml-2 text-xs text-muted-foreground">
@@ -606,15 +594,7 @@ const Metering = () => {
                 onChange={(e) => setEditAlertForm({ ...editAlertForm, threshold: e.target.value })}
               />
             </div>
-            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
-          </div>
-          <SheetFooter>
-            <Button onClick={submitEditAlert} disabled={saving || !editAlertForm.threshold}>
-              {saving ? "Saving…" : "Save changes"}
-            </Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+      </FormSheet>
 
       <ConfirmDialog
         open={!!deleteTarget}
