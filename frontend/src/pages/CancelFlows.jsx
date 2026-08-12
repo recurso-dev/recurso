@@ -78,7 +78,7 @@ const CancelFlows = () => {
   return (
     <div>
       <PageHeader
-        title="Cancellation flows"
+        title="Cancel Flows"
         description="Design the survey, retention offers, and confirmation a customer sees when they try to cancel."
         actions={createButton}
       />

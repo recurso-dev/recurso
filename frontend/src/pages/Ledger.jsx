@@ -250,7 +250,7 @@ export default function Ledger() {
   return (
     <div>
       <PageHeader
-        title="Financial Ledger"
+        title="Ledger"
         description="Double-entry ledger transactions and account balances. PostgreSQL is the authoritative ledger; TigerBeetle, when enabled, is an optional mirror."
       />
 

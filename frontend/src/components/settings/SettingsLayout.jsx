@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   SlidersHorizontal,
   ShieldCheck,
+  UserCog,
   Receipt,
   FileCheck2,
   MapPinned,
@@ -47,6 +48,7 @@ const SECTIONS = [
   { to: "/settings/tax-nexus", group: "Taxes & compliance", icon: MapPinned, title: "US sales-tax nexus", regions: ["US"] },
   { to: "/settings/tax-us", group: "Taxes & compliance", icon: Receipt, title: "US tax identity (W-9)", regions: ["US"] },
   { to: "/security", group: "Account & platform", icon: ShieldCheck, title: "Security" },
+  { to: "/team", group: "Account & platform", icon: UserCog, title: "Team" },
   { to: "/settings/mcp", group: "Account & platform", icon: Bot, title: "MCP server" },
   { to: "/settings/import", group: "Account & platform", icon: ArrowDownToLine, title: "Import data" },
   { to: "/settings/billing", group: "Account & platform", icon: CreditCard, title: "Billing & plan" },

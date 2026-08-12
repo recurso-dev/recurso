@@ -53,7 +53,7 @@ describe("Usage — top-level fetch error state (#7a)", () => {
     render(<Usage />, { wrapper });
 
     await waitFor(() =>
-      expect(screen.getByText(/Usage Metering/i)).toBeInTheDocument()
+      expect(screen.getByText(/Usage Explorer/i)).toBeInTheDocument()
     );
     expect(screen.queryByText(/Unable to load usage metering/i)).toBeNull();
   });
