@@ -17,6 +17,7 @@ vi.mock("../../lib/api", () => ({
     getInvoicePreview: vi.fn(),
     sendInvoice: vi.fn(),
     getAuditLogs: vi.fn().mockResolvedValue({ data: { data: [] } }),
+    getEvents: vi.fn().mockResolvedValue({ data: { data: [] } }),
   },
 }));
 

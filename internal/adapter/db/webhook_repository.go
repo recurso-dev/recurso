@@ -210,6 +210,26 @@ func (r *EventRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Ev
 	return &event, nil
 }
 
+// ListByObject returns one object's events (tenant-scoped, newest first) —
+// the per-object timeline on the dashboard's object pages.
+func (r *EventRepository) ListByObject(ctx context.Context, tenantID, objectID uuid.UUID, limit, offset int) ([]*domain.Event, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	query := `
+		SELECT id, tenant_id, type, object_type, object_id, data, created_at
+		FROM events WHERE tenant_id = $1 AND object_id = $2
+		ORDER BY created_at DESC
+		LIMIT $3 OFFSET $4
+	`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, objectID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return scanEventRows(rows)
+}
+
 func (r *EventRepository) ListByTenantID(ctx context.Context, tenantID uuid.UUID, eventType string, limit, offset int) ([]*domain.Event, error) {
 	if limit <= 0 {
 		limit = 50
@@ -225,7 +245,12 @@ func (r *EventRepository) ListByTenantID(ctx context.Context, tenantID uuid.UUID
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
+	return scanEventRows(rows)
+}
 
+// scanEventRows materializes an events SELECT (shared by the tenant-wide and
+// per-object list queries).
+func scanEventRows(rows *sql.Rows) ([]*domain.Event, error) {
 	var events []*domain.Event
 	for rows.Next() {
 		var event domain.Event

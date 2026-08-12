@@ -17,6 +17,7 @@ import {
   RelatedEmpty,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
+import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -178,6 +179,9 @@ export default function CustomerPage() {
                   },
                 ]}
               />
+            </ObjectSection>
+            <ObjectSection title="Timeline">
+              <ObjectTimeline objectId={customer.id} />
             </ObjectSection>
             <ObjectSection title="Audit trail">
               <AuditTrail entityType="customers" entityId={customer.id} />

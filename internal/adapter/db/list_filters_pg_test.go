@@ -253,4 +253,26 @@ func TestListFilters_Postgres(t *testing.T) {
 	if len(events) != 3 {
 		t.Errorf("unfiltered list returned %d events, want 3", len(events))
 	}
+
+	// Per-object timeline: two events share one object id; a foreign tenant
+	// with the same object id sees nothing.
+	timelineObj := uuid.New()
+	for range 2 {
+		if _, err := conn.ExecContext(ctx,
+			`INSERT INTO events (id, tenant_id, type, object_type, object_id, data) VALUES ($1, $2, 'invoice.paid', 'invoice', $3, '{}')`,
+			uuid.New(), tenantID, timelineObj); err != nil {
+			t.Fatalf("seed timeline event: %v", err)
+		}
+	}
+	objEvents, err := eventRepo.ListByObject(ctx, tenantID, timelineObj, 50, 0)
+	if err != nil {
+		t.Fatalf("ListByObject: %v", err)
+	}
+	if len(objEvents) != 2 {
+		t.Errorf("object timeline returned %d events, want 2", len(objEvents))
+	}
+	if foreign, _ := eventRepo.ListByObject(ctx, otherTenant, timelineObj, 50, 0); len(foreign) != 0 {
+		t.Errorf("foreign-tenant object timeline returned %d events, want 0", len(foreign))
+	}
+
 }

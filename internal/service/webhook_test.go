@@ -100,6 +100,10 @@ func (m *mockEventRepo) ListByTenantID(ctx context.Context, tenantID uuid.UUID, 
 	return out, nil
 }
 
+func (m *mockEventRepo) ListByObject(_ context.Context, _ uuid.UUID, _ uuid.UUID, _, _ int) ([]*domain.Event, error) {
+	return nil, nil
+}
+
 // --- Mock EventDeliveryRepository ---
 type mockDeliveryRepo struct {
 	deliveries map[uuid.UUID]*domain.EventDelivery
