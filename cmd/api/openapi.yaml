@@ -11,7 +11,7 @@ info:
 
     Obtain an API key by registering a tenant via `POST /auth/register`.
     All authenticated endpoints live under the `/v1` prefix. Mutating
-    endpoints support idempotency via the `X-Idempotency-Key` header.
+    endpoints support idempotency via the `Idempotency-Key` header.
   license:
     name: MIT
     identifier: MIT
