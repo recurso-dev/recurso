@@ -323,7 +323,8 @@ export default function Developers() {
       setIsModalOpen(true);
       queryClient.invalidateQueries({ queryKey: ["api-keys"] });
     },
-    onError: (error) => console.error("Failed to create key:", error),
+    onError: (error) =>
+      toast.error(error?.response?.data?.error?.message || "Failed to create API key"),
   });
   const handleCreateKey = () => createKeyMutation.mutate();
 

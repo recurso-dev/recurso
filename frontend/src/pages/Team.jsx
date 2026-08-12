@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 
@@ -9,6 +9,7 @@ import { endpoints } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -51,15 +52,10 @@ export default function Team() {
 
   const canManage = user?.role === "owner" || user?.role === "admin";
 
-  const { data: users = [], isLoading: loading, error: queryError } = useQuery({
+  const { data: users = [], isLoading: loading, error: queryError, refetch } = useQuery({
     queryKey: ["team"],
     queryFn: async () => (await endpoints.getUsers()).data?.data || [],
   });
-  // Preserve the original toast on load failure (react-query v5 dropped the
-  // query-level onError callback).
-  useEffect(() => {
-    if (queryError) toast.error("Failed to load team");
-  }, [queryError]);
 
   const invalidateTeam = () => queryClient.invalidateQueries({ queryKey: ["team"] });
 
@@ -147,6 +143,20 @@ export default function Team() {
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-muted-foreground">
                   Loading…
+                </TableCell>
+              </TableRow>
+            ) : queryError ? (
+              // A failed load must never read as "no team members" — on a
+              // permissions screen those are opposite statements.
+              <TableRow>
+                <TableCell colSpan={5}>
+                  <ErrorState
+                    title="Couldn't load the team"
+                    message={
+                      queryError?.response?.data?.error?.message || queryError?.message
+                    }
+                    onRetry={refetch}
+                  />
                 </TableCell>
               </TableRow>
             ) : users.length === 0 ? (

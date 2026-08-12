@@ -42,6 +42,16 @@ describe("Team page", () => {
     endpoints.updateUserRole.mockResolvedValue({ data: {} });
   });
 
+  it("shows an error state with retry on load failure — never an empty team", async () => {
+    endpoints.getUsers.mockRejectedValue(new Error("boom"));
+    render(<Team />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load the team")).toBeInTheDocument()
+    );
+    expect(screen.queryByText("No team members yet.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
   it("renders team members and their roles", async () => {
     render(<Team />, { wrapper });
     await waitFor(() => expect(screen.getByText("Owner Jane")).toBeInTheDocument());

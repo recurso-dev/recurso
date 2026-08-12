@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/components/ui/sonner";
 import { usePlans, useCustomers } from "@/lib/useCustomers";
 import { Plus, Gift, CheckCircle2, Clock, Ban } from "lucide-react";
 
@@ -68,7 +69,9 @@ function Gifts() {
       queryClient.invalidateQueries({ queryKey: ["gifts"] });
     },
     onError: (err) => {
-      console.error("Error creating gift:", err);
+      // Money moves here — a failed purchase must be told to the operator,
+      // not just the console (audit bug 6).
+      toast.error(err?.response?.data?.error?.message || "Failed to purchase gift");
     },
   });
   const creating = createMutation.isPending;

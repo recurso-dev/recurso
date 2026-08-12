@@ -34,7 +34,6 @@ export default function CreatePlan() {
   const [formData, setFormData] = useState({
     name: "",
     code: "",
-    description: "",
     price: 99,
     currency: "USD",
     interval: "month",
@@ -120,14 +119,6 @@ export default function CreatePlan() {
                 value={formData.code}
                 onChange={(e) => setField("code", e.target.value)}
                 className={cn(errors.code && "border-destructive/60 focus-visible:ring-destructive")}
-              />
-            </FormField>
-            <FormField label="Description" htmlFor="description">
-              <Input
-                id="description"
-                placeholder="Briefly describe this plan"
-                value={formData.description}
-                onChange={(e) => setField("description", e.target.value)}
               />
             </FormField>
           </section>

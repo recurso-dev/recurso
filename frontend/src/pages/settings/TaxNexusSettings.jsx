@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import {
   Table,
   TableBody,
@@ -59,7 +60,12 @@ export default function TaxNexusSettings() {
   const [regs, setRegs] = useState([]);
 
   // Declared nexus states — server truth hydrates the editable rows below.
-  const { data: nexusData, isLoading: loading } = useQuery({
+  const {
+    data: nexusData,
+    isLoading: loading,
+    error: nexusError,
+    refetch: refetchNexus,
+  } = useQuery({
     queryKey: ["tax-nexus", entityId],
     queryFn: async () =>
       ((await api.getTaxNexus(entityId)).data.data || []).map((n) => ({
@@ -86,7 +92,11 @@ export default function TaxNexusSettings() {
     : null;
 
   // Registrations — also hydrates an editable list.
-  const { data: regsData } = useQuery({
+  const {
+    data: regsData,
+    error: regsError,
+    refetch: refetchRegs,
+  } = useQuery({
     queryKey: ["tax-registrations"],
     queryFn: async () =>
       ((await api.getTaxRegistrations()).data.data || []).map((r) => ({
@@ -192,6 +202,14 @@ export default function TaxNexusSettings() {
         <CardContent className="space-y-3">
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : nexusError ? (
+            // Never render an empty EDITABLE list on a failed load — saving
+            // it would clear every declared nexus state.
+            <ErrorState
+              title="Couldn't load declared nexus states"
+              message={nexusError?.response?.data?.error?.message || nexusError?.message}
+              onRetry={refetchNexus}
+            />
           ) : (
             <>
               {rows.length === 0 && (
@@ -408,6 +426,16 @@ export default function TaxNexusSettings() {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
+          {regsError ? (
+            // Same guard as declared nexus: a failed load must not render an
+            // empty editable list that Save would persist.
+            <ErrorState
+              title="Couldn't load registrations"
+              message={regsError?.response?.data?.error?.message || regsError?.message}
+              onRetry={refetchRegs}
+            />
+          ) : (
+          <>
           {nexusGaps.length > 0 && (
             <p className="rounded-md bg-warning/5 px-3 py-2 text-xs text-warning">
               You have nexus but no registration on file in{" "}
@@ -467,6 +495,8 @@ export default function TaxNexusSettings() {
             <Plus className="h-4 w-4" />
             Add registration
           </Button>
+          </>
+          )}
         </CardContent>
       </Card>
 

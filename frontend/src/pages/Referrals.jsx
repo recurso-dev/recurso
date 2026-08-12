@@ -67,7 +67,7 @@ function Referrals() {
       queryClient.invalidateQueries({ queryKey: ["referrals"] });
     },
     onError: (err) => {
-      console.error("Error creating referral:", err);
+      toast.error(err?.response?.data?.error?.message || "Failed to create referral");
     },
   });
   const creating = createMutation.isPending;

@@ -52,7 +52,6 @@ const CreateCoupon = () => {
     discount_value: "",
     duration: "once",
     duration_months: "",
-    max_redemptions: "",
     active: true,
   });
 
@@ -94,7 +93,18 @@ const CreateCoupon = () => {
   };
 
   const createMutation = useMutation({
-    mutationFn: (payload) => endpoints.createCoupon(payload),
+    // Coupons are created active server-side; when the operator sets the
+    // Status toggle off, flip it right after create via the toggle endpoint
+    // (the create API has no active field). Audit bug 5: this toggle used to
+    // be collected and silently dropped.
+    mutationFn: async (payload) => {
+      const res = await endpoints.createCoupon(payload);
+      const created = res?.data?.data;
+      if (!formData.active && created?.id) {
+        await endpoints.setCouponActive(created.id, false);
+      }
+      return res;
+    },
     onSuccess: () => {
       // Pickers and the list share a 60s coupons cache — surface the new coupon
       // now, or landing on /coupons shows a stale list without it.
@@ -293,21 +303,6 @@ const CreateCoupon = () => {
                 </FormField>
               )}
             </div>
-
-            <FormField
-              label="Max redemptions"
-              htmlFor="max_redemptions"
-              description="Optional — leave blank for unlimited."
-            >
-              <Input
-                id="max_redemptions"
-                name="max_redemptions"
-                type="number"
-                placeholder="Enter max redemptions"
-                value={formData.max_redemptions}
-                onChange={(e) => setField("max_redemptions", e.target.value)}
-              />
-            </FormField>
 
             <div className="flex items-center justify-between">
               <div className="flex flex-col">
