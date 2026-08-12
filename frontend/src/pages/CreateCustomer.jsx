@@ -5,6 +5,7 @@ import { endpoints } from "../lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
+import { useFormErrors } from "@/lib/useFormErrors";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,7 +47,7 @@ const INDIA_STATES = [
 export default function CreateCustomer() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [errors, setErrors] = useState({});
+  const { errors, validate: applyErrors } = useFormErrors();
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -65,14 +66,15 @@ export default function CreateCustomer() {
   const setField = (key, value) => setForm((f) => ({ ...f, [key]: value }));
   const close = () => navigate("/customers");
 
+  // Shared submit contract (useFormErrors): store messages and focus the
+  // first invalid field.
   const validate = () => {
     const next = {};
     if (!form.name.trim()) next.name = "Customer name is required.";
     if (!form.email.trim()) next.email = "Email is required.";
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       next.email = "Enter a valid email address.";
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    return applyErrors(next);
   };
 
   const createMutation = useMutation({

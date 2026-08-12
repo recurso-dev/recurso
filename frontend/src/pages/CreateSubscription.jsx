@@ -7,6 +7,7 @@ import { queryClient } from "@/lib/queryClient";
 import { toast } from "@/components/ui/sonner";
 import ConsentCheckbox from "../components/ui/ConsentCheckbox";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useFormErrors } from "@/lib/useFormErrors";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,7 @@ export default function CreateSubscription() {
 
   const setField = (key, value) => setFormData((f) => ({ ...f, [key]: value }));
   const close = () => navigate("/subscriptions");
+  const { errors, validate, clearError } = useFormErrors();
 
   const selectedCustomer = customers.find((c) => c.id === formData.customer_id);
   const selectedPlan = plans.find((p) => p.id === formData.plan_id);
@@ -57,15 +59,12 @@ export default function CreateSubscription() {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (!formData.customer_id || !formData.plan_id) {
-      toast.warning("Please select a customer and a plan.");
-      return;
-    }
-
-    if (!formData.consent_granted) {
-      toast.warning("Please authorize recurring billing to continue.");
-      return;
-    }
+    const errs = {};
+    if (!formData.customer_id) errs.customer = "Select a customer.";
+    if (!formData.plan_id) errs.plan = "Select a plan.";
+    if (!formData.consent_granted)
+      errs.consent = "Authorize recurring billing to continue.";
+    if (!validate(errs)) return;
 
     setSubmitting(true);
     try {
@@ -141,10 +140,13 @@ export default function CreateSubscription() {
           {/* Customer & Plan */}
           <section className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground">Customer &amp; plan</h3>
-            <FormField label="Customer" htmlFor="customer">
+            <FormField label="Customer" htmlFor="customer" required error={errors.customer}>
               <Select
                 value={formData.customer_id}
-                onValueChange={(v) => setField("customer_id", v)}
+                onValueChange={(v) => {
+                  setField("customer_id", v);
+                  clearError("customer");
+                }}
               >
                 <SelectTrigger id="customer">
                   <SelectValue placeholder="Select a customer" />
@@ -158,10 +160,13 @@ export default function CreateSubscription() {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField label="Plan" htmlFor="plan">
+            <FormField label="Plan" htmlFor="plan" required error={errors.plan}>
               <Select
                 value={formData.plan_id}
-                onValueChange={(v) => setField("plan_id", v)}
+                onValueChange={(v) => {
+                  setField("plan_id", v);
+                  clearError("plan");
+                }}
               >
                 <SelectTrigger id="plan">
                   <SelectValue placeholder="Select a plan" />
@@ -248,8 +253,13 @@ export default function CreateSubscription() {
               Billing authorization
             </h3>
             <ConsentCheckbox
+              id="consent"
+              required={false}
               type="recurring_billing"
-              onConsentChange={(c) => setField("consent_granted", c.granted)}
+              onConsentChange={(c) => {
+                setField("consent_granted", c.granted);
+                if (c.granted) clearError("consent");
+              }}
               planName={selectedPlan?.name || "the selected plan"}
               amount={
                 selectedPlan?.prices?.[0]?.amount
@@ -258,6 +268,11 @@ export default function CreateSubscription() {
               }
               billingInterval={selectedPlan?.interval_unit || "month"}
             />
+            {errors.consent && (
+              <p role="alert" className="text-sm font-medium text-destructive">
+                {errors.consent}
+              </p>
+            )}
           </section>
 
           <Separator />

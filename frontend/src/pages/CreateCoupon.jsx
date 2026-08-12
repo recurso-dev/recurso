@@ -6,6 +6,7 @@ import { Sparkles } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { cn, toMinorUnits, currencyDecimals } from "@/lib/utils";
+import { useFormErrors } from "@/lib/useFormErrors";
 import { usePlans } from "@/lib/useCustomers";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -57,6 +58,7 @@ const CreateCoupon = () => {
 
   const setField = (key, value) => setFormData((prev) => ({ ...prev, [key]: value }));
   const close = () => navigate("/coupons");
+  const { errors, validate, clearError } = useFormErrors();
 
   // Amount-off coupons apply as raw minor units against the invoice subtotal,
   // so the major→minor conversion must use a real currency's exponent — a USD
@@ -100,6 +102,18 @@ const CreateCoupon = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const errs = {};
+    if (!formData.code.trim()) errs.code = "Coupon code is required.";
+    const value = Number(formData.discount_value);
+    if (!formData.discount_value || !(value > 0)) {
+      errs.discount_value = "Enter a discount greater than zero.";
+    } else if (isPercent && value > 100) {
+      errs.discount_value = "Percent off cannot exceed 100.";
+    }
+    if (formData.duration === "repeating" && !(Number(formData.duration_months) > 0)) {
+      errs.duration_months = "Enter how many months the discount repeats.";
+    }
+    if (!validate(errs)) return;
     createMutation.mutate({
       code: formData.code,
       discount_type: isPercent ? "percent" : "amount",
@@ -139,16 +153,19 @@ const CreateCoupon = () => {
               label="Coupon code"
               htmlFor="code"
               required
+              error={errors.code}
               description="Customers will enter this code at checkout."
             >
               <div className="flex items-center gap-2">
                 <Input
                   id="code"
                   name="code"
-                  required
                   placeholder="e.g. SUMMER25OFF"
                   value={formData.code}
-                  onChange={(e) => setField("code", e.target.value)}
+                  onChange={(e) => {
+                    setField("code", e.target.value);
+                    clearError("code");
+                  }}
                 />
                 <Button type="button" variant="outline" onClick={generateCode} className="shrink-0">
                   <Sparkles className="h-4 w-4" />
@@ -179,7 +196,12 @@ const CreateCoupon = () => {
                 </Select>
               </FormField>
 
-              <FormField label="Discount value" htmlFor="discount_value" required>
+              <FormField
+                label="Discount value"
+                htmlFor="discount_value"
+                required
+                error={errors.discount_value}
+              >
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-sm text-muted-foreground">
                     {isPercent ? "%" : symbolFor(currency)}
@@ -190,10 +212,12 @@ const CreateCoupon = () => {
                     type="number"
                     min={isPercent ? "1" : String(10 ** -currencyDecimals(currency))}
                     step={isPercent ? "1" : String(10 ** -currencyDecimals(currency))}
-                    required
                     placeholder="25"
                     value={formData.discount_value}
-                    onChange={(e) => setField("discount_value", e.target.value)}
+                    onChange={(e) => {
+                      setField("discount_value", e.target.value);
+                      clearError("discount_value");
+                    }}
                     className="pl-7"
                   />
                 </div>
@@ -242,16 +266,23 @@ const CreateCoupon = () => {
               </FormField>
 
               {formData.duration === "repeating" && (
-                <FormField label="Duration in months" htmlFor="duration_months" required>
+                <FormField
+                  label="Duration in months"
+                  htmlFor="duration_months"
+                  required
+                  error={errors.duration_months}
+                >
                   <Input
                     id="duration_months"
                     name="duration_months"
                     type="number"
                     min="1"
-                    required
                     placeholder="e.g. 12"
                     value={formData.duration_months}
-                    onChange={(e) => setField("duration_months", e.target.value)}
+                    onChange={(e) => {
+                      setField("duration_months", e.target.value);
+                      clearError("duration_months");
+                    }}
                   />
                 </FormField>
               )}

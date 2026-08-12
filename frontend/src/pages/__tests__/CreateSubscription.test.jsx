@@ -75,6 +75,25 @@ describe('CreateSubscription (Sheet form)', () => {
         });
     });
 
+    // T4 standardized validation: inline role="alert" messages on the fields
+    // (not a toast), and focus lands on the first invalid control.
+    it('shows inline field errors and focuses the first invalid field on empty submit', async () => {
+        renderPage();
+        fireEvent.submit(document.getElementById('create-subscription-form'));
+
+        expect(await screen.findByText('Select a customer.')).toBeInTheDocument();
+        expect(screen.getByText('Select a plan.')).toBeInTheDocument();
+        expect(screen.getByText('Authorize recurring billing to continue.')).toBeInTheDocument();
+        await waitFor(() => expect(document.getElementById('customer')).toHaveFocus());
+
+        // Fixing a field clears its message.
+        const user = userEvent.setup();
+        await pickOption(user, 'customer', /Acme Corp/);
+        await waitFor(() =>
+            expect(screen.queryByText('Select a customer.')).not.toBeInTheDocument()
+        );
+    });
+
     it('creates the subscription with the exact payload and navigates back', async () => {
         const user = userEvent.setup();
         renderPage();
