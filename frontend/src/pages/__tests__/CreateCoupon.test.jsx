@@ -81,6 +81,27 @@ describe("CreateCoupon — currency-aware amount-off", () => {
     );
   });
 
+  // T4 standardized validation: inline errors + focus-first-error instead of
+  // native-only required tooltips.
+  it("shows inline errors and focuses the code field on empty submit", async () => {
+    endpoints.getPlans.mockResolvedValue(plansOf("USD"));
+    render(<CreateCoupon />, { wrapper });
+
+    fireEvent.click(screen.getByRole("button", { name: /create coupon/i }));
+
+    expect(await screen.findByText("Coupon code is required.")).toBeInTheDocument();
+    expect(screen.getByText("Enter a discount greater than zero.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText(/coupon code/i)).toHaveFocus());
+    expect(endpoints.createCoupon).not.toHaveBeenCalled();
+
+    // A percent above 100 is caught inline too.
+    fireEvent.change(screen.getByLabelText(/coupon code/i), { target: { value: "BIG" } });
+    fireEvent.change(screen.getByLabelText(/discount value/i), { target: { value: "150" } });
+    fireEvent.click(screen.getByRole("button", { name: /create coupon/i }));
+    expect(await screen.findByText("Percent off cannot exceed 100.")).toBeInTheDocument();
+    expect(endpoints.createCoupon).not.toHaveBeenCalled();
+  });
+
   it("keeps percent as a plain integer with no currency field", async () => {
     endpoints.getPlans.mockResolvedValue(plansOf("USD"));
     render(<CreateCoupon />, { wrapper });

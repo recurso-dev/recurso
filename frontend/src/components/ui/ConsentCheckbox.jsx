@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Check } from 'lucide-react'
 
 const ConsentCheckbox = ({
+    id,
     type = 'recurring_billing',
     planName = 'subscription',
     amount = '',
@@ -41,6 +42,7 @@ const ConsentCheckbox = ({
             <label className={`consent-label ${consented ? 'consented' : ''}`}>
                 <div className="checkbox-wrapper">
                     <input
+                        id={id}
                         type="checkbox"
                         checked={consented}
                         onChange={handleChange}
