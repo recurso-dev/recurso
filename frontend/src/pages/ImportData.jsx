@@ -12,6 +12,7 @@ import {
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -250,7 +251,7 @@ export default function ImportData() {
               <label htmlFor="paste" className="mb-1.5 block text-xs font-medium text-muted-foreground">
                 …or paste the JSON
               </label>
-              <textarea
+              <Textarea
                 id="paste"
                 value={raw}
                 onChange={(e) => setRaw(e.target.value)}

@@ -21,7 +21,7 @@ import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 import {
   Table,
   TableBody,
@@ -402,7 +402,7 @@ export default function MonthEndClose() {
 
             <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ClipboardCheck className="h-3.5 w-3.5" />
-              Generated {pack.generated_at ? new Date(pack.generated_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "—"}.
+              Generated {formatDateTime(pack.generated_at)}.
               Nothing is persisted — closing the period stays your decision.
             </p>
           </div>

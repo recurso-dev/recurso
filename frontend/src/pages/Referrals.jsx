@@ -13,7 +13,7 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Sheet,
   SheetContent,
@@ -29,9 +29,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-const statusVariant = (status) =>
-  ({ rewarded: "success", qualified: "info" })[status] || "warning";
 
 function Referrals() {
   const [showCreate, setShowCreate] = useState(false);
@@ -118,9 +115,7 @@ function Referrals() {
       key: "status",
       header: "Status",
       cell: (r) => (
-        <Badge variant={statusVariant(r.status)} className="capitalize">
-          {r.status}
-        </Badge>
+        <StatusBadge status={r.status} />
       ),
     },
     {

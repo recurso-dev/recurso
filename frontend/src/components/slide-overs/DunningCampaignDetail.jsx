@@ -3,6 +3,7 @@ import { Plus, Trash2, Power, Mail, MessageSquare, Bell } from "lucide-react";
 
 import { endpoints as api } from "../../lib/api";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -298,7 +299,7 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                   </div>
                   <div>
                     <Label>Body</Label>
-                    <textarea
+                    <Textarea
                       className={textareaClass}
                       rows={3}
                       value={form.body}

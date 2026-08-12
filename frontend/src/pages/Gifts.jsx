@@ -11,7 +11,7 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Sheet,
   SheetContent,
@@ -28,9 +28,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-
-const statusVariant = (status) =>
-  ({ redeemed: "success", purchased: "warning", canceled: "neutral" })[status] || "neutral";
 
 function Gifts() {
   const [showCreate, setShowCreate] = useState(false);
@@ -127,9 +124,7 @@ function Gifts() {
       key: "status",
       header: "Status",
       cell: (g) => (
-        <Badge variant={statusVariant(g.status)} className="capitalize">
-          {g.status}
-        </Badge>
+        <StatusBadge status={g.status} />
       ),
     },
     {

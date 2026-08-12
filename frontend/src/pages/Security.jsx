@@ -18,6 +18,7 @@ import {
 import { endpoints } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -591,7 +592,7 @@ function SSOSection() {
                 />
               </FormField>
               <FormField label="IdP X.509 certificate (PEM)" htmlFor="idp-cert">
-                <textarea
+                <Textarea
                   id="idp-cert"
                   value={form.idp_certificate}
                   onChange={(e) =>

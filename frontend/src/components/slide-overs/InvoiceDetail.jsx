@@ -6,6 +6,7 @@ import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -439,16 +440,12 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
               </dl>
 
               {actionMessage && (
-                <div
-                  className={
-                    "mt-4 rounded-lg px-3 py-2 text-sm " +
-                    (actionMessage.type === "success"
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-red-50 text-red-800")
-                  }
+                <Alert
+                  variant={actionMessage.type === "success" ? "success" : "danger"}
+                  className="mt-4"
                 >
                   {actionMessage.text}
-                </div>
+                </Alert>
               )}
 
               <div className="mt-4 flex gap-3">
@@ -524,16 +521,12 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
               </div>
 
               {actionMessage && (
-                <div
-                  className={
-                    "mt-4 rounded-lg px-3 py-2 text-sm " +
-                    (actionMessage.type === "success"
-                      ? "bg-emerald-50 text-emerald-800"
-                      : "bg-red-50 text-red-800")
-                  }
+                <Alert
+                  variant={actionMessage.type === "success" ? "success" : "danger"}
+                  className="mt-4"
                 >
                   {actionMessage.text}
-                </div>
+                </Alert>
               )}
             </>
           )}

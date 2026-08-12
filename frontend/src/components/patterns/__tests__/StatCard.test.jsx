@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, it, expect } from "vitest";
 import { StatCard } from "../StatCard";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 describe("StatCard", () => {
   it("renders the label, value, and hint", () => {
@@ -17,16 +18,16 @@ describe("StatCard", () => {
     expect(screen.queryByText("+5%")).not.toBeInTheDocument();
   });
 
-  it("colors a positive delta emerald and a negative delta red", () => {
+  it("colors a positive delta success-token and a negative delta destructive-token", () => {
     const { rerender } = render(<StatCard label="x" value="1" delta="+5%" deltaType="positive" />);
-    expect(screen.getByText("+5%").className).toContain("text-emerald-600");
+    expect(screen.getByText("+5%").className).toContain("text-success");
     rerender(<StatCard label="x" value="1" delta="-5%" deltaType="negative" />);
-    expect(screen.getByText("-5%").className).toContain("text-red-600");
+    expect(screen.getByText("-5%").className).toContain("text-destructive");
   });
 
   it("applies a danger tone to the value", () => {
     render(<StatCard label="Overdue" value="$1,000" tone="danger" />);
-    expect(screen.getByText("$1,000").className).toContain("text-red-600");
+    expect(screen.getByText("$1,000").className).toContain("text-destructive");
   });
 
   it("wraps the tile in a keyboard-focusable link when `to` is set", () => {
@@ -45,7 +46,11 @@ describe("StatCard", () => {
   });
 
   it("exposes an info trigger for `definition` on a non-link tile", () => {
-    render(<StatCard label="Churn" value="2.1%" definition="Canceled over active + canceled." />);
+    render(
+      <TooltipProvider>
+        <StatCard label="Churn" value="2.1%" definition="Canceled over active + canceled." />
+      </TooltipProvider>
+    );
     expect(
       screen.getByRole("button", { name: /what does churn mean/i })
     ).toBeInTheDocument();

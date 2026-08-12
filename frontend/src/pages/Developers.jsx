@@ -17,13 +17,14 @@ import {
 
 import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
@@ -62,20 +63,11 @@ import {
 } from "@/components/ui/sheet";
 
 // Map a derived delivery status to a Badge variant + label.
-const DELIVERY_STATUS = {
-  succeeded: { variant: "success", label: "Succeeded" },
-  failed: { variant: "destructive", label: "Failed" },
-  pending: { variant: "warning", label: "Pending" },
-};
-
 // Render a value or an em-dash when absent. Never invents data.
 const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
-const fmtTime = (v) => (v ? new Date(v).toLocaleString() : "—");
+const fmtTime = (v) => formatDateTime(v);
 
-function DeliveryStatusBadge({ status }) {
-  const s = DELIVERY_STATUS[status] || { variant: "neutral", label: dash(status) };
-  return <Badge variant={s.variant}>{s.label}</Badge>;
-}
+
 
 // Renders the per-event delivery attempts (loading / error / empty / rows).
 function EventDeliveries({ state }) {
@@ -111,7 +103,7 @@ function EventDeliveries({ state }) {
             <code className="break-all font-mono text-xs font-medium text-foreground">
               {dash(d.endpoint_url)}
             </code>
-            <DeliveryStatusBadge status={d.status} />
+            <StatusBadge status={d.status} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-4">
             <span>
@@ -1005,7 +997,7 @@ export default function Developers() {
                       <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-semibold text-foreground">
                         {dash(d.event_type || d.type)}
                       </code>
-                      <DeliveryStatusBadge status={d.status} />
+                      <StatusBadge status={d.status} />
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>

@@ -8,6 +8,7 @@ import { endpoints } from "../lib/api";
 import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -398,24 +399,22 @@ const CreateQuote = () => {
           <section className="space-y-4">
             <h3 className="text-sm font-semibold text-foreground">Notes &amp; terms</h3>
             <FormField label="Notes (visible to customer)" htmlFor="notes">
-              <textarea
+              <Textarea
                 id="notes"
                 name="notes"
                 value={formData.notes}
                 onChange={handleChange}
                 rows={3}
                 placeholder="Additional notes for the customer..."
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
               />
             </FormField>
             <FormField label="Terms & conditions" htmlFor="terms">
-              <textarea
+              <Textarea
                 id="terms"
                 name="terms"
                 value={formData.terms}
                 onChange={handleChange}
                 rows={3}
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
               />
             </FormField>
           </section>

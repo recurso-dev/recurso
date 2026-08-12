@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { formatDateTime } from "@/lib/utils";
 import {
   Bell,
   UserPlus,
@@ -57,7 +58,7 @@ export default function Notifications() {
           id: evt.id,
           title,
           description,
-          time: new Date(evt.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+          time: formatDateTime(evt.created_at),
           Icon,
           read: false, // No backend support yet.
         };

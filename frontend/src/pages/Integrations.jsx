@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router";
 import { Landmark, RefreshCw, Check, Copy, ExternalLink } from "lucide-react";
+import { formatDateTime } from "@/lib/utils";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
@@ -21,6 +22,7 @@ import PaymentGateways from "@/components/PaymentGateways";
 import IntegrationConnections from "@/components/IntegrationConnections";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProviderGuide } from "@/components/patterns/ProviderGuide";
@@ -74,12 +76,9 @@ const OAUTH_ERRORS = {
   save_failed: "Connected, but saving the connection failed. Please try again.",
 };
 
-const syncStatusVariant = (status) =>
-  ({ success: "success", synced: "success", failed: "destructive", error: "destructive" })[
-    status
-  ] || "neutral";
+const isFailedSync = (status) => ["failed", "error"].includes(status);
 
-const fmtDateTime = (v) => (v ? new Date(v).toLocaleString() : "—");
+const fmtDateTime = (v) => formatDateTime(v);
 
 // Turn a raw provider error into an actionable next step. Matches on common
 // substrings so a failed sync tells the operator what to actually do, not just
@@ -300,7 +299,7 @@ const Integrations = () => {
       header: "Status",
       cell: (l) => (
         <div>
-          <Badge variant={syncStatusVariant(l.status)}>{l.status}</Badge>
+          <StatusBadge status={l.status} />
           {l.error_message && (
             <p className="mt-1 max-w-md whitespace-normal break-words text-xs text-red-600">
               {l.error_message}
@@ -522,7 +521,7 @@ const Integrations = () => {
                     <span className="capitalize">{selectedLog.provider}</span>
                     <span className="text-muted-foreground">·</span>
                     <span className="capitalize">{selectedLog.entity_type}</span>
-                    <Badge variant={syncStatusVariant(selectedLog.status)}>{selectedLog.status}</Badge>
+                    <StatusBadge status={selectedLog.status} />
                   </SheetTitle>
                 </SheetHeader>
 
@@ -603,7 +602,7 @@ const Integrations = () => {
                   )}
 
                   <div className="flex flex-wrap items-center gap-2">
-                    {syncStatusVariant(selectedLog.status) === "destructive" && (
+                    {isFailedSync(selectedLog.status) && (
                       <Button
                         size="sm"
                         onClick={() => {

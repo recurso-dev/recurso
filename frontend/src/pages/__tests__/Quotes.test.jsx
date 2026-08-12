@@ -41,7 +41,7 @@ describe("Quotes page", () => {
     render(<Quotes />, { wrapper });
     await waitFor(() => expect(screen.getByText("Q-001")).toBeInTheDocument());
     expect(screen.getByText("Q-002")).toBeInTheDocument();
-    expect(screen.getByText("draft")).toBeInTheDocument();
+    expect(screen.getByText("Draft")).toBeInTheDocument();
     // Amounts render in the tabular-mono <Money> component.
     expect(screen.getByText(money("$500.00"))).toBeInTheDocument();
     expect(screen.getByText(money("$900.00"))).toBeInTheDocument();

@@ -12,7 +12,7 @@ import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import {
   Select,
   SelectContent,
@@ -132,9 +132,7 @@ export default function Plans() {
       key: "status",
       header: "Status",
       cell: (p) => (
-        <Badge variant={p.active ? "success" : "neutral"}>
-          {p.active ? "Active" : "Archived"}
-        </Badge>
+        <StatusBadge status={p.active ? "active" : "archived"} />
       ),
     },
   ];

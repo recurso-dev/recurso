@@ -11,7 +11,7 @@ import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -32,11 +32,6 @@ import {
 } from "@/components/ui/select";
 
 const FREQUENCIES = ["weekly", "monthly", "quarterly", "yearly"];
-
-const statusVariant = (status) =>
-  ({ active: "success", authorized: "info", created: "neutral", paused: "warning", revoked: "destructive" })[
-    status
-  ] || "neutral";
 
 const fmtDate = (v) => formatDate(v);
 
@@ -175,7 +170,7 @@ const Mandates = () => {
     {
       key: "status",
       header: "Status",
-      cell: (m) => <Badge variant={statusVariant(m.status)}>{m.status}</Badge>,
+      cell: (m) => <StatusBadge status={m.status} />,
     },
     {
       key: "next",

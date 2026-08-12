@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "@/components/ui/sonner";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Check,
   Copy,
@@ -537,10 +538,9 @@ const PortalDashboard = () => {
               )}
               <div className="space-y-1.5">
                 <Label htmlFor="dispute_reason">Reason</Label>
-                <textarea
+                <Textarea
                   id="dispute_reason"
                   rows={4}
-                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   placeholder="Tell us what looks wrong with this invoice…"
                   value={disputeReason}
                   onChange={(e) => setDisputeReason(e.target.value)}

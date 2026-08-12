@@ -4,10 +4,11 @@ import { Webhook, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { endpoints as api } from "../lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
+import { CopyableId } from "@/components/ui/copyable-id";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -21,7 +22,7 @@ import { Copy } from "lucide-react";
 
 // "Aug 3, 2026, 2:17 PM" beats "03/08/2026, 14:17:34" for scanning.
 const fmtWhen = (x) =>
-  new Date(x).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  formatDateTime(x);
 
 const copyText = async (v, label) => {
   try {
@@ -262,15 +263,7 @@ const Events = () => {
               <div className="mt-4 space-y-5">
                 <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 p-3">
                   <Field label="Event ID">
-                    <button
-                      type="button"
-                      onClick={() => copyText(selected.id, "Event ID")}
-                      className="group inline-flex max-w-full items-center gap-1.5 text-left"
-                      title="Copy event ID"
-                    >
-                      <span className="truncate font-mono text-xs">{selected.id}</span>
-                      <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                    </button>
+                    <CopyableId value={selected.id} label="event ID" full />
                   </Field>
                   <Field label="Created">{fmtWhen(selected.created_at)}</Field>
                   <Field label="Object">
@@ -278,15 +271,7 @@ const Events = () => {
                   </Field>
                   {selected.object_id && (
                     <Field label="Object ID">
-                      <button
-                        type="button"
-                        onClick={() => copyText(selected.object_id, "Object ID")}
-                        className="group inline-flex max-w-full items-center gap-1.5 text-left"
-                        title="Copy object ID"
-                      >
-                        <span className="truncate font-mono text-xs">{selected.object_id}</span>
-                        <Copy className="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
-                      </button>
+                      <CopyableId value={selected.object_id} label="object ID" full />
                     </Field>
                   )}
                 </dl>

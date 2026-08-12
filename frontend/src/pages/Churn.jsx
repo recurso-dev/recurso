@@ -1,4 +1,4 @@
-import { shortId } from "@/lib/utils";
+import { shortId, formatDateTime } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Check, ArrowUpRight } from "lucide-react";
 
@@ -11,13 +11,10 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 
-const riskVariant = (level) =>
-  ({ critical: "destructive", high: "destructive", medium: "warning", low: "neutral" })[level] ||
-  "neutral";
-
-const fmtDate = (v) => (v ? new Date(v).toLocaleString() : "—");
+const fmtDate = (v) => formatDateTime(v);
 
 const errMsg = (err, fallback) =>
   err ? err?.response?.data?.error?.message || err?.message || fallback : null;
@@ -86,7 +83,7 @@ const Churn = () => {
     {
       key: "risk_level",
       header: "Level",
-      cell: (r) => <Badge variant={riskVariant(r.risk_level)}>{r.risk_level}</Badge>,
+      cell: (r) => <StatusBadge status={r.risk_level} />,
     },
     {
       key: "model_version",

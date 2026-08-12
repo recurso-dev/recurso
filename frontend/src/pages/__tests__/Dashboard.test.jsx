@@ -132,7 +132,7 @@ describe('Dashboard (redesign)', () => {
                     {
                         id: 'inv_1',
                         total: 25000,
-                        status: 'paid',
+                        status: 'Paid',
                         currency: 'USD',
                         customer_id: 'cus_1',
                         created_at: new Date().toISOString(),
@@ -152,7 +152,7 @@ describe('Dashboard (redesign)', () => {
         expect(
           screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$250.00")
         ).toBeInTheDocument();
-        expect(screen.getByText('paid')).toBeInTheDocument();
+        expect(screen.getByText('Paid')).toBeInTheDocument();
     });
 
     it('shows a retryable error (not a page of zeros) when every core read fails', async () => {

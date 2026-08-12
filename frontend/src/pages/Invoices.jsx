@@ -10,7 +10,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -76,30 +76,10 @@ function downloadCSV(text, name) {
   setTimeout(() => URL.revokeObjectURL(url), 5_000);
 }
 
-// Map an invoice status to a Badge variant.
-const invoiceStatusVariant = (status) =>
-  ({
-    paid: "success",
-    open: "info",
-    overdue: "destructive",
-    past_due: "destructive",
-    void: "neutral",
-    draft: "neutral",
-  })[status] || "neutral";
-
-// Map an e-invoice status to a Badge variant.
-const eInvoiceVariant = (status) =>
-  ({
-    GENERATED: "success",
-    FAILED: "destructive",
-    CANCELLED: "warning",
-    NA: "neutral",
-  })[status] || "neutral";
-
 function EInvoiceBadge({ status }) {
   if (!status || status === "PENDING")
     return <span className="text-sm text-muted-foreground">—</span>;
-  return <Badge variant={eInvoiceVariant(status)}>{status}</Badge>;
+  return <StatusBadge status={status} />;
 }
 
 const Invoices = () => {
@@ -240,7 +220,7 @@ const Invoices = () => {
       key: "status",
       header: "Status",
       cell: (inv) => (
-        <Badge variant={invoiceStatusVariant(inv.status)}>{inv.status}</Badge>
+        <StatusBadge status={inv.status} />
       ),
     },
     {
