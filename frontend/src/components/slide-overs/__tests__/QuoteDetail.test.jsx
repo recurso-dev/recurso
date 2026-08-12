@@ -56,6 +56,9 @@ describe("QuoteDetail actions", () => {
     expect(screen.queryByRole("button", { name: /^accept$/i })).not.toBeInTheDocument();
 
     fireEvent.click(convert);
+    // Converting creates an invoice — a confirm step now guards it (audit §7).
+    const dialogs = await screen.findAllByRole("button", { name: /convert to invoice/i });
+    fireEvent.click(dialogs[dialogs.length - 1]);
     await waitFor(() => expect(endpoints.convertQuoteToInvoice).toHaveBeenCalledWith("q-1"));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });

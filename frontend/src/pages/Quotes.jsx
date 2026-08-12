@@ -13,6 +13,7 @@ import { DataTable } from "@/components/patterns/DataTable";
 import { Money } from "@/components/ui/money";
 import { toast } from "@/components/ui/sonner";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -82,14 +83,24 @@ const Quotes = () => {
       ),
   });
 
+  // One-click money ops get a confirm step (audit §7: quote send/convert
+  // were fire-on-click icon buttons). { action: "send" | "convert", id }.
+  const [confirmOp, setConfirmOp] = useState(null);
+
   const handleSend = (id, e) => {
     e?.stopPropagation();
-    sendMutation.mutate(id);
+    setConfirmOp({ action: "send", id });
   };
 
   const handleConvert = (id, e) => {
     e?.stopPropagation();
-    convertMutation.mutate(id);
+    setConfirmOp({ action: "convert", id });
+  };
+
+  const runConfirmedOp = () => {
+    if (!confirmOp) return;
+    const m = confirmOp.action === "send" ? sendMutation : convertMutation;
+    m.mutate(confirmOp.id, { onSettled: () => setConfirmOp(null) });
   };
 
 
@@ -237,6 +248,22 @@ const Quotes = () => {
       />
 
       <QuoteDetail quote={selectedQuote} isOpen={isDetailOpen} onClose={closeDetail} />
+
+      <ConfirmDialog
+        open={Boolean(confirmOp)}
+        onOpenChange={(o) => !o && setConfirmOp(null)}
+        title={
+          confirmOp?.action === "convert" ? "Convert this quote to an invoice?" : "Send this quote?"
+        }
+        description={
+          confirmOp?.action === "convert"
+            ? "An invoice is created for the quoted amount and the quote is locked. This can't be undone."
+            : "The quote is emailed to the customer and marked as sent."
+        }
+        confirmLabel={confirmOp?.action === "convert" ? "Convert to invoice" : "Send quote"}
+        busy={sendMutation.isPending || convertMutation.isPending}
+        onConfirm={runConfirmedOp}
+      />
     </div>
   );
 };

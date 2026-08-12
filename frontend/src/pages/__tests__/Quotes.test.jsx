@@ -62,6 +62,9 @@ describe("Quotes page", () => {
 
     // Q-002 is accepted → the "Convert to invoice" action is available.
     fireEvent.click(screen.getByTitle("Convert to invoice"));
+    // The one-click money op now confirms first (audit §7 guard).
+    const confirmBtn = await screen.findByRole("button", { name: /convert to invoice/i });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() =>
       expect(toastMock.error).toHaveBeenCalledWith("quote already converted")
@@ -74,6 +77,9 @@ describe("Quotes page", () => {
     await waitFor(() => expect(screen.getByText("Q-002")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTitle("Convert to invoice"));
+    // The one-click money op now confirms first (audit §7 guard).
+    const confirmBtn = await screen.findByRole("button", { name: /convert to invoice/i });
+    fireEvent.click(confirmBtn);
 
     await waitFor(() =>
       expect(toastMock.success).toHaveBeenCalledWith("Quote converted to an invoice.")

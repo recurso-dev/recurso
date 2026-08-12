@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -50,6 +50,26 @@ describe("Settings — General section", () => {
     expect(screen.getByLabelText("Support email")).toBeInTheDocument();
     // The section-navigation cards moved to the persistent SettingsLayout nav.
     expect(screen.queryByText(/For your region/)).not.toBeInTheDocument();
+  });
+
+  it("confirms before switching the business country (tax regime change)", async () => {
+    // jsdom lacks these; Radix Select touches them.
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    endpoints.updateEntity.mockResolvedValue({ data: { data: {} } });
+    render(<Settings />, { wrapper });
+    const trigger = await screen.findByRole("combobox");
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("option", { name: /india/i }));
+    // Picking no longer auto-saves (audit §7) — a confirm dialog intervenes.
+    expect(endpoints.updateEntity).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /change country/i }));
+    await waitFor(() =>
+      expect(endpoints.updateEntity).toHaveBeenCalledWith(
+        "ent-1",
+        expect.objectContaining({ country_code: "IN" })
+      )
+    );
   });
 
   it("hydrates the account fields from the API", async () => {

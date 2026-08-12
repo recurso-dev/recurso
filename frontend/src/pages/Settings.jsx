@@ -5,6 +5,7 @@ import { Save } from "lucide-react";
 import { endpoints } from "@/lib/api";
 import { COUNTRIES, COUNTRY_NAME } from "@/lib/countries";
 import { toast } from "@/components/ui/sonner";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,10 @@ export default function Settings() {
   const saving = saveMutation.isPending;
   const handleSave = () => saveMutation.mutate(account);
 
+  // Business country switches the tax regime (GST / sales tax / VAT) the
+  // moment it saves — picking a value asks for confirmation first instead of
+  // auto-saving on select (audit §7).
+  const [pendingCountry, setPendingCountry] = useState(null);
   // Business country saves immediately against the primary entity (its own
   // control), independent of the account Save button.
   const countryMutation = useMutation({
@@ -116,7 +121,7 @@ export default function Settings() {
               >
                 <Select
                   value={businessCountry || undefined}
-                  onValueChange={(code) => countryMutation.mutate(code)}
+                  onValueChange={(code) => setPendingCountry(code)}
                   disabled={countryMutation.isPending}
                 >
                   <SelectTrigger id="business-country" className="w-full">
@@ -141,6 +146,18 @@ export default function Settings() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(pendingCountry)}
+        onOpenChange={(o) => !o && setPendingCountry(null)}
+        title={`Set business country to ${pendingCountry ? COUNTRY_NAME[pendingCountry] || pendingCountry : ""}?`}
+        description="This switches your tax regime and invoice format immediately. New invoices are taxed under the new regime."
+        confirmLabel="Change country"
+        busy={countryMutation.isPending}
+        onConfirm={() =>
+          countryMutation.mutate(pendingCountry, { onSettled: () => setPendingCountry(null) })
+        }
+      />
     </div>
   );
 }

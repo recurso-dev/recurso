@@ -156,6 +156,9 @@ describe("InvoicePage", () => {
       expect(screen.getByRole("button", { name: /^send$/i })).toBeInTheDocument()
     );
     fireEvent.click(screen.getByRole("button", { name: /^send$/i }));
+    // Sending emails the customer — a confirm step now guards it (audit §7).
+    const confirmBtn = await screen.findByRole("button", { name: /send invoice/i });
+    fireEvent.click(confirmBtn);
     await waitFor(() => expect(endpoints.sendInvoice).toHaveBeenCalledWith("inv-1"));
   });
 
