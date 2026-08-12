@@ -291,6 +291,7 @@ func (s *seeder) purge() {
 		`DELETE FROM usage_events WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM usage_ratings WHERE subscription_id IN (` + demoSub + `)`,
 		`DELETE FROM usage_alerts WHERE subscription_id IN (` + demoSub + `)`,
+		`DELETE FROM ledger_transactions WHERE reference_id IN (SELECT id FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE customer_id IN (` + demoCust + `)))`,
 		`DELETE FROM wallet_transactions WHERE wallet_id IN (SELECT id FROM wallets WHERE customer_id IN (` + demoCust + `))`,
 		`DELETE FROM wallets WHERE customer_id IN (` + demoCust + `)`,
 		`DELETE FROM plan_charges WHERE plan_id IN (` + demoPlan + `)`,
@@ -1121,6 +1122,16 @@ func (s *seeder) seedStandaloneCreditNotes(custs []*customer) {
 			VALUES ($1,$2,$3,$4,700,8,$5,'Credit note issued', $6) ON CONFLICT DO NOTHING`,
 			uuid.New(), s.credExpAcct, s.ccAcct, amt, cnID, at)
 		s.bump("ledger_transactions", 1)
+		// A 'used' note has been fully drawn down: post the matching Code-7
+		// application leg (Customer Credit -> AR), or the Customer-Credit
+		// liability invariant sees the issuance with no drawdown and reports
+		// the account overstated (customer_credit_liability_mismatch).
+		if status == "used" {
+			s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+				VALUES ($1,$2,$3,$4,700,7,$5,'Credit applied', $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), s.ccAcct, s.arAcct, amt, cnID, at.Add(24*time.Hour))
+			s.bump("ledger_transactions", 1)
+		}
 	}
 	s.bump("credit_notes", 6)
 }
@@ -1474,17 +1485,35 @@ func (s *seeder) seedMetering(custs []*customer, subs []*subscription) {
 			topUp := int64(50000000) // ₹5,00,000.00
 			promo := int64(2500000)  // ₹25,000 promotional, expires in 20 days
 			drain := int64(11800000) // one invoice paid from the wallet
+			topUpID, drainID, promoID := uuid.New(), uuid.New(), uuid.New()
 			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, created_at)
 				VALUES ($1,$2,$3,'top_up','manual',$4,$5,$4,$6)`,
-				uuid.New(), s.tenantID, wid, topUp, topUp-drain, s.backdate(0, 12))
+				topUpID, s.tenantID, wid, topUp, topUp-drain, s.backdate(0, 12))
 			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, amount, balance_after, created_at)
 				VALUES ($1,$2,$3,'drain',$4,$5,$6)`,
-				uuid.New(), s.tenantID, wid, drain, topUp-drain, s.backdate(0, 6))
+				drainID, s.tenantID, wid, drain, topUp-drain, s.backdate(0, 6))
 			s.exec(`INSERT INTO wallet_transactions (id, tenant_id, wallet_id, type, source, amount, remaining, balance_after, expires_at, created_at)
 				VALUES ($1,$2,$3,'top_up','promotional',$4,$4,$5, now() + interval '20 days', $6)`,
-				uuid.New(), s.tenantID, wid, promo, topUp-drain+promo, s.backdate(0, 2))
+				promoID, s.tenantID, wid, promo, topUp-drain+promo, s.backdate(0, 2))
 			s.exec(`UPDATE wallets SET balance=$2, updated_at=now() WHERE id=$1`, wid, topUp-drain+promo)
+			// The ledger legs the wallet service would have posted, so the
+			// Customer-Credit liability invariant (wallets + spendable credit
+			// notes == account 2300) holds on seeded data. Mirrors
+			// RecordWalletTopUp (Code 11: Cash -> Customer Credit),
+			// RecordWalletDrain (Code 12: Customer Credit -> AR), and — per
+			// the RecordWalletTopUp contract — RecordAdjustmentCreditIssued
+			// for the promotional (unpaid) top-up (Code 8: no cash moved).
+			s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+				VALUES ($1,$2,$3,$4,700,11,$5,'Wallet top-up (manual)', $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), s.cashAcct, s.ccAcct, topUp, topUpID, s.backdate(0, 12))
+			s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+				VALUES ($1,$2,$3,$4,700,12,$5,'Wallet applied to invoice', $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), s.ccAcct, s.arAcct, drain, drainID, s.backdate(0, 6))
+			s.exec(`INSERT INTO ledger_transactions (id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, description, created_at)
+				VALUES ($1,$2,$3,$4,700,8,$5,'Promotional wallet credit', $6) ON CONFLICT DO NOTHING`,
+				uuid.New(), s.credExpAcct, s.ccAcct, promo, promoID, s.backdate(0, 2))
 			s.bump("wallet_transactions", 3)
+			s.bump("ledger_transactions", 3)
 		}
 		s.bump("wallets", 1)
 		break
