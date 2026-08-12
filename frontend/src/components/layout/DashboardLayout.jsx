@@ -122,9 +122,14 @@ export function DashboardLayout() {
 
           <div className="flex flex-1 items-center justify-end gap-3">
             {gatewayMode === "test" && (
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/5 px-2.5 py-1 text-xs font-medium text-warning">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border border-warning/20 bg-warning/5 px-2.5 py-1 text-xs font-medium text-warning"
+                title="Test mode — no real charges"
+              >
                 <FlaskConical className="h-3 w-3" />
-                Test mode
+                {/* Icon-only below sm: the chip text starved the page-context
+                    label to a sliver at 375px (visual QA). */}
+                <span className="hidden sm:inline">Test mode</span>
               </span>
             )}
 
