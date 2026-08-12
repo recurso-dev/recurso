@@ -166,6 +166,32 @@ func TestListFilters_Postgres(t *testing.T) {
 		t.Errorf("CountByCustomer = %d, want 2", n)
 	}
 
+	// Invoices by subscription: stamp one of the tenant's invoices with subOld
+	// and prove the pair scopes by tenant AND subscription.
+	if _, err := conn.ExecContext(ctx,
+		`UPDATE invoices SET subscription_id = $1 WHERE tenant_id = $2 AND customer_id = $3 AND id = (
+			SELECT id FROM invoices WHERE tenant_id = $2 AND customer_id = $3 LIMIT 1)`,
+		subOld, tenantID, custID); err != nil {
+		t.Fatalf("stamp subscription_id: %v", err)
+	}
+	subInvs, err := invRepo.ListBySubscriptionPaginated(ctx, tenantID, subOld, 10, 0)
+	if err != nil {
+		t.Fatalf("ListBySubscriptionPaginated: %v", err)
+	}
+	if len(subInvs) != 1 {
+		t.Errorf("subscription invoices returned %d rows, want 1", len(subInvs))
+	}
+	sn, err := invRepo.CountBySubscription(ctx, tenantID, subOld)
+	if err != nil {
+		t.Fatalf("CountBySubscription: %v", err)
+	}
+	if sn != 1 {
+		t.Errorf("CountBySubscription = %d, want 1", sn)
+	}
+	if sn2, _ := invRepo.CountBySubscription(ctx, otherTenant, subOld); sn2 != 0 {
+		t.Errorf("foreign-tenant CountBySubscription = %d, want 0", sn2)
+	}
+
 	planRepo := NewPlanRepository(conn)
 
 	// Currency filter goes through the prices EXISTS.
