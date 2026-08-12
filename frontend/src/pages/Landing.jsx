@@ -53,7 +53,7 @@ const CAPABILITIES = [
 
 export default function Landing() {
   return (
-    <div className="flex min-h-screen flex-col bg-stone-50 text-foreground">
+    <div className="flex min-h-screen flex-col bg-muted text-foreground">
       {/* Top bar */}
       <header className="border-b border-border/70 bg-background/70 backdrop-blur">
         <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
@@ -78,7 +78,7 @@ export default function Landing() {
       <main className="flex-1">
         <section className="mx-auto w-full max-w-6xl px-4 pt-20 pb-16 sm:px-6 sm:pt-28">
           <div className="mx-auto max-w-3xl text-center">
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+            <p className="text-xs font-semibold uppercase tracking-wider text-success">
               Accounting-first subscription billing
             </p>
             <h1 className="mt-4 text-balance text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -125,7 +125,7 @@ export default function Landing() {
               <Card key={title}>
                 <CardContent className="p-5">
                   <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-muted">
-                    <Icon className="h-5 w-5 text-emerald-700" aria-hidden="true" />
+                    <Icon className="h-5 w-5 text-success" aria-hidden="true" />
                   </span>
                   <h2 className="mt-4 text-sm font-semibold text-foreground">{title}</h2>
                   <p className="mt-1.5 text-sm text-muted-foreground">{body}</p>

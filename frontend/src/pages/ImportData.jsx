@@ -62,15 +62,15 @@ const SOURCES = {
 
 // Semantic colour per plan action (kept separate from the brand accent).
 const ACTION_STYLE = {
-  create: { label: "Create", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-  link_existing: { label: "Link existing", cls: "bg-sky-50 text-sky-700 border-sky-200" },
-  skip_already_imported: { label: "Already imported", cls: "bg-stone-100 text-stone-600 border-stone-200" },
-  conflict: { label: "Conflict", cls: "bg-red-50 text-red-700 border-red-200" },
-  unsupported: { label: "Skipped", cls: "bg-amber-50 text-amber-700 border-amber-200" },
+  create: { label: "Create", cls: "bg-success/5 text-success border-success/20" },
+  link_existing: { label: "Link existing", cls: "bg-info/5 text-info border-info/20" },
+  skip_already_imported: { label: "Already imported", cls: "bg-muted text-muted-foreground border-border" },
+  conflict: { label: "Conflict", cls: "bg-destructive/5 text-destructive border-destructive/20" },
+  unsupported: { label: "Skipped", cls: "bg-warning/5 text-warning border-warning/20" },
 };
 
 function ActionBadge({ action }) {
-  const s = ACTION_STYLE[action] || { label: action, cls: "bg-stone-100 text-stone-600 border-stone-200" };
+  const s = ACTION_STYLE[action] || { label: action, cls: "bg-muted text-muted-foreground border-border" };
   return (
     <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium ${s.cls}`}>
       {s.label}
@@ -234,8 +234,8 @@ export default function ImportData() {
           <CardContent className="space-y-5">
             <p className="text-sm text-muted-foreground">{cfg.blurb}</p>
 
-            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-stone-50 px-4 py-8 text-center transition-colors hover:border-stone-300">
-              <UploadCloud className="h-7 w-7 text-stone-400" />
+            <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border bg-muted px-4 py-8 text-center transition-colors hover:border-input">
+              <UploadCloud className="h-7 w-7 text-subtle" />
               <span className="text-sm font-medium text-foreground">{fileName || "Choose a JSON file"}</span>
               <span className="text-xs text-muted-foreground">or drag it onto this box</span>
               <input
@@ -263,7 +263,7 @@ export default function ImportData() {
             </div>
 
             {error && (
-              <p className="flex items-start gap-2 text-sm font-medium text-red-600" role="alert">
+              <p className="flex items-start gap-2 text-sm font-medium text-destructive" role="alert">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 {error}
               </p>
@@ -301,9 +301,9 @@ export default function ImportData() {
               </div>
 
               {plan.warnings?.length > 0 && (
-                <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <div className="space-y-1 rounded-md border border-warning/20 bg-warning/5 p-3">
                   {plan.warnings.map((w, i) => (
-                    <p key={i} className="flex items-start gap-2 text-xs text-amber-900">
+                    <p key={i} className="flex items-start gap-2 text-xs text-warning">
                       <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                       {w}
                     </p>
@@ -362,7 +362,7 @@ export default function ImportData() {
         <Card>
           <CardContent className="space-y-5 p-6">
             <div className="flex flex-col items-center text-center">
-              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-success/5 text-success">
                 <CheckCircle2 className="h-6 w-6" />
               </div>
               <p className="text-sm font-medium text-foreground">Import complete</p>
@@ -381,10 +381,10 @@ export default function ImportData() {
             </div>
 
             {result.failures?.length > 0 && (
-              <div className="space-y-1 rounded-md border border-amber-200 bg-amber-50 p-3">
-                <p className="text-xs font-semibold text-amber-900">{result.failures.length} item(s) couldn't be imported:</p>
+              <div className="space-y-1 rounded-md border border-warning/20 bg-warning/5 p-3">
+                <p className="text-xs font-semibold text-warning">{result.failures.length} item(s) couldn't be imported:</p>
                 {result.failures.map((f, i) => (
-                  <p key={i} className="text-xs text-amber-900">
+                  <p key={i} className="text-xs text-warning">
                     <span className="font-medium capitalize">{f.kind}</span> {f.stripe_id}: {f.error}
                   </p>
                 ))}
@@ -424,12 +424,12 @@ export default function ImportData() {
                 {compare && (
                   <div className="mt-4 space-y-3">
                     {compare.ready ? (
-                      <div className="flex items-center gap-2 rounded-md border border-emerald-600/30 bg-emerald-600/10 px-3 py-2 text-sm text-emerald-700">
+                      <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
                         <CheckCircle2 className="h-4 w-4 shrink-0" />
                         Safe to cut over — every record matched, no drift found.
                       </div>
                     ) : (
-                      <div className="rounded-md border border-red-600/30 bg-red-600/10 px-3 py-2 text-sm text-red-700">
+                      <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                         Not ready — {compare.issues?.length || 0} issue(s) need attention before cut-over.
                       </div>
                     )}
@@ -438,7 +438,7 @@ export default function ImportData() {
                         ([label, c]) => (
                           <span key={label} className="rounded-md border border-border bg-card px-2.5 py-1.5">
                             {label}: <span className="font-medium text-foreground">{c?.matched ?? 0}/{c?.source ?? 0}</span> matched
-                            {c?.missing > 0 && <span className="text-red-600"> · {c.missing} missing</span>}
+                            {c?.missing > 0 && <span className="text-destructive"> · {c.missing} missing</span>}
                           </span>
                         )
                       )}

@@ -243,7 +243,7 @@ export default function TrialBalance() {
                           {money(tb.total_credits)}
                         </TableCell>
                         <TableCell
-                          className={`text-right font-mono text-sm tabular-nums ${tb.balanced ? "text-emerald-600" : "text-red-600"}`}
+                          className={`text-right font-mono text-sm tabular-nums ${tb.balanced ? "text-success" : "text-destructive"}`}
                         >
                           {tb.balanced ? "0" : money(tb.total_debits - tb.total_credits)}
                         </TableCell>

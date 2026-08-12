@@ -222,7 +222,7 @@ export default function TaxNexusSettings() {
                     type="button"
                     onClick={() => setRows((prev) => prev.filter((_, idx) => idx !== i))}
                     aria-label={`Remove state ${i + 1}`}
-                    className="text-stone-400 transition-colors hover:text-red-500"
+                    className="text-subtle transition-colors hover:text-destructive"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -254,13 +254,13 @@ export default function TaxNexusSettings() {
             <p className="px-6 pb-6 text-sm text-muted-foreground">{statusError}</p>
           ) : !status?.states?.length ? (
             <div className="px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
-              <MapPinned className="mx-auto mb-2 h-6 w-6 text-stone-300" />
+              <MapPinned className="mx-auto mb-2 h-6 w-6 text-subtle/60" />
               No state activity tracked yet this year.
             </div>
           ) : (
             <>
               {status.dataset_certified === false && (
-                <p className="mx-6 mb-3 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <p className="mx-6 mb-3 rounded-md bg-warning/5 px-3 py-2 text-xs text-warning">
                   Threshold dataset has not passed professional review — treat proximity
                   figures as indicative, not advice.
                 </p>
@@ -327,7 +327,7 @@ export default function TaxNexusSettings() {
             <p className="px-6 pb-6 text-sm text-muted-foreground">Loading…</p>
           ) : !liability?.states?.length ? (
             <div className="px-6 pb-6 pt-2 text-center text-sm text-muted-foreground">
-              <MapPinned className="mx-auto mb-2 h-6 w-6 text-stone-300" />
+              <MapPinned className="mx-auto mb-2 h-6 w-6 text-subtle/60" />
               No US sales recorded for {liabYear}.
             </div>
           ) : (
@@ -409,7 +409,7 @@ export default function TaxNexusSettings() {
         </CardHeader>
         <CardContent className="space-y-3">
           {nexusGaps.length > 0 && (
-            <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <p className="rounded-md bg-warning/5 px-3 py-2 text-xs text-warning">
               You have nexus but no registration on file in{" "}
               <span className="font-mono font-medium">{nexusGaps.join(", ")}</span>. Register with
               each state to collect sales tax compliantly.
@@ -451,7 +451,7 @@ export default function TaxNexusSettings() {
                 type="button"
                 onClick={() => setRegs((prev) => prev.filter((_, idx) => idx !== i))}
                 aria-label={`Remove registration ${i + 1}`}
-                className="text-stone-400 transition-colors hover:text-red-500"
+                className="text-subtle transition-colors hover:text-destructive"
               >
                 <X className="h-4 w-4" />
               </button>

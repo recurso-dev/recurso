@@ -175,7 +175,7 @@ const DunningDashboard = () => {
       />
 
       {loadError && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="mb-4 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {loadError} — refresh to retry.
         </p>
       )}
@@ -314,9 +314,9 @@ const DunningDashboard = () => {
                         <span
                           className={
                             arm.average_reward > 0.5
-                              ? "text-emerald-600"
+                              ? "text-success"
                               : arm.average_reward > 0.2
-                                ? "text-amber-600"
+                                ? "text-warning"
                                 : "text-muted-foreground"
                           }
                         >
@@ -376,7 +376,7 @@ const DunningDashboard = () => {
                         <Link
                           to="/invoices"
                           state={{ openInvoiceId: h.invoice_id }}
-                          className="text-emerald-700 hover:text-emerald-800 hover:underline"
+                          className="text-success hover:text-primary hover:underline"
                         >
                           {h.invoice_id.substring(0, 8)}…
                         </Link>
@@ -443,7 +443,7 @@ const DunningDashboard = () => {
                     <div
                       className={
                         "w-full rounded-t " +
-                        (h.bucket === timing?.best_hour ? "bg-emerald-500" : "bg-muted-foreground/30")
+                        (h.bucket === timing?.best_hour ? "bg-success/50" : "bg-muted-foreground/30")
                       }
                       style={{ height: `${maxHourRate > 0 ? Math.max(2, (h.success_rate / maxHourRate) * 100) : 2}%` }}
                     />

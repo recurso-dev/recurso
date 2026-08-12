@@ -82,7 +82,7 @@ function SetupForm({ apiBase, authHeaders, onSaved }) {
       <AddressElement options={{ mode: "billing" }} />
       <PaymentElement />
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -162,12 +162,12 @@ function BankSetupForm({ stripePromise, clientSecret, apiBase, authHeaders, onSa
         <Label htmlFor="ach-email">Email</Label>
         <Input id="ach-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@example.com" />
       </div>
-      <p className="text-xs text-stone-500">
+      <p className="text-xs text-muted-foreground">
         You'll be taken to your bank to connect it securely — Recurso never sees your
         bank credentials. By connecting, you authorize ACH debits for your invoices.
       </p>
       {error && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
         </div>
       )}
@@ -288,8 +288,8 @@ export default function PortalPaymentMethod({
               onClick={() => setMode("card")}
               className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                 mode === "card"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                  : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                  ? "border-primary bg-success/5 text-success"
+                  : "border-border text-muted-foreground hover:bg-muted"
               }`}
             >
               <CreditCard className="h-4 w-4" /> Card
@@ -299,8 +299,8 @@ export default function PortalPaymentMethod({
               onClick={() => setMode("bank")}
               className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors ${
                 mode === "bank"
-                  ? "border-emerald-500 bg-emerald-50 text-emerald-700"
-                  : "border-stone-200 text-stone-600 hover:bg-stone-50"
+                  ? "border-primary bg-success/5 text-success"
+                  : "border-border text-muted-foreground hover:bg-muted"
               }`}
             >
               <Landmark className="h-4 w-4" /> US bank (ACH)
@@ -310,18 +310,18 @@ export default function PortalPaymentMethod({
 
         {done ? (
           <div className="flex flex-col items-center py-6 text-center">
-            <CheckCircle2 className="mb-2 h-10 w-10 text-emerald-600" />
-            <p className="text-sm text-stone-600">{savedMessage}</p>
+            <CheckCircle2 className="mb-2 h-10 w-10 text-success" />
+            <p className="text-sm text-muted-foreground">{savedMessage}</p>
           </div>
         ) : unavailable ? (
           <div className="mt-4 space-y-3">
-            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-800">
+            <div className="rounded-md border border-warning/20 bg-warning/5 px-3 py-3 text-sm text-warning">
               Self-serve setup isn't available on this account. If you pay through
               UPI Autopay, you can re-authorize your mandate below — you'll be
               taken to a secure Razorpay page to approve it.
             </div>
             {mandateError && (
-              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
                 {mandateError}
               </div>
             )}
@@ -331,12 +331,12 @@ export default function PortalPaymentMethod({
             </Button>
           </div>
         ) : error ? (
-          <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mt-4 rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
             {error}
           </div>
         ) : loading || !clientSecret || !stripePromise ? (
           <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-subtle" />
           </div>
         ) : mode === "bank" ? (
           <BankSetupForm

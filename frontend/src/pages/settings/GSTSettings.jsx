@@ -135,7 +135,7 @@ export default function GSTSettings() {
                   <p
                     className={
                       "mt-2 flex items-center gap-1.5 text-xs font-medium " +
-                      (validation.valid ? "text-emerald-600" : "text-red-600")
+                      (validation.valid ? "text-success" : "text-destructive")
                     }
                   >
                     {validation.valid ? (

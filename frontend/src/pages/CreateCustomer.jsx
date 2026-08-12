@@ -140,7 +140,7 @@ export default function CreateCustomer() {
                 placeholder="e.g., Acme Corporation"
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value)}
-                className={cn(errors.name && "border-red-400 focus-visible:ring-red-400")}
+                className={cn(errors.name && "border-destructive/60 focus-visible:ring-destructive")}
               />
             </FormField>
             <FormField label="Email address" htmlFor="email" required error={errors.email}>
@@ -150,7 +150,7 @@ export default function CreateCustomer() {
                 placeholder="e.g., billing@acme.com"
                 value={form.email}
                 onChange={(e) => setField("email", e.target.value)}
-                className={cn(errors.email && "border-red-400 focus-visible:ring-red-400")}
+                className={cn(errors.email && "border-destructive/60 focus-visible:ring-destructive")}
               />
             </FormField>
             <FormField label="Phone number" htmlFor="phone">
@@ -257,7 +257,7 @@ export default function CreateCustomer() {
                     onClick={() => setField("tax_exempt", !form.tax_exempt)}
                     className={cn(
                       "relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                      form.tax_exempt ? "bg-primary" : "bg-stone-200",
+                      form.tax_exempt ? "bg-primary" : "bg-border",
                     )}
                   >
                     <span

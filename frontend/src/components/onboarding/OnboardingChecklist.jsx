@@ -101,7 +101,7 @@ export default function OnboardingChecklist() {
   const next = steps.find((s) => !s.done);
 
   return (
-    <Card className="mb-6 border-emerald-200 bg-emerald-50/50 p-5">
+    <Card className="mb-6 border-success/20 bg-success/5/50 p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-base font-semibold text-foreground">
@@ -125,9 +125,9 @@ export default function OnboardingChecklist() {
       </div>
 
       {/* Progress */}
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-emerald-100" role="progressbar" aria-valuenow={doneCount} aria-valuemin={0} aria-valuemax={steps.length} aria-label="Onboarding progress">
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-success/15" role="progressbar" aria-valuenow={doneCount} aria-valuemin={0} aria-valuemax={steps.length} aria-label="Onboarding progress">
         <div
-          className="h-full rounded-full bg-emerald-500 transition-all"
+          className="h-full rounded-full bg-success/50 transition-all"
           style={{ width: `${(doneCount / steps.length) * 100}%` }}
         />
       </div>
@@ -138,14 +138,14 @@ export default function OnboardingChecklist() {
             <Link
               to={step.to}
               className={cn(
-                "group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-emerald-100/60",
+                "group flex items-center gap-3 rounded-md px-2 py-1.5 transition-colors hover:bg-primary/15/60",
                 step.done && "opacity-60"
               )}
             >
               {step.done ? (
-                <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" aria-hidden />
+                <CheckCircle2 className="h-5 w-5 shrink-0 text-success" aria-hidden />
               ) : (
-                <Circle className="h-5 w-5 shrink-0 text-emerald-300" aria-hidden />
+                <Circle className="h-5 w-5 shrink-0 text-primary/40" aria-hidden />
               )}
               <span className={cn("text-sm font-medium", step.done && "line-through")}>
                 {step.label}
@@ -154,7 +154,7 @@ export default function OnboardingChecklist() {
                 {step.hint}
               </span>
               {!step.done && (
-                <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-emerald-500 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+                <ArrowRight className="ml-auto h-4 w-4 shrink-0 text-success opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
               )}
             </Link>
           </li>

@@ -319,20 +319,20 @@ export default function SubscriptionDetail({
               <span
                 className={cn(
                   "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
-                  isActive ? "bg-emerald-400" : "bg-stone-400"
+                  isActive ? "bg-success" : "bg-subtle/50"
                 )}
               />
               <span
                 className={cn(
                   "relative inline-flex h-2 w-2 rounded-full",
-                  isActive ? "bg-emerald-500" : "bg-stone-500"
+                  isActive ? "bg-success/50" : "bg-muted0"
                 )}
               />
             </span>
             <span
               className={cn(
                 "text-sm font-medium capitalize",
-                isActive ? "text-emerald-600" : "text-muted-foreground"
+                isActive ? "text-success" : "text-muted-foreground"
               )}
             >
               {subscription.status}
@@ -353,7 +353,7 @@ export default function SubscriptionDetail({
                 size="sm"
                 onClick={() => setConfirmAction("pause")}
                 disabled={loading}
-                className="text-amber-700 hover:text-amber-800"
+                className="text-warning hover:text-warning"
               >
                 <Pause className="h-3.5 w-3.5" />
                 Pause
@@ -365,7 +365,7 @@ export default function SubscriptionDetail({
                 size="sm"
                 onClick={() => setConfirmAction("resume")}
                 disabled={loading}
-                className="text-emerald-700 hover:text-emerald-800"
+                className="text-success hover:text-primary"
               >
                 <Play className="h-3.5 w-3.5" />
                 Resume
@@ -377,7 +377,7 @@ export default function SubscriptionDetail({
                 size="sm"
                 onClick={() => setCancelOpen(true)}
                 disabled={loading}
-                className="text-red-600 hover:text-red-700"
+                className="text-destructive hover:text-destructive"
               >
                 Cancel
               </Button>
@@ -388,7 +388,7 @@ export default function SubscriptionDetail({
                 size="sm"
                 onClick={() => setConfirmAction("reactivate")}
                 disabled={loading}
-                className="text-emerald-700 hover:text-emerald-800"
+                className="text-success hover:text-primary"
               >
                 <RotateCw className="h-3.5 w-3.5" />
                 Reactivate
@@ -677,11 +677,11 @@ export default function SubscriptionDetail({
                         <div className="mt-1.5 flex items-center gap-2">
                           <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
                             <span
-                              className={`block h-full rounded-full ${over ? "bg-red-500" : "bg-primary"}`}
+                              className={`block h-full rounded-full ${over ? "bg-destructive/50" : "bg-primary"}`}
                               style={{ width: `${over ? 100 : pct}%` }}
                             />
                           </span>
-                          <span className={`text-xs tabular-nums ${over ? "text-red-600" : "text-muted-foreground"}`}>
+                          <span className={`text-xs tabular-nums ${over ? "text-destructive" : "text-muted-foreground"}`}>
                             {over ? `${Math.abs(d.remaining).toLocaleString()} over` : `${d.remaining.toLocaleString()} left`}
                           </span>
                         </div>
@@ -897,7 +897,7 @@ export default function SubscriptionDetail({
                       type="button"
                       onClick={() => removeAddon(a.id)}
                       disabled={addonBusy}
-                      className="text-muted-foreground hover:text-red-600 disabled:opacity-50"
+                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
                       aria-label="Remove add-on"
                     >
                       <X className="h-4 w-4" />
@@ -969,7 +969,7 @@ export default function SubscriptionDetail({
                     aria-hidden="true"
                   />
                   <div className="relative flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-500 ring-4 ring-white">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-success/50 ring-4 ring-white">
                       <Check className="h-3.5 w-3.5 text-white" />
                     </span>
                     <div className="flex min-w-0 flex-1 justify-between gap-4">
@@ -987,7 +987,7 @@ export default function SubscriptionDetail({
               <li>
                 <div className="relative">
                   <div className="relative flex items-center gap-3">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-stone-400 ring-4 ring-white">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-subtle/60 ring-4 ring-background">
                       <RotateCw className="h-3.5 w-3.5 text-white" />
                     </span>
                     <div className="flex min-w-0 flex-1 justify-between gap-4">

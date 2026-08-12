@@ -84,7 +84,7 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
       <AddressElement options={{ mode: "billing" }} />
       <PaymentElement />
       {error && (
-        <div className="rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
+        <div className="rounded-lg bg-destructive/5 px-3 py-3 text-sm text-destructive ring-1 ring-inset ring-destructive/20">
           {error}
         </div>
       )}
@@ -245,8 +245,8 @@ export default function Checkout() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+      <div className="flex min-h-screen items-center justify-center bg-muted">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
       </div>
     );
   }
@@ -255,13 +255,13 @@ export default function Checkout() {
     return (
       <CheckoutShell>
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
-            <AlertCircle className="h-6 w-6 text-red-500" />
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-destructive/5">
+            <AlertCircle className="h-6 w-6 text-destructive" />
           </div>
-          <h1 className="text-xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
             Invoice not found
           </h1>
-          <p className="mt-1 text-sm text-stone-500">{error}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{error}</p>
         </div>
       </CheckoutShell>
     );
@@ -271,16 +271,16 @@ export default function Checkout() {
     return (
       <CheckoutShell>
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
-            <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/5">
+            <CheckCircle2 className="h-7 w-7 text-success" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Payment successful
           </h1>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             Invoice {invoice?.invoice_number} has been paid.
           </p>
-          <p className="mt-4 text-xs text-stone-400">You can close this page.</p>
+          <p className="mt-4 text-xs text-subtle">You can close this page.</p>
         </div>
       </CheckoutShell>
     );
@@ -290,13 +290,13 @@ export default function Checkout() {
     return (
       <CheckoutShell>
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-50">
-            <AlertCircle className="h-7 w-7 text-red-500" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/5">
+            <AlertCircle className="h-7 w-7 text-destructive" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Payment not completed
           </h1>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             Your payment for invoice {invoice?.invoice_number} was declined or
             cancelled. You have not been charged.
           </p>
@@ -312,13 +312,13 @@ export default function Checkout() {
     return (
       <CheckoutShell>
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
-            <Clock className="h-7 w-7 text-amber-500" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-warning/5">
+            <Clock className="h-7 w-7 text-warning" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Payment processing
           </h1>
-          <p className="mt-2 text-sm text-stone-500">
+          <p className="mt-2 text-sm text-muted-foreground">
             We've received your payment for invoice {invoice?.invoice_number}.
             Bank payments (like ACH) take a few business days to clear — you'll
             get a receipt once it settles. No further action is needed.
@@ -333,15 +333,15 @@ export default function Checkout() {
   return (
     <CheckoutShell>
       <div className="mb-6 text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-500 text-2xl font-bold text-white">
+        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-success/50 text-2xl font-bold text-white">
           R
         </div>
-        <h1 className="text-2xl font-semibold tracking-tight text-stone-900">
+        <h1 className="text-2xl font-semibold tracking-tight text-foreground">
           Checkout
         </h1>
       </div>
 
-      <div className="mb-6 space-y-3 rounded-xl border border-stone-200 bg-stone-50 p-4">
+      <div className="mb-6 space-y-3 rounded-xl border border-border bg-muted p-4">
         <SummaryRow label="Invoice" value={invoice.invoice_number} strong />
         {invoice.subtotal !== invoice.total && (
           <>
@@ -353,12 +353,12 @@ export default function Checkout() {
               label="Tax"
               value={formatCurrency(invoice.tax_amount, invoice.currency)}
             />
-            <div className="border-t border-stone-200 pt-2" />
+            <div className="border-t border-border pt-2" />
           </>
         )}
         <div className="flex items-center justify-between">
-          <span className="text-sm text-stone-500">Total</span>
-          <span className="text-lg font-bold tabular-nums text-stone-900">
+          <span className="text-sm text-muted-foreground">Total</span>
+          <span className="text-lg font-bold tabular-nums text-foreground">
             {formatCurrency(invoice.total, invoice.currency)}
           </span>
         </div>
@@ -366,7 +366,7 @@ export default function Checkout() {
       </div>
 
       {error && (
-        <div className="mb-4 rounded-lg bg-red-50 px-3 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
+        <div className="mb-4 rounded-lg bg-destructive/5 px-3 py-3 text-sm text-destructive ring-1 ring-inset ring-destructive/20">
           {error}
         </div>
       )}
@@ -383,7 +383,7 @@ export default function Checkout() {
         // gateway said "stripe" but the key or client_secret is missing —
         // showing the Pay button again would mint a new PaymentIntent per
         // click with no form ever appearing.
-        <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+        <div className="rounded-lg bg-warning/5 px-3 py-3 text-sm text-warning ring-1 ring-inset ring-warning/20">
           This checkout isn't fully configured. Please contact the sender to
           arrange payment.
         </div>
@@ -396,13 +396,13 @@ export default function Checkout() {
           >
             {`Pay ${formatCurrency(invoice.total, invoice.currency)}`}
           </Button>
-          <p className="text-center text-xs text-stone-400">
+          <p className="text-center text-xs text-subtle">
             A secure Razorpay window opens to complete your payment (UPI, cards,
             netbanking).
           </p>
         </div>
       ) : gateway && gateway !== "stripe" ? (
-        <div className="rounded-lg bg-amber-50 px-3 py-3 text-sm text-amber-800 ring-1 ring-inset ring-amber-600/20">
+        <div className="rounded-lg bg-warning/5 px-3 py-3 text-sm text-warning ring-1 ring-inset ring-warning/20">
           Self-serve checkout for {invoice.currency} isn't available here yet.
           Please contact the sender to arrange payment.
         </div>
@@ -419,15 +419,15 @@ export default function Checkout() {
         </Button>
       )}
 
-      <p className="mt-4 text-center text-xs text-stone-400">Powered by Recurso</p>
+      <p className="mt-4 text-center text-xs text-subtle">Powered by Recurso</p>
     </CheckoutShell>
   );
 }
 
 function CheckoutShell({ children }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">
+    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-white p-8 shadow-sm">
         {children}
       </div>
     </div>
@@ -437,12 +437,12 @@ function CheckoutShell({ children }) {
 function SummaryRow({ label, value, strong }) {
   return (
     <div className="flex justify-between">
-      <span className="text-sm text-stone-500">{label}</span>
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span
         className={
           strong
-            ? "text-sm font-semibold text-stone-900"
-            : "text-sm tabular-nums text-stone-900"
+            ? "text-sm font-semibold text-foreground"
+            : "text-sm tabular-nums text-foreground"
         }
       >
         {value}

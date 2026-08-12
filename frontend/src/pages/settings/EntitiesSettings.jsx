@@ -164,7 +164,7 @@ export default function EntitiesSettings() {
                         <button
                           type="button"
                           onClick={() => setRemoveTarget(e)}
-                          className="text-muted-foreground hover:text-red-600"
+                          className="text-muted-foreground hover:text-destructive"
                           aria-label="Delete entity"
                         >
                           <Trash2 className="h-4 w-4" />

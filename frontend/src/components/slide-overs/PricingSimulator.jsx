@@ -74,7 +74,7 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
         </Button>
       </div>
 
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
 
       {result && (
         <div className="mt-3 flex flex-col gap-3">

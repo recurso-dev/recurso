@@ -31,7 +31,7 @@ export default function ForgotPassword() {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-stone-50 px-4 py-12">
+    <div className="flex min-h-screen w-full items-center justify-center bg-muted px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -51,7 +51,7 @@ export default function ForgotPassword() {
           <CardContent className="p-6">
             {sent ? (
               <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-success/5 text-success">
                   <CheckCircle2 className="h-6 w-6" />
                 </div>
                 <p className="text-sm text-foreground">

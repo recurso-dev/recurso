@@ -122,9 +122,9 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
 
         <div className="space-y-6 px-6 py-6">
           {isPending && canApprove && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <h3 className="text-sm font-medium text-amber-800">Approval Required</h3>
-              <p className="mt-1 text-sm text-amber-700">
+            <div className="rounded-lg border border-warning/20 bg-warning/5 p-4">
+              <h3 className="text-sm font-medium text-warning">Approval Required</h3>
+              <p className="mt-1 text-sm text-warning">
                 This credit note is pending review. You can approve it to issue the credit or refund, or reject it.
               </p>
               <div className="mt-4 flex gap-3">
@@ -258,7 +258,7 @@ const CreditNoteDetail = ({ creditNote, isOpen, onClose }) => {
               <Button
                 variant="ghost"
                 size="sm"
-                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => setConfirmVoid(true)}
               >
                 <Ban className="mr-2 h-4 w-4" />

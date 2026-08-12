@@ -144,7 +144,7 @@ function MfaSection() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-base">
-          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+          <ShieldCheck className="h-4 w-4 text-success" />
           Two-factor authentication
           {enabled && (
             <Badge variant="success" className="ml-1">
@@ -157,14 +157,14 @@ function MfaSection() {
         {/* One-time backup codes after enabling */}
         {backupCodes ? (
           <div className="space-y-4">
-            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            <div className="flex items-start gap-2 rounded-md border border-warning/20 bg-warning/5 p-3 text-sm text-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
                 Save these backup codes now. Each can be used once if you lose
                 your authenticator. They won't be shown again.
               </p>
             </div>
-            <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-stone-50 p-4 font-mono text-sm">
+            <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-muted p-4 font-mono text-sm">
               {backupCodes.map((c) => (
                 <span key={c} className="text-foreground">
                   {c}
@@ -204,7 +204,7 @@ function MfaSection() {
                   Or enter this key manually
                 </p>
                 <div className="flex items-center gap-2">
-                  <code className="rounded bg-stone-100 px-2 py-1 font-mono text-sm break-all">
+                  <code className="rounded bg-muted px-2 py-1 font-mono text-sm break-all">
                     {setup.secret}
                   </code>
                   <CopyButton value={setup.secret} />
@@ -386,7 +386,7 @@ function SessionsSection() {
             Loading sessions…
           </div>
         ) : error ? (
-          <p className="py-6 text-sm text-red-600">
+          <p className="py-6 text-sm text-destructive">
             Couldn't load your sessions.{" "}
             <button
               type="button"
@@ -549,7 +549,7 @@ function SSOSection() {
           <>
             {/* Service-provider details to hand to the IdP */}
             {(conn?.sp_metadata_url || conn?.sp_acs_url) && (
-              <div className="space-y-3 rounded-md border border-border bg-stone-50 p-4">
+              <div className="space-y-3 rounded-md border border-border bg-muted p-4">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Give these to your identity provider
                 </p>

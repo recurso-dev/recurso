@@ -159,7 +159,7 @@ const RowActions = ({ item }) => {
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="text-red-600 focus:text-red-600"
+                className="text-destructive focus:text-destructive"
                 onClick={() => setConfirmWriteOff(true)}
               >
                 <Ban className="mr-2 h-4 w-4" /> Mark uncollectible
@@ -260,13 +260,13 @@ const Collections = () => {
       />
 
       {loadError && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+        <p className="mb-4 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
           {loadError} — refresh to retry.
         </p>
       )}
 
       {funnel?.fx_excluded_currencies?.length > 0 && (
-        <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+        <p className="mb-4 rounded-md bg-warning/5 px-3 py-2 text-sm text-warning" role="status">
           Amounts exclude {funnel.fx_excluded_currencies.join(", ")} invoices (no exchange rate
           available) — the money figures below are understated; counts are complete.
         </p>
@@ -333,7 +333,7 @@ const Collections = () => {
                   </div>
                   <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full bg-amber-500"
+                      className="h-full rounded-full bg-warning/50"
                       style={{
                         width: `${maxFailureAmount > 0 ? Math.max(4, (f.amount_at_risk / maxFailureAmount) * 100) : 0}%`,
                       }}
@@ -414,9 +414,9 @@ const Collections = () => {
                         <span
                           className={
                             it.days_overdue >= 30
-                              ? "text-red-600"
+                              ? "text-destructive"
                               : it.days_overdue >= 7
-                                ? "text-amber-600"
+                                ? "text-warning"
                                 : "text-muted-foreground"
                           }
                         >

@@ -159,7 +159,7 @@ export default function Customers() {
         cell: (c) => (
           <button
             onClick={(e) => copyPortalLink(e, c)}
-            className="text-stone-400 transition-colors hover:text-emerald-600"
+            className="text-subtle transition-colors hover:text-primary"
             title="Copy portal link"
             aria-label={`Copy portal link for ${c.name}`}
           >
@@ -205,8 +205,8 @@ export default function Customers() {
                 className={cn(
                   "rounded-md px-3 py-1 text-sm font-medium capitalize transition-colors",
                   status === f
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "text-stone-500 hover:text-stone-900"
+                    ? "bg-success/5 text-success"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {f}

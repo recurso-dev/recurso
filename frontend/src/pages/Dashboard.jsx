@@ -303,14 +303,14 @@ export default function Dashboard() {
             {overdueCount > 0 && (
               <Link
                 to="/finance/invoice-aging"
-                className="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 transition-colors hover:bg-red-100"
+                className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 transition-colors hover:bg-destructive/15"
               >
-                <AlertTriangle className="h-5 w-5 shrink-0 text-red-600" />
+                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-red-800">
+                  <p className="text-sm font-semibold text-destructive">
                     {overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}
                   </p>
-                  <p className="truncate text-xs text-red-700">
+                  <p className="truncate text-xs text-destructive">
                     {Object.entries(overdueByCur)
                       .map(([c, v]) => formatCurrency(v, c))
                       .join(" + ")}{" "}
@@ -322,35 +322,35 @@ export default function Dashboard() {
             {openDisputes > 0 && (
               <Link
                 to="/disputes"
-                className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100"
+                className="flex items-center gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 transition-colors hover:bg-warning/15"
               >
-                <FileQuestion className="h-5 w-5 shrink-0 text-amber-600" />
+                <FileQuestion className="h-5 w-5 shrink-0 text-warning" />
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">
+                  <p className="text-sm font-semibold text-warning">
                     {openDisputes} open dispute{openDisputes === 1 ? "" : "s"}
                   </p>
-                  <p className="text-xs text-amber-700">Customers are waiting on you</p>
+                  <p className="text-xs text-warning">Customers are waiting on you</p>
                 </div>
               </Link>
             )}
             {churnAlerts > 0 && (
               <Link
                 to="/churn"
-                className="flex items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 transition-colors hover:bg-amber-100"
+                className="flex items-center gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 transition-colors hover:bg-warning/15"
               >
-                <TrendingDown className="h-5 w-5 shrink-0 text-amber-600" />
+                <TrendingDown className="h-5 w-5 shrink-0 text-warning" />
                 <div>
-                  <p className="text-sm font-semibold text-amber-800">
+                  <p className="text-sm font-semibold text-warning">
                     {churnAlerts} churn alert{churnAlerts === 1 ? "" : "s"}
                   </p>
-                  <p className="text-xs text-amber-700">Risk scores spiked — review them</p>
+                  <p className="text-xs text-warning">Risk scores spiked — review them</p>
                 </div>
               </Link>
             )}
           </div>
         ) : (
           <div className="mb-6 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <CheckCircle2 className="h-4 w-4 text-success" />
             All clear — no overdue invoices, open disputes, or churn alerts.
           </div>
         ))}
@@ -455,7 +455,7 @@ export default function Dashboard() {
             <CardTitle className="text-base">Subscription mix</CardTitle>
             <Link
               to="/subscriptions"
-              className="text-sm font-medium text-emerald-700 hover:underline"
+              className="text-sm font-medium text-success hover:underline"
             >
               View all
             </Link>
@@ -513,7 +513,7 @@ export default function Dashboard() {
         <Card className="lg:col-span-8">
           <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-base">Recent invoices</CardTitle>
-            <Link to="/invoices" className="text-sm font-medium text-emerald-700 hover:underline">
+            <Link to="/invoices" className="text-sm font-medium text-success hover:underline">
               View all
             </Link>
           </CardHeader>
@@ -578,7 +578,7 @@ export default function Dashboard() {
             <CardTitle className="text-base">Receivables</CardTitle>
             <Link
               to="/finance/invoice-aging"
-              className="text-sm font-medium text-emerald-700 hover:underline"
+              className="text-sm font-medium text-success hover:underline"
             >
               Aging
             </Link>

@@ -56,7 +56,7 @@ export default function AcceptInvite() {
   const missingOrInvalid = !token || invalidToken;
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-stone-50 px-4 py-12">
+    <div className="flex min-h-screen w-full items-center justify-center bg-muted px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -74,7 +74,7 @@ export default function AcceptInvite() {
           <CardContent className="p-6">
             {missingOrInvalid ? (
               <div className="flex flex-col items-center text-center">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-red-50 text-red-600">
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-full bg-destructive/5 text-destructive">
                   <AlertTriangle className="h-6 w-6" />
                 </div>
                 <p className="text-sm text-foreground">
@@ -114,7 +114,7 @@ export default function AcceptInvite() {
                 </FormField>
 
                 {error && (
-                  <p className="text-sm font-medium text-red-600" role="alert">
+                  <p className="text-sm font-medium text-destructive" role="alert">
                     {error}
                   </p>
                 )}

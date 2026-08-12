@@ -473,7 +473,7 @@ export default function PlanCharges({ planId, currency }) {
                   type="button"
                   onClick={() => removeRow(i)}
                   aria-label={`Remove charge ${i + 1}`}
-                  className="flex-none text-stone-400 transition-colors hover:text-red-500"
+                  className="flex-none text-subtle transition-colors hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -564,7 +564,7 @@ export default function PlanCharges({ planId, currency }) {
                           onClick={() => removeTier(i, ti)}
                           disabled={row.tiers.length === 1}
                           aria-label={`Remove tier ${ti + 1}`}
-                          className="text-stone-400 transition-colors hover:text-red-500 disabled:opacity-30"
+                          className="text-subtle transition-colors hover:text-destructive disabled:opacity-30"
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
@@ -669,7 +669,7 @@ export default function PlanCharges({ planId, currency }) {
                             type="button"
                             onClick={() => removeFilter(i, fi)}
                             aria-label={`Remove filter ${fi + 1}`}
-                            className="text-stone-400 transition-colors hover:text-red-500"
+                            className="text-subtle transition-colors hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
@@ -716,7 +716,7 @@ export default function PlanCharges({ planId, currency }) {
           ))}
 
           {validationError && (
-            <p role="alert" className="text-sm text-red-600">
+            <p role="alert" className="text-sm text-destructive">
               {validationError}
             </p>
           )}
@@ -742,7 +742,7 @@ export default function PlanCharges({ planId, currency }) {
           </div>
         </div>
       ) : loadError ? (
-        <p className="text-sm text-red-600">Failed to load usage charges.</p>
+        <p className="text-sm text-destructive">Failed to load usage charges.</p>
       ) : charges.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No usage charges configured. Add metered pricing to bill this plan on usage.

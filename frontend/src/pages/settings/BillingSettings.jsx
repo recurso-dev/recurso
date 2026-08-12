@@ -24,7 +24,7 @@ function CurrentPlan({ status }) {
           <div className="mt-1 flex items-center gap-2 text-lg font-semibold capitalize text-foreground">
             {trialing ? "Free trial" : status.plan_tier || "—"}
             {trialing && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
+              <span className="inline-flex items-center gap-1 rounded-full border border-info/20 bg-info/5 px-2 py-0.5 text-xs font-medium text-info">
                 <Clock className="h-3 w-3" />
                 {status.trial_expired ? "ended" : `${days} day${days === 1 ? "" : "s"} left`}
               </span>

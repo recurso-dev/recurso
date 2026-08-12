@@ -432,7 +432,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                       type="button"
                       onClick={() => removeRow(index)}
                       aria-label={`Remove entitlement ${index + 1}`}
-                      className="flex-none text-stone-400 transition-colors hover:text-red-500"
+                      className="flex-none text-subtle transition-colors hover:text-destructive"
                     >
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -440,7 +440,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                 ))}
 
                 {validationError && (
-                  <p role="alert" className="text-sm text-red-600">
+                  <p role="alert" className="text-sm text-destructive">
                     {validationError}
                   </p>
                 )}
@@ -466,7 +466,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                 </div>
               </div>
             ) : entLoadError ? (
-              <p className="text-sm text-red-600">Failed to load entitlements.</p>
+              <p className="text-sm text-destructive">Failed to load entitlements.</p>
             ) : entitlements.length === 0 ? (
               <p className="text-sm text-muted-foreground">
                 No entitlements configured for this plan.
@@ -478,9 +478,9 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                   return (
                     <div key={ent.feature_key} className="flex items-center gap-3">
                       {disabled ? (
-                        <X className="h-4 w-4 text-stone-400" />
+                        <X className="h-4 w-4 text-subtle" />
                       ) : (
-                        <Check className="h-4 w-4 text-emerald-500" />
+                        <Check className="h-4 w-4 text-success" />
                       )}
                       <p className="font-mono text-sm text-foreground">
                         {ent.feature_key}

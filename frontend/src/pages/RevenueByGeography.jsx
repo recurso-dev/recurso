@@ -10,7 +10,8 @@ import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
 
-const BAR_COLORS = ["bg-emerald-500", "bg-emerald-600", "bg-teal-500", "bg-cyan-600", "bg-sky-600", "bg-indigo-500"];
+// eslint-disable-next-line no-restricted-syntax -- categorical chart series palette: data colors, not UI chrome
+const BAR_COLORS = ["bg-success/50", "bg-primary", "bg-teal-500", "bg-cyan-600", "bg-sky-600", "bg-indigo-500"];
 
 export default function RevenueByGeography() {
   const {

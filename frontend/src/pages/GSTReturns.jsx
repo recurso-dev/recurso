@@ -463,7 +463,7 @@ const GSTReturns = () => {
         <div>
           <ReportScopeSelect value={scope} onChange={setScope} hideConsolidated />
         </div>
-        <FileSpreadsheet className="mb-2 h-5 w-5 text-stone-300" />
+        <FileSpreadsheet className="mb-2 h-5 w-5 text-subtle/60" />
       </div>
 
       <Tabs defaultValue="gstr1">

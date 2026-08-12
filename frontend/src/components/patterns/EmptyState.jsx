@@ -31,7 +31,7 @@ export function EmptyState({
       )}
     >
       <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted">
-        <Icon className="h-5 w-5 text-stone-400" />
+        <Icon className="h-5 w-5 text-subtle" />
       </div>
       <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       {description && (
@@ -43,7 +43,7 @@ export function EmptyState({
           href={learnMoreHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-emerald-700 transition-colors hover:text-emerald-800"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium text-success transition-colors hover:text-primary"
         >
           {learnMoreLabel}
           <ArrowUpRight className="h-3.5 w-3.5" />

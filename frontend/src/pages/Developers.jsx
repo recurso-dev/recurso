@@ -80,7 +80,7 @@ function EventDeliveries({ state }) {
   }
   if (state.error) {
     return (
-      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-xs text-red-700">
+      <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-4 text-xs text-destructive">
         {state.error}
       </p>
     );
@@ -124,7 +124,7 @@ function EventDeliveries({ state }) {
             </span>
           </div>
           {d.last_error ? (
-            <p className="mt-2 break-words rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-700">
+            <p className="mt-2 break-words rounded bg-destructive/5 px-2 py-1 font-mono text-xs text-destructive">
               {d.last_error}
             </p>
           ) : null}
@@ -599,7 +599,7 @@ export default function Developers() {
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <Webhook className="h-4 w-4 shrink-0 text-stone-400" />
+                        <Webhook className="h-4 w-4 shrink-0 text-subtle" />
                         <code className="break-all font-mono text-sm font-semibold text-foreground">
                           {hook.url}
                         </code>
@@ -615,7 +615,7 @@ export default function Developers() {
                         <p className="text-xs uppercase tracking-wide text-muted-foreground">
                           Signing secret
                         </p>
-                        <code className="font-mono text-xs text-stone-400">
+                        <code className="font-mono text-xs text-subtle">
                           whsec_•••••••
                         </code>
                       </div>
@@ -645,7 +645,7 @@ export default function Developers() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setDeleteWebhookTarget(hook.id)}
-                        className="text-stone-400 hover:text-red-600"
+                        className="text-subtle hover:text-destructive"
                         title="Delete endpoint"
                         aria-label="Delete endpoint"
                       >
@@ -764,9 +764,9 @@ export default function Developers() {
                         </TableCell>
                         <TableCell className="text-right">
                           {expandedEventId === evt.id ? (
-                            <ChevronUp className="ml-auto h-4 w-4 text-stone-400" />
+                            <ChevronUp className="ml-auto h-4 w-4 text-subtle" />
                           ) : (
-                            <ChevronDown className="ml-auto h-4 w-4 text-stone-400" />
+                            <ChevronDown className="ml-auto h-4 w-4 text-subtle" />
                           )}
                         </TableCell>
                       </TableRow>
@@ -833,7 +833,7 @@ export default function Developers() {
             <DialogTitle>New API key generated</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="flex items-start gap-2 rounded-lg bg-amber-50 p-4 text-amber-800 ring-1 ring-inset ring-amber-200">
+            <div className="flex items-start gap-2 rounded-lg bg-warning/5 p-4 text-warning ring-1 ring-inset ring-warning/20">
               <AlertTriangle className="h-5 w-5 shrink-0" />
               <p className="text-sm font-medium">
                 Copy your secret API key and store it securely. You will not be able to
@@ -867,7 +867,7 @@ export default function Developers() {
 
           {createdWebhookSecret ? (
             <div className="flex-1 space-y-4 overflow-y-auto px-6">
-              <div className="flex items-start gap-2 rounded-lg bg-emerald-50 p-4 text-emerald-800 ring-1 ring-inset ring-emerald-200">
+              <div className="flex items-start gap-2 rounded-lg bg-success/5 p-4 text-success ring-1 ring-inset ring-success/20">
                 <CheckCircle2 className="h-5 w-5 shrink-0" />
                 <p className="text-sm font-medium">
                   Webhook endpoint created successfully.
@@ -976,7 +976,7 @@ export default function Developers() {
                 Loading deliveries…
               </p>
             ) : endpointDeliveriesError ? (
-              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">
+              <p className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-4 text-sm text-destructive">
                 {endpointDeliveriesError}
               </p>
             ) : endpointDeliveries.length === 0 ? (
@@ -1022,7 +1022,7 @@ export default function Developers() {
                       </span>
                     </div>
                     {d.last_error ? (
-                      <p className="mt-2 break-words rounded bg-red-50 px-2 py-1 font-mono text-xs text-red-700">
+                      <p className="mt-2 break-words rounded bg-destructive/5 px-2 py-1 font-mono text-xs text-destructive">
                         {d.last_error}
                       </p>
                     ) : null}

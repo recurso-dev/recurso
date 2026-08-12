@@ -105,7 +105,7 @@ export default function CreatePlan() {
                 placeholder="e.g. Pro Tier"
                 value={formData.name}
                 onChange={(e) => setField("name", e.target.value)}
-                className={cn(errors.name && "border-red-400 focus-visible:ring-red-400")}
+                className={cn(errors.name && "border-destructive/60 focus-visible:ring-destructive")}
               />
             </FormField>
             <FormField
@@ -119,7 +119,7 @@ export default function CreatePlan() {
                 placeholder="e.g. pro-monthly"
                 value={formData.code}
                 onChange={(e) => setField("code", e.target.value)}
-                className={cn(errors.code && "border-red-400 focus-visible:ring-red-400")}
+                className={cn(errors.code && "border-destructive/60 focus-visible:ring-destructive")}
               />
             </FormField>
             <FormField label="Description" htmlFor="description">
@@ -148,7 +148,7 @@ export default function CreatePlan() {
                   value={formData.price}
                   onChange={(e) => setField("price", e.target.value)}
                   className={cn(
-                    errors.price && "border-red-400 focus-visible:ring-red-400"
+                    errors.price && "border-destructive/60 focus-visible:ring-destructive"
                   )}
                 />
               </FormField>

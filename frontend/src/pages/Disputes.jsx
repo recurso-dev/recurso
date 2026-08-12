@@ -254,7 +254,7 @@ const Disputes = () => {
           <DialogFooter className="gap-2 sm:justify-between">
             <Button
               variant="outline"
-              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
               onClick={() => submit("reject")}
               disabled={resolving}
             >

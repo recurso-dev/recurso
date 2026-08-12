@@ -186,8 +186,8 @@ export default function IRPSettings() {
                   className={cn(
                     "rounded-lg border px-4 py-3 text-sm",
                     testResult.success
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-red-200 bg-red-50 text-red-800"
+                      ? "border-success/20 bg-success/5 text-success"
+                      : "border-destructive/20 bg-destructive/5 text-destructive"
                   )}
                 >
                   {testResult.message}

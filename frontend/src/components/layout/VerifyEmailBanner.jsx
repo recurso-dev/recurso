@@ -33,7 +33,7 @@ export default function VerifyEmailBanner() {
   return (
     <div
       role="status"
-      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-900 sm:px-6"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-warning/20 bg-warning/5 px-4 py-2 text-xs text-warning sm:px-6"
     >
       <Mail className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="min-w-0">
@@ -49,7 +49,7 @@ export default function VerifyEmailBanner() {
           type="button"
           onClick={resend}
           disabled={sending}
-          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white/60 px-2.5 py-1 font-medium text-amber-900 transition-colors hover:bg-white disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-white/60 px-2.5 py-1 font-medium text-warning transition-colors hover:bg-white disabled:opacity-60"
         >
           {sending && <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />}
           {sending ? "Sending…" : "Resend email"}
@@ -58,7 +58,7 @@ export default function VerifyEmailBanner() {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss"
-          className="flex h-6 w-6 items-center justify-center rounded-md text-amber-700 transition-colors hover:bg-amber-100 hover:text-amber-900"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-warning transition-colors hover:bg-warning/15 hover:text-warning"
         >
           <X className="h-3.5 w-3.5" />
         </button>

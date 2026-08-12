@@ -87,7 +87,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-stone-200 rounded-full hover:bg-stone-300;
+  @apply rounded-full bg-border hover:bg-input;
 }
 
 /* Numbers are data: every table cell aligns its numerals. */
