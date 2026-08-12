@@ -14,6 +14,7 @@ vi.mock("../../lib/api", () => ({
     getCreditNotes: vi.fn(),
     getCustomerWallets: vi.fn(),
     getAuditLogs: vi.fn(),
+    getEvents: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getPlans: vi.fn(),
   },
 }));
@@ -141,6 +142,15 @@ describe("CustomerPage", () => {
     );
     expect(endpoints.getAuditLogs).toHaveBeenCalledWith(
       expect.objectContaining({ entity_type: "customers", entity_id: "cus_1" })
+    );
+  });
+
+  it("fetches the object's timeline (events scoped by object_id)", async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(endpoints.getEvents).toHaveBeenCalledWith(
+        expect.objectContaining({ object_id: "cus_1" })
+      )
     );
   });
 

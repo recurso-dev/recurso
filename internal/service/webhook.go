@@ -159,6 +159,12 @@ func (s *WebhookService) ListEvents(ctx context.Context, tenantID uuid.UUID, eve
 	return s.eventRepo.ListByTenantID(ctx, tenantID, eventType, limit, offset)
 }
 
+// ListObjectEvents returns one object's events (newest first) — the
+// per-object timeline read for the dashboard's object pages.
+func (s *WebhookService) ListObjectEvents(ctx context.Context, tenantID, objectID uuid.UUID, limit, offset int) ([]*domain.Event, error) {
+	return s.eventRepo.ListByObject(ctx, tenantID, objectID, limit, offset)
+}
+
 // GetEvent returns a single event by ID
 func (s *WebhookService) GetEvent(ctx context.Context, id uuid.UUID) (*domain.Event, error) {
 	return s.eventRepo.GetByID(ctx, id)

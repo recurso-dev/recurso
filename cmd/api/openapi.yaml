@@ -3007,6 +3007,7 @@ paths:
       description: Chronological feed of billing events emitted for this tenant.
       parameters:
         - { name: type, in: query, schema: { type: string }, description: Filter to one event type (e.g. `invoice.paid`). }
+        - { name: object_id, in: query, schema: { type: string, format: uuid }, description: Filter to one object's events (per-object timeline); takes precedence over `type`. }
         - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
       responses:

@@ -13,6 +13,7 @@ import {
   AttributeList,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
+import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Alert } from "@/components/ui/alert";
@@ -354,6 +355,9 @@ export default function InvoicePage() {
                   { label: "Invoice ID", value: <CopyableId value={invoice.id} /> },
                 ]}
               />
+            </ObjectSection>
+            <ObjectSection title="Timeline">
+              <ObjectTimeline objectId={invoice.id} />
             </ObjectSection>
             <ObjectSection title="Audit trail">
               <AuditTrail entityType="invoices" entityId={invoice.id} />

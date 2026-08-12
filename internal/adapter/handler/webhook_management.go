@@ -192,7 +192,19 @@ func (h *WebhookManagementHandler) ListEvents(c *gin.Context) {
 	// default, and a huge ?limit= can't force an unbounded read.
 	limit, offset := parseLimitOffset(c, 50, 500)
 
-	events, err := h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), c.Query("type"), limit, offset)
+	var events []*domain.Event
+	var err error
+	if s := c.Query("object_id"); s != "" {
+		// Per-object timeline for the dashboard's object pages.
+		objectID, perr := uuid.Parse(s)
+		if perr != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid object_id")
+			return
+		}
+		events, err = h.webhookService.ListObjectEvents(c.Request.Context(), tenantID.(uuid.UUID), objectID, limit, offset)
+	} else {
+		events, err = h.webhookService.ListEvents(c.Request.Context(), tenantID.(uuid.UUID), c.Query("type"), limit, offset)
+	}
 	if err != nil {
 		respondInternalError(c, err)
 		return

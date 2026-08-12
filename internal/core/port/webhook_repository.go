@@ -25,6 +25,9 @@ type EventRepository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.Event, error)
 	// eventType filters to one event type ("" = all types).
 	ListByTenantID(ctx context.Context, tenantID uuid.UUID, eventType string, limit, offset int) ([]*domain.Event, error)
+	// ListByObject returns one object's events, newest first — the
+	// per-object timeline read (object pages).
+	ListByObject(ctx context.Context, tenantID, objectID uuid.UUID, limit, offset int) ([]*domain.Event, error)
 }
 
 // EventDeliveryRepository defines operations for tracking event deliveries

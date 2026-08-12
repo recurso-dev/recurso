@@ -16,6 +16,7 @@ import {
   RelatedEmpty,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
+import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -456,6 +457,9 @@ export default function SubscriptionPage() {
                   { label: "Created", value: formatDate(subscription.created_at) },
                 ]}
               />
+            </ObjectSection>
+            <ObjectSection title="Timeline">
+              <ObjectTimeline objectId={subscription.id} />
             </ObjectSection>
             <ObjectSection title="Audit trail">
               <AuditTrail entityType="subscriptions" entityId={subscription.id} />
