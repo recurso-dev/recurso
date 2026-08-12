@@ -1901,6 +1901,14 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: subscription_id
+          in: query
+          description: >-
+            Filter to one subscription's invoices (tenant-scoped). Ignored
+            when customer_id is also provided.
+          schema:
+            type: string
+            format: uuid
       responses:
         '200':
           description: Invoices for the tenant.

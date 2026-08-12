@@ -40,6 +40,10 @@ type InvoiceRepository interface {
 	// GetByCustomerIDPaged, which relies on customer-token auth).
 	ListByCustomerPaginated(ctx context.Context, tenantID, customerID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
 	CountByCustomer(ctx context.Context, tenantID, customerID uuid.UUID) (int, error)
+	// ListBySubscriptionPaginated / CountBySubscription mirror the by-customer
+	// pair for the subscription object page.
+	ListBySubscriptionPaginated(ctx context.Context, tenantID, subscriptionID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
+	CountBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int, error)
 	Update(ctx context.Context, invoice *domain.Invoice) error
 	// MarkPaid atomically transitions an invoice to paid only if it is not
 	// already paid, in a single conditional UPDATE. It returns true when this

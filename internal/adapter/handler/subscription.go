@@ -240,6 +240,15 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 			return
 		}
 		invs, total, err = h.service.ListInvoicesByCustomerPaginated(ctx, tenantID, customerID, p.PerPage, p.Offset)
+	} else if s := c.Query("subscription_id"); s != "" {
+		// Subscription-scoped list for the subscription object page; same
+		// tenant-in-SQL guarantee as the customer filter.
+		subscriptionID, perr := uuid.Parse(s)
+		if perr != nil {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription_id")
+			return
+		}
+		invs, total, err = h.service.ListInvoicesBySubscriptionPaginated(ctx, tenantID, subscriptionID, p.PerPage, p.Offset)
 	} else {
 		invs, total, err = h.service.ListInvoicesPaginated(ctx, tenantID, p.PerPage, p.Offset)
 	}

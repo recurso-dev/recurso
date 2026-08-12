@@ -722,6 +722,32 @@ func (r *InvoiceRepository) CountByCustomer(ctx context.Context, tenantID, custo
 	return n, err
 }
 
+// ListBySubscriptionPaginated / CountBySubscription mirror the by-customer
+// pair for the subscription object page (tenant predicate in SQL).
+func (r *InvoiceRepository) ListBySubscriptionPaginated(ctx context.Context, tenantID, subscriptionID uuid.UUID, limit, offset int) ([]*domain.Invoice, error) {
+	query := `SELECT ` + invoiceListColumns + ` FROM invoices WHERE tenant_id = $1 AND subscription_id = $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, subscriptionID, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch subscription invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	invoices, err := scanInvoiceList(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
+	return invoices, nil
+}
+
+func (r *InvoiceRepository) CountBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND subscription_id = $2`, tenantID, subscriptionID).Scan(&n)
+	return n, err
+}
+
 // GetOverdueInvoices returns unpaid invoices that are past due
 func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error) {
 	query := `

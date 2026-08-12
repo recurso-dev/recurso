@@ -167,3 +167,44 @@ func TestListInvoicesCustomerFilter(t *testing.T) {
 		t.Fatalf("bad customer_id: got %d want 400", got)
 	}
 }
+
+// --- GET /v1/invoices?subscription_id= ---------------------------------------
+
+type subscriptionScopedInvoiceRepo struct {
+	port.InvoiceRepository
+	tenantID       uuid.UUID
+	subscriptionID uuid.UUID
+	rows           []*domain.Invoice
+}
+
+func (r *subscriptionScopedInvoiceRepo) ListBySubscriptionPaginated(_ context.Context, tenantID, subscriptionID uuid.UUID, _, _ int) ([]*domain.Invoice, error) {
+	if tenantID == r.tenantID && subscriptionID == r.subscriptionID {
+		return r.rows, nil
+	}
+	return nil, nil
+}
+
+func (r *subscriptionScopedInvoiceRepo) CountBySubscription(_ context.Context, tenantID, subscriptionID uuid.UUID) (int, error) {
+	if tenantID == r.tenantID && subscriptionID == r.subscriptionID {
+		return len(r.rows), nil
+	}
+	return 0, nil
+}
+
+func TestListInvoicesSubscriptionFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID, subID := uuid.New(), uuid.New()
+	repo := &subscriptionScopedInvoiceRepo{
+		tenantID:       tenantID,
+		subscriptionID: subID,
+		rows:           []*domain.Invoice{{ID: uuid.New(), TenantID: tenantID}},
+	}
+	h := NewSubscriptionHandler(service.NewSubscriptionService(nil, repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil))
+
+	if got := doListInvoices(h, tenantID, "?subscription_id="+subID.String()).Code; got != http.StatusOK {
+		t.Fatalf("subscription-scoped list: got %d want 200", got)
+	}
+	if got := doListInvoices(h, tenantID, "?subscription_id=nope").Code; got != http.StatusBadRequest {
+		t.Fatalf("bad subscription_id: got %d want 400", got)
+	}
+}
