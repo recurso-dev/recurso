@@ -253,8 +253,8 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <Label>Order</Label>
-                      <Input
+                      <Label htmlFor="order">Order</Label>
+                      <Input id="order"
                         type="number"
                         min="1"
                         value={form.step_order}
@@ -262,8 +262,8 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                       />
                     </div>
                     <div>
-                      <Label>Delay (hours)</Label>
-                      <Input
+                      <Label htmlFor="delay-hours">Delay (hours)</Label>
+                      <Input id="delay-hours"
                         type="number"
                         min="0"
                         value={form.delay_hours}
@@ -272,12 +272,12 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                     </div>
                   </div>
                   <div>
-                    <Label>Channel</Label>
+                    <Label htmlFor="channel">Channel</Label>
                     <Select
                       value={form.channel}
                       onValueChange={(v) => setForm({ ...form, channel: v })}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger id="channel">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -290,16 +290,16 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                     </Select>
                   </div>
                   <div>
-                    <Label>Subject</Label>
-                    <Input
+                    <Label htmlFor="subject">Subject</Label>
+                    <Input id="subject"
                       value={form.subject}
                       onChange={(e) => setForm({ ...form, subject: e.target.value })}
                       placeholder="Your payment is overdue"
                     />
                   </div>
                   <div>
-                    <Label>Body</Label>
-                    <Textarea
+                    <Label htmlFor="body">Body</Label>
+                    <Textarea id="body"
                       className={textareaClass}
                       rows={3}
                       value={form.body}
@@ -308,8 +308,8 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                     />
                   </div>
                   <div>
-                    <Label>Template name (optional)</Label>
-                    <Input
+                    <Label htmlFor="template-name-optional">Template name (optional)</Label>
+                    <Input id="template-name-optional"
                       value={form.template_name}
                       onChange={(e) => setForm({ ...form, template_name: e.target.value })}
                       placeholder="overdue_reminder"

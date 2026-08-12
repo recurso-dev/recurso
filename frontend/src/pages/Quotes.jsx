@@ -153,24 +153,26 @@ const Quotes = () => {
           onClick={(e) => e.stopPropagation()}
         >
           {q.status === "draft" && (
-            <button
+            <button type="button"
               onClick={(e) => handleSend(q.id, e)}
               className="rounded-md p-1.5 text-info transition-colors hover:bg-info/10"
               title="Send quote"
+              aria-label="Send quote"
             >
               <Send className="h-4 w-4" />
             </button>
           )}
           {q.status === "accepted" && !q.invoice_id && (
-            <button
+            <button type="button"
               onClick={(e) => handleConvert(q.id, e)}
               className="rounded-md p-1.5 text-success transition-colors hover:bg-primary/10"
               title="Convert to invoice"
+              aria-label="Convert to invoice"
             >
               <ArrowRight className="h-4 w-4" />
             </button>
           )}
-          <button
+          <button type="button"
             onClick={(e) => {
               e.stopPropagation();
               navigate(`/quotes/${q.id}`);

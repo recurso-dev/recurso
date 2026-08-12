@@ -211,16 +211,16 @@ const Organizations = () => {
         dirty={Boolean(createForm.name || createForm.owner_email)}
       >
         <div>
-          <Label>Name</Label>
-          <Input
+          <Label htmlFor="org-name">Name</Label>
+          <Input id="org-name"
             value={createForm.name}
             onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
             placeholder="Acme Group"
           />
         </div>
         <div>
-          <Label>Owner email</Label>
-          <Input
+          <Label htmlFor="owner-email">Owner email</Label>
+          <Input id="owner-email"
             type="email"
             value={createForm.owner_email}
             onChange={(e) => setCreateForm({ ...createForm, owner_email: e.target.value })}

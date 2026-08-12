@@ -369,28 +369,28 @@ const Metering = () => {
         error={actionError}
       >
             <div>
-              <Label>Name</Label>
-              <Input
+              <Label htmlFor="name">Name</Label>
+              <Input id="name"
                 value={metricForm.name}
                 onChange={(e) => setMetricForm({ ...metricForm, name: e.target.value })}
                 placeholder="API calls"
               />
             </div>
             <div>
-              <Label>Code (= event dimension, immutable)</Label>
-              <Input
+              <Label htmlFor="code-event-dimension-immutable">Code (= event dimension, immutable)</Label>
+              <Input id="code-event-dimension-immutable"
                 value={metricForm.code}
                 onChange={(e) => setMetricForm({ ...metricForm, code: e.target.value })}
                 placeholder="api_calls"
               />
             </div>
             <div>
-              <Label>Aggregation</Label>
+              <Label htmlFor="aggregation">Aggregation</Label>
               <Select
                 value={metricForm.aggregation_type}
                 onValueChange={(v) => setMetricForm({ ...metricForm, aggregation_type: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="aggregation">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -407,8 +407,8 @@ const Metering = () => {
             </div>
             {metricForm.aggregation_type === "unique" && (
               <div>
-                <Label>Property to count (field_name)</Label>
-                <Input
+                <Label htmlFor="property-to-count-field-name">Property to count (field_name)</Label>
+                <Input id="property-to-count-field-name"
                   value={metricForm.field_name}
                   onChange={(e) => setMetricForm({ ...metricForm, field_name: e.target.value })}
                   placeholder="user_id"
@@ -417,8 +417,8 @@ const Metering = () => {
             )}
             {metricForm.aggregation_type === "percentile" && (
               <div>
-                <Label>Percentile (1–99)</Label>
-                <Input
+                <Label htmlFor="percentile-1-99">Percentile (1–99)</Label>
+                <Input id="percentile-1-99"
                   value={metricForm.field_name}
                   onChange={(e) => setMetricForm({ ...metricForm, field_name: e.target.value })}
                   inputMode="numeric"
@@ -431,8 +431,8 @@ const Metering = () => {
             )}
             {metricForm.aggregation_type === "custom" && (
               <div>
-                <Label>Expression</Label>
-                <Input
+                <Label htmlFor="expression">Expression</Label>
+                <Input id="expression"
                   value={metricForm.expression}
                   onChange={(e) => setMetricForm({ ...metricForm, expression: e.target.value })}
                   placeholder="quantity * properties.multiplier"
@@ -472,12 +472,12 @@ const Metering = () => {
         error={actionError}
       >
             <div>
-              <Label>Subscription</Label>
+              <Label htmlFor="subscription">Subscription</Label>
               <Select
                 value={alertForm.subscription_id}
                 onValueChange={(v) => setAlertForm({ ...alertForm, subscription_id: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="subscription">
                   <SelectValue
                     placeholder={
                       subscriptions.length === 0 ? "No subscriptions" : "Select a subscription"
@@ -496,12 +496,12 @@ const Metering = () => {
               </Select>
             </div>
             <div>
-              <Label>Metric</Label>
+              <Label htmlFor="metric">Metric</Label>
               <Select
                 value={alertForm.metric_code}
                 onValueChange={(v) => setAlertForm({ ...alertForm, metric_code: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="metric">
                   <SelectValue placeholder="Select a metric" />
                 </SelectTrigger>
                 <SelectContent>
@@ -514,12 +514,12 @@ const Metering = () => {
               </Select>
             </div>
             <div>
-              <Label>Threshold type</Label>
+              <Label htmlFor="threshold-type">Threshold type</Label>
               <Select
                 value={alertForm.threshold_type}
                 onValueChange={(v) => setAlertForm({ ...alertForm, threshold_type: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="threshold-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -529,10 +529,10 @@ const Metering = () => {
               </Select>
             </div>
             <div>
-              <Label>
+              <Label htmlFor="threshold">
                 Threshold{alertForm.threshold_type === "percent_of_limit" ? " (%)" : ""}
               </Label>
-              <Input
+              <Input id="threshold"
                 type="number"
                 min="1"
                 value={alertForm.threshold}
@@ -569,12 +569,12 @@ const Metering = () => {
               </span>
             </div>
             <div>
-              <Label>Threshold type</Label>
+              <Label htmlFor="threshold-type-2">Threshold type</Label>
               <Select
                 value={editAlertForm.threshold_type}
                 onValueChange={(v) => setEditAlertForm({ ...editAlertForm, threshold_type: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="threshold-type-2">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -584,10 +584,10 @@ const Metering = () => {
               </Select>
             </div>
             <div>
-              <Label>
+              <Label htmlFor="threshold-2">
                 Threshold{editAlertForm.threshold_type === "percent_of_limit" ? " (%)" : ""}
               </Label>
-              <Input
+              <Input id="threshold-2"
                 type="number"
                 min="1"
                 value={editAlertForm.threshold}

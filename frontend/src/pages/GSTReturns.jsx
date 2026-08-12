@@ -439,8 +439,8 @@ const GSTReturns = () => {
 
       <div className="mb-6 flex items-end gap-3">
         <div>
-          <Label>Month</Label>
-          <Input
+          <Label htmlFor="month">Month</Label>
+          <Input id="month"
             type="number"
             min="1"
             max="12"
@@ -450,8 +450,8 @@ const GSTReturns = () => {
           />
         </div>
         <div>
-          <Label>Year</Label>
-          <Input
+          <Label htmlFor="year">Year</Label>
+          <Input id="year"
             type="number"
             min="2017"
             max="2100"

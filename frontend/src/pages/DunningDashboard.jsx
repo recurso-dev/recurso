@@ -241,6 +241,7 @@ const DunningDashboard = () => {
                 description="No recovered payments yet. Recoveries appear when a failed invoice is paid after retries."
               />
             ) : (
+              <div role="img" aria-label="Recovered revenue by month">
               <BarChart
                 {...chartDefaults}
                 className="h-72"
@@ -254,6 +255,7 @@ const DunningDashboard = () => {
                 showGridLines
                 yAxisWidth={64}
               />
+              </div>
             )}
           </div>
         </CardContent>

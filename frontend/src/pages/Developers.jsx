@@ -903,8 +903,8 @@ export default function Developers() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label>Events to receive</Label>
-                <div className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-border p-2 sm:grid-cols-2">
+                <Label id="webhook-events-label">Events to receive</Label>
+                <div role="group" aria-labelledby="webhook-events-label" className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto rounded-lg border border-border p-2 sm:grid-cols-2">
                   {eventTypes.map((eventType) => (
                     <label
                       key={eventType}

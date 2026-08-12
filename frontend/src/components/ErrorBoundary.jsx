@@ -39,7 +39,7 @@ class ErrorBoundary extends React.Component {
           <p style={{ marginTop: '0.5rem', color: 'var(--color-text-secondary, #94a3b8)', maxWidth: '400px' }}>
             {this.state.error?.message || 'An unexpected error occurred. Please try again.'}
           </p>
-          <button
+          <button type="button"
             onClick={this.handleRetry}
             style={{
               marginTop: '1.5rem',

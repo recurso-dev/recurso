@@ -70,7 +70,7 @@ export function DashboardLayout() {
   };
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-canvas font-sans text-foreground">
+    <div className="flex h-dvh w-full overflow-hidden bg-canvas font-sans text-foreground">
       {/* Skip link — the sidebar is ~60 tab stops; keyboard users go straight
           to the content (WCAG 2.4.1). Visible only while focused. */}
       <a

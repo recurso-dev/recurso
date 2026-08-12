@@ -685,8 +685,8 @@ const Integrations = () => {
               <>
                 <ProviderGuide guide={tokenProvider.guide} />
                 <div>
-                  <Label>Account ID</Label>
-                  <Input
+                  <Label htmlFor="account-id">Account ID</Label>
+                  <Input id="account-id"
                     value={tokenForm.account_id}
                     onChange={(e) => setTokenForm({ ...tokenForm, account_id: e.target.value })}
                     placeholder="e.g. 1234567 or 1234567_SB1"
@@ -694,8 +694,8 @@ const Integrations = () => {
                   />
                 </div>
                 <div>
-                  <Label>Access token</Label>
-                  <Input
+                  <Label htmlFor="access-token">Access token</Label>
+                  <Input id="access-token"
                     type="password"
                     value={tokenForm.access_token}
                     onChange={(e) => setTokenForm({ ...tokenForm, access_token: e.target.value })}

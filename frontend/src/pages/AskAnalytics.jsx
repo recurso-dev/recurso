@@ -186,10 +186,11 @@ function ResultChart({ rows, spec }) {
     className: "h-64",
     ...chartDefaults,
   };
-  return spec.type === "area" ? (
-    <AreaChart {...common} showGradient />
-  ) : (
-    <BarChart {...common} />
+  const chartLabel = `${spec.type === "area" ? "Area" : "Bar"} chart of ${spec.categories.join(", ")} by ${spec.index}`;
+  return (
+    <div role="img" aria-label={chartLabel}>
+      {spec.type === "area" ? <AreaChart {...common} showGradient /> : <BarChart {...common} />}
+    </div>
   );
 }
 
@@ -307,7 +308,7 @@ function ResultCard({ entry, onRerun, onRemove }) {
             )}
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={() => onRerun(entry.question)} title="Ask again">
+            <Button variant="ghost" size="sm" onClick={() => onRerun(entry.question)} title="Ask again" aria-label="Ask again">
               <RotateCw className="h-3.5 w-3.5" />
             </Button>
             {Array.isArray(rows) && rows.length > 0 && (

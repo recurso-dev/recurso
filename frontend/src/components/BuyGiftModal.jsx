@@ -114,9 +114,9 @@ const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Plan</Label>
+              <Label htmlFor="plan">Plan</Label>
               <Select value={planId} onValueChange={setPlanId}>
-                <SelectTrigger>
+                <SelectTrigger id="plan">
                   <SelectValue placeholder="Select a plan" />
                 </SelectTrigger>
                 <SelectContent>

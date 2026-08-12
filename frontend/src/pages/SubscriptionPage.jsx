@@ -620,8 +620,8 @@ export default function SubscriptionPage() {
                 </p>
                 <div className="flex items-end gap-2">
                   <div>
-                    <Label className="text-xs">Periods (1–60)</Label>
-                    <Input
+                    <Label className="text-xs" htmlFor="periods-1-60">Periods (1–60)</Label>
+                    <Input id="periods-1-60"
                       type="number"
                       min="1"
                       max="60"
@@ -663,8 +663,8 @@ export default function SubscriptionPage() {
                 </p>
                 <div className="flex items-end gap-2">
                   <div>
-                    <Label className="text-xs">Amount ({currency})</Label>
-                    <Input
+                    <Label className="text-xs" htmlFor="amount">Amount ({currency})</Label>
+                    <Input id="amount"
                       type="number"
                       min="0"
                       step="0.01"
@@ -709,8 +709,8 @@ export default function SubscriptionPage() {
                 </p>
                 <div className="flex flex-wrap items-end gap-2">
                   <div>
-                    <Label className="text-xs">Amount ({currency})</Label>
-                    <Input
+                    <Label className="text-xs" htmlFor="amount-2">Amount ({currency})</Label>
+                    <Input id="amount-2"
                       type="number"
                       min="0.01"
                       step="0.01"
@@ -720,8 +720,8 @@ export default function SubscriptionPage() {
                     />
                   </div>
                   <div className="min-w-[10rem] flex-1">
-                    <Label className="text-xs">Description</Label>
-                    <Input
+                    <Label className="text-xs" htmlFor="description">Description</Label>
+                    <Input id="description"
                       value={chargeDesc}
                       onChange={(e) => setChargeDesc(e.target.value)}
                       placeholder="e.g. Onboarding services"
@@ -1018,9 +1018,9 @@ export default function SubscriptionPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div>
-              <Label>Reason for cancellation</Label>
+              <Label htmlFor="reason-for-cancellation">Reason for cancellation</Label>
               <Select value={cancelReason} onValueChange={setCancelReason}>
-                <SelectTrigger>
+                <SelectTrigger id="reason-for-cancellation">
                   <SelectValue placeholder="Select a reason…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1034,8 +1034,8 @@ export default function SubscriptionPage() {
             </div>
             {selectedReason?.allows_feedback && (
               <div>
-                <Label>Feedback (optional)</Label>
-                <Input
+                <Label htmlFor="feedback-optional">Feedback (optional)</Label>
+                <Input id="feedback-optional"
                   value={cancelFeedback}
                   onChange={(e) => setCancelFeedback(e.target.value)}
                   placeholder="What could we have done better?"

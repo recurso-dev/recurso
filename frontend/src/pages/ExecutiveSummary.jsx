@@ -143,7 +143,7 @@ export default function ExecutiveSummary() {
         actions={
           <div className="flex items-center gap-1 rounded-lg border border-border bg-white p-0.5">
             {PERIODS.map((p) => (
-              <button
+              <button type="button"
                 key={p}
                 onClick={() => setDays(p)}
                 className={cn(
@@ -205,6 +205,7 @@ export default function ExecutiveSummary() {
                       Not enough history yet — the trend appears after two months of data.
                     </p>
                   ) : (
+                    <div role="img" aria-label="MRR trend over the selected period">
                     <AreaChart
                       {...chartDefaults}
                       className="h-56"
@@ -219,6 +220,7 @@ export default function ExecutiveSummary() {
                       curveType="monotone"
                       yAxisWidth={72}
                     />
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -228,6 +230,7 @@ export default function ExecutiveSummary() {
                   <CardDescription>What grew and what shrank in the window</CardDescription>
                 </CardHeader>
                 <CardContent>
+                  <div role="img" aria-label="Top plans by revenue">
                   <BarChart
                     {...chartDefaults}
                     className="h-56"
@@ -241,6 +244,7 @@ export default function ExecutiveSummary() {
                     showLegend={false}
                     yAxisWidth={72}
                   />
+                  </div>
                 </CardContent>
               </Card>
             </div>

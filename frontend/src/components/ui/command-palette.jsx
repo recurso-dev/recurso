@@ -51,6 +51,13 @@ export function CommandPalette({ open, onOpenChange }) {
 
   useEffect(() => setActive(0), [query]);
 
+  // Keep the highlighted option scrolled into view while arrowing.
+  useEffect(() => {
+    document
+      .getElementById(`palette-option-${active}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active]);
+
   const go = (item) => {
     onOpenChange(false);
     if (item.href) {
@@ -88,11 +95,23 @@ export function CommandPalette({ open, onOpenChange }) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Where to?"
+            // Combobox + activedescendant: DOM focus stays here while arrow
+            // keys move the highlighted option — the standard listbox pattern.
+            role="combobox"
+            aria-expanded="true"
+            aria-controls="palette-listbox"
+            aria-activedescendant={results[active] ? `palette-option-${active}` : undefined}
+            aria-autocomplete="list"
+            aria-label="Search the dashboard"
             className="h-11 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
           />
           <kbd>esc</kbd>
         </div>
-        <div className="max-h-72 overflow-y-auto p-1.5">
+        {/* Result count for screen readers — filtering is otherwise silent. */}
+        <p aria-live="polite" className="sr-only">
+          {results.length} result{results.length === 1 ? "" : "s"}
+        </p>
+        <div id="palette-listbox" role="listbox" aria-label="Destinations" className="max-h-72 overflow-y-auto p-1.5">
           {results.length === 0 && (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
               Nothing matches "{query}".
@@ -111,6 +130,9 @@ export function CommandPalette({ open, onOpenChange }) {
                 )}
                 <button
                   type="button"
+                  role="option"
+                  id={`palette-option-${i}`}
+                  aria-selected={i === active}
                   onClick={() => go(item)}
                   onMouseEnter={() => setActive(i)}
                   className={cn(
