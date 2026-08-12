@@ -45,7 +45,7 @@ export default function Entities() {
       />
 
       {loadError && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800" role="alert">
+        <p className="mb-4 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive" role="alert">
           {loadError} — refresh to retry.
         </p>
       )}
@@ -105,7 +105,7 @@ export default function Entities() {
                         <TableCell className="text-right tabular-nums font-medium">{money(e.mrr)}</TableCell>
                         <TableCell className="text-right tabular-nums text-muted-foreground">{money(e.arr)}</TableCell>
                         <TableCell className="text-right tabular-nums">
-                          <span className={e.ar_outstanding > 0 ? "text-amber-600" : "text-muted-foreground"}>
+                          <span className={e.ar_outstanding > 0 ? "text-warning" : "text-muted-foreground"}>
                             {money(e.ar_outstanding)}
                           </span>
                         </TableCell>

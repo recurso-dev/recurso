@@ -252,7 +252,7 @@ const Wallets = () => {
             <Button
               size="sm"
               variant="ghost"
-              className="text-red-600 hover:text-red-600"
+              className="text-destructive hover:text-destructive"
               onClick={(e) => {
                 e.stopPropagation();
                 setActionError(null);
@@ -328,7 +328,7 @@ const Wallets = () => {
                 maxLength={3}
               />
             </div>
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <SheetFooter>
             <Button onClick={submitCreate} disabled={creating || !createForm.customer_id}>
@@ -371,7 +371,7 @@ const Wallets = () => {
                 </SelectContent>
               </Select>
             </div>
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <DialogFooter>
             <Button onClick={submitTopUp} disabled={!topUpForm.amount}>
@@ -414,13 +414,13 @@ const Wallets = () => {
                 placeholder="5000.00"
               />
             </div>
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <DialogFooter className="sm:justify-between">
             {autoWallet?.auto_recharge_threshold ? (
               <Button
                 variant="ghost"
-                className="text-red-600 hover:text-red-600"
+                className="text-destructive hover:text-destructive"
                 onClick={() => submitAutoRecharge(true)}
               >
                 Disable
@@ -492,7 +492,7 @@ const Wallets = () => {
                         <div className="shrink-0 text-right">
                           <p
                             className={`tabular-nums text-sm font-medium ${
-                              t.type === "top_up" ? "text-emerald-600" : "text-foreground"
+                              t.type === "top_up" ? "text-success" : "text-foreground"
                             }`}
                           >
                             {t.type === "top_up" ? "+" : "−"}

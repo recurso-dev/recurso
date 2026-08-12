@@ -87,7 +87,7 @@ export default function MCPSettings() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <Bot className="h-4 w-4 text-emerald-600" />
+                <Bot className="h-4 w-4 text-success" />
                 Agent access
               </CardTitle>
             </CardHeader>
@@ -100,7 +100,7 @@ export default function MCPSettings() {
                 you turn them on.
               </p>
 
-              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+              <div className="flex items-start gap-3 rounded-lg border border-warning/20 bg-warning/5 p-3 text-sm text-warning">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
                   Enabling money-path tools lets an agent move money on your

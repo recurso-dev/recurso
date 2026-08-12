@@ -208,7 +208,7 @@ export default function RevenueRecognition() {
                                   <span className="w-32 shrink-0">{monthLabel(b.month, b.year)}</span>
                                   <div className="hidden h-1.5 flex-1 overflow-hidden rounded-full bg-muted sm:block">
                                     <div
-                                      className="h-full rounded-full bg-emerald-500/70"
+                                      className="h-full rounded-full bg-success/50/70"
                                       style={{ width: `${Math.max(2, ((b.amount || 0) / max) * 100)}%` }}
                                     />
                                   </div>

@@ -246,14 +246,14 @@ export default function IntegrationConnections() {
   return (
     <div>
       {!vaultReady && (
-        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="mb-3 rounded-md bg-warning/5 px-3 py-2 text-sm text-warning">
           Connecting an integration is disabled — the server has no credential encryption key
           (<code>GATEWAY_ENCRYPTION_KEY</code>) configured. These integrations use the
           deployment's environment config until one is set.
         </p>
       )}
       {error && (
-        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="mb-3 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}{" "}
           <button className="underline" onClick={load}>
             Retry
@@ -299,7 +299,7 @@ export default function IntegrationConnections() {
                           )}
                           {conn.has_secrets && (
                             <p className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Check className="h-3.5 w-3.5 text-emerald-500" />
+                              <Check className="h-3.5 w-3.5 text-success" />
                               Credentials stored
                             </p>
                           )}

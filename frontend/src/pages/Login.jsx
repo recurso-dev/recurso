@@ -110,7 +110,7 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-stone-50 px-4 py-12">
+    <div className="flex min-h-screen w-full items-center justify-center bg-muted px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -150,7 +150,7 @@ export default function Login() {
                 </FormField>
 
                 {error && (
-                  <p className="text-sm font-medium text-red-600" role="alert">
+                  <p className="text-sm font-medium text-destructive" role="alert">
                     {error}
                   </p>
                 )}
@@ -213,7 +213,7 @@ export default function Login() {
                 </div>
 
                 {error && (
-                  <p className="text-sm font-medium text-red-600" role="alert">
+                  <p className="text-sm font-medium text-destructive" role="alert">
                     {error}
                   </p>
                 )}
@@ -266,7 +266,7 @@ export default function Login() {
                 </FormField>
 
                 {error && (
-                  <p className="text-sm font-medium text-red-600" role="alert">
+                  <p className="text-sm font-medium text-destructive" role="alert">
                     {error}
                   </p>
                 )}

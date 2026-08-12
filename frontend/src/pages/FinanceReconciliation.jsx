@@ -152,7 +152,7 @@ export default function FinanceReconciliation() {
 
             {/* Truncation notice */}
             {report.truncated && (
-              <div className="flex items-center gap-3 rounded-lg bg-amber-50 p-4 text-amber-800 ring-1 ring-inset ring-amber-200">
+              <div className="flex items-center gap-3 rounded-lg bg-warning/5 p-4 text-warning ring-1 ring-inset ring-warning/20">
                 <AlertTriangle className="h-5 w-5 flex-shrink-0" />
                 <p className="text-sm font-medium">
                   Showing the first {discrepancies.length.toLocaleString()} of{" "}

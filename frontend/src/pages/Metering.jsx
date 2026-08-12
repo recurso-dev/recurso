@@ -454,7 +454,7 @@ const Metering = () => {
                 period start is counted from the start.
               </p>
             )}
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <SheetFooter>
             <Button
@@ -545,7 +545,7 @@ const Metering = () => {
                 onChange={(e) => setAlertForm({ ...alertForm, threshold: e.target.value })}
               />
             </div>
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <SheetFooter>
             <Button
@@ -606,7 +606,7 @@ const Metering = () => {
                 onChange={(e) => setEditAlertForm({ ...editAlertForm, threshold: e.target.value })}
               />
             </div>
-            {actionError && <p className="text-sm text-red-600">{actionError}</p>}
+            {actionError && <p className="text-sm text-destructive">{actionError}</p>}
           </div>
           <SheetFooter>
             <Button onClick={submitEditAlert} disabled={saving || !editAlertForm.threshold}>

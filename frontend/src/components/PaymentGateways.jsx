@@ -169,14 +169,14 @@ export default function PaymentGateways() {
       <h2 className="mb-3 text-sm font-semibold text-foreground">Payment gateways</h2>
 
       {!vaultReady && (
-        <p className="mb-3 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p className="mb-3 rounded-md bg-warning/5 px-3 py-2 text-sm text-warning">
           Connecting a gateway is disabled — the server has no credential encryption key
           (<code>GATEWAY_ENCRYPTION_KEY</code>) configured. Payments use the platform gateway
           until one is set.
         </p>
       )}
       {error && (
-        <p className="mb-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="mb-3 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}{" "}
           <button className="underline" onClick={load}>
             Retry
@@ -227,7 +227,7 @@ export default function PaymentGateways() {
                           type="button"
                           onClick={() => copy(webhookUrl)}
                           aria-label="Copy webhook URL"
-                          className="text-stone-400 transition-colors hover:text-foreground"
+                          className="text-subtle transition-colors hover:text-foreground"
                         >
                           <Copy className="h-3.5 w-3.5" />
                         </button>
@@ -235,7 +235,7 @@ export default function PaymentGateways() {
                       <p className="mt-1.5 flex items-center gap-1 text-xs text-muted-foreground">
                         {conn.has_webhook_secret ? (
                           <>
-                            <Check className="h-3.5 w-3.5 text-emerald-500" />
+                            <Check className="h-3.5 w-3.5 text-success" />
                             Signing secret set
                           </>
                         ) : (

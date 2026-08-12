@@ -24,11 +24,13 @@ const BUCKET_LABELS = {
 
 // Severity ramp: current is healthy, older is worse.
 const BUCKET_COLOR = {
-  current: "bg-emerald-500",
+  current: "bg-success/50",
+  // eslint-disable-next-line no-restricted-syntax -- severity ramp: data color, not UI chrome
   "1-30": "bg-amber-400",
+  // eslint-disable-next-line no-restricted-syntax -- severity ramp: data color, not UI chrome
   "31-60": "bg-orange-500",
-  "61-90": "bg-red-500",
-  "90+": "bg-rose-700",
+  "61-90": "bg-destructive/50",
+  "90+": "bg-destructive",
 };
 
 export default function InvoiceAging() {

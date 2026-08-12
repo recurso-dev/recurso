@@ -3,7 +3,7 @@ import { twMerge } from "tailwind-merge";
 
 /**
  * cn — merge Tailwind class names with conflict resolution.
- * Usage: cn("px-2 py-1", condition && "bg-emerald-500", className)
+ * Usage: cn("px-2 py-1", condition && "bg-success/50", className)
  */
 export function cn(...inputs) {
   return twMerge(clsx(inputs));

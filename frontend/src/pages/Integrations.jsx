@@ -301,7 +301,7 @@ const Integrations = () => {
         <div>
           <StatusBadge status={l.status} />
           {l.error_message && (
-            <p className="mt-1 max-w-md whitespace-normal break-words text-xs text-red-600">
+            <p className="mt-1 max-w-md whitespace-normal break-words text-xs text-destructive">
               {l.error_message}
             </p>
           )}
@@ -363,7 +363,7 @@ const Integrations = () => {
 
       <h2 className="mb-3 text-sm font-semibold text-foreground">Accounting</h2>
       {error && (
-        <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>
+        <p className="mb-4 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">{error}</p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -374,7 +374,7 @@ const Integrations = () => {
               <CardContent className="flex flex-col gap-4 p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-emerald-50 text-emerald-600">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-md bg-success/5 text-success">
                       <Landmark className="h-5 w-5" />
                     </div>
                     <div>
@@ -411,7 +411,7 @@ const Integrations = () => {
                     {conn.last_error && (
                       <div className="flex justify-between gap-2">
                         <dt className="text-muted-foreground">Last error</dt>
-                        <dd className="max-w-[12rem] truncate text-red-600" title={conn.last_error}>
+                        <dd className="max-w-[12rem] truncate text-destructive" title={conn.last_error}>
                           {conn.last_error}
                         </dd>
                       </div>
@@ -589,11 +589,11 @@ const Integrations = () => {
                   {selectedLog.error_message && (
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-foreground">What went wrong</p>
-                      <p className="rounded-md border border-red-200 bg-red-50 p-3 font-mono text-xs leading-relaxed text-red-800">
+                      <p className="rounded-md border border-destructive/20 bg-destructive/5 p-3 font-mono text-xs leading-relaxed text-destructive">
                         {selectedLog.error_message}
                       </p>
                       {errorHint(selectedLog.error_message) && (
-                        <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900">
+                        <p className="rounded-md border border-warning/20 bg-warning/5 p-3 text-xs leading-relaxed text-warning">
                           <span className="font-semibold">How to fix: </span>
                           {errorHint(selectedLog.error_message)}
                         </p>

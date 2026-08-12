@@ -100,7 +100,7 @@ export default function Notifications() {
             const Icon = note.Icon;
             return (
               <Card key={note.id} className="flex items-start gap-4 p-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-success/5 text-success">
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">

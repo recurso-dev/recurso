@@ -107,7 +107,7 @@ const Churn = () => {
       {alertsLoading ? (
         <CardGridSkeleton count={2} />
       ) : alertsError ? (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-800">
+        <p className="rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {alertsError}{" "}
           <button className="underline" onClick={() => refetchAlerts()}>
             Retry
@@ -129,8 +129,8 @@ const Churn = () => {
                     <div className="text-xs">{customerLabel(a.customer_id)}</div>
                     <p className="mt-1 flex items-center gap-1.5 text-sm font-medium text-foreground">
                       <span className="tabular-nums">{a.previous_score}</span>
-                      <ArrowUpRight className="h-4 w-4 text-red-600" />
-                      <span className="tabular-nums text-red-600">{a.new_score}</span>
+                      <ArrowUpRight className="h-4 w-4 text-destructive" />
+                      <span className="tabular-nums text-destructive">{a.new_score}</span>
                     </p>
                   </div>
                   <Badge variant="destructive">{a.alert_type}</Badge>

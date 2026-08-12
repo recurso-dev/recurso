@@ -79,7 +79,7 @@ export default function Profile() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col items-start gap-8 md:flex-row">
-              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-border bg-emerald-50 text-2xl font-semibold text-emerald-700">
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-border bg-success/5 text-2xl font-semibold text-success">
                 {account.name ? account.name.charAt(0).toUpperCase() : "A"}
               </div>
 
@@ -112,7 +112,7 @@ export default function Profile() {
                 : "Your account uses API keys for authentication. You can manage your keys in the Developers section."}
             </p>
             <div className="flex items-center gap-4 rounded-lg border border-border bg-muted/40 p-4">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-stone-500">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-white text-muted-foreground">
                 <KeyRound className="h-4 w-4" />
               </div>
               <div className="flex-1">

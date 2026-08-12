@@ -167,7 +167,7 @@ export default function CancelFlowDetail({ flowId, isOpen, onClose, onChanged })
             {loading ? (
               <p className="text-sm text-muted-foreground">Loading…</p>
             ) : error ? (
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-destructive">{error}</p>
             ) : flow ? (
               <>
                 <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -196,7 +196,7 @@ export default function CancelFlowDetail({ flowId, isOpen, onClose, onChanged })
                       <p className="text-xs text-muted-foreground">Completed</p>
                     </div>
                     <div>
-                      <p className="text-lg font-semibold tabular-nums text-emerald-600">
+                      <p className="text-lg font-semibold tabular-nums text-success">
                         {stats.saved_count ?? 0}
                       </p>
                       <p className="text-xs text-muted-foreground">Saved</p>
@@ -254,7 +254,7 @@ export default function CancelFlowDetail({ flowId, isOpen, onClose, onChanged })
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-red-600 hover:text-red-600"
+                            className="text-destructive hover:text-destructive"
                             onClick={() => setDeleteStep(step)}
                             aria-label="Delete step"
                           >

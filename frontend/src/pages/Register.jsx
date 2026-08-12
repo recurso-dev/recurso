@@ -60,7 +60,7 @@ export default function Register() {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-stone-50 px-4 py-12">
+    <div className="flex min-h-screen w-full items-center justify-center bg-muted px-4 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center text-center">
           <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
@@ -78,7 +78,7 @@ export default function Register() {
           <CardContent className="p-6">
             <form onSubmit={handleSubmit} className="space-y-5">
               {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700" role="alert">
+                <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive" role="alert">
                   {error}
                 </div>
               )}

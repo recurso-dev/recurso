@@ -297,7 +297,7 @@ function ResultCard({ entry, onRerun, onRemove }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm font-semibold text-foreground">
-              <Sparkles className="h-4 w-4 shrink-0 text-emerald-600" />
+              <Sparkles className="h-4 w-4 shrink-0 text-success" />
               <span className="truncate">{entry.question}</span>
             </p>
             {rowCount != null && (
@@ -323,7 +323,7 @@ function ResultCard({ entry, onRerun, onRemove }) {
             <Button
               variant="ghost"
               size="sm"
-              className="text-stone-400 hover:text-red-600"
+              className="text-subtle hover:text-destructive"
               onClick={() => onRemove(entry.id)}
               title="Remove"
             >
@@ -444,7 +444,7 @@ const AskAnalytics = () => {
         className={isFirstRun ? "mx-auto mt-10 flex w-full max-w-2xl gap-2" : "flex gap-2"}
       >
         <div className="relative flex-1">
-          <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-emerald-500" aria-hidden />
+          <Sparkles className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-success" aria-hidden />
           <Input
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
@@ -521,7 +521,7 @@ const AskAnalytics = () => {
       )}
 
       {error && (
-        <p className="mt-4 rounded-md bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+        <p className="mt-4 rounded-md bg-destructive/5 px-4 py-3 text-sm text-destructive" role="alert">
           {error}
         </p>
       )}
@@ -531,7 +531,7 @@ const AskAnalytics = () => {
           <Card aria-busy="true" aria-label="Working on your question">
             <CardContent className="space-y-3 p-5">
               <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                <Sparkles className="h-4 w-4 animate-pulse text-emerald-600" />
+                <Sparkles className="h-4 w-4 animate-pulse text-success" />
                 Translating your question into a tenant-scoped query…
               </div>
               <div className="space-y-2">

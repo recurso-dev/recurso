@@ -334,7 +334,7 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   onClick={() => set("tax_exempt")(!form.tax_exempt)}
                   className={cn(
                     "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                    form.tax_exempt ? "bg-primary" : "bg-stone-200",
+                    form.tax_exempt ? "bg-primary" : "bg-border",
                   )}
                 >
                   <span

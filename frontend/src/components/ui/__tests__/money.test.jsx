@@ -32,10 +32,10 @@ describe("Money", () => {
   });
 
   it("carries the money class and any extra className", () => {
-    const { container } = render(<Money amountMinor={100} className="text-red-600" />);
+    const { container } = render(<Money amountMinor={100} className="text-destructive" />);
     const root = container.firstChild;
     expect(root.className).toContain("money");
-    expect(root.className).toContain("text-red-600");
+    expect(root.className).toContain("text-destructive");
   });
 
   it("defaults a nullish amount to zero", () => {

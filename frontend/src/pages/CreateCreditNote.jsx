@@ -149,7 +149,7 @@ const CreateCreditNote = () => {
           className="flex-1 space-y-6 overflow-y-auto px-6 py-6"
         >
           {error && (
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 ring-1 ring-inset ring-red-600/20">
+            <div className="rounded-lg bg-destructive/5 px-4 py-3 text-sm text-destructive ring-1 ring-inset ring-destructive/20">
               {error}
             </div>
           )}

@@ -55,7 +55,7 @@ const PortalRedeem = () => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted p-4">
       <div className="w-full max-w-md">
         <Card>
           <CardContent className="p-8">
@@ -76,8 +76,8 @@ const PortalRedeem = () => {
                 <div
                   className={
                     status.type === "success"
-                      ? "rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700"
-                      : "rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                      ? "rounded-lg border border-success/20 bg-success/5 px-4 py-3 text-sm text-success"
+                      : "rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"
                   }
                 >
                   {status.message}

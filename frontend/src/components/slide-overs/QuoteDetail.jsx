@@ -202,7 +202,7 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
           </div>
 
           {/* Totals breakdown */}
-          <div className="space-y-1.5 rounded-md border border-border bg-stone-50 p-4 text-sm">
+          <div className="space-y-1.5 rounded-md border border-border bg-muted p-4 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
               <span className="tabular-nums">
@@ -252,7 +252,7 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
           {hasActions && (
             <div className="space-y-3 border-t border-border pt-5">
               {actionError && (
-                <p className="text-sm text-red-600" role="alert">
+                <p className="text-sm text-destructive" role="alert">
                   {actionError}
                 </p>
               )}
@@ -292,7 +292,7 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
                 {canDecide && (
                   <Button
                     variant="outline"
-                    className="text-red-600 hover:text-red-700"
+                    className="text-destructive hover:text-destructive"
                     disabled={busy}
                     onClick={() => declineMutation.mutate(quote.id)}
                   >
@@ -312,7 +312,7 @@ const QuoteDetail = ({ quote, isOpen, onClose, onChanged }) => {
                 {canDelete && (
                   <Button
                     variant="ghost"
-                    className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={busy}
                     onClick={() => setConfirmDelete(true)}
                   >

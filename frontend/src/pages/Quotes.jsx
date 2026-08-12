@@ -149,7 +149,7 @@ const Quotes = () => {
           {q.status === "draft" && (
             <button
               onClick={(e) => handleSend(q.id, e)}
-              className="rounded-md p-1.5 text-blue-600 transition-colors hover:bg-blue-50"
+              className="rounded-md p-1.5 text-info transition-colors hover:bg-info/10"
               title="Send quote"
             >
               <Send className="h-4 w-4" />
@@ -158,7 +158,7 @@ const Quotes = () => {
           {q.status === "accepted" && !q.invoice_id && (
             <button
               onClick={(e) => handleConvert(q.id, e)}
-              className="rounded-md p-1.5 text-emerald-600 transition-colors hover:bg-emerald-50"
+              className="rounded-md p-1.5 text-success transition-colors hover:bg-primary/10"
               title="Convert to invoice"
             >
               <ArrowRight className="h-4 w-4" />
@@ -169,7 +169,7 @@ const Quotes = () => {
               e.stopPropagation();
               handleRowClick(q);
             }}
-            className="rounded-md p-1.5 text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-900"
+            className="rounded-md p-1.5 text-subtle transition-colors hover:bg-muted hover:text-foreground"
             title="View details"
             aria-label="View quote details"
           >

@@ -166,7 +166,7 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : error ? (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-destructive">{error}</p>
           ) : campaign ? (
             <>
               <div className="mb-6 flex items-center justify-between rounded-md border border-border bg-muted/30 px-4 py-3">
@@ -234,7 +234,7 @@ export default function DunningCampaignDetail({ campaignId, isOpen, onClose, onC
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-red-600 hover:text-red-600"
+                          className="text-destructive hover:text-destructive"
                           onClick={() => setDeleteStep(step)}
                           aria-label="Delete step"
                         >

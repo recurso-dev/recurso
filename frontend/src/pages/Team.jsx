@@ -193,7 +193,7 @@ export default function Team() {
                       <button
                         type="button"
                         onClick={() => setRemoveTarget(u.id)}
-                        className="text-muted-foreground hover:text-red-600"
+                        className="text-muted-foreground hover:text-destructive"
                         aria-label="Remove member"
                       >
                         <Trash2 className="h-4 w-4" />

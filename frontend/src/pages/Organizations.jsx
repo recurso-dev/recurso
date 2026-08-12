@@ -314,7 +314,7 @@ const Organizations = () => {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="text-red-600 hover:text-red-600"
+                        className="text-destructive hover:text-destructive"
                         onClick={() => removeTenant(t.id)}
                         aria-label={`Remove tenant ${t.name || t.id}`}
                       >

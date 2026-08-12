@@ -134,12 +134,12 @@ export function CommandPalette({ open, onOpenChange }) {
                     "flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm",
                     i === active
                       ? "bg-accent text-foreground ring-2 ring-inset ring-ring"
-                      : "text-stone-600"
+                      : "text-muted-foreground"
                   )}
                 >
-                  <Icon className="h-4 w-4 text-stone-400" />
+                  <Icon className="h-4 w-4 text-subtle" />
                   <span className="flex-1">{item.label}</span>
-                  {item.href && <ExternalLink className="h-3.5 w-3.5 text-stone-300" />}
+                  {item.href && <ExternalLink className="h-3.5 w-3.5 text-subtle/60" />}
                 </button>
               </div>
             );

@@ -74,7 +74,7 @@ function Row({ label, value, strong, danger, border }) {
         (strong
           ? " font-semibold text-foreground"
           : danger
-            ? " font-medium text-red-600"
+            ? " font-medium text-destructive"
             : " text-muted-foreground")
       }
     >
@@ -328,7 +328,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
             )}
 
             {/* Amount breakdown: subtotal, GST split, total, paid, due */}
-            <div className="space-y-1.5 rounded-md border border-border bg-stone-50 p-4 text-sm">
+            <div className="space-y-1.5 rounded-md border border-border bg-muted p-4 text-sm">
               <Row
                 label="Subtotal"
                 value={formatCurrency(invoice.subtotal, invoice.currency)}
@@ -432,7 +432,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
                 {invoice.e_invoice_error_message && (
                   <div>
                     <dt className="text-sm text-muted-foreground">Error</dt>
-                    <dd className="mt-1 text-sm text-red-600">
+                    <dd className="mt-1 text-sm text-destructive">
                       {invoice.e_invoice_error_message}
                     </dd>
                   </div>
@@ -500,7 +500,7 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
                 {euInvoice.status === "failed" && euInvoice.error_message && (
                   <div>
                     <dt className="text-sm text-muted-foreground">Error</dt>
-                    <dd className="mt-1 text-sm text-red-600">{euInvoice.error_message}</dd>
+                    <dd className="mt-1 text-sm text-destructive">{euInvoice.error_message}</dd>
                   </div>
                 )}
               </dl>
@@ -588,8 +588,8 @@ const InvoiceDetail = ({ invoice, isOpen, onClose, onChanged }) => {
                 className={
                   "rounded-lg px-3 py-2 text-sm " +
                   (actionMessage.type === "success"
-                    ? "bg-emerald-50 text-emerald-800"
-                    : "bg-red-50 text-red-800")
+                    ? "bg-success/5 text-success"
+                    : "bg-destructive/5 text-destructive")
                 }
               >
                 {actionMessage.text}

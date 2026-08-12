@@ -155,7 +155,7 @@ export function CancelFlowStepConfig({ stepType, config, onChange }) {
                   type="button"
                   size="sm"
                   variant="ghost"
-                  className="text-red-600 hover:text-red-600"
+                  className="text-destructive hover:text-destructive"
                   onClick={() => removeOffer(i)}
                   aria-label="Remove offer"
                 >

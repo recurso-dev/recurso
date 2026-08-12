@@ -42,7 +42,7 @@ function buildSteps(wf) {
   });
 }
 
-const barColor = { total: "bg-foreground/70", up: "bg-emerald-500", down: "bg-rose-500" };
+const barColor = { total: "bg-foreground/70", up: "bg-success/50", down: "bg-destructive/70" };
 
 export default function MRRWaterfall() {
   const now = new Date();
@@ -104,7 +104,7 @@ export default function MRRWaterfall() {
         wf && (
           <div className="flex flex-col gap-6">
             {!wf.has_start_history && (
-              <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-4 text-amber-800 ring-1 ring-inset ring-amber-200">
+              <div className="flex items-start gap-3 rounded-lg bg-warning/5 p-4 text-warning ring-1 ring-inset ring-warning/20">
                 <Info className="mt-0.5 h-5 w-5 flex-shrink-0" />
                 <p className="text-sm">
                   MRR history doesn&rsquo;t reach back to the start of this range yet — snapshots began more recently.
@@ -203,7 +203,7 @@ export default function MRRWaterfall() {
 }
 
 function Row({ label, value, tone, strong }) {
-  const toneClass = tone === "up" ? "text-emerald-600" : tone === "down" ? "text-rose-600" : "text-foreground";
+  const toneClass = tone === "up" ? "text-success" : tone === "down" ? "text-destructive" : "text-foreground";
   return (
     <div className="flex items-baseline justify-between">
       <dt className={`text-sm ${strong ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{label}</dt>

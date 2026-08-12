@@ -36,8 +36,8 @@ export default function TrialBanner() {
   const urgent = expired || days <= 3;
 
   const tone = urgent
-    ? "border-amber-200 bg-amber-50 text-amber-900"
-    : "border-sky-200 bg-sky-50 text-sky-900";
+    ? "border-warning/20 bg-warning/5 text-warning"
+    : "border-info/20 bg-info/5 text-info";
 
   return (
     <div

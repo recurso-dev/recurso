@@ -258,7 +258,7 @@ const Invoices = () => {
       {truncated && (
         <p
           role="status"
-          className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          className="mb-4 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-sm text-warning"
         >
           Showing the newest {invoices.length.toLocaleString()} of{" "}
           {totalCount.toLocaleString()} invoices — filters and the CSV export cover only
@@ -285,7 +285,7 @@ const Invoices = () => {
                 type="button"
                 onClick={() => setSearchParams({}, { replace: true })}
                 title="Clear the aging filter"
-                className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 transition-colors hover:bg-amber-100"
+                className="rounded-full border border-warning/20 bg-warning/5 px-3 py-1 text-xs font-medium text-warning transition-colors hover:bg-warning/15"
               >
                 {AGING_LABELS[agingFilter]} ×
               </button>
@@ -298,7 +298,7 @@ const Invoices = () => {
                 className={cn(
                   "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
                   statusFilter === f.key
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    ? "border-success/20 bg-success/5 text-success"
                     : "border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >

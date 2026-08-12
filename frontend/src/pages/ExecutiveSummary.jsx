@@ -149,8 +149,8 @@ export default function ExecutiveSummary() {
                 className={cn(
                   "rounded-md px-3 py-1 text-sm font-medium transition-colors",
                   days === p
-                    ? "bg-emerald-50 text-emerald-700"
-                    : "text-stone-500 hover:text-stone-900"
+                    ? "bg-success/5 text-success"
+                    : "text-muted-foreground hover:text-foreground"
                 )}
               >
                 {p}d

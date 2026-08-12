@@ -81,11 +81,11 @@ const PortalLogin = () => {
 
   if (success) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
+      <div className="flex min-h-screen items-center justify-center bg-muted px-4">
         <div className="w-full max-w-md">
           <Card>
             <CardContent className="p-8 text-center">
-              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 ring-1 ring-inset ring-emerald-600/20">
+              <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-success/5 ring-1 ring-inset ring-success/20">
                 <CheckCircle2 className="h-7 w-7 text-primary" />
               </div>
               <h2 className="text-xl font-semibold text-foreground">
@@ -98,14 +98,14 @@ const PortalLogin = () => {
 
               {/* Development only */}
               {devLink && (
-                <div className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-left">
-                  <p className="mb-2 text-xs font-medium text-amber-700">
+                <div className="mt-6 rounded-lg border border-warning/20 bg-warning/5 p-4 text-left">
+                  <p className="mb-2 text-xs font-medium text-warning">
                     Development mode
                   </p>
                   <Button
                     onClick={handleDevLogin}
                     variant="outline"
-                    className="w-full border-amber-300 bg-amber-100 text-amber-800 hover:bg-amber-200"
+                    className="w-full border-warning/40 bg-warning/15 text-warning hover:bg-warning/25"
                   >
                     Click here to login (dev only)
                   </Button>
@@ -119,7 +119,7 @@ const PortalLogin = () => {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-muted px-4">
       <div className="w-full max-w-md">
         <Card>
           <CardContent className="p-8">
@@ -133,7 +133,7 @@ const PortalLogin = () => {
             </p>
 
             {error && (
-              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              <div className="mt-6 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
                 {error}
               </div>
             )}

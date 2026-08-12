@@ -88,7 +88,7 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
                   {progress}%
                 </p>
               </div>
-              <div className="h-2 w-full rounded-full bg-stone-200">
+              <div className="h-2 w-full rounded-full bg-border">
                 <div
                   className="h-2 rounded-full bg-primary transition-all duration-500"
                   style={{ width: `${progress}%` }}
@@ -121,7 +121,7 @@ const CouponDetail = ({ coupon, isOpen, onClose }) => {
               <Button
                 variant="outline"
                 size="sm"
-                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
                 disabled={toggleMutation.isPending}
                 onClick={() => toggleMutation.mutate(false)}
               >
