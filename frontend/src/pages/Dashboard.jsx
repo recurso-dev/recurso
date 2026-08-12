@@ -500,6 +500,7 @@ export default function Dashboard() {
             {loading ? (
               <Skeleton className="h-80 w-full" />
             ) : revenueSeries.length > 0 && revenueCur ? (
+              <div role="img" aria-label={`Revenue over time in ${revenueCur}, daily totals for the last 30 days`}>
               <AreaChart
                 {...chartDefaults}
                 className="h-80"
@@ -515,6 +516,7 @@ export default function Dashboard() {
                 curveType="monotone"
                 yAxisWidth={64}
               />
+              </div>
             ) : (
               <EmptyState
                 icon={BarChart3}
@@ -547,6 +549,7 @@ export default function Dashboard() {
               />
             ) : (
               <div>
+                <div role="img" aria-label={`Subscription mix: ${totalCurrentSubs} current subscriptions by status`}>
                 <DonutChart
                   {...chartDefaults}
                   className="mx-auto h-44"
@@ -559,6 +562,7 @@ export default function Dashboard() {
                   showLabel
                   label={`${totalCurrentSubs.toLocaleString()}`}
                 />
+              </div>
                 <dl className="mt-6 space-y-2.5">
                   {subMix.map((s) => (
                     <div key={s.name} className="flex items-center justify-between text-sm">

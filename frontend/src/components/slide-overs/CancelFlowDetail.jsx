@@ -273,8 +273,8 @@ export default function CancelFlowDetail({ flowId, isOpen, onClose, onChanged })
                     </h4>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <Label>Order</Label>
-                        <Input
+                        <Label htmlFor="order">Order</Label>
+                        <Input id="order"
                           type="number"
                           min="0"
                           value={form.step_order}
@@ -282,9 +282,9 @@ export default function CancelFlowDetail({ flowId, isOpen, onClose, onChanged })
                         />
                       </div>
                       <div>
-                        <Label>Type</Label>
+                        <Label htmlFor="type">Type</Label>
                         <Select value={form.step_type} onValueChange={changeType}>
-                          <SelectTrigger>
+                          <SelectTrigger id="type">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>

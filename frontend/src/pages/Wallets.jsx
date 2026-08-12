@@ -317,16 +317,17 @@ const Wallets = () => {
         error={actionError}
       >
         <div>
-          <Label>Customer</Label>
+          <Label htmlFor="wallet-customer">Customer</Label>
           <CustomerSelect
+            id="wallet-customer"
             value={createForm.customer_id}
             onChange={(v) => setCreateForm({ ...createForm, customer_id: v })}
             customers={customers}
           />
         </div>
         <div>
-          <Label>Currency</Label>
-          <Input
+          <Label htmlFor="currency">Currency</Label>
+          <Input id="currency"
             value={createForm.currency}
             onChange={(e) =>
               setCreateForm({ ...createForm, currency: e.target.value.toUpperCase() })
@@ -344,8 +345,8 @@ const Wallets = () => {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Amount ({topUpWallet?.currency})</Label>
-              <Input
+              <Label htmlFor="amount">Amount ({topUpWallet?.currency})</Label>
+              <Input id="amount"
                 type="number"
                 min="0.01"
                 step="0.01"
@@ -355,12 +356,12 @@ const Wallets = () => {
               />
             </div>
             <div>
-              <Label>Source</Label>
+              <Label htmlFor="source">Source</Label>
               <Select
                 value={topUpForm.source}
                 onValueChange={(v) => setTopUpForm({ ...topUpForm, source: v })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="source">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -391,8 +392,8 @@ const Wallets = () => {
               topped up by the recharge amount using the customer&apos;s saved payment method.
             </p>
             <div>
-              <Label>Threshold ({autoWallet?.currency})</Label>
-              <Input
+              <Label htmlFor="threshold">Threshold ({autoWallet?.currency})</Label>
+              <Input id="threshold"
                 type="number"
                 min="0.01"
                 step="0.01"
@@ -402,8 +403,8 @@ const Wallets = () => {
               />
             </div>
             <div>
-              <Label>Recharge amount ({autoWallet?.currency})</Label>
-              <Input
+              <Label htmlFor="recharge-amount">Recharge amount ({autoWallet?.currency})</Label>
+              <Input id="recharge-amount"
                 type="number"
                 min="0.01"
                 step="0.01"

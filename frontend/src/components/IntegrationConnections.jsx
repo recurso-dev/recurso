@@ -255,7 +255,7 @@ export default function IntegrationConnections() {
       {error && (
         <p className="mb-3 rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}{" "}
-          <button className="underline" onClick={load}>
+          <button type="button" className="underline" onClick={load}>
             Retry
           </button>
         </p>

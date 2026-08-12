@@ -130,16 +130,16 @@ const CancelFlows = () => {
         dirty={Boolean(createForm.name)}
       >
         <div>
-          <Label>Name</Label>
-          <Input
+          <Label htmlFor="flow-name">Name</Label>
+          <Input id="flow-name"
             value={createForm.name}
             onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
             placeholder="Standard retention flow"
           />
         </div>
         <div>
-          <Label>Cooldown (days)</Label>
-          <Input
+          <Label htmlFor="cooldown-days">Cooldown (days)</Label>
+          <Input id="cooldown-days"
             type="number"
             min="0"
             value={createForm.cooldown_days}

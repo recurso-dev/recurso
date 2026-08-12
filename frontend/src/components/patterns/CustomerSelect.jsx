@@ -37,10 +37,10 @@ export function CustomerName({ id, names, link = true }) {
 // CustomerSelect is the standard customer picker for create dialogs —
 // replaces raw "paste a UUID" inputs with the same name (email) dropdown
 // the full-page create flows use.
-export function CustomerSelect({ value, onChange, customers, placeholder = "Select a customer" }) {
+export function CustomerSelect({ id, value, onChange, customers, placeholder = "Select a customer" }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger>
+      <SelectTrigger id={id}>
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>

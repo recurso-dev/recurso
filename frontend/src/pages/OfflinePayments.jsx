@@ -318,15 +318,16 @@ const OfflinePayments = () => {
         dirty={Boolean(payForm.customer_id || payForm.amount)}
       >
             <div>
-              <Label>Customer</Label>
+              <Label htmlFor="record-customer">Customer</Label>
               <CustomerSelect
+                id="record-customer"
                 value={payForm.customer_id}
                 onChange={(v) => setPayForm({ ...payForm, customer_id: v, invoice_id: "" })}
                 customers={customers}
               />
             </div>
             <div>
-              <Label>Invoice (optional — settles the invoice)</Label>
+              <Label htmlFor="record-invoice">Invoice (optional — settles the invoice)</Label>
               <Select
                 value={payForm.invoice_id}
                 onValueChange={(v) => {
@@ -342,7 +343,7 @@ const OfflinePayments = () => {
                 }}
                 disabled={!payForm.customer_id}
               >
-                <SelectTrigger>
+                <SelectTrigger id="record-invoice">
                   <SelectValue
                     placeholder={
                       !payForm.customer_id
@@ -365,12 +366,12 @@ const OfflinePayments = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Type</Label>
+                <Label htmlFor="type">Type</Label>
                 <Select
                   value={payForm.payment_type}
                   onValueChange={(v) => setPayForm({ ...payForm, payment_type: v })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -383,8 +384,8 @@ const OfflinePayments = () => {
                 </Select>
               </div>
               <div>
-                <Label>Amount ({payForm.currency})</Label>
-                <Input
+                <Label htmlFor="amount">Amount ({payForm.currency})</Label>
+                <Input id="amount"
                   type="number"
                   min="0.01"
                   step="0.01"
@@ -396,8 +397,8 @@ const OfflinePayments = () => {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>TDS withheld (optional)</Label>
-                <Input
+                <Label htmlFor="tds-withheld-optional">TDS withheld (optional)</Label>
+                <Input id="tds-withheld-optional"
                   type="number"
                   min="0"
                   step="0.01"
@@ -407,8 +408,8 @@ const OfflinePayments = () => {
                 />
               </div>
               <div>
-                <Label>Reference no.</Label>
-                <Input
+                <Label htmlFor="reference-no">Reference no.</Label>
+                <Input id="reference-no"
                   value={payForm.reference_number}
                   onChange={(e) => setPayForm({ ...payForm, reference_number: e.target.value })}
                   placeholder="UTR / cheque no."
@@ -416,8 +417,8 @@ const OfflinePayments = () => {
               </div>
             </div>
             <div>
-              <Label>Notes (optional)</Label>
-              <Input
+              <Label htmlFor="notes-optional">Notes (optional)</Label>
+              <Input id="notes-optional"
                 value={payForm.notes}
                 onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })}
                 placeholder="Anything worth remembering"
@@ -439,15 +440,16 @@ const OfflinePayments = () => {
         dirty={Boolean(vaForm.customer_id || vaForm.amount)}
       >
             <div>
-              <Label>Customer</Label>
+              <Label htmlFor="va-customer">Customer</Label>
               <CustomerSelect
+                id="va-customer"
                 value={vaForm.customer_id}
                 onChange={(v) => setVAForm({ ...vaForm, customer_id: v, invoice_id: "" })}
                 customers={customers}
               />
             </div>
             <div>
-              <Label>Invoice (optional)</Label>
+              <Label htmlFor="va-invoice">Invoice (optional)</Label>
               <Select
                 value={vaForm.invoice_id}
                 onValueChange={(v) => {
@@ -460,7 +462,7 @@ const OfflinePayments = () => {
                 }}
                 disabled={!vaForm.customer_id}
               >
-                <SelectTrigger>
+                <SelectTrigger id="va-invoice">
                   <SelectValue
                     placeholder={
                       !vaForm.customer_id
@@ -482,8 +484,8 @@ const OfflinePayments = () => {
               </Select>
             </div>
             <div>
-              <Label>Expected amount (INR)</Label>
-              <Input
+              <Label htmlFor="expected-amount-inr">Expected amount (INR)</Label>
+              <Input id="expected-amount-inr"
                 type="number"
                 min="0.01"
                 step="0.01"

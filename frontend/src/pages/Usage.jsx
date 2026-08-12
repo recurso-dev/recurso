@@ -273,6 +273,7 @@ export default function Usage() {
           {loading ? (
             <Skeleton className="h-72 w-full" />
           ) : byDimension.length > 0 ? (
+            <div role="img" aria-label="Usage quantity over time">
             <BarChart
               {...chartDefaults}
               className="h-72"
@@ -286,6 +287,7 @@ export default function Usage() {
               showGridLines
               yAxisWidth={64}
             />
+            </div>
           ) : (
             <EmptyState
               icon={Activity}

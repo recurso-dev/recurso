@@ -171,7 +171,7 @@ const Coupons = () => {
         toolbar={
           <div className="flex items-center gap-1 rounded-lg border border-border bg-white p-0.5">
             {STATUS_FILTERS.map((f) => (
-              <button
+              <button type="button"
                 key={f}
                 onClick={() => setStatusFilter(f)}
                 className={cn(

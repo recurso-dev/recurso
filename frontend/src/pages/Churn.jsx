@@ -109,7 +109,7 @@ const Churn = () => {
       ) : alertsError ? (
         <p className="rounded-md bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {alertsError}{" "}
-          <button className="underline" onClick={() => refetchAlerts()}>
+          <button type="button" className="underline" onClick={() => refetchAlerts()}>
             Retry
           </button>
         </p>

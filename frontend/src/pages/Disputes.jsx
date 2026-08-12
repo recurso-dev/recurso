@@ -241,8 +241,8 @@ const Disputes = () => {
             </label>
 
             <div>
-              <Label>Note (optional)</Label>
-              <Textarea
+              <Label htmlFor="note-optional">Note (optional)</Label>
+              <Textarea id="note-optional"
                 className={textareaClass}
                 rows={3}
                 value={note}

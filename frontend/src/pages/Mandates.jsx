@@ -242,17 +242,18 @@ const Mandates = () => {
         dirty={Boolean(form.customer_id || form.vpa || form.max_amount)}
       >
             <div>
-              <Label>Customer</Label>
+              <Label htmlFor="mandate-customer">Customer</Label>
               <CustomerSelect
+                id="mandate-customer"
                 value={form.customer_id}
                 onChange={(v) => setForm({ ...form, customer_id: v, subscription_id: "" })}
                 customers={customers}
               />
             </div>
             <div>
-              <Label>Currency</Label>
+              <Label htmlFor="currency">Currency</Label>
               <Select value={form.currency} onValueChange={(v) => setForm({ ...form, currency: v })}>
-                <SelectTrigger>
+                <SelectTrigger id="currency">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -266,8 +267,8 @@ const Mandates = () => {
             </div>
             {form.currency === "INR" ? (
               <div>
-                <Label>VPA (UPI ID)</Label>
-                <Input
+                <Label htmlFor="vpa-upi-id">VPA (UPI ID)</Label>
+                <Input id="vpa-upi-id"
                   value={form.vpa}
                   onChange={(e) => setForm({ ...form, vpa: e.target.value })}
                   placeholder="customer@upi"
@@ -281,8 +282,8 @@ const Mandates = () => {
             )}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Max amount ({form.currency})</Label>
-                <Input
+                <Label htmlFor="max-amount">Max amount ({form.currency})</Label>
+                <Input id="max-amount"
                   type="number"
                   min="0.01"
                   step="0.01"
@@ -292,9 +293,9 @@ const Mandates = () => {
                 />
               </div>
               <div>
-                <Label>Frequency</Label>
+                <Label htmlFor="frequency">Frequency</Label>
                 <Select value={form.frequency} onValueChange={(v) => setForm({ ...form, frequency: v })}>
-                  <SelectTrigger>
+                  <SelectTrigger id="frequency">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -308,13 +309,13 @@ const Mandates = () => {
               </div>
             </div>
             <div>
-              <Label>Subscription (optional)</Label>
+              <Label htmlFor="subscription-optional">Subscription (optional)</Label>
               <Select
                 value={form.subscription_id}
                 onValueChange={(v) => setForm({ ...form, subscription_id: v === "none" ? "" : v })}
                 disabled={!form.customer_id}
               >
-                <SelectTrigger>
+                <SelectTrigger id="subscription-optional">
                   <SelectValue
                     placeholder={
                       !form.customer_id

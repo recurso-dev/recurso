@@ -199,6 +199,7 @@ export default function RevenueWaterfall() {
                 </p>
               </div>
               <div className="p-6" data-testid="waterfall-chart">
+                <div role="img" aria-label="Revenue waterfall by component">
                 <BarChart
                   {...chartDefaults}
                   className="h-72"
@@ -213,6 +214,7 @@ export default function RevenueWaterfall() {
                   showGridLines
                   yAxisWidth={64}
                 />
+                </div>
               </div>
             </Card>
           )}

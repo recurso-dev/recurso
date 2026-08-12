@@ -24,8 +24,8 @@ function OfferFields({ offer, onChange }) {
       return (
         <div className="grid grid-cols-2 gap-2">
           <div>
-            <Label className="text-xs">Percent off</Label>
-            <Input
+            <Label className="text-xs" htmlFor="percent-off">Percent off</Label>
+            <Input id="percent-off"
               type="number"
               min="1"
               max="100"
@@ -34,8 +34,8 @@ function OfferFields({ offer, onChange }) {
             />
           </div>
           <div>
-            <Label className="text-xs">For (months)</Label>
-            <Input
+            <Label className="text-xs" htmlFor="for-months">For (months)</Label>
+            <Input id="for-months"
               type="number"
               min="1"
               value={offer.discount_duration_months ?? ""}
@@ -47,8 +47,8 @@ function OfferFields({ offer, onChange }) {
     case "pause":
       return (
         <div>
-          <Label className="text-xs">Pause (months)</Label>
-          <Input
+          <Label className="text-xs" htmlFor="pause-months">Pause (months)</Label>
+          <Input id="pause-months"
             type="number"
             min="1"
             value={offer.pause_months ?? ""}
@@ -59,8 +59,8 @@ function OfferFields({ offer, onChange }) {
     case "trial_extension":
       return (
         <div>
-          <Label className="text-xs">Extend (days)</Label>
-          <Input
+          <Label className="text-xs" htmlFor="extend-days">Extend (days)</Label>
+          <Input id="extend-days"
             type="number"
             min="1"
             value={offer.extension_days ?? ""}
@@ -71,8 +71,8 @@ function OfferFields({ offer, onChange }) {
     case "plan_switch":
       return (
         <div>
-          <Label className="text-xs">Switch to plan ID</Label>
-          <Input
+          <Label className="text-xs" htmlFor="switch-to-plan-id">Switch to plan ID</Label>
+          <Input id="switch-to-plan-id"
             value={offer.switch_to_plan_id ?? ""}
             onChange={(e) => set({ switch_to_plan_id: e.target.value })}
             placeholder="plan uuid"
@@ -93,8 +93,8 @@ export function CancelFlowStepConfig({ stepType, config, onChange }) {
     return (
       <div className="space-y-3">
         <div>
-          <Label>Reasons (one per line)</Label>
-          <Textarea
+          <Label htmlFor="reasons-one-per-line">Reasons (one per line)</Label>
+          <Textarea id="reasons-one-per-line"
             className={textareaClass}
             rows={4}
             value={(config.questions || []).join("\n")}
@@ -127,20 +127,20 @@ export function CancelFlowStepConfig({ stepType, config, onChange }) {
     return (
       <div className="space-y-3">
         <div>
-          <Label>Headline</Label>
-          <Input
+          <Label htmlFor="headline">Headline</Label>
+          <Input id="headline"
             value={config.headline || ""}
             onChange={(e) => set({ headline: e.target.value })}
             placeholder="Before you go…"
           />
         </div>
         <div className="space-y-2">
-          <Label>Offers</Label>
+          <Label htmlFor="offers">Offers</Label>
           {offers.map((offer, i) => (
             <div key={i} className="space-y-2 rounded-md border border-border p-3">
               <div className="flex items-center gap-2">
                 <Select value={offer.type} onValueChange={(v) => updateOffer(i, { type: v })}>
-                  <SelectTrigger className="h-8">
+                  <SelectTrigger id="offers" className="h-8">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -178,24 +178,24 @@ export function CancelFlowStepConfig({ stepType, config, onChange }) {
   return (
     <div className="space-y-3">
       <div>
-        <Label>Message</Label>
-        <Input
+        <Label htmlFor="message">Message</Label>
+        <Input id="message"
           value={config.message || ""}
           onChange={(e) => set({ message: e.target.value })}
           placeholder="Are you sure you want to cancel?"
         />
       </div>
       <div>
-        <Label>Confirm button</Label>
-        <Input
+        <Label htmlFor="confirm-button">Confirm button</Label>
+        <Input id="confirm-button"
           value={config.confirm_button || ""}
           onChange={(e) => set({ confirm_button: e.target.value })}
           placeholder="Yes, cancel"
         />
       </div>
       <div>
-        <Label>Cancel button</Label>
-        <Input
+        <Label htmlFor="cancel-button">Cancel button</Label>
+        <Input id="cancel-button"
           value={config.cancel_button || ""}
           onChange={(e) => set({ cancel_button: e.target.value })}
           placeholder="No, keep my subscription"

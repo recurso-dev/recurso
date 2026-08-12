@@ -142,20 +142,20 @@ const DunningCampaigns = () => {
         dirty={Boolean(createForm.name)}
       >
         <div>
-          <Label>Name</Label>
-          <Input
+          <Label htmlFor="name">Name</Label>
+          <Input id="name"
             value={createForm.name}
             onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
             placeholder="Failed payment recovery"
           />
         </div>
         <div>
-          <Label>Trigger</Label>
+          <Label htmlFor="trigger">Trigger</Label>
           <Select
             value={createForm.trigger_event}
             onValueChange={(v) => setCreateForm({ ...createForm, trigger_event: v })}
           >
-            <SelectTrigger>
+            <SelectTrigger id="trigger">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

@@ -135,7 +135,7 @@ export default function Customers() {
         header: "",
         align: "right",
         cell: (c) => (
-          <button
+          <button type="button"
             onClick={(e) => copyPortalLink(e, c)}
             className="text-subtle transition-colors hover:text-primary"
             title="Copy portal link"
@@ -177,7 +177,7 @@ export default function Customers() {
         toolbar={
           <div className="flex items-center gap-1 rounded-lg border border-border bg-white p-0.5">
             {STATUS_FILTERS.map((f) => (
-              <button
+              <button type="button"
                 key={f}
                 onClick={() => setStatus(f)}
                 className={cn(
