@@ -162,6 +162,23 @@ func main() {
 	// 3. Create Customers & Subscriptions
 	names := []string{"Alpha Corp", "Beta Ltd", "Gamma Inc", "Delta LLC", "John Doe", "Jane Smith", "Bob Wilson", "Alice Brown"}
 
+	// --- Ledger Accounts (canonical chart — domain/ledger.go) ---
+	// The old seed used ad-hoc codes (1001/1002/4001) and, worse, wrote NO
+	// ledger transactions at all: `make demo` landed on an empty ledger,
+	// contradicting the product's whole identity (and the website's
+	// "seeded and balanced" claim). Accounts are created up front so the
+	// invoice loop below can post real legs.
+	cashAcct, arAcct, deferredAcct, taxAcct := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	if _, err := conn.Exec(`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency) VALUES
+		($1, $2, 'Cash', 'asset', 1000, 1, 'INR'),
+		($3, $2, 'Accounts Receivable', 'asset', 1100, 1, 'INR'),
+		($4, $2, 'Deferred Revenue', 'liability', 2100, 1, 'INR'),
+		($5, $2, 'Tax Payable', 'liability', 2200, 1, 'INR')`,
+		cashAcct, tenantID, arAcct, deferredAcct, taxAcct); err != nil {
+		log.Printf("Failed to create ledger accounts: %v", err)
+	}
+	log.Println("📒 Ledger Accounts Created (canonical codes)")
+
 	for i := 0; i < 20; i++ {
 		custID := uuid.New()
 		name := fmt.Sprintf("Customer %d", i+1)
@@ -257,6 +274,24 @@ func main() {
 		if err != nil {
 			log.Printf("Failed inv: %v", err)
 		}
+
+		// Real double-entry legs, in the product's transfer-based form:
+		// Code-1 gross (AR -> Deferred), Code-6 tax reclass
+		// (Deferred -> Tax Payable), and — these are 'paid' — Code-3
+		// settlement (Cash -> AR). Same semantics the live posting path
+		// uses (internal/service/ledger.go).
+		total := int64(amount + 36000)
+		if _, err := conn.Exec(`INSERT INTO ledger_transactions
+			(id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, created_at)
+			VALUES
+			($1, $2, $3, $4, 1, 1, $5, 0, 'Invoice raised', $6),
+			($7, $8, $9, $10, 1, 6, $5, 0, 'GST reclass', $6),
+			($11, $12, $13, $4, 1, 3, $5, 0, 'Payment received', $6)`,
+			uuid.New(), arAcct, deferredAcct, total, invID, start,
+			uuid.New(), deferredAcct, taxAcct, int64(36000),
+			uuid.New(), cashAcct, arAcct); err != nil {
+			log.Printf("Failed ledger legs for inv %d: %v", i, err)
+		}
 	}
 
 	// =========================================================================
@@ -344,18 +379,6 @@ func main() {
 	}
 
 	log.Println("📜 Quotes Created")
-
-	// --- Ledger Accounts ---
-	// 1000: Assets, 4000: Revenue
-	if _, err := conn.Exec(`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency) VALUES
-		($1, $2, 'Cash', 'asset', 1001, 1, 'USD'),
-		($3, $2, 'Accounts Receivable', 'asset', 1002, 1, 'USD'),
-		($4, $2, 'Subscription Revenue', 'revenue', 4001, 1, 'USD')`,
-		uuid.New(), tenantID, uuid.New(), uuid.New()); err != nil {
-		log.Printf("Failed to create ledger accounts: %v", err)
-	}
-
-	log.Println("📒 Ledger Accounts Created")
 
 	// --- Events (for Developers -> Event Logs) ---
 	if _, err := conn.Exec(`INSERT INTO events (id, tenant_id, type, object_id, object_type, data, created_at)
