@@ -101,10 +101,11 @@ func (s *LedgerService) entityLedgerFilter(ctx context.Context, tenantID uuid.UU
 }
 
 // GeneralLedger returns posted transactions for a tenant, flattened with account
-// codes and names, oldest first, optionally scoped to one entity's ledger. Read-
-// only — the GL export an auditor imports.
-func (s *LedgerService) GeneralLedger(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID) ([]domain.GeneralLedgerRow, error) {
-	return s.pgRepo.GetGeneralLedgerRows(ctx, tenantID, s.entityLedgerFilter(ctx, tenantID, entityID))
+// codes and names, oldest first, optionally scoped to one entity's ledger and/or
+// a [from, to) posting window (nil bounds mean unbounded). Read-only — the GL
+// export an auditor imports.
+func (s *LedgerService) GeneralLedger(ctx context.Context, tenantID uuid.UUID, entityID *uuid.UUID, from, to *time.Time) ([]domain.GeneralLedgerRow, error) {
+	return s.pgRepo.GetGeneralLedgerRows(ctx, tenantID, s.entityLedgerFilter(ctx, tenantID, entityID), from, to)
 }
 
 // deferredClosing derives the closing deferred balance from the period movement.

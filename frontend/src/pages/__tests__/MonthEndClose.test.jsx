@@ -62,4 +62,25 @@ describe("MonthEndClose — deferred tie-out framing", () => {
     expect(screen.queryByText(/to reconcile/i)).toBeNull();
     expect(screen.queryByText(/unexplained/i)).toBeNull();
   });
+
+  // The GL file is named by period, so the export must be scoped to exactly
+  // that period — an all-time dump under a month-named file misstates the books.
+  it("exports the GL scoped to the selected period", async () => {
+    endpoints.getClosePack.mockResolvedValue({ data: { data: basePack } });
+    endpoints.exportGeneralLedger.mockResolvedValue({ data: "csv" });
+    global.URL.createObjectURL = vi.fn(() => "blob:x");
+    global.URL.revokeObjectURL = vi.fn();
+    render(<MonthEndClose />, { wrapper });
+
+    const btn = await screen.findByRole("button", { name: /GL \(CSV\)/i });
+    btn.click();
+
+    const now = new Date();
+    await waitFor(() =>
+      expect(endpoints.exportGeneralLedger).toHaveBeenCalledWith(undefined, {
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+      })
+    );
+  });
 });

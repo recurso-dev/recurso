@@ -4946,9 +4946,24 @@ paths:
       description: |
         Every posted transaction for the tenant, flattened with both account
         codes/names, amount, and provenance, as a CSV download. Read-only. Pass
-        `entity_id` to scope the export to one legal entity's ledger.
+        `entity_id` to scope the export to one legal entity's ledger. Pass
+        `month` and `year` together to export a single calendar month's
+        postings (the month-end close pack's period export); omit both for the
+        full ledger.
       parameters:
         - { $ref: '#/components/parameters/EntityIdQuery' }
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 12
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
       responses:
         '200':
           description: General ledger as CSV.

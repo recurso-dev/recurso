@@ -197,8 +197,9 @@ func (r *LedgerRepository) SumWalletBalance(ctx context.Context, tenantID uuid.U
 // GetGeneralLedgerRows returns posted transactions, optionally filtered to one
 // entity's ledger (Multi-Entity Books). A nil ledgerID returns every posting
 // across the tenant's entity ledgers. Each row is tagged with the entity of its
-// debit account's ledger.
-func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int) ([]domain.GeneralLedgerRow, error) {
+// debit account's ledger. Nil from/to mean unbounded; non-nil bounds filter the
+// posting timestamp to [from, to) — the period-scoped export month-end close uses.
+func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int, from, to *time.Time) ([]domain.GeneralLedgerRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.created_at, t.code,
 		        da.code, da.name, ca.code, ca.name,
@@ -210,7 +211,9 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 		 JOIN ledger_accounts ca ON ca.id = t.credit_account_id
 		 LEFT JOIN entities e ON e.tenant_id = da.tenant_id AND e.tb_ledger_id = da.ledger_id
 		 WHERE da.tenant_id = $1 AND ($2::int IS NULL OR da.ledger_id = $2)
-		 ORDER BY t.created_at, t.id`, tenantID, ledgerID)
+		   AND ($3::timestamptz IS NULL OR t.created_at >= $3)
+		   AND ($4::timestamptz IS NULL OR t.created_at < $4)
+		 ORDER BY t.created_at, t.id`, tenantID, ledgerID, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query general ledger: %w", err)
 	}

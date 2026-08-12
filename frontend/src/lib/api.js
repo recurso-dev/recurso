@@ -171,8 +171,13 @@ export const endpoints = {
   // pass { entity_id } for one entity, { consolidated: true } to roll every
   // entity up by account code, or nothing for the all-entities breakdown.
   getTrialBalance: (params) => api.get('/ledger/trial-balance', { params: params || {} }),
-  exportGeneralLedger: (entityId) =>
-    api.get('/ledger/export', { params: entityParams(entityId), responseType: 'blob' }),
+  // Optionally pass { month, year } to export one calendar month's postings
+  // (the month-end close's period export); omit for the full ledger.
+  exportGeneralLedger: (entityId, params) =>
+    api.get('/ledger/export', {
+      params: { ...entityParams(entityId), ...(params || {}) },
+      responseType: 'blob',
+    }),
   getRevenueWaterfall: () => api.get('/finance/revrec/waterfall'),
   getDeferredRollforward: (month, year) =>
     api.get('/ledger/deferred-rollforward', { params: { month, year } }),

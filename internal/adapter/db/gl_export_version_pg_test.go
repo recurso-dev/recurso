@@ -58,7 +58,7 @@ func TestGeneralLedgerExport_CarriesAccountingVersion(t *testing.T) {
 		t.Fatalf("post tx: %v", err)
 	}
 
-	rows, err := repo.GetGeneralLedgerRows(ctx, tenantID, nil)
+	rows, err := repo.GetGeneralLedgerRows(ctx, tenantID, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("GetGeneralLedgerRows: %v", err)
 	}
