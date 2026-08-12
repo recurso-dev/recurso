@@ -7,8 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-12 — The design release
+
+Every screen, judged. This release closes out a full code-grounded design
+review of all ~60 dashboard, portal, auth, and settings screens against the
+bar set by Stripe, Linear, and Mercury (`docs/design-review-2026-08.md`). The
+verdict was "trustworthy but uneven" — strong architecture, with the gap
+concentrated in thirteen repeated, mostly shared-component patterns. All
+thirteen are now closed: every number renders in tabular-mono with its real
+currency, every failure is an honest error instead of a healthy-looking zero,
+every raw UUID became a name or a picker, every figure drills to its source,
+and the last statutory screen that dumped raw JSON now reads like a filing.
+Alongside the design work: opt-in accrual revenue recognition, a period-scoped
+GL export, and a set of correctness fixes where a form could quietly create
+the wrong money.
+
 ### Added
 
+- **Public landing page.** Signed-out visitors to `/` now see a marketing
+  front door in the product's own design language instead of a login
+  redirect; authenticated users land on the dashboard as before.
+- **Settings has a persistent sub-nav.** All settings pages share one layout
+  with a grouped rail (General / Billing documents / Taxes / Account), so
+  moving between tax, branding, and account config no longer bounces through
+  a hub page. Region-relevant pages are badged.
+- **GST returns render as a filing, not a payload.** GSTR-1 shows control
+  totals (gross outward vs credit notes), B2B invoice detail under each
+  buyer's GSTIN, the B2CS rate-wise summary, CDNR, and the HSN rollup;
+  GSTR-3B shows Table 3.1 rows (a)–(e) — with an explicit note on why
+  (b)–(e) are zero — Table 3.2, and provenance counts. The GSTN upload JSON
+  download is unchanged; a failed build now shows a retryable error in place.
+- **Period-scoped general-ledger export.** `GET /v1/ledger/export` accepts
+  `month` + `year` to export one calendar month's postings; the month-end
+  close pack's export link carries its own period, so the file named
+  `general-ledger-2026-08.csv` contains exactly August's ledger (it
+  previously contained the entire ledger since inception).
+- **Server-side list filters.** Subscriptions can be filtered by
+  `plan_id` and `started_after`, plans by `currency` (any of the plan's
+  prices) and `interval_unit`, and events by `type` — as real API query
+  params. The dashboard's filter controls now use them, and the Events
+  type filter offers the server's full type catalog.
+- **Developer page code samples.** A "make your first request" quickstart
+  (cURL/Node/Python) and webhook signature-verification samples (Node/Python,
+  matching the real `X-Recurso-Signature` HMAC scheme) render in a new
+  copyable code-sample component.
+- **Every ambiguous metric is explainable.** KPI tiles across Collections,
+  the dashboard, Executive Summary, Unit Economics, MRR Waterfall, Dunning,
+  and Trial Balance carry a definition affordance stating exactly how the
+  number is computed.
+- **Drill-to-source everywhere.** Aging-report buckets link to the invoices
+  inside them; ledger entries type their reference (invoice / credit note /
+  schedule entry / wallet) and link invoice references to the invoice;
+  reconciliation discrepancies link to their invoice; per-customer AR
+  sub-accounts resolve to "Accounts Receivable — {customer}".
 - **Accrual revenue recognition (opt-in).** With
   `RECURSO_ACCRUAL_RECOGNITION=true`, recognition schedules are built at invoice
   **issuance** for subscription invoices, so revenue recognizes over the service
@@ -21,30 +72,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   already-recognized portion as Bad Debt (the #477 split). No behavior change
   when the flag is off; the invariant harness stays green either way.
 
-### Fixed
-
-- **Write-offs of already-recognized revenue now expense Bad Debt, not reverse
-  Deferred.** Part of the accrual revenue-recognition epic (#466/#477): when an
-  invoice's revenue has been (partly) recognized, writing it off can't
-  un-recognize that revenue — the service was delivered; the non-payment is a
-  bad-debt expense. The write-off now splits — the recognized portion posts to a
-  new Bad Debt Expense account (ledger code 26), the still-deferred portion
-  reverses from Deferred (code 22) as before — and a later recovery inverts
-  both. One-off invoices (whose revenue is recognized at issuance) now correctly
-  expense bad debt on write-off instead of reversing Revenue. No behavior change
-  under the current cash-recognition model (recognized is 0), and the invariant
-  harness stays green.
-
-### Security
-
-- **Portal magic-link hardening.** The sign-in token now travels in a POST
-  body instead of the URL query string (which leaks via `Referer`, browser
-  history, and proxy/access logs); the verify page strips the token from the
-  URL and history the moment it reads it. And the verify endpoint now returns
-  one generic message for every failure — invalid, expired, or already used —
-  so the response can no longer be used to probe a token's state. The old
-  query-string endpoint is kept for one release for links already in flight.
-
 ### Changed
 
 - **Centralized input validation.** Currency and country codes were validated
@@ -56,8 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   currency fields now reject a non-ISO code (e.g. `ZZZ`, or the reserved
   `XXX`/`XTS`) at bind time instead of accepting any 3-character string.
 
-### Changed
-
 - **Expensive endpoints now have a dedicated rate-limit bucket.** Import
   preview/commit/compare (each reprocesses an entire external billing
   account), invoice/credit-note PDF + HTML renders, the GL export, and the
@@ -65,6 +90,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   500/min limit — one API key could issue 500 GL exports or import commits a
   minute. They now share a tight per-tenant `expensive` bucket (30/min); a
   caller past it gets 429, normal use is unaffected.
+- **The dashboard's typography is self-hosted and money is uniform.** Inter
+  (UI) and JetBrains Mono (money, code, IDs) ship with the app instead of
+  loading from the Google Fonts CDN, and every monetary table cell renders
+  through the shared tabular-mono `Money` component, right-aligned, in the
+  amount's real currency — no more per-OS money fonts, hardcoded `$`
+  prefixes, or headline figures assuming USD.
+- **Amount-off coupons are created in a real currency.** The coupon form
+  offers the currencies the plan catalog actually bills in and converts the
+  typed amount with that currency's exponent. Previously the form assumed
+  USD: a merchant billing in JPY who typed 500 minted a ¥50,000-off coupon
+  (100×), and a KWD merchant got 10× less than intended.
+- **The Invoices page loads the whole invoice set.** It previously fetched
+  only the newest 250 invoices, so the status chips, the aging drill-down,
+  search, and the CSV export all silently operated on a truncated set. The
+  page now walks the paginated API (with an honest notice past a 10k safety
+  cap), so the CSV export is complete.
+- **List filters filter the whole list.** The subscriptions plan/date
+  filters, plans currency/interval filters, and events type filter were
+  applied client-side to a single fetched page — picking a plan quietly
+  showed only that page's matches. All three now filter server-side.
+- **Form validation follows one accessible contract.** Every create form
+  shows inline `role="alert"` messages tied to the field via
+  `aria-invalid`/`aria-describedby`, focuses the first invalid field on
+  submit, and clears each message as it's fixed — replacing a mix of
+  toast-only warnings and native browser tooltips.
 
 ### Security
 
@@ -79,9 +129,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   address and a different "if this email exists…" message for an unknown one,
   letting an attacker enumerate customers by diffing the response. Both cases
   now return one identical generic message.
+- **Portal magic-link hardening.** The sign-in token now travels in a POST
+  body instead of the URL query string (which leaks via `Referer`, browser
+  history, and proxy/access logs); the verify page strips the token from the
+  URL and history the moment it reads it. And the verify endpoint now returns
+  one generic message for every failure — invalid, expired, or already used —
+  so the response can no longer be used to probe a token's state. The old
+  query-string endpoint is kept for one release for links already in flight.
 
 ### Fixed
 
+- **Write-offs of already-recognized revenue now expense Bad Debt, not reverse
+  Deferred.** Part of the accrual revenue-recognition epic (#466/#477): when an
+  invoice's revenue has been (partly) recognized, writing it off can't
+  un-recognize that revenue — the service was delivered; the non-payment is a
+  bad-debt expense. The write-off now splits — the recognized portion posts to a
+  new Bad Debt Expense account (ledger code 26), the still-deferred portion
+  reverses from Deferred (code 22) as before — and a later recovery inverts
+  both. One-off invoices (whose revenue is recognized at issuance) now correctly
+  expense bad debt on write-off instead of reversing Revenue. No behavior change
+  under the current cash-recognition model (recognized is 0), and the invariant
+  harness stays green.
+- **The month-named GL export contained the all-time ledger.** The month-end
+  close's "GL (CSV)" download was named `general-ledger-YYYY-MM.csv` but
+  always exported every posting since inception — an auditor handed that file
+  as close evidence got the wrong books. The export is now scoped to the
+  period being closed (see the new period parameters above).
+- **Silent failures no longer render as a healthy business.** A full data
+  outage on the dashboard, a failed Collections analytics load, and failed
+  Developers keys/webhooks/events loads used to render $0 tiles or empty
+  lists — indistinguishable from a quiet account. Each now shows an explicit
+  error state with a retry.
+- **The Coupons list's "Redemptions: 0" column was fabricated** — a hardcoded
+  zero for every coupon (the backend has no such field). Removed.
+- **Profile's load error rendered inside the "Edit profile" button.** It now
+  renders in the page body as a proper alert.
+- **The dashboard's MRR hero assumed USD.** It now formats in the tenant's
+  real reporting currency.
+- **Consequential actions are consistently guarded.** Enabling money-moving
+  MCP agent tools, changing a teammate's role, and clearing all declared tax
+  nexus (a compliance-sensitive wipe) now require an explicit confirmation
+  naming what will change.
 - **The customer portal's Outstanding card ignored applied account credit.**
   An open invoice with account credit applied showed its face value as owed —
   a customer with a fully credit-covered invoice saw it as outstanding debt.
@@ -93,9 +181,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tenant's transfers to a caller who guessed an account UUID. PG errors now
   surface as errors; the TB path serves only PG-less deployments. (Latent —
   prod runs without a TB client.)
-
-### Fixed
-
 - **Detached goroutines no longer risk crashing the whole API on a panic.**
   Fire-and-forget goroutines (invoice + credit-note issuance emails, the
   new-signup operator alert and marketing sync, the manual accounting-sync
@@ -107,9 +192,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   wraps each detached goroutine in a recover-and-log guard; the panic is
   contained and logged with its stack instead of crashing the process.
   Found by the post-release audit sweep.
-
-### Fixed
-
 - **Charts mounted in a hidden tab rendered empty.** Chrome freezes
   `requestAnimationFrame` in hidden/occluded windows, so a chart that mounted
   there stuck at its entry animation's first frame — sub-pixel bars over a
