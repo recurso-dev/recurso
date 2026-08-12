@@ -129,6 +129,8 @@ export const endpoints = {
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
+  // Wires the long-existing backend GET (was implemented and unused).
+  getSubscription: (id) => api.get(`/subscriptions/${id}`),
   getInvoices: (params) => api.get('/invoices', { params }),
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).

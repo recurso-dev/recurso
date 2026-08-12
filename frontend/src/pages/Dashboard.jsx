@@ -541,11 +541,11 @@ export default function Dashboard() {
                       key={inv.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => navigate("/invoices", { state: { openInvoiceId: inv.id } })}
+                      onClick={() => navigate(`/invoices/${inv.id}`)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
-                          navigate("/invoices", { state: { openInvoiceId: inv.id } });
+                          navigate(`/invoices/${inv.id}`);
                         }
                       }}
                       className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"

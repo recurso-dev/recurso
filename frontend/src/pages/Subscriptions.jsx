@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { Plus, Repeat } from "lucide-react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -34,8 +34,13 @@ export default function Subscriptions() {
   const [dateFilter, setDateFilter] = useState("all");
   const debouncedSearch = useDebounce(search, 500);
 
-  const [selectedSub, setSelectedSub] = useState(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // URL-driven detail (/subscriptions/:id) — shareable, refresh/back-safe.
+  const { id: routeId } = useParams();
+  const { data: routedObject } = useQuery({
+    queryKey: ["subscription", routeId],
+    queryFn: async () => (await endpoints.getSubscription(routeId)).data.data,
+    enabled: Boolean(routeId),
+  });
 
   const queryClient = useQueryClient();
   // Every filter is server-driven (q/page/status/plan/date) — filtering only
@@ -106,15 +111,10 @@ export default function Subscriptions() {
     setPage(1);
   }, [debouncedSearch, statusFilter, planFilter, dateFilter]);
 
-  const handleRowClick = (sub) => {
-    setSelectedSub(sub);
-    setIsDetailOpen(true);
-  };
 
-  const closeDetail = () => {
-    setIsDetailOpen(false);
-    setTimeout(() => setSelectedSub(null), 300);
-  };
+  const closeDetail = () => navigate("/subscriptions");
+  const isDetailOpen = Boolean(routeId);
+  const selectedSub = routedObject || null;
 
   const hasFilters =
     search || statusFilter !== "all" || planFilter !== "all" || dateFilter !== "all";
@@ -213,7 +213,7 @@ export default function Subscriptions() {
         loading={loading}
         error={error}
         onRetry={refetch}
-        onRowClick={handleRowClick}
+        rowHref={(row) => `/subscriptions/${row.id}`}
         search={{
           value: search,
           onChange: setSearch,
@@ -288,7 +288,14 @@ export default function Subscriptions() {
         plan={selectedSub ? plans[selectedSub.plan_id] : null}
         isOpen={isDetailOpen}
         onClose={closeDetail}
-        onRefresh={() => queryClient.invalidateQueries({ queryKey: ["subscriptions"] })}
+        onRefresh={() => {
+          queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+          // The open sheet is served by the routed ["subscription", id]
+          // query — refresh it too or pause/resume/cancel appear to no-op.
+          if (routeId) {
+            queryClient.invalidateQueries({ queryKey: ["subscription", routeId] });
+          }
+        }}
       />
     </div>
   );

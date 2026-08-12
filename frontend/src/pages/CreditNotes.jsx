@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { Plus, Receipt } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -15,8 +15,13 @@ import { Button } from "@/components/ui/button";
 const CreditNotes = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [selectedNote, setSelectedNote] = useState(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // URL-driven detail (/credit-notes/:id) — shareable, refresh/back-safe.
+  const { id: routeId } = useParams();
+  const { data: routedObject } = useQuery({
+    queryKey: ["creditNote", routeId],
+    queryFn: async () => (await endpoints.getCreditNote(routeId)).data.data,
+    enabled: Boolean(routeId),
+  });
 
   const {
     data: creditNotes = [],
@@ -35,15 +40,10 @@ const CreditNotes = () => {
       (cn.customer?.name || "").toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleRowClick = (note) => {
-    setSelectedNote(note);
-    setIsDetailOpen(true);
-  };
 
-  const closeDetail = () => {
-    setIsDetailOpen(false);
-    setTimeout(() => setSelectedNote(null), 300);
-  };
+  const closeDetail = () => navigate("/credit-notes");
+  const isDetailOpen = Boolean(routeId);
+  const selectedNote = routedObject || null;
 
   const columns = [
     {
@@ -111,7 +111,7 @@ const CreditNotes = () => {
         loading={loading}
         error={error}
         onRetry={refetch}
-        onRowClick={handleRowClick}
+        rowHref={(row) => `/credit-notes/${row.id}`}
         search={{
           value: search,
           onChange: setSearch,

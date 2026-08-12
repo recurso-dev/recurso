@@ -153,11 +153,15 @@ function App() {
                             <Route path="/" element={<Dashboard />} />
                             <Route path="/customers" element={<Customers />} />
                             <Route path="/customers/new" element={<CreateCustomer />} />
+                            <Route path="/customers/:id" element={<Customers />} />
                             <Route path="/plans" element={<Plans />} />
                             <Route path="/plans/new" element={<CreatePlan />} />
+                            <Route path="/plans/:id" element={<Plans />} />
                             <Route path="/subscriptions" element={<Subscriptions />} />
                             <Route path="/subscriptions/new" element={<CreateSubscription />} />
+                            <Route path="/subscriptions/:id" element={<Subscriptions />} />
                             <Route path="/invoices" element={<Invoices />} />
+                            <Route path="/invoices/:id" element={<Invoices />} />
                             <Route path="/products" element={<Navigate to="/plans" replace />} />
                             <Route path="/coupons" element={<Coupons />} />
                             <Route path="/coupons/new" element={<CreateCoupon />} />
@@ -183,9 +187,11 @@ function App() {
                             <Route path="/finance/revenue-by-geography" element={<RevenueByGeography />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
+                            <Route path="/credit-notes/:id" element={<CreditNotes />} />
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/quotes/:id/edit" element={<CreateQuote />} />
+                            <Route path="/quotes/:id" element={<Quotes />} />
                             <Route path="/settings" element={<SettingsLayout />}>
                               <Route index element={<Settings />} />
                               <Route path="irp" element={<IRPSettings />} />

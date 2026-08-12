@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { Plus, Users, Link2 } from "lucide-react";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -44,8 +44,15 @@ export default function Customers() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 500);
 
-  const [selected, setSelected] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  // The open detail is URL-driven (/customers/:id) — shareable, ⌘-clickable,
+  // refresh- and back/forward-safe (DASHBOARD_REDESIGN.md Stage 5). Fetch by
+  // id so a deep link works even when the row isn't on the loaded page.
+  const { id: routeId } = useParams();
+  const { data: routedCustomer } = useQuery({
+    queryKey: ["customer", routeId],
+    queryFn: async () => (await endpoints.getCustomer(routeId)).data.data,
+    enabled: Boolean(routeId),
+  });
 
   const queryClient = useQueryClient();
   // Server-driven list: every (page, q, status) combination is its own cache
@@ -85,20 +92,18 @@ export default function Customers() {
     setPage(1);
   }, [debouncedSearch, status]);
 
-  const openDetail = (customer) => {
-    setSelected(customer);
-    setDetailOpen(true);
-  };
-  const closeDetail = () => {
-    setDetailOpen(false);
-    setTimeout(() => setSelected(null), 300);
-  };
+  const closeDetail = () => navigate("/customers");
+  const selected =
+    (routeId && customers.find((c) => c.id === routeId)) || routedCustomer || null;
+  const detailOpen = Boolean(routeId);
 
   // After an edit/archive in the detail sheet: show the server's version
   // immediately and refresh the list behind it.
   const handleCustomerChanged = (updated) => {
+    // The open detail is served by the ["customer", id] query — refresh it
+    // alongside the list so the sheet shows the server's version.
     if (updated?.id) {
-      setSelected((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+      queryClient.invalidateQueries({ queryKey: ["customer", updated.id] });
     }
     fetchCustomers();
   };
@@ -190,7 +195,7 @@ export default function Customers() {
         loading={loading}
         error={error}
         onRetry={fetchCustomers}
-        onRowClick={openDetail}
+        rowHref={(c) => `/customers/${c.id}`}
         search={{
           value: search,
           onChange: setSearch,

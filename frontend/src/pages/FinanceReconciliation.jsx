@@ -209,8 +209,7 @@ export default function FinanceReconciliation() {
                         >
                           {d.invoice_id ? (
                             <Link
-                              to="/invoices"
-                              state={{ openInvoiceId: d.invoice_id }}
+                              to={`/invoices/${d.invoice_id}`}
                               className="text-primary underline-offset-2 hover:underline"
                             >
                               {shortId(d.invoice_id)}

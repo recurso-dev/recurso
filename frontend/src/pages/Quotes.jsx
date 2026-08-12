@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -26,8 +26,13 @@ const Quotes = () => {
   const { names: customerNames } = useCustomers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [selectedQuote, setSelectedQuote] = useState(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
+  // URL-driven detail (/quotes/:id) — shareable, refresh/back-safe.
+  const { id: routeId } = useParams();
+  const { data: routedObject } = useQuery({
+    queryKey: ["quote", routeId],
+    queryFn: async () => (await endpoints.getQuote(routeId)).data.data,
+    enabled: Boolean(routeId),
+  });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -87,31 +92,21 @@ const Quotes = () => {
     convertMutation.mutate(id);
   };
 
-  const handleRowClick = (quote) => {
-    setSelectedQuote(quote);
-    setIsDetailOpen(true);
-  };
 
-  const closeDetail = () => {
-    setIsDetailOpen(false);
-    setTimeout(() => setSelectedQuote(null), 300);
-  };
+  const closeDetail = () => navigate("/quotes");
+  const isDetailOpen = Boolean(routeId);
+  const selectedQuote = routedObject || null;
 
   const columns = [
     {
       key: "quote_number",
       header: "Quote",
+      // rowHref wraps this first cell in the row's <Link>, so the cell stays
+      // non-interactive — nesting a button inside that link is invalid HTML.
       cell: (q) => (
-        <button
-          type="button"
-          className="font-medium text-primary hover:underline"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleRowClick(q);
-          }}
-        >
+        <span className="font-medium text-primary hover:underline">
           {q.quote_number}
-        </button>
+        </span>
       ),
     },
     {
@@ -167,7 +162,7 @@ const Quotes = () => {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              handleRowClick(q);
+              navigate(`/quotes/${q.id}`);
             }}
             className="rounded-md p-1.5 text-subtle transition-colors hover:bg-muted hover:text-foreground"
             title="View details"
@@ -199,7 +194,7 @@ const Quotes = () => {
         loading={loading}
         error={error}
         onRetry={refetch}
-        onRowClick={handleRowClick}
+        rowHref={(row) => `/quotes/${row.id}`}
         search={{
           value: searchQuery,
           onChange: setSearchQuery,

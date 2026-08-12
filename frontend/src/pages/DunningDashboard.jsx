@@ -374,8 +374,7 @@ const DunningDashboard = () => {
                     <TableCell className="font-mono text-sm" title={h.invoice_id}>
                       {h.invoice_id ? (
                         <Link
-                          to="/invoices"
-                          state={{ openInvoiceId: h.invoice_id }}
+                          to={`/invoices/${h.invoice_id}`}
                           className="text-success hover:text-primary hover:underline"
                         >
                           {h.invoice_id.substring(0, 8)}…

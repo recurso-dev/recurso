@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router";
+import { useState } from "react";
+import {  useNavigate, useSearchParams, useParams } from "react-router";
 import { FileText, Download } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -85,9 +85,10 @@ function EInvoiceBadge({ status }) {
 const Invoices = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedInvoice, setSelectedInvoice] = useState(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const location = useLocation();
+  // URL-driven detail (/invoices/:id) — replaces the location.state
+  // openInvoiceId hack, which only worked for rows on the loaded page.
+  // Fetch by id so ANY invoice deep-links, regardless of age or page.
+  const { id: routeId } = useParams();
   const navigate = useNavigate();
   // ?aging=<bucket> deep-links from the invoice-aging report's buckets.
   const [searchParams, setSearchParams] = useSearchParams();
@@ -138,20 +139,14 @@ const Invoices = () => {
     : null;
   const { names: customerNames } = useCustomers();
 
-  // Deep-link from Home's recent-invoices rows: /invoices with
-  // { state: { openInvoiceId } } auto-opens that invoice's detail sheet once.
-  useEffect(() => {
-    const id = location.state?.openInvoiceId;
-    if (!id || loading) return;
-    const inv = invoices.find((i) => i.id === id);
-    if (inv) {
-      setSelectedInvoice(inv);
-      setIsDetailOpen(true);
-    }
-    // Consume the state so back/refresh doesn't reopen it.
-    navigate(location.pathname, { replace: true, state: null });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, invoices]);
+  const { data: routedInvoice } = useQuery({
+    queryKey: ["invoice", routeId],
+    queryFn: async () => (await endpoints.getInvoice(routeId)).data.data,
+    enabled: Boolean(routeId),
+  });
+  const selectedInvoice =
+    (routeId && invoices.find((i) => i.id === routeId)) || routedInvoice || null;
+  const isDetailOpen = Boolean(routeId);
 
   const filteredInvoices = invoices.filter((inv) => {
     if (agingFilter && !matchesAging(inv, agingFilter)) return false;
@@ -178,15 +173,8 @@ const Invoices = () => {
     downloadCSV(toCSV(rows), `invoices-${new Date().toISOString().slice(0, 10)}.csv`);
   };
 
-  const handleRowClick = (invoice) => {
-    setSelectedInvoice(invoice);
-    setIsDetailOpen(true);
-  };
-
-  const closeDetail = () => {
-    setIsDetailOpen(false);
-    setTimeout(() => setSelectedInvoice(null), 300);
-  };
+  const closeDetail = () =>
+    navigate({ pathname: "/invoices", search: searchParams.toString() });
 
   // Client sorting is honest here: this page loads the COMPLETE invoice set
   // (page-through fetch), so sorting spans everything, not one server page.
@@ -280,7 +268,7 @@ const Invoices = () => {
         loading={loading}
         error={error}
         onRetry={refetch}
-        onRowClick={handleRowClick}
+        rowHref={(inv) => `/invoices/${inv.id}`}
         search={{
           value: search,
           onChange: setSearch,
@@ -329,7 +317,14 @@ const Invoices = () => {
         invoice={selectedInvoice}
         isOpen={isDetailOpen}
         onClose={closeDetail}
-        onChanged={() => queryClient.invalidateQueries({ queryKey: ["invoices"] })}
+        onChanged={() => {
+          queryClient.invalidateQueries({ queryKey: ["invoices"] });
+          // The open sheet may be served by the routed ["invoice", id] query
+          // (deep link to a row outside the loaded list) — refresh it too.
+          if (routeId) {
+            queryClient.invalidateQueries({ queryKey: ["invoice", routeId] });
+          }
+        }}
       />
     </div>
   );

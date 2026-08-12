@@ -70,7 +70,7 @@ describe('FinanceReconciliation page', () => {
         // The invoice id drills through to that invoice's detail on the
         // Invoices page (not a dead UUID).
         const invoiceLink = screen.getByRole('link', { name: 'aaaaaaaa…' });
-        expect(invoiceLink).toHaveAttribute('href', '/invoices');
+        expect(invoiceLink).toHaveAttribute('href', '/invoices/aaaaaaaa-1111-2222-3333-444444444444');
     });
 
     it('shows the skipped TigerBeetle badge with the skip reason', async () => {
