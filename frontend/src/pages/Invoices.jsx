@@ -7,7 +7,7 @@ import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
 import InvoiceDetail from "../components/slide-overs/InvoiceDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Money } from "@/components/ui/money";
+import { moneyColumn } from "@/components/patterns/columns";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -188,10 +188,13 @@ const Invoices = () => {
     setTimeout(() => setSelectedInvoice(null), 300);
   };
 
+  // Client sorting is honest here: this page loads the COMPLETE invoice set
+  // (page-through fetch), so sorting spans everything, not one server page.
   const columns = [
     {
       key: "invoice_number",
       header: "Number",
+      sortable: true,
       cell: (inv) => (
         <span className="font-medium text-foreground">{inv.invoice_number}</span>
       ),
@@ -199,6 +202,8 @@ const Invoices = () => {
     {
       key: "customer",
       header: "Customer",
+      sortable: true,
+      sortValue: (inv) => customerNames[inv.customer_id] || "",
       cell: (inv) =>
         customerNames[inv.customer_id] ? (
           <span className="text-sm text-foreground">{customerNames[inv.customer_id]}</span>
@@ -208,17 +213,17 @@ const Invoices = () => {
           </span>
         ),
     },
-    {
+    moneyColumn({
       key: "amount",
       header: "Amount",
-      align: "right",
-      cell: (inv) => (
-        <Money amountMinor={inv.total} currency={inv.currency} />
-      ),
-    },
+      amount: (inv) => inv.total,
+      currency: (inv) => inv.currency,
+      sortable: true,
+    }),
     {
       key: "status",
       header: "Status",
+      sortable: true,
       cell: (inv) => (
         <StatusBadge status={inv.status} />
       ),
@@ -226,11 +231,14 @@ const Invoices = () => {
     {
       key: "e_invoice",
       header: "E-Invoice",
+      hideBelow: "md",
       cell: (inv) => <EInvoiceBadge status={inv.e_invoice_status} />,
     },
     {
       key: "date",
       header: "Date",
+      sortable: true,
+      sortValue: (inv) => inv.created_at || "",
       cell: (inv) => (
         <span className="text-muted-foreground">{formatDate(inv.created_at)}</span>
       ),
