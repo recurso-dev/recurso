@@ -98,7 +98,6 @@ export default function Ledger() {
   // that depend on `accounts` don't re-run every render.
   const accounts = useMemo(() => accountsQuery.data ?? [], [accountsQuery.data]);
   const loading = accountsQuery.isLoading;
-  const error = accountsQuery.error ? "Failed to load accounts." : null;
 
   // Entries for the selected account; disabled until one is chosen.
   const entriesQuery = useQuery({
@@ -113,10 +112,20 @@ export default function Ledger() {
         })
       ).data.data || [],
     enabled: !!selectedAccountId,
-    keepPreviousData: true,
+    // v5 spelling of keepPreviousData — the old option was silently ignored.
+    placeholderData: (prev) => prev,
   });
   const entries = entriesQuery.data ?? [];
   const entriesLoading = entriesQuery.isFetching;
+  // The table renders ENTRIES, so its error/retry must be the entries query's
+  // (the accounts error previously masked entry failures and Retry refetched
+  // the wrong query). An accounts failure surfaces via the picker's state.
+  const error = accountsQuery.error
+    ? "Failed to load accounts."
+    : entriesQuery.error
+      ? entriesQuery.error?.response?.data?.error?.message || "Failed to load ledger entries."
+      : null;
+  const retry = accountsQuery.error ? accountsQuery.refetch : entriesQuery.refetch;
   // Every customer has their own AR sub-account (same name + code 1100, id ==
   // customer id) — label them with the customer so the picker isn't a wall of
   // identical "Accounts Receivable (1100)" rows.
@@ -317,7 +326,7 @@ export default function Ledger() {
         data={entries}
         loading={entriesLoading}
         error={error}
-        onRetry={accountsQuery.refetch}
+        onRetry={retry}
         onRowClick={(e) => setSelectedEntry(e)}
         getRowId={(e) => e.id}
         pagination={{

@@ -34,6 +34,27 @@ describe("TaxNexusSettings — clearing nexus is guarded", () => {
     endpoints.getEntities.mockResolvedValue({ data: { data: [] } });
   });
 
+  it("renders an error, not an empty editable list, when declared nexus fails to load", async () => {
+    endpoints.getTaxNexus.mockRejectedValue(new Error("boom"));
+    render(<TaxNexusSettings />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load declared nexus states")).toBeInTheDocument()
+    );
+    // The editable empty-state (whose Save clears all nexus) must NOT render.
+    expect(
+      screen.queryByText(/Saving an empty list clears all declared nexus/)
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders an error, not an empty editable list, when registrations fail to load", async () => {
+    endpoints.getTaxRegistrations.mockRejectedValue(new Error("boom"));
+    render(<TaxNexusSettings />, { wrapper });
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load registrations")).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/No registrations recorded/)).not.toBeInTheDocument();
+  });
+
   it("confirms before saving an empty list (which clears all nexus)", async () => {
     render(<TaxNexusSettings />, { wrapper });
     await waitFor(() =>

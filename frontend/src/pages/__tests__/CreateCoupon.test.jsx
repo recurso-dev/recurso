@@ -9,6 +9,7 @@ import { endpoints } from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   endpoints: {
     createCoupon: vi.fn(),
+    setCouponActive: vi.fn(),
     getPlans: vi.fn(),
   },
 }));
@@ -49,6 +50,25 @@ describe("CreateCoupon — currency-aware amount-off", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     endpoints.createCoupon.mockResolvedValue({ data: { data: { id: "c1" } } });
+  });
+
+  it("flips the coupon inactive after create when Status is toggled off", async () => {
+    endpoints.setCouponActive.mockResolvedValue({ data: {} });
+    render(<CreateCoupon />, { wrapper });
+    await screen.findByLabelText(/coupon code/i);
+    fireEvent.change(screen.getByLabelText(/coupon code/i), { target: { value: "OFF10" } });
+    fireEvent.change(screen.getByLabelText(/discount value/i), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("switch"));
+    fireEvent.click(screen.getByRole("button", { name: /create coupon/i }));
+    await waitFor(() => expect(endpoints.createCoupon).toHaveBeenCalled());
+    // The Status toggle used to be collected and silently dropped (audit bug 5).
+    await waitFor(() => expect(endpoints.setCouponActive).toHaveBeenCalledWith("c1", false));
+  });
+
+  it("no longer offers a max-redemptions field the API cannot honor", async () => {
+    render(<CreateCoupon />, { wrapper });
+    await screen.findByLabelText(/coupon code/i);
+    expect(screen.queryByLabelText(/max redemptions/i)).not.toBeInTheDocument();
   });
 
   it("converts amount-off with the catalog's dominant currency exponent (JPY: no ×100)", async () => {
