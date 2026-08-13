@@ -138,6 +138,7 @@ export const endpoints = {
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).
   getInvoice: (id) => api.get(`/invoices/${id}`),
+  getInvoiceJournalEntries: (id) => api.get(`/invoices/${id}/journal-entries`),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
