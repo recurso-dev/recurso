@@ -58,6 +58,19 @@ export default function Usage() {
     [events]
   );
 
+  // Billable metrics, so a raw event's dimension can name the meter that
+  // consumes it and show HOW it aggregates (Event → Meter → Aggregation). The
+  // event's `dimension` is the metric's `code` by convention.
+  const { data: metrics = [] } = useQuery({
+    queryKey: ["billable-metrics"],
+    queryFn: async () => (await api.getBillableMetrics())?.data?.data || [],
+  });
+  const metricByCode = useMemo(() => {
+    const m = {};
+    for (const met of metrics) m[met.code] = met;
+    return m;
+  }, [metrics]);
+
   const eventColumns = [
     {
       key: "timestamp",
@@ -75,8 +88,23 @@ export default function Usage() {
     },
     {
       key: "dimension",
-      header: "Dimension",
-      cell: (e) => <Badge variant="neutral" className="font-mono">{e.dimension}</Badge>,
+      header: "Meter",
+      cell: (e) => {
+        const m = metricByCode[e.dimension];
+        return (
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+            <Badge variant="neutral" className="font-mono">{e.dimension}</Badge>
+            {m ? (
+              <span className="text-xs text-muted-foreground">
+                {m.name} · aggregates by{" "}
+                <span className="font-medium text-foreground">{m.aggregation_type}</span>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">no meter defined</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "quantity",
@@ -222,7 +250,7 @@ export default function Usage() {
     <div>
       <PageHeader
         title="Usage Explorer"
-        description="Metered usage aggregated by customer, plan, and dimension."
+        description="Each event feeds a meter, which aggregates it by its rule; that quantity is what a subscription's charges price. Explore the raw stream and the per-dimension totals below."
         actions={
           <Button variant="outline" onClick={exportCsv}>
             <Download className="h-4 w-4" />

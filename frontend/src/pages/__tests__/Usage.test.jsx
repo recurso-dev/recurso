@@ -9,6 +9,7 @@ vi.mock("../../lib/api", () => ({
   endpoints: {
     getUsageStats: vi.fn(),
     getUsageEvents: vi.fn(),
+    getBillableMetrics: vi.fn(),
   },
 }));
 vi.mock("@/lib/useCustomers", () => ({ useCustomers: () => ({ names: {} }) }));
@@ -27,7 +28,10 @@ const wrapper = ({ children }) => (
 );
 
 describe("Usage — top-level fetch error state (#7a)", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    endpoints.getBillableMetrics.mockResolvedValue({ data: { data: [] } });
+  });
 
   // Before the fix the stats fetch only console.error'd on failure, so the
   // page showed empty StatCards — a user read "no usage" instead of "couldn't
@@ -56,5 +60,32 @@ describe("Usage — top-level fetch error state (#7a)", () => {
       expect(screen.getByText(/Usage Explorer/i)).toBeInTheDocument()
     );
     expect(screen.queryByText(/Unable to load usage metering/i)).toBeNull();
+  });
+
+  it("names the meter and its aggregation for a raw event's dimension", async () => {
+    endpoints.getUsageStats.mockResolvedValue({ data: { data: [], customers_metered: 0 } });
+    endpoints.getUsageEvents.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: "ev1",
+            timestamp: "2026-08-01T00:00:00Z",
+            customer_id: "c1",
+            dimension: "api_calls",
+            quantity: 42,
+            transaction_id: "tx-1",
+          },
+        ],
+      },
+    });
+    endpoints.getBillableMetrics.mockResolvedValue({
+      data: { data: [{ id: "m1", code: "api_calls", name: "API calls", aggregation_type: "sum" }] },
+    });
+
+    render(<Usage />, { wrapper });
+
+    // The event's dimension resolves to its meter (name) and how it aggregates.
+    await waitFor(() => expect(screen.getByText(/API calls · aggregates by/)).toBeInTheDocument());
+    expect(screen.getByText("sum")).toBeInTheDocument();
   });
 });
