@@ -418,3 +418,26 @@ func TestWalletAutoRechargeNoSavedMethodOnlyNotifies(t *testing.T) {
 		t.Fatalf("recharged/charges/topups = %d/%d/%d, want all zero", recharged, charger.charges, len(repo.topUps))
 	}
 }
+
+// A closed wallet's residue was already settled at close (refund/forfeit);
+// value added afterwards could never drain (the invoice-drain lookup skips
+// closed wallets) and would strand a Customer-Credit liability. Both mutating
+// entry points must refuse. (This test fails on the pre-guard code, which
+// happily posted top-up legs into closed wallets.)
+func TestWalletClosedRejectsTopUpAndAutoRecharge(t *testing.T) {
+	svc, repo, ledger, w := walletFixture(0)
+	closedAt := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	w.ClosedAt = &closedAt
+
+	if _, err := svc.TopUp(context.Background(), w.TenantID, w.ID, TopUpInput{Amount: 50000}); err == nil {
+		t.Fatal("top-up on a closed wallet must be rejected")
+	}
+	if len(ledger.topUps) != 0 || len(repo.topUps) != 0 {
+		t.Fatalf("closed-wallet top-up leaked postings: ledger=%v repo=%v", ledger.topUps, repo.topUps)
+	}
+
+	threshold, amount := int64(1000), int64(5000)
+	if err := svc.UpdateAutoRecharge(context.Background(), w.TenantID, w.ID, &threshold, &amount); err == nil {
+		t.Fatal("auto-recharge rule on a closed wallet must be rejected")
+	}
+}
