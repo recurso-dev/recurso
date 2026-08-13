@@ -212,3 +212,12 @@ Usage (current+lifetime, buckets, raw stream).
   the page's Edit surface (no logic duplicated — the Customer-page pattern).
   Removed the dead routeId/sheet wiring from the Plans list. Frontend-only.
   lint 0, build, 510 tests.
+- 2026-08-14 — **#643 (Plan full page) merged to main.**
+- 2026-08-14 — **Increment 10: Account page** (branch dashboard-depth-account).
+  New AccountPage at /ledger/accounts/:id (ObjectPage): identity, the
+  debits/credits/net-balance identity, and per-account journal activity (each
+  posting on the side it hit this account, against its counterpart). Handles
+  per-customer AR sub-accounts (name from postings; balance honestly omitted —
+  only chart accounts carry balances). Made the Customer's ledger account a link.
+  Uses existing getLedgerAccounts + getLedgerEntries — no backend. lint 0, build,
+  514 tests.
