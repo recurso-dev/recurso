@@ -997,7 +997,7 @@ paths:
   /v1/import/compare-reports:
     get:
       parameters:
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 }, description: Max runs returned (default 50, capped at 200). }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 200 }, description: "Max runs returned (default 50, capped at 200)." }
       operationId: listCompareReports
       tags: [Migration]
       summary: List stored Compare runs
