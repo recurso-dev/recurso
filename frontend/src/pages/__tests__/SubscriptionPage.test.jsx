@@ -173,6 +173,55 @@ describe("SubscriptionPage", () => {
     );
   });
 
+  it("stays calm (no attention banner) for a healthy active subscription", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Overview")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Needs attention")).not.toBeInTheDocument();
+  });
+
+  it("explains a past_due state with the decline reason and links to the invoice", async () => {
+    endpoints.getSubscription.mockResolvedValue({
+      data: { data: { ...subscription, status: "past_due" } },
+    });
+    endpoints.getInvoices.mockResolvedValue({
+      data: {
+        data: [
+          {
+            id: "inv_pd",
+            invoice_number: "INV-009",
+            status: "past_due",
+            total: 4900,
+            currency: "USD",
+            last_payment_error: "card_declined",
+            next_retry_at: "2026-09-03T00:00:00Z",
+            created_at: "2026-08-20T00:00:00Z",
+          },
+        ],
+        pagination: { page: 1, per_page: 5, total: 1 },
+      },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Needs attention")).toBeInTheDocument()
+    );
+    // The cause (not just "failed") and the link to the fix.
+    expect(screen.getByText(/card_declined/)).toBeInTheDocument();
+    expect(screen.getByText(/Renewal payment failed/).closest("a")).toHaveAttribute(
+      "href",
+      "/invoices/inv_pd"
+    );
+  });
+
+  it("warns when a subscription is scheduled to cancel at period end", async () => {
+    endpoints.getSubscription.mockResolvedValue({
+      data: { data: { ...subscription, cancel_at_period_end: true } },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByText(/Scheduled to cancel at period end/)).toBeInTheDocument()
+    );
+  });
+
   it("shows a not-found state on 404", async () => {
     endpoints.getSubscription.mockRejectedValue({ response: { status: 404 } });
     renderPage("sub_missing");

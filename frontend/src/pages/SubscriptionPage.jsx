@@ -17,6 +17,7 @@ import {
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
+import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -228,6 +229,55 @@ export default function SubscriptionPage() {
   const interval = plan?.interval_unit || "month";
   const isActive = subscription.status === "active";
 
+  // Layer 3 — why is it in this state, and what happens next? Surfaced above the
+  // fold via the shared AttentionBanner. Every line is grounded in a real field;
+  // the past-due decline reason comes from the subscription's own past-due
+  // invoice (already fetched), so the operator sees the cause, not just "failed".
+  const pastDueInvoice = invoices.find((inv) => inv.status === "past_due");
+  const attention = [];
+  if (subscription.status === "past_due") {
+    attention.push({
+      tone: "danger",
+      to: pastDueInvoice ? `/invoices/${pastDueInvoice.id}` : undefined,
+      text: (
+        <>
+          Renewal payment failed
+          {pastDueInvoice?.last_payment_error ? `: ${pastDueInvoice.last_payment_error}` : ""}
+          {pastDueInvoice?.next_retry_at
+            ? ` — next retry ${formatDate(pastDueInvoice.next_retry_at)}`
+            : ""}
+          .
+        </>
+      ),
+    });
+  } else if (subscription.status === "unpaid") {
+    attention.push({
+      tone: "danger",
+      text: "Dunning exhausted without recovery — this subscription is unpaid.",
+    });
+  } else if (subscription.status === "paused") {
+    attention.push({
+      tone: "warning",
+      text: subscription.resume_at ? (
+        <>Billing is paused — resumes {formatDate(subscription.resume_at)}.</>
+      ) : (
+        "Billing is paused. Resume to restart the cycle."
+      ),
+    });
+  }
+  if (isActive && subscription.cancel_at_period_end) {
+    attention.push({
+      tone: "warning",
+      text: <>Scheduled to cancel at period end — {formatDate(subscription.current_period_end)}.</>,
+    });
+  }
+  if (subscription.status === "trialing" && subscription.trial_end) {
+    attention.push({
+      tone: "warning",
+      text: <>Trial ends {formatDate(subscription.trial_end)} — the first invoice issues on conversion.</>,
+    });
+  }
+
   const lifecycle = {
     pause: {
       title: "Pause this subscription?",
@@ -433,6 +483,8 @@ export default function SubscriptionPage() {
           </>
         }
       />
+
+      <AttentionBanner items={attention} />
 
       <ObjectPageLayout
         rail={
