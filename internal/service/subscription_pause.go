@@ -24,14 +24,14 @@ func (s *SubscriptionService) PauseSubscription(ctx context.Context, tenantID, s
 		return nil, err
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
+		return nil, ErrSubscriptionNotFound
 	}
 	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 
 	if sub.Status != domain.SubscriptionStatusActive {
-		return nil, fmt.Errorf("only active subscriptions can be paused")
+		return nil, fmt.Errorf("%w: only active subscriptions can be paused", ErrInvalidSubscriptionState)
 	}
 
 	sub.Status = domain.SubscriptionStatusPaused
@@ -60,14 +60,14 @@ func (s *SubscriptionService) ResumeSubscription(ctx context.Context, tenantID, 
 		return nil, err
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
+		return nil, ErrSubscriptionNotFound
 	}
 	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 
 	if sub.Status != domain.SubscriptionStatusPaused {
-		return nil, fmt.Errorf("only paused subscriptions can be resumed")
+		return nil, fmt.Errorf("%w: only paused subscriptions can be resumed", ErrInvalidSubscriptionState)
 	}
 
 	sub.Status = domain.SubscriptionStatusActive

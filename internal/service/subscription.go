@@ -20,6 +20,10 @@ import (
 var (
 	ErrSubscriptionNotFound = errors.New("subscription not found")
 	ErrPlanNotFound         = errors.New("plan not found")
+	// ErrInvalidSubscriptionState is returned when an operation is illegal
+	// for the subscription's current status (pause a trial, resume an active
+	// sub, ...). Handlers map it to 409.
+	ErrInvalidSubscriptionState = errors.New("invalid subscription state")
 	// ErrAddonNotFound is returned when an add-on does not exist for the
 	// tenant/subscription, keeping tenant isolation opaque to callers.
 	ErrAddonNotFound = errors.New("add-on not found")
@@ -188,7 +192,7 @@ func (s *SubscriptionService) SetCommitment(ctx context.Context, tenantID, subsc
 	}
 	if err := s.subRepoImpl.SetCommitment(ctx, tenantID, subscriptionID, amount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("subscription not found")
+			return nil, ErrSubscriptionNotFound
 		}
 		return nil, err
 	}
@@ -223,7 +227,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		return nil, fmt.Errorf("failed to get plan: %w", err)
 	}
 	if plan == nil {
-		return nil, fmt.Errorf("plan not found")
+		return nil, ErrPlanNotFound
 	}
 
 	// 2. Fetch Customer
@@ -232,7 +236,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
 	if customer == nil {
-		return nil, fmt.Errorf("customer not found")
+		return nil, ErrCustomerNotFound
 	}
 
 	// 3. Calculate Dates
@@ -602,7 +606,7 @@ func (s *SubscriptionService) GetByID(ctx context.Context, tenantID, subscriptio
 		return nil, err
 	}
 	if sub != nil && sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 	return sub, nil
 }

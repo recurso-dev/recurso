@@ -26,10 +26,10 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		return nil, fmt.Errorf("failed to get subscription: %w", err)
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
+		return nil, ErrSubscriptionNotFound
 	}
 	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 
 	// Idempotent: an already-canceled subscription is a no-op. Re-running would
@@ -135,10 +135,10 @@ func (s *SubscriptionService) Reactivate(ctx context.Context, tenantID, subscrip
 		return nil, fmt.Errorf("failed to get subscription: %w", err)
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
+		return nil, ErrSubscriptionNotFound
 	}
 	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 
 	// Can only reactivate if cancel_at_period_end is true or within grace period

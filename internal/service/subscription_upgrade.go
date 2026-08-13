@@ -294,10 +294,10 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		return nil, err
 	}
 	if sub == nil {
-		return nil, fmt.Errorf("subscription not found")
+		return nil, ErrSubscriptionNotFound
 	}
 	if sub.TenantID != tenantID {
-		return nil, fmt.Errorf("subscription not found for tenant")
+		return nil, ErrSubscriptionNotFound
 	}
 
 	// 1.5 Fetch Customer
@@ -306,7 +306,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		return nil, fmt.Errorf("failed to get customer: %w", err)
 	}
 	if customer == nil {
-		return nil, fmt.Errorf("customer not found")
+		return nil, ErrCustomerNotFound
 	}
 
 	if sub.PlanID == newPlanID {
@@ -324,7 +324,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		return nil, err
 	}
 	if newPlan == nil {
-		return nil, fmt.Errorf("new plan not found")
+		return nil, ErrPlanNotFound
 	}
 
 	// 3. Calculate Proration via the shared helper so apply and preview
