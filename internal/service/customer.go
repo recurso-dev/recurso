@@ -11,10 +11,18 @@ import (
 	"github.com/recurso-dev/recurso/internal/core/port"
 )
 
+// customerInvoiceSummarizer is the narrow slice of the invoice repository the
+// customer's financial summary needs — kept small so CustomerService doesn't
+// depend on the whole invoice surface.
+type customerInvoiceSummarizer interface {
+	GetCustomerFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error)
+}
+
 type CustomerService struct {
-	repo      port.CustomerRepository
-	subs      port.SubscriptionRepository // nil-safe; gates archiving on active subscriptions
-	telemetry *telemetry.Client           // nil-safe; only set when TELEMETRY_OPTIN=true
+	repo       port.CustomerRepository
+	subs       port.SubscriptionRepository // nil-safe; gates archiving on active subscriptions
+	invSummary customerInvoiceSummarizer   // nil-safe; backs GetFinancialSummary
+	telemetry  *telemetry.Client           // nil-safe; only set when TELEMETRY_OPTIN=true
 }
 
 // SetTelemetry injects the opt-in anonymous telemetry client after construction.
@@ -24,8 +32,41 @@ func (s *CustomerService) SetTelemetry(t *telemetry.Client) { s.telemetry = t }
 // with active subscriptions). Without it, archiving skips the check.
 func (s *CustomerService) SetSubscriptionRepo(r port.SubscriptionRepository) { s.subs = r }
 
+// SetInvoiceSummarizer enables GetFinancialSummary. Without it, the summary
+// endpoint reports an empty position rather than erroring.
+func (s *CustomerService) SetInvoiceSummarizer(r customerInvoiceSummarizer) { s.invSummary = r }
+
 func NewCustomerService(repo port.CustomerRepository) *CustomerService {
 	return &CustomerService{repo: repo}
+}
+
+// GetFinancialSummary returns the customer's invoice-derived position, one row
+// per currency. It verifies the customer exists (tenant-scoped) first and
+// returns (nil, nil) when it doesn't, so a bad id is a 404 rather than a
+// silently-empty summary.
+func (s *CustomerService) GetFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) (*domain.CustomerFinancialSummary, error) {
+	customer, err := s.GetCustomer(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, err
+	}
+	if customer == nil {
+		return nil, nil
+	}
+	summary := &domain.CustomerFinancialSummary{
+		CustomerID: customerID,
+		Currencies: []domain.CustomerFinancialSummaryCurrency{},
+	}
+	if s.invSummary == nil {
+		return summary, nil
+	}
+	rows, err := s.invSummary.GetCustomerFinancialSummary(ctx, tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("load customer financial summary: %w", err)
+	}
+	if rows != nil {
+		summary.Currencies = rows
+	}
+	return summary, nil
 }
 
 type CreateCustomerInput struct {

@@ -758,6 +758,44 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/customers/{id}/financial-summary:
+    get:
+      operationId: getCustomerFinancialSummary
+      tags: [Customers]
+      summary: Customer financial summary
+      description: >
+        A customer's invoice-derived financial position, one block per currency:
+        outstanding (open + past_due amount remaining), the past-due slice with
+        its invoice count, lifetime billed (issued total), and paid. Written-off
+        invoices are excluded from outstanding; draft/void from billed/paid.
+        Money is never summed across currencies.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The financial summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      customer_id: { type: string, format: uuid }
+                      currencies:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            currency: { type: string }
+                            outstanding: { type: integer, format: int64 }
+                            past_due: { type: integer, format: int64 }
+                            past_due_count: { type: integer }
+                            billed: { type: integer, format: int64 }
+                            paid: { type: integer, format: int64 }
+        '404':
+          description: Customer not found.
   /v1/customers/{id}/credit-statement:
     get:
       operationId: getCreditStatement

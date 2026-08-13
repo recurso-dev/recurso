@@ -472,6 +472,7 @@ func main() {
 	meteringService := service.NewMeteringService(billableMetricRepo, chargeRepo, planRepo, subscriptionRepo, usageRepo)
 	customerService := service.NewCustomerService(customerRepo)
 	customerService.SetSubscriptionRepo(subscriptionRepo) // archive gate: refuse archiving with active subs
+	customerService.SetInvoiceSummarizer(invoiceRepo)     // per-currency financial summary for the customer page
 	tenantService := service.NewTenantService(tenantRepo) // P8 Service
 
 	// Admin-dashboard auth: real user accounts + opaque sessions layered on top
@@ -1821,6 +1822,7 @@ func main() {
 		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
 		// Ledger-backed credits: a customer's consolidated account-credit statement.
 		v1.GET("/customers/:id/credit-statement", creditNoteHandler.GetCreditStatement)
+		v1.GET("/customers/:id/financial-summary", customerHandler.GetFinancialSummary)
 
 		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
 		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)
