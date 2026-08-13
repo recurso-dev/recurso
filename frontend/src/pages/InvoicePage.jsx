@@ -306,7 +306,8 @@ export default function InvoicePage() {
         <>
           Payment past due
           {invoice.last_payment_error ? `: ${invoice.last_payment_error}` : ""}
-          {invoice.next_retry_at ? ` — next retry ${formatDate(invoice.next_retry_at)}` : ""}.
+          {invoice.retry_count > 0 ? ` — ${invoice.retry_count} ${invoice.retry_count === 1 ? "retry" : "retries"} so far` : ""}
+          {invoice.next_retry_at ? `, next ${formatDate(invoice.next_retry_at)}` : ""}.
         </>
       ),
     });

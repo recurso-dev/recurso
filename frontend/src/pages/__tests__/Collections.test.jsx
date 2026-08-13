@@ -119,6 +119,13 @@ describe('Collections page', () => {
 
         // Each row exposes a manual-actions menu (Inc 3), one per invoice.
         expect(screen.getAllByLabelText('Invoice actions')).toHaveLength(2);
+
+        // The invoice number drills into the invoice — where the per-invoice
+        // dunning lifecycle (decline reason, next retry, attempt history) lives.
+        expect(screen.getByText('INV-0001').closest('a')).toHaveAttribute(
+            'href',
+            '/invoices/inv-1'
+        );
     });
 
     it('shows the good-news empty state when nothing is failing', async () => {

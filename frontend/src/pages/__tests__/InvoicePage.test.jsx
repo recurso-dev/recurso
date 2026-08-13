@@ -277,6 +277,7 @@ describe("InvoicePage", () => {
           amount_paid: 0,
           amount_due: 108750,
           last_payment_error: "insufficient_funds",
+          retry_count: 2,
           next_retry_at: "2026-02-03T00:00:00Z",
         },
       },
@@ -285,7 +286,9 @@ describe("InvoicePage", () => {
     await waitFor(() =>
       expect(screen.getByLabelText("Needs attention")).toBeInTheDocument()
     );
+    // The dunning state: the decline reason and how far the retry schedule has run.
     expect(screen.getByText(/insufficient_funds/)).toBeInTheDocument();
+    expect(screen.getByText(/2 retries so far/)).toBeInTheDocument();
   });
 
   it("shows a not-found state on 404", async () => {
