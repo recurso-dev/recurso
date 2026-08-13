@@ -129,6 +129,7 @@ export const endpoints = {
   getCustomerWallets: (id) => api.get(`/customers/${id}/wallets`),
   // Ledger-backed credits: a customer's consolidated account-credit statement.
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
+  getCustomerFinancialSummary: (id) => api.get(`/customers/${id}/financial-summary`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   // Wires the long-existing backend GET (was implemented and unused).
