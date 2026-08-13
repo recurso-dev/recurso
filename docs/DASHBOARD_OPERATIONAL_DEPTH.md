@@ -179,3 +179,11 @@ Usage (current+lifetime, buckets, raw stream).
   per-type reasons + signed Difference column ✓; Ledger Debits/Credits/Net
   strip ✓. Zero horizontal overflow at 375px across all pages (iframe measure).
   No issues found. PR #640 is merge-ready pending review.
+- 2026-08-13 — **Increment 6: Dunning (lifecycle legible end-to-end).**
+  Frontend-only. The Collections worklist was already deep; connected it: the
+  invoice number now drills to the invoice, and the invoice's past-due banner
+  now shows the retry count ("past due: <reason> — N retries so far, next
+  <date>"). So worklist (what's failing) → invoice (why / how many tries /
+  what's next / the Payments attempt history) is one click. Green: lint 0,
+  build, 504 tests. Six increments; four shared primitives. Next candidates:
+  Usage / Meter / Plan (current endpoints), or a tenant-wide Payments log page.
