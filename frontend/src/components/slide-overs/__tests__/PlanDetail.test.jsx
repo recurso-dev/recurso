@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import PlanDetail from '../PlanDetail';
 import { endpoints } from '../../../lib/api';
@@ -11,6 +12,7 @@ vi.mock('../../../lib/api', () => ({
         getPlanCharges: vi.fn(),
         setPlanCharges: vi.fn(),
         getBillableMetrics: vi.fn(),
+        getSubscriptions: vi.fn(),
     }
 }));
 
@@ -31,9 +33,9 @@ const existingEntitlements = [
 ];
 
 const renderPlanDetail = () => render(
-    <>
+    <MemoryRouter>
         <PlanDetail plan={plan} isOpen={true} onClose={() => { }} />
-    </>
+    </MemoryRouter>
 );
 
 describe('PlanDetail entitlements editor', () => {
@@ -44,6 +46,7 @@ describe('PlanDetail entitlements editor', () => {
         endpoints.getPlanCharges.mockResolvedValue({ data: { data: [] } });
         endpoints.getBillableMetrics.mockResolvedValue({ data: { data: [] } });
         endpoints.setPlanCharges.mockResolvedValue({ data: { data: [] } });
+        endpoints.getSubscriptions.mockResolvedValue({ data: { data: [] } });
     });
 
     it('renders the fetched entitlements read-only', async () => {
@@ -55,6 +58,23 @@ describe('PlanDetail entitlements editor', () => {
         expect(screen.getByText('seats')).toBeInTheDocument();
         expect(screen.getByText('limit: 10')).toBeInTheDocument();
         expect(endpoints.getPlanEntitlements).toHaveBeenCalledWith('plan-123');
+    });
+
+    it('shows the subscriptions on this plan (reverse lookup) with drill-through links', async () => {
+        endpoints.getSubscriptions.mockResolvedValue({
+            data: { data: [{ id: 'sub-aaaa1111', status: 'active' }] },
+        });
+        renderPlanDetail();
+
+        await waitFor(() => expect(screen.getByText('Subscriptions (1)')).toBeInTheDocument());
+        // Reverse lookup is plan-scoped and the row drills to the subscription.
+        expect(endpoints.getSubscriptions).toHaveBeenCalledWith(
+            expect.objectContaining({ plan_id: 'plan-123' })
+        );
+        expect(screen.getByText('sub-aaaa…').closest('a')).toHaveAttribute(
+            'href',
+            '/subscriptions/sub-aaaa1111'
+        );
     });
 
     it('adds a row and saves the full replacement set (PUT semantics)', async () => {
