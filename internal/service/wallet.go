@@ -307,6 +307,12 @@ func (s *WalletService) TopUp(ctx context.Context, tenantID, walletID uuid.UUID,
 	if err != nil {
 		return nil, err
 	}
+	// A closed wallet's residue was already settled (refund/forfeit) at close;
+	// value added after that could never drain (the invoice-drain lookup skips
+	// closed wallets) and would sit as a stranded Customer-Credit liability.
+	if w.ClosedAt != nil {
+		return nil, WalletValidationError("wallet is closed")
+	}
 
 	wtx := &domain.WalletTransaction{
 		ID:        uuid.New(),
@@ -363,7 +369,17 @@ func (s *WalletService) UpdateAutoRecharge(ctx context.Context, tenantID, wallet
 	if err := validateAutoRecharge(threshold, amount); err != nil {
 		return err
 	}
-	err := s.wallets.UpdateAutoRecharge(ctx, tenantID, walletID, threshold, amount)
+	w, err := s.GetWallet(ctx, tenantID, walletID)
+	if err != nil {
+		return err
+	}
+	// The recharge worker already skips closed wallets; rejecting the rule
+	// here too keeps the contract visible at the API instead of silently
+	// configuring a recharge that will never fire.
+	if w.ClosedAt != nil {
+		return WalletValidationError("wallet is closed")
+	}
+	err = s.wallets.UpdateAutoRecharge(ctx, tenantID, walletID, threshold, amount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrWalletNotFound
 	}
