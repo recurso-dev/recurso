@@ -244,6 +244,37 @@ type updateCustomerRequest struct {
 
 // UpdateCustomer handles PUT /v1/customers/:id. Archiving (active=false) is
 // refused while the customer has active subscriptions.
+// GetFinancialSummary returns a customer's invoice-derived financial position,
+// one block per currency (outstanding, past-due + count, billed, paid) — the
+// numbers the customer object page leads with. Money can't be summed across
+// currencies, so this is grouped, never a single total.
+// GET /v1/customers/:id/financial-summary
+func (h *CustomerHandler) GetFinancialSummary(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	customerID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid customer id")
+		return
+	}
+
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	summary, err := h.service.GetFinancialSummary(ctx, tenantID, customerID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if summary == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "customer not found")
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": summary})
+}
+
 func (h *CustomerHandler) UpdateCustomer(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

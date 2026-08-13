@@ -13,6 +13,7 @@ vi.mock("../../lib/api", () => ({
     getInvoices: vi.fn(),
     getCreditNotes: vi.fn(),
     getCustomerWallets: vi.fn(),
+    getCustomerFinancialSummary: vi.fn(),
     getAuditLogs: vi.fn(),
     getEvents: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getPlans: vi.fn(),
@@ -82,6 +83,23 @@ describe("CustomerPage", () => {
     });
     endpoints.getCreditNotes.mockResolvedValue({ data: { data: [] } });
     endpoints.getCustomerWallets.mockResolvedValue({ data: { data: [] } });
+    endpoints.getCustomerFinancialSummary.mockResolvedValue({
+      data: {
+        data: {
+          customer_id: "cus_1",
+          currencies: [
+            {
+              currency: "USD",
+              outstanding: 15000,
+              past_due: 9000,
+              past_due_count: 2,
+              billed: 100000,
+              paid: 85000,
+            },
+          ],
+        },
+      },
+    });
     endpoints.getAuditLogs.mockResolvedValue({
       data: {
         data: [
@@ -152,6 +170,35 @@ describe("CustomerPage", () => {
         expect.objectContaining({ object_id: "cus_1" })
       )
     );
+  });
+
+  it("leads with the financial summary and surfaces past-due as an exception", async () => {
+    renderPage();
+    // The page body (which gates on the customer load) renders the section.
+    await waitFor(() => expect(screen.getByText("Financial summary")).toBeInTheDocument());
+    // Financial summary is fetched per-customer.
+    expect(endpoints.getCustomerFinancialSummary).toHaveBeenCalledWith("cus_1");
+    // Outstanding value ($150.00 from 15000 minor units).
+    expect(screen.getByText(money("$150.00"))).toBeInTheDocument();
+    // Exceptions-first: the past-due invoices surface in the attention banner.
+    expect(screen.getByLabelText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByText(/2 past-due invoices/)).toBeInTheDocument();
+  });
+
+  it("stays calm (no attention banner) when nothing is past due", async () => {
+    endpoints.getCustomerFinancialSummary.mockResolvedValue({
+      data: {
+        data: {
+          customer_id: "cus_1",
+          currencies: [
+            { currency: "USD", outstanding: 0, past_due: 0, past_due_count: 0, billed: 100000, paid: 100000 },
+          ],
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Financial summary")).toBeInTheDocument());
+    expect(screen.queryByLabelText("Needs attention")).not.toBeInTheDocument();
   });
 
   it("shows a not-found state on 404", async () => {

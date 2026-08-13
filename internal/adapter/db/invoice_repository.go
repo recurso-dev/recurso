@@ -1043,6 +1043,40 @@ func (r *InvoiceRepository) GetOutstandingByEntity(ctx context.Context, tenantID
 	return out, rows.Err()
 }
 
+// GetCustomerFinancialSummary aggregates one customer's invoices into a
+// per-currency financial position: outstanding (open + past_due amount_remaining),
+// the past_due slice + its count, lifetime billed (issued total), and paid.
+// Written-off (uncollectible) invoices are excluded from outstanding; draft and
+// void are excluded from billed/paid. One row per currency — money is never
+// summed across currencies. Read-only.
+func (r *InvoiceRepository) GetCustomerFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT currency,
+		       COALESCE(SUM(amount_remaining) FILTER (WHERE status IN ('open','past_due')), 0) AS outstanding,
+		       COALESCE(SUM(amount_remaining) FILTER (WHERE status = 'past_due'), 0)          AS past_due,
+		       COUNT(*)                       FILTER (WHERE status = 'past_due')               AS past_due_count,
+		       COALESCE(SUM(total)            FILTER (WHERE status NOT IN ('draft','void')), 0) AS billed,
+		       COALESCE(SUM(amount_paid)      FILTER (WHERE status NOT IN ('draft','void')), 0) AS paid
+		FROM invoices
+		WHERE tenant_id = $1 AND customer_id = $2
+		GROUP BY currency
+		ORDER BY outstanding DESC, currency`, tenantID, customerID)
+	if err != nil {
+		return nil, fmt.Errorf("query customer financial summary: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.CustomerFinancialSummaryCurrency
+	for rows.Next() {
+		var row domain.CustomerFinancialSummaryCurrency
+		if err := rows.Scan(&row.Currency, &row.Outstanding, &row.PastDue, &row.PastDueCount, &row.Billed, &row.Paid); err != nil {
+			return nil, fmt.Errorf("scan customer financial summary row: %w", err)
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
 // CountUncollectibleSince counts invoices written off at-or-after `since` — the
 // written-off side of the windowed recovery-rate cohort (QA finding D). Rows
 // written off before migration 000147 carry a best-effort backfilled timestamp.

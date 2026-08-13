@@ -758,6 +758,44 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/customers/{id}/financial-summary:
+    get:
+      operationId: getCustomerFinancialSummary
+      tags: [Customers]
+      summary: Customer financial summary
+      description: >
+        A customer's invoice-derived financial position, one block per currency:
+        outstanding (open + past_due amount remaining), the past-due slice with
+        its invoice count, lifetime billed (issued total), and paid. Written-off
+        invoices are excluded from outstanding; draft/void from billed/paid.
+        Money is never summed across currencies.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The financial summary.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      customer_id: { type: string, format: uuid }
+                      currencies:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            currency: { type: string }
+                            outstanding: { type: integer, format: int64 }
+                            past_due: { type: integer, format: int64 }
+                            past_due_count: { type: integer }
+                            billed: { type: integer, format: int64 }
+                            paid: { type: integer, format: int64 }
+        '404':
+          description: Customer not found.
   /v1/customers/{id}/credit-statement:
     get:
       operationId: getCreditStatement
@@ -1964,6 +2002,91 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/invoices/{id}/journal-entries:
+    get:
+      operationId: getInvoiceJournalEntries
+      tags: [Invoices]
+      summary: Invoice journal entries (ledger drill)
+      description: >
+        Every ledger posting that references this invoice — its Code-1 issuance,
+        Code-6 tax reclass, Code-3 payment, and any credit/refund/write-off legs —
+        each as a transfer with its debit and credit account (code + name), amount,
+        posting code, and timestamp. The finance-accounting side of the invoice
+        page. Read-only; an existing invoice with no postings yet returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The invoice's journal entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoice_id: { type: string, format: uuid }
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            transaction_id: { type: string, format: uuid }
+                            timestamp: { type: string, format: date-time }
+                            code: { type: integer }
+                            debit_account_code: { type: integer }
+                            debit_account_name: { type: string }
+                            credit_account_code: { type: integer }
+                            credit_account_name: { type: string }
+                            amount: { type: integer, format: int64 }
+                            reference_id: { type: string, format: uuid }
+                            description: { type: string }
+                            accounting_version: { type: integer }
+        '404':
+          description: Invoice not found.
+  /v1/invoices/{id}/payment-attempts:
+    get:
+      operationId: getInvoicePaymentAttempts
+      tags: [Invoices]
+      summary: Invoice payment attempts (settlement history)
+      description: >
+        An invoice's payment attempts, oldest first — the retry/settlement
+        history: a card's failed → succeeded, or an ACH debit's initiated →
+        processing → succeeded → returned. Each attempt carries its status,
+        failure code, gateway + payment-intent reference, amount, and settled-at.
+        Read-only; an existing invoice with no attempts returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The invoice's payment attempts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoice_id: { type: string, format: uuid }
+                      attempts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            invoice_id: { type: string, format: uuid }
+                            gateway: { type: string }
+                            method: { type: string }
+                            gateway_payment_intent_id: { type: string }
+                            status: { type: string, enum: [initiated, processing, succeeded, failed, returned] }
+                            failure_code: { type: string }
+                            amount: { type: integer, format: int64 }
+                            created_at: { type: string, format: date-time }
+                            settled_at: { type: string, format: date-time, nullable: true }
+        '404':
+          description: Invoice not found.
   /v1/invoices/{id}/pdf:
     get:
       operationId: downloadInvoicePDF

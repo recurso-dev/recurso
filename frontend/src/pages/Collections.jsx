@@ -404,8 +404,13 @@ const Collections = () => {
                         </Link>
                         <div className="text-xs text-muted-foreground">{it.customer_email}</div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm text-muted-foreground">
-                        {it.invoice_number}
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          to={`/invoices/${it.id}`}
+                          className="text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                        >
+                          {it.invoice_number}
+                        </Link>
                       </TableCell>
                       <TableCell className="text-right font-medium">
                         <Money amountMinor={it.amount_remaining} currency={it.currency} />

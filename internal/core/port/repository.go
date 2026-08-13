@@ -76,6 +76,10 @@ type InvoiceRepository interface {
 	// GetOutstandingByEntity sums open AR per legal entity + currency for the
 	// multi-entity overview. Read-only.
 	GetOutstandingByEntity(ctx context.Context, tenantID uuid.UUID) ([]domain.EntityOutstandingRow, error)
+	// GetCustomerFinancialSummary aggregates one customer's invoices into a
+	// per-currency position (outstanding, past-due + count, billed, paid) for
+	// the customer object page. Read-only.
+	GetCustomerFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error)
 	// CountUncollectibleSince counts invoices written off in a trailing window
 	// (marked_uncollectible_at) — the written-off side of the windowed
 	// recovery-rate cohort.

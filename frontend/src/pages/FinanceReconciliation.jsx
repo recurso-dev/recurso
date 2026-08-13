@@ -21,28 +21,44 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Human labels for the backend's discrepancy type constants
-// (internal/service/reconciliation.go).
-const DISCREPANCY_LABELS = {
-  missing_invoice_transaction: "Missing invoice transaction",
-  invoice_amount_mismatch: "Invoice amount mismatch",
-  missing_payment_transaction: "Missing payment transaction",
-  payment_amount_mismatch: "Payment amount mismatch",
-  missing_credit_note_transaction: "Missing credit-note transaction",
-  orphaned_transaction: "Orphaned transaction",
-  ledger_unbalanced: "Ledger unbalanced (debits ≠ credits)",
-  abnormal_account_balance: "Wrong-sign account balance",
-  deferred_below_scheduled_revenue: "Deferred below scheduled revenue",
-  recognized_exceeds_invoice: "Revenue recognized exceeds recognizable amount",
-  missing_in_tigerbeetle: "Missing in TigerBeetle",
-  missing_in_postgres: "Missing in Postgres",
-  tb_amount_mismatch: "TigerBeetle amount mismatch",
+// Human label + one-line reason for every backend discrepancy type constant
+// (internal/service/reconciliation.go). A reconciliation that only says "failed"
+// is useless to an operator — each row must say what disagrees and why. All 20
+// types are covered so a real discrepancy is never shown as a raw enum.
+const DISCREPANCIES = {
+  missing_invoice_transaction: { label: "Missing invoice transaction", reason: "An issued invoice has no Code-1 issuance posting — the ledger never recorded it being raised." },
+  invoice_amount_mismatch: { label: "Invoice amount mismatch", reason: "The invoice's issuance posting doesn't equal the invoice total." },
+  missing_payment_transaction: { label: "Missing payment transaction", reason: "A paid invoice has no Code-3 payment posting — cash was recorded received but never posted." },
+  payment_amount_mismatch: { label: "Payment amount mismatch", reason: "The payment posting doesn't equal what the invoice recorded as paid." },
+  missing_credit_note_transaction: { label: "Missing credit-note transaction", reason: "A credit note exists with no ledger posting behind it." },
+  missing_credit_application_transaction: { label: "Missing credit-application transaction", reason: "Credit was applied to an invoice but no Code-7 posting drew it down." },
+  credit_application_amount_mismatch: { label: "Credit-application amount mismatch", reason: "The credit-applied posting doesn't equal the credit recorded against the invoice." },
+  missing_write_off_transaction: { label: "Missing write-off transaction", reason: "An uncollectible invoice has no write-off reversal posting." },
+  write_off_amount_mismatch: { label: "Write-off amount mismatch", reason: "The write-off posting doesn't equal the amount written off." },
+  missing_tax_transaction: { label: "Missing tax transaction", reason: "A taxed invoice has no Code-6 tax reclass posting." },
+  tax_amount_mismatch: { label: "Tax amount mismatch", reason: "The tax posting doesn't equal the invoice's tax." },
+  orphaned_transaction: { label: "Orphaned transaction", reason: "A posting references a source object that no longer exists." },
+  missing_in_tigerbeetle: { label: "Missing in TigerBeetle", reason: "A Postgres posting has no matching TigerBeetle transfer." },
+  missing_in_postgres: { label: "Missing in Postgres", reason: "A TigerBeetle transfer has no matching Postgres posting." },
+  tb_amount_mismatch: { label: "TigerBeetle amount mismatch", reason: "A posting's amount differs between Postgres and TigerBeetle." },
+  ledger_unbalanced: { label: "Ledger unbalanced (debits ≠ credits)", reason: "Total debits don't equal total credits — the accounting identity itself is broken." },
+  abnormal_account_balance: { label: "Wrong-sign account balance", reason: "An account holds a balance on the wrong side (e.g. a negative asset)." },
+  deferred_below_scheduled_revenue: { label: "Deferred below scheduled revenue", reason: "Deferred Revenue is less than the recognition schedule still expects to release." },
+  recognized_exceeds_invoice: { label: "Recognized exceeds invoice", reason: "More revenue has been recognized than the invoice can support." },
+  customer_credit_liability_mismatch: { label: "Customer-credit liability mismatch", reason: "The Customer Credit liability doesn't equal the sum of outstanding credit balances." },
 };
-
 
 // Discrepancy amounts are minor units (cents/paise); the report carries no
 // currency, so render them as plain integers rather than guessing a symbol.
 const formatMinorUnits = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+
+// Difference = found − expected, shown with an explicit sign so an operator sees
+// the direction and size of the gap. Absent when either side is unknown.
+const formatDifference = (d) => {
+  if (typeof d.found_amount !== "number" || typeof d.expected_amount !== "number") return "—";
+  const diff = d.found_amount - d.expected_amount;
+  return `${diff > 0 ? "+" : ""}${diff.toLocaleString()}`;
+};
 
 export default function FinanceReconciliation() {
   const [report, setReport] = useState(null);
@@ -92,6 +108,31 @@ export default function FinanceReconciliation() {
       ) : (
         report && (
           <div className="flex flex-col gap-6">
+            {/* Verdict — the one thing a finance operator checks first. */}
+            <div
+              className={
+                booksBalanced
+                  ? "flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 px-5 py-4"
+                  : "flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-5 py-4"
+              }
+            >
+              {booksBalanced ? (
+                <ShieldCheck className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+              ) : (
+                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+              )}
+              <div>
+                <p className={booksBalanced ? "text-sm font-semibold text-success" : "text-sm font-semibold text-destructive"}>
+                  {booksBalanced ? "Reconciled" : `${totalDiscrepancies.toLocaleString()} discrepanc${totalDiscrepancies === 1 ? "y" : "ies"} to resolve`}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {booksBalanced
+                    ? "Every invoice, payment, and credit ties to the ledger, and debits equal credits."
+                    : "Billing records and the ledger disagree — each row below shows what, by how much, and why."}
+                </p>
+              </div>
+            </div>
+
             {/* Summary cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
@@ -185,12 +226,12 @@ export default function FinanceReconciliation() {
                 <Table>
                   <TableHeader>
                     <TableRow className="bg-muted/40 hover:bg-muted/40">
-                      <TableHead>Type</TableHead>
+                      <TableHead>What disagrees</TableHead>
                       <TableHead>Invoice</TableHead>
                       <TableHead>Transaction</TableHead>
-                      <TableHead>Reference</TableHead>
                       <TableHead className="text-right">Expected</TableHead>
                       <TableHead className="text-right">Found</TableHead>
+                      <TableHead className="text-right">Difference</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -198,10 +239,15 @@ export default function FinanceReconciliation() {
                       <TableRow
                         key={`${d.type}-${d.invoice_id || d.transaction_id || i}`}
                       >
-                        <TableCell>
+                        <TableCell className="max-w-xs">
                           <Badge variant="destructive">
-                            {DISCREPANCY_LABELS[d.type] || d.type}
+                            {DISCREPANCIES[d.type]?.label || d.type}
                           </Badge>
+                          {DISCREPANCIES[d.type]?.reason && (
+                            <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                              {DISCREPANCIES[d.type].reason}
+                            </p>
+                          )}
                         </TableCell>
                         <TableCell
                           className="font-mono text-xs text-muted-foreground"
@@ -220,21 +266,18 @@ export default function FinanceReconciliation() {
                         </TableCell>
                         <TableCell
                           className="font-mono text-xs text-muted-foreground"
-                          title={d.transaction_id || undefined}
+                          title={d.transaction_id || d.reference_id || undefined}
                         >
-                          {shortId(d.transaction_id)}
-                        </TableCell>
-                        <TableCell
-                          className="font-mono text-xs text-muted-foreground"
-                          title={d.reference_id || undefined}
-                        >
-                          {shortId(d.reference_id)}
+                          {shortId(d.transaction_id || d.reference_id)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-foreground">
                           {formatMinorUnits(d.expected_amount)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-foreground">
                           {formatMinorUnits(d.found_amount)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono text-sm font-medium text-destructive">
+                          {formatDifference(d)}
                         </TableCell>
                       </TableRow>
                     ))}

@@ -129,6 +129,7 @@ export const endpoints = {
   getCustomerWallets: (id) => api.get(`/customers/${id}/wallets`),
   // Ledger-backed credits: a customer's consolidated account-credit statement.
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
+  getCustomerFinancialSummary: (id) => api.get(`/customers/${id}/financial-summary`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   // Wires the long-existing backend GET (was implemented and unused).
@@ -137,6 +138,8 @@ export const endpoints = {
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).
   getInvoice: (id) => api.get(`/invoices/${id}`),
+  getInvoiceJournalEntries: (id) => api.get(`/invoices/${id}/journal-entries`),
+  getInvoicePaymentAttempts: (id) => api.get(`/invoices/${id}/payment-attempts`),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),

@@ -8,6 +8,8 @@ import { endpoints } from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   endpoints: {
     getInvoice: vi.fn(),
+    getInvoiceJournalEntries: vi.fn(),
+    getInvoicePaymentAttempts: vi.fn(),
     getCustomers: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getEUEInvoice: vi.fn(),
     retryEUEInvoice: vi.fn(),
@@ -58,6 +60,40 @@ describe("InvoicePage", () => {
     endpoints.getEUEInvoice.mockResolvedValue({ data: { data: null } });
     endpoints.getInvoice.mockResolvedValue({
       data: { data: { ...baseInvoice, currency: "usd" } },
+    });
+    endpoints.getInvoiceJournalEntries.mockResolvedValue({
+      data: {
+        data: {
+          invoice_id: "inv-1",
+          entries: [
+            {
+              transaction_id: "tx1",
+              code: 1,
+              description: "Invoice raised",
+              debit_account_code: 1100,
+              debit_account_name: "Accounts Receivable",
+              credit_account_code: 2100,
+              credit_account_name: "Deferred Revenue",
+              amount: 108750,
+              timestamp: "2026-01-01T00:00:00Z",
+            },
+            {
+              transaction_id: "tx2",
+              code: 3,
+              description: "Payment received",
+              debit_account_code: 1000,
+              debit_account_name: "Cash",
+              credit_account_code: 1100,
+              credit_account_name: "Accounts Receivable",
+              amount: 108750,
+              timestamp: "2026-01-02T00:00:00Z",
+            },
+          ],
+        },
+      },
+    });
+    endpoints.getInvoicePaymentAttempts.mockResolvedValue({
+      data: { data: { invoice_id: "inv-1", attempts: [] } },
     });
     endpoints.getInvoicePdf.mockResolvedValue({ data: new Blob(["pdf"]) });
     endpoints.sendInvoice.mockResolvedValue({ data: { message: "sent" } });
@@ -179,6 +215,80 @@ describe("InvoicePage", () => {
         expect.objectContaining({ entity_type: "invoices", entity_id: "inv-1" })
       )
     );
+  });
+
+  it("shows the finance-accounting side: the invoice's journal entries", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Journal entries")).toBeInTheDocument());
+    expect(endpoints.getInvoiceJournalEntries).toHaveBeenCalledWith("inv-1");
+    // The real transfer postings — Code 1 issuance + Code 3 payment — with accounts.
+    // (Text is split across nested code/name spans, so match by substring.)
+    expect(screen.getByText(/Invoice raised/)).toBeInTheDocument();
+    expect(screen.getByText(/Payment received/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Accounts Receivable/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Debits = Credits")).toBeInTheDocument();
+  });
+
+  it("shows the collection side: the payment attempt lifecycle with its failure", async () => {
+    endpoints.getInvoicePaymentAttempts.mockResolvedValue({
+      data: {
+        data: {
+          invoice_id: "inv-1",
+          attempts: [
+            {
+              id: "pa1",
+              status: "failed",
+              method: "us_bank_account",
+              gateway: "stripe",
+              failure_code: "insufficient_funds",
+              amount: 108750,
+              gateway_payment_intent_id: "pi_123",
+              created_at: "2026-01-02T00:00:00Z",
+            },
+            {
+              id: "pa2",
+              status: "succeeded",
+              method: "us_bank_account",
+              gateway: "stripe",
+              amount: 108750,
+              created_at: "2026-01-05T00:00:00Z",
+              settled_at: "2026-01-08T00:00:00Z",
+            },
+          ],
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Payments")).toBeInTheDocument());
+    expect(endpoints.getInvoicePaymentAttempts).toHaveBeenCalledWith("inv-1");
+    // The retry history: a failed attempt (with its reason) then a succeeded one.
+    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("succeeded")).toBeInTheDocument();
+    expect(screen.getByText("insufficient_funds")).toBeInTheDocument();
+  });
+
+  it("explains a past_due invoice with its decline reason", async () => {
+    endpoints.getInvoice.mockResolvedValue({
+      data: {
+        data: {
+          ...baseInvoice,
+          currency: "usd",
+          status: "past_due",
+          amount_paid: 0,
+          amount_due: 108750,
+          last_payment_error: "insufficient_funds",
+          retry_count: 2,
+          next_retry_at: "2026-02-03T00:00:00Z",
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByLabelText("Needs attention")).toBeInTheDocument()
+    );
+    // The dunning state: the decline reason and how far the retry schedule has run.
+    expect(screen.getByText(/insufficient_funds/)).toBeInTheDocument();
+    expect(screen.getByText(/2 retries so far/)).toBeInTheDocument();
   });
 
   it("shows a not-found state on 404", async () => {

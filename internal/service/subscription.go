@@ -66,6 +66,7 @@ type SubscriptionService struct {
 	addonRepo           port.SubscriptionAddonRepository // Multi-product catalog v1; nil-safe (add-ons disabled)
 	telemetry           *telemetry.Client                // nil-safe; only set when TELEMETRY_OPTIN=true
 	finalUsageInvoicer  finalUsageInvoicer               // Usage-based billing v1: bill the partial window on immediate cancel; nil-safe
+	paymentAttempts     paymentAttemptLister             // nil-safe; the invoice page's payment-attempt history
 	logger              *slog.Logger
 }
 
@@ -555,6 +556,68 @@ func (s *SubscriptionService) ListInvoices(ctx context.Context, tenantID uuid.UU
 // dashboard's addressable /invoices/:id route.
 func (s *SubscriptionService) GetInvoice(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
 	return s.invoiceRepo.GetByID(ctx, id)
+}
+
+// GetInvoiceJournalEntries returns the invoice's ledger postings (its journal
+// drill), each with DR/CR account names. It verifies the invoice exists
+// (tenant-scoped) first and returns (nil, nil) when it doesn't, so a bad id is a
+// 404 rather than an empty journal. Without a ledger wired, returns an empty
+// journal, never an error.
+func (s *SubscriptionService) GetInvoiceJournalEntries(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, nil
+	}
+	if s.ledger == nil {
+		return []domain.GeneralLedgerRow{}, nil
+	}
+	entries, err := s.ledger.GetJournalEntriesByReference(ctx, tenantID, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		// The invoice exists but has no postings yet (e.g. a draft) — an empty
+		// journal, distinct from a missing invoice (which returns nil above → 404).
+		entries = []domain.GeneralLedgerRow{}
+	}
+	return entries, nil
+}
+
+// paymentAttemptLister is the narrow read the invoice's payment history needs.
+type paymentAttemptLister interface {
+	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error)
+}
+
+// SetPaymentAttemptLister enables GetInvoicePaymentAttempts. Without it, that
+// endpoint reports an empty history rather than erroring.
+func (s *SubscriptionService) SetPaymentAttemptLister(l paymentAttemptLister) { s.paymentAttempts = l }
+
+// GetInvoicePaymentAttempts returns an invoice's payment attempts — its
+// settlement/retry history. Verifies the invoice exists (tenant-scoped) first
+// and returns (nil, nil) when it doesn't, so a bad id is a 404 rather than an
+// empty history.
+func (s *SubscriptionService) GetInvoicePaymentAttempts(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error) {
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, nil
+	}
+	if s.paymentAttempts == nil {
+		return []*domain.PaymentAttempt{}, nil
+	}
+	attempts, err := s.paymentAttempts.ListByInvoice(ctx, tenantID, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if attempts == nil {
+		attempts = []*domain.PaymentAttempt{}
+	}
+	return attempts, nil
 }
 
 func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {

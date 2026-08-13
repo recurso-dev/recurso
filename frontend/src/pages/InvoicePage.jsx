@@ -14,6 +14,9 @@ import {
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
+import { AttentionBanner } from "@/components/patterns/AttentionBanner";
+import { JournalEntries } from "@/components/patterns/JournalEntries";
+import { PaymentAttempts } from "@/components/patterns/PaymentAttempts";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Alert } from "@/components/ui/alert";
@@ -89,6 +92,28 @@ export default function InvoicePage() {
         return null;
       }
     },
+    enabled: Boolean(id),
+  });
+
+  // The finance-accounting side: this invoice's ledger postings.
+  const {
+    data: journal = [],
+    isLoading: journalLoading,
+    error: journalError,
+  } = useQuery({
+    queryKey: ["invoiceJournal", id],
+    queryFn: async () => (await endpoints.getInvoiceJournalEntries(id)).data.data?.entries || [],
+    enabled: Boolean(id),
+  });
+
+  // The collection side: how we tried to get paid (attempt lifecycle + failures).
+  const {
+    data: attempts = [],
+    isLoading: attemptsLoading,
+    error: attemptsError,
+  } = useQuery({
+    queryKey: ["invoiceAttempts", id],
+    queryFn: async () => (await endpoints.getInvoicePaymentAttempts(id)).data.data?.attempts || [],
     enabled: Boolean(id),
   });
 
@@ -271,6 +296,30 @@ export default function InvoicePage() {
     }
   };
 
+  // Layer 3 — why is it in this state? Grounded in the invoice's own dunning
+  // fields; silent when the invoice is healthy.
+  const attention = [];
+  if (invoice.status === "past_due") {
+    attention.push({
+      tone: "danger",
+      text: (
+        <>
+          Payment past due
+          {invoice.last_payment_error ? `: ${invoice.last_payment_error}` : ""}
+          {invoice.retry_count > 0 ? ` — ${invoice.retry_count} ${invoice.retry_count === 1 ? "retry" : "retries"} so far` : ""}
+          {invoice.next_retry_at ? `, next ${formatDate(invoice.next_retry_at)}` : ""}.
+        </>
+      ),
+    });
+  } else if (invoice.status === "uncollectible") {
+    attention.push({
+      tone: "danger",
+      text: "Written off as uncollectible — the receivable was reversed in the ledger.",
+    });
+  } else if (invoice.status === "void") {
+    attention.push({ tone: "warning", text: "This invoice is void — it can no longer be paid." });
+  }
+
   return (
     <div>
       <ObjectHeader
@@ -302,6 +351,8 @@ export default function InvoicePage() {
           </>
         }
       />
+
+      <AttentionBanner items={attention} />
 
       {actionMessage && (
         <Alert
@@ -453,6 +504,41 @@ export default function InvoicePage() {
               danger={invoice.amount_due > 0}
             />
           </div>
+        </ObjectSection>
+
+        {/* The collection side: how we tried to get paid. Shown only when there
+            were gateway attempts (credit/offline invoices have none). */}
+        {(attemptsLoading || attempts.length > 0) && (
+          <ObjectSection
+            title="Payments"
+            action={
+              <span className="text-xs text-muted-foreground">Attempt lifecycle &amp; failures</span>
+            }
+          >
+            <PaymentAttempts
+              attempts={attempts}
+              currency={invoice.currency}
+              isLoading={attemptsLoading}
+              error={attemptsError}
+            />
+          </ObjectSection>
+        )}
+
+        {/* The finance-accounting side of the same invoice: its ledger postings. */}
+        <ObjectSection
+          title="Journal entries"
+          action={
+            <span className="text-xs text-muted-foreground">
+              What this invoice posted to the ledger
+            </span>
+          }
+        >
+          <JournalEntries
+            entries={journal}
+            currency={invoice.currency}
+            isLoading={journalLoading}
+            error={journalError}
+          />
         </ObjectSection>
 
         {/* India IRP e-invoice — never on a non-GST invoice */}

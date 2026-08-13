@@ -71,6 +71,12 @@ describe('FinanceReconciliation page', () => {
         // Invoices page (not a dead UUID).
         const invoiceLink = screen.getByRole('link', { name: 'aaaaaaaa…' });
         expect(invoiceLink).toHaveAttribute('href', '/invoices/aaaaaaaa-1111-2222-3333-444444444444');
+        // Depth: the difference (found − expected) is shown with a sign, and each
+        // row explains WHY, not just a raw enum. And the verdict headline names
+        // the count.
+        expect(screen.getByText('-500')).toBeInTheDocument();
+        expect(screen.getByText(/issuance posting doesn.t equal the invoice total/i)).toBeInTheDocument();
+        expect(screen.getByText(/2 discrepancies to resolve/i)).toBeInTheDocument();
     });
 
     it('shows the skipped TigerBeetle badge with the skip reason', async () => {

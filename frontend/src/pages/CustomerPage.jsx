@@ -18,6 +18,8 @@ import {
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
+import { FinancialSummary } from "@/components/patterns/FinancialSummary";
+import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
@@ -81,6 +83,31 @@ export default function CustomerPage() {
     queryFn: async () => (await endpoints.getCustomerWallets(id)).data.data || [],
     enabled: Boolean(id),
   });
+
+  const {
+    data: financials,
+    isLoading: financialsLoading,
+    error: financialsError,
+  } = useQuery({
+    queryKey: ["customerFinancialSummary", id],
+    queryFn: async () => (await endpoints.getCustomerFinancialSummary(id)).data.data,
+    enabled: Boolean(id),
+  });
+  const currencies = financials?.currencies || [];
+
+  // Exceptions-first: past-due invoices are the customer's live financial
+  // exception. One item per currency that has any, tone by amount.
+  const attention = currencies
+    .filter((c) => c.past_due_count > 0)
+    .map((c) => ({
+      tone: "danger",
+      text: (
+        <>
+          {c.past_due_count} past-due {c.past_due_count === 1 ? "invoice" : "invoices"} —{" "}
+          <Money amountMinor={c.past_due} currency={c.currency} /> outstanding
+        </>
+      ),
+    }));
 
   const { plans: planList } = usePlans();
   const planName = (planId) =>
@@ -157,6 +184,8 @@ export default function CustomerPage() {
         }
       />
 
+      <AttentionBanner items={attention} />
+
       <ObjectPageLayout
         rail={
           <>
@@ -189,6 +218,14 @@ export default function CustomerPage() {
           </>
         }
       >
+        <ObjectSection title="Financial summary">
+          <FinancialSummary
+            currencies={currencies}
+            isLoading={financialsLoading}
+            error={financialsError}
+          />
+        </ObjectSection>
+
         <ObjectSection title="Overview">
           <AttributeList
             items={[

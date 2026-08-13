@@ -79,7 +79,91 @@ func (m *mockCustomerRepo) UpdatePaymentMethod(ctx context.Context, customerID u
 	return nil
 }
 
+// --- Mock invoice summarizer ---
+type mockInvoiceSummarizer struct {
+	rows []domain.CustomerFinancialSummaryCurrency
+	err  error
+}
+
+func (m *mockInvoiceSummarizer) GetCustomerFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error) {
+	return m.rows, m.err
+}
+
+// seedCustomer inserts a tenant-owned customer into the mock repo.
+func seedCustomer(repo *mockCustomerRepo, tenantID uuid.UUID) uuid.UUID {
+	id := uuid.New()
+	repo.customers[id] = &domain.Customer{ID: id, TenantID: tenantID, Email: "c@example.com"}
+	return id
+}
+
 // --- Tests ---
+
+func TestGetFinancialSummary_PerCurrency(t *testing.T) {
+	repo := newMockCustomerRepo()
+	tenantID := uuid.New()
+	custID := seedCustomer(repo, tenantID)
+
+	svc := NewCustomerService(repo)
+	svc.SetInvoiceSummarizer(&mockInvoiceSummarizer{rows: []domain.CustomerFinancialSummaryCurrency{
+		{Currency: "USD", Outstanding: 12000, PastDue: 3000, PastDueCount: 1, Billed: 100000, Paid: 88000},
+		{Currency: "INR", Outstanding: 0, Billed: 500000, Paid: 500000},
+	}})
+
+	got, err := svc.GetFinancialSummary(context.Background(), tenantID, custID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("summary should not be nil for an existing customer")
+	}
+	if got.CustomerID != custID {
+		t.Errorf("customer_id = %v, want %v", got.CustomerID, custID)
+	}
+	if len(got.Currencies) != 2 {
+		t.Fatalf("currencies = %d, want 2", len(got.Currencies))
+	}
+	if got.Currencies[0].Currency != "USD" || got.Currencies[0].Outstanding != 12000 || got.Currencies[0].PastDueCount != 1 {
+		t.Errorf("USD row wrong: %+v", got.Currencies[0])
+	}
+}
+
+func TestGetFinancialSummary_WrongTenantReturnsNil(t *testing.T) {
+	repo := newMockCustomerRepo()
+	ownerTenant := uuid.New()
+	custID := seedCustomer(repo, ownerTenant)
+
+	svc := NewCustomerService(repo)
+	svc.SetInvoiceSummarizer(&mockInvoiceSummarizer{})
+
+	// Same customer id, a DIFFERENT tenant → GetCustomer returns (nil,nil),
+	// so the summary is nil and the handler 404s. Guards against cross-tenant
+	// leakage of another tenant's financial position.
+	got, err := svc.GetFinancialSummary(context.Background(), uuid.New(), custID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("cross-tenant summary must be nil, got %+v", got)
+	}
+}
+
+func TestGetFinancialSummary_NoSummarizerIsEmptyNotError(t *testing.T) {
+	repo := newMockCustomerRepo()
+	tenantID := uuid.New()
+	custID := seedCustomer(repo, tenantID)
+
+	svc := NewCustomerService(repo) // no summarizer wired
+	got, err := svc.GetFinancialSummary(context.Background(), tenantID, custID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got == nil || got.Currencies == nil {
+		t.Fatal("summary + currencies slice should be non-nil (empty), never nil")
+	}
+	if len(got.Currencies) != 0 {
+		t.Errorf("currencies = %d, want 0 without a summarizer", len(got.Currencies))
+	}
+}
 
 func TestCreateCustomer_Success(t *testing.T) {
 	repo := newMockCustomerRepo()
