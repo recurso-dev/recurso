@@ -130,5 +130,14 @@ Usage (current+lifetime, buckets, raw stream).
   and `AttentionBanner` (exceptions-first, silent when healthy). Customer page now
   leads with the financial position + surfaces past-due invoices above the fold.
   Green: Go build + drift + tests; frontend lint 0 / build / 498 tests. Live
-  visual QA against a seeded stack still to run. Next: Subscription (reuse both
-  primitives; its `/preview-change` proration is the financial-consequence layer).
+  visual QA against a seeded stack still to run.
+- 2026-08-13 — **Increment 2: Subscription (state context).** Reused
+  `AttentionBanner` (proving it's shared) to add Layer 3 — why the subscription
+  is in its state + what happens next: past_due shows the real decline reason +
+  retry from its own past-due invoice (links to it), unpaid, paused (+resume),
+  scheduled cancel-at-period-end, trial-end. Silent when healthy. The
+  plan-change proration preview already existed. Frontend-only. Green: lint 0,
+  build, 501 tests. Both increments on branch `dashboard-operational-depth`
+  (PR #640) since #2 depends on #1's unmerged primitive. Next: Invoice —
+  customer/finance dual view; the per-invoice ledger drill is a documented gap
+  (needs a small journal-entries endpoint = hybrid).
