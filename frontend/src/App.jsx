@@ -52,6 +52,7 @@ const Usage = lazy(() => import('./pages/Usage'))
 const Developers = lazy(() => import('./pages/Developers'))
 const Integrations = lazy(() => import('./pages/Integrations'))
 const Ledger = lazy(() => import('./pages/Ledger'))
+const AccountPage = lazy(() => import('./pages/AccountPage'))
 const CreditNotes = lazy(() => import('./pages/CreditNotes'))
 const CreateCreditNote = lazy(() => import('./pages/CreateCreditNote'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -173,6 +174,7 @@ function App() {
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/integrations" element={<Integrations />} />
                             <Route path="/ledger" element={<Ledger />} />
+                            <Route path="/ledger/accounts/:id" element={<AccountPage />} />
                             <Route path="/metering" element={<Metering />} />
                             <Route path="/wallets" element={<Wallets />} />
                             <Route path="/audit-log" element={<AuditLog />} />
