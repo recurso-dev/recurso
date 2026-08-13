@@ -122,5 +122,13 @@ Usage (current+lifetime, buckets, raw stream).
 ## Progress log
 
 - 2026-08-13 — Initiative opened. Branch created, charter written. Backend-
-  capability audit in flight (maps achievable depth per object). Next: object
-  framework extension + Customer as the depth template.
+  capability audit completed → gap ledger above.
+- 2026-08-13 — **Increment 1: Customer (depth template).** Added
+  `GET /customers/:id/financial-summary` (per-currency outstanding/past-due/
+  billed/paid; narrow nil-safe port; OpenAPI + service/handler tests). New shared
+  primitives `FinancialSummary` (per-currency metric strip, danger/warning tone)
+  and `AttentionBanner` (exceptions-first, silent when healthy). Customer page now
+  leads with the financial position + surfaces past-due invoices above the fold.
+  Green: Go build + drift + tests; frontend lint 0 / build / 498 tests. Live
+  visual QA against a seeded stack still to run. Next: Subscription (reuse both
+  primitives; its `/preview-change` proration is the financial-consequence layer).
