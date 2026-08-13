@@ -1720,7 +1720,7 @@ paths:
       summary: List unbilled charges for a subscription
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
         - $ref: '#/components/parameters/PathID'
       responses:
         '200':
@@ -2224,7 +2224,7 @@ paths:
       summary: List coupons
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
       responses:
         '200':
           description: Coupons for the tenant.
@@ -2470,7 +2470,7 @@ paths:
       summary: List credit notes
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
         - name: customer_id
           in: query
           description: Filter by customer.
@@ -2671,7 +2671,7 @@ paths:
       summary: List quotes
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
         - name: status
           in: query
           schema:
@@ -2973,7 +2973,7 @@ paths:
       description: Recent delivery attempts to this endpoint, newest first.
       parameters:
         - $ref: '#/components/parameters/PathID'
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: "Max rows returned (default 50, capped at 500)." }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
         - name: status
           in: query
@@ -3009,7 +3009,7 @@ paths:
       parameters:
         - { name: type, in: query, schema: { type: string }, description: Filter to one event type (e.g. `invoice.paid`). }
         - { name: object_id, in: query, schema: { type: string, format: uuid }, description: Filter to one object's events (per-object timeline); takes precedence over `type`. }
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: Max rows returned (default 50, capped at 500). }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 500 }, description: "Max rows returned (default 50, capped at 500)." }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip. }
       responses:
         '200':
@@ -4435,7 +4435,7 @@ paths:
         UI for disputes yet; this API is the current surface.
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
         - name: status
           in: query
           required: false
@@ -4664,7 +4664,7 @@ paths:
         remaining, days overdue, retry count, last failure code, next scheduled
         retry, which engine owns it, and the latest ACH attempt status. Read-only.
       parameters:
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: "Page size (default 50, capped at 250). Also accepts page/per_page." }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - name: status
           in: query
@@ -4930,7 +4930,7 @@ paths:
       description: Double-entry ledger accounts (cash, accounts receivable, revenue, etc.) for the tenant.
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
       responses:
         '200':
           description: Ledger accounts.
@@ -6216,7 +6216,7 @@ paths:
       tags: [Referrals]
       summary: List referrals
       parameters:
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: "Page size (default 50, capped at 250). Also accepts page/per_page." }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
@@ -6341,7 +6341,7 @@ paths:
       tags: [Gifts]
       summary: List gift subscriptions
       parameters:
-        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: Page size (default 50, capped at 250). Also accepts page/per_page. }
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 250 }, description: "Page size (default 50, capped at 250). Also accepts page/per_page." }
         - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip (overrides page-derived offset). }
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PerPage'
@@ -6524,7 +6524,7 @@ paths:
       summary: List mandates
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
       responses:
         '200':
           description: Mandates for the tenant.
@@ -6629,7 +6629,7 @@ paths:
       summary: List virtual accounts
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
       responses:
         '200':
           description: Virtual accounts for the tenant.
@@ -6710,7 +6710,7 @@ paths:
       summary: List offline payments
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
       responses:
         '200':
           description: Offline payments for the tenant.
@@ -7228,7 +7228,7 @@ paths:
       summary: List high-churn-risk customers
       parameters:
         - { name: limit, in: query, schema: { type: integer, default: 1000, maximum: 1000 }, description: Max rows returned (clamped to 1000). }
-        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: Rows to skip, for paging past the clamp. }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0 }, description: "Rows to skip, for paging past the clamp." }
         - name: threshold
           in: query
           description: Minimum churn score (0-100) to include.
