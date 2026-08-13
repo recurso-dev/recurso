@@ -196,3 +196,11 @@ Usage (current+lifetime, buckets, raw stream).
   kept honest: no per-event charge/invoice attribution, no previous-period
   comparison — so no per-event pricing link or trend is shown (the billing side
   is on the Subscription page). Frontend-only. Green: lint 0, build, 505 tests.
+- 2026-08-13 — **Increment 8: Plan** (branch `dashboard-depth-plan` off main).
+  Added the "Subscriptions on this plan" reverse lookup (GET /subscriptions?
+  plan_id=) to the plan detail — the directive's key Plan relationship, the only
+  piece the already-rich plan view (pricing/entitlements/charges) lacked. Each
+  row drills to the subscription. Closes Plan → Subscriptions (inverse of the
+  existing Subscription → Plan link). Frontend-only. Green: lint 0, build, 505
+  tests. NOTE: /plans/:id is still a list+sheet, not a full ObjectPage — a
+  full-page conversion could follow, but the sheet is already comprehensive.
