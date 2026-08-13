@@ -9,6 +9,7 @@ vi.mock("../../lib/api", () => ({
   endpoints: {
     getInvoice: vi.fn(),
     getInvoiceJournalEntries: vi.fn(),
+    getInvoicePaymentAttempts: vi.fn(),
     getCustomers: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getEUEInvoice: vi.fn(),
     retryEUEInvoice: vi.fn(),
@@ -90,6 +91,9 @@ describe("InvoicePage", () => {
           ],
         },
       },
+    });
+    endpoints.getInvoicePaymentAttempts.mockResolvedValue({
+      data: { data: { invoice_id: "inv-1", attempts: [] } },
     });
     endpoints.getInvoicePdf.mockResolvedValue({ data: new Blob(["pdf"]) });
     endpoints.sendInvoice.mockResolvedValue({ data: { message: "sent" } });
@@ -223,6 +227,44 @@ describe("InvoicePage", () => {
     expect(screen.getByText(/Payment received/)).toBeInTheDocument();
     expect(screen.getAllByText(/Accounts Receivable/).length).toBeGreaterThan(0);
     expect(screen.getByText("Debits = Credits")).toBeInTheDocument();
+  });
+
+  it("shows the collection side: the payment attempt lifecycle with its failure", async () => {
+    endpoints.getInvoicePaymentAttempts.mockResolvedValue({
+      data: {
+        data: {
+          invoice_id: "inv-1",
+          attempts: [
+            {
+              id: "pa1",
+              status: "failed",
+              method: "us_bank_account",
+              gateway: "stripe",
+              failure_code: "insufficient_funds",
+              amount: 108750,
+              gateway_payment_intent_id: "pi_123",
+              created_at: "2026-01-02T00:00:00Z",
+            },
+            {
+              id: "pa2",
+              status: "succeeded",
+              method: "us_bank_account",
+              gateway: "stripe",
+              amount: 108750,
+              created_at: "2026-01-05T00:00:00Z",
+              settled_at: "2026-01-08T00:00:00Z",
+            },
+          ],
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Payments")).toBeInTheDocument());
+    expect(endpoints.getInvoicePaymentAttempts).toHaveBeenCalledWith("inv-1");
+    // The retry history: a failed attempt (with its reason) then a succeeded one.
+    expect(screen.getByText("failed")).toBeInTheDocument();
+    expect(screen.getByText("succeeded")).toBeInTheDocument();
+    expect(screen.getByText("insufficient_funds")).toBeInTheDocument();
   });
 
   it("explains a past_due invoice with its decline reason", async () => {

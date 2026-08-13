@@ -16,6 +16,7 @@ import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
+import { PaymentAttempts } from "@/components/patterns/PaymentAttempts";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Alert } from "@/components/ui/alert";
@@ -102,6 +103,17 @@ export default function InvoicePage() {
   } = useQuery({
     queryKey: ["invoiceJournal", id],
     queryFn: async () => (await endpoints.getInvoiceJournalEntries(id)).data.data?.entries || [],
+    enabled: Boolean(id),
+  });
+
+  // The collection side: how we tried to get paid (attempt lifecycle + failures).
+  const {
+    data: attempts = [],
+    isLoading: attemptsLoading,
+    error: attemptsError,
+  } = useQuery({
+    queryKey: ["invoiceAttempts", id],
+    queryFn: async () => (await endpoints.getInvoicePaymentAttempts(id)).data.data?.attempts || [],
     enabled: Boolean(id),
   });
 
@@ -492,6 +504,24 @@ export default function InvoicePage() {
             />
           </div>
         </ObjectSection>
+
+        {/* The collection side: how we tried to get paid. Shown only when there
+            were gateway attempts (credit/offline invoices have none). */}
+        {(attemptsLoading || attempts.length > 0) && (
+          <ObjectSection
+            title="Payments"
+            action={
+              <span className="text-xs text-muted-foreground">Attempt lifecycle &amp; failures</span>
+            }
+          >
+            <PaymentAttempts
+              attempts={attempts}
+              currency={invoice.currency}
+              isLoading={attemptsLoading}
+              error={attemptsError}
+            />
+          </ObjectSection>
+        )}
 
         {/* The finance-accounting side of the same invoice: its ledger postings. */}
         <ObjectSection
