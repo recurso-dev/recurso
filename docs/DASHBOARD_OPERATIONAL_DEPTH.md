@@ -187,3 +187,12 @@ Usage (current+lifetime, buckets, raw stream).
   what's next / the Payments attempt history) is one click. Green: lint 0,
   build, 504 tests. Six increments; four shared primitives. Next candidates:
   Usage / Meter / Plan (current endpoints), or a tenant-wide Payments log page.
+- 2026-08-13 — **#640 merged to main** (squash 8b314ee8). The 4 shared
+  primitives + 3 read endpoints are now baseline.
+- 2026-08-13 — **Increment 7: Usage** (new branch `dashboard-depth-usage` off
+  merged main). The Usage Explorer now names each event's meter and shows how it
+  aggregates (Event → Meter → Aggregation), joining billable metrics by
+  code==dimension. Reframed the header around the meter pipeline. Documented gaps
+  kept honest: no per-event charge/invoice attribution, no previous-period
+  comparison — so no per-event pricing link or trend is shown (the billing side
+  is on the Subscription page). Frontend-only. Green: lint 0, build, 505 tests.
