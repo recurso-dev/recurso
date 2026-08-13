@@ -53,6 +53,31 @@ func (r *PaymentAttemptRepository) Create(ctx context.Context, a *domain.Payment
 	return nil
 }
 
+// ListByInvoice returns an invoice's payment attempts, oldest first — the
+// retry/settlement history the invoice page's Payments section shows (an ACH
+// debit's initiated → processing → succeeded, or a card's failed → succeeded).
+// Tenant-scoped. Read-only.
+func (r *PaymentAttemptRepository) ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+paymentAttemptColumns+` FROM payment_attempts
+		 WHERE tenant_id = $1 AND invoice_id = $2
+		 ORDER BY created_at, id`, tenantID, invoiceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list payment attempts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*domain.PaymentAttempt
+	for rows.Next() {
+		a, err := scanPaymentAttempt(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan payment attempt: %w", err)
+		}
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 // GetByPaymentIntentID resolves the attempt a webhook is about, or (nil, nil).
 func (r *PaymentAttemptRepository) GetByPaymentIntentID(ctx context.Context, paymentIntentID string) (*domain.PaymentAttempt, error) {
 	if paymentIntentID == "" {

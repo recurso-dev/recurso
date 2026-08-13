@@ -241,6 +241,35 @@ func (h *SubscriptionHandler) GetInvoiceJournalEntries(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "entries": entries}})
 }
 
+// GetInvoicePaymentAttempts returns an invoice's payment attempts — the
+// settlement/retry history (a card's failed → succeeded, an ACH debit's
+// initiated → processing → succeeded → returned), each with status, failure
+// code, gateway, and timestamps.
+// GET /v1/invoices/:id/payment-attempts
+func (h *SubscriptionHandler) GetInvoicePaymentAttempts(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	invID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	attempts, err := h.service.GetInvoicePaymentAttempts(ctx, tenantID, invID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if attempts == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "attempts": attempts}})
+}
+
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

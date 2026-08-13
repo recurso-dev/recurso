@@ -2045,6 +2045,48 @@ paths:
                             accounting_version: { type: integer }
         '404':
           description: Invoice not found.
+  /v1/invoices/{id}/payment-attempts:
+    get:
+      operationId: getInvoicePaymentAttempts
+      tags: [Invoices]
+      summary: Invoice payment attempts (settlement history)
+      description: >
+        An invoice's payment attempts, oldest first — the retry/settlement
+        history: a card's failed → succeeded, or an ACH debit's initiated →
+        processing → succeeded → returned. Each attempt carries its status,
+        failure code, gateway + payment-intent reference, amount, and settled-at.
+        Read-only; an existing invoice with no attempts returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The invoice's payment attempts.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoice_id: { type: string, format: uuid }
+                      attempts:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            invoice_id: { type: string, format: uuid }
+                            gateway: { type: string }
+                            method: { type: string }
+                            gateway_payment_intent_id: { type: string }
+                            status: { type: string, enum: [initiated, processing, succeeded, failed, returned] }
+                            failure_code: { type: string }
+                            amount: { type: integer, format: int64 }
+                            created_at: { type: string, format: date-time }
+                            settled_at: { type: string, format: date-time, nullable: true }
+        '404':
+          description: Invoice not found.
   /v1/invoices/{id}/pdf:
     get:
       operationId: downloadInvoicePDF

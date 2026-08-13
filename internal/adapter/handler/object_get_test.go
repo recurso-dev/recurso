@@ -114,6 +114,47 @@ func TestGetInvoiceJournalBadIdIs400(t *testing.T) {
 	}
 }
 
+// --- GET /v1/invoices/:id/payment-attempts --------------------------------
+
+func doGetInvoiceAttempts(h *SubscriptionHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/invoices/"+id+"/payment-attempts", nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetInvoicePaymentAttempts(c)
+	return w
+}
+
+func TestGetInvoiceAttemptsOwnedReturnsArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: tenantID}
+	w := doGetInvoiceAttempts(newInvoiceGetHandler(inv), tenantID, inv.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned invoice attempts: got %d want 200", w.Code)
+	}
+	// Existing invoice → an attempts array (empty here — no lister wired), not 404.
+	if !strings.Contains(w.Body.String(), `"attempts"`) {
+		t.Fatalf("expected an attempts array, got %s", w.Body.String())
+	}
+}
+
+func TestGetInvoiceAttemptsCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: uuid.New()}
+	if got := doGetInvoiceAttempts(newInvoiceGetHandler(inv), uuid.New(), inv.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant attempts: got %d want 404 (flat)", got)
+	}
+}
+
+func TestGetInvoiceAttemptsBadIdIs400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	if got := doGetInvoiceAttempts(newInvoiceGetHandler(nil), uuid.New(), "nope").Code; got != http.StatusBadRequest {
+		t.Fatalf("bad id: got %d want 400", got)
+	}
+}
+
 // --- GET /v1/credit-notes/:id ----------------------------------------------
 
 type oneCreditNoteRepo struct {
