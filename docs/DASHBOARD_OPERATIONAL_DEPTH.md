@@ -138,6 +138,15 @@ Usage (current+lifetime, buckets, raw stream).
   scheduled cancel-at-period-end, trial-end. Silent when healthy. The
   plan-change proration preview already existed. Frontend-only. Green: lint 0,
   build, 501 tests. Both increments on branch `dashboard-operational-depth`
-  (PR #640) since #2 depends on #1's unmerged primitive. Next: Invoice —
-  customer/finance dual view; the per-invoice ledger drill is a documented gap
-  (needs a small journal-entries endpoint = hybrid).
+  (PR #640) since #2 depends on #1's unmerged primitive.
+- 2026-08-13 — **Increment 3: Invoice (customer document + finance accounting).**
+  Closed the biggest documented gap (hybrid): new `GET /invoices/:id/journal-entries`
+  returns every posting referencing the invoice (reuses the GL SELECT filtered by
+  reference_id; tenant-scoped; draft→empty≠missing→404). New shared `JournalEntries`
+  primitive (transfer postings, DR/CR account+name, Debits=Credits tie-out) below
+  the amount — the finance side of the document. Reused AttentionBanner for
+  past_due (decline reason)/uncollectible/void. Backend: build+drift+lint 0+handler
+  tests. Frontend: lint 0, build, 503 tests. THREE object pages, THREE shared
+  primitives (FinancialSummary, AttentionBanner, JournalEntries). Next: Payment —
+  needs new read endpoints (no payments resource); or Ledger/Reconciliation which
+  reuse JournalEntries. Live visual QA of all three still pending before merge.
