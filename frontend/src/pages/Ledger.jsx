@@ -321,6 +321,30 @@ export default function Ledger() {
         )}
       </div>
 
+      {/* Account posting totals — the debits and credits behind the balance. */}
+      {selectedAccount && (
+        <div className="mb-6 flex flex-wrap items-center gap-x-10 gap-y-2 rounded-lg border border-border bg-muted/20 px-5 py-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Debits posted</p>
+            <p className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
+              {formatCurrency(selectedAccount.debits_posted || 0, selectedAccount.currency)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Credits posted</p>
+            <p className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
+              {formatCurrency(selectedAccount.credits_posted || 0, selectedAccount.currency)}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Net balance</p>
+            <p className="mt-0.5 font-mono text-sm font-medium tabular-nums text-foreground">
+              {formatCurrency(selectedAccount.balance || 0, selectedAccount.currency)}
+            </p>
+          </div>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
         data={entries}
