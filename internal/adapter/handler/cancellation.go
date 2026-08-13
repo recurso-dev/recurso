@@ -95,7 +95,7 @@ func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	subscription, err := h.subscriptionService.Cancel(ctx, tenantID, subscriptionID, cancelImmediately, string(req.Reason), req.Feedback)
 	if err != nil {
-		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to cancel subscription")
+		respondSubscriptionError(c, err)
 		return
 	}
 

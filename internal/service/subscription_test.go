@@ -1005,8 +1005,8 @@ func TestCancel_WrongTenant_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when cancelling subscription from wrong tenant")
 	}
-	if err.Error() != "subscription not found for tenant" {
-		t.Errorf("error = %q, want 'subscription not found for tenant'", err.Error())
+	if !errors.Is(err, ErrSubscriptionNotFound) {
+		t.Errorf("error = %q, want ErrSubscriptionNotFound (tenant isolation stays opaque)", err.Error())
 	}
 	if subRepo.updated != nil {
 		t.Error("subscription should not be updated when tenant doesn't match")
@@ -1038,8 +1038,8 @@ func TestReactivate_WrongTenant_Rejected(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error when reactivating subscription from wrong tenant")
 	}
-	if err.Error() != "subscription not found for tenant" {
-		t.Errorf("error = %q, want 'subscription not found for tenant'", err.Error())
+	if !errors.Is(err, ErrSubscriptionNotFound) {
+		t.Errorf("error = %q, want ErrSubscriptionNotFound (tenant isolation stays opaque)", err.Error())
 	}
 	if subRepo.updated != nil {
 		t.Error("subscription should not be updated when tenant doesn't match")

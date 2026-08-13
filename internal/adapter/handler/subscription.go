@@ -82,7 +82,7 @@ func (h *SubscriptionHandler) CreateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.CreateSubscription(ctx, input)
 	if err != nil {
-		respondInternalError(c, err)
+		respondSubscriptionError(c, err)
 		return
 	}
 
@@ -315,7 +315,7 @@ func (h *SubscriptionHandler) UpdateSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.UpdateSubscription(ctx, tenantID, subscriptionID, newPlanID)
 	if err != nil {
-		respondInternalError(c, err)
+		respondSubscriptionError(c, err)
 		return
 	}
 
@@ -488,7 +488,7 @@ func (h *SubscriptionHandler) PauseSubscription(c *gin.Context) {
 	// Timed pauses come from the retention flow, which passes a resume date.
 	sub, err := h.service.PauseSubscription(ctx, tenantID, subID, nil)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		respondSubscriptionError(c, err)
 		return
 	}
 
@@ -512,7 +512,7 @@ func (h *SubscriptionHandler) ResumeSubscription(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	sub, err := h.service.ResumeSubscription(ctx, tenantID, subID)
 	if err != nil {
-		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
+		respondSubscriptionError(c, err)
 		return
 	}
 
@@ -549,4 +549,20 @@ func (h *SubscriptionHandler) SetCommitment(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": sub})
+}
+
+// respondSubscriptionError maps subscription-service sentinel errors onto the
+// canonical envelope: missing objects are 404 (tenant isolation stays opaque),
+// illegal state transitions are 409, everything else stays a 500 (#637).
+func respondSubscriptionError(c *gin.Context, err error) {
+	switch {
+	case errors.Is(err, service.ErrSubscriptionNotFound),
+		errors.Is(err, service.ErrPlanNotFound),
+		errors.Is(err, service.ErrCustomerNotFound):
+		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
+	case errors.Is(err, service.ErrInvalidSubscriptionState):
+		respondError(c, http.StatusConflict, codeConflict, err.Error())
+	default:
+		respondInternalError(c, err)
+	}
 }
