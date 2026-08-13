@@ -150,3 +150,12 @@ Usage (current+lifetime, buckets, raw stream).
   primitives (FinancialSummary, AttentionBanner, JournalEntries). Next: Payment —
   needs new read endpoints (no payments resource); or Ledger/Reconciliation which
   reuse JournalEntries. Live visual QA of all three still pending before merge.
+- 2026-08-13 — **Increment 4: Ledger + Reconciliation (source-of-truth pages).**
+  Frontend-only. Reconciliation: verdict headline (Reconciled / N-to-resolve),
+  all 20 discrepancy types labeled + a per-type reason line (was 13, no reasons),
+  new signed Difference column (found−expected, computed — the report has no
+  difference field). Ledger: added Debits/Credits-posted/Net-balance strip for
+  the selected account (was balance only). Green: lint 0, build, 503 tests.
+  Four increments, five object/finance pages on PR #640. Next: Payment (needs
+  new read endpoints — the last big gap) or Usage/Plan/Dunning. Live visual QA
+  of the whole batch still pending before merge.
