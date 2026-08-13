@@ -156,6 +156,17 @@ Usage (current+lifetime, buckets, raw stream).
   new signed Difference column (found−expected, computed — the report has no
   difference field). Ledger: added Debits/Credits-posted/Net-balance strip for
   the selected account (was balance only). Green: lint 0, build, 503 tests.
-  Four increments, five object/finance pages on PR #640. Next: Payment (needs
-  new read endpoints — the last big gap) or Usage/Plan/Dunning. Live visual QA
-  of the whole batch still pending before merge.
+  Four increments, five object/finance pages on PR #640.
+- 2026-08-13 — **Increment 5: Payment (closed the last big gap).** Payments
+  aren't addressable objects, so the Payment "page" is the invoice's attempt
+  history. New `GET /invoices/:id/payment-attempts` (repo ListByInvoice; narrow
+  nil-safe lister on SubscriptionService; missing→404, exists-none→empty; openapi
+  + handler tests). New shared `PaymentAttempts` primitive (attempt lifecycle
+  status/failure/gateway/settled) wired into InvoicePage as a "Payments" section
+  between Amount and Journal entries — the invoice now tells the whole story:
+  owed → how we collected → what posted. Green: build+drift+lint 0+tests;
+  frontend lint 0/build/504 tests. FIVE increments; FOUR shared primitives. All
+  audit backend gaps now closed except reconciliation run-history/scoping
+  (product decision). Next: Usage/Meter/Plan/Dunning (current endpoints) or a
+  tenant-wide Payments log page. LIVE VISUAL QA of the whole batch STILL PENDING
+  before merging #640.
