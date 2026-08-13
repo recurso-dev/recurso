@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router";
 import { Pencil, Plus, Trash2, Check, X, Archive, ArchiveRestore } from "lucide-react";
 
 import { endpoints } from "../../lib/api";
@@ -6,6 +7,7 @@ import PlanCharges from "./PlanCharges";
 import { toast } from "@/components/ui/sonner";
 import { cn, formatCurrency, formatDate } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -80,6 +82,8 @@ const toEditorRows = (ents) =>
 export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
   const [entitlements, setEntitlements] = useState([]);
   const [entLoadError, setEntLoadError] = useState(false);
+  // Subscriptions on this plan — the reverse lookup ("who is using it").
+  const [subs, setSubs] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [rows, setRows] = useState([]);
   const [validationError, setValidationError] = useState(null);
@@ -98,6 +102,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
     setIsEditingPlan(false);
     setValidationError(null);
     setEntLoadError(false);
+    setSubs(null);
     endpoints
       .getPlanEntitlements(plan.id)
       .then((res) => {
@@ -108,6 +113,15 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
           setEntitlements([]);
           setEntLoadError(true);
         }
+      });
+    // Reverse lookup: subscriptions currently on this plan.
+    endpoints
+      .getSubscriptions({ plan_id: plan.id, limit: 50 })
+      .then((res) => {
+        if (!cancelled) setSubs(res.data?.data || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSubs([]);
       });
     return () => {
       cancelled = true;
@@ -499,6 +513,36 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
 
           {/* Usage charges */}
           <PlanCharges planId={plan.id} currency={currency} />
+
+          {/* Subscriptions on this plan — the reverse lookup */}
+          <div>
+            <h3 className="mb-4 text-sm font-semibold text-foreground">
+              Subscriptions{subs && subs.length ? ` (${subs.length})` : ""}
+            </h3>
+            {subs === null ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : subs.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No subscriptions are on this plan yet.
+              </p>
+            ) : (
+              <div className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border">
+                {subs.map((s) => (
+                  <Link
+                    key={s.id}
+                    to={`/subscriptions/${s.id}`}
+                    onClick={onClose}
+                    className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-muted/40"
+                  >
+                    <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">
+                      {s.id.slice(0, 8)}…
+                    </span>
+                    <StatusBadge status={s.status || "unknown"} />
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Metadata */}
           <div>
