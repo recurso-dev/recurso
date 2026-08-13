@@ -1,13 +1,11 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 import { Plus, Gift, Package } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { queryClient } from "@/lib/queryClient";
 import { useDebounce } from "../hooks/useDebounce";
 import BuyGiftModal from "../components/BuyGiftModal";
-import PlanDetail from "../components/slide-overs/PlanDetail";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -34,13 +32,7 @@ export default function Plans() {
   const [page, setPage] = useState(1);
   const debouncedSearch = useDebounce(search, 500);
 
-  // URL-driven detail (/plans/:id) — shareable, refresh/back-safe.
-  const { id: routeId } = useParams();
-  const { data: routedObject } = useQuery({
-    queryKey: ["plan", routeId],
-    queryFn: async () => (await endpoints.getPlan(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
+  // Rows link to the plan's own page (/plans/:id → PlanPage).
   const [isGiftModalOpen, setIsGiftModalOpen] = useState(false);
 
   // Fully server-driven list keyed by (page, q, currency, interval) —
@@ -76,23 +68,6 @@ export default function Plans() {
     setPage(1);
   }, [debouncedSearch, currencyFilter, intervalFilter]);
 
-
-  const closeDetail = () => navigate("/plans");
-  const isDetailOpen = Boolean(routeId);
-  const selectedPlan = routedObject || null;
-
-  // After an edit/archive in the detail sheet: show the server's version of the
-  // plan immediately and refresh the list behind it.
-  const handlePlanChanged = (updated) => {
-    // The open detail is served by the ["plan", id] query — refetch it so the
-    // sheet shows the server's version (GET /plans/:id includes prices).
-    if (updated?.id) {
-      queryClient.invalidateQueries({ queryKey: ["plan", updated.id] });
-    }
-    // Invalidating the "plans" prefix refreshes this server-driven list AND the
-    // shared usePlans cache (Subscriptions/Metering/Mandates pickers) in one go.
-    queryClient.invalidateQueries({ queryKey: ["plans"] });
-  };
 
   const hasFilters = search || currencyFilter !== "all" || intervalFilter !== "all";
 
@@ -214,13 +189,6 @@ export default function Plans() {
           onNext: () => setPage((p) => p + 1),
           hasNext: plans.length >= PAGE_SIZE,
         }}
-      />
-
-      <PlanDetail
-        plan={selectedPlan}
-        isOpen={isDetailOpen}
-        onClose={closeDetail}
-        onChanged={handlePlanChanged}
       />
 
       <BuyGiftModal
