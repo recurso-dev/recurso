@@ -170,3 +170,12 @@ Usage (current+lifetime, buckets, raw stream).
   (product decision). Next: Usage/Meter/Plan/Dunning (current endpoints) or a
   tenant-wide Payments log page. LIVE VISUAL QA of the whole batch STILL PENDING
   before merging #640.
+- 2026-08-13 — **Live visual QA (PR #640, all 5 pages).** Rebuilt api+dashboard
+  from the branch against the seeded stack (admin@acmesaas.com tenant), verified
+  every new endpoint returns correct data, and eyeballed each page: Customer
+  financial-summary (Outstanding/Past-due/Billed/Paid, danger tone) ✓; Invoice
+  Payments (retry history, tone-coded, failure reason + gateway ref) + Journal
+  entries (DR/CR + Debits=Credits tie-out) ✓; Reconciliation verdict banner +
+  per-type reasons + signed Difference column ✓; Ledger Debits/Credits/Net
+  strip ✓. Zero horizontal overflow at 375px across all pages (iframe measure).
+  No issues found. PR #640 is merge-ready pending review.
