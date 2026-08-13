@@ -204,3 +204,11 @@ Usage (current+lifetime, buckets, raw stream).
   existing Subscription → Plan link). Frontend-only. Green: lint 0, build, 505
   tests. NOTE: /plans/:id is still a list+sheet, not a full ObjectPage — a
   full-page conversion could follow, but the sheet is already comprehensive.
+- 2026-08-13 — **#641 (Usage) + #642 (Plan sheet) merged to main.**
+- 2026-08-13 — **Increment 9: Plan → full page** (branch dashboard-depth-plan-page).
+  /plans/:id is now a proper PlanPage (ObjectPage: pricing, entitlements, usage
+  charges via PlanCharges, subscriptions reverse lookup, audit rail), matching
+  Customer/Subscription/Invoice. Editing reuses the existing PlanDetail sheet as
+  the page's Edit surface (no logic duplicated — the Customer-page pattern).
+  Removed the dead routeId/sheet wiring from the Plans list. Frontend-only.
+  lint 0, build, 510 tests.
