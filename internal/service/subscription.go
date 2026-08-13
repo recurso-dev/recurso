@@ -557,6 +557,34 @@ func (s *SubscriptionService) GetInvoice(ctx context.Context, id uuid.UUID) (*do
 	return s.invoiceRepo.GetByID(ctx, id)
 }
 
+// GetInvoiceJournalEntries returns the invoice's ledger postings (its journal
+// drill), each with DR/CR account names. It verifies the invoice exists
+// (tenant-scoped) first and returns (nil, nil) when it doesn't, so a bad id is a
+// 404 rather than an empty journal. Without a ledger wired, returns an empty
+// journal, never an error.
+func (s *SubscriptionService) GetInvoiceJournalEntries(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, nil
+	}
+	if s.ledger == nil {
+		return []domain.GeneralLedgerRow{}, nil
+	}
+	entries, err := s.ledger.GetJournalEntriesByReference(ctx, tenantID, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		// The invoice exists but has no postings yet (e.g. a draft) — an empty
+		// journal, distinct from a missing invoice (which returns nil above → 404).
+		entries = []domain.GeneralLedgerRow{}
+	}
+	return entries, nil
+}
+
 func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {
 	invs, err := s.invoiceRepo.ListPaginated(ctx, tenantID, limit, offset)
 	if err != nil {

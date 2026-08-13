@@ -40,6 +40,10 @@ type LedgerRepository interface {
 	// flattened with account codes and names, for the read-only GL export.
 	// Nil from/to mean unbounded; a non-nil pair filters to [from, to).
 	GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int, from, to *time.Time) ([]domain.GeneralLedgerRow, error)
+	// GetJournalEntriesByReference returns every posting referencing one source
+	// object (an invoice id), with account codes + names — the per-invoice
+	// journal drill. Read-only.
+	GetJournalEntriesByReference(ctx context.Context, tenantID, referenceID uuid.UUID) ([]domain.GeneralLedgerRow, error)
 	// GetDeferredRollforward returns the Deferred Revenue account's opening
 	// balance, deferrals added, and amounts released over [start, end).
 	GetDeferredRollforward(ctx context.Context, tenantID uuid.UUID, start, end time.Time) (opening, added, released int64, err error)

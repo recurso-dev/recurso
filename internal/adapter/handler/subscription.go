@@ -213,6 +213,34 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": sub})
 }
 
+// GetInvoiceJournalEntries returns the invoice's ledger postings — its journal
+// drill for the finance-accounting side of the object page. Each entry has its
+// DR/CR account (code + name), amount, posting code, and timestamp.
+// GET /v1/invoices/:id/journal-entries
+func (h *SubscriptionHandler) GetInvoiceJournalEntries(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	invID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	entries, err := h.service.GetInvoiceJournalEntries(ctx, tenantID, invID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if entries == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "entries": entries}})
+}
+
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

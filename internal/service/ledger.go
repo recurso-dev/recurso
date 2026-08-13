@@ -1379,6 +1379,16 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 // GetEntries fetches ledger entries (transfers) for a given account.
 // Prefers PG as source of truth; falls back to TB if PG is unavailable.
 // GetEntries pages an account's postings. code=0 means every posting type.
+// GetJournalEntriesByReference returns every posting referencing one source
+// object (an invoice id), with account names — the per-invoice journal drill.
+// PG-only (the read joins account names); nil pgRepo returns an empty journal.
+func (s *LedgerService) GetJournalEntriesByReference(ctx context.Context, tenantID, referenceID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	if s.pgRepo == nil {
+		return []domain.GeneralLedgerRow{}, nil
+	}
+	return s.pgRepo.GetJournalEntriesByReference(ctx, tenantID, referenceID)
+}
+
 func (s *LedgerService) GetEntries(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error) {
 	// PG is the authority when configured. A PG error is returned, NOT masked
 	// by the TigerBeetle fallback below: TB's GetAccountTransfers is keyed by

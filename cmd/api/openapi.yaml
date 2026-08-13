@@ -2002,6 +2002,49 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/invoices/{id}/journal-entries:
+    get:
+      operationId: getInvoiceJournalEntries
+      tags: [Invoices]
+      summary: Invoice journal entries (ledger drill)
+      description: >
+        Every ledger posting that references this invoice — its Code-1 issuance,
+        Code-6 tax reclass, Code-3 payment, and any credit/refund/write-off legs —
+        each as a transfer with its debit and credit account (code + name), amount,
+        posting code, and timestamp. The finance-accounting side of the invoice
+        page. Read-only; an existing invoice with no postings yet returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The invoice's journal entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoice_id: { type: string, format: uuid }
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            transaction_id: { type: string, format: uuid }
+                            timestamp: { type: string, format: date-time }
+                            code: { type: integer }
+                            debit_account_code: { type: integer }
+                            debit_account_name: { type: string }
+                            credit_account_code: { type: integer }
+                            credit_account_name: { type: string }
+                            amount: { type: integer, format: int64 }
+                            reference_id: { type: string, format: uuid }
+                            description: { type: string }
+                            accounting_version: { type: integer }
+        '404':
+          description: Invoice not found.
   /v1/invoices/{id}/pdf:
     get:
       operationId: downloadInvoicePDF

@@ -236,6 +236,47 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 	return out, rows.Err()
 }
 
+// GetJournalEntriesByReference returns every posted transaction referencing one
+// source object (an invoice's id), flattened with both account codes + names,
+// oldest first. This is the per-invoice journal drill the object page shows: an
+// invoice's Code-1 issuance, Code-6 tax reclass, Code-3 payment, and any
+// credit/refund/write-off legs, each with its DR/CR accounts. Tenant-scoped via
+// the debit account (both sides of a transfer share the tenant). Read-only.
+func (r *LedgerRepository) GetJournalEntriesByReference(ctx context.Context, tenantID, referenceID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT t.id, t.created_at, t.code,
+		        da.code, da.name, ca.code, ca.name,
+		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
+		        t.accounting_version,
+		        e.id, COALESCE(e.name, '')
+		 FROM ledger_transactions t
+		 JOIN ledger_accounts da ON da.id = t.debit_account_id
+		 JOIN ledger_accounts ca ON ca.id = t.credit_account_id
+		 LEFT JOIN entities e ON e.tenant_id = da.tenant_id AND e.tb_ledger_id = da.ledger_id
+		 WHERE da.tenant_id = $1 AND t.reference_id = $2
+		 ORDER BY t.created_at, t.code, t.occurrence, t.id`, tenantID, referenceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query journal entries by reference: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.GeneralLedgerRow
+	for rows.Next() {
+		var g domain.GeneralLedgerRow
+		var entityID uuid.NullUUID
+		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
+			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
+			&g.Amount, &g.ReferenceID, &g.Description, &g.AccountingVersion, &entityID, &g.EntityName); err != nil {
+			return nil, fmt.Errorf("failed to scan journal entry row: %w", err)
+		}
+		if entityID.Valid {
+			g.EntityID = &entityID.UUID
+		}
+		out = append(out, g)
+	}
+	return out, rows.Err()
+}
+
 // GetTrialBalanceLines aggregates posted debit and credit totals per account
 // for a tenant. Each ledger_transactions row carries one debit account and one
 // credit account, so a row contributes its amount to exactly one side of each
