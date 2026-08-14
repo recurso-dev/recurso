@@ -22,14 +22,17 @@ function SidebarItem({ to, label, icon: Icon, end, onNavigate }) {
     >
       {({ isActive }) => (
         <>
-          {/* Active indicator — a thin accent bar that scales in as the item
-              becomes current. transform-only; as the active route moves, the
-              old bar scales out and the new one in, so the indicator reads as
-              moving between items. */}
+          {/* Active indicator — an accent bar flush at the sidebar's left rail
+              edge (emerald on the white gutter, so it actually reads), that
+              scales in as the item becomes current. transform-only; as the
+              active route moves, the old bar scales out and the new one in, so
+              the indicator reads as moving between items. -left-3 reaches the
+              nav's padding-box edge (the rail edge) without being clipped by
+              the nav's overflow. */}
           <span
             aria-hidden="true"
             className={cn(
-              "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 origin-center rounded-full bg-primary transition-transform duration-fast ease-standard",
+              "absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 origin-center rounded-r-full bg-primary transition-transform duration-fast ease-standard",
               isActive ? "scale-y-100" : "scale-y-0"
             )}
           />
