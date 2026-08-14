@@ -19,6 +19,7 @@ vi.mock('../../lib/api', () => ({
         getInvoiceAging: vi.fn(),
         getEvents: vi.fn(),
         getMRRWaterfall: vi.fn(),
+        runReconciliation: vi.fn(),
     }
 }));
 
@@ -50,6 +51,7 @@ describe('Dashboard (redesign)', () => {
         endpoints.getInvoiceAging.mockResolvedValue({
             data: { data: { reporting_currency: 'USD', buckets: [], total_outstanding: 0, total_count: 0 } },
         });
+        endpoints.runReconciliation.mockResolvedValue({ data: { data: { total_discrepancies: 0 } } });
     });
 
     it('renders the KPI cards after loading', async () => {
@@ -112,6 +114,23 @@ describe('Dashboard (redesign)', () => {
         expect(screen.getByText('1 overdue invoice').closest('a')).toHaveAttribute(
             'href',
             '/finance/invoice-aging'
+        );
+    });
+
+    it('surfaces ledger reconciliation discrepancies in the needs-attention strip', async () => {
+        endpoints.runReconciliation.mockResolvedValue({
+            data: { data: { total_discrepancies: 3 } },
+        });
+
+        renderDashboard();
+
+        await waitFor(() => {
+            expect(screen.getByText('3 reconciliation discrepancies')).toBeInTheDocument();
+        });
+        // The tile drills to the reconciliation page.
+        expect(screen.getByText('3 reconciliation discrepancies').closest('a')).toHaveAttribute(
+            'href',
+            '/finance/reconciliation'
         );
     });
 
