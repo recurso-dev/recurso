@@ -2177,6 +2177,43 @@ paths:
                             settled_at: { type: string, format: date-time, nullable: true }
         '404':
           description: Invoice not found.
+  /v1/invoices/{id}/status-history:
+    get:
+      operationId: getInvoiceStatusHistory
+      tags: [Invoices]
+      summary: Invoice status timeline
+      description: >
+        Every recorded transition of the invoice's status (draft → open → paid /
+        past_due / uncollectible / void), oldest first — captured by a database
+        trigger so no transition is missed. The first row is the creation state
+        (null from_status). Read-only; an existing invoice with no recorded
+        transitions returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The invoice's status timeline.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      invoice_id: { type: string, format: uuid }
+                      history:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string, format: uuid }
+                            invoice_id: { type: string, format: uuid }
+                            from_status: { type: string, nullable: true }
+                            to_status: { type: string }
+                            changed_at: { type: string, format: date-time }
+        '404':
+          description: Invoice not found.
   /v1/invoices/{id}/pdf:
     get:
       operationId: downloadInvoicePDF

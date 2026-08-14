@@ -270,6 +270,34 @@ func (h *SubscriptionHandler) GetInvoicePaymentAttempts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "attempts": attempts}})
 }
 
+// GetInvoiceStatusHistory returns an invoice's status timeline — every recorded
+// transition (draft → open → paid / past_due / uncollectible / void), captured
+// by a trigger so nothing is missed. The lifecycle behind the current status.
+// GET /v1/invoices/:id/status-history
+func (h *SubscriptionHandler) GetInvoiceStatusHistory(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	invID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	changes, err := h.service.GetInvoiceStatusHistory(ctx, tenantID, invID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if changes == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "history": changes}})
+}
+
 // ListPaymentAttempts returns the tenant-wide payments log — every gateway
 // payment attempt, newest first, paginated, with an optional ?status= filter
 // (failed/returned/succeeded/processing/initiated). Each row carries its
