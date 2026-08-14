@@ -79,6 +79,7 @@ const DunningCampaigns = lazy(() => import('./pages/DunningCampaigns'))
 const DunningCampaignPage = lazy(() => import('./pages/DunningCampaignPage'))
 const Collections = lazy(() => import('./pages/Collections'))
 const CancelFlows = lazy(() => import('./pages/CancelFlows'))
+const CancelFlowPage = lazy(() => import('./pages/CancelFlowPage'))
 const Churn = lazy(() => import('./pages/Churn'))
 const Mandates = lazy(() => import('./pages/Mandates'))
 const Disputes = lazy(() => import('./pages/Disputes'))
@@ -239,6 +240,7 @@ function App() {
                             <Route path="/dunning/campaigns/:id" element={<DunningCampaignPage />} />
                             <Route path="/collections" element={<Collections />} />
                             <Route path="/cancel-flows" element={<CancelFlows />} />
+                            <Route path="/cancel-flows/:id" element={<CancelFlowPage />} />
                             <Route path="/churn" element={<Churn />} />
                             <Route path="/mandates" element={<Mandates />} />
                             <Route path="/disputes" element={<Disputes />} />

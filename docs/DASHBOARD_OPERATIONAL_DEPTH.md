@@ -334,3 +334,17 @@ Usage (current+lifetime, buckets, raw stream).
   duplicated (same pattern as Customer/Plan pages). The list was **converted
   from a card grid → DataTable** (charter: no card-grid dashboards); rows drill
   to the page, create navigates to the new campaign. lint 0, build, 527 tests.
+- 2026-08-14 — **Increment 19: Cancel Flow object page** (branch
+  dashboard-depth-cancel-flows). No new backend — GET /cancel-flows/:id +
+  GET /cancel-flows/stats already existed (both return the payload DIRECTLY, not
+  wrapped in {data}). New CancelFlowPage at /cancel-flows/:id whose real depth is
+  **retention effectiveness**: the FlowStats (sessions / saved / save-rate /
+  offer-accept-rate) + a "Why customers cancel" reason breakdown, alongside the
+  ordered survey→offer→confirmation step sequence (type badge + config summary,
+  reusing the editor's stepSummary). Graceful "no sessions yet" fallback (no
+  faked rates). The existing CancelFlowDetail step-editor is **reused as the edit
+  sheet**. List **converted card grid → DataTable**; rows drill in, create
+  navigates into the new flow. **This retires the last list-with-slide-over
+  card-grid surface** — every dashboard list is now a DataTable, and every
+  slide-over is either an object-page edit sheet or a list detail with an object
+  page. lint 0, build, 532 tests.
