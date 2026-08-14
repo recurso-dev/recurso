@@ -17,8 +17,17 @@ import { formatDateTime } from "@/lib/utils";
  *    credit_account_code/name, amount, timestamp })
  *  - currency: the object's currency (postings are in it)
  *  - isLoading / error: request states
+ *  - emptyMessage: what to say when there are no postings. Defaults to the
+ *    invoice wording; other object pages (credit notes, …) pass their own so
+ *    the empty state never talks about "a draft invoice" on the wrong object.
  */
-export function JournalEntries({ entries, currency = "USD", isLoading, error }) {
+export function JournalEntries({
+  entries,
+  currency = "USD",
+  isLoading,
+  error,
+  emptyMessage = "No postings yet — a draft invoice hasn’t hit the ledger. Finalizing it posts the first entry.",
+}) {
   if (isLoading) {
     return (
       <div className="space-y-3" aria-busy="true">
@@ -32,11 +41,7 @@ export function JournalEntries({ entries, currency = "USD", isLoading, error }) 
     return <p className="text-sm text-muted-foreground" role="status">Couldn’t load the journal entries.</p>;
   }
   if (!entries || entries.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No postings yet — a draft invoice hasn’t hit the ledger. Finalizing it posts the first entry.
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{emptyMessage}</p>;
   }
 
   const total = entries.reduce((sum, e) => sum + (e.amount || 0), 0);

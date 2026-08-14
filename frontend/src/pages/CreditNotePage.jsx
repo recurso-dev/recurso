@@ -332,6 +332,7 @@ export default function CreditNotePage() {
             currency={currency}
             isLoading={journalLoading}
             error={journalError}
+            emptyMessage="No ledger postings for this credit note yet — an approved credit posts its Customer-Credit and tax-reversal legs."
           />
         </ObjectSection>
       </ObjectPageLayout>
