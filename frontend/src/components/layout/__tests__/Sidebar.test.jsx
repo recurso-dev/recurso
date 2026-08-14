@@ -53,4 +53,19 @@ describe('Sidebar (redesign)', () => {
         const homeLink = screen.getByText('Home').closest('a');
         expect(homeLink).not.toHaveClass('bg-primary/10');
     });
+
+    it('scales the active indicator bar in on the current route only', () => {
+        renderWithRouter(<Sidebar />, { route: '/customers' });
+
+        // The indicator is the aria-hidden bar inside each nav link.
+        const barOf = (label) =>
+            screen.getByText(label).closest('a').querySelector('[aria-hidden="true"]');
+
+        expect(barOf('Customers')).toHaveClass('scale-y-100');
+        expect(barOf('Customers')).not.toHaveClass('scale-y-0');
+        // Transform-only transition — no layout animation.
+        expect(barOf('Customers')).toHaveClass('transition-transform');
+
+        expect(barOf('Home')).toHaveClass('scale-y-0');
+    });
 });

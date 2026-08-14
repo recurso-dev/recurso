@@ -9,6 +9,7 @@ import DocsHelpMenu from "./DocsHelpMenu";
 import VerifyEmailBanner from "./VerifyEmailBanner";
 import TrialBanner from "./TrialBanner";
 import { labelForPath } from "@/lib/navigation";
+import { MotionReveal } from "@/components/patterns";
 import { CommandPalette } from "@/components/ui/command-palette";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -191,10 +192,15 @@ export function DashboardLayout() {
 
         <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} />
 
-        {/* Page content */}
+        {/* Page content — a subtle fade + rise on each route change so
+            navigation feels connected without a cinematic transition. Keyed on
+            pathname so it replays only when the destination actually changes;
+            reduced motion renders it instantly (MotionReveal). */}
         <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto outline-none">
           <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
-            <Outlet />
+            <MotionReveal key={pathname}>
+              <Outlet />
+            </MotionReveal>
           </div>
         </main>
       </div>
