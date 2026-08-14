@@ -8174,6 +8174,39 @@ paths:
                     items: { $ref: "#/components/schemas/BillableMetric" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /v1/billable-metrics/{id}/charges:
+    get:
+      operationId: getMetricCharges
+      tags: [Metering]
+      summary: Plans pricing on this meter (reverse lookup)
+      description: >
+        The charges that consume this billable metric, each with its plan (name,
+        code, active) and charge model — the meter page's "which plans price on
+        this meter", the reverse of a plan's charges. Read-only.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The charges consuming this metric.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        charge_id: { type: string, format: uuid }
+                        plan_id: { type: string, format: uuid }
+                        plan_name: { type: string }
+                        plan_code: { type: string }
+                        plan_active: { type: boolean }
+                        charge_model: { type: string }
+                        pay_in_advance: { type: boolean }
+        '404':
+          description: Metric not found.
   /v1/billable-metrics/{id}:
     get:
       tags: [Metering]

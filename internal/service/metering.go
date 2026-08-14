@@ -480,6 +480,23 @@ func (s *MeteringService) GetPlanCharges(ctx context.Context, tenantID, planID u
 	return charges, nil
 }
 
+// GetMetricCharges returns the charges (and their plans) that consume a metric —
+// the reverse lookup for the meter page. Verifies the metric exists
+// (tenant-scoped); ErrMetricNotFound → 404.
+func (s *MeteringService) GetMetricCharges(ctx context.Context, tenantID, metricID uuid.UUID) ([]domain.MetricPlanCharge, error) {
+	if _, err := s.GetMetric(ctx, tenantID, metricID); err != nil {
+		return nil, err
+	}
+	charges, err := s.charges.ListByMetric(ctx, tenantID, metricID)
+	if err != nil {
+		return nil, err
+	}
+	if charges == nil {
+		charges = []domain.MetricPlanCharge{}
+	}
+	return charges, nil
+}
+
 // UsageAmountItem is one charge's live preview: the current period's
 // aggregated quantity and what it would rate to if invoiced now.
 type UsageAmountItem struct {

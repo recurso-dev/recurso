@@ -284,6 +284,7 @@ const Metering = () => {
       <DataTable
         columns={metricColumns}
         data={metrics}
+        rowHref={(m) => `/billable-metrics/${m.id}`}
         loading={loading}
         error={error}
         onRetry={refetch}
