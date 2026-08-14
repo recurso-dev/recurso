@@ -65,14 +65,14 @@ interpolation (snap to final), no flash — but **every state change and all
 information is preserved**. Nothing important depends on animation. CSS honors
 it globally; JS primitives honor it via `useReducedMotion()`.
 
-## Rollout (phases)
+## Rollout (phases) — COMPLETE
 
-1. **Tokens + primitives** ← this doc / PR
-2. Shell — sidebar, page transitions, page header
-3. Core feedback — buttons, dropdowns, dialogs, toasts, forms
-4. Data — stat cards, numbers, tables, filters
-5. Financial state — invoice / payment / subscription lifecycle
-6. Signature — reconciliation resolving, ledger posting balancing
-7. Polish — activity feeds, charts, empty states
+1. ✅ **Tokens + primitives**
+2. ✅ **Shell** — sidebar active-indicator (transform-only, reads as moving between items), page transitions (`MotionReveal` keyed on pathname), header rides the reveal
+3. ✅ **Core feedback** — button micro-motion tokenized, Dialog/Sheet durations tokenized + snappier, FormField error reveals in (dropdowns/toasts already animate)
+4. ✅ **Data** — StatCard renders numeric values through `MotionNumber`; DataTable reveals only genuinely-new rows (never the whole table on load/sort)
+5. ✅ **Financial state** — `StatusBadge` opt-in `flashOnChange` on money-path detail headers; `ObjectTimeline` chronological stagger
+6. ✅ **Signature** — `JournalEntries` postings reveal in sequence then "Debits = Credits ✓" settles; reconciliation Discrepancies count resolves to 0 + verdict banner settles per run
+7. ✅ **Polish** — `EmptyState` settle, Dashboard activity-feed stagger (charts already carry a reduced-motion-aware `showAnimation` via `chartDefaults`)
 
-Each phase ships as its own green-CI PR (`npm run lint && npm run build && npx vitest run`).
+Each phase shipped as its own green-CI PR (`npm run lint && npm run build && npx vitest run`).
