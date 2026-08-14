@@ -213,6 +213,34 @@ func (h *SubscriptionHandler) GetSubscription(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": sub})
 }
 
+// GetSubscriptionHistory returns a subscription's lifecycle timeline — every
+// recorded status transition (trialing → active → past_due → paused / canceled)
+// and plan switch, captured by a trigger so nothing is missed.
+// GET /v1/subscriptions/:id/history
+func (h *SubscriptionHandler) GetSubscriptionHistory(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	subID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	changes, err := h.service.GetSubscriptionHistory(ctx, tenantID, subID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if changes == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "subscription not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"subscription_id": subID, "history": changes}})
+}
+
 // GetInvoiceJournalEntries returns the invoice's ledger postings — its journal
 // drill for the finance-accounting side of the object page. Each entry has its
 // DR/CR account (code + name), amount, posting code, and timestamp.

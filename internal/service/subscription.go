@@ -68,6 +68,7 @@ type SubscriptionService struct {
 	finalUsageInvoicer  finalUsageInvoicer               // Usage-based billing v1: bill the partial window on immediate cancel; nil-safe
 	paymentAttempts     paymentAttemptLister             // nil-safe; the invoice page's payment-attempt history
 	invoiceStatusLog    invoiceStatusHistoryReader       // nil-safe; the invoice page's status timeline
+	subHistory          subscriptionHistoryReader        // nil-safe; the subscription page's status+plan timeline
 	logger              *slog.Logger
 }
 
@@ -627,6 +628,46 @@ func (s *SubscriptionService) GetInvoicePaymentAttempts(ctx context.Context, ten
 // needs — an invoice's recorded status transitions (trigger-captured).
 type invoiceStatusHistoryReader interface {
 	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]domain.InvoiceStatusChange, error)
+}
+
+// subscriptionHistoryReader is the narrow read the subscription timeline needs —
+// a subscription's recorded status and plan transitions (trigger-captured).
+type subscriptionHistoryReader interface {
+	ListBySubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]domain.SubscriptionChange, error)
+}
+
+// SetSubscriptionHistoryReader enables GetSubscriptionHistory. Without it, the
+// endpoint reports an empty timeline rather than erroring.
+func (s *SubscriptionService) SetSubscriptionHistoryReader(r subscriptionHistoryReader) {
+	s.subHistory = r
+}
+
+// GetSubscriptionHistory returns a subscription's recorded status and plan
+// transitions (oldest first). Verifies the subscription is tenant-owned first
+// and returns (nil, nil) when it's missing or another tenant's, so a bad id is a
+// 404 rather than an empty timeline.
+func (s *SubscriptionService) GetSubscriptionHistory(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]domain.SubscriptionChange, error) {
+	sub, err := s.GetByID(ctx, tenantID, subscriptionID)
+	if err != nil {
+		if errors.Is(err, ErrSubscriptionNotFound) {
+			return nil, nil // cross-tenant → 404, never confirm existence
+		}
+		return nil, err
+	}
+	if sub == nil {
+		return nil, nil
+	}
+	if s.subHistory == nil {
+		return []domain.SubscriptionChange{}, nil
+	}
+	changes, err := s.subHistory.ListBySubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if changes == nil {
+		changes = []domain.SubscriptionChange{}
+	}
+	return changes, nil
 }
 
 // SetInvoiceStatusHistoryReader enables GetInvoiceStatusHistory. Without it, the

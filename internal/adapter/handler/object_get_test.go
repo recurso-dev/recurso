@@ -107,6 +107,55 @@ func TestGetInvoiceJournalCrossTenantIs404(t *testing.T) {
 	}
 }
 
+// --- GET /v1/subscriptions/:id/history ------------------------------------
+
+type oneSubscriptionRepo struct {
+	port.SubscriptionRepository
+	sub *domain.Subscription
+}
+
+func (r *oneSubscriptionRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Subscription, error) {
+	if r.sub != nil && r.sub.ID == id {
+		return r.sub, nil
+	}
+	return nil, nil
+}
+
+func doGetSubHistory(sub *domain.Subscription, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	svc := service.NewSubscriptionService(&oneSubscriptionRepo{sub: sub}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewSubscriptionHandler(svc)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/subscriptions/"+id+"/history", nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetSubscriptionHistory(c)
+	return w
+}
+
+func TestGetSubscriptionHistoryOwnedReturnsHistoryArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID}
+	// No history reader wired → an owned subscription yields an empty (non-nil)
+	// timeline, 200 — never 404.
+	w := doGetSubHistory(sub, tenantID, sub.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned subscription history: got %d want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"history"`) {
+		t.Fatalf("expected a history array, got %s", w.Body.String())
+	}
+}
+
+func TestGetSubscriptionHistoryCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: uuid.New()}
+	if got := doGetSubHistory(sub, uuid.New(), sub.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant subscription history: got %d want 404", got)
+	}
+}
+
 // --- GET /v1/invoices/:id/status-history ----------------------------------
 
 func doGetInvoiceStatusHistory(h *SubscriptionHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
