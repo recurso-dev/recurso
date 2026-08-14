@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
-import QuoteDetail from "../components/slide-overs/QuoteDetail";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -27,13 +26,6 @@ const Quotes = () => {
   const { names: customerNames } = useCustomers();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  // URL-driven detail (/quotes/:id) — shareable, refresh/back-safe.
-  const { id: routeId } = useParams();
-  const { data: routedObject } = useQuery({
-    queryKey: ["quote", routeId],
-    queryFn: async () => (await endpoints.getQuote(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -102,11 +94,6 @@ const Quotes = () => {
     const m = confirmOp.action === "send" ? sendMutation : convertMutation;
     m.mutate(confirmOp.id, { onSettled: () => setConfirmOp(null) });
   };
-
-
-  const closeDetail = () => navigate("/quotes");
-  const isDetailOpen = Boolean(routeId);
-  const selectedQuote = routedObject || null;
 
   const columns = [
     {
@@ -248,8 +235,6 @@ const Quotes = () => {
             ) : null,
         }}
       />
-
-      <QuoteDetail quote={selectedQuote} isOpen={isDetailOpen} onClose={closeDetail} />
 
       <ConfirmDialog
         open={Boolean(confirmOp)}

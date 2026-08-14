@@ -288,3 +288,15 @@ Usage (current+lifetime, buckets, raw stream).
   InvoiceDispute model is a lightweight customer query (not a gateway
   chargeback); it emits nothing to /events, so no timeline — the two timestamps
   carry the history. lint 0, build, 524 tests.
+- 2026-08-14 — **Increment 16: Quote object page** (branch
+  dashboard-depth-quotes). No new backend — GET /quotes/:id + the full action
+  set already existed; pure frontend depth. New QuotePage at /quotes/:id
+  **replacing the detail slide-over** (deleted QuoteDetail.jsx + its test). Full
+  object page: lifecycle header (draft→sent→accepted/declined→converted) with the
+  state-appropriate action set (edit/send/accept/decline/convert/delete; convert
+  + delete gated by consequence-explaining confirms); AttentionBanner for
+  converted (links the invoice), accepted-awaiting-conversion, and expired;
+  line-items table; totals math (subtotal/discount/tax/total); notes & terms;
+  Related (customer + the converted invoice). Converting now navigates straight
+  to the new invoice. List rows already rowHref'd here; slide-over retired. lint
+  0, build, 524 tests.

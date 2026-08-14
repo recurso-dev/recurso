@@ -70,6 +70,7 @@ const PortalDashboard = lazy(() => import('./pages/portal/PortalDashboard'))
 const PortalVerify = lazy(() => import('./pages/portal/PortalVerify'))
 const PortalRedeem = lazy(() => import('./pages/portal/PortalRedeem'))
 const Quotes = lazy(() => import('./pages/Quotes'))
+const QuotePage = lazy(() => import('./pages/QuotePage'))
 const CreateQuote = lazy(() => import('./pages/CreateQuote'))
 const Checkout = lazy(() => import('./pages/Checkout'))
 const DunningDashboard = lazy(() => import('./pages/DunningDashboard'))
@@ -204,7 +205,7 @@ function App() {
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/quotes/:id/edit" element={<CreateQuote />} />
-                            <Route path="/quotes/:id" element={<Quotes />} />
+                            <Route path="/quotes/:id" element={<QuotePage />} />
                             <Route path="/settings" element={<SettingsLayout />}>
                               <Route index element={<Settings />} />
                               <Route path="irp" element={<IRPSettings />} />

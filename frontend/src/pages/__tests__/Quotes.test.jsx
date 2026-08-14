@@ -16,7 +16,6 @@ vi.mock("../../lib/api", () => ({
 }));
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock("@/components/ui/sonner", () => ({ toast: toastMock }));
-vi.mock("../../components/slide-overs/QuoteDetail", () => ({ default: () => <div /> }));
 
 const quotes = [
   { id: "q1", quote_number: "Q-001", status: "draft", total: 50000, currency: "USD", customer_id: "cus_1" },
