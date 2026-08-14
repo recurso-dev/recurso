@@ -10,6 +10,7 @@ vi.mock("../../lib/api", () => ({
     getInvoice: vi.fn(),
     getInvoiceJournalEntries: vi.fn(),
     getInvoicePaymentAttempts: vi.fn(),
+    getInvoiceStatusHistory: vi.fn(),
     getCustomers: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getEUEInvoice: vi.fn(),
     retryEUEInvoice: vi.fn(),
@@ -94,6 +95,9 @@ describe("InvoicePage", () => {
     });
     endpoints.getInvoicePaymentAttempts.mockResolvedValue({
       data: { data: { invoice_id: "inv-1", attempts: [] } },
+    });
+    endpoints.getInvoiceStatusHistory.mockResolvedValue({
+      data: { data: { invoice_id: "inv-1", history: [] } },
     });
     endpoints.getInvoicePdf.mockResolvedValue({ data: new Blob(["pdf"]) });
     endpoints.sendInvoice.mockResolvedValue({ data: { message: "sent" } });
@@ -265,6 +269,28 @@ describe("InvoicePage", () => {
     expect(screen.getByText("failed")).toBeInTheDocument();
     expect(screen.getByText("succeeded")).toBeInTheDocument();
     expect(screen.getByText("insufficient_funds")).toBeInTheDocument();
+  });
+
+  it("shows the status-history lifecycle timeline", async () => {
+    endpoints.getInvoiceStatusHistory.mockResolvedValue({
+      data: {
+        data: {
+          invoice_id: "inv-1",
+          history: [
+            { id: "h1", from_status: null, to_status: "open", changed_at: "2026-01-01T00:00:00Z" },
+            { id: "h2", from_status: "open", to_status: "past_due", changed_at: "2026-01-15T00:00:00Z" },
+            { id: "h3", from_status: "past_due", to_status: "paid", changed_at: "2026-01-20T00:00:00Z" },
+          ],
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Status history")).toBeInTheDocument());
+    expect(endpoints.getInvoiceStatusHistory).toHaveBeenCalledWith("inv-1");
+    // The creation row reads "Created as", and later transitions show both states
+    // (StatusBadge humanizes past_due → "Past due").
+    expect(screen.getByText("Created as")).toBeInTheDocument();
+    expect(screen.getAllByText("Past due").length).toBeGreaterThanOrEqual(1);
   });
 
   it("explains a past_due invoice with its decline reason", async () => {
