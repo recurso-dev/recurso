@@ -13,7 +13,7 @@ function SidebarItem({ to, label, icon: Icon, end, onNavigate }) {
       onClick={onNavigate}
       className={({ isActive }) =>
         cn(
-          "group flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+          "group relative flex items-center gap-2.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
           isActive
             ? "bg-primary/10 text-primary"
             : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -22,6 +22,17 @@ function SidebarItem({ to, label, icon: Icon, end, onNavigate }) {
     >
       {({ isActive }) => (
         <>
+          {/* Active indicator — a thin accent bar that scales in as the item
+              becomes current. transform-only; as the active route moves, the
+              old bar scales out and the new one in, so the indicator reads as
+              moving between items. */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              "absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 origin-center rounded-full bg-primary transition-transform duration-fast ease-standard",
+              isActive ? "scale-y-100" : "scale-y-0"
+            )}
+          />
           <Icon
             className={cn(
               "h-4 w-4 shrink-0",
