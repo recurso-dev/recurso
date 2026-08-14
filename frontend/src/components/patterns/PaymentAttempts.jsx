@@ -1,5 +1,7 @@
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
+import { MotionStagger } from "@/components/patterns/MotionReveal";
+import { MotionState } from "@/components/patterns/MotionState";
 import { formatDateTime, cn } from "@/lib/utils";
 
 /**
@@ -56,17 +58,23 @@ export function PaymentAttempts({ attempts, currency = "USD", isLoading, error }
 
   return (
     <ol className="space-y-3">
+      <MotionStagger step={50}>
       {attempts.map((a) => (
         <li key={a.id} className="rounded-lg border border-border p-3">
           <div className="flex items-center justify-between gap-3">
-            <span
-              className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium",
-                STATUS_TONE[a.status] || STATUS_TONE.initiated,
-              )}
-            >
-              {a.status}
-            </span>
+            {/* The attempt's status can advance while you watch (initiated →
+                processing → succeeded / failed). Flash the pill on the
+                transition so a settlement reads as an event. */}
+            <MotionState motionKey={a.status}>
+              <span
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium",
+                  STATUS_TONE[a.status] || STATUS_TONE.initiated,
+                )}
+              >
+                {a.status}
+              </span>
+            </MotionState>
             <span className="font-mono text-sm tabular-nums text-foreground">
               <Money amountMinor={a.amount} currency={currency} />
             </span>
@@ -76,7 +84,10 @@ export function PaymentAttempts({ attempts, currency = "USD", isLoading, error }
             <Field label="Gateway">{a.gateway || "—"}</Field>
             {a.failure_code ? (
               <Field label="Failure">
-                <span className="text-destructive">{a.failure_code}</span>
+                {/* A failure reason reveals in rather than blinking into place. */}
+                <span className="inline-block animate-motion-reveal text-destructive">
+                  {a.failure_code}
+                </span>
               </Field>
             ) : null}
             <Field label="Started">{formatDateTime(a.created_at)}</Field>
@@ -89,6 +100,7 @@ export function PaymentAttempts({ attempts, currency = "USD", isLoading, error }
           ) : null}
         </li>
       ))}
+      </MotionStagger>
     </ol>
   );
 }
