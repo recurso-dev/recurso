@@ -44,6 +44,7 @@ const CreateSubscription = lazy(() => import('./pages/CreateSubscription'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 const Coupons = lazy(() => import('./pages/Coupons'))
 const Metering = lazy(() => import('./pages/Metering'))
+const MeterPage = lazy(() => import('./pages/MeterPage'))
 const Wallets = lazy(() => import('./pages/Wallets'))
 const AuditLog = lazy(() => import('./pages/AuditLog'))
 const Events = lazy(() => import('./pages/Events'))
@@ -176,6 +177,7 @@ function App() {
                             <Route path="/ledger" element={<Ledger />} />
                             <Route path="/ledger/accounts/:id" element={<AccountPage />} />
                             <Route path="/metering" element={<Metering />} />
+                            <Route path="/billable-metrics/:id" element={<MeterPage />} />
                             <Route path="/wallets" element={<Wallets />} />
                             <Route path="/audit-log" element={<AuditLog />} />
                             <Route path="/events" element={<Events />} />

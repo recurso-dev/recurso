@@ -382,6 +382,8 @@ export const endpoints = {
 
   // Usage-based billing (metering)
   getBillableMetrics: () => api.get('/billable-metrics'),
+  getBillableMetric: (id) => api.get(`/billable-metrics/${id}`),
+  getMetricCharges: (id) => api.get(`/billable-metrics/${id}/charges`),
   createBillableMetric: (data) => api.post('/billable-metrics', data),
   // Same input shape as create.
   updateBillableMetric: (id, data) => api.put(`/billable-metrics/${id}`, data),
