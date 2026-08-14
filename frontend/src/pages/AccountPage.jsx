@@ -183,6 +183,7 @@ export default function AccountPage() {
                     const isDebit = e.debit_account_id === id;
                     const counter = isDebit ? e.credit_account_name : e.debit_account_name;
                     const counterCode = isDebit ? e.credit_account_code : e.debit_account_code;
+                    const counterId = isDebit ? e.credit_account_id : e.debit_account_id;
                     const amt = <Money amountMinor={e.amount} currency={currency} />;
                     return (
                       <tr key={e.transaction_id || e.id} className="hover:bg-muted/20">
@@ -193,7 +194,19 @@ export default function AccountPage() {
                           <Badge variant="neutral" className="font-mono text-xs">Code {e.code}</Badge>
                         </td>
                         <td className="px-3 py-2.5 text-foreground">
-                          <span className="text-muted-foreground">{counterCode}</span> {counter}
+                          {counterId ? (
+                            <Link
+                              to={`/ledger/accounts/${counterId}`}
+                              title="Open the counterpart account"
+                              className="text-primary underline-offset-2 hover:underline"
+                            >
+                              <span className="text-muted-foreground">{counterCode}</span> {counter}
+                            </Link>
+                          ) : (
+                            <>
+                              <span className="text-muted-foreground">{counterCode}</span> {counter}
+                            </>
+                          )}
                         </td>
                         <td className="px-3 py-2.5 text-right font-mono tabular-nums text-foreground">
                           {isDebit ? amt : ""}

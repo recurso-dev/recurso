@@ -86,4 +86,21 @@ describe("Ledger — account naming", () => {
     expect(refLink).toHaveAttribute("href", "/invoices/inv-1");
     expect(screen.getByText("Reference (invoice)")).toBeInTheDocument();
   });
+
+  it("links the posting's debit/credit accounts to their account pages", async () => {
+    render(wrap(<Ledger />));
+    await waitFor(() =>
+      expect(screen.getByText("Accounts Receivable — Acme Inc (1100)")).toBeInTheDocument()
+    );
+    // Open the posting detail sheet.
+    fireEvent.click(screen.getByText("Accounts Receivable — Acme Inc (1100)"));
+    // The accounts are no longer dead text — each drills to /ledger/accounts/:id.
+    const debitLink = await screen.findByRole("link", {
+      name: /Accounts Receivable — Acme Inc \(1100\)/,
+    });
+    expect(debitLink).toHaveAttribute("href", "/ledger/accounts/cust-1");
+    expect(
+      screen.getByRole("link", { name: /Revenue \(4000\)/ })
+    ).toHaveAttribute("href", "/ledger/accounts/acc-rev");
+  });
 });

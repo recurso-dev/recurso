@@ -26,6 +26,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+// A posting's account, linked to its account page so any ledger entry drills
+// into the account it moved (audit §7: postings were navigational dead-ends).
+// Falls back to a short id when the account has no resolved label.
+const LedgerAccountLink = ({ id, label }) =>
+  id ? (
+    <Link
+      to={`/ledger/accounts/${id}`}
+      title="Open this account"
+      className="text-sm text-primary underline-offset-2 hover:underline"
+    >
+      {label || `${String(id).slice(0, 8)}…`}
+    </Link>
+  ) : (
+    <span className="text-muted-foreground">—</span>
+  );
+
 // Posting codes (ADR-002): what each movement IS, in words. "Code 3" means
 // nothing to an operator; "Payment" does.
 const CODE_LABEL = {
@@ -218,11 +234,7 @@ export default function Ledger() {
       key: "debit",
       header: "Debit",
       cell: (e) => {
-        const label = accountLabelFromEntry(
-          e.debit_account_id,
-          e.debit_account_name,
-          e.debit_account_code
-        );
+        const label = accountLabelFromEntry(e.debit_account_id, e.debit_account_name, e.debit_account_code);
         return label ? (
           <span className="text-sm text-foreground">{label}</span>
         ) : (
@@ -234,11 +246,7 @@ export default function Ledger() {
       key: "credit",
       header: "Credit",
       cell: (e) => {
-        const label = accountLabelFromEntry(
-          e.credit_account_id,
-          e.credit_account_name,
-          e.credit_account_code
-        );
+        const label = accountLabelFromEntry(e.credit_account_id, e.credit_account_name, e.credit_account_code);
         return label ? (
           <span className="text-sm text-foreground">{label}</span>
         ) : (
@@ -395,25 +403,27 @@ export default function Ledger() {
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Debit account</dt>
                     <dd className="mt-0.5 text-sm text-foreground">
-                      {accountLabelFromEntry(
-                        selectedEntry.debit_account_id,
-                        selectedEntry.debit_account_name,
-                        selectedEntry.debit_account_code
-                      ) || (
-                        <span className="font-mono text-xs">{selectedEntry.debit_account_id}</span>
-                      )}
+                      <LedgerAccountLink
+                        id={selectedEntry.debit_account_id}
+                        label={accountLabelFromEntry(
+                          selectedEntry.debit_account_id,
+                          selectedEntry.debit_account_name,
+                          selectedEntry.debit_account_code
+                        )}
+                      />
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Credit account</dt>
                     <dd className="mt-0.5 text-sm text-foreground">
-                      {accountLabelFromEntry(
-                        selectedEntry.credit_account_id,
-                        selectedEntry.credit_account_name,
-                        selectedEntry.credit_account_code
-                      ) || (
-                        <span className="font-mono text-xs">{selectedEntry.credit_account_id}</span>
-                      )}
+                      <LedgerAccountLink
+                        id={selectedEntry.credit_account_id}
+                        label={accountLabelFromEntry(
+                          selectedEntry.credit_account_id,
+                          selectedEntry.credit_account_name,
+                          selectedEntry.credit_account_code
+                        )}
+                      />
                     </dd>
                   </div>
                   {selectedEntry.reference_id && (
