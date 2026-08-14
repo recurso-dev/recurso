@@ -230,6 +230,7 @@ func main() {
 	// records (invoices) and the Postgres ledger.
 	reconciliationService := service.NewReconciliationService(ledgerRepo, tbClientForRecon)
 	reconciliationService.SetRunStore(db.NewReconciliationRunRepository(database)) // run-history audit trail
+	reconciliationService.SetReportingResolver(ledgerService)                      // label discrepancy amounts with the tenant's reporting currency
 
 	// 5. Initialize Gateways
 	var razorpayGateway port.PaymentGateway

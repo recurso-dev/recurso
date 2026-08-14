@@ -162,15 +162,34 @@ type ReconciliationReport struct {
 	TBSkipReason        string                      `json:"tb_skip_reason,omitempty"`
 	TBAccountsChecked   int                         `json:"tb_accounts_checked"`
 	TBTransfersChecked  int                         `json:"tb_transfers_checked"`
+	// ReportingCurrency labels the discrepancy amounts (minor units of this
+	// currency) so the dashboard formats them as money instead of raw integers.
+	// The ledger stores no per-transaction currency, so a run is single-currency
+	// — the tenant's base/reporting currency.
+	ReportingCurrency string `json:"reporting_currency,omitempty"`
+}
+
+// reportingCurrencyResolver resolves the tenant's reporting currency. Satisfied
+// by *LedgerService (which already owns this logic) — the reconciliation service
+// reuses it rather than duplicating the tenant-lookup wiring.
+type reportingCurrencyResolver interface {
+	ReportingCurrency(ctx context.Context, tenantID uuid.UUID) string
 }
 
 // ReconciliationService answers "does the ledger agree with the billing
 // records?" for a tenant. It only reads; fixing drift is a human decision.
 type ReconciliationService struct {
-	repo      ReconciliationRepository
-	tb        TBTransferReader
-	maxListed int
-	runStore  reconciliationRunStore
+	repo             ReconciliationRepository
+	tb               TBTransferReader
+	maxListed        int
+	runStore         reconciliationRunStore
+	currencyResolver reportingCurrencyResolver
+}
+
+// SetReportingResolver wires the tenant reporting-currency resolver (the ledger
+// service) so reports label their amounts. nil-safe / optional.
+func (s *ReconciliationService) SetReportingResolver(r reportingCurrencyResolver) {
+	s.currencyResolver = r
 }
 
 // reconciliationRunStore persists/reads the run-history summary — the audit
@@ -245,6 +264,9 @@ func (s *ReconciliationService) Run(ctx context.Context, tenantID uuid.UUID) (*R
 		TenantID:      tenantID,
 		StartedAt:     time.Now().UTC(),
 		Discrepancies: []ReconciliationDiscrepancy{},
+	}
+	if s.currencyResolver != nil {
+		report.ReportingCurrency = s.currencyResolver.ReportingCurrency(ctx, tenantID)
 	}
 
 	nonDraft, paid, err := s.repo.CountReconciliationScope(ctx, tenantID)

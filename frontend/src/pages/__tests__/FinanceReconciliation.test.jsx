@@ -39,6 +39,7 @@ const driftReport = {
             expected_amount: 5000,
             found_amount: 4500,
         },
+        // reporting_currency drives money formatting (see below).
         {
             type: 'missing_in_tigerbeetle',
             transaction_id: 'bbbbbbbb-1111-2222-3333-444444444444',
@@ -48,6 +49,7 @@ const driftReport = {
     ],
     tb_compared: false,
     tb_skip_reason: 'TigerBeetle client is not connected',
+    reporting_currency: 'USD',
 };
 
 const renderPage = () =>
@@ -79,16 +81,19 @@ describe('FinanceReconciliation page', () => {
         expect(screen.getByText('30 paid invoices')).toBeInTheDocument();
         expect(screen.getByText('Invoice amount mismatch')).toBeInTheDocument();
         expect(screen.getByText('Missing in TigerBeetle')).toBeInTheDocument();
-        expect(screen.getByText('5,000')).toBeInTheDocument();
-        expect(screen.getByText('4,500')).toBeInTheDocument();
+        // Minor units are formatted as real money in the reporting currency
+        // (5000 → $50.00), never raw integers — no 100x misread.
+        expect(screen.getByText('$50.00')).toBeInTheDocument();
+        expect(screen.getByText('$45.00')).toBeInTheDocument();
+        // Difference = found − expected = -500 → -$5.00.
+        expect(screen.getByText('-$5.00')).toBeInTheDocument();
         // The invoice id drills through to that invoice's detail on the
         // Invoices page (not a dead UUID).
         const invoiceLink = screen.getByRole('link', { name: 'aaaaaaaa…' });
         expect(invoiceLink).toHaveAttribute('href', '/invoices/aaaaaaaa-1111-2222-3333-444444444444');
-        // Depth: the difference (found − expected) is shown with a sign, and each
-        // row explains WHY, not just a raw enum. And the verdict headline names
-        // the count.
-        expect(screen.getByText('-500')).toBeInTheDocument();
+        // Depth: the difference (found − expected) is shown with a sign (asserted
+        // above as -$5.00), and each row explains WHY, not just a raw enum. And
+        // the verdict headline names the count.
         expect(screen.getByText(/issuance posting doesn.t equal the invoice total/i)).toBeInTheDocument();
         expect(screen.getByText(/2 discrepancies to resolve/i)).toBeInTheDocument();
     });

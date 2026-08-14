@@ -57,13 +57,14 @@ export default function RevenueRecognition() {
   const multiCurrency = byCurrency.length > 1;
   const primaryCurrency = byCurrency[0]?.currency || "USD";
 
-  // When more than one currency is deferred, the cross-currency sums (deferred
-  // balance, recognized total, schedule buckets) can't honestly carry a single
-  // symbol — show them as grouped minor units and let the by-currency card
-  // carry the real, per-currency numbers.
+  // When more than one currency is deferred, the report's cross-currency sums
+  // (deferred balance, recognized total, schedule buckets) can't honestly carry
+  // a single symbol — and rendering the raw minor-unit integer risks a 100x
+  // magnitude misread. Say so plainly and let the by-currency breakdown below
+  // carry the real, per-currency, exponent-correct numbers.
   const fmt = (minor) =>
     multiCurrency
-      ? `${(Number(minor) || 0).toLocaleString()}`
+      ? "Multiple currencies"
       : formatCurrency(minor, primaryCurrency);
 
   const hasData =

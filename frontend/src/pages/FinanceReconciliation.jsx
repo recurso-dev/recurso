@@ -1,4 +1,4 @@
-import { shortId, formatDate, formatDateTime } from "@/lib/utils";
+import { shortId, formatDate, formatDateTime, formatCurrency } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
@@ -50,16 +50,18 @@ const DISCREPANCIES = {
   customer_credit_liability_mismatch: { label: "Customer-credit liability mismatch", reason: "The Customer Credit liability doesn't equal the sum of outstanding credit balances." },
 };
 
-// Discrepancy amounts are minor units (cents/paise); the report carries no
-// currency, so render them as plain integers rather than guessing a symbol.
-const formatMinorUnits = (n) => (typeof n === "number" ? n.toLocaleString() : "—");
+// Discrepancy amounts are minor units of the report's reporting currency; format
+// them as real money (currency-exponent aware) so an operator can't misread the
+// magnitude by 100x. Falls back to USD if the currency is somehow absent.
+const formatMinorUnits = (n, currency) =>
+  typeof n === "number" ? formatCurrency(n, currency || "USD") : "—";
 
-// Difference = found − expected, shown with an explicit sign so an operator sees
-// the direction and size of the gap. Absent when either side is unknown.
-const formatDifference = (d) => {
+// Difference = found − expected, shown with an explicit + so an operator sees
+// the direction and size of the gap (formatCurrency already carries the minus).
+const formatDifference = (d, currency) => {
   if (typeof d.found_amount !== "number" || typeof d.expected_amount !== "number") return "—";
   const diff = d.found_amount - d.expected_amount;
-  return `${diff > 0 ? "+" : ""}${diff.toLocaleString()}`;
+  return `${diff > 0 ? "+" : ""}${formatCurrency(diff, currency || "USD")}`;
 };
 
 export default function FinanceReconciliation() {
@@ -124,6 +126,7 @@ export default function FinanceReconciliation() {
   const discrepancies = report?.discrepancies || [];
   const totalDiscrepancies = report?.total_discrepancies || 0;
   const booksBalanced = report && totalDiscrepancies === 0;
+  const reportCurrency = report?.reporting_currency || "USD";
 
   return (
     <div>
@@ -315,13 +318,13 @@ export default function FinanceReconciliation() {
                           {shortId(d.transaction_id || d.reference_id)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-foreground">
-                          {formatMinorUnits(d.expected_amount)}
+                          {formatMinorUnits(d.expected_amount, reportCurrency)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm text-foreground">
-                          {formatMinorUnits(d.found_amount)}
+                          {formatMinorUnits(d.found_amount, reportCurrency)}
                         </TableCell>
                         <TableCell className="text-right font-mono text-sm font-medium text-destructive">
-                          {formatDifference(d)}
+                          {formatDifference(d, reportCurrency)}
                         </TableCell>
                       </TableRow>
                     ))}

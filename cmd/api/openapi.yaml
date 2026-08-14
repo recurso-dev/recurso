@@ -11770,6 +11770,11 @@ components:
           description: Whether TigerBeetle was included in the comparison.
         tb_skip_reason:
           type: string
+        reporting_currency:
+          type: string
+          description: >-
+            The tenant's reporting currency; discrepancy amounts are minor units
+            of this currency so clients can format them as money.
 
     TaxNexus:
       type: object
