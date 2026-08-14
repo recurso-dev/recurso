@@ -1,10 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 import { Plus, Receipt } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import CreditNoteDetail from "../components/slide-overs/CreditNoteDetail";
 import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -15,13 +14,6 @@ import { Button } from "@/components/ui/button";
 const CreditNotes = () => {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  // URL-driven detail (/credit-notes/:id) — shareable, refresh/back-safe.
-  const { id: routeId } = useParams();
-  const { data: routedObject } = useQuery({
-    queryKey: ["creditNote", routeId],
-    queryFn: async () => (await endpoints.getCreditNote(routeId)).data.data,
-    enabled: Boolean(routeId),
-  });
 
   const {
     data: creditNotes = [],
@@ -39,11 +31,6 @@ const CreditNotes = () => {
       cn.id.toLowerCase().includes(search.toLowerCase()) ||
       (cn.customer?.name || "").toLowerCase().includes(search.toLowerCase())
   );
-
-
-  const closeDetail = () => navigate("/credit-notes");
-  const isDetailOpen = Boolean(routeId);
-  const selectedNote = routedObject || null;
 
   const columns = [
     {
@@ -130,12 +117,6 @@ const CreditNotes = () => {
             </Button>
           ) : null,
         }}
-      />
-
-      <CreditNoteDetail
-        creditNote={selectedNote}
-        isOpen={isDetailOpen}
-        onClose={closeDetail}
       />
     </div>
   );

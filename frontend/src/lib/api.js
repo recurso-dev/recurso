@@ -240,6 +240,9 @@ export const endpoints = {
   // Credit Notes
   getCreditNotes: (params) => api.get('/credit-notes', { params }),
   getCreditNote: (id) => api.get(`/credit-notes/${id}`),
+  // The credit note's ledger postings (Customer-Credit leg, tax reversal,
+  // refund/write-off legs) — the object page's finance-accounting drill.
+  getCreditNoteJournalEntries: (id) => api.get(`/credit-notes/${id}/journal-entries`),
   getCreditNotePdf: (id) => api.get(`/credit-notes/${id}/pdf`, { responseType: 'blob' }),
   createCreditNote: (data) => api.post('/credit-notes', data),
   approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),

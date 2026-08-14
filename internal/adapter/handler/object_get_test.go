@@ -242,6 +242,38 @@ func TestGetCreditNoteCrossTenantIs404(t *testing.T) {
 	}
 }
 
+func doGetCreditNoteJournal(h *CreditNoteHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/credit-notes/"+id+"/journal-entries", nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetCreditNoteJournalEntries(c)
+	return w
+}
+
+func TestGetCreditNoteJournalOwnedReturnsEntries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	cn := &domain.CreditNote{ID: uuid.New(), TenantID: tenantID, Amount: 500, Currency: "USD"}
+	// No ledger wired → an owned note yields an empty (non-nil) journal, 200.
+	w := doGetCreditNoteJournal(newCreditNoteGetHandler(cn), tenantID, cn.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned credit-note journal: got %d want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "credit_note_id") || !strings.Contains(w.Body.String(), "entries") {
+		t.Fatalf("expected the journal envelope, got %s", w.Body.String())
+	}
+}
+
+func TestGetCreditNoteJournalCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cn := &domain.CreditNote{ID: uuid.New(), TenantID: uuid.New()}
+	if got := doGetCreditNoteJournal(newCreditNoteGetHandler(cn), uuid.New(), cn.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant journal: got %d want 404", got)
+	}
+}
+
 // --- GET /v1/invoices?customer_id= ------------------------------------------
 
 // customerScopedInvoiceRepo proves the handler routes a customer_id query to

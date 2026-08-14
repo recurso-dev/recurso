@@ -169,6 +169,30 @@ func (h *CreditNoteHandler) GetCreditNote(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": cn})
 }
 
+// GetCreditNoteJournalEntries returns the credit note's ledger postings — the
+// Customer-Credit liability leg, tax reversal, and any refund/write-off legs —
+// the finance-accounting side of the credit-note object page.
+// GET /v1/credit-notes/:id/journal-entries
+func (h *CreditNoteHandler) GetCreditNoteJournalEntries(c *gin.Context) {
+	tenantID := middleware.GetTenantID(c)
+	cnID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid credit note id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	entries, err := h.service.GetCreditNoteJournalEntries(ctx, tenantID, cnID)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if entries == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "credit note not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": gin.H{"credit_note_id": cnID, "entries": entries}})
+}
+
 func (h *CreditNoteHandler) ApproveCreditNote(c *gin.Context) {
 	tenantID := middleware.GetTenantID(c)
 	cnIDStr := c.Param("id")
