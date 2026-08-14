@@ -6,6 +6,45 @@
 > Invoice pages, forms, home, a11y, visual QA all shipped). That mission made
 > the dashboard **consistent**. This one makes it **deep**.
 
+## Status — WRAPPED 2026-08-14
+
+The initiative shipped as **19 increments**, each a green-CI PR (recurso
+#604-era redesign predecessors, then this initiative's #632–#655). The
+dashboard is now an operating console: **every object is addressable**, **every
+list is a DataTable** (no card grids left), and **every slide-over is either an
+object-page edit sheet or a list detail that has an object page**.
+
+**Object pages now live** (each: orientation → state → relationships → history →
+financial → actions → audit, per the depth test):
+Customer · Subscription · Invoice · Plan · Account (ledger) · Meter · Wallet ·
+Credit Note · Dispute · Quote · Coupon · Dunning Campaign · Cancel Flow —
+plus the deep financial pages (Ledger drill, Reconciliation, Dunning, Usage) and
+the tenant-wide Payments log.
+
+**Backend read-endpoints added surgically as page linchpins** (the hybrid model —
+build achievable depth now, add the minimal read the page can't live without):
+`GET /customers/:id/financial-summary`, `/invoices/:id/journal-entries`,
+`/invoices/:id/payment-attempts`, `/payment-attempts` (tenant-wide log),
+`/billable-metrics/:id/charges` (+ ListByMetric), `/credit-notes/:id/journal-entries`,
+`/disputes/:id`, `/coupons/:id`. Each: tenant-scoped, 404 on missing/cross-tenant,
+OpenAPI-documented, handler-tested (except the concrete-repo coupon handler,
+covered by the drift gate).
+
+**Principles held throughout:** never fake data (residue splits shown only when
+they reconcile; "no sessions yet" instead of invented rates; dead slide-over
+fields deleted rather than surfaced); financial mutations get consequence-
+explaining confirms; slide-overs retired into full pages with journal-entry
+drills; a live visual-QA pass (five pages × breakpoints) with the one bug it
+found fixed (#652).
+
+**Remaining backend gaps (documented, not faked — future work):** lifecycle
+history has no persistence (invoice status-history, subscription schedule/plan-
+change history, reconciliation run-history/actor/drift — only the 10-type
+`/events` feed exists); wallet/dunning/credit-note/dispute config changes emit
+nothing to `/events` (so those pages carry timestamps, not timelines);
+reconciliation run-scoping is a product decision. Closing these is net-new
+backend, called out in **Backend Gaps** below.
+
 ## Thesis
 
 Take the dashboard from "a functional SaaS dashboard" to "the operating console
