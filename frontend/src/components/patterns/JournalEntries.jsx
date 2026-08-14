@@ -1,5 +1,8 @@
+import { Check } from "lucide-react";
+
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
+import { MotionReveal, MotionStagger } from "@/components/patterns/MotionReveal";
 import { formatDateTime } from "@/lib/utils";
 
 /**
@@ -45,10 +48,16 @@ export function JournalEntries({
   }
 
   const total = entries.reduce((sum, e) => sum + (e.amount || 0), 0);
+  // Postings reveal in sequence, then the balance line settles just after the
+  // last one — you watch the entry post and tie to zero. Capped so a long set
+  // never turns into a slow crawl.
+  const step = 55;
+  const footerDelay = Math.min(entries.length, 6) * step + 40;
 
   return (
     <div>
       <ol className="space-y-4">
+        <MotionStagger step={step}>
         {entries.map((e, i) => (
           <li key={e.transaction_id || i}>
             <div className="mb-1 flex items-baseline justify-between gap-3">
@@ -78,13 +87,21 @@ export function JournalEntries({
             </div>
           </li>
         ))}
+        </MotionStagger>
       </ol>
-      <div className="mt-4 flex items-baseline justify-between border-t border-border pt-3 text-sm font-medium">
-        <span className="text-success">Debits = Credits</span>
+      <MotionReveal
+        as="div"
+        delay={footerDelay}
+        className="mt-4 flex items-baseline justify-between border-t border-border pt-3 text-sm font-medium"
+      >
+        <span className="flex items-center gap-1.5 text-success">
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          Debits = Credits
+        </span>
         <span className="tabular-nums text-foreground">
           <Money amountMinor={total} currency={currency} />
         </span>
-      </div>
+      </MotionReveal>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
+import { MotionReveal } from "@/components/patterns/MotionReveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -146,41 +147,46 @@ export default function FinanceReconciliation() {
       ) : (
         report && (
           <div className="flex flex-col gap-6">
-            {/* Verdict — the one thing a finance operator checks first. */}
-            <div
-              className={
-                booksBalanced
-                  ? "flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 px-5 py-4"
-                  : "flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-5 py-4"
-              }
-            >
-              {booksBalanced ? (
-                <ShieldCheck className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
-              ) : (
-                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
-              )}
-              <div>
-                <p className={booksBalanced ? "text-sm font-semibold text-success" : "text-sm font-semibold text-destructive"}>
-                  {booksBalanced ? "Reconciled" : `${totalDiscrepancies.toLocaleString()} discrepanc${totalDiscrepancies === 1 ? "y" : "ies"} to resolve`}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {booksBalanced
-                    ? "Every invoice, payment, and credit ties to the ledger, and debits equal credits."
-                    : "Billing records and the ledger disagree — each row below shows what, by how much, and why."}
-                </p>
+            {/* Verdict — the one thing a finance operator checks first. Keyed
+                on the run so it settles in each time reconciliation completes:
+                the resolution reads as an event, not a static state. */}
+            <MotionReveal key={report.finished_at || totalDiscrepancies}>
+              <div
+                className={
+                  booksBalanced
+                    ? "flex items-center gap-3 rounded-lg border border-success/30 bg-success/5 px-5 py-4"
+                    : "flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-5 py-4"
+                }
+              >
+                {booksBalanced ? (
+                  <ShieldCheck className="h-5 w-5 shrink-0 text-success" aria-hidden="true" />
+                ) : (
+                  <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+                )}
+                <div>
+                  <p className={booksBalanced ? "text-sm font-semibold text-success" : "text-sm font-semibold text-destructive"}>
+                    {booksBalanced ? "Reconciled" : `${totalDiscrepancies.toLocaleString()} discrepanc${totalDiscrepancies === 1 ? "y" : "ies"} to resolve`}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {booksBalanced
+                      ? "Every invoice, payment, and credit ties to the ledger, and debits equal credits."
+                      : "Billing records and the ledger disagree — each row below shows what, by how much, and why."}
+                  </p>
+                </div>
               </div>
-            </div>
+            </MotionReveal>
 
             {/* Summary cards */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
                 label="Invoices Checked"
-                value={(report.invoices_checked || 0).toLocaleString()}
+                value={report.invoices_checked || 0}
                 hint={`${(report.paid_invoices_checked || 0).toLocaleString()} paid invoices`}
               />
               <StatCard
                 label="Discrepancies"
-                value={totalDiscrepancies.toLocaleString()}
+                value={totalDiscrepancies}
+                tone={booksBalanced ? undefined : "danger"}
                 hint={
                   booksBalanced
                     ? "Nothing out of place"
