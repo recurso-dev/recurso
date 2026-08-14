@@ -141,6 +141,18 @@ export default {
         "tremor-card": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
         "tremor-dropdown": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
       },
+      // Motion tokens — mirror of the CSS custom properties in index.css
+      // (see frontend/MOTION.md). Use duration-fast/normal/slow +
+      // ease-standard/ease-out-soft instead of raw values.
+      transitionDuration: {
+        fast: "140ms",
+        normal: "200ms",
+        slow: "340ms",
+      },
+      transitionTimingFunction: {
+        standard: "cubic-bezier(0.2, 0, 0, 1)",
+        "out-soft": "cubic-bezier(0.16, 1, 0.3, 1)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -150,10 +162,23 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        // Mount reveal: fade + a small rise. transform/opacity only.
+        "motion-reveal": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        // One-shot highlight when a value/status actually changes.
+        "motion-flash": {
+          from: { backgroundColor: "hsl(var(--primary) / 0.10)" },
+          to: { backgroundColor: "transparent" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "motion-reveal":
+          "motion-reveal 200ms cubic-bezier(0.16, 1, 0.3, 1) both",
+        "motion-flash": "motion-flash 1200ms ease-out",
       },
     },
   },

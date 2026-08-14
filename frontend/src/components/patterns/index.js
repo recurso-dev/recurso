@@ -7,3 +7,7 @@ export { EmptyState } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export { FormField } from "./FormField";
 export { Skeleton, TableSkeleton, CardGridSkeleton } from "./LoadingSkeleton";
+// Motion primitives (see frontend/MOTION.md).
+export { MotionNumber } from "./MotionNumber";
+export { MotionReveal, MotionStagger } from "./MotionReveal";
+export { MotionState } from "./MotionState";
