@@ -173,7 +173,7 @@ const RowActions = ({ item }) => {
         open={confirmWriteOff}
         onOpenChange={setConfirmWriteOff}
         title={`Write off ${item.invoice_number}?`}
-        description="This marks the invoice uncollectible and stops all dunning. It won't be collected automatically anymore. You can still record a manual payment later."
+        description={`This writes off ${formatCurrency(item.amount_remaining, item.currency)} — marks the invoice uncollectible, reverses the receivable in the ledger, and stops all dunning. You can still record a manual payment later.`}
         confirmLabel="Mark uncollectible"
         destructive
         busy={writeOff.isPending}
