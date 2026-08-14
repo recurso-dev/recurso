@@ -44,6 +44,19 @@ func (s *DisputeService) List(ctx context.Context, tenantID uuid.UUID, status st
 	return s.repo.ListByTenant(ctx, tenantID, status, limit, offset)
 }
 
+// Get returns one tenant-scoped dispute, or (nil, nil) when it doesn't exist or
+// belongs to another tenant — so a bad/cross-tenant id is a 404, never a leak.
+func (s *DisputeService) Get(ctx context.Context, tenantID, id uuid.UUID) (*domain.InvoiceDispute, error) {
+	dispute, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("load dispute: %w", err)
+	}
+	if dispute == nil || dispute.TenantID != tenantID {
+		return nil, nil
+	}
+	return dispute, nil
+}
+
 // Resolve marks an open dispute resolved with an optional note (the simple
 // accept-with-no-credit path). Kept for the existing callers/back-compat.
 func (s *DisputeService) Resolve(ctx context.Context, tenantID, id uuid.UUID, note string) error {

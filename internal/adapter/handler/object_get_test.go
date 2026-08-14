@@ -242,6 +242,48 @@ func TestGetCreditNoteCrossTenantIs404(t *testing.T) {
 	}
 }
 
+// --- GET /v1/disputes/:id ---------------------------------------------------
+
+type oneDisputeRepo struct {
+	port.DisputeRepository
+	d *domain.InvoiceDispute
+}
+
+func (r *oneDisputeRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.InvoiceDispute, error) {
+	if r.d != nil && r.d.ID == id {
+		return r.d, nil
+	}
+	return nil, nil
+}
+
+func doGetDispute(d *domain.InvoiceDispute, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	h := NewDisputeHandler(service.NewDisputeService(&oneDisputeRepo{d: d}))
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/disputes/"+id, nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetDispute(c)
+	return w
+}
+
+func TestGetDisputeReturnsOwnedRow(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	d := &domain.InvoiceDispute{ID: uuid.New(), TenantID: tenantID, InvoiceID: uuid.New(), Status: domain.DisputeStatusOpen}
+	if got := doGetDispute(d, tenantID, d.ID.String()).Code; got != http.StatusOK {
+		t.Fatalf("owned dispute: got %d want 200", got)
+	}
+}
+
+func TestGetDisputeCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	d := &domain.InvoiceDispute{ID: uuid.New(), TenantID: uuid.New()}
+	if got := doGetDispute(d, uuid.New(), d.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant dispute: got %d want 404", got)
+	}
+}
+
 func doGetCreditNoteJournal(h *CreditNoteHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)

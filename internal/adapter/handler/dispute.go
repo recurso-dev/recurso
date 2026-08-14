@@ -46,6 +46,27 @@ func (h *DisputeHandler) ListDisputes(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": disputes})
 }
 
+// GetDispute handles GET /v1/disputes/:id (tenant-scoped) — one dispute as an
+// addressable object for the dashboard's dispute page.
+func (h *DisputeHandler) GetDispute(c *gin.Context) {
+	tenantID := c.MustGet("tenant_id").(uuid.UUID)
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid dispute id")
+		return
+	}
+	dispute, err := h.service.Get(c.Request.Context(), tenantID, id)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	if dispute == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "dispute not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": dispute})
+}
+
 type resolveDisputeRequest struct {
 	Note string `json:"note"`
 	// Outcome is "accept" (default — closes in the customer's favor) or

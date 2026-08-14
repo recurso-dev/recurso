@@ -2025,6 +2025,7 @@ func main() {
 
 		// Invoice disputes (Track 2) — admin API only; no dashboard UI yet.
 		v1.GET("/disputes", disputeHandler.ListDisputes)
+		v1.GET("/disputes/:id", disputeHandler.GetDispute)
 		v1.POST("/disputes/:id/resolve", disputeHandler.ResolveDispute)
 
 		v1.GET("/events", webhookMgmtHandler.ListEvents)

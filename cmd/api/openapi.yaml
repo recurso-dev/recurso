@@ -4687,6 +4687,29 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/disputes/{id}:
+    get:
+      operationId: getDispute
+      tags: [Disputes]
+      summary: Get one invoice dispute (tenant-scoped)
+      description: >
+        Fetches a single dispute by id — the addressable object behind the
+        dashboard's dispute page. A missing or cross-tenant id returns 404.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The dispute.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/InvoiceDispute'
+        '404':
+          description: Dispute not found.
+
   /v1/disputes/{id}/resolve:
     post:
       operationId: resolveDispute
