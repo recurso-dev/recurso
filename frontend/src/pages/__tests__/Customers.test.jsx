@@ -35,6 +35,9 @@ const mockCustomers = [
 describe('Customers Page (redesign)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        // List state now lives in the URL (useUrlState); BrowserRouter shares
+        // window.location, so reset it between tests for isolation.
+        window.history.replaceState({}, '', '/');
     });
 
     it('shows the skeleton loading state initially', async () => {
