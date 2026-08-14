@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router";
 import { Plus, Users, Link2 } from "lucide-react";
 
@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { useDebounce } from "../hooks/useDebounce";
+import { useUrlState } from "@/lib/useUrlState";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -38,9 +39,11 @@ function RiskBadge({ score }) {
 export default function Customers() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(1);
+  // List state persists in the URL so returning from a customer detail restores
+  // the exact page / search / filter (useUrlState — audit §5).
+  const [search, setSearch] = useUrlState("q", "");
+  const [status, setStatus] = useUrlState("status", "all");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
   const debouncedSearch = useDebounce(search, 500);
 
   const queryClient = useQueryClient();
@@ -79,7 +82,7 @@ export default function Customers() {
   // Reset to page 1 whenever the query changes.
   useEffect(() => {
     setPage(1);
-  }, [debouncedSearch, status]);
+  }, [debouncedSearch, status, setPage]);
 
   const copyPortalLink = useCallback(
     (e, customer) => {
