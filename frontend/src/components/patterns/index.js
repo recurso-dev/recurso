@@ -6,6 +6,7 @@ export { DataTable } from "./DataTable";
 export { EmptyState } from "./EmptyState";
 export { ErrorState } from "./ErrorState";
 export { FormField } from "./FormField";
+export { SubscriptionRef } from "./SubscriptionRef";
 export { Skeleton, TableSkeleton, CardGridSkeleton } from "./LoadingSkeleton";
 // Motion primitives (see frontend/MOTION.md).
 export { MotionNumber } from "./MotionNumber";
