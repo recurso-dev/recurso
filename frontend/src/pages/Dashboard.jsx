@@ -14,6 +14,7 @@ import {
   FileQuestion,
   CheckCircle2,
   Activity,
+  Scale,
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -133,6 +134,20 @@ export default function Dashboard() {
       };
     },
   });
+  // Ledger reconciliation is computed per request and can be heavy (it scans the
+  // ledger), so it runs on its own cadence — cached 5 minutes — rather than
+  // blocking the overview or re-running on every navigation. Best-effort: on
+  // failure it simply doesn't contribute a tile.
+  const { data: reconDiscrepancies = 0 } = useQuery({
+    queryKey: ["dashboard-reconciliation"],
+    queryFn: async () => {
+      const res = await endpoints.runReconciliation();
+      return (res.data?.data?.total_discrepancies ?? res.data?.total_discrepancies) ?? 0;
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   // Stable references (only change when the query result does) so the derived
   // useMemos below don't recompute every render.
   const subscriptions = useMemo(() => data?.subscriptions ?? [], [data]);
@@ -174,7 +189,8 @@ export default function Dashboard() {
     () => invoices.filter((inv) => inv.status === "past_due").length,
     [invoices]
   );
-  const attentionCount = overdueCount + openDisputes + churnAlerts;
+  const attentionCount =
+    overdueCount + openDisputes + churnAlerts + (reconDiscrepancies > 0 ? 1 : 0);
 
   // Revenue-over-time, one series per currency: different currencies cannot be
   // summed into one line without FX, so each gets its own (₹ and $ don't add).
@@ -372,6 +388,21 @@ export default function Dashboard() {
       {!loading &&
         (attentionCount > 0 ? (
           <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {reconDiscrepancies > 0 && (
+              <Link
+                to="/finance/reconciliation"
+                className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 transition-colors hover:bg-destructive/15"
+              >
+                <Scale className="h-5 w-5 shrink-0 text-destructive" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-destructive">
+                    {reconDiscrepancies.toLocaleString()} reconciliation discrepanc
+                    {reconDiscrepancies === 1 ? "y" : "ies"}
+                  </p>
+                  <p className="truncate text-xs text-destructive">The ledger doesn’t tie out</p>
+                </div>
+              </Link>
+            )}
             {overdueCount > 0 && (
               <Link
                 to="/finance/invoice-aging"
@@ -423,7 +454,8 @@ export default function Dashboard() {
         ) : (
           <div className="mb-6 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
             <CheckCircle2 className="h-4 w-4 text-success" />
-            All clear — no overdue invoices, open disputes, or churn alerts.
+            All clear — the books reconcile, and there are no overdue invoices, open disputes, or
+            churn alerts.
           </div>
         ))}
 
