@@ -273,3 +273,18 @@ Usage (current+lifetime, buckets, raw stream).
   offsets); and the **journal-entries drill** via the shared JournalEntries
   primitive. List rows drill to it; CreditNoteDetail slide-over retired. lint 0,
   build, 520 tests.
+- 2026-08-14 — **Increment 15: Dispute object page** (branch
+  dashboard-depth-disputes). Backend linchpin: GET /v1/disputes/:id — disputes
+  had only list + resolve, no single-read, so the page couldn't be refresh-safe.
+  DisputeService.Get (repo.GetByID + tenant check → nil for missing/cross-
+  tenant), handler {data: dispute}, 404 on bad/foreign id. Route + openapi
+  ($ref InvoiceDispute) + 2 handler tests. Frontend: new DisputePage at
+  /disputes/:id — reason ("what the customer disputed"), the contested invoice
+  as a rich linked relation (its real number/amount/status via getInvoice), the
+  customer link, the resolution (outcome + note + resolved-at, or "not yet
+  resolved"), an AttentionBanner for open/rejected, and the Review action
+  (accept — optionally issuing a credit — or reject) ported from the list. The
+  list's raw-shortId invoice stays but rows now drill to the page. NB: the
+  InvoiceDispute model is a lightweight customer query (not a gateway
+  chargeback); it emits nothing to /events, so no timeline — the two timestamps
+  carry the history. lint 0, build, 524 tests.

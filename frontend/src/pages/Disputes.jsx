@@ -1,5 +1,6 @@
 import { shortId, formatDateTime } from "@/lib/utils";
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { FileQuestion, Check, X } from "lucide-react";
 
@@ -45,6 +46,7 @@ const Disputes = () => {
   const [issueCredit, setIssueCredit] = useState(false);
   const { names } = useCustomers();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
 
   const openReview = (d) => {
     setNote("");
@@ -179,6 +181,7 @@ const Disputes = () => {
         loading={loading}
         error={error}
         onRetry={refetch}
+        onRowClick={(d) => navigate(`/disputes/${d.id}`)}
         pagination={{
           page,
           onPrev: () => setPage((p) => Math.max(1, p - 1)),

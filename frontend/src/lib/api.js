@@ -321,6 +321,7 @@ export const endpoints = {
   // Invoice disputes (admin)
   getDisputes: (status, params = {}) =>
     api.get('/disputes', { params: { ...(status ? { status } : {}), ...params } }),
+  getDispute: (id) => api.get(`/disputes/${id}`),
   // body: { note?, outcome?: 'accept'|'reject', issue_credit?, credit_amount? }
   resolveDispute: (id, body) => api.post(`/disputes/${id}/resolve`, body),
 
