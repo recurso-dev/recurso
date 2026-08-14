@@ -32,3 +32,35 @@ describe("DataTable empty-state docs link", () => {
     expect(screen.queryByText("Read the guide")).not.toBeInTheDocument();
   });
 });
+
+describe("DataTable new-row reveal", () => {
+  const cols = [{ key: "name", header: "Name", cell: (r) => r.name }];
+  const trOf = (text) => screen.getByText(text).closest("tr");
+
+  it("does not animate rows on first mount", () => {
+    render(
+      <MemoryRouter>
+        <DataTable columns={cols} data={[{ id: "1", name: "A" }]} />
+      </MemoryRouter>
+    );
+    expect(trOf("A")).not.toHaveClass("animate-motion-reveal");
+  });
+
+  it("animates a newly added row but not the rows that persist", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <DataTable columns={cols} data={[{ id: "1", name: "A" }]} />
+      </MemoryRouter>
+    );
+    rerender(
+      <MemoryRouter>
+        <DataTable
+          columns={cols}
+          data={[{ id: "1", name: "A" }, { id: "2", name: "B" }]}
+        />
+      </MemoryRouter>
+    );
+    expect(trOf("B")).toHaveClass("animate-motion-reveal");
+    expect(trOf("A")).not.toHaveClass("animate-motion-reveal");
+  });
+});
