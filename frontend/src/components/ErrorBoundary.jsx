@@ -1,5 +1,25 @@
-import React from 'react';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import React from "react";
+
+import { ErrorState } from "@/components/patterns/ErrorState";
+
+/**
+ * isChunkLoadError — true when a lazy route/chunk failed to load. This is
+ * almost always a *stale deploy*: the tab holds an old app shell that asks for
+ * a chunk hash the server has since replaced, so the import 404s. A state reset
+ * can't recover it (the chunk is gone) — only a full reload, which fetches the
+ * new index and its chunks.
+ */
+function isChunkLoadError(error) {
+  if (!error) return false;
+  const msg = String(error.message || "");
+  return (
+    error.name === "ChunkLoadError" ||
+    /failed to fetch dynamically imported module/i.test(msg) ||
+    /error loading dynamically imported module/i.test(msg) ||
+    /importing a module script failed/i.test(msg) ||
+    /is not a valid javascript mime type/i.test(msg)
+  );
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -13,52 +33,34 @@ class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, errorInfo) {
     this.setState({ errorInfo });
-    console.error('[ErrorBoundary]', error, errorInfo);
+    console.error("[ErrorBoundary]", error, errorInfo);
   }
 
+  // Generic errors may be transient — resetting re-renders the subtree.
   handleRetry = () => {
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
+  // Stale-chunk errors only recover on a full reload.
+  handleReload = () => {
+    window.location.reload();
+  };
+
   render() {
     if (this.state.hasError) {
+      const chunk = isChunkLoadError(this.state.error);
       return (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '3rem',
-          textAlign: 'center',
-          minHeight: '200px'
-        }}>
-          <AlertTriangle size={48} color="var(--color-warning, #f59e0b)" />
-          <h2 style={{ marginTop: '1rem', fontSize: '1.25rem', fontWeight: 600, color: 'var(--color-text-primary, #fff)' }}>
-            Something went wrong
-          </h2>
-          <p style={{ marginTop: '0.5rem', color: 'var(--color-text-secondary, #94a3b8)', maxWidth: '400px' }}>
-            {this.state.error?.message || 'An unexpected error occurred. Please try again.'}
-          </p>
-          <button type="button"
-            onClick={this.handleRetry}
-            style={{
-              marginTop: '1.5rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.5rem 1rem',
-              borderRadius: '0.5rem',
-              border: '1px solid var(--color-border, rgba(255,255,255,0.1))',
-              background: 'var(--color-surface, rgba(255,255,255,0.05))',
-              color: 'var(--color-text-primary, #fff)',
-              cursor: 'pointer',
-              fontSize: '0.875rem',
-              fontWeight: 500,
-            }}
-          >
-            <RefreshCw size={16} /> Try Again
-          </button>
-        </div>
+        <ErrorState
+          title={chunk ? "Update available" : "Something went wrong"}
+          message={
+            chunk
+              ? "A new version of Recurso was just deployed. Reload to continue — your place is preserved."
+              : this.state.error?.message ||
+                "An unexpected error occurred. Please try again."
+          }
+          retryLabel={chunk ? "Reload" : "Try again"}
+          onRetry={chunk ? this.handleReload : this.handleRetry}
+        />
       );
     }
 

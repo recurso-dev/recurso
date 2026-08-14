@@ -7,14 +7,16 @@ import { Button } from "@/components/ui/button";
  * ErrorState — shown when a fetch fails. Offers a retry.
  *
  * Props:
- *  - title:   string
- *  - message: string (the error detail)
- *  - onRetry: () => void
+ *  - title:      string
+ *  - message:    string (the error detail)
+ *  - onRetry:    () => void
+ *  - retryLabel: label for the retry button (default "Retry")
  */
 export function ErrorState({
   title = "Couldn't load this",
   message = "We couldn't load this data. Check your connection and try again.",
   onRetry,
+  retryLabel = "Retry",
   className,
 }) {
   return (
@@ -32,7 +34,7 @@ export function ErrorState({
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">{message}</p>
       {onRetry && (
         <Button variant="outline" size="sm" className="mt-5" onClick={onRetry}>
-          Retry
+          {retryLabel}
         </Button>
       )}
     </div>
