@@ -108,6 +108,18 @@ export default function FinanceReconciliation() {
     queryFn: async () => (await endpoints.getReconciliationRuns({ limit: 20 })).data.data || [],
   });
 
+  // Resolve run_by (a user id) to a human name — the audit trail should never
+  // show a raw UUID. Shared ["team"] cache with the Team page; best-effort, so a
+  // failure just falls back to a short id. Only fetched when there's history.
+  const { data: teamMembers = [] } = useQuery({
+    queryKey: ["team"],
+    queryFn: async () => (await endpoints.getUsers()).data?.data || [],
+    enabled: runs.length > 0,
+  });
+  const userNameById = Object.fromEntries(
+    teamMembers.map((u) => [u.id, u.name || u.email]),
+  );
+
   const discrepancies = report?.discrepancies || [];
   const totalDiscrepancies = report?.total_discrepancies || 0;
   const booksBalanced = report && totalDiscrepancies === 0;
@@ -331,12 +343,19 @@ export default function FinanceReconciliation() {
                   <TableHead>When</TableHead>
                   <TableHead>Result</TableHead>
                   <TableHead className="text-right">Invoices checked</TableHead>
+                  <TableHead>TigerBeetle</TableHead>
                   <TableHead>Recorded by</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {runs.map((r) => {
                   const balanced = (r.total_discrepancies || 0) === 0;
+                  // null run_by = a scheduled/system run (no user). A non-null id
+                  // that isn't in the team map (removed teammate) falls back to a
+                  // short id rather than showing nothing.
+                  const recordedBy = r.run_by
+                    ? userNameById[r.run_by] || shortId(r.run_by)
+                    : "System";
                   return (
                     <TableRow key={r.id}>
                       <TableCell className="text-sm text-muted-foreground">
@@ -355,11 +374,23 @@ export default function FinanceReconciliation() {
                       <TableCell className="text-right font-mono text-sm text-foreground">
                         {(r.invoices_checked ?? 0).toLocaleString()}
                       </TableCell>
+                      <TableCell>
+                        {r.tb_compared ? (
+                          <span
+                            className="text-sm text-muted-foreground"
+                            title={`${(r.tb_accounts_checked ?? 0).toLocaleString()} accounts · ${(r.tb_transfers_checked ?? 0).toLocaleString()} transfers`}
+                          >
+                            Compared
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
                       <TableCell
-                        className="font-mono text-xs text-muted-foreground"
+                        className="text-sm text-muted-foreground"
                         title={r.run_by || undefined}
                       >
-                        {r.run_by ? shortId(r.run_by) : "—"}
+                        {recordedBy}
                       </TableCell>
                     </TableRow>
                   );

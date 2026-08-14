@@ -11,6 +11,7 @@ vi.mock('../../lib/api', () => ({
         runReconciliation: vi.fn(),
         recordReconciliation: vi.fn(),
         getReconciliationRuns: vi.fn(),
+        getUsers: vi.fn(),
     }
 }));
 
@@ -63,6 +64,7 @@ describe('FinanceReconciliation page', () => {
         vi.clearAllMocks();
         endpoints.getReconciliationRuns.mockResolvedValue({ data: { data: [] } });
         endpoints.recordReconciliation.mockResolvedValue({ data: { data: balancedReport } });
+        endpoints.getUsers.mockResolvedValue({ data: { data: [] } });
     });
 
     it('renders summary cards and the discrepancy table', async () => {
@@ -158,6 +160,31 @@ describe('FinanceReconciliation page', () => {
         // The drifted historical run shows its invoices-checked count (40 is
         // unique to history — the current report checked 42).
         expect(screen.getByText('40')).toBeInTheDocument();
+        // A null run_by (scheduled/system run) reads as "System", never a blank/UUID.
+        expect(screen.getAllByText('System').length).toBeGreaterThan(0);
+    });
+
+    it('resolves run_by to a teammate name instead of a raw id', async () => {
+        endpoints.runReconciliation.mockResolvedValue({ data: { data: balancedReport } });
+        endpoints.getReconciliationRuns.mockResolvedValue({
+            data: {
+                data: [
+                    { id: 'run-1', run_at: '2026-08-14T10:00:00Z', invoices_checked: 42, total_discrepancies: 0, run_by: 'user-9', tb_compared: true, tb_accounts_checked: 4, tb_transfers_checked: 120 },
+                ],
+            },
+        });
+        endpoints.getUsers.mockResolvedValue({
+            data: { data: [{ id: 'user-9', name: 'Ada Lovelace', email: 'ada@acme.com' }] },
+        });
+        renderPage();
+
+        await waitFor(() => {
+            expect(screen.getByText('Ada Lovelace')).toBeInTheDocument();
+        });
+        // The raw id never appears, and the TigerBeetle pass is surfaced in the
+        // history row (in addition to the current-report summary card).
+        expect(screen.queryByText('user-9')).not.toBeInTheDocument();
+        expect(screen.getAllByText('Compared').length).toBeGreaterThanOrEqual(2);
     });
 
     it('shows an error state with retry when the run fails', async () => {
