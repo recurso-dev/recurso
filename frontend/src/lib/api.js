@@ -134,6 +134,8 @@ export const endpoints = {
   getSubscriptions: (params) => api.get('/subscriptions', { params }),
   // Wires the long-existing backend GET (was implemented and unused).
   getSubscription: (id) => api.get(`/subscriptions/${id}`),
+  // The subscription's lifecycle timeline (trigger-captured status + plan changes).
+  getSubscriptionHistory: (id) => api.get(`/subscriptions/${id}/history`),
   getInvoices: (params) => api.get('/invoices', { params }),
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).

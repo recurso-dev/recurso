@@ -567,6 +567,7 @@ func main() {
 	subscriptionService.SetEInvoiceService(einvoiceService)
 	subscriptionService.SetPaymentAttemptLister(db.NewPaymentAttemptRepository(database))             // invoice payment-attempt history
 	subscriptionService.SetInvoiceStatusHistoryReader(db.NewInvoiceStatusHistoryRepository(database)) // invoice status timeline
+	subscriptionService.SetSubscriptionHistoryReader(db.NewSubscriptionHistoryRepository(database))   // subscription status+plan timeline
 	subscriptionService.SetNotificationService(notificationService)
 	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
 	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
@@ -1836,6 +1837,7 @@ func main() {
 		v1.DELETE("/subscriptions/:id/addons/:addonId", subscriptionHandler.RemoveAddon)
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/subscriptions/:id", subscriptionHandler.GetSubscription)
+		v1.GET("/subscriptions/:id/history", subscriptionHandler.GetSubscriptionHistory)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
 		v1.GET("/invoices/:id/journal-entries", subscriptionHandler.GetInvoiceJournalEntries)

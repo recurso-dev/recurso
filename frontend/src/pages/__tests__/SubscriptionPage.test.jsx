@@ -8,6 +8,7 @@ import { endpoints } from "../../lib/api";
 vi.mock("../../lib/api", () => ({
   endpoints: {
     getSubscription: vi.fn(),
+    getSubscriptionHistory: vi.fn().mockResolvedValue({ data: { data: { history: [] } } }),
     getCustomer: vi.fn(),
     getPlans: vi.fn(),
     getSubscriptionAddons: vi.fn(),
@@ -229,5 +230,29 @@ describe("SubscriptionPage", () => {
       expect(screen.getByText("Subscription not found")).toBeInTheDocument()
     );
     expect(screen.queryByRole("button", { name: /retry/i })).not.toBeInTheDocument();
+  });
+
+  it("renders the lifecycle timeline (status + plan changes)", async () => {
+    endpoints.getSubscriptionHistory.mockResolvedValue({
+      data: {
+        data: {
+          subscription_id: "sub_1",
+          history: [
+            { id: "l1", change_type: "status", from_value: null, to_value: "trialing", changed_at: "2026-01-01T00:00:00Z" },
+            { id: "l2", change_type: "status", from_value: "trialing", to_value: "active", changed_at: "2026-01-08T00:00:00Z" },
+            { id: "l3", change_type: "plan", from_value: "plan_a", to_value: "plan_b", changed_at: "2026-02-01T00:00:00Z" },
+          ],
+        },
+      },
+    });
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Lifecycle")).toBeInTheDocument());
+    // The creation row + a status transition (StatusBadge humanizes trialing).
+    expect(screen.getByText("Created as")).toBeInTheDocument();
+    expect(screen.getAllByText("Active").length).toBeGreaterThanOrEqual(1);
+    // The plan switch resolves each plan id (short id when not in the catalog),
+    // unique to the lifecycle row.
+    expect(screen.getByText("plan_a")).toBeInTheDocument();
+    expect(screen.getByText("plan_b")).toBeInTheDocument();
   });
 });
