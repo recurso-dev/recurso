@@ -243,3 +243,17 @@ Usage (current+lifetime, buckets, raw stream).
   destructive), When/Invoice(link)/Amount/Method+Gateway/Status/Reason columns,
   rows drill to /invoices/:id. Answers "did this collection go through, and if
   not why?" without opening each invoice. lint 0, build, 521 tests.
+- 2026-08-14 — **Increment 13: Wallet object page** (branch
+  dashboard-depth-wallet). No new backend — GET /wallets/:id and
+  /wallets/:id/transactions already existed; pure frontend depth. New WalletPage
+  at /wallets/:id: balance header + Open/Closed badge + the three wallet actions
+  (top-up, auto-recharge, close) with a consequence-explaining close confirm; a
+  Balance section that reconstructs the refundable-paid vs forfeitable-
+  promotional split from open top-up residues **only when it reconciles to the
+  balance** (else hidden — no guessing); an AttentionBanner for closed wallets +
+  promotional credit expiring within 30 days (dated, real); and the append-only
+  movement ledger where each **drain links to the invoice it settled**. The
+  Wallets list now rows-drill to it (retired the cramped transaction Sheet); the
+  customer page's wallet rail links to the specific wallet instead of the bare
+  list. A wallet's movements ARE its audit trail (wallets emit nothing to
+  /events — noted honestly). lint 0, build, 525 tests.
