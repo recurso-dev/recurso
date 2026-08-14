@@ -2,7 +2,7 @@ module github.com/recurso-dev/recurso
 
 go 1.25.0
 
-toolchain go1.25.12
+toolchain go1.25.13
 
 require (
 	github.com/bsm/redislock v0.9.4
