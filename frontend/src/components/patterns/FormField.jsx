@@ -68,7 +68,11 @@ export function FormField({
       )}
       {control}
       {error && (
-        <p id={errId} role="alert" className="text-xs font-medium text-destructive">
+        <p
+          id={errId}
+          role="alert"
+          className="animate-motion-reveal text-xs font-medium text-destructive"
+        >
           {error}
         </p>
       )}
