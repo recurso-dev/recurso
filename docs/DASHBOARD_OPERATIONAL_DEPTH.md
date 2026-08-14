@@ -221,3 +221,12 @@ Usage (current+lifetime, buckets, raw stream).
   only chart accounts carry balances). Made the Customer's ledger account a link.
   Uses existing getLedgerAccounts + getLedgerEntries — no backend. lint 0, build,
   514 tests.
+- 2026-08-14 — **#644 (Account page) merged to main.**
+- 2026-08-14 — **Increment 11: Meter page** (branch dashboard-depth-meter).
+  Backend: GET /billable-metrics/:id/charges (ChargeRepository.ListByMetric —
+  the reverse lookup the audit flagged as the only remaining metering gap;
+  plan_charges JOIN plans → MetricPlanCharge; service verifies metric→404;
+  openapi + service test). Frontend: new MeterPage at /billable-metrics/:id
+  (Definition + Plans-pricing-on-it reverse lookup + Recent events feeding it +
+  audit), Metering list rows rowHref to it. Event → Meter → Aggregation →
+  Pricing now navigable end to end. lint 0, build, 518 tests.
