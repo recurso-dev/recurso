@@ -170,6 +170,14 @@ type ReconciliationService struct {
 	repo      ReconciliationRepository
 	tb        TBTransferReader
 	maxListed int
+	runStore  reconciliationRunStore
+}
+
+// reconciliationRunStore persists/reads the run-history summary — the audit
+// trail of recorded reconciliations. Narrow so it stays optional (nil-safe).
+type reconciliationRunStore interface {
+	Create(ctx context.Context, run *domain.ReconciliationRun) error
+	ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.ReconciliationRun, error)
 }
 
 // NewReconciliationService creates a reconciliation service. tbClient may be
@@ -181,6 +189,45 @@ func NewReconciliationService(repo ReconciliationRepository, tbClient *tigerbeet
 		s.tb = tbClient
 	}
 	return s
+}
+
+// SetRunStore wires run-history persistence. Without it, RecordRun/ListRuns are
+// no-ops (an empty history) — reconciliation itself is unaffected.
+func (s *ReconciliationService) SetRunStore(store reconciliationRunStore) { s.runStore = store }
+
+// RecordRun persists a summary of a completed report as an audit-trail entry.
+// actorID may be uuid.Nil (system/unauthenticated) → stored as null. No-op when
+// no run store is wired.
+func (s *ReconciliationService) RecordRun(ctx context.Context, tenantID, actorID uuid.UUID, report *ReconciliationReport) error {
+	if s.runStore == nil || report == nil {
+		return nil
+	}
+	run := &domain.ReconciliationRun{
+		TenantID:            tenantID,
+		RunAt:               report.FinishedAt,
+		InvoicesChecked:     report.InvoicesChecked,
+		PaidInvoicesChecked: report.PaidInvoicesChecked,
+		TotalDiscrepancies:  report.TotalDiscrepancies,
+		TBCompared:          report.TBCompared,
+		TBAccountsChecked:   report.TBAccountsChecked,
+		TBTransfersChecked:  report.TBTransfersChecked,
+	}
+	if actorID != uuid.Nil {
+		run.RunBy = &actorID
+	}
+	return s.runStore.Create(ctx, run)
+}
+
+// ListRuns returns the tenant's recorded reconciliation runs, newest first.
+// Returns an empty slice when no run store is wired.
+func (s *ReconciliationService) ListRuns(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.ReconciliationRun, error) {
+	if s.runStore == nil {
+		return []domain.ReconciliationRun{}, nil
+	}
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	return s.runStore.ListByTenant(ctx, tenantID, limit)
 }
 
 // Run reconciles a tenant's invoices against its Postgres ledger entries:

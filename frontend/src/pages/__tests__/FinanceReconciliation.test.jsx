@@ -1,5 +1,6 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import FinanceReconciliation from '../FinanceReconciliation';
 import { endpoints } from '../../lib/api';
@@ -8,6 +9,8 @@ import { endpoints } from '../../lib/api';
 vi.mock('../../lib/api', () => ({
     endpoints: {
         runReconciliation: vi.fn(),
+        recordReconciliation: vi.fn(),
+        getReconciliationRuns: vi.fn(),
     }
 }));
 
@@ -46,11 +49,20 @@ const driftReport = {
     tb_skip_reason: 'TigerBeetle client is not connected',
 };
 
-const renderPage = () => render(<MemoryRouter><FinanceReconciliation /></MemoryRouter>);
+const renderPage = () =>
+    render(
+        <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+            <MemoryRouter>
+                <FinanceReconciliation />
+            </MemoryRouter>
+        </QueryClientProvider>
+    );
 
 describe('FinanceReconciliation page', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        endpoints.getReconciliationRuns.mockResolvedValue({ data: { data: [] } });
+        endpoints.recordReconciliation.mockResolvedValue({ data: { data: balancedReport } });
     });
 
     it('renders summary cards and the discrepancy table', async () => {
@@ -113,18 +125,39 @@ describe('FinanceReconciliation page', () => {
         });
     });
 
-    it('re-runs reconciliation from the Run again button', async () => {
+    it('records a run from the Run & record button (the explicit audit action)', async () => {
         endpoints.runReconciliation.mockResolvedValue({ data: { data: balancedReport } });
         renderPage();
 
         await waitFor(() => {
             expect(screen.getByText('Books balanced')).toBeInTheDocument();
         });
-        fireEvent.click(screen.getByRole('button', { name: /run again/i }));
+        // The auto-load is the ephemeral GET; the button POSTs to the audit trail.
+        fireEvent.click(screen.getByRole('button', { name: /run & record/i }));
 
         await waitFor(() => {
-            expect(endpoints.runReconciliation).toHaveBeenCalledTimes(2);
+            expect(endpoints.recordReconciliation).toHaveBeenCalledTimes(1);
         });
+    });
+
+    it('shows the run history when there are recorded runs', async () => {
+        endpoints.runReconciliation.mockResolvedValue({ data: { data: balancedReport } });
+        endpoints.getReconciliationRuns.mockResolvedValue({
+            data: {
+                data: [
+                    { id: 'run-1', run_at: '2026-08-14T10:00:00Z', invoices_checked: 42, total_discrepancies: 0, run_by: null },
+                    { id: 'run-2', run_at: '2026-08-13T10:00:00Z', invoices_checked: 40, total_discrepancies: 3, run_by: null },
+                ],
+            },
+        });
+        renderPage();
+
+        await waitFor(() => {
+            expect(screen.getByText('Run history')).toBeInTheDocument();
+        });
+        // The drifted historical run shows its invoices-checked count (40 is
+        // unique to history — the current report checked 42).
+        expect(screen.getByText('40')).toBeInTheDocument();
     });
 
     it('shows an error state with retry when the run fails', async () => {

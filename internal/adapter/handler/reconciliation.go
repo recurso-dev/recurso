@@ -2,9 +2,11 @@ package handler
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
@@ -33,4 +35,51 @@ func (h *ReconciliationHandler) RunReconciliation(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": report})
+}
+
+// RecordReconciliation runs a reconciliation AND records a summary of it to the
+// run history (the audit trail), then returns the full report. The ephemeral
+// GET stays side-effect-free; this is the explicit "run and record" action.
+// POST /v1/finance/reconciliation/runs
+func (h *ReconciliationHandler) RecordReconciliation(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	tid := tenantID.(uuid.UUID)
+
+	report, err := h.service.Run(c.Request.Context(), tid)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to run reconciliation")
+		return
+	}
+	// Best-effort: a persistence failure must not fail the reconciliation the
+	// operator just ran — the report is still returned.
+	_ = h.service.RecordRun(c.Request.Context(), tid, middleware.GetUserID(c), report)
+
+	c.JSON(http.StatusOK, gin.H{"data": report})
+}
+
+// ListReconciliationRuns returns the tenant's recorded reconciliation runs,
+// newest first — "when was it checked, by whom, and did it tie out?".
+// GET /v1/finance/reconciliation/runs?limit=
+func (h *ReconciliationHandler) ListReconciliationRuns(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	limit := 50
+	if v := c.Query("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = n
+		}
+	}
+	runs, err := h.service.ListRuns(c.Request.Context(), tenantID.(uuid.UUID), limit)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to list reconciliation runs")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": runs})
 }

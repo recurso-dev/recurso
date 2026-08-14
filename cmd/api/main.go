@@ -229,6 +229,7 @@ func main() {
 	// Ledger reconciliation: on-demand drift detection between billing
 	// records (invoices) and the Postgres ledger.
 	reconciliationService := service.NewReconciliationService(ledgerRepo, tbClientForRecon)
+	reconciliationService.SetRunStore(db.NewReconciliationRunRepository(database)) // run-history audit trail
 
 	// 5. Initialize Gateways
 	var razorpayGateway port.PaymentGateway
@@ -1983,6 +1984,8 @@ func main() {
 
 		// Ledger Reconciliation — on-demand drift report for the caller's tenant
 		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
+		v1.POST("/finance/reconciliation/runs", reconciliationHandler.RecordReconciliation)
+		v1.GET("/finance/reconciliation/runs", reconciliationHandler.ListReconciliationRuns)
 
 		// Month-end close pack (B2) — trial balance + reconciliation + deferred
 		// rollforward + GL export pointer + a ready-to-close verdict. Uncached

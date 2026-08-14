@@ -174,6 +174,10 @@ export const endpoints = {
   getLedgerAccounts: () => api.get('/ledger/accounts'),
   // On-demand ledger reconciliation (computed per request, never persisted).
   runReconciliation: () => api.get('/finance/reconciliation'),
+  // Run AND record to the audit trail (the explicit action); returns the report.
+  recordReconciliation: () => api.post('/finance/reconciliation/runs'),
+  // The recorded run history — when it was checked, by whom, did it tie out.
+  getReconciliationRuns: (params) => api.get('/finance/reconciliation/runs', { params }),
   // Deferred-revenue rollforward: recognized in the period, deferred balance,
   // the month-by-month release schedule, and the per-currency split.
   getRevenueRecognition: (month, year) =>

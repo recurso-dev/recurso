@@ -1,7 +1,8 @@
-import { shortId, formatDate } from "@/lib/utils";
+import { shortId, formatDate, formatDateTime } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router";
-import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, RefreshCw, ShieldCheck, History } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -63,8 +64,12 @@ const formatDifference = (d) => {
 export default function FinanceReconciliation() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [recording, setRecording] = useState(false);
   const [error, setError] = useState(null);
+  const queryClient = useQueryClient();
 
+  // The page auto-loads an ephemeral (GET) reconciliation so nothing is recorded
+  // just by opening it; the "Run & record" button below writes to the audit trail.
   const runReconciliation = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -78,9 +83,30 @@ export default function FinanceReconciliation() {
     }
   }, []);
 
+  // Explicit run that also records a summary to the run history (the audit trail).
+  const runAndRecord = useCallback(async () => {
+    setRecording(true);
+    setError(null);
+    try {
+      const res = await endpoints.recordReconciliation();
+      setReport(res.data?.data || null);
+      queryClient.invalidateQueries({ queryKey: ["reconciliation-runs"] });
+    } catch (err) {
+      setError(err?.response?.data?.error?.message || "Failed to run reconciliation");
+    } finally {
+      setRecording(false);
+    }
+  }, [queryClient]);
+
   useEffect(() => {
     runReconciliation();
   }, [runReconciliation]);
+
+  // The recorded run history — best-effort; an empty list just hides the section.
+  const { data: runs = [] } = useQuery({
+    queryKey: ["reconciliation-runs"],
+    queryFn: async () => (await endpoints.getReconciliationRuns({ limit: 20 })).data.data || [],
+  });
 
   const discrepancies = report?.discrepancies || [];
   const totalDiscrepancies = report?.total_discrepancies || 0;
@@ -92,9 +118,9 @@ export default function FinanceReconciliation() {
         title="Reconciliation"
         description="On-demand check that billing records, the Postgres ledger, and TigerBeetle agree."
         actions={
-          <Button onClick={runReconciliation} disabled={loading}>
-            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            {loading ? "Running…" : "Run again"}
+          <Button onClick={runAndRecord} disabled={loading || recording}>
+            <RefreshCw className={recording ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            {recording ? "Recording…" : "Run & record"}
           </Button>
         }
       />
@@ -287,6 +313,61 @@ export default function FinanceReconciliation() {
             )}
           </div>
         )
+      )}
+
+      {runs.length > 0 && (
+        <div className="mt-8">
+          <div className="mb-3 flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="text-base font-semibold text-foreground">Run history</h2>
+            <span className="text-xs text-muted-foreground">
+              — recorded reconciliations, newest first
+            </span>
+          </div>
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableHead>When</TableHead>
+                  <TableHead>Result</TableHead>
+                  <TableHead className="text-right">Invoices checked</TableHead>
+                  <TableHead>Recorded by</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {runs.map((r) => {
+                  const balanced = (r.total_discrepancies || 0) === 0;
+                  return (
+                    <TableRow key={r.id}>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {formatDateTime(r.run_at)}
+                      </TableCell>
+                      <TableCell>
+                        {balanced ? (
+                          <Badge variant="success">Reconciled</Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            {r.total_discrepancies.toLocaleString()} discrepanc
+                            {r.total_discrepancies === 1 ? "y" : "ies"}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono text-sm text-foreground">
+                        {(r.invoices_checked ?? 0).toLocaleString()}
+                      </TableCell>
+                      <TableCell
+                        className="font-mono text-xs text-muted-foreground"
+                        title={r.run_by || undefined}
+                      >
+                        {r.run_by ? shortId(r.run_by) : "—"}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
       )}
     </div>
   );
