@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import AskAnalytics from "../AskAnalytics";
 import { endpoints } from "../../lib/api";
@@ -22,7 +23,7 @@ vi.stubGlobal("localStorage", {
   },
 });
 
-const renderPage = () => render(<AskAnalytics />);
+const renderPage = () => render(<AskAnalytics />, { wrapper: MemoryRouter });
 
 describe("AskAnalytics", () => {
   beforeEach(() => {
@@ -71,6 +72,30 @@ describe("AskAnalytics", () => {
       const stored = JSON.parse(localStorage.getItem("recurso.ask.history.v1") || "[]");
       expect(stored).toHaveLength(1);
       expect(stored[0].question).toBe("Customers and plans");
+    });
+  });
+
+  it("drills recognized id columns to their object pages", async () => {
+    const cid = "6f5cf8c5-53c9-4928-8708-1f91322589b6";
+    endpoints.askAnalytics.mockResolvedValue({
+      data: {
+        data: [{ customer_id: cid, plan: "Pro" }],
+        query: "SELECT customer_id, plan FROM ...",
+      },
+    });
+
+    renderPage();
+    fireEvent.change(screen.getByLabelText("Question"), {
+      target: { value: "Customers on Pro" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /ask/i }));
+
+    // The customer_id UUID becomes a link to the customer's object page,
+    // shortened for readability with the full id on hover.
+    await waitFor(() => {
+      const link = screen.getByRole("link", { name: /6f5cf8c5/i });
+      expect(link).toHaveAttribute("href", `/customers/${cid}`);
+      expect(link).toHaveAttribute("title", cid);
     });
   });
 

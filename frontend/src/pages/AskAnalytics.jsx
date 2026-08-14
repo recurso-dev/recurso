@@ -11,7 +11,10 @@ import {
   Code2,
 } from "lucide-react";
 
+import { Link } from "react-router";
+
 import { endpoints as api } from "../lib/api";
+import { shortId } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -102,6 +105,37 @@ function normalizeRows(data) {
         )
       : row,
   );
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Map a result column (by its explicit *_id name) to the object page it
+// addresses, so an analytics answer drills into the operator console instead of
+// dead-ending on a raw UUID. Only explicitly-typed id columns are linked — a
+// bare `id` can't be mapped to an entity honestly, so it stays plain text.
+const ID_COL_ROUTES = {
+  customer_id: "/customers",
+  invoice_id: "/invoices",
+  subscription_id: "/subscriptions",
+  plan_id: "/plans",
+  credit_note_id: "/credit-notes",
+  coupon_id: "/coupons",
+  quote_id: "/quotes",
+  dispute_id: "/disputes",
+  wallet_id: "/wallets",
+  billable_metric_id: "/billable-metrics",
+  metric_id: "/billable-metrics",
+  dunning_campaign_id: "/dunning/campaigns",
+  cancel_flow_id: "/cancel-flows",
+  account_id: "/ledger/accounts",
+};
+
+// The object-page route for a cell, or null when the cell isn't a linkable id
+// (unknown column, non-UUID value, or null).
+function objectHrefFor(col, value) {
+  const base = ID_COL_ROUTES[String(col).toLowerCase()];
+  if (!base || typeof value !== "string" || !UUID_RE.test(value)) return null;
+  return `${base}/${value}`;
 }
 
 // Group integers/decimals for readability; leave strings alone.
@@ -223,7 +257,22 @@ function ResultTable({ rows }) {
                     isNumericCol(rows, c) ? "text-right tabular-nums" : ""
                   }`}
                 >
-                  {formatCell(row[c])}
+                  {(() => {
+                    const href = objectHrefFor(c, row[c]);
+                    // A recognized id drills to its object page (shortened for
+                    // readability; full id on hover). Everything else formats plain.
+                    return href ? (
+                      <Link
+                        to={href}
+                        title={row[c]}
+                        className="font-mono text-primary hover:underline"
+                      >
+                        {shortId(row[c])}
+                      </Link>
+                    ) : (
+                      formatCell(row[c])
+                    );
+                  })()}
                 </TableCell>
               ))}
             </TableRow>
