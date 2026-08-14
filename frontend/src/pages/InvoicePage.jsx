@@ -15,6 +15,7 @@ import {
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
+import { SubscriptionRef } from "@/components/patterns/SubscriptionRef";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
 import { PaymentAttempts } from "@/components/patterns/PaymentAttempts";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -392,12 +393,7 @@ export default function InvoicePage() {
                   {
                     label: "Subscription",
                     value: invoice.subscription_id ? (
-                      <Link
-                        to={`/subscriptions/${invoice.subscription_id}`}
-                        className="font-mono text-xs text-primary underline-offset-2 hover:underline"
-                      >
-                        {String(invoice.subscription_id).slice(0, 8)}…
-                      </Link>
+                      <SubscriptionRef subscriptionId={invoice.subscription_id} />
                     ) : null,
                   },
                   { label: "Created", value: formatDateTime(invoice.created_at) },
