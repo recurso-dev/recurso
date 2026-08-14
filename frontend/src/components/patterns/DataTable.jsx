@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { Search, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
@@ -129,6 +129,18 @@ export function DataTable({
       return String(va).localeCompare(String(vb)) * mul;
     });
   }, [data, clientSorted, internalSort, columns]);
+
+  // New-row reveal: a row that wasn't present on the previous render animates
+  // in. The whole table never animates on first mount (the ref starts null) —
+  // the page-level reveal already covers first appearance. Sorting keeps ids
+  // (rows just reposition), so only genuinely new rows flash: a loosened
+  // filter, a page turn, or appended data.
+  const prevIdsRef = useRef(null);
+  const isNewRow = (id) =>
+    prevIdsRef.current !== null && id != null && !prevIdsRef.current.has(id);
+  useEffect(() => {
+    prevIdsRef.current = new Set(rows.map(getRowId));
+  });
 
   const showToolbar = Boolean(search || toolbar);
   const interactive = Boolean(onRowClick || rowHref);
@@ -261,7 +273,10 @@ export function DataTable({
                   <RowGroup key={id}>
                     <TableRow
                       onClick={interactive ? () => activateRow(row) : undefined}
-                      className={cn(interactive && "cursor-pointer")}
+                      className={cn(
+                        interactive && "cursor-pointer",
+                        isNewRow(id) && "animate-motion-reveal"
+                      )}
                       data-state={expandedId === id ? "expanded" : undefined}
                     >
                       {columns.map((col, i) => (
