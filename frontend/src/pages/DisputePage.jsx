@@ -150,7 +150,7 @@ export default function DisputePage() {
         backLabel="Disputes"
         kicker="Dispute"
         title={`Dispute on ${invoiceLabel}`}
-        badge={<StatusBadge status={dispute.status} kind="dispute" />}
+        badge={<StatusBadge status={dispute.status} kind="dispute" flashOnChange />}
         meta={
           <>
             <CustomerName id={dispute.customer_id} names={names} link={false} />

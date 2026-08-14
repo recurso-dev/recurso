@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { MotionState } from "@/components/patterns/MotionState";
 
 /**
  * StatusBadge — THE only sanctioned status rendering (DASHBOARD_REDESIGN.md).
@@ -90,16 +91,22 @@ const humanize = (s) => {
   return t.charAt(0).toUpperCase() + t.slice(1);
 };
 
-export function StatusBadge({ status, kind, label, className }) {
+export function StatusBadge({ status, kind, label, className, flashOnChange = false }) {
   if (status == null || status === "") return null;
   const key = String(status).toLowerCase();
   const variant =
     (kind && REGISTRY[`${kind}:${key}`]) || REGISTRY[key] || "neutral";
-  return (
+  const badge = (
     <Badge variant={variant} className={className}>
       {label ?? LABELS[key] ?? humanize(key)}
     </Badge>
   );
+  // On a detail page a status can advance while you watch (after an action +
+  // refetch). Opt in with flashOnChange to briefly highlight the transition —
+  // "something happened". No flash on first mount, and never in lists (default
+  // off) where a badge just scrolls into view.
+  if (!flashOnChange) return badge;
+  return <MotionState motionKey={key}>{badge}</MotionState>;
 }
 
 export default StatusBadge;

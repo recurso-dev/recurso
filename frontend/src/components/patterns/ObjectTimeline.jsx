@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { endpoints } from "@/lib/api";
 import { formatDateTime } from "@/lib/utils";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
+import { MotionStagger } from "@/components/patterns/MotionReveal";
 
 const humanizeEvent = (type = "") =>
   type.replace(/[._]/g, " ").replace(/^./, (c) => c.toUpperCase());
@@ -51,6 +52,7 @@ export function ObjectTimeline({ objectId, limit = 8 }) {
   return (
     <div>
       <ol className="space-y-3">
+        <MotionStagger step={45}>
         {events.map((ev, i) => (
           <li key={ev.id} className="relative flex gap-3">
             {/* Rail dot + connecting line */}
@@ -66,6 +68,7 @@ export function ObjectTimeline({ objectId, limit = 8 }) {
             </div>
           </li>
         ))}
+        </MotionStagger>
       </ol>
       <Link
         to="/events"
