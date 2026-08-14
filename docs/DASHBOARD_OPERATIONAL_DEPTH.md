@@ -257,3 +257,19 @@ Usage (current+lifetime, buckets, raw stream).
   customer page's wallet rail links to the specific wallet instead of the bare
   list. A wallet's movements ARE its audit trail (wallets emit nothing to
   /events — noted honestly). lint 0, build, 525 tests.
+- 2026-08-14 — **Increment 14: Credit Note object page** (branch
+  dashboard-depth-credit-notes). Backend linchpin: GET
+  /v1/credit-notes/:id/journal-entries — mirrors the invoice journal endpoint
+  (a credit note's legs are keyed by its id via reference_id). Service
+  GetCreditNoteJournalEntries (repo.GetByID tenant-scoped → 404; ledger's
+  GetJournalEntriesByReference; nil ledger → empty non-nil), handler returns
+  {data:{credit_note_id, entries}}, route + openapi + 2 handler tests. Frontend:
+  new CreditNotePage at /credit-notes/:id **replacing the cramped detail
+  slide-over** (deleted CreditNoteDetail.jsx + its test). Full object page:
+  lifecycle header + approve/reject/void actions (role-gated, consequence-
+  explaining confirms) + Document; AttentionBanner (pending approval, rejected,
+  refund failed); amounts (credit/applied-or-refunded/balance); statutory tax
+  reversal (taxable + IGST/CGST/SGST); Related (customer + the invoice it
+  offsets); and the **journal-entries drill** via the shared JournalEntries
+  primitive. List rows drill to it; CreditNoteDetail slide-over retired. lint 0,
+  build, 520 tests.

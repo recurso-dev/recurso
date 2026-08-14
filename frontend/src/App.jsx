@@ -56,6 +56,7 @@ const Integrations = lazy(() => import('./pages/Integrations'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
 const CreditNotes = lazy(() => import('./pages/CreditNotes'))
+const CreditNotePage = lazy(() => import('./pages/CreditNotePage'))
 const CreateCreditNote = lazy(() => import('./pages/CreateCreditNote'))
 const Settings = lazy(() => import('./pages/Settings'))
 const SettingsLayout = lazy(() => import('./components/settings/SettingsLayout'))
@@ -198,7 +199,7 @@ function App() {
                             <Route path="/finance/revenue-by-geography" element={<RevenueByGeography />} />
                             <Route path="/credit-notes" element={<CreditNotes />} />
                             <Route path="/credit-notes/new" element={<CreateCreditNote />} />
-                            <Route path="/credit-notes/:id" element={<CreditNotes />} />
+                            <Route path="/credit-notes/:id" element={<CreditNotePage />} />
                             <Route path="/quotes" element={<Quotes />} />
                             <Route path="/quotes/new" element={<CreateQuote />} />
                             <Route path="/quotes/:id/edit" element={<CreateQuote />} />
