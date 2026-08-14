@@ -43,6 +43,7 @@ const Subscriptions = lazy(() => import('./pages/Subscriptions'))
 const CreateSubscription = lazy(() => import('./pages/CreateSubscription'))
 const Invoices = lazy(() => import('./pages/Invoices'))
 const Coupons = lazy(() => import('./pages/Coupons'))
+const CouponPage = lazy(() => import('./pages/CouponPage'))
 const Metering = lazy(() => import('./pages/Metering'))
 const MeterPage = lazy(() => import('./pages/MeterPage'))
 const Wallets = lazy(() => import('./pages/Wallets'))
@@ -176,6 +177,7 @@ function App() {
                             <Route path="/products" element={<Navigate to="/plans" replace />} />
                             <Route path="/coupons" element={<Coupons />} />
                             <Route path="/coupons/new" element={<CreateCoupon />} />
+                            <Route path="/coupons/:id" element={<CouponPage />} />
                             <Route path="/usage" element={<Usage />} />
                             <Route path="/developers" element={<Developers />} />
                             <Route path="/integrations" element={<Integrations />} />
