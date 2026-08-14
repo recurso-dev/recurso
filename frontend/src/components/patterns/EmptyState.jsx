@@ -27,6 +27,9 @@ export function EmptyState({
     <div
       className={cn(
         "flex flex-col items-center justify-center px-6 py-16 text-center",
+        // A gentle settle when the empty state appears (e.g. after a search
+        // clears to nothing). Neutralized under reduced motion by global CSS.
+        "animate-motion-reveal",
         className
       )}
     >

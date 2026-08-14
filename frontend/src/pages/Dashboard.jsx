@@ -33,6 +33,7 @@ import { ErrorState } from "@/components/patterns/ErrorState";
 import { StatCard } from "@/components/patterns/StatCard";
 import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { EmptyState } from "@/components/patterns/EmptyState";
+import { MotionStagger } from "@/components/patterns/MotionReveal";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -723,6 +724,7 @@ export default function Dashboard() {
               />
             ) : (
               <ol className="space-y-3">
+                <MotionStagger step={45}>
                 {events.map((ev) => {
                   const route = OBJECT_ROUTES[ev.object_type]?.(ev.object_id);
                   const row = (
@@ -750,6 +752,7 @@ export default function Dashboard() {
                     </li>
                   );
                 })}
+                </MotionStagger>
               </ol>
             )}
           </CardContent>
