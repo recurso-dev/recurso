@@ -67,6 +67,7 @@ type SubscriptionService struct {
 	telemetry           *telemetry.Client                // nil-safe; only set when TELEMETRY_OPTIN=true
 	finalUsageInvoicer  finalUsageInvoicer               // Usage-based billing v1: bill the partial window on immediate cancel; nil-safe
 	paymentAttempts     paymentAttemptLister             // nil-safe; the invoice page's payment-attempt history
+	invoiceStatusLog    invoiceStatusHistoryReader       // nil-safe; the invoice page's status timeline
 	logger              *slog.Logger
 }
 
@@ -620,6 +621,42 @@ func (s *SubscriptionService) GetInvoicePaymentAttempts(ctx context.Context, ten
 		attempts = []*domain.PaymentAttempt{}
 	}
 	return attempts, nil
+}
+
+// invoiceStatusHistoryReader is the narrow read the invoice status timeline
+// needs — an invoice's recorded status transitions (trigger-captured).
+type invoiceStatusHistoryReader interface {
+	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]domain.InvoiceStatusChange, error)
+}
+
+// SetInvoiceStatusHistoryReader enables GetInvoiceStatusHistory. Without it, the
+// endpoint reports an empty timeline rather than erroring.
+func (s *SubscriptionService) SetInvoiceStatusHistoryReader(r invoiceStatusHistoryReader) {
+	s.invoiceStatusLog = r
+}
+
+// GetInvoiceStatusHistory returns an invoice's status transitions (oldest
+// first). Verifies the invoice exists (tenant-scoped) first and returns
+// (nil, nil) when it doesn't, so a bad id is a 404 rather than an empty timeline.
+func (s *SubscriptionService) GetInvoiceStatusHistory(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]domain.InvoiceStatusChange, error) {
+	inv, err := s.invoiceRepo.GetByID(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if inv == nil {
+		return nil, nil
+	}
+	if s.invoiceStatusLog == nil {
+		return []domain.InvoiceStatusChange{}, nil
+	}
+	changes, err := s.invoiceStatusLog.ListByInvoice(ctx, tenantID, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+	if changes == nil {
+		changes = []domain.InvoiceStatusChange{}
+	}
+	return changes, nil
 }
 
 // ListPaymentAttempts returns the tenant-wide payments log (attempts, newest

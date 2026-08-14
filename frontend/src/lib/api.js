@@ -140,6 +140,8 @@ export const endpoints = {
   getInvoice: (id) => api.get(`/invoices/${id}`),
   getInvoiceJournalEntries: (id) => api.get(`/invoices/${id}/journal-entries`),
   getInvoicePaymentAttempts: (id) => api.get(`/invoices/${id}/payment-attempts`),
+  // The invoice's status timeline (trigger-captured transitions, oldest first).
+  getInvoiceStatusHistory: (id) => api.get(`/invoices/${id}/status-history`),
   // Tenant-wide payments log: every gateway attempt, newest first, paginated,
   // optional { status } filter. Powers /payments.
   getPaymentAttempts: (params) => api.get(`/payment-attempts`, { params }),

@@ -117,6 +117,13 @@ export default function InvoicePage() {
     enabled: Boolean(id),
   });
 
+  // The lifecycle: every status transition this invoice has moved through.
+  const { data: statusHistory = [] } = useQuery({
+    queryKey: ["invoiceStatusHistory", id],
+    queryFn: async () => (await endpoints.getInvoiceStatusHistory(id)).data.data?.history || [],
+    enabled: Boolean(id),
+  });
+
   const [retrying, setRetrying] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [showCancelPanel, setShowCancelPanel] = useState(false);
@@ -505,6 +512,50 @@ export default function InvoicePage() {
             />
           </div>
         </ObjectSection>
+
+        {/* The lifecycle: every status transition, captured at the source. Shown
+            once there is recorded history (invoices predating the trigger have none). */}
+        {statusHistory.length > 0 && (
+          <ObjectSection
+            title="Status history"
+            action={
+              <span className="text-xs text-muted-foreground">The lifecycle behind the current status</span>
+            }
+          >
+            <ol className="space-y-0">
+              {statusHistory.map((h, i) => {
+                const last = i === statusHistory.length - 1;
+                return (
+                  <li key={h.id} className="relative flex gap-3 pb-4 last:pb-0">
+                    {!last && (
+                      <span className="absolute left-[4px] top-4 h-full w-px bg-border" aria-hidden />
+                    )}
+                    <span className="relative z-10 mt-1.5 size-2 shrink-0 rounded-full bg-primary/70" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        {h.from_status ? (
+                          <>
+                            <StatusBadge status={h.from_status} />
+                            <span className="text-muted-foreground" aria-label="became">→</span>
+                            <StatusBadge status={h.to_status} />
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-muted-foreground">Created as</span>
+                            <StatusBadge status={h.to_status} />
+                          </>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {formatDateTime(h.changed_at)}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </ObjectSection>
+        )}
 
         {/* The collection side: how we tried to get paid. Shown only when there
             were gateway attempts (credit/offline invoices have none). */}

@@ -107,6 +107,41 @@ func TestGetInvoiceJournalCrossTenantIs404(t *testing.T) {
 	}
 }
 
+// --- GET /v1/invoices/:id/status-history ----------------------------------
+
+func doGetInvoiceStatusHistory(h *SubscriptionHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/invoices/"+id+"/status-history", nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetInvoiceStatusHistory(c)
+	return w
+}
+
+func TestGetInvoiceStatusHistoryOwnedReturnsHistoryArray(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: tenantID}
+	// No history reader wired → an owned invoice yields an empty (non-nil)
+	// timeline, 200 — never 404.
+	w := doGetInvoiceStatusHistory(newInvoiceGetHandler(inv), tenantID, inv.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned invoice status-history: got %d want 200", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), `"history"`) {
+		t.Fatalf("expected a history array, got %s", w.Body.String())
+	}
+}
+
+func TestGetInvoiceStatusHistoryCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	inv := &domain.Invoice{ID: uuid.New(), TenantID: uuid.New()}
+	if got := doGetInvoiceStatusHistory(newInvoiceGetHandler(inv), uuid.New(), inv.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant status-history: got %d want 404", got)
+	}
+}
+
 func TestGetInvoiceJournalBadIdIs400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	if got := doGetInvoiceJournal(newInvoiceGetHandler(nil), uuid.New(), "nope").Code; got != http.StatusBadRequest {

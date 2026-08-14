@@ -565,7 +565,8 @@ func main() {
 	invoiceService.EUEInvoiceService = euEInvoiceService
 	invoiceService.NotificationService = notificationService // email the customer their invoice + Pay Now link on generation
 	subscriptionService.SetEInvoiceService(einvoiceService)
-	subscriptionService.SetPaymentAttemptLister(db.NewPaymentAttemptRepository(database)) // invoice payment-attempt history
+	subscriptionService.SetPaymentAttemptLister(db.NewPaymentAttemptRepository(database))             // invoice payment-attempt history
+	subscriptionService.SetInvoiceStatusHistoryReader(db.NewInvoiceStatusHistoryRepository(database)) // invoice status timeline
 	subscriptionService.SetNotificationService(notificationService)
 	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
 	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
@@ -1839,6 +1840,7 @@ func main() {
 		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
 		v1.GET("/invoices/:id/journal-entries", subscriptionHandler.GetInvoiceJournalEntries)
 		v1.GET("/invoices/:id/payment-attempts", subscriptionHandler.GetInvoicePaymentAttempts)
+		v1.GET("/invoices/:id/status-history", subscriptionHandler.GetInvoiceStatusHistory)
 		v1.GET("/payment-attempts", subscriptionHandler.ListPaymentAttempts)
 		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
