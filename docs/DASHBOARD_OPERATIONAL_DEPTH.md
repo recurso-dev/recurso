@@ -230,3 +230,16 @@ Usage (current+lifetime, buckets, raw stream).
   (Definition + Plans-pricing-on-it reverse lookup + Recent events feeding it +
   audit), Metering list rows rowHref to it. Event → Meter → Aggregation →
   Pricing now navigable end to end. lint 0, build, 518 tests.
+- 2026-08-14 — **Increment 12: Payments log page** (branch
+  dashboard-depth-payments-log). Backend: GET /v1/payment-attempts — the
+  tenant-wide payments log gateway attempts never had (only per-invoice
+  history existed). PaymentAttemptRepository.List (COUNT(*) OVER() total, LEFT
+  JOIN invoices for number + currency) → PaymentAttemptListItem; extended the
+  narrow paymentAttemptLister with List; SubscriptionService.ListPaymentAttempts
+  (nil lister → empty page); handler returns {data, pagination} like
+  ListInvoices; route + openapi + handler test. Frontend: new Payments page at
+  /payments (nav group "Payments" → "Payments Log") — every settlement attempt
+  newest-first, exceptions-first status filter (failed/returned lead, tone
+  destructive), When/Invoice(link)/Amount/Method+Gateway/Status/Reason columns,
+  rows drill to /invoices/:id. Answers "did this collection go through, and if
+  not why?" without opening each invoice. lint 0, build, 521 tests.
