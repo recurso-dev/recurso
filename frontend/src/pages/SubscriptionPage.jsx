@@ -6,7 +6,7 @@ import { Pause, Play, RotateCw, ArrowLeftRight, Plus, X } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { usePlans } from "../lib/useCustomers";
-import { cn, formatCurrency, formatDate, toMinorUnits } from "@/lib/utils";
+import { cn, formatCurrency, formatDate, formatDateTime, toMinorUnits } from "@/lib/utils";
 import {
   ObjectHeader,
   ObjectPageLayout,
@@ -90,6 +90,13 @@ export default function SubscriptionPage() {
 
   const { plans } = usePlans();
   const plan = plans.find((p) => p.id === subscription?.plan_id);
+
+  // The lifecycle: every recorded status transition and plan switch.
+  const { data: lifecycleHistory = [] } = useQuery({
+    queryKey: ["subscriptionHistory", id],
+    queryFn: async () => (await endpoints.getSubscriptionHistory(id)).data.data?.history || [],
+    enabled: Boolean(id),
+  });
 
   const { data: addons = [], refetch: refreshAddons } = useQuery({
     queryKey: ["subscriptionAddons", id],
@@ -1048,6 +1055,59 @@ export default function SubscriptionPage() {
             </div>
           )}
         </ObjectSection>
+
+        {/* The lifecycle: every recorded status transition and plan switch,
+            captured at the source (subscriptions predating the trigger have none). */}
+        {lifecycleHistory.length > 0 && (
+          <ObjectSection
+            title="Lifecycle"
+            action={
+              <span className="text-xs text-muted-foreground">Status &amp; plan changes over time</span>
+            }
+          >
+            <ol className="space-y-0">
+              {lifecycleHistory.map((h, i) => {
+                const last = i === lifecycle.length - 1;
+                return (
+                  <li key={h.id} className="relative flex gap-3 pb-4 last:pb-0">
+                    {!last && (
+                      <span className="absolute left-[4px] top-4 h-full w-px bg-border" aria-hidden />
+                    )}
+                    <span className="relative z-10 mt-1.5 size-2 shrink-0 rounded-full bg-primary/70" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        {h.change_type === "plan" ? (
+                          <>
+                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                              Plan
+                            </span>
+                            <span className="text-foreground">{planNameOf(h.from_value)}</span>
+                            <span className="text-muted-foreground" aria-label="became">→</span>
+                            <span className="text-foreground">{planNameOf(h.to_value)}</span>
+                          </>
+                        ) : h.from_value ? (
+                          <>
+                            <StatusBadge status={h.from_value} />
+                            <span className="text-muted-foreground" aria-label="became">→</span>
+                            <StatusBadge status={h.to_value} />
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-xs text-muted-foreground">Created as</span>
+                            <StatusBadge status={h.to_value} />
+                          </>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {formatDateTime(h.changed_at)}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </ObjectSection>
+        )}
       </ObjectPageLayout>
 
       <ConfirmDialog
