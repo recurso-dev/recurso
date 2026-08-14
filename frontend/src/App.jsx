@@ -79,6 +79,7 @@ const CancelFlows = lazy(() => import('./pages/CancelFlows'))
 const Churn = lazy(() => import('./pages/Churn'))
 const Mandates = lazy(() => import('./pages/Mandates'))
 const Disputes = lazy(() => import('./pages/Disputes'))
+const DisputePage = lazy(() => import('./pages/DisputePage'))
 const OfflinePayments = lazy(() => import('./pages/OfflinePayments'))
 const Payments = lazy(() => import('./pages/Payments'))
 const FinanceReconciliation = lazy(() => import('./pages/FinanceReconciliation'))
@@ -236,6 +237,7 @@ function App() {
                             <Route path="/churn" element={<Churn />} />
                             <Route path="/mandates" element={<Mandates />} />
                             <Route path="/disputes" element={<Disputes />} />
+                            <Route path="/disputes/:id" element={<DisputePage />} />
                             <Route path="/payments" element={<Payments />} />
                             <Route path="/payments/offline" element={<OfflinePayments />} />
                             <Route path="/organizations" element={<Organizations />} />
