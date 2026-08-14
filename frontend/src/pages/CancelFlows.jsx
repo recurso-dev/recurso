@@ -1,26 +1,24 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, HeartHandshake, Settings2 } from "lucide-react";
+import { Plus, HeartHandshake } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormSheet } from "@/components/patterns/FormSheet";
-import { EmptyState } from "@/components/patterns/EmptyState";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
+import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
-import CancelFlowDetail from "@/components/slide-overs/CancelFlowDetail";
 
 const CancelFlows = () => {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", is_default: false, cooldown_days: 30 });
-  const [detailId, setDetailId] = useState(null);
 
   const {
     data: flows = [],
@@ -38,15 +36,14 @@ const CancelFlows = () => {
     ? queryError?.response?.data?.error?.message || "Failed to load cancel flows"
     : null;
 
-  const invalidateFlows = () => queryClient.invalidateQueries({ queryKey: ["cancel-flows"] });
-
   const createMutation = useMutation({
     mutationFn: (payload) => api.createCancelFlow(payload),
     onSuccess: (res) => {
       setCreateOpen(false);
       setCreateForm({ name: "", is_default: false, cooldown_days: 30 });
-      invalidateFlows();
-      if (res.data?.id) setDetailId(res.data.id);
+      queryClient.invalidateQueries({ queryKey: ["cancel-flows"] });
+      // Jump straight into the new flow to configure its steps.
+      if (res.data?.id) navigate(`/cancel-flows/${res.data.id}`);
     },
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to create flow"),
@@ -68,6 +65,29 @@ const CancelFlows = () => {
     </Button>
   );
 
+  const columns = [
+    {
+      key: "name",
+      header: "Flow",
+      cell: (f) => (
+        <span className="flex items-center gap-2">
+          <span className="font-medium text-foreground">{f.name}</span>
+          {f.is_default && <Badge variant="info">Default</Badge>}
+        </span>
+      ),
+    },
+    {
+      key: "cooldown",
+      header: "Cooldown",
+      cell: (f) => <span className="text-muted-foreground">{f.cooldown_days} days</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (f) => <StatusBadge status={f.is_active ? "active" : "inactive"} />,
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -76,46 +96,20 @@ const CancelFlows = () => {
         actions={createButton}
       />
 
-      {loading ? (
-        <CardGridSkeleton count={3} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={refetch} />
-      ) : flows.length === 0 ? (
-        <EmptyState
-          icon={HeartHandshake}
-          title="No cancellation flows yet"
-          description="Create a flow to try to retain customers before they cancel."
-          action={createButton}
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {flows.map((f) => (
-            <Card key={f.id}>
-              <CardContent className="flex flex-col gap-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground">{f.name}</p>
-                  <div className="flex shrink-0 gap-1">
-                    {f.is_default && <Badge variant="info">Default</Badge>}
-                    <Badge variant={f.is_active ? "success" : "neutral"}>
-                      {f.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">Cooldown: {f.cooldown_days} days</p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-1 self-start"
-                  onClick={() => setDetailId(f.id)}
-                >
-                  <Settings2 className="h-4 w-4" />
-                  Configure steps
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={flows}
+        loading={loading}
+        error={error}
+        onRetry={refetch}
+        rowHref={(f) => `/cancel-flows/${f.id}`}
+        empty={{
+          icon: HeartHandshake,
+          title: "No cancellation flows yet",
+          description: "Create a flow to try to retain customers before they cancel.",
+          action: createButton,
+        }}
+      />
 
       <FormSheet
         open={createOpen}
@@ -159,13 +153,6 @@ const CancelFlows = () => {
           Use as the default flow
         </label>
       </FormSheet>
-
-      <CancelFlowDetail
-        flowId={detailId}
-        isOpen={!!detailId}
-        onClose={() => setDetailId(null)}
-        onChanged={invalidateFlows}
-      />
     </div>
   );
 };
