@@ -315,3 +315,22 @@ Usage (current+lifetime, buckets, raw stream).
   coupon** (reverse lookup over subscriptions by coupon_id — a REAL redemption
   count, not the fabricated counter the slide-over showed). List rows rowHref to
   it. lint 0, build, 524 tests.
+- 2026-08-14 — **Slide-over dead-code audit** (no code change): all 7 remaining
+  slide-overs are LIVE — CustomerDetail/PlanDetail are now edit-sheets on their
+  object pages; DunningCampaignDetail/CancelFlowDetail back their list detail
+  views; PlanCharges/PricingSimulator/CancelFlowStepConfig are sub-components.
+  The only dead ones (CreditNoteDetail/QuoteDetail/CouponDetail) were deleted in
+  their own increments, so nothing left to clean. Remaining slide-over-backed
+  surfaces = Dunning Campaigns + Cancel Flows (object-page candidates).
+- 2026-08-14 — **Increment 18: Dunning Campaign object page** (branch
+  dashboard-depth-dunning-campaigns). No new backend — GET /dunning-campaigns/:id
+  already existed (returns the campaign DIRECTLY, not wrapped in {data}). New
+  DunningCampaignPage at /dunning/campaigns/:id: the real depth is the **step
+  cadence as a readable vertical timeline** — each step's channel (email/sms/
+  in-app icon+badge), plain-language delay ("immediately"/"after 3 days"),
+  subject/body, and payment-wall marker; plus a "How it runs" trigger summary
+  and activate/deactivate. The existing DunningCampaignDetail step-editor is
+  **reused as the edit sheet** (opened via "Edit steps"), so no editing logic is
+  duplicated (same pattern as Customer/Plan pages). The list was **converted
+  from a card grid → DataTable** (charter: no card-grid dashboards); rows drill
+  to the page, create navigates to the new campaign. lint 0, build, 527 tests.

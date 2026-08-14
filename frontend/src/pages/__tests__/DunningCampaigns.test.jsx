@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from "@testing-library/react";
+import { BrowserRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import DunningCampaigns from "../DunningCampaigns";
@@ -10,13 +11,14 @@ vi.mock("../../lib/api", () => ({
     createDunningCampaign: vi.fn(),
   },
 }));
-vi.mock("@/components/slide-overs/DunningCampaignDetail", () => ({ default: () => <div /> }));
 vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const wrapper = ({ children }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
-    {children}
-  </QueryClientProvider>
+  <BrowserRouter>
+    <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}>
+      {children}
+    </QueryClientProvider>
+  </BrowserRouter>
 );
 
 describe("DunningCampaigns page", () => {

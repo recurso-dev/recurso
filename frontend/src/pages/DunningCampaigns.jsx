@@ -1,19 +1,18 @@
 import { useState } from "react";
+import { useNavigate } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Megaphone, Settings2 } from "lucide-react";
+import { Plus, Megaphone } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { formatDate } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormSheet } from "@/components/patterns/FormSheet";
-import { EmptyState } from "@/components/patterns/EmptyState";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
+import { DataTable } from "@/components/patterns/DataTable";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -21,7 +20,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import DunningCampaignDetail from "@/components/slide-overs/DunningCampaignDetail";
 
 const TRIGGERS = [
   { value: "payment_failed", label: "Payment failed" },
@@ -31,9 +29,9 @@ const TRIGGERS = [
 const triggerLabel = (v) => TRIGGERS.find((t) => t.value === v)?.label || v;
 
 const DunningCampaigns = () => {
+  const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ name: "", trigger_event: "payment_failed" });
-  const [detailId, setDetailId] = useState(null);
   const queryClient = useQueryClient();
 
   const {
@@ -52,17 +50,14 @@ const DunningCampaigns = () => {
     ? queryError?.response?.data?.error?.message || "Failed to load campaigns"
     : null;
 
-  const invalidateCampaigns = () =>
-    queryClient.invalidateQueries({ queryKey: ["dunning-campaigns"] });
-
   const createMutation = useMutation({
     mutationFn: (form) => api.createDunningCampaign(form),
     onSuccess: (res) => {
       setCreateOpen(false);
       setCreateForm({ name: "", trigger_event: "payment_failed" });
-      invalidateCampaigns();
-      // Jump straight into configuring steps for the new campaign.
-      if (res.data?.id) setDetailId(res.data.id);
+      queryClient.invalidateQueries({ queryKey: ["dunning-campaigns"] });
+      // Jump straight into the new campaign to configure its steps.
+      if (res.data?.id) navigate(`/dunning/campaigns/${res.data.id}`);
     },
     onError: (err) =>
       toast.error(err?.response?.data?.error?.message || "Failed to create campaign"),
@@ -81,6 +76,29 @@ const DunningCampaigns = () => {
     </Button>
   );
 
+  const columns = [
+    {
+      key: "name",
+      header: "Campaign",
+      cell: (c) => <span className="font-medium text-foreground">{c.name}</span>,
+    },
+    {
+      key: "trigger",
+      header: "Trigger",
+      cell: (c) => <span className="text-muted-foreground">{triggerLabel(c.trigger_event)}</span>,
+    },
+    {
+      key: "status",
+      header: "Status",
+      cell: (c) => <StatusBadge status={c.is_active ? "active" : "inactive"} />,
+    },
+    {
+      key: "created",
+      header: "Created",
+      cell: (c) => <span className="text-muted-foreground">{formatDate(c.created_at)}</span>,
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -89,45 +107,21 @@ const DunningCampaigns = () => {
         actions={createButton}
       />
 
-      {loading ? (
-        <CardGridSkeleton count={3} />
-      ) : error ? (
-        <ErrorState message={error} onRetry={refetch} />
-      ) : campaigns.length === 0 ? (
-        <EmptyState
-          icon={Megaphone}
-          title="No campaigns yet"
-          description="Create a campaign to define how customers are reminded about failed payments."
-          action={createButton}
-        />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {campaigns.map((c) => (
-            <Card key={c.id}>
-              <CardContent className="flex flex-col gap-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground">{c.name}</p>
-                  <Badge variant={c.is_active ? "success" : "neutral"}>
-                    {c.is_active ? "Active" : "Inactive"}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Trigger: {triggerLabel(c.trigger_event)}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-1 self-start"
-                  onClick={() => setDetailId(c.id)}
-                >
-                  <Settings2 className="h-4 w-4" />
-                  Configure steps
-                </Button>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+      <DataTable
+        columns={columns}
+        data={campaigns}
+        loading={loading}
+        error={error}
+        onRetry={refetch}
+        rowHref={(c) => `/dunning/campaigns/${c.id}`}
+        empty={{
+          icon: Megaphone,
+          title: "No campaigns yet",
+          description:
+            "Create a campaign to define how customers are reminded about failed payments.",
+          action: createButton,
+        }}
+      />
 
       <FormSheet
         open={createOpen}
@@ -168,13 +162,6 @@ const DunningCampaigns = () => {
           </Select>
         </div>
       </FormSheet>
-
-      <DunningCampaignDetail
-        campaignId={detailId}
-        isOpen={!!detailId}
-        onClose={() => setDetailId(null)}
-        onChanged={invalidateCampaigns}
-      />
     </div>
   );
 };
