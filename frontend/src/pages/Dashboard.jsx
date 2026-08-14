@@ -466,7 +466,8 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
             label="MRR"
-            value={mrr != null ? formatCurrencyHeadline(mrr, mrrCurrency) : "—"}
+            value={mrr != null ? mrr : "—"}
+            format={(n) => formatCurrencyHeadline(n, mrrCurrency)}
             icon={DollarSign}
             delta={mrrDelta != null ? `${mrrDelta > 0 ? "+" : ""}${mrrDelta}%` : undefined}
             deltaType={mrrDelta > 0 ? "positive" : mrrDelta < 0 ? "negative" : "neutral"}
@@ -476,7 +477,7 @@ export default function Dashboard() {
           />
           <StatCard
             label="Active Subscriptions"
-            value={activeSubs.toLocaleString()}
+            value={activeSubs}
             icon={Users}
             delta={subsDelta != null ? `${subsDelta > 0 ? "+" : ""}${subsDelta}%` : undefined}
             deltaType={subsDelta > 0 ? "positive" : subsDelta < 0 ? "negative" : "neutral"}
@@ -494,7 +495,8 @@ export default function Dashboard() {
           />
           <StatCard
             label="Recovered Revenue"
-            value={recovered != null ? formatCurrencyHeadline(recovered, recoveredCurrency) : "—"}
+            value={recovered != null ? recovered : "—"}
+            format={(n) => formatCurrencyHeadline(n, recoveredCurrency)}
             icon={RotateCcw}
             hint="Via smart dunning"
             to="/dunning"

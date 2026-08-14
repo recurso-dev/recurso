@@ -56,6 +56,21 @@ describe("StatCard", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders a numeric value through MotionNumber with an optional formatter", () => {
+    // Under jsdom (no matchMedia → reduced motion) MotionNumber snaps to the
+    // final, formatted value — so the displayed text is deterministic.
+    render(<StatCard label="Active" value={1234} />);
+    expect(screen.getByText("1,234")).toBeInTheDocument();
+
+    render(<StatCard label="MRR" value={128400} format={(n) => `$${(n / 100).toLocaleString()}`} />);
+    expect(screen.getByText("$1,284")).toBeInTheDocument();
+  });
+
+  it("renders a pre-formatted string value verbatim (no motion)", () => {
+    render(<StatCard label="Churn" value="2.1%" />);
+    expect(screen.getByText("2.1%")).toBeInTheDocument();
+  });
+
   it("falls back to a native title (no nested button) when the tile is a link", () => {
     render(
       <MemoryRouter>
