@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { MotionNumber } from "@/components/patterns/MotionNumber";
 import {
   Tooltip,
   TooltipContent,
@@ -39,6 +40,8 @@ export function StatCard({
   tone,
   definition,
   className,
+  style,
+  format,
 }) {
   const deltaStyles = {
     positive: "text-success",
@@ -53,6 +56,7 @@ export function StatCard({
 
   const card = (
     <Card
+      style={style}
       className={cn(
         "p-5",
         to && "transition-shadow hover:shadow-md",
@@ -100,7 +104,14 @@ export function StatCard({
               toneStyles[tone] || "text-foreground"
             )}
           >
-            {value}
+            {/* A numeric value interpolates to its new figure when the metric
+                changes (integer domain: counts, minor-unit money). Pre-formatted
+                string values render as-is. */}
+            {typeof value === "number" ? (
+              <MotionNumber value={value} format={format} />
+            ) : (
+              value
+            )}
           </p>
         )}
         {delta && !loading && (
