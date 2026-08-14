@@ -325,7 +325,7 @@ export default function CustomerPage() {
                 </RelatedRow>
               ))}
               {wallets.map((w) => (
-                <RelatedRow key={w.id} to="/wallets">
+                <RelatedRow key={w.id} to={`/wallets/${w.id}`}>
                   <span className="min-w-0 truncate font-medium text-foreground">
                     {w.currency} wallet
                   </span>
