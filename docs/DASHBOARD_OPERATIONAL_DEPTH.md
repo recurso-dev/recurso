@@ -300,3 +300,18 @@ Usage (current+lifetime, buckets, raw stream).
   Related (customer + the converted invoice). Converting now navigates straight
   to the new invoice. List rows already rowHref'd here; slide-over retired. lint
   0, build, 524 tests.
+- 2026-08-14 — **Increment 17: Coupon object page** (branch
+  dashboard-depth-coupons). Backend linchpin: GET /v1/coupons/:id — coupons had
+  list/create/update but no single-read. Handler uses the repo's existing
+  tenant-scoped GetByID (nil → 404); route + openapi ($ref Coupon). (No handler
+  unit test: concrete *db.CouponRepository, no interface seam, and the sibling
+  coupon handlers have none — not worth adding sqlmock; the drift gate covers
+  the route.) Frontend: new CouponPage at /coupons/:id **replacing the detail
+  slide-over** (deleted CouponDetail.jsx + its test — that slide-over referenced
+  redemption/currency fields the API never returns, i.e. dead/fake UI). The page
+  shows ONLY real fields: a plain-language "what it does" sentence
+  (forever/once/repeating-N-months), the activate/deactivate gate, and the
+  genuine depth — **"Redeemed by": the subscriptions actually carrying this
+  coupon** (reverse lookup over subscriptions by coupon_id — a REAL redemption
+  count, not the fabricated counter the slide-over showed). List rows rowHref to
+  it. lint 0, build, 524 tests.

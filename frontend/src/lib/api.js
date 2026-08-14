@@ -251,6 +251,7 @@ export const endpoints = {
 
   // Coupons
   getCoupons: () => api.get('/coupons'),
+  getCoupon: (id) => api.get(`/coupons/${id}`),
   createCoupon: (data) => api.post('/coupons', data),
   // active:false blocks new redemptions; existing subscriptions keep the discount.
   setCouponActive: (id, active) => api.put(`/coupons/${id}`, { active }),

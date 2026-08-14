@@ -108,6 +108,32 @@ func (h *CouponHandler) UpdateCoupon(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": map[bool]string{true: "activated", false: "deactivated"}[*req.Active]})
 }
 
+// GetCoupon handles GET /v1/coupons/:id (tenant-scoped) — one coupon as an
+// addressable object for the dashboard's coupon page. A missing or cross-tenant
+// id returns 404.
+func (h *CouponHandler) GetCoupon(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid coupon id")
+		return
+	}
+	coupon, err := h.repo.GetByID(c.Request.Context(), tenantID, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "Failed to load coupon")
+		return
+	}
+	if coupon == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "coupon not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": coupon})
+}
+
 func (h *CouponHandler) ListCoupons(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

@@ -13,7 +13,6 @@ vi.mock("../../lib/api", () => ({
   },
 }));
 vi.mock("@/components/ui/sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("../../components/slide-overs/CouponDetail", () => ({ default: () => <div /> }));
 
 const coupons = [
   { id: "c1", code: "SAVE20", discount_type: "percent", discount_value: 20, active: true, redemptions: 3 },

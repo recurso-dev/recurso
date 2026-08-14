@@ -4,7 +4,6 @@ import { useNavigate } from "react-router";
 import { Plus, BadgePercent } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
-import CouponDetail from "../components/slide-overs/CouponDetail";
 import { cn, formatCurrency } from "@/lib/utils";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -20,8 +19,6 @@ const Coupons = () => {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
 
-  const [selectedCoupon, setSelectedCoupon] = useState(null);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [deactivateTarget, setDeactivateTarget] = useState(null);
 
   const queryClient = useQueryClient();
@@ -70,16 +67,6 @@ const Coupons = () => {
   // Reactivation is low-risk, so it skips the confirm; deactivation confirms.
   const setActive = (coupon, active) =>
     setActiveMutation.mutate({ id: coupon.id, active });
-
-  const handleRowClick = (coupon) => {
-    setSelectedCoupon(coupon);
-    setIsDetailOpen(true);
-  };
-
-  const closeDetail = () => {
-    setIsDetailOpen(false);
-    setTimeout(() => setSelectedCoupon(null), 300);
-  };
 
   const filteredCoupons = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -162,7 +149,7 @@ const Coupons = () => {
         loading={loading}
         error={error}
         onRetry={refetch}
-        onRowClick={handleRowClick}
+        rowHref={(c) => `/coupons/${c.id}`}
         search={{
           value: search,
           onChange: setSearch,
@@ -203,8 +190,6 @@ const Coupons = () => {
             ) : null,
         }}
       />
-
-      <CouponDetail coupon={selectedCoupon} isOpen={isDetailOpen} onClose={closeDetail} />
 
       <ConfirmDialog
         open={!!deactivateTarget}

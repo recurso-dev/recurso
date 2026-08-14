@@ -2370,6 +2370,27 @@ paths:
           $ref: '#/components/responses/NotFound'
 
   /v1/coupons/{id}:
+    get:
+      operationId: getCoupon
+      tags: [Coupons]
+      summary: Get one coupon (tenant-scoped)
+      description: >
+        Fetches a single coupon by id — the addressable object behind the
+        dashboard's coupon page. A missing or cross-tenant id returns 404.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The coupon.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Coupon'
+        '404':
+          $ref: '#/components/responses/NotFound'
     put:
       operationId: updateCoupon
       tags: [Coupons]

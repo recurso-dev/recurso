@@ -1919,6 +1919,7 @@ func main() {
 
 		v1.POST("/coupons", couponHandler.CreateCoupon) // P7
 		v1.GET("/coupons", couponHandler.ListCoupons)
+		v1.GET("/coupons/:id", couponHandler.GetCoupon)
 		v1.PUT("/coupons/:id", couponHandler.UpdateCoupon)
 
 		// Developer / Settings
