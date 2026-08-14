@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-08-14 — The depth release
+
+Where 0.12.0 made every core object a *place*, 0.13.0 made those places
+*deep*. The dashboard is now an operating console: every object is
+addressable, every list is a table (no card grids remain), and every
+detail slide-over is either an object-page edit sheet or a list that now
+has a full object page behind it. The work ran under
+`docs/DASHBOARD_OPERATIONAL_DEPTH.md` as nineteen green-CI increments — and
+held one rule throughout: **never fake data.** Where the backend couldn't
+answer a question, we either added the minimal read for it or said so on
+the page, never invented a number.
+
+### Added
+
+- **Seven new object pages.** Wallet (`/wallets/:id`), Credit Note
+  (`/credit-notes/:id`), Dispute (`/disputes/:id`), Quote (`/quotes/:id`),
+  Coupon (`/coupons/:id`), Dunning Campaign (`/dunning/campaigns/:id`), and
+  Cancel Flow (`/cancel-flows/:id`) are now real, shareable, refresh-safe
+  routes — joining the full-page Plan, Account (`/ledger/accounts/:id`), and
+  Meter (`/billable-metrics/:id`) pages and the tenant-wide **Payments log**
+  (`/payments`).
+- **Real financial depth on the object pages.** A wallet shows its balance
+  split into refundable-paid vs forfeitable-promotional residue (only when
+  it reconciles); a credit note and an invoice show their actual DR/CR
+  ledger postings; a dispute links the invoice it contests with its real
+  amount and status; a quote shows its line items, totals, and the invoice
+  it converted into; a coupon lists the subscriptions actually redeeming it;
+  a dunning campaign renders its retry cadence as a readable timeline; a
+  cancel flow surfaces its retention effectiveness (save rate, why customers
+  cancel).
+- **Backend reads added as page linchpins** (each tenant-scoped, flat 404,
+  OpenAPI-documented): `GET /v1/customers/{id}/financial-summary`,
+  `/v1/invoices/{id}/journal-entries`, `/v1/invoices/{id}/payment-attempts`,
+  `/v1/payment-attempts` (tenant-wide log), `/v1/billable-metrics/{id}/charges`,
+  `/v1/credit-notes/{id}/journal-entries`, `/v1/disputes/{id}`, and
+  `/v1/coupons/{id}`.
+- **Shared depth primitives.** `FinancialSummary` (per-currency metric
+  strip), `AttentionBanner` (exceptions-first, silent when healthy),
+  `JournalEntries` (transfer postings with a Debits=Credits tie-out), and
+  `PaymentAttempts` (settlement/retry history) — reused across pages.
+- **Consequence-explaining confirmations.** Financial mutations (convert a
+  quote, void a credit note, close a wallet, resolve a dispute) spell out
+  what will happen — refunded vs forfeited, invoice created and locked —
+  rather than a bare "Are you sure?".
+
+### Changed
+
+- **Card grids retired.** The Dunning Campaigns and Cancel Flows lists are
+  now DataTables whose rows drill into the new object pages; no dashboard
+  list is a card grid anymore.
+- **Slide-overs consolidated.** The Credit Note, Quote, and Coupon detail
+  slide-overs were retired into their object pages and deleted; the Customer
+  and Plan detail sheets narrowed to serve purely as their pages' edit
+  surfaces (no duplicated edit logic).
+- **Go toolchain to 1.25.13**, clearing GO-2026-6218 (net/url quadratic
+  complexity) across the module.
+
+### Fixed
+
+- Closed wallets now refuse top-ups and auto-recharge rules instead of
+  silently accepting them.
+- Subscription error paths return the correct HTTP status codes.
+- The journal-entries empty state no longer talks about "a draft invoice"
+  on a credit note — the message is now object-appropriate (found during a
+  live visual-QA pass across the new pages).
+- OpenAPI hardening: quoted flow-style descriptions that broke YAML parsing,
+  corrected the idempotency header name (`Idempotency-Key`) and the
+  `DELETE /v1/users/{id}` response shape; CORS now allows the real
+  `Idempotency-Key` preflight header.
+- Dependency + security bumps (js-yaml 4.3.1 for a high CVE, dompurify,
+  postcss); the demo seed now lands on a balanced ledger with wallet and
+  credit-drawdown legs posted.
+
 ## [0.12.0] - 2026-08-12 — The operating-system release
 
 The dashboard grew a structural layer. Where 0.11.0 judged every screen,
