@@ -197,7 +197,12 @@ export default function CustomerPage() {
                   {
                     label: "Ledger account",
                     value: customer.ledger_account_id ? (
-                      <CopyableId value={customer.ledger_account_id} />
+                      <Link
+                        to={`/ledger/accounts/${customer.ledger_account_id}`}
+                        className="font-mono text-xs text-primary underline-offset-2 hover:underline"
+                      >
+                        {customer.ledger_account_id.slice(0, 8)}…
+                      </Link>
                     ) : null,
                   },
                   { label: "Created", value: formatDate(customer.created_at) },
