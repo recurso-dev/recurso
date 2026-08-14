@@ -2045,6 +2045,50 @@ paths:
                             accounting_version: { type: integer }
         '404':
           description: Invoice not found.
+  /v1/credit-notes/{id}/journal-entries:
+    get:
+      operationId: getCreditNoteJournalEntries
+      tags: [CreditNotes]
+      summary: Credit note journal entries (ledger drill)
+      description: >
+        Every ledger posting that references this credit note — its
+        Customer-Credit liability leg, any tax reversal, and refund/write-off
+        legs — each as a transfer with its debit and credit account (code +
+        name), amount, posting code, and timestamp. The finance-accounting side
+        of the credit-note page. Read-only; an existing note with no postings
+        yet returns an empty list.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: The credit note's journal entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      credit_note_id: { type: string, format: uuid }
+                      entries:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            transaction_id: { type: string, format: uuid }
+                            timestamp: { type: string, format: date-time }
+                            code: { type: integer }
+                            debit_account_code: { type: integer }
+                            debit_account_name: { type: string }
+                            credit_account_code: { type: integer }
+                            credit_account_name: { type: string }
+                            amount: { type: integer, format: int64 }
+                            reference_id: { type: string, format: uuid }
+                            description: { type: string }
+                            accounting_version: { type: integer }
+        '404':
+          description: Credit note not found.
   /v1/payment-attempts:
     get:
       operationId: listPaymentAttempts

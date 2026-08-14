@@ -630,6 +630,33 @@ func (s *CreditNoteService) GetForDocument(ctx context.Context, tenantID, id uui
 	return cn, cust, invoiceNumber, nil
 }
 
+// GetCreditNoteJournalEntries returns the credit note's ledger postings — its
+// journal drill for the finance-accounting side of the object page. Each entry
+// carries its DR/CR account (code + name), amount, posting code, and timestamp.
+// Verifies the note exists (tenant-scoped) first and returns (nil, nil) when it
+// doesn't, so a bad id is a 404 rather than an empty journal. An existing note
+// with no postings yet (or no ledger wired) returns a non-nil empty slice.
+func (s *CreditNoteService) GetCreditNoteJournalEntries(ctx context.Context, tenantID, creditNoteID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
+	cn, err := s.repo.GetByID(ctx, creditNoteID, tenantID)
+	if err != nil {
+		return nil, fmt.Errorf("load credit note: %w", err)
+	}
+	if cn == nil {
+		return nil, nil
+	}
+	if s.ledger == nil {
+		return []domain.GeneralLedgerRow{}, nil
+	}
+	entries, err := s.ledger.GetJournalEntriesByReference(ctx, tenantID, creditNoteID)
+	if err != nil {
+		return nil, err
+	}
+	if entries == nil {
+		entries = []domain.GeneralLedgerRow{}
+	}
+	return entries, nil
+}
+
 func (s *CreditNoteService) GetCreditStatement(ctx context.Context, tenantID, customerID uuid.UUID) (*domain.CreditStatement, error) {
 	grants, err := s.repo.List(ctx, tenantID, domain.CreditNoteFilter{CustomerID: &customerID})
 	if err != nil {

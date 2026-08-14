@@ -1992,6 +1992,7 @@ func main() {
 		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
 		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
 		v1.GET("/credit-notes/:id", creditNoteHandler.GetCreditNote)
+		v1.GET("/credit-notes/:id/journal-entries", creditNoteHandler.GetCreditNoteJournalEntries)
 		v1.GET("/credit-notes/:id/pdf", expensiveLimit, creditNoteHandler.DownloadPDF)
 		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
 		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
