@@ -4,7 +4,7 @@ import {
   CalendarClock, TrendingUp, FileClock, Gauge, PieChart, Globe, BarChart3,
   Code2, Settings, Wallet2, Plug, MailWarning, HeartHandshake, TrendingDown,
   Repeat2, Banknote, FileQuestion, Building2, Sparkles, FileSpreadsheet,
-  ClipboardCheck, Inbox, ShieldCheck, Webhook,
+  ClipboardCheck, Inbox, ShieldCheck, Webhook, CreditCard,
 } from "lucide-react";
 
 /**
@@ -69,6 +69,7 @@ export const NAV_GROUPS = [
   {
     label: "Payments",
     items: [
+      { to: "/payments", label: "Payments Log", icon: CreditCard, end: true },
       { to: "/mandates", label: "Mandates", icon: Repeat2 },
       { to: "/payments/offline", label: "Offline Payments", icon: Banknote },
     ],

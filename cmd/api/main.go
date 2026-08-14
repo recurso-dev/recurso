@@ -1838,6 +1838,7 @@ func main() {
 		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
 		v1.GET("/invoices/:id/journal-entries", subscriptionHandler.GetInvoiceJournalEntries)
 		v1.GET("/invoices/:id/payment-attempts", subscriptionHandler.GetInvoicePaymentAttempts)
+		v1.GET("/payment-attempts", subscriptionHandler.ListPaymentAttempts)
 		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
 		v1.GET("/invoices/:id/pdf", expensiveLimit, pdfHandler.DownloadPDF)

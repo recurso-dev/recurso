@@ -586,9 +586,11 @@ func (s *SubscriptionService) GetInvoiceJournalEntries(ctx context.Context, tena
 	return entries, nil
 }
 
-// paymentAttemptLister is the narrow read the invoice's payment history needs.
+// paymentAttemptLister is the narrow read the payment views need: an invoice's
+// history, and the tenant-wide payments log.
 type paymentAttemptLister interface {
 	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error)
+	List(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error)
 }
 
 // SetPaymentAttemptLister enables GetInvoicePaymentAttempts. Without it, that
@@ -618,6 +620,23 @@ func (s *SubscriptionService) GetInvoicePaymentAttempts(ctx context.Context, ten
 		attempts = []*domain.PaymentAttempt{}
 	}
 	return attempts, nil
+}
+
+// ListPaymentAttempts returns the tenant-wide payments log (attempts, newest
+// first, paginated, optional status filter) with each attempt's invoice number.
+// Returns an empty page + zero total when no lister is wired.
+func (s *SubscriptionService) ListPaymentAttempts(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error) {
+	if s.paymentAttempts == nil {
+		return []domain.PaymentAttemptListItem{}, 0, nil
+	}
+	items, total, err := s.paymentAttempts.List(ctx, tenantID, status, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if items == nil {
+		items = []domain.PaymentAttemptListItem{}
+	}
+	return items, total, nil
 }
 
 func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {

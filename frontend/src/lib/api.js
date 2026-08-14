@@ -140,6 +140,9 @@ export const endpoints = {
   getInvoice: (id) => api.get(`/invoices/${id}`),
   getInvoiceJournalEntries: (id) => api.get(`/invoices/${id}/journal-entries`),
   getInvoicePaymentAttempts: (id) => api.get(`/invoices/${id}/payment-attempts`),
+  // Tenant-wide payments log: every gateway attempt, newest first, paginated,
+  // optional { status } filter. Powers /payments.
+  getPaymentAttempts: (params) => api.get(`/payment-attempts`, { params }),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
