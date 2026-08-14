@@ -263,8 +263,14 @@ export default function DisputePage() {
               <span>
                 <span className="font-medium text-foreground">Issue a credit note on accept</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  Adds an account credit for the invoice&apos;s outstanding amount. Leave unchecked
-                  to accept without a credit.
+                  Adds an account credit for the invoice&apos;s outstanding amount
+                  {invoice ? (
+                    <>
+                      {" "}
+                      (up to <Money amountMinor={invoice.total} currency={invoice.currency} />)
+                    </>
+                  ) : null}
+                  . Leave unchecked to accept without a credit.
                 </span>
               </span>
             </label>

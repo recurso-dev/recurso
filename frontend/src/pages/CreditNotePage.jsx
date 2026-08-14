@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Ban, Download } from "lucide-react";
 
 import { endpoints } from "../lib/api";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useCustomers } from "@/lib/useCustomers";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
@@ -341,7 +341,7 @@ export default function CreditNotePage() {
         open={confirm === "approve"}
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Approve this credit note?"
-        description={`Approving issues ${cn.currency} credit of the full amount to the customer — it becomes spendable (or refundable) immediately and posts to the ledger.`}
+        description={`Approving issues ${formatCurrency(cn.amount, cn.currency)} of credit to the customer — it becomes spendable (or refundable) immediately and posts to the ledger.`}
         confirmLabel="Approve credit note"
         busy={approveMutation.isPending}
         onConfirm={() => approveMutation.mutate()}
@@ -360,7 +360,7 @@ export default function CreditNotePage() {
         open={confirm === "void"}
         onOpenChange={(o) => !o && setConfirm(null)}
         title="Void this credit note?"
-        description="This cancels the credit and writes off the remaining balance. Already-applied credit is not affected. This can't be undone."
+        description={`This cancels the credit and writes off the remaining balance of ${formatCurrency(cn.balance, cn.currency)}. Already-applied credit is not affected. This can't be undone.`}
         confirmLabel="Void credit note"
         destructive
         busy={voidMutation.isPending}
