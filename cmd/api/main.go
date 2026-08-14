@@ -1856,6 +1856,7 @@ func main() {
 		v1.POST("/billable-metrics", meteringHandler.CreateMetric)
 		v1.GET("/billable-metrics", meteringHandler.ListMetrics)
 		v1.GET("/billable-metrics/:id", meteringHandler.GetMetric)
+		v1.GET("/billable-metrics/:id/charges", meteringHandler.GetMetricCharges)
 		v1.PUT("/billable-metrics/:id", meteringHandler.UpdateMetric)
 		v1.DELETE("/billable-metrics/:id", meteringHandler.DeleteMetric)
 		v1.PUT("/plans/:id/charges", meteringHandler.SetPlanCharges)

@@ -111,6 +111,26 @@ func (h *MeteringHandler) GetMetric(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": m})
 }
 
+// GetMetricCharges handles GET /v1/billable-metrics/:id/charges — the reverse
+// lookup: which plans (and charge models) price on this meter.
+func (h *MeteringHandler) GetMetricCharges(c *gin.Context) {
+	tenantID, ctx, ok := meteringTenantCtx(c)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid metric id")
+		return
+	}
+	charges, err := h.svc.GetMetricCharges(ctx, tenantID, id)
+	if err != nil {
+		respondMeteringError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": charges})
+}
+
 // UpdateMetric handles PUT /v1/billable-metrics/:id.
 func (h *MeteringHandler) UpdateMetric(c *gin.Context) {
 	tenantID, ctx, ok := meteringTenantCtx(c)

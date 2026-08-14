@@ -238,6 +238,35 @@ func (r *ChargeRepository) ListByPlan(ctx context.Context, tenantID, planID uuid
 	return charges, rows.Err()
 }
 
+// ListByMetric returns the charges that consume a billable metric, joined with
+// their plan — the reverse of ListByPlan, for the meter page's "which plans
+// price on this meter". Tenant-scoped, active plans first then by name. Read-only.
+func (r *ChargeRepository) ListByMetric(ctx context.Context, tenantID, metricID uuid.UUID) ([]domain.MetricPlanCharge, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT c.id, c.plan_id, p.name, p.code, p.active, c.charge_model, c.pay_in_advance
+		FROM plan_charges c
+		JOIN plans p ON p.id = c.plan_id
+		WHERE c.tenant_id = $1 AND c.metric_id = $2
+		ORDER BY p.active DESC, p.name`,
+		tenantID, metricID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list charges by metric: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := []domain.MetricPlanCharge{}
+	for rows.Next() {
+		var mpc domain.MetricPlanCharge
+		if err := rows.Scan(&mpc.ChargeID, &mpc.PlanID, &mpc.PlanName, &mpc.PlanCode,
+			&mpc.PlanActive, &mpc.ChargeModel, &mpc.PayInAdvance); err != nil {
+			return nil, err
+		}
+		out = append(out, mpc)
+	}
+	return out, rows.Err()
+}
+
 // UsageRatingRepository is the Postgres implementation of
 // port.UsageRatingRepository.
 type UsageRatingRepository struct {

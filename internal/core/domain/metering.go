@@ -246,6 +246,18 @@ type Charge struct {
 	Metric *BillableMetric `json:"metric,omitempty"`
 }
 
+// MetricPlanCharge is one plan's charge that consumes a billable metric — the
+// reverse of ListByPlan, for the meter page's "which plans price on this meter".
+type MetricPlanCharge struct {
+	ChargeID     uuid.UUID   `json:"charge_id"`
+	PlanID       uuid.UUID   `json:"plan_id"`
+	PlanName     string      `json:"plan_name"`
+	PlanCode     string      `json:"plan_code"`
+	PlanActive   bool        `json:"plan_active"`
+	ChargeModel  ChargeModel `json:"charge_model"`
+	PayInAdvance bool        `json:"pay_in_advance"`
+}
+
 // UsageRating is the double-billing guard: one row per (subscription,
 // charge, period_start) window ever rated onto an invoice. The unique
 // constraint makes rating idempotent — a retried invoice generation for an

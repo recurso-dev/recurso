@@ -48,6 +48,9 @@ type ChargeRepository interface {
 	ReplaceForPlan(ctx context.Context, tenantID, planID uuid.UUID, charges []domain.Charge) error
 	// ListByPlan returns the plan's charges with their metrics joined.
 	ListByPlan(ctx context.Context, tenantID, planID uuid.UUID) ([]domain.Charge, error)
+	// ListByMetric returns the charges consuming a metric, joined with their
+	// plan — the reverse lookup for the meter page. Read-only.
+	ListByMetric(ctx context.Context, tenantID, metricID uuid.UUID) ([]domain.MetricPlanCharge, error)
 }
 
 // UsageRatingRepository persists the double-billing guard rows.
