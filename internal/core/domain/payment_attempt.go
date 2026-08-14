@@ -43,3 +43,12 @@ type PaymentAttempt struct {
 func (a *PaymentAttempt) InFlight() bool {
 	return a.Status == PaymentAttemptInitiated || a.Status == PaymentAttemptProcessing
 }
+
+// PaymentAttemptListItem is a payment attempt enriched with its invoice number
+// for the tenant-wide payments log (attempts have no first-class list endpoint
+// otherwise). The invoice number lets an operator scan the log without a join.
+type PaymentAttemptListItem struct {
+	PaymentAttempt
+	InvoiceNumber string `json:"invoice_number"`
+	Currency      string `json:"currency"`
+}

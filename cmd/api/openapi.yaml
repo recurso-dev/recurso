@@ -2045,6 +2045,52 @@ paths:
                             accounting_version: { type: integer }
         '404':
           description: Invoice not found.
+  /v1/payment-attempts:
+    get:
+      operationId: listPaymentAttempts
+      tags: [Payments]
+      summary: Payments log (tenant-wide payment attempts)
+      description: >
+        Every gateway payment attempt for the tenant, newest first, paginated,
+        with an optional status filter (initiated/processing/succeeded/failed/
+        returned). Each row carries its invoice number. The operator's failed-
+        payments log. Read-only.
+      parameters:
+        - { name: status, in: query, required: false, schema: { type: string, enum: [initiated, processing, succeeded, failed, returned] } }
+        - { name: page, in: query, required: false, schema: { type: integer } }
+        - { name: per_page, in: query, required: false, schema: { type: integer } }
+      responses:
+        '200':
+          description: The payments log page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        invoice_id: { type: string, format: uuid }
+                        invoice_number: { type: string }
+                        currency: { type: string }
+                        gateway: { type: string }
+                        method: { type: string }
+                        gateway_payment_intent_id: { type: string }
+                        status: { type: string, enum: [initiated, processing, succeeded, failed, returned] }
+                        failure_code: { type: string }
+                        amount: { type: integer, format: int64 }
+                        created_at: { type: string, format: date-time }
+                        settled_at: { type: string, format: date-time, nullable: true }
+                  pagination:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      per_page: { type: integer }
+                      total: { type: integer }
+                      total_pages: { type: integer }
   /v1/invoices/{id}/payment-attempts:
     get:
       operationId: getInvoicePaymentAttempts

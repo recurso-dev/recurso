@@ -270,6 +270,40 @@ func (h *SubscriptionHandler) GetInvoicePaymentAttempts(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": gin.H{"invoice_id": invID, "attempts": attempts}})
 }
 
+// ListPaymentAttempts returns the tenant-wide payments log — every gateway
+// payment attempt, newest first, paginated, with an optional ?status= filter
+// (failed/returned/succeeded/processing/initiated). Each row carries its
+// invoice number so an operator can scan without drilling in.
+// GET /v1/payment-attempts
+func (h *SubscriptionHandler) ListPaymentAttempts(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	p := ParsePagination(c)
+	status := c.Query("status")
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	items, total, err := h.service.ListPaymentAttempts(ctx, tenantID, status, p.PerPage, p.Offset)
+	if err != nil {
+		respondInternalError(c, err)
+		return
+	}
+	totalPages := 0
+	if p.PerPage > 0 {
+		totalPages = (total + p.PerPage - 1) / p.PerPage
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"data": items,
+		"pagination": gin.H{
+			"page":        p.Page,
+			"per_page":    p.PerPage,
+			"total":       total,
+			"total_pages": totalPages,
+		},
+	})
+}
+
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

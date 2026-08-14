@@ -155,6 +155,47 @@ func TestGetInvoiceAttemptsBadIdIs400(t *testing.T) {
 	}
 }
 
+// --- GET /v1/payment-attempts (payments log) -------------------------------
+
+type mockAttemptLister struct {
+	items []domain.PaymentAttemptListItem
+	total int
+}
+
+func (m *mockAttemptLister) ListByInvoice(_ context.Context, _, _ uuid.UUID) ([]*domain.PaymentAttempt, error) {
+	return nil, nil
+}
+func (m *mockAttemptLister) List(_ context.Context, _ uuid.UUID, _ string, _, _ int) ([]domain.PaymentAttemptListItem, int, error) {
+	return m.items, m.total, nil
+}
+
+func TestListPaymentAttemptsReturnsPagedLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := service.NewSubscriptionService(nil, &oneInvoiceRepo{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.SetPaymentAttemptLister(&mockAttemptLister{
+		items: []domain.PaymentAttemptListItem{{
+			PaymentAttempt: domain.PaymentAttempt{ID: uuid.New(), Status: domain.PaymentAttemptFailed, Amount: 5000},
+			InvoiceNumber:  "INV-9",
+		}},
+		total: 1,
+	})
+	h := NewSubscriptionHandler(svc)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/payment-attempts?status=failed", nil)
+	c.Set("tenant_id", uuid.New())
+	h.ListPaymentAttempts(c)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("payments log: got %d want 200", w.Code)
+	}
+	body := w.Body.String()
+	if !strings.Contains(body, "INV-9") || !strings.Contains(body, `"total":1`) {
+		t.Fatalf("expected the attempt + a pagination total, got %s", body)
+	}
+}
+
 // --- GET /v1/credit-notes/:id ----------------------------------------------
 
 type oneCreditNoteRepo struct {
