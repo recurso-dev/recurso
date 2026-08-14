@@ -334,7 +334,7 @@ export default function InvoicePage() {
         backLabel="Invoices"
         kicker="Invoice"
         title={invoice.invoice_number || invoice.id.slice(0, 8)}
-        badge={<StatusBadge status={invoice.status || "unknown"} />}
+        badge={<StatusBadge status={invoice.status || "unknown"} flashOnChange />}
         meta={
           <>
             <CopyableId value={invoice.id} />

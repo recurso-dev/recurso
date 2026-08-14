@@ -431,7 +431,7 @@ export default function SubscriptionPage() {
         title={
           customer?.name ? `${customer.name} — ${planName}` : planName || "Subscription"
         }
-        badge={<StatusBadge status={subscription.status || "unknown"} />}
+        badge={<StatusBadge status={subscription.status || "unknown"} flashOnChange />}
         meta={
           <>
             <CopyableId value={subscription.id} />

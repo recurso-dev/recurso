@@ -170,7 +170,7 @@ export default function CreditNotePage() {
         backLabel="Credit Notes"
         kicker="Credit note"
         title={cn.reference || `Credit note ${String(cn.id).slice(0, 8)}`}
-        badge={<StatusBadge status={cn.status} />}
+        badge={<StatusBadge status={cn.status} flashOnChange />}
         meta={
           <>
             <span className="tabular-nums font-medium text-foreground">
