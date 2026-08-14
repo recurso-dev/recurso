@@ -5393,6 +5393,63 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /v1/finance/reconciliation/runs:
+    post:
+      operationId: recordReconciliation
+      tags: [Finance]
+      summary: Run and record a reconciliation (audit trail)
+      description: >
+        Runs a reconciliation AND records a summary of it to the run history —
+        the explicit "run and record" action, distinct from the side-effect-free
+        GET. Returns the full report. Best-effort persistence: a storage failure
+        still returns the report.
+      responses:
+        '200':
+          description: Reconciliation report (its summary was recorded).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/ReconciliationReport'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    get:
+      operationId: listReconciliationRuns
+      tags: [Finance]
+      summary: List recorded reconciliation runs (audit trail)
+      description: >
+        The tenant's recorded reconciliation runs, newest first — when it was
+        checked, by whom, and whether it tied out (total_discrepancies == 0).
+      parameters:
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
+      responses:
+        '200':
+          description: The recorded runs.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        run_by: { type: string, format: uuid, nullable: true }
+                        run_at: { type: string, format: date-time }
+                        invoices_checked: { type: integer }
+                        paid_invoices_checked: { type: integer }
+                        total_discrepancies: { type: integer }
+                        tb_compared: { type: boolean }
+                        tb_accounts_checked: { type: integer }
+                        tb_transfers_checked: { type: integer }
+                        created_at: { type: string, format: date-time }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
   /v1/finance/close-pack:
     get:
       operationId: getClosePack
