@@ -6,7 +6,8 @@ import { Plus, Users, DollarSign, Clock, Share2 } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency, formatDate, toMinorUnits } from "@/lib/utils";
-import { useUrlState } from "@/lib/useUrlState";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -47,6 +48,8 @@ function Referrals() {
   const { customers } = useCustomers();
 
   const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  // URL-persisted sort over the complete (page-through) set — Batch F3.
+  const { sort, sortKey, onSortChange } = useTableSort();
 
   // The StatCards below (total / rewards paid / pending) sum every referral, so
   // the page holds the complete set — page through it to a bounded cap rather
@@ -72,7 +75,8 @@ function Referrals() {
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load referrals"
     : null;
-  const pagedReferrals = pageSlice(referrals, page);
+  // A sort change starts back at page 1 (URL-safe: separate tick, skips mount).
+  useResetPageOnChange(setPage, [sortKey]);
 
   const createMutation = useMutation({
     mutationFn: (payload) => endpoints.createReferral(payload),
@@ -129,6 +133,8 @@ function Referrals() {
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (r) => r.status,
       cell: (r) => (
         <StatusBadge status={r.status} />
       ),
@@ -137,11 +143,17 @@ function Referrals() {
       key: "reward",
       header: "Reward",
       align: "right",
+      sortable: true,
+      // Minor units; cross-currency ordering compares raw minor amounts (same
+      // caveat as the Invoices amount sort). Single-currency tenants sort exactly.
+      sortValue: (r) => r.reward_amount,
       cell: (r) => <Money amountMinor={r.reward_amount} currency={r.currency || "USD"} />,
     },
     {
       key: "created",
       header: "Created",
+      sortable: true,
+      sortValue: (r) => r.created_at || "",
       cell: (r) => <span className="text-muted-foreground">{formatDate(r.created_at)}</span>,
     },
     {
@@ -164,6 +176,9 @@ function Referrals() {
         ),
     },
   ];
+
+  // Sort the full set, THEN paginate (ordering spans everything).
+  const pagedReferrals = pageSlice(sortRows(referrals, sort, columns), page);
 
   return (
     <div>
@@ -194,6 +209,8 @@ function Referrals() {
       <DataTable
         columns={columns}
         data={pagedReferrals}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
 import { useUrlState } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { useBulkAction } from "@/lib/useBulkAction";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -91,6 +92,9 @@ const Invoices = () => {
   // page param.
   const [search, setSearch] = useUrlState("q", "");
   const [statusFilter, setStatusFilter] = useUrlState("status", "all");
+  // Sort persists in the URL (Batch F3) so returning from an invoice restores
+  // the exact ordering, and it's honest: this page holds the COMPLETE set.
+  const { sort, onSortChange } = useTableSort();
   // ?aging=<bucket> deep-links from the invoice-aging report's buckets.
   const [searchParams, setSearchParams] = useSearchParams();
   const agingFilter = AGING_LABELS[searchParams.get("aging")] ? searchParams.get("aging") : null;
@@ -252,6 +256,10 @@ const Invoices = () => {
     },
   ];
 
+  // Sort the full filtered set (not a server page) with the shared comparator,
+  // driven by the URL-persisted controlled sort above.
+  const sortedInvoices = sortRows(filteredInvoices, sort, columns);
+
   return (
     <div>
       <PageHeader
@@ -283,7 +291,9 @@ const Invoices = () => {
 
       <DataTable
         columns={columns}
-        data={filteredInvoices}
+        data={sortedInvoices}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

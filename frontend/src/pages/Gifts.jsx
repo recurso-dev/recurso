@@ -6,7 +6,8 @@ import { Plus, Gift, CheckCircle2, Clock, Ban } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatDate } from "@/lib/utils";
-import { useUrlState } from "@/lib/useUrlState";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -49,6 +50,8 @@ function Gifts() {
   const { customers } = useCustomers();
 
   const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  // URL-persisted sort over the complete (page-through) set — Batch F3.
+  const { sort, sortKey, onSortChange } = useTableSort();
 
   // The StatCards below (total / redeemed / pending) count every gift, so the
   // page holds the complete set — page through it to a bounded cap rather than
@@ -74,7 +77,8 @@ function Gifts() {
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load gifts"
     : null;
-  const pagedGifts = pageSlice(gifts, page);
+  // A sort change starts back at page 1 (URL-safe: separate tick, skips mount).
+  useResetPageOnChange(setPage, [sortKey]);
 
   const createMutation = useMutation({
     mutationFn: (payload) => endpoints.purchaseGift(payload),
@@ -141,6 +145,8 @@ function Gifts() {
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (g) => g.status,
       cell: (g) => (
         <StatusBadge status={g.status} />
       ),
@@ -148,6 +154,8 @@ function Gifts() {
     {
       key: "duration",
       header: "Duration",
+      sortable: true,
+      sortValue: (g) => g.duration_months,
       cell: (g) => <span className="text-muted-foreground">{g.duration_months} Months</span>,
     },
     {
@@ -158,6 +166,8 @@ function Gifts() {
     {
       key: "purchased",
       header: "Purchased",
+      sortable: true,
+      sortValue: (g) => g.created_at || "",
       cell: (g) => <span className="text-muted-foreground">{formatDate(g.created_at)}</span>,
     },
     {
@@ -177,6 +187,9 @@ function Gifts() {
         ) : null,
     },
   ];
+
+  // Sort the full set, THEN paginate (ordering spans everything).
+  const pagedGifts = pageSlice(sortRows(gifts, sort, columns), page);
 
   return (
     <div>
@@ -219,6 +232,8 @@ function Gifts() {
       <DataTable
         columns={columns}
         data={pagedGifts}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

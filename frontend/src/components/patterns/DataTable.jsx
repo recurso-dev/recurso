@@ -4,6 +4,7 @@ import { Search, ChevronRight, ChevronsUpDown, ArrowUp, ArrowDown } from "lucide
 
 import { cn } from "@/lib/utils";
 import { docsUrlFor } from "@/lib/docsLinks";
+import { sortRows } from "@/lib/tableSort";
 import {
   Table,
   TableBody,
@@ -152,22 +153,14 @@ export function DataTable({
     else setInternalSort(next);
   };
 
-  const rows = useMemo(() => {
-    if (!clientSorted) return data;
-    const col = columns.find((c) => c.key === internalSort.key);
-    if (!col) return data;
-    const acc = col.sortValue || ((row) => row[col.key]);
-    const mul = internalSort.dir === "desc" ? -1 : 1;
-    return [...data].sort((a, b) => {
-      const va = acc(a);
-      const vb = acc(b);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1; // nulls last regardless of direction
-      if (vb == null) return -1;
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
-      return String(va).localeCompare(String(vb)) * mul;
-    });
-  }, [data, clientSorted, internalSort, columns]);
+  // Built-in client sort (uncontrolled). Uses the SAME comparator as the shared
+  // sortRows() the fully-loaded list pages call, so controlled and uncontrolled
+  // sorts order identically. Only reorders `data` as given — safe only on
+  // fully-loaded lists (see the sort/onSortChange doc above).
+  const rows = useMemo(
+    () => (clientSorted ? sortRows(data, internalSort, columns) : data),
+    [data, clientSorted, internalSort, columns]
+  );
 
   // New-row reveal: a row that wasn't present on the previous render animates
   // in. The whole table never animates on first mount (the ref starts null) —

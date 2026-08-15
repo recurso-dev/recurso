@@ -7,6 +7,7 @@ import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
 import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { LIST_PAGE_SIZE, pageSlice } from "@/lib/pagination";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -50,6 +51,8 @@ const Wallets = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useUrlState("q", "");
   const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  // URL-persisted sort over the loaded (≤WALLET_LIMIT) set — Batch F3.
+  const { sort, sortKey, onSortChange } = useTableSort();
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ customer_id: "", currency: "INR" });
@@ -89,9 +92,10 @@ const Wallets = () => {
         w.currency.toLowerCase().includes(q)
     );
   }, [wallets, search, names]);
-  const pagedWallets = pageSlice(filtered, page);
-  // A new search starts back at page 1 (URL-safe: separate tick, skips mount).
-  useResetPageOnChange(setPage, [search]);
+  // A new search OR a sort change starts back at page 1 (URL-safe: separate
+  // tick, skips mount). pagedWallets is computed after `columns`, over the
+  // sorted full set.
+  useResetPageOnChange(setPage, [search, sortKey]);
 
   const createMutation = useMutation({
     mutationFn: () => api.createWallet(createForm),
@@ -185,6 +189,8 @@ const Wallets = () => {
     {
       key: "customer",
       header: "Customer",
+      sortable: true,
+      sortValue: (w) => names[w.customer_id] || w.customer_id || "",
       // First cell of an onRowClick table — DataTable wraps it in the row's
       // activation <button>, so the name must not nest its own link.
       cell: (w) => <CustomerName id={w.customer_id} names={names} link={false} />,
@@ -192,6 +198,10 @@ const Wallets = () => {
     {
       key: "balance",
       header: "Balance",
+      sortable: true,
+      // Minor units; cross-currency ordering compares raw minor amounts (same
+      // caveat as the Invoices amount sort). Single-currency tenants sort exactly.
+      sortValue: (w) => w.balance,
       cell: (w) => (
         <span className="tabular-nums font-medium text-foreground">
           {fmtMoney(w.balance, w.currency)}
@@ -259,6 +269,9 @@ const Wallets = () => {
     },
   ];
 
+  // Sort the full filtered set, THEN paginate (ordering spans everything).
+  const pagedWallets = pageSlice(sortRows(filtered, sort, columns), page);
+
   return (
     <div>
       <PageHeader
@@ -282,6 +295,8 @@ const Wallets = () => {
       <DataTable
         columns={columns}
         data={pagedWallets}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}
