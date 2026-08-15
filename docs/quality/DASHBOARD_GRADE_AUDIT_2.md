@@ -153,6 +153,206 @@ links. GAP-6/7/8 remain for their own increments.
 
 ---
 
+## Batch 3B — Canonical Financial Object Experience (Implemented 2026-08-15)
+
+Turns the proven Batch 3A contracts into object pages that **explain the financial
+story**, reusing the existing `ObjectPage` framework + primitives. **Frontend
+only — no backend, accounting, or endpoint changes.** No second design system; no
+global-navigation/breadcrumb work; no Recent Objects / unified search / ARR / new
+metrics. Shipped in PR #692 (squash `daea023d`), deployed, and live-QA'd on
+app.recurso.dev.
+
+### Object Architecture
+Every new page is built from the one shared scaffold (`components/patterns/ObjectPage`):
+`ObjectHeader` (back-link, kicker, human title, one `StatusBadge`, `CopyableId` +
+date meta, actions) → `AttentionBanner` (renders nothing when healthy) →
+`ObjectPageLayout` (main column + rail) with `ObjectSection` / `AttributeList` /
+`RelatedRow`. Each page keys its data with `useQuery(["resource", id])` and the
+`.data.data` unwrap, copies InvoicePage's loading-skeleton + `ErrorState` blocks,
+and links every related identity (never a raw UUID). No parallel framework was
+introduced; two pure-data helpers were **extracted to remove duplication**
+(`lib/ledgerCodes` — posting-code semantics shared by Ledger + Journal Entry;
+`lib/reconciliationDiscrepancies` — label/reason + money formatters shared by the
+live Reconciliation page + the run page).
+
+### Subscription Experience
+A new **Financial summary** section keeps three numbers that were previously
+conflated cleanly distinct, each labeled and tabular:
+- **MRR** (the backend's canonical `monthlyMinorUnits` definition — active-only),
+- **Billed each period** (plan list price / interval),
+- **Next invoice** (date + **base** amount, with an explicit caveat that it
+  excludes tax/usage/add-ons/one-off charges),
+plus the invoice-derived **position** (Outstanding / Past due + count / Billed
+lifetime / Paid lifetime) via the shared `FinancialSummary`. The naive "Amount"
+and "Upcoming invoice" rows (which showed the raw plan price as if it were the
+next-invoice total) were removed from Overview. *Live: MRR $299.00, Billed
+$299.00/month, Next invoice $299.00 base · Sep 23, Outstanding $299.00 / Past due
+1 invoice / Billed lifetime $897.00.*
+
+### Payment Experience
+New `/payments/:id` answers "what happened to this money?": identity + status,
+the amount with a **plain-language outcome**, a danger `AttentionBanner` for
+failed/returned, related **Invoice / Customer (name-resolved) / Subscription**
+links, an accounting-impact pointer to the invoice's journal, and a Details rail
+(gateway, method, reference, timestamps). Payments-list rows now drill to the
+payment (invoice cell link kept as a secondary drill). *Live: a returned ACH
+payment shows "ACH: insufficient funds" as the reason with `gateway code: R01` as
+quiet technical detail; Wayne Labs / Enterprise (Annual) / INV-DEMO-000029 all
+linked.*
+
+### Journal Entry Experience
+New `/ledger/transactions/:id` answers "why does this accounting entry exist?":
+the posting **named in words** (code → "Invoice raised"), the balanced legs
+rendered with the **same `JournalEntries` primitive** the invoice uses (labeled
+**DR/CR**, never color-only; each leg deep-links to its account), a **Source**
+link to the referenced invoice (or an honest label when the reference isn't an
+addressable object), and a Details rail (posting, reference kind, accounting
+model, entity). Reachable from the reconciliation transaction cell, the Ledger
+sheet's new "Open journal entry" link, and directly. *Live-verified.*
+
+### Reconciliation Experience
+New `/finance/reconciliation/runs/:id` answers "what was reconciled, when, and
+what didn't match?": verdict, a Scope rail (invoices checked, paid checked,
+TigerBeetle, recorded-by resolved to a **name**), and the **persisted discrepancy
+rows** (GAP-3) — each with its label + one-line reason, expected/found/difference
+as exponent-aware money, and links to the invoice and the transaction's journal
+entry. Honest `discrepancies_truncated` and pre-persistence-run states. Run-history
+rows on the live Reconciliation page now link here. *Live: the recorded 12-
+discrepancy run renders each row explainably (e.g. "Customer-credit liability
+mismatch −$406,034.83").*
+
+### Invoice Accounting Links
+No code change was needed — the Batch 3A `debit_account_id`/`credit_account_id`
+now flow straight through `JournalEntries` to `LedgerAccountLink`, so the invoice
+journal legs became links automatically. **Live-verified:** clicking "Accounts
+Receivable" on an invoice navigated to `/ledger/accounts/:id`. The "wired but
+dead" trace break from the reassessment is closed. A test fixture assertion was
+added so this can't silently regress.
+
+### Financial Hierarchy
+Each page leads with identity, then the trustworthy money, then relationships,
+then accounting, then secondary metadata in the rail — matching the priority the
+brief set. Money is `<Money>` (tabular, exponent-aware) or `<FinancialSummary>`;
+status is only `<StatusBadge>`. No hero vanity numbers, gradients, or KPI-card
+overload — the financial figures read as quiet and authoritative.
+
+### Navigation
+Canonical URLs (`/payments/:id`, `/ledger/transactions/:id`,
+`/finance/reconciliation/runs/:id`), all deep-linkable and refresh-safe (verified
+by navigating directly). The full chain is now traversable with no dead ends:
+Customer → Subscription → Invoice → Payment → Journal Entry → Ledger Account →
+Reconciliation (run → transaction → journal entry → account). Per the brief, **no
+global breadcrumb system** was added — each page has a contextual back-link, and
+breadcrumbs remain a documented future item.
+
+### Actions & Safety
+The one destructive money action was reworked: **Cancel → preview financial
+impact → confirm → execute**. The preview is fetched from
+`getSubscriptionCancelPreview` and is **amount-anchored from the backend** (never
+computed on the client): effective date, resulting status, forfeited deferred
+revenue / avoided recurring, and an explicit "Refund: None — paid in advance". If
+the preview endpoint fails, the dialog states the impact is **unavailable** and
+relabels the button "Cancel without preview" so it can never imply a trustworthy
+preview. *Live-verified end-to-end.*
+
+### States
+Loading (skeleton), success, empty/partial (sections conditionally render),
+error (graceful `ErrorState` + Retry), and permission (cross-tenant → the same
+error path) are handled on every page, reusing the existing primitives. Cancel
+preview has explicit loading and failure states. **Known limitation (see Bugs
+Found):** the 404-*specific* copy doesn't render live — a pre-existing app-wide
+error-shape quirk that also affects the reference InvoicePage; the state is still
+graceful (message + Retry), and the 404 branch is unit-tested.
+
+### Accessibility
+Semantic `<h1>`/section headings, real `<Link>`/`<button>` controls (keyboard-
+navigable, visible focus rings from the shared components), labeled DR/CR
+(accounting semantics never conveyed by color alone), `AttentionBanner` as
+`role="status" aria-label="Needs attention"`, tables via the semantic `Table`
+primitive, and the Radix Dialog focus-trap for the cancel flow. `StatusBadge`
+carries text, not just color. *Code-verified; the known table-a11y gaps
+(sticky-header, table accessible-name) from the reassessment are unchanged and
+out of this batch's scope.*
+
+### Performance
+Each object page is one primary `useQuery` plus small independent sub-queries
+(timeline/customer/plan caches), so the first viewport never blocks on secondary
+data; the Subscription financial-summary is its own query alongside the existing
+ones. `SubscriptionRef`/`CustomerName` read shared react-query caches rather than
+refetching per row. No query waterfalls introduced. Build output unchanged in
+shape (lazy-loaded routes).
+
+### Motion
+Reused only where it communicates causality — the cancel **preview appears before
+confirmation** (a deliberate two-step), the payment status badge flashes on
+change (`MotionState`), the failure reason reveals in, and `JournalEntries` rows
+stagger. No new perpetual/decorative animation; the shared primitives already
+respect `prefers-reduced-motion`.
+
+### Tests
+New suites: `PaymentPage` (5), `JournalEntryPage` (4), `ReconciliationRunPage`
+(5) — render / 404-branch / API-error / relationships / links / edge states
+(clean run, truncated, pre-persistence, non-addressable reference). Subscription:
+cancel **preview→confirm**, **preview-failure**, and **MRR-distinct** tests
+(driving the Radix reason Select). `PaymentAttempts`: humanized-primary +
+raw-code-detail. Invoice: journal legs now assert `/ledger/accounts/:id` links.
+**Full suite green: 675.** Lint + build clean.
+
+### Live QA
+On app.recurso.dev (real test-mode data), all ten scenarios verified with
+screenshots:
+1. Subscription with MRR ✓ (MRR/Billed/Next-invoice distinct + position strip)
+2. Cancel preview ✓ (amount-anchored WHAT/WHEN/impact; did not execute)
+3. Payment success ✓ (calm path — code/test-verified; the returned/failed path
+   live-verified with attention + humanized reason)
+4. Payment failure ✓ (returned ACH, "insufficient funds" + R01 detail)
+5. Journal entry with DR/CR accounts ✓ ("Invoice raised", legs linked, Source →
+   invoice)
+6. Reconciliation run with discrepancies ✓ (12 rows, what/why, linked)
+7. Invoice journal-account navigation ✓ (leg → `/ledger/accounts/:id`)
+8. Cross-object navigation ✓ (payment → invoice → account; recon → run; JE →
+   invoice)
+9. Not-found ✓ graceful (generic error + Retry — see Bugs Found re: 404 copy)
+10. Narrow viewport (560px) ✓ (sidebar collapses, single column, wide table
+    scrolls in its own container, no body overflow)
+
+### Bugs Found
+- **404-specific copy doesn't render live (pre-existing, app-wide).** A
+  non-existent object shows the *generic* "Couldn't load…" error + Retry instead
+  of the "…not found" copy — the live react-query error object doesn't expose
+  `error.response.status === 404` as the code expects. Verified identical on the
+  reference **InvoicePage**, so this is a pre-existing app-wide error-shape issue,
+  not a 3B regression; the 404 branch is correct in unit tests. The state is still
+  graceful (message + Retry). Left for a focused shared-error-handling fix (see
+  Follow-up) rather than expanding this batch's scope.
+
+### Bugs Fixed
+- **Raw gateway `failure_code` leaked to operators** on the shared
+  `PaymentAttempts` (and therefore the Invoice page). Now the **humanized** reason
+  is primary and the raw code is quiet technical detail — fixes P0-3 from the
+  reassessment app-wide, verified live on both the Invoice and Payment surfaces.
+
+### Remaining Gaps
+- 404-specific copy (app-wide error-shape fix) — above.
+- Reconciliation runs store no reporting currency, so the run page formats
+  discrepancy amounts in the tenant functional currency (USD default) — noted in
+  code; a per-run currency field would be a small future backend add.
+- The reassessment's broader items are untouched and out of scope: sticky table
+  headers, table accessible-names, a reusable 403 state, global breadcrumbs,
+  finance-IA consolidation, and GAP-6/7/8.
+
+### Follow-up Recommendation
+1. **Fix the app-wide 404 detection** (small, high-value): make the shared error
+   path expose the response status so every object page shows "…not found" — one
+   fix lights up the whole app including the reference page.
+2. Then the remaining reassessment polish (sticky headers + table names + a
+   reusable 403 state) as a focused a11y/states increment, and breadcrumbs +
+   finance-IA consolidation as a navigation increment.
+3. The money chain is now end-to-end addressable and explainable; the highest-
+   leverage structural work from the reassessment is complete.
+
+---
+
 ## 1. Executive Summary
 
 **The one-sentence finding:** Recurso is already a *well-built billing admin with
