@@ -15,6 +15,7 @@ import { JournalEntries } from "@/components/patterns/JournalEntries";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { CopyableId } from "@/components/ui/copyable-id";
+import { Money } from "@/components/ui/money";
 
 // A journal entry is one posted ledger transaction: a single balanced
 // debit/credit. This page answers "why does this accounting entry exist?" — the
@@ -74,6 +75,8 @@ export default function JournalEntryPage() {
         backLabel="Ledger"
         kicker="Journal entry"
         title={codeLabel(entry.code)}
+        amount={<Money amountMinor={entry.amount} size="hero" />}
+        amountLabel="posted to the ledger"
         meta={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <CopyableId value={entry.transaction_id} />

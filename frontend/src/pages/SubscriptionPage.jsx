@@ -478,6 +478,12 @@ export default function SubscriptionPage() {
           customer?.name ? `${customer.name} — ${planName}` : planName || "Subscription"
         }
         badge={<StatusBadge status={subscription.status || "unknown"} flashOnChange />}
+        amount={
+          finSummary ? (
+            <Money amountMinor={finSummary.mrr} currency={finSummary.currency} size="hero" />
+          ) : undefined
+        }
+        amountLabel={finSummary ? "MRR" : undefined}
         meta={
           <>
             <CopyableId value={subscription.id} />

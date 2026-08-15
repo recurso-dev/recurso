@@ -50,6 +50,12 @@ describe("JournalEntryPage", () => {
     renderPage();
     // Posting named in words (code 3 → "Payment"), not a raw code.
     await waitFor(() => expect(screen.getAllByText("Payment").length).toBeGreaterThan(0));
+    // The transaction amount leads as the header hero (Money).
+    expect(
+      screen
+        .getAllByText((_, el) => el?.classList?.contains("money") && el.textContent === "$99.00")
+        .length
+    ).toBeGreaterThan(0);
     // Labeled debit/credit (not color-only).
     expect(screen.getByText("DR")).toBeInTheDocument();
     expect(screen.getByText("CR")).toBeInTheDocument();

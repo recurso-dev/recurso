@@ -54,10 +54,15 @@ describe("PaymentPage", () => {
     endpoints.getPayment.mockResolvedValue({ data: { data: payment() } });
     renderPage();
     await waitFor(() => expect(screen.getByText("Payment · INV-009")).toBeInTheDocument());
-    // Human-readable outcome, not the raw code, is the primary explanation.
-    expect(screen.getByText(/Failed — Card declined/)).toBeInTheDocument();
-    // Raw code kept as technical detail.
-    expect(screen.getByText(/gateway code: card_declined/)).toBeInTheDocument();
+    // The hero amount leads (in the header, as Money).
+    expect(
+      screen.getByText((_, el) => el?.classList?.contains("money") && el.textContent === "$50.00")
+    ).toBeInTheDocument();
+    // Human-readable outcome (beside the hero amount), not the raw code, is the
+    // primary explanation.
+    expect(screen.getAllByText(/Failed — Card declined/).length).toBeGreaterThan(0);
+    // The raw gateway code is kept as quiet technical detail in the Details rail.
+    expect(screen.getByText("card_declined")).toBeInTheDocument();
     expect(screen.getByLabelText("Needs attention")).toBeInTheDocument();
   });
 
