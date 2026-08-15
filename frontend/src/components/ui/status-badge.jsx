@@ -40,6 +40,9 @@ const REGISTRY = {
   uncollectible: "destructive",
   void: "neutral",
   refunded: "neutral",
+  // payments (gateway settlement lifecycle)
+  initiated: "neutral", // just started
+  returned: "destructive", // ACH/card return — failure-adjacent
   // quotes
   sent: "info",
   accepted: "success",

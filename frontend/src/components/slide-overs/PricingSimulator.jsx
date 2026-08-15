@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 
 import { endpoints } from "../../lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { Money } from "@/components/ui/money";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,13 +79,13 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
       {result && (
         <div className="mt-3 flex flex-col gap-3">
           <div className="overflow-x-auto rounded-md border border-border bg-background">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm" aria-label="Simulated charges">
               <thead>
                 <tr className="border-b border-border bg-muted/50 text-xs text-muted-foreground">
-                  <th className="px-3 py-1.5 text-left font-medium">Metric</th>
-                  <th className="px-3 py-1.5 text-left font-medium">Model</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Quantity</th>
-                  <th className="px-3 py-1.5 text-right font-medium">Amount</th>
+                  <th scope="col" className="px-3 py-1.5 text-left font-medium">Metric</th>
+                  <th scope="col" className="px-3 py-1.5 text-left font-medium">Model</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Quantity</th>
+                  <th scope="col" className="px-3 py-1.5 text-right font-medium">Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,7 +97,7 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
                     </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{c.quantity}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
-                      {formatCurrency(c.amount, result.currency)}
+                      <Money amountMinor={c.amount} currency={result.currency} />
                     </td>
                   </tr>
                 ))}
@@ -106,7 +106,7 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
                     Subtotal (pre-tax)
                   </td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-foreground">
-                    {formatCurrency(result.subtotal, result.currency)}
+                    <Money amountMinor={result.subtotal} currency={result.currency} />
                   </td>
                 </tr>
               </tbody>
@@ -124,16 +124,16 @@ export default function PricingSimulator({ planId, currency, chargesPayload, met
                 )}
               </div>
               <div className="overflow-x-auto rounded-md border border-border bg-background">
-                <table className="w-full text-xs">
+                <table className="w-full text-xs" aria-label="GL preview">
                   <tbody>
                     {result.gl_preview.map((g, i) => (
                       <tr key={i} className="border-b border-border last:border-0">
                         <td className="px-3 py-1 text-muted-foreground">{g.account_name}</td>
                         <td className="px-3 py-1 text-right tabular-nums">
-                          {g.debit ? formatCurrency(g.debit, result.currency) : ""}
+                          {g.debit ? <Money amountMinor={g.debit} currency={result.currency} /> : ""}
                         </td>
                         <td className="px-3 py-1 text-right tabular-nums">
-                          {g.credit ? formatCurrency(g.credit, result.currency) : ""}
+                          {g.credit ? <Money amountMinor={g.credit} currency={result.currency} /> : ""}
                         </td>
                       </tr>
                     ))}

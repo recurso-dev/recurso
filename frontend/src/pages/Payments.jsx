@@ -4,8 +4,10 @@ import { CreditCard } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
-import { formatDateTime, shortId, cn } from "@/lib/utils";
+import { formatDateTime, shortId } from "@/lib/utils";
+import { humanizeFailure } from "@/lib/failureLabels";
 import { Money } from "@/components/ui/money";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import {
@@ -20,16 +22,9 @@ const PAGE_SIZE = 50;
 
 // Payment-attempt lifecycle: cards jump to succeeded/failed; ACH moves
 // initiated → processing → succeeded, and can go succeeded → returned days
-// later when the bank claws it back. Failed + returned are the exceptions an
-// operator watches — those tone destructive.
-const STATUS_TONE = {
-  succeeded: "border-success/30 bg-success/5 text-success",
-  processing: "border-warning/30 bg-warning/5 text-warning",
-  initiated: "border-border bg-muted text-muted-foreground",
-  failed: "border-destructive/30 bg-destructive/5 text-destructive",
-  returned: "border-destructive/30 bg-destructive/5 text-destructive",
-};
-
+// later when the bank claws it back. Rendered by the canonical StatusBadge
+// (returned/initiated live in its registry) — no bespoke status pill.
+//
 // Exceptions first: the statuses an operator most often filters to lead.
 const STATUS_FILTERS = [
   { value: "all", label: "All statuses" },
@@ -40,16 +35,6 @@ const STATUS_FILTERS = [
   { value: "succeeded", label: "Succeeded" },
 ];
 
-const StatusPill = ({ status }) => (
-  <span
-    className={cn(
-      "rounded-full border px-2.5 py-0.5 font-mono text-[11px] font-medium",
-      STATUS_TONE[status] || STATUS_TONE.initiated
-    )}
-  >
-    {status}
-  </span>
-);
 
 // The tenant-wide payments log: every gateway settlement attempt across all
 // invoices, newest first. The one place to answer "did this collection go
@@ -136,14 +121,18 @@ const Payments = () => {
     {
       key: "status",
       header: "Status",
-      cell: (p) => <StatusPill status={p.status} />,
+      cell: (p) => <StatusBadge status={p.status} />,
     },
     {
       key: "failure",
       header: "Reason",
+      // Lead with the human-readable reason; the raw gateway code stays as a
+      // quiet technical detail in the title (mirrors PaymentAttempts).
       cell: (p) =>
         p.failure_code ? (
-          <span className="font-mono text-xs text-destructive">{p.failure_code}</span>
+          <span className="text-sm text-destructive" title={`Gateway failure code: ${p.failure_code}`}>
+            {humanizeFailure(p.failure_code)}
+          </span>
         ) : (
           <span className="text-muted-foreground">—</span>
         ),

@@ -123,7 +123,7 @@ export default function AccountPage() {
 
       <ObjectPageLayout
         rail={
-          <ObjectSection title="Metadata">
+          <ObjectSection title="Details">
             <AttributeList
               columns={1}
               items={[
@@ -168,14 +168,14 @@ export default function AccountPage() {
             <p className="px-6 py-4 text-sm text-muted-foreground">No postings on this account.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
+              <table className="w-full min-w-[640px] text-sm" aria-label="Journal activity">
                 <thead>
                   <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-subtle">
-                    <th className="px-6 py-2.5 font-medium">Date</th>
-                    <th className="px-3 py-2.5 font-medium">Posting</th>
-                    <th className="px-3 py-2.5 font-medium">Against</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Debit</th>
-                    <th className="px-6 py-2.5 text-right font-medium">Credit</th>
+                    <th scope="col" className="px-6 py-2.5 font-medium">Date</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Posting</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Against</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Debit</th>
+                    <th scope="col" className="px-6 py-2.5 text-right font-medium">Credit</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">

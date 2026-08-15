@@ -85,6 +85,9 @@ describe("CreditNotePage", () => {
     expect(screen.getByText("IGST reversed")).toBeInTheDocument();
     // The journal drill renders the posting's accounts.
     expect(screen.getByText("Customer Credit")).toBeInTheDocument();
+    // Batch E parity: credit notes now carry a real Audit trail rail section
+    // (credit-notes is on the backend audit allowlist).
+    expect(screen.getByText("Audit trail")).toBeInTheDocument();
   });
 
   it("links to the customer and the offset invoice", async () => {
