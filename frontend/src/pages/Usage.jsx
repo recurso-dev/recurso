@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart } from "@tremor/react";
 import { Activity, Download, Gauge, Layers, RefreshCw, Users } from "lucide-react";
@@ -7,6 +7,8 @@ import { endpoints as api } from "../lib/api";
 import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, pageOffset } from "@/lib/pagination";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -30,21 +32,25 @@ const unitsTooltip = makeChartTooltip(unitsFormatter);
 
 export default function Usage() {
   const { names: customerNames } = useCustomers();
-  const [eventDimension, setEventDimension] = useState("all");
+  // Events filter + page in the URL so the view survives navigation.
+  const [eventDimension, setEventDimension] = useUrlState("dimension", "all");
+  const [eventsPage, setEventsPage] = useUrlState("page", 1, { parse: Number });
 
   // Raw ingestion stream — answers "did my usage events actually land?".
+  // Server-paginated (offset), so the stream no longer stops at the first page.
   const {
     data: events = [],
     isLoading: eventsLoading,
     error: eventsQueryError,
     refetch: refetchEvents,
   } = useQuery({
-    queryKey: ["usage-events", eventDimension],
+    queryKey: ["usage-events", eventDimension, eventsPage],
     queryFn: async () => {
-      const params = { limit: 50 };
+      const params = { limit: LIST_PAGE_SIZE, offset: pageOffset(eventsPage) };
       if (eventDimension !== "all") params.dimension = eventDimension;
       return (await api.getUsageEvents(params))?.data?.data || [];
     },
+    placeholderData: (prev) => prev,
   });
   const eventsError = eventsQueryError
     ? eventsQueryError?.response?.data?.error?.message ||
@@ -52,10 +58,9 @@ export default function Usage() {
       "Failed to load events"
     : null;
 
-  const eventDimensions = useMemo(
-    () => [...new Set(events.map((e) => e.dimension))].sort(),
-    [events]
-  );
+  // A new dimension filter starts back at page 1 (URL-safe: separate tick, skips
+  // mount).
+  useResetPageOnChange(setEventsPage, [eventDimension]);
 
   // Billable metrics, so a raw event's dimension can name the meter that
   // consumes it and show HOW it aggregates (Event → Meter → Aggregation). The
@@ -69,6 +74,14 @@ export default function Usage() {
     for (const met of metrics) m[met.code] = met;
     return m;
   }, [metrics]);
+
+  // Dimension filter options come from the defined meters (the complete
+  // billable-metrics list), not the current events page — deriving them from a
+  // paginated `events` slice would hide dimensions that live on later pages.
+  const eventDimensions = useMemo(
+    () => metrics.map((m) => m.code).sort(),
+    [metrics]
+  );
 
   const eventColumns = [
     {
@@ -377,6 +390,12 @@ export default function Usage() {
             title: "No raw events",
             description:
               "POST /v1/usage/events (or the batch endpoint) to ingest usage; events appear here immediately.",
+          }}
+          pagination={{
+            page: eventsPage,
+            onPrev: () => setEventsPage((p) => Math.max(1, p - 1)),
+            onNext: () => setEventsPage((p) => p + 1),
+            hasNext: events.length >= LIST_PAGE_SIZE,
           }}
         />
       </div>

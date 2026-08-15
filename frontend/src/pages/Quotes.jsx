@@ -6,6 +6,9 @@ import { FileText, Plus, Send, ArrowRight, MoreHorizontal } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
+import { useDebounce } from "../hooks/useDebounce";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, pageOffset } from "@/lib/pagination";
 import { formatDate } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
@@ -24,12 +27,17 @@ import {
 
 const Quotes = () => {
   const { names: customerNames } = useCustomers();
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  // List state in the URL so returning from a quote restores search / status /
+  // page (useUrlState).
+  const [searchQuery, setSearchQuery] = useUrlState("q", "");
+  const [statusFilter, setStatusFilter] = useUrlState("status", "");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  const debouncedSearch = useDebounce(searchQuery, 400);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  // Server-driven by status + search: each combination is its own cache entry;
+  // Server-driven by status + search + page: /quotes filters and paginates
+  // server-side, so each (status, search, page) is its own cache entry;
   // placeholderData keeps the current rows while the next query loads.
   const {
     data: quotes = [],
@@ -37,11 +45,11 @@ const Quotes = () => {
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["quotes", { status: statusFilter, search: searchQuery }],
+    queryKey: ["quotes", { status: statusFilter, search: debouncedSearch, page }],
     queryFn: async () => {
-      const params = {};
+      const params = { limit: LIST_PAGE_SIZE, offset: pageOffset(page) };
       if (statusFilter) params.status = statusFilter;
-      if (searchQuery) params.search = searchQuery;
+      if (debouncedSearch) params.search = debouncedSearch;
       return (await endpoints.getQuotes(params)).data.data || [];
     },
     placeholderData: (prev) => prev,
@@ -49,6 +57,10 @@ const Quotes = () => {
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load quotes"
     : null;
+
+  // A new status / search starts back at page 1 (URL-safe: separate tick, skips
+  // mount). Keyed on the debounced search so it aligns with the query refetch.
+  useResetPageOnChange(setPage, [statusFilter, debouncedSearch]);
 
   const invalidateQuotes = () => queryClient.invalidateQueries({ queryKey: ["quotes"] });
 
@@ -233,6 +245,12 @@ const Quotes = () => {
                 Create quote
               </Button>
             ) : null,
+        }}
+        pagination={{
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
+          onNext: () => setPage((p) => p + 1),
+          hasNext: quotes.length >= LIST_PAGE_SIZE,
         }}
       />
 

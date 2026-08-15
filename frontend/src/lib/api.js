@@ -258,7 +258,7 @@ export const endpoints = {
   voidCreditNote: (id) => api.post(`/credit-notes/${id}/void`),
 
   // Coupons
-  getCoupons: () => api.get('/coupons'),
+  getCoupons: (params) => api.get('/coupons', { params }),
   getCoupon: (id) => api.get(`/coupons/${id}`),
   createCoupon: (data) => api.post('/coupons', data),
   // active:false blocks new redemptions; existing subscriptions keep the discount.
@@ -291,13 +291,13 @@ export const endpoints = {
   convertQuoteToInvoice: (id) => api.post(`/quotes/${id}/convert`),
 
   // Gifts (P25)
-  getGifts: () => api.get('/gifts'),
+  getGifts: (params) => api.get('/gifts', { params }),
   purchaseGift: (data) => api.post('/gifts/purchase', data),
   redeemGift: (data) => api.post('/gifts/redeem', data),
   cancelGift: (id) => api.post(`/gifts/${id}/cancel`),
 
   // Referrals (P25)
-  getReferrals: () => api.get('/referrals'),
+  getReferrals: (params) => api.get('/referrals', { params }),
   createReferral: (data) => api.post('/referrals', data),
   generateReferralCode: (data) => api.post('/referrals/generate-code', data),
   // Marks the referral as qualified (reward becomes claimable).
@@ -335,7 +335,7 @@ export const endpoints = {
   resolveDispute: (id, body) => api.post(`/disputes/${id}/resolve`, body),
 
   // Offline payments + virtual accounts
-  getOfflinePayments: () => api.get('/payments/offline'),
+  getOfflinePayments: (params) => api.get('/payments/offline', { params }),
   recordOfflinePayment: (data) => api.post('/payments/offline', data),
   getVirtualAccounts: () => api.get('/virtual-accounts'),
   createVirtualAccount: (data) => api.post('/virtual-accounts', data),

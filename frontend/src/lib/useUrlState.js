@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useSearchParams } from "react-router";
 
 /**
@@ -58,4 +58,36 @@ export function useUrlState(key, defaultValue, options = {}) {
   );
 
   return [value, setValue];
+}
+
+/**
+ * useResetPageOnChange — reset a list back to page 1 when its filter/search
+ * values change, done correctly for URL-persisted state:
+ *
+ *  - runs in an effect (a SEPARATE tick from the filter's own URL write), so the
+ *    two useUrlState setters don't clobber each other in one navigation;
+ *  - skips the first run, so a page restored from the URL on mount (back
+ *    navigation) survives;
+ *  - reads `setPage` from a ref, so its identity — which `useSearchParams`
+ *    churns after every URL write — never spuriously re-triggers the reset (which
+ *    would snap the user back to page 1 the instant they paged forward).
+ *
+ * `deps` are the filter values (strings); they're serialized so the dependency
+ * array stays a stable literal.
+ *
+ *   useResetPageOnChange(setPage, [search, status]);
+ */
+export function useResetPageOnChange(setPage, deps) {
+  const setPageRef = useRef(setPage);
+  setPageRef.current = setPage;
+  const firstRun = useRef(true);
+  const key = JSON.stringify(deps);
+
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    setPageRef.current(1);
+  }, [key]);
 }

@@ -84,4 +84,43 @@ describe("Quotes page", () => {
       expect(toastMock.success).toHaveBeenCalledWith("Quote converted to an invoice.")
     );
   });
+
+  it("requests the first page with limit/offset (server-side pagination)", async () => {
+    render(<Quotes />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Q-001")).toBeInTheDocument());
+    expect(endpoints.getQuotes).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 25, offset: 0 })
+    );
+  });
+
+  it("restores the page from the URL and requests that page's offset", async () => {
+    window.history.pushState({}, "", "/?page=3");
+    render(<Quotes />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Q-001")).toBeInTheDocument());
+    // page 3 at 25/page → offset 50.
+    expect(endpoints.getQuotes).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 25, offset: 50 })
+    );
+  });
+
+  it("advances to the next page via the pagination control", async () => {
+    // A full first page (25 rows) means there may be more → Next is enabled.
+    const fullPage = Array.from({ length: 25 }, (_, i) => ({
+      id: `q${i}`,
+      quote_number: `Q-${i}`,
+      status: "draft",
+      total: 1000,
+      currency: "USD",
+      customer_id: "cus_1",
+    }));
+    endpoints.getQuotes.mockResolvedValue({ data: { data: fullPage } });
+    render(<Quotes />, { wrapper });
+    await waitFor(() => expect(screen.getByText("Q-0")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() =>
+      expect(endpoints.getQuotes).toHaveBeenCalledWith(
+        expect.objectContaining({ offset: 25 })
+      )
+    );
+  });
 });

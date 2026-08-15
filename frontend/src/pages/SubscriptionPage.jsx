@@ -1067,11 +1067,19 @@ export default function SubscriptionPage() {
           >
             <ol className="space-y-0">
               {lifecycleHistory.map((h, i) => {
-                const last = i === lifecycle.length - 1;
+                // Bounds-check against the array being mapped — `lifecycle` is
+                // the actions config object (no `.length`), so the old
+                // `lifecycle.length - 1` was NaN and the connector line drew on
+                // the final item too.
+                const last = i === lifecycleHistory.length - 1;
                 return (
                   <li key={h.id} className="relative flex gap-3 pb-4 last:pb-0">
                     {!last && (
-                      <span className="absolute left-[4px] top-4 h-full w-px bg-border" aria-hidden />
+                      <span
+                        data-testid="lifecycle-connector"
+                        className="absolute left-[4px] top-4 h-full w-px bg-border"
+                        aria-hidden
+                      />
                     )}
                     <span className="relative z-10 mt-1.5 size-2 shrink-0 rounded-full bg-primary/70" />
                     <div className="min-w-0 flex-1">

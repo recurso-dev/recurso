@@ -8,6 +8,7 @@ import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { DataTable } from "@/components/patterns/DataTable";
+import { ListNotice } from "@/components/patterns/ListNotice";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,12 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 
 const fmtDate = (v) => formatDateTime(v);
+
+// Backend hard caps with no offset — this view can load at most these many rows.
+// (BACKEND GAP: add limit/offset + total to /churn/alerts and /churn/high-risk
+// so the tail is reachable and paginable server-side.)
+const ALERTS_LIMIT = 100;
+const HIGH_RISK_LIMIT = 1000;
 
 const errMsg = (err, fallback) =>
   err ? err?.response?.data?.error?.message || err?.message || fallback : null;
@@ -120,6 +127,13 @@ const Churn = () => {
           description="You'll see an alert here when a customer's churn score spikes past the threshold."
         />
       ) : (
+        <>
+        {alerts.length >= ALERTS_LIMIT && (
+          <ListNotice>
+            Showing the first {ALERTS_LIMIT} alerts. Acknowledge open alerts to
+            surface the rest, or use the API for the complete set.
+          </ListNotice>
+        )}
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {alerts.map((a) => (
             <Card key={a.id}>
@@ -152,10 +166,17 @@ const Churn = () => {
             </Card>
           ))}
         </div>
+        </>
       )}
 
       {/* High-risk customers */}
       <h2 className="mb-3 mt-8 text-sm font-semibold text-foreground">High-risk customers</h2>
+      {highRisk.length >= HIGH_RISK_LIMIT && (
+        <ListNotice>
+          Showing the first {HIGH_RISK_LIMIT.toLocaleString()} high-risk customers.
+          Use the API for the complete set.
+        </ListNotice>
+      )}
       <DataTable
         columns={hrColumns}
         data={highRisk}

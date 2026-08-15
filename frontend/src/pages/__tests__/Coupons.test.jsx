@@ -76,4 +76,48 @@ describe("Coupons page", () => {
       expect(screen.getByText(/no coupons/i)).toBeInTheDocument()
     );
   });
+
+  const many = (n) =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `c${i}`,
+      code: `CODE${i}`,
+      discount_type: "percent",
+      discount_value: 5,
+      active: true,
+    }));
+
+  it("paginates the complete set client-side (page 1, then the last page)", async () => {
+    endpoints.getCoupons.mockResolvedValue({ data: { data: many(30) } });
+    render(<Coupons />, { wrapper });
+    await waitFor(() => expect(screen.getByText("CODE0")).toBeInTheDocument());
+    // First page: 25 of 30, the 26th row is not shown yet.
+    expect(screen.getByText("1–25 of 30")).toBeInTheDocument();
+    expect(screen.queryByText("CODE25")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    // Last page: the tail appears, page-1 rows are gone.
+    await waitFor(() => expect(screen.getByText("26–30 of 30")).toBeInTheDocument());
+    expect(screen.getByText("CODE25")).toBeInTheDocument();
+    expect(screen.queryByText("CODE0")).not.toBeInTheDocument();
+  });
+
+  it("restores the page from the URL (back-navigation restoration)", async () => {
+    endpoints.getCoupons.mockResolvedValue({ data: { data: many(30) } });
+    // Simulate returning to a list that was on page 2.
+    window.history.pushState({}, "", "/?page=2");
+    render(<Coupons />, { wrapper });
+    await waitFor(() => expect(screen.getByText("CODE25")).toBeInTheDocument());
+    expect(screen.getByText("26–30 of 30")).toBeInTheDocument();
+  });
+
+  it("resets to page 1 when the search changes", async () => {
+    endpoints.getCoupons.mockResolvedValue({ data: { data: many(30) } });
+    window.history.pushState({}, "", "/?page=2");
+    render(<Coupons />, { wrapper });
+    await waitFor(() => expect(screen.getByText("26–30 of 30")).toBeInTheDocument());
+    await userEvent.type(screen.getByPlaceholderText(/search coupons/i), "CODE1");
+    // Back to page 1 of the filtered set (CODE1, CODE10-19 → 11 matches).
+    await waitFor(() => expect(screen.getByText(/of 11$/)).toBeInTheDocument());
+    expect(screen.getByText("CODE1")).toBeInTheDocument();
+  });
 });
