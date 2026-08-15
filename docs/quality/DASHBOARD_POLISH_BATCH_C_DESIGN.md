@@ -379,13 +379,17 @@ the API.
 
 ---
 
-## 13. Open decisions for approval
+## 13. Decisions — RESOLVED (2026-08-15)
 
-1. **Canonical label colour:** Option **A `text-subtle`** (recommended,
-   reference + a11y) vs **B `text-muted-foreground`** (minimal pixel change). §4.
-2. **Section-title (#13):** default **defer** (out of enumerated scope) — confirm,
-   or fold a `<SectionTitle>` into Batch C. §10.
-3. **Lint guard:** add the targeted "no raw uppercase-tracking outside `<Overline>`"
-   check **only if** non-noisy — OK to skip? §12.6.
+1. **Canonical label colour → Option A, `text-subtle`.** The role canonicalises on
+   `text-xs font-medium uppercase tracking-wide text-subtle`; the ~40 sites on
+   `text-muted-foreground` shift one step darker (reference-aligned, a11y ↑).
+2. **Section-title (#13) → DEFER.** Not in Batch C's enumerated vocabulary; kept a
+   documented follow-up (§10). No `<SectionTitle>` in this batch.
+3. **Lint guard → add only if non-noisy.** A targeted "no new raw uppercase-tracking
+   outside `<Overline>`" check will be added **only** if it can be scoped to new
+   violations without flagging legitimate non-migrated cases or weakening CI;
+   otherwise skipped and documented (§12.6).
 
-**STOP — investigation complete. Awaiting approval before any production code.**
+**Investigation complete and decisions locked. Ready to implement on the explicit
+go-ahead — no production code written yet.**
