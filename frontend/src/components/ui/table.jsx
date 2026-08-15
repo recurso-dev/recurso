@@ -2,8 +2,12 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Table = React.forwardRef(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-auto">
+// `wrapperClassName` styles the scroll container (the div that owns overflow).
+// DataTable passes a max-height here so the table body scrolls INSIDE this
+// element, which lets a `position: sticky` header pin to its top (see
+// DASHBOARD_POLISH_BATCH_D_DESIGN.md). Left unset, behaviour is unchanged.
+const Table = React.forwardRef(({ className, wrapperClassName, ...props }, ref) => (
+  <div className={cn("relative w-full overflow-auto", wrapperClassName)}>
     <table
       ref={ref}
       className={cn("w-full caption-bottom text-sm", className)}

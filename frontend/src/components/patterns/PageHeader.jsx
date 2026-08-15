@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
  *  - breadcrumbs: [{ label, to? }]  (last item is rendered as current page)
  *  - actions:     ReactNode (right-aligned buttons, e.g. <Button>New</Button>)
  */
-export function PageHeader({ title, description, breadcrumbs, actions, className }) {
+export function PageHeader({ title, description, breadcrumbs, actions, className, titleId = "page-title" }) {
   return (
     <div className={cn("mb-6", className)}>
       {breadcrumbs?.length > 0 && (
@@ -38,7 +38,12 @@ export function PageHeader({ title, description, breadcrumbs, actions, className
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
+          {/* Stable id so a page's DataTable can name itself from this visible
+              heading via aria-labelledby (Batch D — accessible table names). */}
+          <h1
+            id={titleId}
+            className="truncate text-2xl font-semibold tracking-tight text-foreground"
+          >
             {title}
           </h1>
           {description && (
