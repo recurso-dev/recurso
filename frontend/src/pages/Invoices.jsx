@@ -1,15 +1,18 @@
+import { useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
-import { FileText, Download } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { FileText, Download, Send } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
 import { useUrlState } from "@/lib/useUrlState";
+import { useBulkAction } from "@/lib/useBulkAction";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { moneyColumn } from "@/components/patterns/columns";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { BulkActionDialog } from "@/components/patterns/BulkActionDialog";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -128,7 +131,7 @@ const Invoices = () => {
       };
     },
   });
-  const invoices = data?.rows || [];
+  const invoices = useMemo(() => data?.rows || [], [data]);
   const truncated = data?.truncated || false;
   const totalCount = data?.total ?? invoices.length;
   const error = queryError
@@ -147,6 +150,44 @@ const Invoices = () => {
       inv.status?.toLowerCase().includes(s)
     );
   });
+
+  // Bulk send: select invoices on the current view and email each customer their
+  // invoice. Non-money, resendable. Each row gets a stable idempotency key so a
+  // retry of a row that actually sent can't send twice.
+  const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const bulk = useBulkAction();
+  const keysRef = useRef(new Map());
+  const keyFor = (id) => {
+    if (!keysRef.current.has(id)) keysRef.current.set(id, crypto.randomUUID());
+    return keysRef.current.get(id);
+  };
+  const invById = useMemo(
+    () => Object.fromEntries(invoices.map((i) => [i.id, i])),
+    [invoices]
+  );
+  const runSend = async (ids) => {
+    const res = await bulk.run(ids, (id) =>
+      endpoints.sendInvoice(id, { idempotencyKey: keyFor(id) })
+    );
+    if (res.succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    return res;
+  };
+  const openBulk = () => {
+    bulk.reset();
+    keysRef.current.clear();
+    setBulkOpen(true);
+  };
+  const closeBulk = (open) => {
+    if (open) return;
+    setBulkOpen(false);
+    // Keep only the still-failed rows selected for a follow-up; clear on success.
+    if (bulk.state) setSelectedIds(new Set(bulk.state.failed.map((f) => f.id)));
+    bulk.reset();
+  };
+  const selectedCount = selectedIds.size;
+  const noun = (n) => (n === 1 ? "invoice" : "invoices");
 
   const exportCsv = () => {
     const rows = filteredInvoices.map((inv) => ({
@@ -247,6 +288,15 @@ const Invoices = () => {
         error={error}
         onRetry={refetch}
         rowHref={(inv) => `/invoices/${inv.id}`}
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        renderBulkActions={(ids) => (
+          <Button size="sm" onClick={openBulk}>
+            <Send className="h-4 w-4" />
+            Send {ids.size} {noun(ids.size)}
+          </Button>
+        )}
         search={{
           value: search,
           onChange: setSearch,
@@ -298,6 +348,19 @@ const Invoices = () => {
               ? "Invoices will appear here once subscriptions are billed."
               : "Try a different status filter.",
         }}
+      />
+
+      <BulkActionDialog
+        open={bulkOpen}
+        onOpenChange={closeBulk}
+        title={`Send ${selectedCount} ${noun(selectedCount)}?`}
+        description="Each customer is emailed their invoice with a Pay Now link. Draft or already-paid invoices may be skipped and will show as failed."
+        confirmLabel={`Send ${selectedCount} ${noun(selectedCount)}`}
+        noun="invoice"
+        state={bulk.state}
+        onConfirm={() => runSend([...selectedIds])}
+        onRetry={(failedIds) => runSend(failedIds)}
+        labelForId={(id) => invById[id]?.invoice_number || String(id).slice(0, 8)}
       />
 
     </div>

@@ -1,5 +1,7 @@
-import { render, screen, fireEvent } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { useState } from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Routes, Route, useLocation } from "react-router";
 import { describe, it, expect, vi } from "vitest";
 import { DataTable } from "../DataTable";
 
@@ -122,5 +124,146 @@ describe("DataTable pagination contract", () => {
       </MemoryRouter>
     );
     expect(screen.queryByRole("button", { name: "Next" })).toBeNull();
+  });
+});
+
+describe("DataTable selection", () => {
+  const cols = [{ key: "name", header: "Name", cell: (r) => r.name }];
+  const three = [
+    { id: "a", name: "A" },
+    { id: "b", name: "B" },
+    { id: "c", name: "C" },
+  ];
+
+  function Harness({ data = three, rowHref }) {
+    const [ids, setIds] = useState(new Set());
+    return (
+      <DataTable
+        columns={cols}
+        data={data}
+        rowHref={rowHref}
+        selectable
+        selectedIds={ids}
+        onSelectionChange={setIds}
+        renderBulkActions={(sel) => <span>bulk:{sel.size}</span>}
+      />
+    );
+  }
+
+  const renderH = (props) =>
+    render(
+      <MemoryRouter>
+        <Harness {...props} />
+      </MemoryRouter>
+    );
+
+  const rowCheckbox = (name) =>
+    screen.getByRole("checkbox", { name: `Select row ${name}` });
+  const headerCheckbox = () =>
+    screen.getByRole("checkbox", { name: "Select all rows on this page" });
+
+  it("shows no bulk bar when nothing is selected", () => {
+    renderH();
+    expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it("selects an individual row", () => {
+    renderH();
+    fireEvent.click(rowCheckbox("a"));
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByText("bulk:1")).toBeInTheDocument();
+    expect(rowCheckbox("a")).toBeChecked();
+    expect(rowCheckbox("b")).not.toBeChecked();
+  });
+
+  it("select-all selects every row on this page, and toggles off", () => {
+    renderH();
+    fireEvent.click(headerCheckbox());
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    expect(rowCheckbox("a")).toBeChecked();
+    expect(rowCheckbox("c")).toBeChecked();
+    // The label makes the page scope unmistakable.
+    expect(screen.getByText("on this page")).toBeInTheDocument();
+    fireEvent.click(headerCheckbox());
+    expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it("deselects a single row", () => {
+    renderH();
+    fireEvent.click(headerCheckbox());
+    fireEvent.click(rowCheckbox("b"));
+    expect(screen.getByText("2 selected")).toBeInTheDocument();
+    expect(rowCheckbox("b")).not.toBeChecked();
+  });
+
+  it("Clear empties the selection", () => {
+    renderH();
+    fireEvent.click(headerCheckbox());
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.queryByText(/selected/)).toBeNull();
+  });
+
+  it("retains valid selections when the same page refetches", async () => {
+    const { rerender } = renderH();
+    fireEvent.click(headerCheckbox());
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    // Refetch: a new array with the SAME ids.
+    rerender(
+      <MemoryRouter>
+        <Harness data={three.map((r) => ({ ...r }))} />
+      </MemoryRouter>
+    );
+    // Selection survives (ids still present).
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+  });
+
+  it("prunes selections that leave the result set (filter/paginate)", async () => {
+    const { rerender } = renderH();
+    fireEvent.click(headerCheckbox());
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
+    // Paginate/filter to a disjoint set — the old ids are no longer valid.
+    rerender(
+      <MemoryRouter>
+        <Harness data={[{ id: "x", name: "X" }]} />
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(screen.queryByText(/selected/)).toBeNull());
+    expect(screen.getByRole("checkbox", { name: "Select row x" })).not.toBeChecked();
+  });
+
+  it("selecting a row does not navigate (checkbox stops propagation)", () => {
+    function LocationProbe() {
+      const loc = useLocation();
+      return <div data-testid="loc">{loc.pathname}</div>;
+    }
+    render(
+      <MemoryRouter initialEntries={["/list"]}>
+        <Routes>
+          <Route
+            path="/list"
+            element={
+              <>
+                <Harness rowHref={(r) => `/x/${r.id}`} />
+                <LocationProbe />
+              </>
+            }
+          />
+          <Route path="/x/:id" element={<div>detail</div>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    fireEvent.click(rowCheckbox("a"));
+    expect(screen.getByTestId("loc")).toHaveTextContent("/list");
+    expect(screen.queryByText("detail")).toBeNull();
+    expect(rowCheckbox("a")).toBeChecked();
+  });
+
+  it("checkboxes are keyboard-operable", async () => {
+    const user = userEvent.setup();
+    renderH();
+    await user.tab(); // focus the header checkbox (first focusable)
+    expect(headerCheckbox()).toHaveFocus();
+    await user.keyboard(" ");
+    expect(screen.getByText("3 selected")).toBeInTheDocument();
   });
 });

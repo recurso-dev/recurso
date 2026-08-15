@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import Invoices from '../Invoices';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -10,6 +10,7 @@ vi.mock('../../lib/api', () => ({
     endpoints: {
         getInvoices: vi.fn(),
         getCustomers: vi.fn(),
+        sendInvoice: vi.fn(),
     }
 }));
 
@@ -208,5 +209,69 @@ describe('Invoices Page', () => {
         expect(screen.queryByText('INV-FRESH')).not.toBeInTheDocument();
         // The active bucket shows as a clearable chip.
         expect(screen.getByRole('button', { name: /Overdue 31–60 days/ })).toBeInTheDocument();
+    });
+
+    const loadThree = () =>
+        endpoints.getInvoices.mockResolvedValue({
+            data: { data: mockInvoices, pagination: { total_pages: 1, total: 3 } },
+        });
+
+    it('bulk-sends the selected invoices with a per-record idempotency key', async () => {
+        loadThree();
+        endpoints.sendInvoice.mockResolvedValue({ data: {} });
+        const user = userEvent.setup();
+        render(<Invoices />, { wrapper });
+        await waitFor(() => expect(screen.getByText('INV-001')).toBeInTheDocument());
+
+        // Select all on this page → bulk bar with the scoped action.
+        await user.click(screen.getByRole('checkbox', { name: 'Select all rows on this page' }));
+        await user.click(screen.getByRole('button', { name: 'Send 3 invoices' }));
+        // Confirm dialog states the exact scope.
+        const dialog = await screen.findByRole('dialog');
+        await user.click(within(dialog).getByRole('button', { name: 'Send 3 invoices' }));
+
+        await waitFor(() => expect(endpoints.sendInvoice).toHaveBeenCalledTimes(3));
+        // Each call carries a distinct idempotency key.
+        const keys = endpoints.sendInvoice.mock.calls.map(([, opts]) => opts.idempotencyKey);
+        expect(new Set(keys).size).toBe(3);
+        expect(keys.every(Boolean)).toBe(true);
+        await waitFor(() => expect(screen.getByText(/All 3 invoices done/)).toBeInTheDocument());
+    });
+
+    it('surfaces a partial failure and retries only the failed record with the same key', async () => {
+        loadThree();
+        endpoints.sendInvoice.mockImplementation((id) =>
+            id === 'inv-3'
+                ? Promise.reject({ response: { data: { error: { message: 'cannot send a void invoice' } } } })
+                : Promise.resolve({ data: {} })
+        );
+        const user = userEvent.setup();
+        render(<Invoices />, { wrapper });
+        await waitFor(() => expect(screen.getByText('INV-001')).toBeInTheDocument());
+
+        await user.click(screen.getByRole('checkbox', { name: 'Select all rows on this page' }));
+        await user.click(screen.getByRole('button', { name: 'Send 3 invoices' }));
+        const dialog = await screen.findByRole('dialog');
+        await user.click(within(dialog).getByRole('button', { name: 'Send 3 invoices' }));
+
+        // Partial failure is its own state — never reported as success.
+        await waitFor(() => expect(screen.getByText('Partially failed')).toBeInTheDocument());
+        const resultDialog = screen.getByRole('dialog');
+        expect(within(resultDialog).getByText('2 succeeded, 1 failed.')).toBeInTheDocument();
+        // The failed record stays identifiable in the result surface.
+        expect(within(resultDialog).getByText('INV-003')).toBeInTheDocument();
+        expect(within(resultDialog).getByText('cannot send a void invoice')).toBeInTheDocument();
+
+        const keyForVoid = endpoints.sendInvoice.mock.calls.find(([id]) => id === 'inv-3')[1].idempotencyKey;
+
+        // Retry only the failed one; let it succeed this time.
+        endpoints.sendInvoice.mockResolvedValue({ data: {} });
+        await user.click(screen.getByRole('button', { name: 'Retry 1 failed' }));
+        await waitFor(() => expect(screen.getByText(/All 1 invoice done/)).toBeInTheDocument());
+
+        // The retry reused the same idempotency key (no double-act) and only re-ran inv-3.
+        const voidCalls = endpoints.sendInvoice.mock.calls.filter(([id]) => id === 'inv-3');
+        expect(voidCalls).toHaveLength(2);
+        expect(voidCalls[1][1].idempotencyKey).toBe(keyForVoid);
     });
 });

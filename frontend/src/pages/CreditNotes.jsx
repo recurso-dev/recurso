@@ -1,15 +1,17 @@
-import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
-import { Plus, Receipt } from "lucide-react";
+import { Plus, Receipt, Ban } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatDate } from "@/lib/utils";
 import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useBulkAction } from "@/lib/useBulkAction";
 import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { BulkActionDialog } from "@/components/patterns/BulkActionDialog";
 import { ListNotice } from "@/components/patterns/ListNotice";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
@@ -53,6 +55,43 @@ const CreditNotes = () => {
   const pagedNotes = pageSlice(filteredNotes, page);
   // A new search starts back at page 1 (URL-safe: separate tick, skips mount).
   useResetPageOnChange(setPage, [search]);
+
+  // Bulk reject: only pending credit notes can be rejected (the backend no-ops
+  // the rest); no money moves. Each row gets a stable idempotency key so a retry
+  // can't act twice.
+  const queryClient = useQueryClient();
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const bulk = useBulkAction();
+  const keysRef = useRef(new Map());
+  const keyFor = (id) => {
+    if (!keysRef.current.has(id)) keysRef.current.set(id, crypto.randomUUID());
+    return keysRef.current.get(id);
+  };
+  const noteById = useMemo(
+    () => Object.fromEntries(creditNotes.map((cn) => [cn.id, cn])),
+    [creditNotes]
+  );
+  const runReject = async (ids) => {
+    const res = await bulk.run(ids, (id) =>
+      endpoints.rejectCreditNote(id, { idempotencyKey: keyFor(id) })
+    );
+    if (res.succeeded.length > 0) queryClient.invalidateQueries({ queryKey: ["credit-notes"] });
+    return res;
+  };
+  const openBulk = () => {
+    bulk.reset();
+    keysRef.current.clear();
+    setBulkOpen(true);
+  };
+  const closeBulk = (open) => {
+    if (open) return;
+    setBulkOpen(false);
+    if (bulk.state) setSelectedIds(new Set(bulk.state.failed.map((f) => f.id)));
+    bulk.reset();
+  };
+  const selectedCount = selectedIds.size;
+  const noun = (n) => (n === 1 ? "credit note" : "credit notes");
 
   const columns = [
     {
@@ -128,6 +167,15 @@ const CreditNotes = () => {
         error={error}
         onRetry={refetch}
         rowHref={(row) => `/credit-notes/${row.id}`}
+        selectable
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
+        renderBulkActions={(ids) => (
+          <Button size="sm" variant="destructive" onClick={openBulk}>
+            <Ban className="h-4 w-4" />
+            Reject {ids.size} {noun(ids.size)}
+          </Button>
+        )}
         search={{
           value: search,
           onChange: setSearch,
@@ -152,6 +200,21 @@ const CreditNotes = () => {
           total: filteredNotes.length,
           onPageChange: setPage,
         }}
+      />
+
+      <BulkActionDialog
+        open={bulkOpen}
+        onOpenChange={closeBulk}
+        title={`Reject ${selectedCount} ${noun(selectedCount)}?`}
+        description="Only pending credit notes can be rejected — no credit is issued and no money moves. Already-issued or rejected notes are skipped and will show as failed."
+        confirmLabel={`Reject ${selectedCount} ${noun(selectedCount)}`}
+        destructive
+        irreversible
+        noun="credit note"
+        state={bulk.state}
+        onConfirm={() => runReject([...selectedIds])}
+        onRetry={(failedIds) => runReject(failedIds)}
+        labelForId={(id) => noteById[id]?.reference || String(id).slice(0, 8)}
       />
     </div>
   );
