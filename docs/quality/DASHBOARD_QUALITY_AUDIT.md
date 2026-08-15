@@ -138,20 +138,23 @@ prior initiative, stated honestly.)*
 
 # P1 Issues
 
-### P1-1 · ⌘K command palette indexes routes only, not objects
-- **Current:** `command-palette.jsx:14-30` indexes `ALL_DESTINATIONS` (nav + aux
-  routes) + static Create/Help actions; filtering is a substring match over static
-  labels (`:39-43`). **Verified live:** ⌘K → "Initech" (a real customer) →
-  "Nothing matches 'Initech'."
-- **Problem:** every object has a URL, but there is no way to reach one except
-  drilling through a list. That is the defining capability of an "operating system."
-- **Impact:** slow operation; the ⌘K affordance implies object search and doesn't
-  deliver it.
-- **Solution:** add object results to the palette — customers, invoices,
-  subscriptions, plans by name/number/id. Ideally a lightweight backend search
-  (see BACKEND GAP-6); interim, search the already-cached react-query lists client-side.
-- **Priority:** P1. **Affected:** `command-palette.jsx`, `useCustomers`/list hooks.
-  **Dependencies:** best with GAP-6; usable without it.
+### P1-1 · ⌘K object search — SHIPPED (Batch 2), partially
+- **Shipped:** ⌘K now searches **Customers, Plans, Subscriptions** server-side —
+  a debounced (200 ms), min-length-2, parallel per-object fan-out (`limit:6`),
+  keyed per query so a stale response can't overwrite the current one, with
+  **AbortSignal** cancellation wired through the API client and **per-group
+  partial-failure** (one type failing never blanks the palette; the route launcher
+  always works). Results render what/who/state (`StatusBadge`, identity + context)
+  and deep-link to the canonical object URLs. `command-palette.jsx`,
+  `lib/paletteSearch.js` (deterministic ranking), `lib/api.js`. Full design +
+  gaps: `docs/quality/COMMAND_PALETTE_DESIGN.md`.
+- **NOT shipped (backend-blocked):** **Invoices** and **Payments** have no
+  server-side text search (Payment also has no `/payments/:id`), so their groups
+  are deferred — **BACKEND GAP**, not faked. Recent Objects and a unified
+  `/v1/search` are intentionally not built.
+- **Remaining gap:** subscription results resolve customer/plan names from the
+  warm id→name caches and degrade to a short id when cold — denormalized names on
+  the subscription-search response would remove that reliance (design GAP-3).
 
 ### P1-2 · Subscription is the weakest gold page — no financial summary, no accounting impact
 - **Current:** `SubscriptionPage.jsx` shows amount/mo, upcoming invoice, accrued

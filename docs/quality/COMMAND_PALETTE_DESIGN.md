@@ -1,6 +1,15 @@
 # Command Palette (⌘K) — Object Search Design
 
-> **Design + investigation doc, no production code.** Turns ⌘K from a route
+> **STATUS (Batch A — SHIPPED):** ⌘K now searches **Customers, Plans,
+> Subscriptions** server-side (per-object fan-out: debounced 200 ms, min-length 2,
+> parallel, `limit:6`, AbortSignal-cancellable, per-group partial-failure), on top
+> of the existing route/create/help destinations. Results show what/who/state via
+> `StatusBadge` and deep-link to canonical URLs. **Invoice and Payment search are
+> NOT implemented** — GAP-1..4 below remain open. Recent Objects and a unified
+> `/search` are **not** built. Code: `components/ui/command-palette.jsx`,
+> `lib/paletteSearch.js`, `lib/api.js` (AbortSignal config on the three getters).
+>
+> **Design + investigation doc.** Turns ⌘K from a route
 > launcher into a Recurso object-navigation entry point. Every claim cites the
 > real file/endpoint; backend capabilities are verified, not assumed.
 > Scope of the *first* implementation: **Customers, Plans, Subscriptions** object
