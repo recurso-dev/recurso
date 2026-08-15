@@ -33,6 +33,7 @@ import {
   chartDefaults,
 } from "@/components/charts/ChartTooltip";
 import { docsUrlFor } from "@/lib/docsLinks";
+import { Overline } from "@/components/ui/overline";
 
 const EXAMPLES = [
   "What was my MRR growth over the last 3 months?",
@@ -523,9 +524,9 @@ const AskAnalytics = () => {
         <div className="mx-auto mt-8 grid w-full max-w-2xl grid-cols-1 gap-4 sm:grid-cols-2">
           {EXAMPLE_GROUPS.map((group) => (
             <div key={group.label} className="rounded-xl border border-border p-4">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <Overline as="p" className="mb-2">
                 {group.label}
-              </p>
+              </Overline>
               <div className="space-y-1">
                 {group.items.map((ex) => (
                   <button
@@ -594,9 +595,9 @@ const AskAnalytics = () => {
         )}
 
         {history.length > 0 && (
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <Overline as="p">
             Recent answers
-          </p>
+          </Overline>
         )}
         {history.map((entry) => (
           <ResultCard

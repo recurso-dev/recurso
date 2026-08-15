@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { Money } from "@/components/ui/money";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
+import { Overline } from "@/components/ui/overline";
 import {
   Select,
   SelectContent,
@@ -677,20 +678,17 @@ export default function SubscriptionPage() {
           <ObjectSection title="Financial summary">
             <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
               <div className="min-w-0">
-                <dt
-                  className="text-xs font-medium uppercase tracking-wide text-subtle"
-                  title="Monthly Recurring Revenue — the plan's list price normalized to a month. 0 unless the subscription is active. Excludes tax, usage, add-ons and one-off charges."
-                >
+                <Overline as="dt" title="Monthly Recurring Revenue — the plan's list price normalized to a month. 0 unless the subscription is active. Excludes tax, usage, add-ons and one-off charges.">
                   MRR
-                </dt>
+                </Overline>
                 <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
                   <Money amountMinor={finSummary.mrr} currency={finSummary.currency} />
                 </dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-xs font-medium uppercase tracking-wide text-subtle">
+                <Overline as="dt">
                   Billed each period
-                </dt>
+                </Overline>
                 <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
                   <Money amountMinor={finSummary.recurring_amount} currency={finSummary.currency} />
                   <span className="ml-1 text-xs font-normal text-muted-foreground">
@@ -700,9 +698,9 @@ export default function SubscriptionPage() {
                 </dd>
               </div>
               <div className="min-w-0">
-                <dt className="text-xs font-medium uppercase tracking-wide text-subtle">
+                <Overline as="dt">
                   Next invoice
-                </dt>
+                </Overline>
                 <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
                   {finSummary.next_invoice_date ? (
                     <>
@@ -913,9 +911,9 @@ export default function SubscriptionPage() {
 
                 {pendingCharges != null && (
                   <div className="border-t border-border pt-3">
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Overline as="p" className="mb-2">
                       Pending on next invoice
-                    </p>
+                    </Overline>
                     {pendingCharges.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No pending one-off charges.</p>
                     ) : (
@@ -1180,9 +1178,9 @@ export default function SubscriptionPage() {
                       <div className="flex flex-wrap items-center gap-2 text-sm">
                         {h.change_type === "plan" ? (
                           <>
-                            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                            <Overline as="span">
                               Plan
-                            </span>
+                            </Overline>
                             <span className="text-foreground">{planNameOf(h.from_value)}</span>
                             <span className="text-muted-foreground" aria-label="became">→</span>
                             <span className="text-foreground">{planNameOf(h.to_value)}</span>

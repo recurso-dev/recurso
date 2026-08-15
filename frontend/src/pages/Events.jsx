@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Overline } from "@/components/ui/overline";
 import {
   Select,
   SelectContent,
@@ -36,7 +37,7 @@ const copyText = async (v, label) => {
 
 const Field = ({ label, children }) => (
   <div>
-    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{label}</dt>
+    <Overline as="dt">{label}</Overline>
     <dd className="mt-0.5 text-sm text-foreground">{children}</dd>
   </div>
 );

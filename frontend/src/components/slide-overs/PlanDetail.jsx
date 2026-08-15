@@ -11,6 +11,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
+import { Overline } from "@/components/ui/overline";
 import {
   Sheet,
   SheetContent,
@@ -64,7 +65,7 @@ const entitlementRowsToPayload = (rows) =>
 function DetailRow({ label, value }) {
   return (
     <div className="flex flex-col gap-1">
-      <p className="text-xs uppercase tracking-wide text-muted-foreground">{label}</p>
+      <Overline as="p">{label}</Overline>
       <div className="text-sm text-foreground">{value}</div>
     </div>
   );
@@ -267,7 +268,7 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
             {isEditingPlan ? (
               <div className="flex flex-col gap-3 rounded-lg border border-border bg-muted/40 p-4">
                 <div>
-                  <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">Name</p>
+                  <Overline as="p" className="mb-1">Name</Overline>
                   <Input
                     value={planForm.name}
                     onChange={(e) => setPlanForm({ ...planForm, name: e.target.value })}
@@ -276,9 +277,9 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    <Overline as="p" className="mb-1">
                       Interval unit
-                    </p>
+                    </Overline>
                     <select
                       value={planForm.interval_unit}
                       onChange={(e) => setPlanForm({ ...planForm, interval_unit: e.target.value })}
@@ -292,9 +293,9 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                     </select>
                   </div>
                   <div>
-                    <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                    <Overline as="p" className="mb-1">
                       Interval count
-                    </p>
+                    </Overline>
                     <Input
                       type="number"
                       min="1"
@@ -306,9 +307,9 @@ export default function PlanDetail({ plan, isOpen, onClose, onChanged }) {
                   </div>
                 </div>
                 <div>
-                  <p className="mb-1 text-xs uppercase tracking-wide text-muted-foreground">
+                  <Overline as="p" className="mb-1">
                     HSN/SAC code
-                  </p>
+                  </Overline>
                   <Input
                     value={planForm.hsn_code}
                     onChange={(e) => setPlanForm({ ...planForm, hsn_code: e.target.value })}

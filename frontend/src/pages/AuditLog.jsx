@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Overline } from "@/components/ui/overline";
 
 const PAGE_SIZE = 100;
 
@@ -43,9 +44,9 @@ const copyText = async (v, label) => {
 
 const Field = ({ label, children, span }) => (
   <div className={span ? "col-span-2" : undefined}>
-    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+    <Overline as="dt">
       {label}
-    </dt>
+    </Overline>
     <dd className="mt-0.5 text-sm text-foreground">{children}</dd>
   </div>
 );

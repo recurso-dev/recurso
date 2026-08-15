@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 
 import { cn, shortId, formatCurrency } from "@/lib/utils";
+import { Overline } from "@/components/ui/overline";
 import { endpoints } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { rankResults } from "@/lib/paletteSearch";
@@ -211,9 +212,9 @@ export function CommandPalette({ open, onOpenChange }) {
           )}
           {sections.map((s) => (
             <div key={s.group}>
-              <p className="px-3 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              <Overline as="p" className="px-3 pb-1 pt-2">
                 {s.group}
-              </p>
+              </Overline>
               {s.loading && s.items.length === 0 && (
                 <p className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Searching…

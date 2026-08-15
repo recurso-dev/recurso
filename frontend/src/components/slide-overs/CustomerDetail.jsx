@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { Overline } from "@/components/ui/overline";
 import {
   Sheet,
   SheetContent,
@@ -51,9 +52,9 @@ const riskLabel = (score) => {
 
 const Field = ({ label, children, mono }) => (
   <div>
-    <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <Overline as="dt">
       {label}
-    </dt>
+    </Overline>
     <dd className={`mt-1 text-sm text-foreground ${mono ? "font-mono" : ""}`}>
       {children}
     </dd>
@@ -71,9 +72,9 @@ const ChurnStat = ({ label, value }) => (
 // A titled group of fields, rendered only when it has at least one value.
 const Section = ({ title, children }) => (
   <div className="space-y-4">
-    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+    <Overline as="p">
       {title}
-    </p>
+    </Overline>
     <dl className="space-y-4">{children}</dl>
   </div>
 );
@@ -81,9 +82,9 @@ const Section = ({ title, children }) => (
 // A labelled input inside the edit form.
 const EditField = ({ label, value, onChange, mono, placeholder, type = "text" }) => (
   <div>
-    <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <Overline as="p" className="mb-1">
       {label}
-    </p>
+    </Overline>
     <Input
       type={type}
       value={value}
@@ -475,9 +476,9 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   <Separator />
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                      <Overline as="p">
                         Churn risk
-                      </p>
+                      </Overline>
                       <Badge variant={riskVariant(churn.score)}>
                         {churn.score} · {churn.risk_level}
                       </Badge>
@@ -509,9 +510,9 @@ const CustomerDetail = ({ customer, isOpen, onClose, onChanged }) => {
                   <Separator />
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                      <Overline as="p">
                         Account credit
-                      </p>
+                      </Overline>
                       <Button variant="outline" size="sm" onClick={exportCreditCsv}>
                         Export CSV
                       </Button>

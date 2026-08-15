@@ -5,6 +5,7 @@ import { endpoints } from "../lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Overline } from "@/components/ui/overline";
 import {
   Dialog,
   DialogContent,
@@ -84,9 +85,7 @@ const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
         {giftCode ? (
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-muted/40 p-4 text-center">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Gift code
-              </p>
+              <Overline as="p">Gift code</Overline>
               <p className="mt-1 font-mono text-lg font-semibold text-foreground">
                 {giftCode}
               </p>

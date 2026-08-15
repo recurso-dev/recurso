@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight, Info } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 import { MotionNumber } from "@/components/patterns/MotionNumber";
 import {
   Tooltip,
@@ -65,14 +66,14 @@ export function StatCard({
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <p
-            className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+          <Overline
+            as="p"
             // On a linked tile we can't nest an interactive tooltip trigger in
             // the <a>, so the definition rides along as a native tooltip.
             title={definition && to ? definition : undefined}
           >
             {label}
-          </p>
+          </Overline>
           {definition && !to && (
             <TooltipProvider delayDuration={150}>
               <Tooltip>

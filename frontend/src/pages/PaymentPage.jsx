@@ -24,6 +24,7 @@ import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { Money } from "@/components/ui/money";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
+import { Overline } from "@/components/ui/overline";
 
 // A payment attempt has no first-class ledger transaction of its own — its
 // postings live on the invoice it settles (payment posts against the invoice's
@@ -169,7 +170,7 @@ export default function PaymentPage() {
         <ObjectSection title="Related" flush>
           {payment.invoice_id ? (
             <RelatedRow to={`/invoices/${payment.invoice_id}`}>
-              <span className="text-xs uppercase tracking-wide text-subtle">Invoice</span>
+              <Overline as="span">Invoice</Overline>
               <span className="font-medium">{payment.invoice_number || "View invoice"}</span>
             </RelatedRow>
           ) : (
@@ -177,13 +178,13 @@ export default function PaymentPage() {
           )}
           {payment.customer_id ? (
             <RelatedRow to={`/customers/${payment.customer_id}`}>
-              <span className="text-xs uppercase tracking-wide text-subtle">Customer</span>
+              <Overline as="span">Customer</Overline>
               <CustomerName id={payment.customer_id} names={customerNames} link={false} />
             </RelatedRow>
           ) : null}
           {payment.subscription_id ? (
             <RelatedRow to={`/subscriptions/${payment.subscription_id}`}>
-              <span className="text-xs uppercase tracking-wide text-subtle">Subscription</span>
+              <Overline as="span">Subscription</Overline>
               <SubscriptionRef subscriptionId={payment.subscription_id} />
             </RelatedRow>
           ) : null}

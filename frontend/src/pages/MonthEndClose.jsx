@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { Overline } from "@/components/ui/overline";
 import {
   Table,
   TableBody,
@@ -241,9 +242,9 @@ export default function MonthEndClose() {
                 hint={`Opening ${money(rollforward?.opening)} + added ${money(rollforward?.added)} − released ${money(rollforward?.released)}`}
               />
               <Card className="p-5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Overline as="p">
                   Deferred tie-out
-                </p>
+                </Overline>
                 <div className="mt-3">
                   {recognition == null ? (
                     <Badge variant="secondary">Rev-rec not wired</Badge>

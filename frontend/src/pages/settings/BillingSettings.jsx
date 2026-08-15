@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/patterns/PageHeader";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 
 const PRICING_URL = "https://recurso.dev/pricing";
 const CONTACT_URL = "mailto:cloud@recurso.dev";
@@ -20,7 +21,7 @@ function CurrentPlan({ status }) {
     <Card>
       <CardContent className="flex flex-wrap items-center justify-between gap-4 p-6">
         <div>
-          <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Current plan</div>
+          <Overline>Current plan</Overline>
           <div className="mt-1 flex items-center gap-2 text-lg font-semibold capitalize text-foreground">
             {trialing ? "Free trial" : status.plan_tier || "—"}
             {trialing && (

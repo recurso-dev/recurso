@@ -30,6 +30,7 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
 import { Money } from "@/components/ui/money";
+import { Overline } from "@/components/ui/overline";
 import {
   Select,
   SelectContent,
@@ -426,9 +427,9 @@ export default function InvoicePage() {
         <ObjectSection title="Breakdown">
           {Array.isArray(invoice.line_items) && invoice.line_items.length > 0 && (
             <div className="mb-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-subtle">
+              <Overline as="p">
                 Line items
-              </p>
+              </Overline>
               <div className="space-y-2.5">
                 {invoice.line_items.map((li, i) => (
                   <div key={li.id || i} className="flex items-start justify-between gap-3">

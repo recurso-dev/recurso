@@ -9,6 +9,7 @@ import { formatCurrency, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Overline } from "@/components/ui/overline";
 
 // Usage-charge editor for a plan (roadmap: plan-charges visual editor). Mirrors
 // the backend charge models in internal/core/domain/metering.go and the
@@ -521,12 +522,12 @@ export default function PlanCharges({ planId, currency }) {
                 const isPct = row.charge_model === "graduated_percentage";
                 return (
                 <div className="flex flex-col gap-2">
-                  <div className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                  <Overline className="grid grid-cols-[1fr_1fr_1fr_auto] items-center gap-2">
                     <span>{isPct ? `Up to (${currency})` : "Up to (units)"}</span>
                     <span>{isPct ? "Rate (%)" : `Rate/unit (${currency})`}</span>
                     <span>Flat fee ({currency})</span>
                     <span className="sr-only">Remove</span>
-                  </div>
+                  </Overline>
                   {row.tiers.map((tier, ti) => {
                     const isLast = ti === row.tiers.length - 1;
                     return (

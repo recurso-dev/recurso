@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Overline } from "@/components/ui/overline";
 import {
   Sheet,
   SheetContent,
@@ -272,9 +273,9 @@ const Organizations = () => {
           <div className="flex-1 space-y-6 overflow-y-auto px-6 py-6">
             {mrr != null && (
               <div className="rounded-md border border-border bg-muted/30 p-4">
-                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                <Overline as="p">
                   Consolidated MRR
-                </p>
+                </Overline>
                 <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
                   {typeof mrr?.mrr === "number"
                     ? formatCurrency(mrr.mrr, mrr.currency || "USD")
