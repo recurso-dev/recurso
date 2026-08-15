@@ -195,8 +195,9 @@ func (s *ReconciliationService) SetReportingResolver(r reportingCurrencyResolver
 // reconciliationRunStore persists/reads the run-history summary — the audit
 // trail of recorded reconciliations. Narrow so it stays optional (nil-safe).
 type reconciliationRunStore interface {
-	Create(ctx context.Context, run *domain.ReconciliationRun) error
+	Create(ctx context.Context, run *domain.ReconciliationRun, discrepancies []domain.ReconciliationRunDiscrepancy) error
 	ListByTenant(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.ReconciliationRun, error)
+	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.ReconciliationRunDetail, error)
 }
 
 // NewReconciliationService creates a reconciliation service. tbClient may be
@@ -234,7 +235,23 @@ func (s *ReconciliationService) RecordRun(ctx context.Context, tenantID, actorID
 	if actorID != uuid.Nil {
 		run.RunBy = &actorID
 	}
-	return s.runStore.Create(ctx, run)
+	// Persist the discrepancy rows the run already computed (the listed subset;
+	// TotalDiscrepancies keeps the true count) so the recorded run is explainable,
+	// not just a count. Read-model persistence only — no reconciliation behavior
+	// changes here.
+	discrepancies := make([]domain.ReconciliationRunDiscrepancy, 0, len(report.Discrepancies))
+	for _, d := range report.Discrepancies {
+		discrepancies = append(discrepancies, domain.ReconciliationRunDiscrepancy{
+			Type:           d.Type,
+			InvoiceID:      d.InvoiceID,
+			TransactionID:  d.TransactionID,
+			ReferenceID:    d.ReferenceID,
+			AccountCode:    d.AccountCode,
+			ExpectedAmount: d.ExpectedAmount,
+			FoundAmount:    d.FoundAmount,
+		})
+	}
+	return s.runStore.Create(ctx, run, discrepancies)
 }
 
 // ListRuns returns the tenant's recorded reconciliation runs, newest first.
@@ -247,6 +264,16 @@ func (s *ReconciliationService) ListRuns(ctx context.Context, tenantID uuid.UUID
 		limit = 50
 	}
 	return s.runStore.ListByTenant(ctx, tenantID, limit)
+}
+
+// GetRun returns one recorded reconciliation run with its stored discrepancy
+// rows, tenant-scoped — the addressable run object. Returns (nil, nil) when no
+// run store is wired or the run doesn't exist for the tenant (handler → 404).
+func (s *ReconciliationService) GetRun(ctx context.Context, tenantID, id uuid.UUID) (*domain.ReconciliationRunDetail, error) {
+	if s.runStore == nil {
+		return nil, nil
+	}
+	return s.runStore.GetByID(ctx, tenantID, id)
 }
 
 // Run reconciles a tenant's invoices against its Postgres ledger entries:

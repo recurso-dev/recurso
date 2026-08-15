@@ -103,3 +103,99 @@ func TestPaymentAttempt_Lifecycle_Postgres(t *testing.T) {
 		t.Error("expected error updating a nonexistent attempt")
 	}
 }
+
+// TestPaymentAttempt_GetByID_Postgres proves the addressable payment read
+// resolves the invoice-level context (number, currency, customer) off the
+// invoice join, and is tenant-scoped: another tenant's id returns nothing.
+func TestPaymentAttempt_GetByID_Postgres(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping payment-attempt GetByID test")
+	}
+	if err := RunMigrations(dbURL); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+	database, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	defer func() { _ = database.Close() }()
+	ctx := context.Background()
+
+	tenantID := uuid.New()
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO tenants (id, name, email, created_at, updated_at) VALUES ($1,$2,$3,NOW(),NOW())`,
+		tenantID, "PAG-"+tenantID.String()[:8], tenantID.String()[:8]+"@t.com"); err != nil {
+		t.Fatalf("seed tenant: %v", err)
+	}
+	defer func() { _, _ = database.ExecContext(ctx, `DELETE FROM tenants WHERE id = $1`, tenantID) }()
+	run := tenantID.String()[:8]
+
+	// A customer needs a ledger account; the invoice's customer_id references it,
+	// which is what GetByID resolves.
+	acctID, customerID := uuid.New(), uuid.New()
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO ledger_accounts (id, tenant_id, name, type, code, ledger_id, currency)
+		 VALUES ($1,$2,'AR','asset',1100,1,'USD')`, acctID, tenantID); err != nil {
+		t.Fatalf("seed ledger account: %v", err)
+	}
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO customers (id, tenant_id, email, name, ledger_account_id, created_at)
+		 VALUES ($1,$2,$3,'Acme',$4,NOW())`, customerID, tenantID, "cust-"+run+"@t.com", acctID); err != nil {
+		t.Fatalf("seed customer: %v", err)
+	}
+
+	invoiceID := uuid.New()
+	if _, err := database.ExecContext(ctx,
+		`INSERT INTO invoices (id, tenant_id, customer_id, currency, subtotal, total, invoice_number, status, created_at)
+		 VALUES ($1,$2,$3,'USD',50000,50000,$4,'past_due',NOW())`,
+		invoiceID, tenantID, customerID, "INV-PAG-"+run); err != nil {
+		t.Fatalf("seed invoice: %v", err)
+	}
+
+	repo := NewPaymentAttemptRepository(database)
+	att := &domain.PaymentAttempt{
+		TenantID: tenantID, InvoiceID: invoiceID, Gateway: "stripe", Method: "card",
+		GatewayPaymentIntentID: "pi_getbyid_" + run, Status: domain.PaymentAttemptFailed,
+		FailureCode: "card_declined", Amount: 50000,
+	}
+	if err := repo.Create(ctx, att); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Owned read resolves invoice number, currency, customer; subscription is nil
+	// (one-off invoice — no subscription_id set).
+	got, err := repo.GetByID(ctx, tenantID, att.ID)
+	if err != nil {
+		t.Fatalf("GetByID(owned): %v", err)
+	}
+	if got == nil {
+		t.Fatal("GetByID(owned) returned nil, want the attempt")
+	}
+	if got.InvoiceNumber != "INV-PAG-"+run || got.Currency != "USD" {
+		t.Errorf("invoice context not resolved: number=%q currency=%q", got.InvoiceNumber, got.Currency)
+	}
+	if got.CustomerID != customerID {
+		t.Errorf("customer_id = %s, want %s (join off invoice)", got.CustomerID, customerID)
+	}
+	if got.SubscriptionID != nil {
+		t.Errorf("subscription_id = %v, want nil (one-off invoice)", got.SubscriptionID)
+	}
+	if got.FailureCode != "card_declined" || got.Status != domain.PaymentAttemptFailed {
+		t.Errorf("failure state not preserved: %+v", got.PaymentAttempt)
+	}
+
+	// Cross-tenant: a different tenant asking for this id gets nothing.
+	foreign, err := repo.GetByID(ctx, uuid.New(), att.ID)
+	if err != nil {
+		t.Fatalf("GetByID(cross-tenant): %v", err)
+	}
+	if foreign != nil {
+		t.Error("cross-tenant read returned an attempt; must be nil (404), never leak another tenant's payment")
+	}
+
+	// Unknown id: nil, no error.
+	if missing, err := repo.GetByID(ctx, tenantID, uuid.New()); err != nil || missing != nil {
+		t.Errorf("unknown id: got (%v, %v), want (nil, nil)", missing, err)
+	}
+}

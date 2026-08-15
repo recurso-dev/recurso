@@ -52,3 +52,17 @@ type PaymentAttemptListItem struct {
 	InvoiceNumber string `json:"invoice_number"`
 	Currency      string `json:"currency"`
 }
+
+// PaymentAttemptDetail is a single payment attempt resolved for its object page:
+// the attempt plus the invoice-level facts it belongs to (number, currency,
+// customer, subscription). customer_id and subscription_id are NOT stored on the
+// attempt — they are read-time joins off the immutable invoice edge (a payment
+// attempt always belongs to exactly one invoice, which owns the customer and,
+// for recurring, the subscription). SubscriptionID is nil for one-off invoices.
+type PaymentAttemptDetail struct {
+	PaymentAttempt
+	InvoiceNumber  string     `json:"invoice_number"`
+	Currency       string     `json:"currency"`
+	CustomerID     uuid.UUID  `json:"customer_id"`
+	SubscriptionID *uuid.UUID `json:"subscription_id,omitempty"`
+}

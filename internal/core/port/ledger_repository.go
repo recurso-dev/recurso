@@ -44,6 +44,10 @@ type LedgerRepository interface {
 	// object (an invoice id), with account codes + names — the per-invoice
 	// journal drill. Read-only.
 	GetJournalEntriesByReference(ctx context.Context, tenantID, referenceID uuid.UUID) ([]domain.GeneralLedgerRow, error)
+	// GetTransactionByID returns one posted transaction (a single journal entry)
+	// by its ledger_transactions.id, flattened with account ids + codes + names,
+	// tenant-scoped. Returns (nil, nil) when absent. Read-only.
+	GetTransactionByID(ctx context.Context, tenantID, txID uuid.UUID) (*domain.GeneralLedgerRow, error)
 	// GetDeferredRollforward returns the Deferred Revenue account's opening
 	// balance, deferrals added, and amounts released over [start, end).
 	GetDeferredRollforward(ctx context.Context, tenantID uuid.UUID, start, end time.Time) (opening, added, released int64, err error)

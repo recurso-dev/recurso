@@ -1389,6 +1389,15 @@ func (s *LedgerService) GetJournalEntriesByReference(ctx context.Context, tenant
 	return s.pgRepo.GetJournalEntriesByReference(ctx, tenantID, referenceID)
 }
 
+// GetTransactionByID returns one posted transaction (a single journal entry) by
+// its id, tenant-scoped. Postgres is the authority; nil when absent. Read-only.
+func (s *LedgerService) GetTransactionByID(ctx context.Context, tenantID, txID uuid.UUID) (*domain.GeneralLedgerRow, error) {
+	if s.pgRepo == nil {
+		return nil, nil
+	}
+	return s.pgRepo.GetTransactionByID(ctx, tenantID, txID)
+}
+
 func (s *LedgerService) GetEntries(ctx context.Context, tenantID uuid.UUID, accountID uuid.UUID, code uint16, limit, offset int) ([]*domain.LedgerTransaction, error) {
 	// PG is the authority when configured. A PG error is returned, NOT masked
 	// by the TigerBeetle fallback below: TB's GetAccountTransfers is keyed by

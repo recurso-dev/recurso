@@ -144,6 +144,13 @@ export const endpoints = {
   getSubscription: (id) => api.get(`/subscriptions/${id}`),
   // The subscription's lifecycle timeline (trigger-captured status + plan changes).
   getSubscriptionHistory: (id) => api.get(`/subscriptions/${id}/history`),
+  // The subscription's financial position: MRR, recurring value, next invoice,
+  // outstanding (Batch 3A — foundation for the Subscription depth page).
+  getSubscriptionFinancialSummary: (id) => api.get(`/subscriptions/${id}/financial-summary`),
+  // Deterministic financial forecast of a cancellation, before the mutation.
+  // Pass { immediately: true } to preview an immediate cancel.
+  getSubscriptionCancelPreview: (id, params) =>
+    api.get(`/subscriptions/${id}/cancel-preview`, { params }),
   getInvoices: (params) => api.get('/invoices', { params }),
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).
@@ -155,6 +162,9 @@ export const endpoints = {
   // Tenant-wide payments log: every gateway attempt, newest first, paginated,
   // optional { status } filter. Powers /payments.
   getPaymentAttempts: (params) => api.get(`/payment-attempts`, { params }),
+  // A single payment attempt as an addressable object, resolved with its
+  // invoice/customer/subscription context (Batch 3A — foundation for /payments/:id).
+  getPayment: (id) => api.get(`/payment-attempts/${id}`),
   // Tenant-scoped (session or API key); fetched as a blob so the auth header
   // is sent — a plain <a href> would only work for cookie sessions.
   getInvoicePdf: (id) => api.get(`/invoices/${id}/pdf`, { responseType: 'blob' }),
@@ -183,6 +193,10 @@ export const endpoints = {
   getRevenueByGeography: () => api.get('/analytics/revenue-by-geography'),
   getUsageStats: () => api.get('/analytics/usage'),
   getLedgerEntries: (params) => api.get('/ledger/entries', { params }),
+  // A single posted transaction (journal entry) by id — the addressable
+  // journal-entry object; each leg carries its account id for deep-linking
+  // (Batch 3A — foundation for /journal-entries/:id and the recon transaction drill).
+  getLedgerTransaction: (id) => api.get(`/ledger/transactions/${id}`),
   getLedgerAccounts: () => api.get('/ledger/accounts'),
   // On-demand ledger reconciliation (computed per request, never persisted).
   runReconciliation: () => api.get('/finance/reconciliation'),
@@ -190,6 +204,9 @@ export const endpoints = {
   recordReconciliation: () => api.post('/finance/reconciliation/runs'),
   // The recorded run history — when it was checked, by whom, did it tie out.
   getReconciliationRuns: (params) => api.get('/finance/reconciliation/runs', { params }),
+  // A single recorded run with its persisted discrepancy rows — the addressable,
+  // explainable run object (Batch 3A — foundation for /reconciliation/:id).
+  getReconciliationRun: (id) => api.get(`/finance/reconciliation/runs/${id}`),
   // Deferred-revenue rollforward: recognized in the period, deferred balance,
   // the month-by-month release schedule, and the per-currency split.
   getRevenueRecognition: (month, year) =>

@@ -129,6 +129,31 @@ func (s *RevRecService) CancelPendingForInvoice(ctx context.Context, tenantID, i
 	return s.repo.MarkScheduleCanceled(ctx, sched.ID)
 }
 
+// RemainingDeferredForSubscription sums the still-unrecognized (pending) revenue
+// across a subscription's active revenue schedules — the collected-but-unearned
+// amount an immediate cancel would forfeit and recognize as breakage. It is a
+// pure read: it computes the same total UnwindOnCancel returns WITHOUT canceling
+// events, marking schedules, or posting to the ledger. Used by the cancel
+// preview so the forecast reuses the mutation's own arithmetic without any side
+// effect. Returns 0 when no rev-rec schedules exist (cash-basis tenants).
+func (s *RevRecService) RemainingDeferredForSubscription(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int64, error) {
+	schedules, err := s.repo.GetActiveSchedulesBySubscription(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return 0, fmt.Errorf("load active schedules: %w", err)
+	}
+	var total int64
+	for _, sched := range schedules {
+		events, err := s.repo.GetPendingEventsBySchedule(ctx, sched.ID)
+		if err != nil {
+			return 0, fmt.Errorf("load pending events for schedule %s: %w", sched.ID, err)
+		}
+		for _, e := range events {
+			total += e.Amount
+		}
+	}
+	return total, nil
+}
+
 func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscriptionID uuid.UUID) (int64, error) {
 	schedules, err := s.repo.GetActiveSchedulesBySubscription(ctx, tenantID, subscriptionID)
 	if err != nil {

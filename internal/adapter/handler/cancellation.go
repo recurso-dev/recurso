@@ -65,6 +65,32 @@ type CancelSubscriptionResponse struct {
 	Message           string     `json:"message"`
 }
 
+// PreviewCancel handles GET /v1/subscriptions/:id/cancel-preview — the
+// deterministic financial forecast of a cancellation, shown before the mutation
+// so an operator never cancels blind. Read-only; does not change the
+// subscription. ?immediately=true previews an immediate cancel (default false =
+// cancel at period end). Cross-tenant ids return 404.
+func (h *CancellationHandler) PreviewCancel(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "Unauthorized")
+		return
+	}
+	subscriptionID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "Invalid subscription ID")
+		return
+	}
+	immediately := c.Query("immediately") == "true"
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	preview, err := h.subscriptionService.PreviewCancel(ctx, tenantID, subscriptionID, immediately)
+	if err != nil || preview == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "subscription not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": preview})
+}
+
 // CancelSubscription handles POST /v1/subscriptions/:id/cancel
 func (h *CancellationHandler) CancelSubscription(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)

@@ -80,6 +80,10 @@ type InvoiceRepository interface {
 	// per-currency position (outstanding, past-due + count, billed, paid) for
 	// the customer object page. Read-only.
 	GetCustomerFinancialSummary(ctx context.Context, tenantID, customerID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error)
+	// GetSubscriptionFinancialSummary is GetCustomerFinancialSummary scoped to one
+	// subscription's invoices — the subscription object page's outstanding
+	// position, per currency. Read-only.
+	GetSubscriptionFinancialSummary(ctx context.Context, tenantID, subscriptionID uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error)
 	// CountUncollectibleSince counts invoices written off in a trailing window
 	// (marked_uncollectible_at) — the written-off side of the windowed
 	// recovery-rate cohort.

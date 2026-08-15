@@ -78,6 +78,25 @@ describe("api endpoint contracts", () => {
     expect(lastCall(inst.get)[0]).toBe("/subscriptions");
     expect(lastCall(inst.get)[1]).toMatchObject({ params: { limit: 25, status: "active" } });
   });
+
+  // Batch 3A — the addressable financial-object read endpoints.
+  it("builds the Batch 3A object-read URLs correctly", () => {
+    endpoints.getPayment("pa_1");
+    expect(lastCall(inst.get)[0]).toBe("/payment-attempts/pa_1");
+
+    endpoints.getLedgerTransaction("tx_1");
+    expect(lastCall(inst.get)[0]).toBe("/ledger/transactions/tx_1");
+
+    endpoints.getReconciliationRun("run_1");
+    expect(lastCall(inst.get)[0]).toBe("/finance/reconciliation/runs/run_1");
+
+    endpoints.getSubscriptionFinancialSummary("sub_1");
+    expect(lastCall(inst.get)[0]).toBe("/subscriptions/sub_1/financial-summary");
+
+    endpoints.getSubscriptionCancelPreview("sub_1", { immediately: true });
+    expect(lastCall(inst.get)[0]).toBe("/subscriptions/sub_1/cancel-preview");
+    expect(lastCall(inst.get)[1]).toMatchObject({ params: { immediately: true } });
+  });
 });
 
 describe("root (non-/v1) auth endpoint routing", () => {

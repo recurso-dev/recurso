@@ -116,6 +116,46 @@ func (r *PaymentAttemptRepository) List(ctx context.Context, tenantID uuid.UUID,
 	return items, total, rows.Err()
 }
 
+// GetByID returns one payment attempt for the tenant, resolved with the
+// invoice-level facts it belongs to (number, currency, customer, subscription)
+// via a read-time join off the immutable invoice edge. Tenant-scoped; returns
+// (nil, nil) when no such attempt exists for the tenant (handler → 404).
+// SubscriptionID is nil for one-off invoices. Read-only.
+func (r *PaymentAttemptRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error) {
+	var d domain.PaymentAttemptDetail
+	var st string
+	var subscriptionID uuid.NullUUID
+	var customerID uuid.NullUUID
+	err := r.db.QueryRowContext(ctx, `
+		SELECT pa.id, pa.tenant_id, pa.invoice_id, pa.gateway, pa.method,
+		       pa.gateway_payment_intent_id, pa.status, pa.failure_code, pa.amount,
+		       pa.created_at, pa.updated_at, pa.settled_at,
+		       COALESCE(i.invoice_number, ''), COALESCE(i.currency, ''),
+		       i.customer_id, i.subscription_id
+		FROM payment_attempts pa
+		LEFT JOIN invoices i ON i.id = pa.invoice_id
+		WHERE pa.tenant_id = $1 AND pa.id = $2`,
+		tenantID, id).
+		Scan(&d.ID, &d.TenantID, &d.InvoiceID, &d.Gateway, &d.Method,
+			&d.GatewayPaymentIntentID, &st, &d.FailureCode, &d.Amount,
+			&d.CreatedAt, &d.UpdatedAt, &d.SettledAt, &d.InvoiceNumber, &d.Currency,
+			&customerID, &subscriptionID)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get payment attempt: %w", err)
+	}
+	d.Status = domain.PaymentAttemptStatus(st)
+	if customerID.Valid {
+		d.CustomerID = customerID.UUID
+	}
+	if subscriptionID.Valid {
+		d.SubscriptionID = &subscriptionID.UUID
+	}
+	return &d, nil
+}
+
 // GetByPaymentIntentID resolves the attempt a webhook is about, or (nil, nil).
 func (r *PaymentAttemptRepository) GetByPaymentIntentID(ctx context.Context, paymentIntentID string) (*domain.PaymentAttempt, error) {
 	if paymentIntentID == "" {

@@ -1839,12 +1839,17 @@ func main() {
 		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
 		v1.GET("/subscriptions/:id", subscriptionHandler.GetSubscription)
 		v1.GET("/subscriptions/:id/history", subscriptionHandler.GetSubscriptionHistory)
+		// Financial position (MRR, recurring value, next invoice, outstanding).
+		v1.GET("/subscriptions/:id/financial-summary", subscriptionHandler.GetSubscriptionFinancialSummary)
 		v1.GET("/invoices", subscriptionHandler.ListInvoices)
 		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
 		v1.GET("/invoices/:id/journal-entries", subscriptionHandler.GetInvoiceJournalEntries)
 		v1.GET("/invoices/:id/payment-attempts", subscriptionHandler.GetInvoicePaymentAttempts)
 		v1.GET("/invoices/:id/status-history", subscriptionHandler.GetInvoiceStatusHistory)
 		v1.GET("/payment-attempts", subscriptionHandler.ListPaymentAttempts)
+		// A single payment attempt as an addressable object, resolved with its
+		// invoice/customer/subscription context. Read-only.
+		v1.GET("/payment-attempts/:id", subscriptionHandler.GetPaymentAttempt)
 		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
 		// address, and GSTIN, so it must never be publicly fetchable by UUID.
 		v1.GET("/invoices/:id/pdf", expensiveLimit, pdfHandler.DownloadPDF)
@@ -1982,6 +1987,9 @@ func main() {
 		// Ledger (P22)
 		v1.GET("/ledger/accounts", ledgerHandler.ListAccounts)
 		v1.GET("/ledger/entries", ledgerHandler.GetEntries)
+		// A single posted transaction (journal entry) — addressable, each leg
+		// deep-linkable to its account. Read-only.
+		v1.GET("/ledger/transactions/:id", ledgerHandler.GetTransaction)
 		// Provable-ledger auditor outputs (ENG-192): trial balance + GL export
 		v1.GET("/ledger/trial-balance", reportCache, ledgerHandler.GetTrialBalance)
 		v1.GET("/ledger/export", expensiveLimit, ledgerHandler.ExportGL)
@@ -1991,6 +1999,9 @@ func main() {
 		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
 		v1.POST("/finance/reconciliation/runs", reconciliationHandler.RecordReconciliation)
 		v1.GET("/finance/reconciliation/runs", reconciliationHandler.ListReconciliationRuns)
+		// A single recorded run with its stored discrepancy rows — the
+		// addressable, explainable run object. Read-only.
+		v1.GET("/finance/reconciliation/runs/:id", reconciliationHandler.GetReconciliationRun)
 
 		// Month-end close pack (B2) — trial balance + reconciliation + deferred
 		// rollforward + GL export pointer + a ready-to-close verdict. Uncached
@@ -2093,6 +2104,8 @@ func main() {
 		v1.GET("/subscriptions/:id/consent", consentHandler.GetSubscriptionConsent)
 
 		// Cancellation API (P30 - easy cancellation)
+		// Deterministic financial forecast of a cancellation, before the mutation.
+		v1.GET("/subscriptions/:id/cancel-preview", cancellationHandler.PreviewCancel)
 		v1.POST("/subscriptions/:id/cancel", cancellationHandler.CancelSubscription)
 		v1.POST("/subscriptions/:id/reactivate", cancellationHandler.ReactivateSubscription)
 		v1.POST("/subscriptions/:id/pause", subscriptionHandler.PauseSubscription)

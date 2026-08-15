@@ -26,3 +26,31 @@ type ReconciliationRun struct {
 
 // Balanced reports whether the run found the books tying out.
 func (r *ReconciliationRun) Balanced() bool { return r.TotalDiscrepancies == 0 }
+
+// ReconciliationRunDiscrepancy is one persisted disagreement from a recorded
+// run — the per-run detail that makes a historical run explainable ("what
+// disagreed, by how much, and why") rather than just a count. Mirrors the live
+// service discrepancy shape; the amounts are minor units of the run's reporting
+// currency.
+type ReconciliationRunDiscrepancy struct {
+	Type           string     `json:"type"`
+	InvoiceID      *uuid.UUID `json:"invoice_id,omitempty"`
+	TransactionID  *uuid.UUID `json:"transaction_id,omitempty"`
+	ReferenceID    *uuid.UUID `json:"reference_id,omitempty"`
+	AccountCode    int        `json:"account_code,omitempty"`
+	ExpectedAmount int64      `json:"expected_amount"`
+	FoundAmount    int64      `json:"found_amount"`
+}
+
+// ReconciliationRunDetail is a recorded run plus its stored discrepancy rows —
+// the addressable run object. Discrepancies holds the rows captured at record
+// time (capped at the live run's listed maximum). Runs recorded before per-run
+// persistence have an empty Discrepancies list while TotalDiscrepancies still
+// reflects the true count found at run time; DiscrepanciesTruncated flags when
+// fewer rows were stored than counted (cap or a pre-persistence run) so the UI
+// never implies the stored rows are the complete set.
+type ReconciliationRunDetail struct {
+	ReconciliationRun
+	Discrepancies          []ReconciliationRunDiscrepancy `json:"discrepancies"`
+	DiscrepanciesTruncated bool                           `json:"discrepancies_truncated"`
+}
