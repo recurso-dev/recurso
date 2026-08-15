@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
+import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { moneyColumn } from "@/components/patterns/columns";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -173,14 +174,7 @@ const Invoices = () => {
       header: "Customer",
       sortable: true,
       sortValue: (inv) => customerNames[inv.customer_id] || "",
-      cell: (inv) =>
-        customerNames[inv.customer_id] ? (
-          <span className="text-sm text-foreground">{customerNames[inv.customer_id]}</span>
-        ) : (
-          <span className="font-mono text-xs text-muted-foreground">
-            {inv.customer_id ? `${inv.customer_id.slice(0, 8)}…` : "—"}
-          </span>
-        ),
+      cell: (inv) => <CustomerName id={inv.customer_id} names={customerNames} />,
     },
     moneyColumn({
       key: "amount",
