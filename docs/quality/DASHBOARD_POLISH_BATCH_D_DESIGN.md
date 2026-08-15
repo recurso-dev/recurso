@@ -197,7 +197,18 @@ pagination architecture, selection architecture, density defaults.
 
 ---
 
-## 5. Decisions for approval
+## 5. Decisions — RESOLVED (2026-08-15)
+
+1. **Sticky height → Option A (`calc()` template constant).** `max-h-[calc(100vh
+   − Npx)]` on the DataTable scroll wrapper, N tuned once for the shared list-page
+   template; self-adjusting; no per-page CSS; no layout rewrite.
+2. **Accessible name → Option A (`aria-labelledby` the page `<h1>`).** `PageHeader`
+   gets a stable id on its `<h1>`; `DataTable` references it, with a small
+   `ariaLabel` fallback for tables without a page heading.
+3. **Sticky scope → DataTable worklists only.** Specialized accounting/report and
+   raw tables keep their current non-sticky, card-framed treatment.
+
+_Original options retained below for the record._
 
 ### 5.1 Sticky-header height strategy
 - **A (recommended):** `max-h-[calc(100vh − Npx)]` template constant on the
