@@ -113,6 +113,12 @@ export function DataTable({
   onSelectionChange,
   renderBulkActions,
   className,
+  // Accessible name (Batch D): by default the table names itself from the page's
+  // visible <h1> (PageHeader renders id="page-title") via aria-labelledby — no
+  // duplicate hidden title, no generic "Data table". Pass `ariaLabel` for a table
+  // that has no page heading to reference.
+  ariaLabelledby = "page-title",
+  ariaLabel,
 }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -172,6 +178,12 @@ export function DataTable({
 
   const showToolbar = Boolean(search || toolbar);
   const interactive = Boolean(onRowClick || rowHref);
+  // Sticky header (Batch D): the table body scrolls inside the bounded wrapper
+  // (stickyWrap), so each header cell pins to the top. Opaque bg so scrolling
+  // rows don't bleed through; z above rows; a travelling bottom border for the
+  // divider. Pure CSS position: sticky — no scroll listeners.
+  const stickyHead = "sticky top-0 z-20 bg-muted border-b border-border";
+  const stickyWrap = "max-h-[calc(100vh-15rem)]";
   const activateRow = (row) => (rowHref ? navigate(rowHref(row)) : onRowClick(row));
   const showChevron = interactive && rowChevron;
   const cellPad = density === "compact" ? "[&_td]:py-2 [&_th]:h-9" : "";
@@ -319,11 +331,16 @@ export function DataTable({
             learnMoreLabel={empty.learnMoreLabel}
           />
         ) : (
-          <Table className={cn(cellPad)}>
+          <Table
+            className={cn(cellPad)}
+            wrapperClassName={stickyWrap}
+            aria-labelledby={ariaLabel ? undefined : ariaLabelledby}
+            aria-label={ariaLabel}
+          >
             <TableHeader>
-              <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableRow className="hover:bg-transparent">
                 {selectionOn && (
-                  <TableHead className="w-10 pl-4">
+                  <TableHead className={cn(stickyHead, "w-10 pl-4")}>
                     <IndeterminateCheckbox
                       checked={allVisibleSelected}
                       indeterminate={someVisibleSelected}
@@ -338,6 +355,7 @@ export function DataTable({
                     aria-sort={ariaSortFor(col)}
                     style={col.minWidth ? { minWidth: col.minWidth } : undefined}
                     className={cn(
+                      stickyHead,
                       alignClass[col.align || "left"],
                       col.hideBelow && hideClass[col.hideBelow],
                       col.headerClassName
@@ -360,7 +378,7 @@ export function DataTable({
                     )}
                   </TableHead>
                 ))}
-                {showChevron && <TableHead className="w-8" aria-hidden="true" />}
+                {showChevron && <TableHead className={cn(stickyHead, "w-8")} aria-hidden="true" />}
               </TableRow>
             </TableHeader>
             <TableBody>
