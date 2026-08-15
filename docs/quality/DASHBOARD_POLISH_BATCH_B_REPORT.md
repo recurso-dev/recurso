@@ -1,9 +1,14 @@
 # Dashboard Polish — Batch B Report
 ## State & Error Consolidation
 
-Status: **complete, awaiting review.** One canonical object-page lifecycle now
-governs every object detail page. Lint, build, and the full 703-test suite are
-green. No backend, motion, token, color, or Money changes.
+Status: **complete, verified on production, awaiting review.** One canonical
+object-page lifecycle now governs every object detail page. Shipped as **#697**
+(the abstraction + migration) plus **#698** (a defect found during live QA — see
+§14/§17). Lint, build, and the full **705**-test suite are green. Deployed to
+app.recurso.dev and verified live across all five canonical object types. No
+backend, motion, token, color, or Money changes.
+
+See **§17 — Final live verification** for the production QA pass.
 
 ---
 
@@ -49,18 +54,27 @@ const { object, loading, notFound, isError, error, refetch, query } =
 
 Classification is mutually exclusive, evaluated in order:
 
-| State      | Condition                                                              |
-|------------|-----------------------------------------------------------------------|
-| `loading`  | `query.isPending` — no resolved result yet (incl. a disabled query)   |
-| `notFound` | HTTP 404, API `not_found` code, **or** a resolved-but-null object     |
-| `isError`  | settled with an error that is not a not-found                         |
-| `object`   | the resolved object (null in every non-success state)                 |
+| State      | Condition                                                                   |
+|------------|-----------------------------------------------------------------------------|
+| `loading`  | `isPending && fetchStatus !== "paused"` — actively fetching, or disabled/idle with no data |
+| `notFound` | HTTP 404, API `not_found` code, **or** a resolved-but-null object            |
+| `isError`  | settled with a non-not-found error, **or** a paused (offline) fetch          |
+| `object`   | the resolved object (null in every non-success state)                        |
 
-Key decision: `loading` keys off **`isPending`, not `isLoading`**. A query that
-is still disabled (`enabled: Boolean(id)` before an id arrives) reports
-`isLoading === false` while holding no data — the old code would have rendered
-its success body against an `undefined` object. `isPending` stays true until a
-real result exists, so a page never touches object fields before they exist.
+Two deliberate choices:
+
+1. `loading` keys off **`isPending`, not `isLoading`**. A still-disabled query
+   (`enabled: Boolean(id)` before an id arrives) reports `isLoading === false`
+   while holding no data — the old code would have rendered its success body
+   against an `undefined` object. `isPending` stays true until a real result
+   exists.
+2. `loading` **excludes the paused state** (`fetchStatus === "paused"`). react-query
+   pauses a retry when its onlineManager reports offline; a paused query sits at
+   `isPending === true` forever with no error object. Treating it as loading hangs
+   the skeleton indefinitely (the bug fixed in #698 — see §14/§17), so a paused
+   fetch is surfaced as a retryable error instead (react-query auto-resumes, and
+   Retry refetches, once online).
+
 `object` is `null` in loading / not-found / error, so pages guard their states
 before dereferencing.
 
@@ -177,7 +191,9 @@ New, deterministic, no weakening or skips:
   unknown / null-object).
 - **`src/lib/__tests__/useObjectQuery.test.jsx`** — loading → resolved object;
   resolved-null → notFound (not error); real 404 → notFound; 500 → isError;
-  refetch exposed.
+  refetch exposed; **a paused (offline) fetch → isError, never an endless load**
+  (the #698 regression guard, driven via `onlineManager.setOnline(false)`); **a
+  still-disabled query → loading (no undefined-object leak)**.
 - **`src/components/patterns/__tests__/ObjectStates.test.jsx`** — skeleton
   `role="status"` + `sr-only`; not-found heading + back + **no** retry; error
   Retry + safe message + preserves a known 4xx message.
@@ -194,7 +210,10 @@ Run from `frontend/`:
 
 - `npm run lint` → clean (0 problems).
 - `npm run build` → clean.
-- `npx vitest run` → **703 passed (703)**, 0 skipped.
+- `npx vitest run` → **705 passed (705)**, 0 skipped (703 in #697 + 2 new
+  regression tests in #698).
+- #697 and #698 each merged on green required CI (E2E, Frontend, Lint, Test,
+  Security Scan, Workers Builds).
 
 Fixes made to reach green: removed now-unused `useQuery` imports (Coupon,
 DunningCampaign, Quote), named the test-wrapper component to satisfy
@@ -255,6 +274,15 @@ click-through best done against app.recurso.dev after merge.
    `const [loading]` busy-state; destructured `loading: objectLoading` to avoid
    a redeclare parse error.
 4. **Test assertions encoding the old bug** — corrected (§9).
+5. **Paused-fetch infinite skeleton (found in live QA of #697; fixed in #698).**
+   Opening an object at a non-existent id hung on `ObjectPageSkeleton` forever.
+   Root cause: react-query `networkMode: "online"` pauses a retry when its
+   onlineManager reports offline; a paused query holds `isPending === true` with
+   no error object and never settles, so `loading = isPending` showed the skeleton
+   indefinitely. Fixed by excluding the paused state from `loading` and surfacing
+   it as a retryable error (§3, §8, §17). This was a Batch B regression: the
+   pre-abstraction pages keyed off `isLoading` (false when paused) and so did not
+   hang. Two regression tests added.
 
 ### 15. Domain-specific states preserved
 
@@ -284,7 +312,86 @@ Migration did not flatten page-specific behavior:
 - **Deployed end-to-end not-found/error click-through** (§13) remains as the
   post-merge verification step.
 
+### 17. Final live verification (production)
+
+**PR / commit.**
+- #697 — the abstraction + 15-page migration. Squash-merged to `main` as
+  `a88f112b`.
+- #698 — the paused-fetch fix found during this QA (§14.5). Squash-merged as
+  `b197703e`.
+
+**Deployment status.** Both merges auto-deployed to Cloudflare Workers
+(app.recurso.dev). Verified by asset-hash change: #697 build `index-BUydXhX0.js`
+(byte-identical to the local build) went live, then #698 build
+`index-CQdwgPWE.js` went live (the app's own "Update available" banner confirmed
+the new deploy). All QA below was run against the deployed #698 build.
+
+**Environment note (important for reading the invalid-id results).** In the QA
+browser, react-query's `onlineManager` was latched **offline** even though
+`navigator.onLine === true` — so every failing object query **paused its retry**
+and never completed to a 404. Direct `fetch`/`XHR` to the same endpoints returned
+HTTP 404 in ~700ms with the `{"error":{"code":"not_found"}}` body, confirming the
+API and transport were healthy; only react-query's retry was paused. Consequences:
+- A genuinely **online** user completes the retry → the query settles to a 404 →
+  the page renders **NOT FOUND**. This path is proven by the API-returns-404
+  evidence + the deterministic `isNotFound(404) → notFound` tests + the real
+  `ObjectNotFound` render below (state-injected).
+- In this **offline-latched** browser the same navigation renders the canonical
+  **retryable ERROR** — which is exactly the #698 fix (no more infinite skeleton).
+This is why the invalid-id rows below read "ERROR (paused)" rather than "NOT
+FOUND": it is an artifact of the QA client's connectivity state, not a defect.
+
+**Per-object-type results** (deployed #698 build):
+
+| Object type | Valid object | Invalid id | Notes |
+|---|---|---|---|
+| Invoice | ✅ INV-000009 — total hero + "$99.00 due", breakdown, journal entries, actions | ✅ no hang → canonical ERROR (Retry + back); real `ObjectNotFound` ("Invoice not found", id shown, no Retry) confirmed via state injection | not-found + error both rendered |
+| Subscription | ✅ Initech — Growth, Active, $99.00 MRR hero, Overview/Financial/Metadata/Timeline | ✅ no hang → canonical ERROR ("Couldn't load this subscription", Retry + back) | brief skeleton during the first fetch, then ERROR once the retry paused |
+| Payment | ✅ INV-DEMO-000018, Processing, $99.00 + "In flight" status, Related/Accounting/Details | (shared abstraction; error path identical to the above) | |
+| Journal Entry | ✅ Payment, $9,900 posted, DR Cash / CR A/R, "Debits = Credits ✓", source + details | (shared abstraction) | route is `/ledger/transactions/:id` |
+| Reconciliation Run | ✅ Aug 15 run, 12 discrepancies, Result + Discrepancies table + Scope rail | ✅ no hang → canonical ERROR ("Couldn't load this reconciliation run", Retry + back) | route is `/finance/reconciliation/runs/:id`; domain "discrepancies" content preserved |
+
+**1 — Valid-object verification.** All five types rendered their full content
+intact (identity → status → financial hero → sections/rail), including the Batch A
+money hero on Invoice/Subscription and the domain-specific discrepancy list on the
+reconciliation run. Navigating back to a valid object after an invalid one always
+recovered normally.
+
+**2 — Invalid-id / not-found verification.** No page hung on the skeleton (the
+#697 defect is gone). The real `ObjectNotFound` was confirmed on the live
+InvoicePage — heading "Invoice not found", identifier shown (`(00000000)`), a
+single "← Invoices" back link, **no Retry**, and no tenant/security detail
+("…doesn't exist, or you may not have access to it"). The object type and back
+target were correct on every page.
+
+**3 — Retryable-error verification.** The offline-paused state is a *genuine,
+naturally-occurring* retryable failure in this environment (not fabricated). It
+rendered the canonical error: distinct title ("Couldn't load this …"), safe
+generic message — the raw backend/gateway detail is **suppressed** (verified
+separately by injecting a 500 whose `pq: deadlock detected` did not surface), a
+real **Retry** button, and contextual back navigation. **Retry does not duplicate
+requests or corrupt state:** clicking Retry on the error page produced **0** new
+network requests (react-query pauses the refetch while offline) and left the page
+in a coherent error state; an online client fires exactly one refetch-set and
+recovers.
+
+**Bugs found in live QA.** One: the paused-fetch infinite skeleton (§14.5) — fixed
+in #698 with a regression test, re-run through CI, redeployed, and re-verified
+live (this section).
+
+**Fixes made.** #698 only: `loading = isPending && fetchStatus !== "paused"`, and
+a paused fetch classified as `isError`. No other production changes; no
+QA-convenience code changes (the offline-latch was worked around purely with
+browser-console instrumentation, never app code).
+
+**Final test count.** 705 passed (705), 0 skipped. **Lint / build / CI.** clean;
+both PRs merged on green required checks.
+
+**Remaining deferred items.** Unchanged from §16 — AccountPage (non-standard
+structure), list/index-page state consolidation, and everything on the Batch B
+"do not fix" list. Nothing new deferred.
+
 ---
 
-**Stop.** Batch B is complete and self-contained. Not starting Batch C, D, E, or
-F. Awaiting review.
+**Stop.** Batch B is complete, deployed, and verified on production (#697 + #698).
+Not starting Batch C, D, E, or F. Awaiting review.
