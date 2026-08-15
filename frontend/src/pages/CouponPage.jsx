@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Power, PowerOff } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { useSubscriptions, useCustomers } from "@/lib/useCustomers";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
@@ -14,9 +15,10 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -57,15 +59,17 @@ export default function CouponPage() {
   const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   const {
-    data: coupon,
-    isLoading,
+    object: coupon,
+    loading,
+    notFound,
+    isError,
     error: couponError,
     refetch,
-  } = useQuery({
-    queryKey: ["coupon", id],
-    queryFn: async () => (await endpoints.getCoupon(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["coupon", id],
+    async () => (await endpoints.getCoupon(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const toggleMutation = useMutation({
     mutationFn: (next) => endpoints.setCouponActive(id, next),
@@ -78,31 +82,19 @@ export default function CouponPage() {
     onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to update coupon"),
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
-  }
-
-  if (couponError || !coupon) {
-    return (
-      <ErrorState
-        title={couponError ? "Couldn't load this coupon" : "Coupon not found"}
-        message={
-          couponError
-            ? couponError?.response?.data?.error?.message || couponError?.message
-            : "This coupon doesn't exist or isn't in your account."
-        }
-        onRetry={couponError ? refetch : undefined}
+      <ObjectNotFound
+        objectLabel="coupon"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/coupons"
+        backLabel="Coupons"
       />
     );
+  }
+  if (isError) {
+    return <ObjectPageError objectLabel="coupon" error={couponError} onRetry={refetch} backTo="/coupons" backLabel="Coupons" />;
   }
 
   const isActive = coupon.active;

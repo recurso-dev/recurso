@@ -1,8 +1,8 @@
 import { Link, useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { codeLabel, refKind, refRoute } from "@/lib/ledgerCodes";
 import { formatDateTime, shortId } from "@/lib/utils";
 import {
@@ -10,10 +10,11 @@ import {
   ObjectPageLayout,
   ObjectSection,
   AttributeList,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { CopyableId } from "@/components/ui/copyable-id";
 import { Money } from "@/components/ui/money";
 
@@ -25,43 +26,32 @@ export default function JournalEntryPage() {
   const { id } = useParams();
 
   const {
-    data: entry,
-    isLoading,
+    object: entry,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["ledger-transaction", id],
-    queryFn: async () => (await endpoints.getLedgerTransaction(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["ledger-transaction", id],
+    async () => (await endpoints.getLedgerTransaction(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-6 h-16 w-full max-w-md" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-28 w-full" />
-          </div>
-          <Skeleton className="h-40 w-full" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="journal entry"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/ledger"
+        backLabel="Ledger"
+      />
     );
   }
-
-  if (error || !entry) {
-    const is404 = error?.response?.status === 404;
+  if (isError) {
     return (
-      <ErrorState
-        title={is404 ? "Journal entry not found" : "Couldn’t load this journal entry"}
-        message={
-          is404
-            ? "This transaction doesn’t exist, or belongs to another workspace."
-            : error?.response?.data?.error?.message || error?.message || "Please try again."
-        }
-        onRetry={is404 ? undefined : refetch}
-      />
+      <ObjectPageError objectLabel="journal entry" error={error} onRetry={refetch} backTo="/ledger" backLabel="Ledger" />
     );
   }
 

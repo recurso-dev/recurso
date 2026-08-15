@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Pencil, X } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import PlanCharges from "../components/slide-overs/PlanCharges";
 import PlanDetail from "../components/slide-overs/PlanDetail";
 import { formatCurrency, formatDate } from "@/lib/utils";
@@ -14,11 +15,12 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -35,15 +37,17 @@ export default function PlanPage() {
   const [editOpen, setEditOpen] = useState(false);
 
   const {
-    data: plan,
-    isLoading,
+    object: plan,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["plan", id],
-    queryFn: async () => (await endpoints.getPlan(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["plan", id],
+    async () => (await endpoints.getPlan(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const { data: entitlements = [], error: entError } = useQuery({
     queryKey: ["plan-entitlements", id],
@@ -59,32 +63,19 @@ export default function PlanPage() {
     enabled: Boolean(id),
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !plan) {
-    const status = error?.response?.status;
-    return (
-      <ErrorState
-        title={status === 404 ? "Plan not found" : "Couldn't load this plan"}
-        message={
-          status === 404
-            ? "This plan doesn't exist or was removed."
-            : error?.response?.data?.error?.message || error?.message
-        }
-        onRetry={status === 404 ? undefined : refetch}
+      <ObjectNotFound
+        objectLabel="plan"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/plans"
+        backLabel="Plans"
       />
     );
+  }
+  if (isError) {
+    return <ObjectPageError objectLabel="plan" error={error} onRetry={refetch} backTo="/plans" backLabel="Plans" />;
   }
 
   const price = plan.prices && plan.prices[0];

@@ -106,6 +106,6 @@ describe("WalletPage", () => {
   it("renders a not-found state when the wallet is missing", async () => {
     endpoints.getWallet.mockRejectedValue({ response: { status: 404 } });
     renderPage("missing");
-    await waitFor(() => expect(screen.getByText(/Couldn't load this wallet/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/not found/i)).toBeInTheDocument());
   });
 });

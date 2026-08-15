@@ -5,12 +5,16 @@ import { RefreshCw, XCircle, FileDown, FileCode, Eye, Send } from "lucide-react"
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import {
   ObjectHeader,
   ObjectPageLayout,
   ObjectSection,
   AttributeList,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
@@ -18,8 +22,6 @@ import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { SubscriptionRef } from "@/components/patterns/SubscriptionRef";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
 import { PaymentAttempts } from "@/components/patterns/PaymentAttempts";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Alert } from "@/components/ui/alert";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Button } from "@/components/ui/button";
@@ -73,15 +75,17 @@ export default function InvoicePage() {
   const { names: customerNames } = useCustomers();
 
   const {
-    data: invoice,
-    isLoading,
+    object: invoice,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["invoice", id],
-    queryFn: async () => (await endpoints.getInvoice(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["invoice", id],
+    async () => (await endpoints.getInvoice(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   // EU e-invoice (EN 16931 / UBL) lives in its own table; a tenant that
   // hasn't opted in (or a non-EU invoice) returns null → section hides.
@@ -138,31 +142,20 @@ export default function InvoicePage() {
   const [sending, setSending] = useState(false);
   const [confirmSend, setConfirmSend] = useState(false);
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="invoice"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/invoices"
+        backLabel="Invoices"
+      />
     );
   }
-
-  if (error || !invoice) {
-    const status = error?.response?.status;
+  if (isError) {
     return (
-      <ErrorState
-        title={status === 404 ? "Invoice not found" : "Couldn't load this invoice"}
-        message={
-          status === 404
-            ? "This invoice doesn't exist or was removed."
-            : error?.response?.data?.error?.message || error?.message
-        }
-        onRetry={status === 404 ? undefined : refetch}
-      />
+      <ObjectPageError objectLabel="invoice" error={error} onRetry={refetch} backTo="/invoices" backLabel="Invoices" />
     );
   }
 

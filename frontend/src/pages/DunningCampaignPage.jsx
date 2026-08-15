@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Power, PowerOff, Settings2, Mail, MessageSquare, Bell, ShieldAlert } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime } from "@/lib/utils";
 import {
   ObjectHeader,
@@ -11,9 +12,10 @@ import {
   ObjectSection,
   AttributeList,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -58,16 +60,18 @@ export default function DunningCampaignPage() {
   const [editOpen, setEditOpen] = useState(false);
 
   const {
-    data: campaign,
-    isLoading,
+    object: campaign,
+    loading,
+    notFound,
+    isError,
     error: campaignError,
     refetch,
-  } = useQuery({
-    queryKey: ["dunning-campaign", id],
+  } = useObjectQuery(
+    ["dunning-campaign", id],
     // NB: this endpoint returns the campaign directly, not wrapped in { data }.
-    queryFn: async () => (await endpoints.getDunningCampaign(id)).data,
-    enabled: Boolean(id),
-  });
+    async () => (await endpoints.getDunningCampaign(id)).data,
+    { enabled: Boolean(id) }
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["dunning-campaign", id] });
@@ -83,30 +87,20 @@ export default function DunningCampaignPage() {
     onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to update campaign"),
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="campaign"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/dunning/campaigns"
+        backLabel="Dunning campaigns"
+      />
     );
   }
-
-  if (campaignError || !campaign) {
+  if (isError) {
     return (
-      <ErrorState
-        title={campaignError ? "Couldn't load this campaign" : "Campaign not found"}
-        message={
-          campaignError
-            ? campaignError?.response?.data?.error?.message || campaignError?.message
-            : "This campaign doesn't exist or isn't in your account."
-        }
-        onRetry={campaignError ? refetch : undefined}
-      />
+      <ObjectPageError objectLabel="campaign" error={campaignError} onRetry={refetch} backTo="/dunning/campaigns" backLabel="Dunning campaigns" />
     );
   }
 

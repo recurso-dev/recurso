@@ -6,6 +6,7 @@ import { Pause, Play, RotateCw, ArrowLeftRight, Plus, X } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { toast } from "@/components/ui/sonner";
 import { usePlans } from "../lib/useCustomers";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { cn, formatCurrency, formatDate, formatDateTime, toMinorUnits } from "@/lib/utils";
 import {
   ObjectHeader,
@@ -14,13 +15,14 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { FinancialSummary } from "@/components/patterns/FinancialSummary";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Input } from "@/components/ui/input";
@@ -72,15 +74,17 @@ export default function SubscriptionPage() {
   const queryClient = useQueryClient();
 
   const {
-    data: subscription,
-    isLoading,
+    object: subscription,
+    loading: objectLoading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["subscription", id],
-    queryFn: async () => (await endpoints.getSubscription(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["subscription", id],
+    async () => (await endpoints.getSubscription(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const { data: customer } = useQuery({
     queryKey: ["customer", subscription?.customer_id],
@@ -215,31 +219,20 @@ export default function SubscriptionPage() {
       .catch(() => setReasons([]));
   }, [cancelOpen, reasons.length]);
 
-  if (isLoading) {
+  if (objectLoading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="subscription"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/subscriptions"
+        backLabel="Subscriptions"
+      />
     );
   }
-
-  if (error || !subscription) {
-    const status = error?.response?.status;
+  if (isError) {
     return (
-      <ErrorState
-        title={status === 404 ? "Subscription not found" : "Couldn't load this subscription"}
-        message={
-          status === 404
-            ? "This subscription doesn't exist or was removed."
-            : error?.response?.data?.error?.message || error?.message
-        }
-        onRetry={status === 404 ? undefined : refetch}
-      />
+      <ObjectPageError objectLabel="subscription" error={error} onRetry={refetch} backTo="/subscriptions" backLabel="Subscriptions" />
     );
   }
 

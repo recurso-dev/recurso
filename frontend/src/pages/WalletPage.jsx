@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime, toMinorUnits, fromMinorUnits } from "@/lib/utils";
 import {
   ObjectHeader,
@@ -11,12 +12,13 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { Money } from "@/components/ui/money";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -76,15 +78,17 @@ export default function WalletPage() {
   const [actionError, setActionError] = useState(null);
 
   const {
-    data: wallet,
-    isLoading: walletLoading,
+    object: wallet,
+    loading: walletLoading,
+    notFound,
+    isError,
     error: walletError,
     refetch,
-  } = useQuery({
-    queryKey: ["wallet", id],
-    queryFn: async () => (await endpoints.getWallet(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["wallet", id],
+    async () => (await endpoints.getWallet(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const { data: txs = [], isLoading: txsLoading } = useQuery({
     queryKey: ["wallet-transactions", id, "object-page"],
@@ -159,31 +163,19 @@ export default function WalletPage() {
     setAutoOpen(true);
   };
 
-  if (walletLoading || txsLoading) {
+  if (walletLoading || txsLoading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
-  }
-
-  if (walletError || !wallet) {
-    return (
-      <ErrorState
-        title={walletError ? "Couldn't load this wallet" : "Wallet not found"}
-        message={
-          walletError
-            ? walletError?.response?.data?.error?.message || walletError?.message
-            : "This wallet doesn't exist or isn't in your account."
-        }
-        onRetry={walletError ? refetch : undefined}
+      <ObjectNotFound
+        objectLabel="wallet"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/wallets"
+        backLabel="Wallets"
       />
     );
+  }
+  if (isError) {
+    return <ObjectPageError objectLabel="wallet" error={walletError} onRetry={refetch} backTo="/wallets" backLabel="Wallets" />;
   }
 
   // Best-effort residue split: undrained top-up residue by source. Only shown

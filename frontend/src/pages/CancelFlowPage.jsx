@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Power, PowerOff, Settings2, ClipboardList, Gift, ShieldQuestion } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime } from "@/lib/utils";
 import {
   ObjectHeader,
@@ -11,9 +12,10 @@ import {
   ObjectSection,
   AttributeList,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -52,16 +54,18 @@ export default function CancelFlowPage() {
   const [editOpen, setEditOpen] = useState(false);
 
   const {
-    data: flow,
-    isLoading,
+    object: flow,
+    loading,
+    notFound,
+    isError,
     error: flowError,
     refetch,
-  } = useQuery({
-    queryKey: ["cancel-flow", id],
+  } = useObjectQuery(
+    ["cancel-flow", id],
     // NB: this endpoint returns the flow directly, not wrapped in { data }.
-    queryFn: async () => (await endpoints.getCancelFlow(id)).data,
-    enabled: Boolean(id),
-  });
+    async () => (await endpoints.getCancelFlow(id)).data,
+    { enabled: Boolean(id) }
+  );
 
   // Retention effectiveness — best-effort (empty until sessions exist).
   const { data: stats } = useQuery({
@@ -85,30 +89,20 @@ export default function CancelFlowPage() {
     onError: (err) => toast.error(err?.response?.data?.error?.message || "Failed to update flow"),
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="cancel flow"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/cancel-flows"
+        backLabel="Cancel flows"
+      />
     );
   }
-
-  if (flowError || !flow) {
+  if (isError) {
     return (
-      <ErrorState
-        title={flowError ? "Couldn't load this flow" : "Cancel flow not found"}
-        message={
-          flowError
-            ? flowError?.response?.data?.error?.message || flowError?.message
-            : "This cancellation flow doesn't exist or isn't in your account."
-        }
-        onRetry={flowError ? refetch : undefined}
-      />
+      <ObjectPageError objectLabel="cancel flow" error={flowError} onRetry={refetch} backTo="/cancel-flows" backLabel="Cancel flows" />
     );
   }
 

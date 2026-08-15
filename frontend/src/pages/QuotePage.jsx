@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { Link, useParams, useNavigate } from "react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Send, Check, X, ArrowRight, Trash2, Pencil } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime } from "@/lib/utils";
 import { useCustomers } from "@/lib/useCustomers";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
@@ -13,10 +14,11 @@ import {
   ObjectSection,
   AttributeList,
   RelatedRow,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Money } from "@/components/ui/money";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -40,15 +42,17 @@ export default function QuotePage() {
   const [confirm, setConfirm] = useState(null); // "convert" | "delete"
 
   const {
-    data: quote,
-    isLoading,
+    object: quote,
+    loading,
+    notFound,
+    isError,
     error: quoteError,
     refetch,
-  } = useQuery({
-    queryKey: ["quote", id],
-    queryFn: async () => (await endpoints.getQuote(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["quote", id],
+    async () => (await endpoints.getQuote(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["quote", id] });
@@ -109,31 +113,19 @@ export default function QuotePage() {
     },
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
-  }
-
-  if (quoteError || !quote) {
-    return (
-      <ErrorState
-        title={quoteError ? "Couldn't load this quote" : "Quote not found"}
-        message={
-          quoteError
-            ? quoteError?.response?.data?.error?.message || quoteError?.message
-            : "This quote doesn't exist or isn't in your account."
-        }
-        onRetry={quoteError ? refetch : undefined}
+      <ObjectNotFound
+        objectLabel="quote"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/quotes"
+        backLabel="Quotes"
       />
     );
+  }
+  if (isError) {
+    return <ObjectPageError objectLabel="quote" error={quoteError} onRetry={refetch} backTo="/quotes" backLabel="Quotes" />;
   }
 
   const currency = quote.currency;
