@@ -200,13 +200,16 @@ out of Batch F.
 
 ---
 
-## Decisions for approval
-1. **Track A** — keep all 4 raw tables specialized; apply minimal a11y hardening
-   (`th scope` + accessible name). Confirm (vs. leave entirely / vs. migrate).
-2. **Rail titles** — align Subscription + Account "Metadata"→"Details", keep
-   Reconciliation "Scope". Confirm (vs. standardize all / vs. leave).
-3. **Credit Note AuditTrail** — add it (real data); Dispute + all Timelines stay
-   absent as backend-gated. Confirm.
-4. **Reconciliation Run** — StatusBadge + AttentionBanner-on-discrepancies. Confirm.
+## Decisions — RESOLVED (2026-08-15)
+1. **Track A → keep all 4 raw tables specialized + minimal a11y hardening**
+   (`th scope="col"` + accessible name). No table primitives; no density change.
+2. **Rail titles → align Subscription + Account "Metadata" → "Details"; keep
+   Reconciliation "Scope"** (domain-meaningful).
+3. **Credit Note → add `AuditTrail` (real data). Dispute audit + all object
+   timelines stay absent** as backend-gated (documented).
+4. **Reconciliation Run → `StatusBadge` + `AttentionBanner`-on-discrepancies**
+   (as proposed). Track B (Payments StatusPill→StatusBadge + humanizeFailure,
+   REGISTRY `returned`/`initiated`) proceeds as written.
 
-**STOP — investigation complete. Awaiting approval before any production code.**
+**Investigation complete and decisions locked. Ready to implement on the explicit
+go-ahead — no production code written yet.**
