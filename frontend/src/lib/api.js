@@ -116,13 +116,15 @@ export const endpoints = {
   inviteUser: (data) => api.post('/users/invite', data),
   updateUserRole: (id, role) => api.patch(`/users/${id}`, { role }),
   deleteUser: (id) => api.delete(`/users/${id}`),
-  getPlans: (params) => api.get('/plans', { params }),
+  // The optional 2nd arg is extra axios config (e.g. { signal }) so callers like
+  // the command palette can propagate an AbortSignal for request cancellation.
+  getPlans: (params, config) => api.get('/plans', { params, ...config }),
   getAccount: () => api.get('/account'),
   updateAccount: (data) => api.put('/account', data),
   // Managed-cloud trial/billing status + plan catalog (read-only).
   getBillingStatus: () => api.get('/billing/status'),
   getBillingPlans: () => api.get('/billing/plans'),
-  getCustomers: (params) => api.get('/customers', { params }),
+  getCustomers: (params, config) => api.get('/customers', { params, ...config }),
   getCustomer: (id) => api.get(`/customers/${id}`),
   // Partial update; { active: false } archives (blocked while subscriptions
   // are active), { active: true } restores.
@@ -137,7 +139,7 @@ export const endpoints = {
   getCreditStatement: (id) => api.get(`/customers/${id}/credit-statement`),
   getCustomerFinancialSummary: (id) => api.get(`/customers/${id}/financial-summary`),
   revokeConsent: (consentId) => api.post('/consents/revoke', { consent_id: consentId }),
-  getSubscriptions: (params) => api.get('/subscriptions', { params }),
+  getSubscriptions: (params, config) => api.get('/subscriptions', { params, ...config }),
   // Wires the long-existing backend GET (was implemented and unused).
   getSubscription: (id) => api.get(`/subscriptions/${id}`),
   // The subscription's lifecycle timeline (trigger-captured status + plan changes).
