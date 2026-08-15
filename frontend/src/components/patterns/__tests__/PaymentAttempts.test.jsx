@@ -69,13 +69,16 @@ describe("PaymentAttempts", () => {
     );
   });
 
-  it("reveals a failure reason", () => {
+  it("leads with a humanized failure reason and keeps the raw code as detail", () => {
     render(
       <PaymentAttempts
         attempts={[attempt({ status: "failed", failure_code: "card_declined" })]}
         currency="INR"
       />
     );
-    expect(screen.getByText("card_declined")).toHaveClass("animate-motion-reveal");
+    // Human-readable label is the primary, revealed reason.
+    expect(screen.getByText("Card declined")).toHaveClass("animate-motion-reveal");
+    // The raw gateway code is still present, but as quiet technical detail.
+    expect(screen.getByText("card_declined")).toBeInTheDocument();
   });
 });

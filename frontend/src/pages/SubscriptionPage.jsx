@@ -16,6 +16,7 @@ import {
   RelatedEmpty,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
+import { FinancialSummary } from "@/components/patterns/FinancialSummary";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -142,6 +143,14 @@ export default function SubscriptionPage() {
     enabled: Boolean(id),
   });
   const invoices = invoicesPage?.data || [];
+
+  // The financial position: MRR (canonical backend definition), recurring
+  // amount, next invoice, and the invoice-derived outstanding position.
+  const { data: finSummary } = useQuery({
+    queryKey: ["subscriptionFinancialSummary", id],
+    queryFn: async () => (await endpoints.getSubscriptionFinancialSummary(id)).data.data,
+    enabled: Boolean(id),
+  });
   const invoiceTotal = invoicesPage?.pagination?.total ?? invoices.length;
 
   // ---- action state (ported from the detail sheet) ----
@@ -169,6 +178,12 @@ export default function SubscriptionPage() {
   const [cancelAtPeriodEnd, setCancelAtPeriodEnd] = useState(true);
   const [reasons, setReasons] = useState([]);
   const [cancelBusy, setCancelBusy] = useState(false);
+  // Cancel is a two-step flow: pick reason → preview the financial impact →
+  // confirm. cancelStep gates which the dialog shows.
+  const [cancelStep, setCancelStep] = useState("form"); // "form" | "preview"
+  const [cancelPreview, setCancelPreview] = useState(null);
+  const [cancelPreviewLoading, setCancelPreviewLoading] = useState(false);
+  const [cancelPreviewError, setCancelPreviewError] = useState(false);
 
   // Refresh everything this page derives from the subscription.
   const refreshSubscription = () => {
@@ -229,11 +244,9 @@ export default function SubscriptionPage() {
   }
 
   const price = plan?.prices?.[0];
-  const amountMinor = price ? price.amount : 0;
   const currency = price ? price.currency : "USD";
   const planName = plan?.name || subscription.plan_id?.slice(0, 8);
   const planNameOf = (pid) => plans.find((p) => p.id === pid)?.name || pid?.slice(0, 8);
-  const interval = plan?.interval_unit || "month";
   const isActive = subscription.status === "active";
 
   // Layer 3 — why is it in this state, and what happens next? Surfaced above the
@@ -328,6 +341,37 @@ export default function SubscriptionPage() {
 
   const selectedReason = reasons.find((r) => r.id === cancelReason);
 
+  // Reset the cancel flow whenever the dialog opens, so a re-open never shows a
+  // stale preview.
+  const openCancel = () => {
+    setCancelStep("form");
+    setCancelPreview(null);
+    setCancelPreviewError(false);
+    setCancelOpen(true);
+  };
+
+  // Step 1 → 2: fetch the backend's financial forecast for THIS cancel choice
+  // (immediate vs period-end). The amounts shown at confirm come only from here
+  // — never computed on the client. On failure we surface the error and make it
+  // explicit that no preview is available (the confirm must not imply one).
+  const loadCancelPreview = async () => {
+    if (!cancelReason) return;
+    setCancelPreviewLoading(true);
+    setCancelPreviewError(false);
+    setCancelPreview(null);
+    try {
+      const res = await endpoints.getSubscriptionCancelPreview(subscription.id, {
+        immediately: !cancelAtPeriodEnd,
+      });
+      setCancelPreview(res.data.data);
+    } catch {
+      setCancelPreviewError(true);
+    } finally {
+      setCancelPreviewLoading(false);
+      setCancelStep("preview");
+    }
+  };
+
   const submitCancel = async () => {
     if (!cancelReason) return;
     setCancelBusy(true);
@@ -341,6 +385,8 @@ export default function SubscriptionPage() {
       setCancelOpen(false);
       setCancelReason("");
       setCancelFeedback("");
+      setCancelStep("form");
+      setCancelPreview(null);
       toast.success(
         cancelAtPeriodEnd ? "Subscription set to cancel at period end." : "Subscription canceled."
       );
@@ -480,7 +526,7 @@ export default function SubscriptionPage() {
             {(isActive || subscription.status === "paused") && (
               <Button
                 variant="outline"
-                onClick={() => setCancelOpen(true)}
+                onClick={openCancel}
                 disabled={loading}
                 className="text-destructive hover:text-destructive"
               >
@@ -616,31 +662,80 @@ export default function SubscriptionPage() {
                   planName
                 ),
               },
-              {
-                label: "Amount",
-                value: (
-                  <span>
-                    <Money amountMinor={amountMinor} currency={currency} /> / {interval}
-                  </span>
-                ),
-              },
               { label: "Created", value: formatDate(subscription.created_at) },
               {
                 label: "Current period",
                 value: `${formatDate(subscription.current_period_start)} – ${formatDate(subscription.current_period_end)}`,
               },
-              {
-                label: "Upcoming invoice",
-                value: (
-                  <span>
-                    {formatDate(subscription.current_period_end)} for{" "}
-                    <Money amountMinor={amountMinor} currency={currency} />
-                  </span>
-                ),
-              },
             ]}
           />
         </ObjectSection>
+
+        {/* Financial summary — MRR, current billing, and next invoice kept
+            distinct (never conflated), plus the invoice-derived position. All
+            amounts come from the backend's canonical summary. */}
+        {finSummary && (
+          <ObjectSection title="Financial summary">
+            <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
+              <div className="min-w-0">
+                <dt
+                  className="text-xs font-medium uppercase tracking-wide text-subtle"
+                  title="Monthly Recurring Revenue — the plan's list price normalized to a month. 0 unless the subscription is active. Excludes tax, usage, add-ons and one-off charges."
+                >
+                  MRR
+                </dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                  <Money amountMinor={finSummary.mrr} currency={finSummary.currency} />
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs font-medium uppercase tracking-wide text-subtle">
+                  Billed each period
+                </dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                  <Money amountMinor={finSummary.recurring_amount} currency={finSummary.currency} />
+                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                    / {finSummary.interval_count > 1 ? `${finSummary.interval_count} ` : ""}
+                    {finSummary.interval_unit}
+                  </span>
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-xs font-medium uppercase tracking-wide text-subtle">
+                  Next invoice
+                </dt>
+                <dd className="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                  {finSummary.next_invoice_date ? (
+                    <>
+                      <Money
+                        amountMinor={finSummary.next_invoice_base_amount}
+                        currency={finSummary.currency}
+                      />
+                      <span className="ml-1 text-xs font-normal text-muted-foreground">
+                        base · {formatDate(finSummary.next_invoice_date)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-sm font-normal text-muted-foreground">
+                      No further invoices
+                    </span>
+                  )}
+                </dd>
+              </div>
+            </dl>
+            {finSummary.next_invoice_date && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Next-invoice amount is the plan’s base list price — it excludes tax, metered usage,
+                add-ons and one-off charges, which are computed at billing time.
+              </p>
+            )}
+            {finSummary.outstanding?.length > 0 && (
+              <div className="mt-5 border-t border-border pt-5">
+                <FinancialSummary currencies={finSummary.outstanding} />
+              </div>
+            )}
+          </ObjectSection>
+        )}
 
         {isActive && (
           <ObjectSection title="Billing controls">
@@ -1138,56 +1233,148 @@ export default function SubscriptionPage() {
       <Dialog open={cancelOpen} onOpenChange={(o) => !o && setCancelOpen(false)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancel subscription</DialogTitle>
+            <DialogTitle>
+              {cancelStep === "preview" ? "Confirm cancellation" : "Cancel subscription"}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="reason-for-cancellation">Reason for cancellation</Label>
-              <Select value={cancelReason} onValueChange={setCancelReason}>
-                <SelectTrigger id="reason-for-cancellation">
-                  <SelectValue placeholder="Select a reason…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {reasons.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>
-                      {r.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            {selectedReason?.allows_feedback && (
-              <div>
-                <Label htmlFor="feedback-optional">Feedback (optional)</Label>
-                <Input id="feedback-optional"
-                  value={cancelFeedback}
-                  onChange={(e) => setCancelFeedback(e.target.value)}
-                  placeholder="What could we have done better?"
-                />
+
+          {cancelStep === "form" ? (
+            <>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="reason-for-cancellation">Reason for cancellation</Label>
+                  <Select value={cancelReason} onValueChange={setCancelReason}>
+                    <SelectTrigger id="reason-for-cancellation">
+                      <SelectValue placeholder="Select a reason…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {reasons.map((r) => (
+                        <SelectItem key={r.id} value={r.id}>
+                          {r.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedReason?.allows_feedback && (
+                  <div>
+                    <Label htmlFor="feedback-optional">Feedback (optional)</Label>
+                    <Input id="feedback-optional"
+                      value={cancelFeedback}
+                      onChange={(e) => setCancelFeedback(e.target.value)}
+                      placeholder="What could we have done better?"
+                    />
+                  </div>
+                )}
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 accent-primary"
+                    checked={cancelAtPeriodEnd}
+                    onChange={(e) => setCancelAtPeriodEnd(e.target.checked)}
+                  />
+                  Cancel at period end (uncheck to cancel immediately)
+                </label>
               </div>
-            )}
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={cancelAtPeriodEnd}
-                onChange={(e) => setCancelAtPeriodEnd(e.target.checked)}
-              />
-              Cancel at period end (uncheck to cancel immediately)
-            </label>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelBusy}>
-              Keep subscription
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={submitCancel}
-              disabled={cancelBusy || !cancelReason}
-            >
-              {cancelBusy ? "Canceling…" : "Cancel subscription"}
-            </Button>
-          </DialogFooter>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setCancelOpen(false)} disabled={cancelPreviewLoading}>
+                  Keep subscription
+                </Button>
+                <Button
+                  onClick={loadCancelPreview}
+                  disabled={cancelPreviewLoading || !cancelReason}
+                >
+                  {cancelPreviewLoading ? "Loading preview…" : "Review impact"}
+                </Button>
+              </DialogFooter>
+            </>
+          ) : (
+            <>
+              {cancelPreviewError ? (
+                <div className="rounded-lg border border-warning/30 bg-warning/5 px-4 py-3 text-sm text-warning">
+                  Couldn’t load the financial preview for this cancellation. The impact below is
+                  <strong> unavailable</strong> — proceed only if you’re certain. Nothing has been
+                  canceled yet.
+                </div>
+              ) : cancelPreview ? (
+                <div className="space-y-4">
+                  {/* WHAT + WHEN */}
+                  <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                    <p className="text-sm font-medium text-foreground">
+                      {cancelPreview.immediately
+                        ? "Cancels immediately."
+                        : "Cancels at the end of the current period."}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Effective {formatDate(cancelPreview.effective_date)} · resulting status:{" "}
+                      {cancelPreview.resulting_status}
+                    </p>
+                  </div>
+                  {/* FINANCIAL IMPACT — amount-anchored, all from the backend. */}
+                  <dl className="space-y-2 text-sm">
+                    {cancelPreview.deferred_revenue_forfeited > 0 && (
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="text-muted-foreground">
+                          Deferred revenue forfeited
+                          <span className="block text-xs">recognized immediately as breakage</span>
+                        </dt>
+                        <dd className="font-mono tabular-nums text-foreground">
+                          <Money
+                            amountMinor={cancelPreview.deferred_revenue_forfeited}
+                            currency={cancelPreview.currency}
+                          />
+                        </dd>
+                      </div>
+                    )}
+                    {cancelPreview.avoided_future_recurring > 0 && (
+                      <div className="flex items-center justify-between gap-3">
+                        <dt className="text-muted-foreground">Future recurring no longer billed</dt>
+                        <dd className="font-mono tabular-nums text-foreground">
+                          <Money
+                            amountMinor={cancelPreview.avoided_future_recurring}
+                            currency={cancelPreview.currency}
+                          />
+                        </dd>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between gap-3">
+                      <dt className="text-muted-foreground">Refund</dt>
+                      <dd className="text-foreground">
+                        {cancelPreview.flat_fee_refund > 0 ? (
+                          <span className="font-mono tabular-nums">
+                            <Money
+                              amountMinor={cancelPreview.flat_fee_refund}
+                              currency={cancelPreview.currency}
+                            />
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            None — the current period was paid in advance.
+                          </span>
+                        )}
+                      </dd>
+                    </div>
+                  </dl>
+                </div>
+              ) : null}
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setCancelStep("form")}
+                  disabled={cancelBusy}
+                >
+                  Back
+                </Button>
+                <Button variant="destructive" onClick={submitCancel} disabled={cancelBusy}>
+                  {cancelBusy
+                    ? "Canceling…"
+                    : cancelPreviewError
+                      ? "Cancel without preview"
+                      : "Confirm cancellation"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </div>

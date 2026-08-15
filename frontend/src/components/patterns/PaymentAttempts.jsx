@@ -2,6 +2,7 @@ import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { MotionStagger } from "@/components/patterns/MotionReveal";
 import { MotionState } from "@/components/patterns/MotionState";
+import { humanizeFailure } from "@/lib/failureLabels";
 import { formatDateTime, cn } from "@/lib/utils";
 
 /**
@@ -84,8 +85,16 @@ export function PaymentAttempts({ attempts, currency = "USD", isLoading, error }
             <Field label="Gateway">{a.gateway || "—"}</Field>
             {a.failure_code ? (
               <Field label="Failure">
-                {/* A failure reason reveals in rather than blinking into place. */}
+                {/* Lead with the human-readable reason; the raw gateway code is
+                    technical detail, shown quietly beneath (never the primary
+                    operator-facing explanation). Reveals in rather than blinking. */}
                 <span className="inline-block animate-motion-reveal text-destructive">
+                  {humanizeFailure(a.failure_code)}
+                </span>
+                <span
+                  className="mt-0.5 block font-mono text-[10px] normal-case text-subtle"
+                  title={`Gateway failure code: ${a.failure_code}`}
+                >
                   {a.failure_code}
                 </span>
               </Field>

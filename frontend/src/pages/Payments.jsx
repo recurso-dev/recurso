@@ -180,7 +180,7 @@ const Payments = () => {
         loading={isLoading}
         error={error}
         onRetry={refetch}
-        onRowClick={(p) => p.invoice_id && navigate(`/invoices/${p.invoice_id}`)}
+        onRowClick={(p) => p.id && navigate(`/payments/${p.id}`)}
         pagination={{
           page,
           pageSize: PAGE_SIZE,
