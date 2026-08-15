@@ -168,18 +168,32 @@ prior initiative, stated honestly.)*
 - **Priority:** P1. **Affected:** `SubscriptionPage.jsx`, `FinancialSummary.jsx`,
   `JournalEntries.jsx`. **Dependencies:** MRR portion → GAP-4.
 
-### P1-3 · DataTable has no selection or bulk actions
-- **Current:** `DataTable.jsx` has zero selection surface (no checkbox column, no
-  `selectedIds`, no bulk bar). Operational worklists action one row at a time.
-- **Problem:** repetitive operator flows — Invoices (bulk send/void/download),
-  Collections/Dunning worklist (bulk pause/write-off, `Collections.jsx`), Disputes
-  (bulk accept), Credit Notes (bulk issue) — have no multi-select.
-- **Impact:** slow, error-prone bulk operations; violates the QUALITY_BAR "bulk
-  actions where repetition occurs."
-- **Solution:** add `selectable` / `selectedIds` / `onSelectionChange` + a
-  `bulkActions` toolbar to DataTable; opt-in per list. Build once, benefits all.
-- **Priority:** P1. **Affected:** `DataTable.jsx` + opt-in call sites.
-  **Dependencies:** none.
+### P1-3 · DataTable selection + bulk actions — SHIPPED (Batch 2), partially
+- **Shipped:** `DataTable.jsx` now has opt-in `selectable` / `selectedIds` (a Set) /
+  `onSelectionChange` + a `renderBulkActions` bar. Semantics are deliberately
+  **page-scoped** — the header checkbox is "select all rows on this page" (labeled
+  as such), never "all matching records" (no backend supports that); selection is
+  pruned to the current result set on page/filter/search change and retained on a
+  same-page refetch. Row checkboxes `stopPropagation` so selecting never navigates;
+  indeterminate state via ref; keyboard-native `Checkbox`.
+- **Observable bulk runner** (`lib/useBulkAction.js` + `patterns/BulkActionDialog.jsx`):
+  confirm (states the scope, e.g. "Send 24 invoices") → progress (n/total) → result
+  as a first-class `all_succeeded` / `partial` / `all_failed` state; failed rows stay
+  listed and retryable, retry re-runs only the failed ids reusing a per-record
+  `Idempotency-Key` (added to `sendInvoice`/`rejectCreditNote`) so a retry can't
+  double-act.
+- **Safe consumers shipped:** Invoices → bulk **Send** (non-money, resendable),
+  Credit Notes → bulk **Reject** (idempotent, no money moves).
+- **Deliberately NOT shipped as bulk** (bulk-API audit): credit-note *approve*
+  (refund-type is irreversible gateway money), write-off / mark-uncollectible
+  (irreversible books), **all Dispute outcomes** (per-case judgment, irreversible).
+  Collections bulk pause/resume + retry-now are safe and high-value but need
+  Collections migrated from its hand-rolled table to DataTable first — **follow-up**.
+- **BACKEND GAP:** there is **no batch/multi-id endpoint** anywhere (only single-record
+  POSTs, looped client-side with per-record idempotency). A genuinely atomic
+  all-or-nothing bulk op (e.g. bulk refund) would need a real transactional batch
+  endpoint. Also missing: invoice-void, invoice-finalize, un-write-off, dispute
+  un-resolve, dispute submit-evidence, collections snooze/mark-contacted.
 
 ### P1-4 · List context is lost on back-navigation everywhere but Customers
 - **Current:** `useUrlState.js` is clean and proven, but **only `Customers.jsx`
@@ -386,18 +400,16 @@ objects. ● present · ◐ partial · ✕ absent · — no page.
 | Pagination *rendering* | ● (`{page,pageSize,total}` + legacy, `:158-179`) |
 | Search (controlled) | ◐ (renders; caller owns state) |
 | Row activation / keyboard | ◐ (first cell focusable; no `role="grid"` roving) |
-| Row selection (checkboxes) | ✕ |
-| Bulk actions | ✕ |
+| Row selection (checkboxes) | ● **SHIPPED** (Batch 2) — opt-in, page-scoped, pruned, keyboard/indeterminate |
+| Bulk actions | ● **SHIPPED** (Batch 2) — `renderBulkActions` bar + observable runner + partial-failure dialog |
 | In-component column filters | ✕ (opaque `toolbar` node per page) |
 | Sticky header | ✕ |
 | Column config / visibility | ✕ |
-| URL-state binding | ✕ (caller wires `useUrlState` manually) |
+| URL-state binding | ◐ caller wires `useUrlState` — now adopted on all major lists (Batches 1–2) |
 
-**7 of 11 capabilities are absent from the shared component** — so each list
-re-implements filters, none persist to the URL, none support bulk ops, and long
-lists lose their headers. This is the single highest-leverage refactor: extend the
-component once, propagate to every list. (Silent truncation, P0-1, is the acute
-symptom of the missing pagination discipline.)
+**Remaining shared-component gaps: in-component filters, sticky header, column
+config.** Selection + bulk actions and URL-state adoption are now done. (Silent
+truncation, P0-1, is fixed.)
 
 ---
 

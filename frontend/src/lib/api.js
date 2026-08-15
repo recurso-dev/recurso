@@ -48,6 +48,12 @@ api.interceptors.request.use(
 // primary/default config.
 const entityParams = (entityId) => (entityId ? { entity_id: entityId } : {});
 
+// idemConfig turns a per-record key into an axios config carrying an
+// Idempotency-Key header, so a retried bulk row can't double-act (the server
+// replays per tenant+method+path, and each path already carries the record id).
+// Returns undefined when no key is given, so the endpoint's plain call is unchanged.
+const idemConfig = (key) => (key ? { headers: { 'Idempotency-Key': key } } : undefined);
+
 export const endpoints = {
   // --- Auth (session, cookie-based) ---
   authRegister: (data) => axios.post(`${API_ROOT}/auth/register`, data),
@@ -153,7 +159,7 @@ export const endpoints = {
   // Rendered HTML invoice (for an in-dashboard preview modal).
   getInvoicePreview: (id) => api.get(`/invoices/${id}/preview`, { responseType: 'text' }),
   // (Re)email the invoice to the customer with a hosted Pay Now link.
-  sendInvoice: (id) => api.post(`/invoices/${id}/send`),
+  sendInvoice: (id, opts) => api.post(`/invoices/${id}/send`, {}, idemConfig(opts?.idempotencyKey)),
   // params may carry { entity_id } to scope MRR to one legal entity (omitted = all).
   getMRR: (params = {}) => api.get('/analytics/mrr', { params }),
   // MRR contribution of every legal entity (Multi-Entity Books).
@@ -254,7 +260,7 @@ export const endpoints = {
   getCreditNotePdf: (id) => api.get(`/credit-notes/${id}/pdf`, { responseType: 'blob' }),
   createCreditNote: (data) => api.post('/credit-notes', data),
   approveCreditNote: (id) => api.post(`/credit-notes/${id}/approve`),
-  rejectCreditNote: (id) => api.post(`/credit-notes/${id}/reject`),
+  rejectCreditNote: (id, opts) => api.post(`/credit-notes/${id}/reject`, {}, idemConfig(opts?.idempotencyKey)),
   voidCreditNote: (id) => api.post(`/credit-notes/${id}/void`),
 
   // Coupons

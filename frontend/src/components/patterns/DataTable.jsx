@@ -16,9 +16,24 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "./EmptyState";
 import { ErrorState } from "./ErrorState";
 import { TableSkeleton } from "./LoadingSkeleton";
+
+// Stable so a caller that doesn't pass getRowId doesn't recreate it each render
+// (which would defeat the selection-prune memo below).
+const defaultGetRowId = (row) => row.id;
+
+// The select-all header checkbox needs the DOM `indeterminate` property (no HTML
+// attribute exists), so it's set imperatively via a ref.
+function IndeterminateCheckbox({ indeterminate, ...props }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = Boolean(indeterminate) && !props.checked;
+  });
+  return <Checkbox ref={ref} {...props} />;
+}
 
 /**
  * DataTable v2 — the canonical list-page table (DASHBOARD_REDESIGN.md Stage 4).
@@ -62,6 +77,15 @@ import { TableSkeleton } from "./LoadingSkeleton";
  *      { page, onPrev, onNext, hasNext, total? }    (legacy, still supported)
  *    With total+pageSize it renders "start–end of total" and computes the
  *    Next boundary exactly (no more Next-into-an-empty-page).
+ *  - selectable + selectedIds (a Set) + onSelectionChange(nextSet): opt-in row
+ *    selection. Semantics are deliberately PAGE-SCOPED — the header checkbox is
+ *    "select all rows on this page", never "all matching records" (no backend
+ *    supports that). Selection is pruned to the current result set whenever it
+ *    changes (page/filter/search), so a stale id can never be actioned; a refetch
+ *    of the same page keeps the selection. Row checkboxes stopPropagation so
+ *    selecting never triggers row navigation.
+ *  - renderBulkActions(selectedIds, clear): the action buttons for the bulk bar,
+ *    which DataTable renders above the table whenever the selection is non-empty.
  */
 export function DataTable({
   columns,
@@ -74,7 +98,7 @@ export function DataTable({
   rowChevron = true,
   sort,
   onSortChange,
-  getRowId = (row) => row.id,
+  getRowId = defaultGetRowId,
   search,
   toolbar,
   density = "comfortable",
@@ -84,6 +108,10 @@ export function DataTable({
   empty = {},
   docsLink = true,
   pagination,
+  selectable = false,
+  selectedIds,
+  onSelectionChange,
+  renderBulkActions,
   className,
 }) {
   const { pathname } = useLocation();
@@ -147,6 +175,40 @@ export function DataTable({
   const activateRow = (row) => (rowHref ? navigate(rowHref(row)) : onRowClick(row));
   const showChevron = interactive && rowChevron;
   const cellPad = density === "compact" ? "[&_td]:py-2 [&_th]:h-9" : "";
+
+  // Row selection (opt-in, page-scoped). The header selects only the visible
+  // rows; selection is pruned to the current result set so a stale id (from a
+  // page/filter/search that has moved on) can never be actioned.
+  const selectionOn = selectable && selectedIds != null && Boolean(onSelectionChange);
+  const selection = selectionOn ? selectedIds : null;
+  const visibleIds = useMemo(() => rows.map((r) => getRowId(r)), [rows, getRowId]);
+  const allVisibleSelected =
+    selectionOn && visibleIds.length > 0 && visibleIds.every((id) => selection.has(id));
+  const someVisibleSelected = selectionOn && visibleIds.some((id) => selection.has(id));
+
+  useEffect(() => {
+    if (!selectionOn || selection.size === 0) return;
+    const valid = new Set(visibleIds);
+    const next = new Set();
+    let changed = false;
+    selection.forEach((id) => (valid.has(id) ? next.add(id) : (changed = true)));
+    if (changed) onSelectionChange(next);
+  }, [selectionOn, selection, visibleIds, onSelectionChange]);
+
+  const toggleAllVisible = () => {
+    const next = new Set(selection);
+    if (allVisibleSelected) visibleIds.forEach((id) => next.delete(id));
+    else visibleIds.forEach((id) => next.add(id));
+    onSelectionChange(next);
+  };
+  const toggleRow = (id) => {
+    const next = new Set(selection);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    onSelectionChange(next);
+  };
+  const clearSelection = () => onSelectionChange(new Set());
+  const selectedCount = selectionOn ? selection.size : 0;
 
   // Contextual guide link on the "nothing here yet" state — but not while the
   // user is filtering (a search that returns nothing isn't a getting-started
@@ -217,6 +279,31 @@ export function DataTable({
         </div>
       )}
 
+      {selectionOn && selectedCount > 0 && (
+        <div
+          role="region"
+          aria-label={`${selectedCount} selected`}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/20 bg-primary/5 px-4 py-2.5"
+        >
+          <div className="flex items-center gap-3 text-sm">
+            <span className="font-medium text-foreground">
+              {selectedCount.toLocaleString()} selected{" "}
+              <span className="font-normal text-muted-foreground">on this page</span>
+            </span>
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="rounded text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              Clear
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {renderBulkActions?.(selection, clearSelection)}
+          </div>
+        </div>
+      )}
+
       <Card className="overflow-hidden" aria-busy={loading || undefined}>
         {error ? (
           <ErrorState message={error} onRetry={onRetry} />
@@ -235,6 +322,16 @@ export function DataTable({
           <Table className={cn(cellPad)}>
             <TableHeader>
               <TableRow className="bg-muted/40 hover:bg-muted/40">
+                {selectionOn && (
+                  <TableHead className="w-10 pl-4">
+                    <IndeterminateCheckbox
+                      checked={allVisibleSelected}
+                      indeterminate={someVisibleSelected}
+                      onChange={toggleAllVisible}
+                      aria-label="Select all rows on this page"
+                    />
+                  </TableHead>
+                )}
                 {columns.map((col) => (
                   <TableHead
                     key={col.key}
@@ -275,10 +372,27 @@ export function DataTable({
                       onClick={interactive ? () => activateRow(row) : undefined}
                       className={cn(
                         interactive && "cursor-pointer",
+                        selectionOn && selection.has(id) && "bg-primary/5",
                         isNewRow(id) && "animate-motion-reveal"
                       )}
-                      data-state={expandedId === id ? "expanded" : undefined}
+                      data-state={
+                        selectionOn && selection.has(id)
+                          ? "selected"
+                          : expandedId === id
+                            ? "expanded"
+                            : undefined
+                      }
                     >
+                      {selectionOn && (
+                        <TableCell className="w-10 pl-4">
+                          <Checkbox
+                            checked={selection.has(id)}
+                            onChange={() => toggleRow(id)}
+                            onClick={(e) => e.stopPropagation()}
+                            aria-label={`Select row ${id}`}
+                          />
+                        </TableCell>
+                      )}
                       {columns.map((col, i) => (
                         <TableCell
                           key={col.key}
@@ -329,7 +443,7 @@ export function DataTable({
                     </TableRow>
                     {renderExpanded && expandedId === id && (
                       <TableRow className="hover:bg-transparent">
-                        <TableCell colSpan={columns.length + (showChevron ? 1 : 0)}>
+                        <TableCell colSpan={columns.length + (showChevron ? 1 : 0) + (selectionOn ? 1 : 0)}>
                           {renderExpanded(row)}
                         </TableCell>
                       </TableRow>
