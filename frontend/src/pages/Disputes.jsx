@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { FileQuestion, Check, X } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -39,8 +40,9 @@ const textareaClass =
 const PER_PAGE = 25;
 
 const Disputes = () => {
-  const [statusFilter, setStatusFilter] = useState("open");
-  const [page, setPage] = useState(1);
+  // List state in the URL so returning from a dispute restores filter + page.
+  const [statusFilter, setStatusFilter] = useUrlState("status", "open");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
   const [resolveTarget, setResolveTarget] = useState(null);
   const [note, setNote] = useState("");
   const [issueCredit, setIssueCredit] = useState(false);
@@ -73,6 +75,10 @@ const Disputes = () => {
       ).data.data || [],
     placeholderData: keepPreviousData,
   });
+  // Reset to page 1 when the status filter changes (URL-safe: separate tick,
+  // skips mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [statusFilter]);
+
   const hasNext = disputes.length > PER_PAGE;
   const pageRows = hasNext ? disputes.slice(0, PER_PAGE) : disputes;
   const error = queryError
@@ -191,10 +197,7 @@ const Disputes = () => {
         toolbar={
           <Select
             value={statusFilter}
-            onValueChange={(v) => {
-              setStatusFilter(v);
-              setPage(1);
-            }}
+            onValueChange={setStatusFilter}
           >
             <SelectTrigger className="w-32">
               <SelectValue />

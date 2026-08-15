@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router";
 import { Plus, Gift, Package } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { useDebounce } from "../hooks/useDebounce";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import BuyGiftModal from "../components/BuyGiftModal";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -26,10 +27,12 @@ const PAGE_SIZE = 10;
 export default function Plans() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState("");
-  const [currencyFilter, setCurrencyFilter] = useState("all");
-  const [intervalFilter, setIntervalFilter] = useState("all");
-  const [page, setPage] = useState(1);
+  // List state in the URL so returning from a plan restores the exact page /
+  // search / filters (useUrlState).
+  const [search, setSearch] = useUrlState("q", "");
+  const [currencyFilter, setCurrencyFilter] = useUrlState("currency", "all");
+  const [intervalFilter, setIntervalFilter] = useUrlState("interval", "all");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
   const debouncedSearch = useDebounce(search, 500);
 
   // Rows link to the plan's own page (/plans/:id → PlanPage).
@@ -63,10 +66,9 @@ export default function Plans() {
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load plans"
     : null;
 
-  // Reset to page 1 whenever any filter changes.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, currencyFilter, intervalFilter]);
+  // Reset to page 1 whenever any filter changes (URL-safe: separate tick, skips
+  // mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [debouncedSearch, currencyFilter, intervalFilter]);
 
 
   const hasFilters = search || currencyFilter !== "all" || intervalFilter !== "all";

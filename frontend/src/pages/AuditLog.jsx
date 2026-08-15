@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { ShieldCheck, Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { endpoints as api } from "../lib/api";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -63,10 +64,12 @@ const prettyBody = (body) => {
 // mutation, immutable at the database level. Click a row to inspect the full
 // actor, IDs, and the exact request payload that changed.
 const AuditLog = () => {
-  const [entityFilter, setEntityFilter] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-  const [page, setPage] = useState(0); // 0-based
+  // List state in the URL so returning from a detail restores filters + page
+  // (useUrlState); page is 1-based here to match every other list.
+  const [entityFilter, setEntityFilter] = useUrlState("entity", "");
+  const [from, setFrom] = useUrlState("from", "");
+  const [to, setTo] = useUrlState("to", "");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
   const [selected, setSelected] = useState(null);
 
   // Each filter+page combination is its own cache entry; placeholderData keeps
@@ -79,7 +82,7 @@ const AuditLog = () => {
   } = useQuery({
     queryKey: ["audit-logs", { entityFilter, from, to, page }],
     queryFn: async () => {
-      const params = { limit: PAGE_SIZE, offset: page * PAGE_SIZE };
+      const params = { limit: PAGE_SIZE, offset: (page - 1) * PAGE_SIZE };
       if (entityFilter) params.entity_type = entityFilter;
       if (from) params.from = new Date(`${from}T00:00:00`).toISOString();
       if (to) params.to = new Date(`${to}T23:59:59`).toISOString();
@@ -93,10 +96,9 @@ const AuditLog = () => {
       "Failed to load audit trail"
     : null;
 
-  // Reset to the first page whenever a filter changes.
-  useEffect(() => {
-    setPage(0);
-  }, [entityFilter, from, to]);
+  // Reset to the first page whenever a filter changes (URL-safe: separate tick,
+  // skips mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [entityFilter, from, to]);
 
   const entityTypes = [...new Set(logs.map((l) => l.entity_type))].sort();
 
@@ -212,14 +214,14 @@ const AuditLog = () => {
           </div>
         }
         pagination={{
-          page: page + 1,
-          onPrev: () => setPage((p) => Math.max(0, p - 1)),
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
           onNext: () => setPage((p) => p + 1),
           hasNext: logs.length === PAGE_SIZE,
         }}
         empty={{
           icon: ShieldCheck,
-          title: page > 0 || filtered ? "No entries match these filters" : "No audit entries yet",
+          title: page > 1 || filtered ? "No entries match these filters" : "No audit entries yet",
           description: "Config-grade mutations (plans, metrics, wallets, webhooks, team, ...) appear here.",
         }}
       />

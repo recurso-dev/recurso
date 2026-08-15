@@ -1,10 +1,10 @@
-import { useState } from "react";
 import { useSearchParams } from "react-router";
 import { FileText, Download } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
+import { useUrlState } from "@/lib/useUrlState";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { moneyColumn } from "@/components/patterns/columns";
@@ -83,8 +83,11 @@ function EInvoiceBadge({ status }) {
 }
 
 const Invoices = () => {
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // List state in the URL so returning from an invoice restores search + status
+  // (useUrlState); the list is a client-filtered page-through, so there is no
+  // page param.
+  const [search, setSearch] = useUrlState("q", "");
+  const [statusFilter, setStatusFilter] = useUrlState("status", "all");
   // ?aging=<bucket> deep-links from the invoice-aging report's buckets.
   const [searchParams, setSearchParams] = useSearchParams();
   const agingFilter = AGING_LABELS[searchParams.get("aging")] ? searchParams.get("aging") : null;
@@ -254,7 +257,16 @@ const Invoices = () => {
             {agingFilter && (
               <button
                 type="button"
-                onClick={() => setSearchParams({}, { replace: true })}
+                onClick={() =>
+                  setSearchParams(
+                    (prev) => {
+                      const p = new URLSearchParams(prev);
+                      p.delete("aging");
+                      return p;
+                    },
+                    { replace: true }
+                  )
+                }
                 title="Clear the aging filter"
                 className="rounded-full border border-warning/20 bg-warning/5 px-3 py-1 text-xs font-medium text-warning transition-colors hover:bg-warning/15"
               >

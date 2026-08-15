@@ -80,4 +80,21 @@ describe("Payments log", () => {
       expect.objectContaining({ page: 1, per_page: 50 })
     );
   });
+
+  // Back-navigation restoration: mounting at a filter/page URL requests that slice.
+  it("restores status + page from the URL", async () => {
+    render(
+      <MemoryRouter initialEntries={["/payments?status=failed&page=2"]}>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })}
+        >
+          <Payments />
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(endpoints.getPaymentAttempts).toHaveBeenCalled());
+    expect(endpoints.getPaymentAttempts).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", page: 2, per_page: 50 })
+    );
+  });
 });

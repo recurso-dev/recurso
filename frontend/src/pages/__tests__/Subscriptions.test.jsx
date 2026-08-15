@@ -96,4 +96,16 @@ describe("Subscriptions page", () => {
       )
     );
   });
+
+  // Back-navigation restoration: the list state lives in the URL, so mounting at
+  // a page/filter URL (as the browser does on Back) must request that exact slice.
+  it("restores page + filters from the URL and requests that slice", async () => {
+    window.history.pushState({}, "", "/subscriptions?page=2&status=active&q=acme");
+    render(<Subscriptions />, { wrapper });
+    await waitFor(() =>
+      expect(endpoints.getSubscriptions).toHaveBeenCalledWith(
+        expect.objectContaining({ page: 2, status: "active", q: "acme" })
+      )
+    );
+  });
 });
