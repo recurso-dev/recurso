@@ -194,6 +194,12 @@ prior initiative, stated honestly.)*
   all-or-nothing bulk op (e.g. bulk refund) would need a real transactional batch
   endpoint. Also missing: invoice-void, invoice-finalize, un-write-off, dispute
   un-resolve, dispute submit-evidence, collections snooze/mark-contacted.
+- **Discovered in live QA:** `POST /credit-notes/:id/reject` **idempotently no-ops
+  with 200** on a non-pending credit note (nothing changes), so bulk-reject reports
+  those as *succeeded* even though no state changed. The frontend honestly reflects
+  the API result; this is a **backend-semantics** question — a rejectable-only-when-
+  pending action arguably should return a distinct "skipped/not-applicable" outcome
+  so the operator can tell a real rejection from a no-op. (Not faked in the UI.)
 
 ### P1-4 · List context is lost on back-navigation everywhere but Customers
 - **Current:** `useUrlState.js` is clean and proven, but **only `Customers.jsx`
