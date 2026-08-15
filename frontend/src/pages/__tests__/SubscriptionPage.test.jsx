@@ -268,7 +268,8 @@ describe("SubscriptionPage", () => {
     // MRR label present with the backend's canonical figure ($49.00), kept
     // separate from "Billed each period" and "Next invoice".
     await waitFor(() => expect(screen.getByText("Financial summary")).toBeInTheDocument());
-    expect(screen.getByText("MRR")).toBeInTheDocument();
+    // MRR appears as the header hero label and in the summary strip; both are fine.
+    expect(screen.getAllByText("MRR").length).toBeGreaterThan(0);
     expect(screen.getByText("Billed each period")).toBeInTheDocument();
     expect(screen.getByText("Next invoice")).toBeInTheDocument();
   });

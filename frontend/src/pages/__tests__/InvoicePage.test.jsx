@@ -115,6 +115,13 @@ describe("InvoicePage", () => {
     );
     expect(endpoints.getInvoice).toHaveBeenCalledWith("inv-1");
     expect(screen.getByText("Paid")).toBeInTheDocument();
+    // The hero amount (invoice total) leads in the header, rendered as Money.
+    expect(
+      screen
+        .getAllByText((_, el) => el?.classList?.contains("money") && el.textContent === "$1,087.50")
+        .length
+    ).toBeGreaterThan(0);
+    expect(screen.getByText("paid in full")).toBeInTheDocument();
     // Rail links to the customer's and subscription's own pages.
     const links = screen.getAllByRole("link").map((a) => a.getAttribute("href"));
     expect(links).toContain("/customers/cus_1");

@@ -179,7 +179,7 @@ const OfflinePayments = () => {
           <Money amountMinor={p.amount} currency={p.currency} className="font-medium" />
           {p.tds_amount > 0 && (
             <p className="text-xs text-muted-foreground">
-              + TDS <Money amountMinor={p.tds_amount} currency={p.currency} className="text-xs" />
+              + TDS <Money amountMinor={p.tds_amount} currency={p.currency} size="sm" />
             </p>
           )}
         </div>

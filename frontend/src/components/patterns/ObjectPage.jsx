@@ -23,14 +23,22 @@ import { Card } from "@/components/ui/card";
  */
 
 /**
- * ObjectHeader — identity header for an object page.
+ * ObjectHeader — identity header for an object page. Establishes the canonical
+ * hierarchy an operator scans top-down: object identity → status → the ONE
+ * primary financial fact → secondary metadata → actions. The `amount` slot is
+ * the object hero: a single dominant amount (a `<Money size="hero">`), rendered
+ * directly under the title so it reads authoritatively without a KPI-style card.
+ * Objects with no meaningful primary amount (e.g. a customer) simply omit it.
  *
  * Props:
  *  - backTo / backLabel: list route this object belongs to
  *  - kicker: object type label ("Customer")
  *  - title:  the object's human identity (name, invoice number)
  *  - badge:  ReactNode, the object's ONE status (a <StatusBadge>)
- *  - meta:   ReactNode under the title (ids, dates — quiet, small)
+ *  - amount: ReactNode, the hero amount (a <Money size="hero">) — optional
+ *  - amountLabel: ReactNode, a small muted label/context beside the amount
+ *    ("amount due", "MRR", the payment outcome) — optional
+ *  - meta:   ReactNode under the amount (ids, dates — quiet, secondary)
  *  - actions: ReactNode, right-aligned (primary + contextual actions)
  */
 export function ObjectHeader({
@@ -39,6 +47,8 @@ export function ObjectHeader({
   kicker,
   title,
   badge,
+  amount,
+  amountLabel,
   meta,
   actions,
   className,
@@ -67,6 +77,14 @@ export function ObjectHeader({
             </h1>
             {badge}
           </div>
+          {amount && (
+            <div className="mt-2 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              {amount}
+              {amountLabel && (
+                <span className="text-sm text-muted-foreground">{amountLabel}</span>
+              )}
+            </div>
+          )}
           {meta && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
               {meta}

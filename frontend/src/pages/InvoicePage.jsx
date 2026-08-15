@@ -5,7 +5,7 @@ import { RefreshCw, XCircle, FileDown, FileCode, Eye, Send } from "lucide-react"
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
-import { cn, formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime } from "@/lib/utils";
 import {
   ObjectHeader,
   ObjectPageLayout,
@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
+import { Money } from "@/components/ui/money";
 import {
   Select,
   SelectContent,
@@ -336,6 +337,16 @@ export default function InvoicePage() {
         kicker="Invoice"
         title={invoice.invoice_number || invoice.id.slice(0, 8)}
         badge={<StatusBadge status={invoice.status || "unknown"} flashOnChange />}
+        amount={<Money amountMinor={invoice.total} currency={invoice.currency} size="hero" />}
+        amountLabel={
+          invoice.amount_due > 0 ? (
+            <span className="text-destructive">
+              <Money amountMinor={invoice.amount_due} currency={invoice.currency} size="sm" /> due
+            </span>
+          ) : (
+            "paid in full"
+          )
+        }
         meta={
           <>
             <CopyableId value={invoice.id} />
@@ -419,11 +430,7 @@ export default function InvoicePage() {
           </>
         }
       >
-        <ObjectSection title="Amount">
-          <p className="mb-4 text-3xl font-bold tabular-nums text-foreground">
-            {formatCurrency(invoice.total, invoice.currency)}
-          </p>
-
+        <ObjectSection title="Breakdown">
           {Array.isArray(invoice.line_items) && invoice.line_items.length > 0 && (
             <div className="mb-4 space-y-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-subtle">
@@ -447,8 +454,8 @@ export default function InvoicePage() {
                             : ""}
                       </p>
                     </div>
-                    <p className="shrink-0 text-sm tabular-nums text-foreground">
-                      {formatCurrency(li.amount, invoice.currency)}
+                    <p className="shrink-0 text-sm text-foreground">
+                      <Money amountMinor={li.amount} currency={invoice.currency} size="sm" />
                     </p>
                   </div>
                 ))}
@@ -457,15 +464,15 @@ export default function InvoicePage() {
           )}
 
           <div className="space-y-1.5 rounded-md border border-border bg-muted p-4 text-sm">
-            <Row label="Subtotal" value={formatCurrency(invoice.subtotal, invoice.currency)} />
+            <Row label="Subtotal" value={<Money amountMinor={invoice.subtotal} currency={invoice.currency} size="sm" />} />
             {invoice.igst_amount > 0 && (
-              <Row label="IGST" value={formatCurrency(invoice.igst_amount, invoice.currency)} />
+              <Row label="IGST" value={<Money amountMinor={invoice.igst_amount} currency={invoice.currency} size="sm" />} />
             )}
             {invoice.cgst_amount > 0 && (
-              <Row label="CGST" value={formatCurrency(invoice.cgst_amount, invoice.currency)} />
+              <Row label="CGST" value={<Money amountMinor={invoice.cgst_amount} currency={invoice.currency} size="sm" />} />
             )}
             {invoice.sgst_amount > 0 && (
-              <Row label="SGST" value={formatCurrency(invoice.sgst_amount, invoice.currency)} />
+              <Row label="SGST" value={<Money amountMinor={invoice.sgst_amount} currency={invoice.currency} size="sm" />} />
             )}
             {!(
               invoice.igst_amount > 0 ||
@@ -475,34 +482,39 @@ export default function InvoicePage() {
               invoice.tax_amount > 0 && (
                 <Row
                   label={taxLineLabel}
-                  value={formatCurrency(invoice.tax_amount, invoice.currency)}
+                  value={<Money amountMinor={invoice.tax_amount} currency={invoice.currency} size="sm" />}
                 />
               )}
             {invoice.tds_amount > 0 && (
               <Row
                 label="TDS withheld"
-                value={`−${formatCurrency(invoice.tds_amount, invoice.currency)}`}
+                value={
+                  <span className="inline-flex items-baseline">
+                    <span aria-hidden="true">−</span>
+                    <Money amountMinor={invoice.tds_amount} currency={invoice.currency} size="sm" />
+                  </span>
+                }
               />
             )}
             <Row
               label="Total"
-              value={formatCurrency(invoice.total, invoice.currency)}
+              value={<Money amountMinor={invoice.total} currency={invoice.currency} size="sm" />}
               strong
               border
             />
             {invoice.credit_applied > 0 && (
               <Row
                 label="Credit applied"
-                value={formatCurrency(invoice.credit_applied, invoice.currency)}
+                value={<Money amountMinor={invoice.credit_applied} currency={invoice.currency} size="sm" />}
               />
             )}
             <Row
               label="Amount paid"
-              value={formatCurrency(invoice.amount_paid, invoice.currency)}
+              value={<Money amountMinor={invoice.amount_paid} currency={invoice.currency} size="sm" />}
             />
             <Row
               label="Amount due"
-              value={formatCurrency(invoice.amount_due, invoice.currency)}
+              value={<Money amountMinor={invoice.amount_due} currency={invoice.currency} size="sm" />}
               strong={!(invoice.amount_due > 0)}
               danger={invoice.amount_due > 0}
             />

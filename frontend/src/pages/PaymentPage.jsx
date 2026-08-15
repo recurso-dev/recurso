@@ -126,6 +126,8 @@ export default function PaymentPage() {
         kicker="Payment"
         title={payment.invoice_number ? `Payment · ${payment.invoice_number}` : `Payment ${String(payment.id).slice(0, 8)}`}
         badge={<StatusBadge status={payment.status} flashOnChange />}
+        amount={<Money amountMinor={payment.amount} currency={payment.currency} size="hero" />}
+        amountLabel={outcome.text ? <span className={outcome.tone}>{outcome.text}</span> : null}
         meta={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <CopyableId value={payment.id} />
@@ -158,6 +160,12 @@ export default function PaymentPage() {
                     label: "Settled",
                     value: payment.settled_at ? formatDateTime(payment.settled_at) : null,
                   },
+                  {
+                    label: "Gateway failure code",
+                    value: payment.failure_code ? (
+                      <span className="font-mono text-xs">{payment.failure_code}</span>
+                    ) : null,
+                  },
                 ]}
               />
             </ObjectSection>
@@ -167,24 +175,6 @@ export default function PaymentPage() {
           </>
         }
       >
-        {/* Amount + plain-language outcome — the most trustworthy thing on the page. */}
-        <ObjectSection title="Amount">
-          <div className="flex flex-wrap items-baseline justify-between gap-3">
-            <Money
-              amountMinor={payment.amount}
-              currency={payment.currency}
-              className="text-2xl font-semibold"
-            />
-            <StatusBadge status={payment.status} />
-          </div>
-          {outcome.text ? <p className={`mt-2 text-sm ${outcome.tone}`}>{outcome.text}</p> : null}
-          {payment.failure_code ? (
-            <p className="mt-1 font-mono text-[11px] text-subtle" title="Raw gateway failure code">
-              gateway code: {payment.failure_code}
-            </p>
-          ) : null}
-        </ObjectSection>
-
         {/* The financial graph: who paid, against what, for which subscription. */}
         <ObjectSection title="Related" flush>
           {payment.invoice_id ? (
