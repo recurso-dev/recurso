@@ -1,4 +1,3 @@
-import { shortId } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart } from "@tremor/react";
@@ -201,11 +200,7 @@ export default function Usage() {
     {
       key: "customer",
       header: "Customer",
-      cell: (item) => (
-        <span className="font-medium text-foreground">
-          {shortId(item.customer_id)}
-        </span>
-      ),
+      cell: (item) => <CustomerName id={item.customer_id} names={customerNames} />,
     },
     {
       key: "plan",
