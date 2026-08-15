@@ -20,6 +20,7 @@ import {
   ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
+import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Money } from "@/components/ui/money";
@@ -210,6 +211,7 @@ export default function CreditNotePage() {
 
       <ObjectPageLayout
         rail={
+          <>
           <ObjectSection title="Details">
             <AttributeList
               columns={1}
@@ -238,6 +240,10 @@ export default function CreditNotePage() {
               ]}
             />
           </ObjectSection>
+          <ObjectSection title="Audit trail">
+            <AuditTrail entityType="credit-notes" entityId={cn.id} />
+          </ObjectSection>
+          </>
         }
       >
         <ObjectSection title="Amounts">

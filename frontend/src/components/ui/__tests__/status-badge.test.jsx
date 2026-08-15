@@ -26,6 +26,19 @@ describe("StatusBadge", () => {
     expect(screen.getByText("Past due")).toBeInTheDocument();
   });
 
+  it("maps the payment statuses returned + initiated (Batch E registry)", () => {
+    const { rerender } = render(<StatusBadge status="returned" />);
+    const returned = screen.getByText("Returned");
+    expect(returned).toBeInTheDocument();
+    // an ACH/card return is failure-adjacent → destructive tone
+    expect(returned.className).toContain("text-destructive");
+
+    rerender(<StatusBadge status="initiated" />);
+    const initiated = screen.getByText("Initiated");
+    expect(initiated).toBeInTheDocument();
+    expect(initiated.className).not.toContain("text-destructive");
+  });
+
   it("does not wrap in a flash container by default", () => {
     render(<StatusBadge status="paid" />);
     // No MotionState wrapper span carrying the flash affordance.

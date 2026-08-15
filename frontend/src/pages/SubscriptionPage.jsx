@@ -542,7 +542,7 @@ export default function SubscriptionPage() {
       <ObjectPageLayout
         rail={
           <>
-            <ObjectSection title="Metadata">
+            <ObjectSection title="Details">
               <AttributeList
                 columns={1}
                 items={[

@@ -18,7 +18,8 @@ import {
   ObjectNotFound,
   ObjectPageError,
 } from "@/components/patterns/ObjectPage";
-import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { CopyableId } from "@/components/ui/copyable-id";
 import {
   Table,
@@ -93,14 +94,14 @@ export default function ReconciliationRunPage() {
         kicker="Reconciliation run"
         title={formatDateTime(run.run_at)}
         badge={
-          balanced ? (
-            <Badge variant="success">Reconciled</Badge>
-          ) : (
-            <Badge variant="destructive">
-              {run.total_discrepancies.toLocaleString()} discrepanc
-              {run.total_discrepancies === 1 ? "y" : "ies"}
-            </Badge>
-          )
+          <StatusBadge
+            status={balanced ? "success" : "failed"}
+            label={
+              balanced
+                ? "Reconciled"
+                : `${run.total_discrepancies.toLocaleString()} discrepanc${run.total_discrepancies === 1 ? "y" : "ies"}`
+            }
+          />
         }
         meta={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -109,6 +110,17 @@ export default function ReconciliationRunPage() {
           </span>
         }
       />
+
+      {!balanced && (
+        <AttentionBanner
+          items={[
+            {
+              tone: "danger",
+              text: `${run.total_discrepancies.toLocaleString()} discrepanc${run.total_discrepancies === 1 ? "y" : "ies"} — billing records and the ledger disagree. Review each below.`,
+            },
+          ]}
+        />
+      )}
 
       <ObjectPageLayout
         rail={

@@ -62,10 +62,15 @@ describe("Payments log", () => {
   it("lists attempts with their invoice, status, and failure reason", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("INV-1001")).toBeInTheDocument());
-    // The failed attempt surfaces its declining reason.
-    expect(screen.getByText("card_declined")).toBeInTheDocument();
-    expect(screen.getByText("failed")).toBeInTheDocument();
-    expect(screen.getByText("succeeded")).toBeInTheDocument();
+    // The failed attempt surfaces a humanized reason (canonical humanizeFailure),
+    // not the raw gateway code — which stays as quiet technical detail in title.
+    const reason = screen.getByText("Card declined");
+    expect(reason).toBeInTheDocument();
+    expect(reason).toHaveAttribute("title", "Gateway failure code: card_declined");
+    expect(screen.queryByText("card_declined")).not.toBeInTheDocument();
+    // Status renders via the canonical StatusBadge (humanized labels).
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("Succeeded")).toBeInTheDocument();
     // Invoice numbers link to the addressable invoice page.
     expect(screen.getByRole("link", { name: "INV-1001" })).toHaveAttribute(
       "href",

@@ -60,6 +60,13 @@ describe("QuotePage", () => {
   it("renders line items and the totals math", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Onboarding")).toBeInTheDocument());
+    // Batch E: the specialized line-items table is a11y-hardened (accessible
+    // name + th scope=col) while kept specialized (not migrated to DataTable).
+    const table = screen.getByRole("table", { name: "Quote line items" });
+    expect(table).toBeInTheDocument();
+    for (const th of table.querySelectorAll("thead th")) {
+      expect(th.getAttribute("scope")).toBe("col");
+    }
     expect(screen.getByText("Subtotal")).toBeInTheDocument();
     // Total shows in both the header and the totals block.
     expect(screen.getAllByText(money("$330.00")).length).toBeGreaterThanOrEqual(1);

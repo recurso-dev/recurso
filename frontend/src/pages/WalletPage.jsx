@@ -374,14 +374,14 @@ export default function WalletPage() {
             </RelatedEmpty>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-sm">
+              <table className="w-full min-w-[640px] text-sm" aria-label="Wallet movements">
                 <thead>
                   <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-subtle">
-                    <th className="px-6 py-2.5 font-medium">Date</th>
-                    <th className="px-3 py-2.5 font-medium">Movement</th>
-                    <th className="px-3 py-2.5 font-medium">Detail</th>
-                    <th className="px-3 py-2.5 text-right font-medium">Amount</th>
-                    <th className="px-6 py-2.5 text-right font-medium">Balance</th>
+                    <th scope="col" className="px-6 py-2.5 font-medium">Date</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Movement</th>
+                    <th scope="col" className="px-3 py-2.5 font-medium">Detail</th>
+                    <th scope="col" className="px-3 py-2.5 text-right font-medium">Amount</th>
+                    <th scope="col" className="px-6 py-2.5 text-right font-medium">Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">

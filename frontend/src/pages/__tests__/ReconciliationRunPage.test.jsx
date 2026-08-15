@@ -68,6 +68,16 @@ describe("ReconciliationRunPage", () => {
     expect(screen.getByText("Reconciled")).toBeInTheDocument();
   });
 
+  it("banners the exception and badges the count when a run has discrepancies (Batch E parity)", async () => {
+    endpoints.getReconciliationRun.mockResolvedValue({ data: { data: run() } }); // total 2
+    renderPage();
+    // Canonical StatusBadge in the header carries the count.
+    await waitFor(() => expect(screen.getByText("2 discrepancies")).toBeInTheDocument());
+    // The exception surfaces as an AttentionBanner (like Invoice/Subscription) —
+    // "Review each below" is unique to the banner (vs the Result section copy).
+    expect(screen.getByText(/Review each below/i)).toBeInTheDocument();
+  });
+
   it("is honest when a run counted discrepancies but stored no detail (pre-persistence run)", async () => {
     endpoints.getReconciliationRun.mockResolvedValue({
       data: { data: run({ total_discrepancies: 5, discrepancies: [] }) },
