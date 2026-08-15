@@ -2,7 +2,11 @@ import { Link } from "react-router";
 import { ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/httpError";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/patterns/LoadingSkeleton";
+import { ErrorState } from "@/components/patterns/ErrorState";
 
 /**
  * Object-page system (DASHBOARD_REDESIGN.md Phase 5).
@@ -179,4 +183,83 @@ export function RelatedRow({ to, children }) {
 /** RelatedEmpty — the quiet empty state for a related-objects section. */
 export function RelatedEmpty({ children }) {
   return <p className="px-6 py-4 text-sm text-muted-foreground">{children}</p>;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Canonical object-page lifecycle states (Polish Batch B). Every object page
+ * renders exactly these three, paired with useObjectQuery, so loading /
+ * not-found / error speak one language across the app.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * ObjectPageSkeleton — the canonical loading state. Mirrors the object-page
+ * geometry (header identity + hero, main column, optional rail) so data landing
+ * doesn't jump the layout. Announced politely, once. `hasRail` matches whether
+ * the page uses a metadata rail.
+ */
+export function ObjectPageSkeleton({ hasRail = true, className }) {
+  return (
+    <div role="status" aria-busy="true" className={className}>
+      <span className="sr-only">Loading…</span>
+      <div className="mb-6" aria-hidden="true">
+        <Skeleton className="mb-2 h-4 w-24" />
+        <Skeleton className="mb-2.5 h-8 w-64" />
+        <Skeleton className="h-7 w-40" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3" aria-hidden="true">
+        <div className="space-y-6 lg:col-span-2">
+          <Skeleton className="h-48 w-full" />
+          <Skeleton className="h-32 w-full" />
+        </div>
+        {hasRail && <Skeleton className="h-56 w-full" />}
+      </div>
+    </div>
+  );
+}
+
+// StateBackLink — the contextual back navigation shown in the not-found/error
+// states (e.g. "Back to Invoices"). Renders nothing without a target.
+function StateBackLink({ to, label }) {
+  if (!to) return null;
+  return (
+    <Button asChild variant="ghost" size="sm">
+      <Link to={to}>
+        <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
+        {label || "Back"}
+      </Link>
+    </Button>
+  );
+}
+
+/**
+ * ObjectNotFound — the canonical "this object doesn't exist / no access" state.
+ * Retry is intentionally omitted (retrying a not-found can't help). Never leaks
+ * tenant/security detail: an object in another workspace reads the same as a
+ * deleted one. `objectLabel` is the lowercase noun ("invoice", "payment").
+ */
+export function ObjectNotFound({ objectLabel = "object", identifier, backTo, backLabel }) {
+  const Label = objectLabel.charAt(0).toUpperCase() + objectLabel.slice(1);
+  return (
+    <ErrorState
+      title={`${Label} not found`}
+      message={`This ${objectLabel}${identifier ? ` (${identifier})` : ""} doesn’t exist, or you may not have access to it.`}
+      action={<StateBackLink to={backTo} label={backLabel} />}
+    />
+  );
+}
+
+/**
+ * ObjectPageError — the canonical retryable error state. Distinct from
+ * not-found: the request genuinely failed. The message comes from the safe
+ * errorMessage() helper (never a raw backend error / stack / gateway code).
+ */
+export function ObjectPageError({ objectLabel = "object", error, onRetry, backTo, backLabel }) {
+  return (
+    <ErrorState
+      title={`Couldn’t load this ${objectLabel}`}
+      message={errorMessage(error)}
+      onRetry={onRetry}
+      action={<StateBackLink to={backTo} label={backLabel} />}
+    />
+  );
 }

@@ -1,9 +1,9 @@
 import { Link, useParams } from "react-router";
-import { useQuery } from "@tanstack/react-query";
 import { ArrowRight } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { useCustomers } from "@/lib/useCustomers";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { humanizeFailure } from "@/lib/failureLabels";
 import { formatDateTime } from "@/lib/utils";
 import {
@@ -13,13 +13,14 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { SubscriptionRef } from "@/components/patterns/SubscriptionRef";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Money } from "@/components/ui/money";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -62,43 +63,32 @@ export default function PaymentPage() {
   const { names: customerNames } = useCustomers();
 
   const {
-    data: payment,
-    isLoading,
+    object: payment,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["payment", id],
-    queryFn: async () => (await endpoints.getPayment(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["payment", id],
+    async () => (await endpoints.getPayment(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-6 h-16 w-full max-w-md" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-40 w-full" />
-            <Skeleton className="h-32 w-full" />
-          </div>
-          <Skeleton className="h-48 w-full" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="payment"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/payments"
+        backLabel="Payments"
+      />
     );
   }
-
-  if (error || !payment) {
-    const is404 = error?.response?.status === 404;
+  if (isError) {
     return (
-      <ErrorState
-        title={is404 ? "Payment not found" : "Couldn’t load this payment"}
-        message={
-          is404
-            ? "This payment attempt doesn’t exist, or belongs to another workspace."
-            : error?.response?.data?.error?.message || error?.message || "Please try again."
-        }
-        onRetry={is404 ? undefined : refetch}
-      />
+      <ObjectPageError objectLabel="payment" error={error} onRetry={refetch} backTo="/payments" backLabel="Payments" />
     );
   }
 

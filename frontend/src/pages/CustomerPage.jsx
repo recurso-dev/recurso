@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link2, Pencil } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { toast } from "@/components/ui/sonner";
 import { usePlans } from "../lib/useCustomers";
 import CustomerDetail from "../components/slide-overs/CustomerDetail";
@@ -15,13 +16,14 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
 import { ObjectTimeline } from "@/components/patterns/ObjectTimeline";
 import { FinancialSummary } from "@/components/patterns/FinancialSummary";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Money } from "@/components/ui/money";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -45,15 +47,17 @@ export default function CustomerPage() {
   const [editOpen, setEditOpen] = useState(false);
 
   const {
-    data: customer,
-    isLoading,
+    object: customer,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["customer", id],
-    queryFn: async () => (await endpoints.getCustomer(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["customer", id],
+    async () => (await endpoints.getCustomer(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const { data: subscriptions = [] } = useQuery({
     queryKey: ["subscriptions", { customer_id: id }],
@@ -126,31 +130,20 @@ export default function CustomerPage() {
     queryClient.invalidateQueries({ queryKey: ["customers"] });
   };
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="customer"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/customers"
+        backLabel="Customers"
+      />
     );
   }
-
-  if (error || !customer) {
-    const status = error?.response?.status;
+  if (isError) {
     return (
-      <ErrorState
-        title={status === 404 ? "Customer not found" : "Couldn't load this customer"}
-        message={
-          status === 404
-            ? "This customer doesn't exist or was removed."
-            : error?.response?.data?.error?.message || error?.message
-        }
-        onRetry={status === 404 ? undefined : refetch}
-      />
+      <ObjectPageError objectLabel="customer" error={error} onRetry={refetch} backTo="/customers" backLabel="Customers" />
     );
   }
 

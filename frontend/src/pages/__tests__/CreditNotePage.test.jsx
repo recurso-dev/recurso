@@ -102,7 +102,7 @@ describe("CreditNotePage", () => {
     endpoints.getCreditNote.mockRejectedValue({ response: { status: 404 } });
     renderPage("missing");
     await waitFor(() =>
-      expect(screen.getByText(/Couldn't load this credit note/i)).toBeInTheDocument()
+      expect(screen.getByText(/not found/i)).toBeInTheDocument()
     );
   });
 });

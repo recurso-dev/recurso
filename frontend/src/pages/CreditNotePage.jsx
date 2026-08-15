@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, X, Ban, Download } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime, formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/auth/AuthProvider";
 import { useCustomers } from "@/lib/useCustomers";
@@ -14,11 +15,12 @@ import {
   ObjectSection,
   AttributeList,
   RelatedRow,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
 import { JournalEntries } from "@/components/patterns/JournalEntries";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Money } from "@/components/ui/money";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -43,15 +45,17 @@ export default function CreditNotePage() {
   const [confirm, setConfirm] = useState(null); // "approve" | "reject" | "void"
 
   const {
-    data: cn,
-    isLoading,
+    object: cn,
+    loading,
+    notFound,
+    isError,
     error: cnError,
     refetch,
-  } = useQuery({
-    queryKey: ["creditNote", id],
-    queryFn: async () => (await endpoints.getCreditNote(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["creditNote", id],
+    async () => (await endpoints.getCreditNote(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   const {
     data: journal = [],
@@ -106,30 +110,20 @@ export default function CreditNotePage() {
     }
   };
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="credit note"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/credit-notes"
+        backLabel="Credit Notes"
+      />
     );
   }
-
-  if (cnError || !cn) {
+  if (isError) {
     return (
-      <ErrorState
-        title={cnError ? "Couldn't load this credit note" : "Credit note not found"}
-        message={
-          cnError
-            ? cnError?.response?.data?.error?.message || cnError?.message
-            : "This credit note doesn't exist or isn't in your account."
-        }
-        onRetry={cnError ? refetch : undefined}
-      />
+      <ObjectPageError objectLabel="credit note" error={cnError} onRetry={refetch} backTo="/credit-notes" backLabel="Credit Notes" />
     );
   }
 

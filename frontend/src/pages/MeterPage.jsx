@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime } from "@/lib/utils";
 import {
   ObjectHeader,
@@ -10,10 +11,11 @@ import {
   AttributeList,
   RelatedRow,
   RelatedEmpty,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AuditTrail } from "@/components/patterns/AuditTrail";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -28,15 +30,17 @@ export default function MeterPage() {
   const { id } = useParams();
 
   const {
-    data: metric,
-    isLoading,
+    object: metric,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["billable-metric", id],
-    queryFn: async () => (await endpoints.getBillableMetric(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["billable-metric", id],
+    async () => (await endpoints.getBillableMetric(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   // Reverse lookup: which plans/charges price on this meter.
   const { data: charges = [] } = useQuery({
@@ -53,32 +57,19 @@ export default function MeterPage() {
     enabled: Boolean(metric?.code),
   });
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !metric) {
-    const status = error?.response?.status;
-    return (
-      <ErrorState
-        title={status === 404 ? "Meter not found" : "Couldn't load this meter"}
-        message={
-          status === 404
-            ? "This billable metric doesn't exist or was removed."
-            : error?.response?.data?.error?.message || error?.message
-        }
-        onRetry={status === 404 ? undefined : refetch}
+      <ObjectNotFound
+        objectLabel="meter"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/metering"
+        backLabel="Metering"
       />
     );
+  }
+  if (isError) {
+    return <ObjectPageError objectLabel="meter" error={error} onRetry={refetch} backTo="/metering" backLabel="Metering" />;
   }
 
   return (

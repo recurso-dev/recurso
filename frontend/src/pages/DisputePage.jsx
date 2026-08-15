@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, X } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { formatDateTime, shortId } from "@/lib/utils";
 import { useCustomers } from "@/lib/useCustomers";
 import { CustomerName } from "@/components/patterns/CustomerSelect";
@@ -13,10 +14,11 @@ import {
   ObjectSection,
   AttributeList,
   RelatedRow,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
 import { AttentionBanner } from "@/components/patterns/AttentionBanner";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Money } from "@/components/ui/money";
 import { CopyableId } from "@/components/ui/copyable-id";
@@ -52,15 +54,17 @@ export default function DisputePage() {
   const [issueCredit, setIssueCredit] = useState(false);
 
   const {
-    data: dispute,
-    isLoading,
+    object: dispute,
+    loading,
+    notFound,
+    isError,
     error: disputeError,
     refetch,
-  } = useQuery({
-    queryKey: ["dispute", id],
-    queryFn: async () => (await endpoints.getDispute(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["dispute", id],
+    async () => (await endpoints.getDispute(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   // The contested invoice — its real number/amount/status enrich the relation.
   // Best-effort: on failure the relation still links by id.
@@ -103,30 +107,20 @@ export default function DisputePage() {
     setReviewOpen(true);
   };
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-2 h-4 w-24" />
-        <Skeleton className="mb-6 h-8 w-64" />
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Skeleton className="h-64 lg:col-span-2" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="dispute"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/disputes"
+        backLabel="Disputes"
+      />
     );
   }
-
-  if (disputeError || !dispute) {
+  if (isError) {
     return (
-      <ErrorState
-        title={disputeError ? "Couldn't load this dispute" : "Dispute not found"}
-        message={
-          disputeError
-            ? disputeError?.response?.data?.error?.message || disputeError?.message
-            : "This dispute doesn't exist or isn't in your account."
-        }
-        onRetry={disputeError ? refetch : undefined}
-      />
+      <ObjectPageError objectLabel="dispute" error={disputeError} onRetry={refetch} backTo="/disputes" backLabel="Disputes" />
     );
   }
 

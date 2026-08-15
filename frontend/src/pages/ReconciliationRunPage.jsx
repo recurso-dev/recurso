@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router";
 import { useQuery } from "@tanstack/react-query";
 
 import { endpoints } from "../lib/api";
+import { useObjectQuery } from "@/lib/useObjectQuery";
 import { shortId, formatDateTime } from "@/lib/utils";
 import {
   DISCREPANCIES,
@@ -13,9 +14,10 @@ import {
   ObjectPageLayout,
   ObjectSection,
   AttributeList,
+  ObjectPageSkeleton,
+  ObjectNotFound,
+  ObjectPageError,
 } from "@/components/patterns/ObjectPage";
-import { ErrorState } from "@/components/patterns/ErrorState";
-import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Badge } from "@/components/ui/badge";
 import { CopyableId } from "@/components/ui/copyable-id";
 import {
@@ -36,15 +38,17 @@ export default function ReconciliationRunPage() {
   const { id } = useParams();
 
   const {
-    data: run,
-    isLoading,
+    object: run,
+    loading,
+    notFound,
+    isError,
     error,
     refetch,
-  } = useQuery({
-    queryKey: ["reconciliation-run", id],
-    queryFn: async () => (await endpoints.getReconciliationRun(id)).data.data,
-    enabled: Boolean(id),
-  });
+  } = useObjectQuery(
+    ["reconciliation-run", id],
+    async () => (await endpoints.getReconciliationRun(id)).data.data,
+    { enabled: Boolean(id) }
+  );
 
   // Resolve run_by → a human name (never a raw UUID); best-effort, shared cache.
   const { data: teamMembers = [] } = useQuery({
@@ -54,32 +58,25 @@ export default function ReconciliationRunPage() {
   });
   const userNameById = Object.fromEntries(teamMembers.map((u) => [u.id, u.name || u.email]));
 
-  if (isLoading) {
+  if (loading) return <ObjectPageSkeleton />;
+  if (notFound) {
     return (
-      <div aria-busy="true">
-        <Skeleton className="mb-6 h-16 w-full max-w-md" />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-6">
-            <Skeleton className="h-24 w-full" />
-            <Skeleton className="h-64 w-full" />
-          </div>
-          <Skeleton className="h-48 w-full" />
-        </div>
-      </div>
+      <ObjectNotFound
+        objectLabel="reconciliation run"
+        identifier={id ? String(id).slice(0, 8) : undefined}
+        backTo="/finance/reconciliation"
+        backLabel="Reconciliation"
+      />
     );
   }
-
-  if (error || !run) {
-    const is404 = error?.response?.status === 404;
+  if (isError) {
     return (
-      <ErrorState
-        title={is404 ? "Reconciliation run not found" : "Couldn’t load this run"}
-        message={
-          is404
-            ? "This recorded run doesn’t exist, or belongs to another workspace."
-            : error?.response?.data?.error?.message || error?.message || "Please try again."
-        }
-        onRetry={is404 ? undefined : refetch}
+      <ObjectPageError
+        objectLabel="reconciliation run"
+        error={error}
+        onRetry={refetch}
+        backTo="/finance/reconciliation"
+        backLabel="Reconciliation"
       />
     );
   }
