@@ -1,6 +1,3 @@
-import { Link } from "react-router";
-import { ChevronRight } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 /**
@@ -9,33 +6,15 @@ import { cn } from "@/lib/utils";
  * Props:
  *  - title:       string (required)
  *  - description: string
- *  - breadcrumbs: [{ label, to? }]  (last item is rendered as current page)
  *  - actions:     ReactNode (right-aligned buttons, e.g. <Button>New</Button>)
+ *
+ * (No breadcrumbs: the active-nav rail answers "where am I", and object pages use
+ * context-preserving back navigation — see useListBackDestination. The old dead
+ * `breadcrumbs` prop was retired in Batch F1.)
  */
-export function PageHeader({ title, description, breadcrumbs, actions, className, titleId = "page-title" }) {
+export function PageHeader({ title, description, actions, className, titleId = "page-title" }) {
   return (
     <div className={cn("mb-6", className)}>
-      {breadcrumbs?.length > 0 && (
-        <nav className="mb-2 flex items-center gap-1.5 text-sm text-muted-foreground">
-          {breadcrumbs.map((crumb, i) => {
-            const isLast = i === breadcrumbs.length - 1;
-            return (
-              <span key={i} className="flex items-center gap-1.5">
-                {i > 0 && <ChevronRight className="h-3.5 w-3.5 text-subtle/60" />}
-                {crumb.to && !isLast ? (
-                  <Link to={crumb.to} className="hover:text-foreground transition-colors">
-                    {crumb.label}
-                  </Link>
-                ) : (
-                  <span className={cn(isLast && "text-foreground font-medium")}>
-                    {crumb.label}
-                  </span>
-                )}
-              </span>
-            );
-          })}
-        </nav>
-      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           {/* Stable id so a page's DataTable can name itself from this visible
