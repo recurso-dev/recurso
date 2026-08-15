@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useNavigate } from "react-router";
 import { Plus, Repeat } from "lucide-react";
 
@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { endpoints } from "../lib/api";
 import { useCustomers, usePlans } from "@/lib/useCustomers";
 import { useDebounce } from "../hooks/useDebounce";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import { formatDate } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -26,11 +27,13 @@ const PAGE_SIZE = 10;
 export default function Subscriptions() {
   const navigate = useNavigate();
 
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [planFilter, setPlanFilter] = useState("all");
-  const [dateFilter, setDateFilter] = useState("all");
+  // List state in the URL so returning from a subscription restores the exact
+  // page / search / filters (useUrlState).
+  const [search, setSearch] = useUrlState("q", "");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  const [statusFilter, setStatusFilter] = useUrlState("status", "all");
+  const [planFilter, setPlanFilter] = useUrlState("plan", "all");
+  const [dateFilter, setDateFilter] = useUrlState("date", "all");
   const debouncedSearch = useDebounce(search, 500);
 
   // Every filter is server-driven (q/page/status/plan/date) — filtering only
@@ -96,10 +99,9 @@ export default function Subscriptions() {
     return map;
   }, [planList]);
 
-  // Reset to page 1 when any filter changes.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, statusFilter, planFilter, dateFilter]);
+  // Reset to page 1 when any filter changes (URL-safe: separate tick, skips
+  // mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [debouncedSearch, statusFilter, planFilter, dateFilter]);
 
 
   const hasFilters =

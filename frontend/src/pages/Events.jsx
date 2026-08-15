@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { endpoints as api } from "../lib/api";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
 import { Badge } from "@/components/ui/badge";
@@ -72,8 +73,10 @@ const summarizeEvent = (ev) => {
 // GET /events/:id/deliveries, POST /events/:id/redeliver.
 const Events = () => {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(0);
-  const [typeFilter, setTypeFilter] = useState("all");
+  // List state in the URL so returning from an event restores page + type
+  // filter (useUrlState); page is 1-based here to match every other list.
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  const [typeFilter, setTypeFilter] = useUrlState("type", "all");
   const [selected, setSelected] = useState(null); // event whose detail sheet is open
 
   const {
@@ -87,12 +90,16 @@ const Events = () => {
       (
         await api.getEvents({
           limit: PAGE_SIZE,
-          offset: page * PAGE_SIZE,
+          offset: (page - 1) * PAGE_SIZE,
           type: typeFilter === "all" ? "" : typeFilter,
         })
       ).data.data || [],
     placeholderData: keepPreviousData,
   });
+
+  // Reset to page 1 when the type filter changes (URL-safe: separate tick, skips
+  // mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [typeFilter]);
 
   // The full catalog of event types the server can emit — so the filter offers
   // every type, not just the ones that happen to be on the loaded page.
@@ -207,10 +214,7 @@ const Events = () => {
           types.length > 0 ? (
             <Select
               value={typeFilter}
-              onValueChange={(v) => {
-                setTypeFilter(v);
-                setPage(0);
-              }}
+              onValueChange={setTypeFilter}
             >
               <SelectTrigger className="w-[220px]" aria-label="Filter by event type">
                 <SelectValue />
@@ -234,8 +238,8 @@ const Events = () => {
         onRetry={refetch}
         onRowClick={openEvent}
         pagination={{
-          page: page + 1,
-          onPrev: () => setPage((p) => Math.max(0, p - 1)),
+          page,
+          onPrev: () => setPage((p) => Math.max(1, p - 1)),
           onNext: () => setPage((p) => p + 1),
           hasNext: events.length === PAGE_SIZE,
         }}
@@ -244,7 +248,7 @@ const Events = () => {
           title:
             typeFilter !== "all"
               ? "No events of this type"
-              : page > 0
+              : page > 1
                 ? "No more events"
                 : "No events yet",
           description:

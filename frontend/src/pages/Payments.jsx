@@ -1,9 +1,9 @@
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, Link } from "react-router";
 import { CreditCard } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
 import { formatDateTime, shortId, cn } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -56,8 +56,10 @@ const StatusPill = ({ status }) => (
 // through, and if not, why?" without opening each invoice.
 const Payments = () => {
   const navigate = useNavigate();
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(1); // 1-based, matches the API
+  // List state in the URL so returning from an invoice restores the payments
+  // filter + page (useUrlState).
+  const [status, setStatus] = useUrlState("status", "all");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number }); // 1-based, matches the API
 
   const {
     data,
@@ -71,8 +73,12 @@ const Payments = () => {
       if (status !== "all") params.status = status;
       return (await api.getPaymentAttempts(params)).data;
     },
-    keepPreviousData: true,
+    placeholderData: (prev) => prev,
   });
+
+  // Reset to page 1 when the status filter changes (URL-safe: separate tick,
+  // skips mount so a page restored from the URL survives).
+  useResetPageOnChange(setPage, [status]);
 
   const attempts = data?.data || [];
   const total = data?.pagination?.total ?? 0;
@@ -152,10 +158,7 @@ const Payments = () => {
         actions={
           <Select
             value={status}
-            onValueChange={(v) => {
-              setStatus(v);
-              setPage(1);
-            }}
+            onValueChange={setStatus}
           >
             <SelectTrigger className="w-[180px]" aria-label="Filter by status">
               <SelectValue />
