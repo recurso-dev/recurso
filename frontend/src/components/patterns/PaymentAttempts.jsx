@@ -1,4 +1,5 @@
 import { Money } from "@/components/ui/money";
+import { Overline } from "@/components/ui/overline";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { MotionStagger } from "@/components/patterns/MotionReveal";
 import { MotionState } from "@/components/patterns/MotionState";
@@ -31,7 +32,7 @@ const STATUS_TONE = {
 function Field({ label, children }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[10px] font-medium uppercase tracking-wide text-subtle">{label}</dt>
+      <Overline as="dt">{label}</Overline>
       <dd className="mt-0.5 truncate text-foreground">{children}</dd>
     </div>
   );

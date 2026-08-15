@@ -13,6 +13,7 @@ import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
 import { LedgerAccountLink } from "@/components/patterns/LedgerAccountLink";
 import { Badge } from "@/components/ui/badge";
+import { Overline } from "@/components/ui/overline";
 import {
   Sheet,
   SheetContent,
@@ -272,19 +273,19 @@ export default function Ledger() {
       {selectedAccount && (
         <div className="mb-6 flex flex-wrap items-center gap-x-10 gap-y-2 rounded-lg border border-border bg-muted/20 px-5 py-3">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Debits posted</p>
+            <Overline as="p">Debits posted</Overline>
             <p className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
               {formatCurrency(selectedAccount.debits_posted || 0, selectedAccount.currency)}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Credits posted</p>
+            <Overline as="p">Credits posted</Overline>
             <p className="mt-0.5 font-mono text-sm tabular-nums text-foreground">
               {formatCurrency(selectedAccount.credits_posted || 0, selectedAccount.currency)}
             </p>
           </div>
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-subtle">Net balance</p>
+            <Overline as="p">Net balance</Overline>
             <p className="mt-0.5 font-mono text-sm font-medium tabular-nums text-foreground">
               {formatCurrency(selectedAccount.balance || 0, selectedAccount.currency)}
             </p>
@@ -340,7 +341,7 @@ export default function Ledger() {
                 </div>
                 <dl className="space-y-3">
                   <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Debit account</dt>
+                    <Overline as="dt">Debit account</Overline>
                     <dd className="mt-0.5 text-sm text-foreground">
                       <LedgerAccountLink
                         id={selectedEntry.debit_account_id}
@@ -353,7 +354,7 @@ export default function Ledger() {
                     </dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Credit account</dt>
+                    <Overline as="dt">Credit account</Overline>
                     <dd className="mt-0.5 text-sm text-foreground">
                       <LedgerAccountLink
                         id={selectedEntry.credit_account_id}
@@ -367,9 +368,9 @@ export default function Ledger() {
                   </div>
                   {selectedEntry.reference_id && (
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      <Overline as="dt">
                         Reference ({refKind(selectedEntry.code)})
-                      </dt>
+                      </Overline>
                       <dd className="mt-0.5 font-mono text-xs text-foreground">
                         {refKind(selectedEntry.code) === "invoice" ? (
                           <Link
@@ -385,7 +386,7 @@ export default function Ledger() {
                     </div>
                   )}
                   <div>
-                    <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Transaction ID</dt>
+                    <Overline as="dt">Transaction ID</Overline>
                     <dd className="mt-0.5 font-mono text-xs text-muted-foreground">{selectedEntry.id}</dd>
                   </div>
                 </dl>

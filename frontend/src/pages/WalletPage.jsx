@@ -376,7 +376,7 @@ export default function WalletPage() {
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
-                  <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr className="border-b border-border bg-muted/40 text-left text-xs uppercase tracking-wide text-subtle">
                     <th className="px-6 py-2.5 font-medium">Date</th>
                     <th className="px-3 py-2.5 font-medium">Movement</th>
                     <th className="px-3 py-2.5 font-medium">Detail</th>

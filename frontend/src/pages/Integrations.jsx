@@ -26,6 +26,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ProviderGuide } from "@/components/patterns/ProviderGuide";
+import { Overline } from "@/components/ui/overline";
 
 // QuickBooks/Xero use the browser OAuth flow (main.go InitiateOAuth);
 // NetSuite takes a pasted SuiteTalk token, Tally is a local JSONL export.
@@ -528,17 +529,17 @@ const Integrations = () => {
                 <div className="mt-4 space-y-5 px-1">
                   <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg border border-border bg-muted/20 p-3">
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Record</dt>
+                      <Overline as="dt">Record</Overline>
                       <dd className="mt-0.5 truncate text-sm font-medium" title={selectedLog.entity_name || undefined}>
                         {selectedLog.entity_name || "—"}
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Action</dt>
+                      <Overline as="dt">Action</Overline>
                       <dd className="mt-0.5 text-sm capitalize">{selectedLog.action}</dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Internal ID</dt>
+                      <Overline as="dt">Internal ID</Overline>
                       <dd className="mt-0.5">
                         {selectedLog.entity_id ? (
                           <button
@@ -556,7 +557,7 @@ const Integrations = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Provider ID</dt>
+                      <Overline as="dt">Provider ID</Overline>
                       <dd className="mt-0.5">
                         {selectedLog.external_id ? (
                           <button
@@ -574,14 +575,14 @@ const Integrations = () => {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Direction</dt>
+                      <Overline as="dt">Direction</Overline>
                       <dd className="mt-0.5 text-sm">
                         Recurso <span className="text-muted-foreground">→</span>{" "}
                         <span className="capitalize">{selectedLog.provider}</span>
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Synced</dt>
+                      <Overline as="dt">Synced</Overline>
                       <dd className="mt-0.5 text-sm">{fmtDateTime(selectedLog.synced_at)}</dd>
                     </div>
                   </dl>

@@ -31,6 +31,7 @@ import { Card } from "@/components/ui/card";
 import { CodeSample } from "@/components/ui/code-sample";
 import { CopyableSecret } from "@/components/ui/copyable-secret";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Overline } from "@/components/ui/overline";
 import {
   Dialog,
   DialogContent,
@@ -613,9 +614,9 @@ export default function Developers() {
                         ))}
                       </div>
                       <div className="mt-3">
-                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                        <Overline as="p">
                           Signing secret
-                        </p>
+                        </Overline>
                         <code className="font-mono text-xs text-subtle">
                           whsec_•••••••
                         </code>
@@ -799,16 +800,16 @@ export default function Developers() {
 
                             {/* Delivery attempts */}
                             <div className="mb-4">
-                              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              <Overline as="p" className="mb-2">
                                 Deliveries
-                              </p>
+                              </Overline>
                               <EventDeliveries state={expandedDeliveryState} />
                             </div>
 
                             {/* Raw payload */}
-                            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                            <Overline as="p" className="mb-2">
                               Payload
-                            </p>
+                            </Overline>
                             <pre
                               data-testid={`event-payload-${evt.id}`}
                               className="max-h-80 overflow-auto rounded-lg bg-muted p-4 font-mono text-xs text-foreground"

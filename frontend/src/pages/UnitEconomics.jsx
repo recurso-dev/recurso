@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/patterns/EmptyState";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 
 export default function UnitEconomics() {
   const {
@@ -107,7 +108,7 @@ export default function UnitEconomics() {
 function Metric({ label, value }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">{label}</dt>
+      <Overline as="dt">{label}</Overline>
       <dd className="mt-1 font-mono text-lg font-semibold tabular-nums text-foreground">{value}</dd>
     </div>
   );

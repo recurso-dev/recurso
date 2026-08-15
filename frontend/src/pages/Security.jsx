@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { formatDate } from "@/lib/utils";
+import { Overline } from "@/components/ui/overline";
 import {
   Card,
   CardContent,
@@ -200,9 +201,9 @@ function MfaSection() {
                 <QRCodeSVG value={setup.otpauth_url} size={160} />
               </div>
               <div className="space-y-2">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Overline as="p">
                   Or enter this key manually
-                </p>
+                </Overline>
                 <div className="flex items-center gap-2">
                   <code className="rounded bg-muted px-2 py-1 font-mono text-sm break-all">
                     {setup.secret}
@@ -550,9 +551,9 @@ function SSOSection() {
             {/* Service-provider details to hand to the IdP */}
             {(conn?.sp_metadata_url || conn?.sp_acs_url) && (
               <div className="space-y-3 rounded-md border border-border bg-muted p-4">
-                <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                <Overline as="p">
                   Give these to your identity provider
-                </p>
+                </Overline>
                 {[
                   ["ACS (Reply) URL", conn.sp_acs_url],
                   ["SP metadata URL", conn.sp_metadata_url],

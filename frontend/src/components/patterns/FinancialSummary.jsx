@@ -1,4 +1,5 @@
 import { Money } from "@/components/ui/money";
+import { Overline } from "@/components/ui/overline";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,7 @@ function Metric({ label, children, tone }) {
     tone === "danger" ? "text-destructive" : tone === "warning" ? "text-warning" : "text-foreground";
   return (
     <div className="min-w-0">
-      <dt className="text-xs font-medium uppercase tracking-wide text-subtle">{label}</dt>
+      <Overline as="dt">{label}</Overline>
       <dd className={cn("mt-1 text-lg font-semibold tabular-nums", toneClass)}>{children}</dd>
     </div>
   );
@@ -60,9 +61,7 @@ function CurrencyBlock({ c, showCurrency }) {
   return (
     <div>
       {showCurrency && (
-        <div className="mb-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {c.currency}
-        </div>
+        <Overline className="mb-3">{c.currency}</Overline>
       )}
       <dl className="grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-4">
         <Metric label="Outstanding" tone={owes ? "danger" : undefined}>

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 
 // The money-path tools an agent gains when Tier-3 is enabled — shown so the
 // operator knows exactly what they're opting into.
@@ -126,9 +127,9 @@ export default function MCPSettings() {
               </div>
 
               <div className="rounded-lg border border-border bg-muted/40 p-4">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Overline as="p" className="mb-2">
                   Money-path tools
-                </p>
+                </Overline>
                 <ul className="grid gap-1.5 sm:grid-cols-2">
                   {TIER3_TOOLS.map((t) => (
                     <li key={t} className="text-sm text-foreground">

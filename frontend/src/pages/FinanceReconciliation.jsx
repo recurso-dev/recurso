@@ -19,6 +19,7 @@ import { MotionReveal } from "@/components/patterns/MotionReveal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 import {
   Table,
   TableBody,
@@ -166,9 +167,9 @@ export default function FinanceReconciliation() {
 
               {/* TigerBeetle comparison status */}
               <Card className="p-5">
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <Overline as="p">
                   TigerBeetle
-                </p>
+                </Overline>
                 <div className="mt-3">
                   {report.tb_compared ? (
                     <Badge variant="success">

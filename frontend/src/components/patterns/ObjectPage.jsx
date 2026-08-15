@@ -4,6 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/httpError";
 import { Card } from "@/components/ui/card";
+import { Overline } from "@/components/ui/overline";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { ErrorState } from "@/components/patterns/ErrorState";
@@ -70,11 +71,7 @@ export function ObjectHeader({
       )}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          {kicker && (
-            <div className="text-xs font-medium uppercase tracking-wide text-subtle">
-              {kicker}
-            </div>
-          )}
+          {kicker && <Overline>{kicker}</Overline>}
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <h1 className="truncate text-2xl font-semibold tracking-tight text-foreground">
               {title}
@@ -148,9 +145,7 @@ export function AttributeList({ items, columns = 2, className }) {
     <dl className={cn("grid grid-cols-1 gap-x-8 gap-y-4", colClass, className)}>
       {items.map(({ label, value }) => (
         <div key={label} className="min-w-0">
-          <dt className="text-xs font-medium uppercase tracking-wide text-subtle">
-            {label}
-          </dt>
+          <Overline as="dt">{label}</Overline>
           <dd className="mt-1 break-words text-sm text-foreground">
             {value === null || value === undefined || value === "" ? (
               <span className="text-muted-foreground">—</span>

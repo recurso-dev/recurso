@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/patterns/ErrorState";
 import { CardGridSkeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card } from "@/components/ui/card";
 import { formatCurrency, fromMinorUnits } from "@/lib/utils";
+import { Overline } from "@/components/ui/overline";
 import {
   Table,
   TableBody,
@@ -181,7 +182,7 @@ export default function RevenueWaterfall() {
                   ["Closing", rollforward.closing],
                 ].map(([label, val]) => (
                   <div key={label} className="bg-card px-6 py-4">
-                    <div className="text-xs uppercase tracking-wide text-muted-foreground">{label}</div>
+                    <Overline>{label}</Overline>
                     <div className="mt-1 font-mono text-lg tabular-nums text-foreground">{money(val)}</div>
                   </div>
                 ))}
