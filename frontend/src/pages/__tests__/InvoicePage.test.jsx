@@ -71,8 +71,10 @@ describe("InvoicePage", () => {
               transaction_id: "tx1",
               code: 1,
               description: "Invoice raised",
+              debit_account_id: "acc-ar",
               debit_account_code: 1100,
               debit_account_name: "Accounts Receivable",
+              credit_account_id: "acc-deferred",
               credit_account_code: 2100,
               credit_account_name: "Deferred Revenue",
               amount: 108750,
@@ -82,8 +84,10 @@ describe("InvoicePage", () => {
               transaction_id: "tx2",
               code: 3,
               description: "Payment received",
+              debit_account_id: "acc-cash",
               debit_account_code: 1000,
               debit_account_name: "Cash",
+              credit_account_id: "acc-ar",
               credit_account_code: 1100,
               credit_account_name: "Accounts Receivable",
               amount: 108750,
@@ -231,6 +235,12 @@ describe("InvoicePage", () => {
     expect(screen.getByText(/Payment received/)).toBeInTheDocument();
     expect(screen.getAllByText(/Accounts Receivable/).length).toBeGreaterThan(0);
     expect(screen.getByText("Debits = Credits")).toBeInTheDocument();
+    // Batch 3B: with debit/credit account ids on the payload, each leg now
+    // deep-links to its ledger account page (no frontend change — just data).
+    const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/ledger/accounts/acc-ar");
+    expect(hrefs).toContain("/ledger/accounts/acc-cash");
+    expect(hrefs).toContain("/ledger/accounts/acc-deferred");
   });
 
   it("shows the collection side: the payment attempt lifecycle with its failure", async () => {

@@ -56,6 +56,7 @@ const Developers = lazy(() => import('./pages/Developers'))
 const Integrations = lazy(() => import('./pages/Integrations'))
 const Ledger = lazy(() => import('./pages/Ledger'))
 const AccountPage = lazy(() => import('./pages/AccountPage'))
+const JournalEntryPage = lazy(() => import('./pages/JournalEntryPage'))
 const CreditNotes = lazy(() => import('./pages/CreditNotes'))
 const CreditNotePage = lazy(() => import('./pages/CreditNotePage'))
 const CreateCreditNote = lazy(() => import('./pages/CreateCreditNote'))
@@ -86,7 +87,9 @@ const Disputes = lazy(() => import('./pages/Disputes'))
 const DisputePage = lazy(() => import('./pages/DisputePage'))
 const OfflinePayments = lazy(() => import('./pages/OfflinePayments'))
 const Payments = lazy(() => import('./pages/Payments'))
+const PaymentPage = lazy(() => import('./pages/PaymentPage'))
 const FinanceReconciliation = lazy(() => import('./pages/FinanceReconciliation'))
+const ReconciliationRunPage = lazy(() => import('./pages/ReconciliationRunPage'))
 const MonthEndClose = lazy(() => import('./pages/MonthEndClose'))
 const RevenueRecognition = lazy(() => import('./pages/RevenueRecognition'))
 const RevenueWaterfall = lazy(() => import('./pages/RevenueWaterfall'))
@@ -185,6 +188,7 @@ function App() {
                             <Route path="/integrations" element={<Integrations />} />
                             <Route path="/ledger" element={<Ledger />} />
                             <Route path="/ledger/accounts/:id" element={<AccountPage />} />
+                            <Route path="/ledger/transactions/:id" element={<JournalEntryPage />} />
                             <Route path="/metering" element={<Metering />} />
                             <Route path="/billable-metrics/:id" element={<MeterPage />} />
                             <Route path="/wallets" element={<Wallets />} />
@@ -192,6 +196,7 @@ function App() {
                             <Route path="/audit-log" element={<AuditLog />} />
                             <Route path="/events" element={<Events />} />
                             <Route path="/finance/reconciliation" element={<FinanceReconciliation />} />
+                            <Route path="/finance/reconciliation/runs/:id" element={<ReconciliationRunPage />} />
                             <Route path="/finance/close" element={<MonthEndClose />} />
                             <Route path="/finance/trial-balance" element={<TrialBalance />} />
                             <Route path="/finance/revenue-recognition" element={<RevenueRecognition />} />
@@ -247,6 +252,7 @@ function App() {
                             <Route path="/disputes/:id" element={<DisputePage />} />
                             <Route path="/payments" element={<Payments />} />
                             <Route path="/payments/offline" element={<OfflinePayments />} />
+                            <Route path="/payments/:id" element={<PaymentPage />} />
                             <Route path="/organizations" element={<Organizations />} />
                             <Route path="/finance/gst-returns" element={<GSTReturns />} />
                             <Route path="/ask" element={<AskAnalytics />} />

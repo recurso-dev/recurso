@@ -1,4 +1,5 @@
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -16,6 +17,8 @@ vi.mock("../../lib/api", () => ({
     getSubscriptionUsage: vi.fn(),
     getSubscriptionCharges: vi.fn(),
     getInvoices: vi.fn(),
+    getSubscriptionFinancialSummary: vi.fn(),
+    getSubscriptionCancelPreview: vi.fn(),
     getAuditLogs: vi.fn(),
     getEvents: vi.fn().mockResolvedValue({ data: { data: [] } }),
     getCancellationReasons: vi.fn(),
@@ -94,6 +97,40 @@ describe("SubscriptionPage", () => {
       },
     });
     endpoints.getAuditLogs.mockResolvedValue({ data: { data: [] } });
+    endpoints.getSubscriptionFinancialSummary.mockResolvedValue({
+      data: {
+        data: {
+          subscription_id: "sub_abc12345",
+          status: "active",
+          currency: "USD",
+          mrr: 4900,
+          recurring_amount: 4900,
+          interval_unit: "month",
+          interval_count: 1,
+          current_period_start: "2026-08-01T00:00:00Z",
+          current_period_end: "2026-09-01T00:00:00Z",
+          next_invoice_date: "2026-09-01T00:00:00Z",
+          next_invoice_base_amount: 4900,
+          outstanding: [],
+        },
+      },
+    });
+    endpoints.getSubscriptionCancelPreview.mockResolvedValue({
+      data: {
+        data: {
+          subscription_id: "sub_abc12345",
+          immediately: true,
+          effective_date: "2026-08-15T00:00:00Z",
+          resulting_status: "canceled",
+          cancel_at_period_end: false,
+          currency: "USD",
+          deferred_revenue_forfeited: 2450,
+          recognized_as_breakage: 2450,
+          avoided_future_recurring: 4900,
+          flat_fee_refund: 0,
+        },
+      },
+    });
     endpoints.getCancellationReasons.mockResolvedValue({
       data: {
         data: [{ id: "too_expensive", label: "Too expensive", allows_feedback: false }],
@@ -150,16 +187,90 @@ describe("SubscriptionPage", () => {
     );
   });
 
-  it("keeps cancel confirm disabled until a reason is chosen (the #290 guard)", async () => {
+  it("gates the cancel flow on a reason and never executes from the reason step (the #290 guard)", async () => {
     renderPage();
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /^cancel$/i })).toBeInTheDocument()
     );
     fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
-    const confirm = await screen.findByRole("button", { name: /cancel subscription/i });
-    expect(confirm).toBeDisabled();
+    // Step 1's primary action advances to the preview — disabled until a reason
+    // is chosen, and it must never call the mutation directly.
+    const review = await screen.findByRole("button", { name: /review impact/i });
+    expect(review).toBeDisabled();
     expect(endpoints.cancelSubscription).not.toHaveBeenCalled();
     await waitFor(() => expect(endpoints.getCancellationReasons).toHaveBeenCalled());
+  });
+
+  it("previews the financial impact before executing an immediate cancel", async () => {
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^cancel$/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+
+    // Pick a reason, uncheck "at period end" to preview an IMMEDIATE cancel.
+    await user.click(document.getElementById("reason-for-cancellation"));
+    await user.click(await screen.findByRole("option", { name: "Too expensive" }));
+    fireEvent.click(document.querySelector('input[type="checkbox"]'));
+
+    // Review impact → the preview is fetched and shown; nothing canceled yet.
+    await user.click(screen.getByRole("button", { name: /review impact/i }));
+    await waitFor(() =>
+      expect(endpoints.getSubscriptionCancelPreview).toHaveBeenCalledWith(
+        "sub_abc12345",
+        expect.objectContaining({ immediately: true })
+      )
+    );
+    // Amount-anchored: the forfeited breakage ($24.50) and avoided recurring
+    // ($49.00) from the backend appear (Money splits the symbol into its own
+    // span, so match on the element's full text content).
+    const money = (amt) => (_, el) =>
+      el?.classList?.contains("money") && el.textContent === amt;
+    await waitFor(() => expect(screen.getAllByText(money("$24.50")).length).toBeGreaterThan(0));
+    expect(screen.getAllByText(money("$49.00")).length).toBeGreaterThan(0);
+    expect(endpoints.cancelSubscription).not.toHaveBeenCalled();
+
+    // Confirm executes only from the preview step.
+    await user.click(screen.getByRole("button", { name: /confirm cancellation/i }));
+    await waitFor(() =>
+      expect(endpoints.cancelSubscription).toHaveBeenCalledWith(
+        "sub_abc12345",
+        expect.objectContaining({ immediately: true, reason: "too_expensive" })
+      )
+    );
+  });
+
+  it("does not imply a trustworthy preview when the preview endpoint fails", async () => {
+    if (!Element.prototype.hasPointerCapture) Element.prototype.hasPointerCapture = () => false;
+    if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+    endpoints.getSubscriptionCancelPreview.mockRejectedValue(new Error("down"));
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /^cancel$/i })).toBeInTheDocument()
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^cancel$/i }));
+    await user.click(document.getElementById("reason-for-cancellation"));
+    await user.click(await screen.findByRole("option", { name: "Too expensive" }));
+    await user.click(screen.getByRole("button", { name: /review impact/i }));
+
+    // The UI states the preview is unavailable, and the confirm is relabeled so
+    // it can't be mistaken for a previewed, trustworthy action.
+    expect(await screen.findByText(/unavailable/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /cancel without preview/i })).toBeInTheDocument();
+  });
+
+  it("shows MRR distinct from the recurring billing amount and next invoice", async () => {
+    renderPage();
+    // MRR label present with the backend's canonical figure ($49.00), kept
+    // separate from "Billed each period" and "Next invoice".
+    await waitFor(() => expect(screen.getByText("Financial summary")).toBeInTheDocument());
+    expect(screen.getByText("MRR")).toBeInTheDocument();
+    expect(screen.getByText("Billed each period")).toBeInTheDocument();
+    expect(screen.getByText("Next invoice")).toBeInTheDocument();
   });
 
   it("fetches the subscription's audit trail", async () => {
