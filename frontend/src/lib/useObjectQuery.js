@@ -15,10 +15,12 @@ import { isNotFound } from "@/lib/httpError";
  *     });
  *
  * Classification (mutually exclusive, in order):
- *   - loading  — the initial load (pending, no cached data yet)
+ *   - loading  — the initial load (an in-flight fetch, or a disabled/idle query
+ *                with no data yet); NEVER a paused query (that would hang)
  *   - notFound — the object doesn't exist: a real 404, the API `not_found` code,
  *                OR a resolved-but-null object (the fix for the live 404-copy bug)
- *   - isError  — the request genuinely failed (network / 5xx / other)
+ *   - isError  — the request genuinely failed (network / 5xx / other), OR the
+ *                fetch is paused offline (a retryable, non-hanging error)
  *   - object   — the resolved object (only when none of the above)
  *
  * `object` is null in every non-success state so a page can render its states
@@ -27,15 +29,22 @@ import { isNotFound } from "@/lib/httpError";
 export function useObjectQuery(queryKey, queryFn, options = {}) {
   const query = useQuery({ queryKey, queryFn, ...options });
 
-  // isPending (not isLoading) is the right "no resolved result yet" signal: it
-  // stays true for a still-disabled query (e.g. `enabled: Boolean(id)` before an
-  // id arrives), where isLoading would be false — which would otherwise leak an
-  // undefined object into the success body.
-  const loading = query.isPending;
+  // A paused fetch (react-query `networkMode: "online"` + the onlineManager
+  // reporting offline) holds the query at status "pending" with no error object
+  // and never settles. We must NOT treat that as "loading" — that renders an
+  // object-page skeleton forever. It's a failed/blocked load, so surface it as a
+  // retryable error (react-query auto-resumes, and Retry refetches, once online).
+  const paused = query.fetchStatus === "paused";
+
+  // loading = genuinely working toward a first result: an in-flight fetch, or a
+  // still-disabled/idle query with no data yet (`enabled: Boolean(id)` before an
+  // id arrives — isLoading would be false there and leak an undefined object).
+  // Excludes the paused case above.
+  const loading = query.isPending && !paused;
   const notFound =
     !loading &&
     isNotFound({ error: query.error, data: query.data, resolved: query.isSuccess });
-  const isError = !loading && !notFound && Boolean(query.error);
+  const isError = !loading && !notFound && (Boolean(query.error) || paused);
 
   return {
     object: loading || notFound || isError ? null : query.data,
