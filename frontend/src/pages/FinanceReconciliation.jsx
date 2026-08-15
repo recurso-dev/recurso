@@ -266,8 +266,8 @@ export default function FinanceReconciliation() {
                     Discrepancies
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Disagreements between billing records and the ledger. Amounts are
-                    in minor units.
+                    Disagreements between billing records and the ledger, each with
+                    what disagrees, by how much, and why.
                   </p>
                 </div>
                 <Table>

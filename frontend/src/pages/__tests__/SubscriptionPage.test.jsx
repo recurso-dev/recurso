@@ -254,5 +254,10 @@ describe("SubscriptionPage", () => {
     // unique to the lifecycle row.
     expect(screen.getByText("plan_a")).toBeInTheDocument();
     expect(screen.getByText("plan_b")).toBeInTheDocument();
+    // Regression: the connector line joins consecutive events, so N events draw
+    // N-1 connectors — the last item has none. The old code compared the index
+    // against `lifecycle.length` (an actions object, .length undefined → NaN),
+    // so `last` was never true and every item drew a connector.
+    expect(screen.getAllByTestId("lifecycle-connector")).toHaveLength(2);
   });
 });

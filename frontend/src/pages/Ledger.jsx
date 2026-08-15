@@ -10,6 +10,7 @@ import { Money } from "@/components/ui/money";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
+import { LedgerAccountLink } from "@/components/patterns/LedgerAccountLink";
 import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
@@ -25,22 +26,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-// A posting's account, linked to its account page so any ledger entry drills
-// into the account it moved (audit §7: postings were navigational dead-ends).
-// Falls back to a short id when the account has no resolved label.
-const LedgerAccountLink = ({ id, label }) =>
-  id ? (
-    <Link
-      to={`/ledger/accounts/${id}`}
-      title="Open this account"
-      className="text-sm text-primary underline-offset-2 hover:underline"
-    >
-      {label || `${String(id).slice(0, 8)}…`}
-    </Link>
-  ) : (
-    <span className="text-muted-foreground">—</span>
-  );
 
 // Posting codes (ADR-002): what each movement IS, in words. "Code 3" means
 // nothing to an operator; "Payment" does.

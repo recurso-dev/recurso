@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { Money } from "@/components/ui/money";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { MotionReveal, MotionStagger } from "@/components/patterns/MotionReveal";
+import { LedgerAccountLink } from "@/components/patterns/LedgerAccountLink";
 import { formatDateTime } from "@/lib/utils";
 
 /**
@@ -71,16 +72,28 @@ export function JournalEntries({
             </div>
             <div className="grid grid-cols-[1.5rem_1fr_auto] items-center gap-x-3 gap-y-1 font-mono text-[13px] tabular-nums">
               <span className="text-muted-foreground">DR</span>
-              <span className="min-w-0 truncate text-foreground">
-                <span className="text-muted-foreground">{e.debit_account_code}</span> {e.debit_account_name}
-              </span>
+              <LedgerAccountLink
+                id={e.debit_account_id}
+                className="min-w-0 truncate text-foreground"
+                label={
+                  <>
+                    <span className="text-muted-foreground">{e.debit_account_code}</span> {e.debit_account_name}
+                  </>
+                }
+              />
               <span className="text-foreground">
                 <Money amountMinor={e.amount} currency={currency} />
               </span>
               <span className="text-muted-foreground">CR</span>
-              <span className="min-w-0 truncate text-foreground">
-                <span className="text-muted-foreground">{e.credit_account_code}</span> {e.credit_account_name}
-              </span>
+              <LedgerAccountLink
+                id={e.credit_account_id}
+                className="min-w-0 truncate text-foreground"
+                label={
+                  <>
+                    <span className="text-muted-foreground">{e.credit_account_code}</span> {e.credit_account_name}
+                  </>
+                }
+              />
               <span className="text-foreground">
                 <Money amountMinor={e.amount} currency={currency} />
               </span>

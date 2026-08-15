@@ -5,9 +5,12 @@ import { Plus, BadgePercent } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { ListNotice } from "@/components/patterns/ListNotice";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -16,23 +19,33 @@ const STATUS_FILTERS = ["all", "active", "inactive"];
 
 const Coupons = () => {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // List state in the URL so returning from a coupon restores search / filter /
+  // page (useUrlState).
+  const [search, setSearch] = useUrlState("q", "");
+  const [statusFilter, setStatusFilter] = useUrlState("status", "all");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
 
   const [deactivateTarget, setDeactivateTarget] = useState(null);
 
   const queryClient = useQueryClient();
+  // /coupons has no server-side search or status filter (both are applied
+  // client-side below), so the page must hold the complete set — page through it
+  // to a bounded cap rather than let the backend's default limit silently drop
+  // rows. (BACKEND GAP: add search / status / total to /coupons for true
+  // server-side pagination.)
   const {
-    data: coupons = [],
+    data,
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["coupons"],
+    queryKey: ["coupons", "all"],
     queryFn: async () => {
-      const response = await api.getCoupons();
+      const { rows, truncated } = await fetchAllPages((offset, limit) =>
+        api.getCoupons({ limit, offset }).then((r) => r.data.data || []),
+      );
       // Map backend fields to frontend expectations (unchanged logic).
-      return (response.data.data || []).map((c) => ({
+      const coupons = rows.map((c) => ({
         ...c,
         status: c.active ? "active" : "inactive",
         // "percentage" is a legacy alias from pre-normalization seed data
@@ -43,8 +56,12 @@ const Coupons = () => {
             : formatCurrency(c.discount_value, c.currency),
         duration_in_months: c.duration_months,
       }));
+      return { coupons, truncated };
     },
+    placeholderData: (prev) => prev,
   });
+  const coupons = useMemo(() => data?.coupons ?? [], [data]);
+  const truncated = data?.truncated ?? false;
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load coupons"
     : null;
@@ -76,6 +93,14 @@ const Coupons = () => {
       return true;
     });
   }, [coupons, statusFilter, search]);
+
+  // Client-side pagination over the filtered set (the whole set is loaded).
+  const pagedCoupons = pageSlice(filteredCoupons, page);
+  // A new search/filter starts back at page 1. Reset in an effect (a separate
+  // tick from the filter's own URL write, so the two don't clobber each other),
+  // skip the first run so a page restored from the URL on mount survives, and
+  // hold setPage in a ref so a plain page change never re-triggers this.
+  useResetPageOnChange(setPage, [search, statusFilter]);
 
   const columns = [
     {
@@ -143,9 +168,16 @@ const Coupons = () => {
         }
       />
 
+      {truncated && (
+        <ListNotice>
+          Showing the first {coupons.length.toLocaleString()} coupons. Refine your
+          search or use the API for the complete set.
+        </ListNotice>
+      )}
+
       <DataTable
         columns={columns}
-        data={filteredCoupons}
+        data={pagedCoupons}
         loading={loading}
         error={error}
         onRetry={refetch}
@@ -188,6 +220,12 @@ const Coupons = () => {
                 Create coupon
               </Button>
             ) : null,
+        }}
+        pagination={{
+          page,
+          pageSize: LIST_PAGE_SIZE,
+          total: filteredCoupons.length,
+          onPageChange: setPage,
         }}
       />
 

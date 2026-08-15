@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/ui/sonner";
 import { usePlans, useCustomers } from "@/lib/useCustomers";
@@ -6,9 +6,12 @@ import { Plus, Gift, CheckCircle2, Clock, Ban } from "lucide-react";
 
 import { endpoints } from "../lib/api";
 import { formatDate } from "@/lib/utils";
+import { useUrlState } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { DataTable } from "@/components/patterns/DataTable";
+import { ListNotice } from "@/components/patterns/ListNotice";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,21 +48,33 @@ function Gifts() {
   const { plans } = usePlans();
   const { customers } = useCustomers();
 
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
+
+  // The StatCards below (total / redeemed / pending) count every gift, so the
+  // page holds the complete set — page through it to a bounded cap rather than
+  // let the backend default (per_page 50) silently drop rows. (BACKEND GAP: add
+  // a total / stats to /gifts for true server-side pagination.)
   const {
-    data: gifts = [],
+    data,
     isLoading: loading,
     error: queryError,
     refetch,
   } = useQuery({
-    queryKey: ["gifts"],
-    queryFn: async () => {
-      const response = await endpoints.getGifts();
-      return Array.isArray(response.data?.data) ? response.data.data : [];
-    },
+    queryKey: ["gifts", "all"],
+    queryFn: () =>
+      fetchAllPages((offset, limit) =>
+        endpoints
+          .getGifts({ page: offset / limit + 1, per_page: limit })
+          .then((r) => (Array.isArray(r.data?.data) ? r.data.data : [])),
+      ),
+    placeholderData: (prev) => prev,
   });
+  const gifts = useMemo(() => data?.rows ?? [], [data]);
+  const truncated = data?.truncated ?? false;
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load gifts"
     : null;
+  const pagedGifts = pageSlice(gifts, page);
 
   const createMutation = useMutation({
     mutationFn: (payload) => endpoints.purchaseGift(payload),
@@ -194,9 +209,16 @@ function Gifts() {
         </div>
       )}
 
+      {truncated && (
+        <ListNotice>
+          Showing the first {gifts.length.toLocaleString()} gifts. Use the API for
+          the complete set.
+        </ListNotice>
+      )}
+
       <DataTable
         columns={columns}
-        data={gifts}
+        data={pagedGifts}
         loading={loading}
         error={error}
         onRetry={refetch}
@@ -210,6 +232,12 @@ function Gifts() {
               Create gift
             </Button>
           ),
+        }}
+        pagination={{
+          page,
+          pageSize: LIST_PAGE_SIZE,
+          total: gifts.length,
+          onPageChange: setPage,
         }}
       />
 

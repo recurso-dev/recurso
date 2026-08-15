@@ -6,8 +6,11 @@ import { Plus, Wallet2 } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
+import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, pageSlice } from "@/lib/pagination";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { DataTable } from "@/components/patterns/DataTable";
+import { ListNotice } from "@/components/patterns/ListNotice";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -37,10 +40,16 @@ const fmtMoney = (minor, currency) => {
 
 // Prepaid wallets (Lago-parity B1): balances, top-ups, and movement history.
 // A row opens the wallet's object page (/wallets/:id) for the full ledger.
+// /wallets caps at 500 rows and takes NO offset, so this view can load at most
+// the first 500. (BACKEND GAP: add offset + total to /wallets so wallets past
+// 500 are reachable and paginable server-side.)
+const WALLET_LIMIT = 500;
+
 const Wallets = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useUrlState("q", "");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] = useState({ customer_id: "", currency: "INR" });
@@ -60,12 +69,15 @@ const Wallets = () => {
     refetch,
   } = useQuery({
     queryKey: ["wallets"],
-    queryFn: async () => (await api.getWallets()).data.data || [],
+    queryFn: async () => (await api.getWallets({ limit: WALLET_LIMIT })).data.data || [],
+    placeholderData: (prev) => prev,
   });
   const error = queryError
     ? queryError?.response?.data?.error?.message || queryError?.message || "Failed to load wallets"
     : null;
   const invalidateWallets = () => queryClient.invalidateQueries({ queryKey: ["wallets"] });
+  // At the hard cap there may be wallets this view can't reach (no offset).
+  const truncated = wallets.length >= WALLET_LIMIT;
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -77,6 +89,9 @@ const Wallets = () => {
         w.currency.toLowerCase().includes(q)
     );
   }, [wallets, search, names]);
+  const pagedWallets = pageSlice(filtered, page);
+  // A new search starts back at page 1 (URL-safe: separate tick, skips mount).
+  useResetPageOnChange(setPage, [search]);
 
   const createMutation = useMutation({
     mutationFn: () => api.createWallet(createForm),
@@ -257,9 +272,16 @@ const Wallets = () => {
         }
       />
 
+      {truncated && (
+        <ListNotice>
+          Showing the first {WALLET_LIMIT.toLocaleString()} wallets — the maximum
+          this view can load. Use the API for the complete set.
+        </ListNotice>
+      )}
+
       <DataTable
         columns={columns}
-        data={filtered}
+        data={pagedWallets}
         loading={loading}
         error={error}
         onRetry={refetch}
@@ -275,6 +297,12 @@ const Wallets = () => {
               Create wallet
             </Button>
           ),
+        }}
+        pagination={{
+          page,
+          pageSize: LIST_PAGE_SIZE,
+          total: filtered.length,
+          onPageChange: setPage,
         }}
       />
 

@@ -5,6 +5,8 @@ import { Plus, Banknote, Landmark } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { CustomerName, CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { useCustomers } from "@/lib/useCustomers";
+import { useUrlState } from "@/lib/useUrlState";
+import { LIST_PAGE_SIZE, pageOffset } from "@/lib/pagination";
 import { toast } from "@/components/ui/sonner";
 import { formatCurrency, toMinorUnits, fromMinorUnits, shortId, formatDateTime } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
@@ -52,7 +54,9 @@ const OfflinePayments = () => {
   const [payForm, setPayForm] = useState(emptyPayment);
   const [vaOpen, setVAOpen] = useState(false);
   const [vaForm, setVAForm] = useState(emptyVA);
-  const [tab, setTab] = useState("payments");
+  // Tab + payments page in the URL so back-nav restores the view.
+  const [tab, setTab] = useUrlState("tab", "payments");
+  const [page, setPage] = useUrlState("page", 1, { parse: Number });
   const { customers, names } = useCustomers();
 
   // Invoices back the "settle this invoice" pickers; unpaid ones are offered.
@@ -81,8 +85,11 @@ const OfflinePayments = () => {
     error: paymentsQueryError,
     refetch: refetchPayments,
   } = useQuery({
-    queryKey: ["offline-payments"],
-    queryFn: async () => (await api.getOfflinePayments()).data.data || [],
+    queryKey: ["offline-payments", page],
+    queryFn: async () =>
+      (await api.getOfflinePayments({ limit: LIST_PAGE_SIZE, offset: pageOffset(page) }))
+        .data.data || [],
+    placeholderData: (prev) => prev,
   });
   const paymentsError = paymentsQueryError
     ? paymentsQueryError?.response?.data?.error?.message || "Failed to load payments"
@@ -284,6 +291,12 @@ const OfflinePayments = () => {
               icon: Banknote,
               title: "No offline payments recorded",
               description: "Record NEFT, cash, or cheque receipts to settle invoices.",
+            }}
+            pagination={{
+              page,
+              onPrev: () => setPage((p) => Math.max(1, p - 1)),
+              onNext: () => setPage((p) => p + 1),
+              hasNext: payments.length >= LIST_PAGE_SIZE,
             }}
           />
         </TabsContent>

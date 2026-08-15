@@ -131,7 +131,7 @@ export default function RevenueRecognition() {
             {multiCurrency && (
               <p className="text-xs text-muted-foreground">
                 Deferred across {byCurrency.length} currencies — combined totals
-                are shown in minor units; see the per-currency breakdown below.
+                can't carry a single currency; see the per-currency breakdown below.
               </p>
             )}
 
