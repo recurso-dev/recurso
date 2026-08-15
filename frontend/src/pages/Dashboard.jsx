@@ -10,11 +10,12 @@ import {
   RotateCcw,
   BarChart3,
   Plus,
-  AlertTriangle,
   FileQuestion,
   CheckCircle2,
   Activity,
   Scale,
+  CreditCard,
+  ArrowRight,
 } from "lucide-react";
 
 import { endpoints } from "../lib/api";
@@ -28,6 +29,7 @@ import {
   fromMinorUnits,
 } from "@/lib/utils";
 import { Money } from "@/components/ui/money";
+import { humanizeFailure } from "@/lib/failureLabels";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { ErrorState } from "@/components/patterns/ErrorState";
 import { StatCard } from "@/components/patterns/StatCard";
@@ -139,7 +141,7 @@ export default function Dashboard() {
   // ledger), so it runs on its own cadence — cached 5 minutes — rather than
   // blocking the overview or re-running on every navigation. Best-effort: on
   // failure it simply doesn't contribute a tile.
-  const { data: reconDiscrepancies = 0 } = useQuery({
+  const { data: reconDiscrepancies = 0, isLoading: reconLoading } = useQuery({
     queryKey: ["dashboard-reconciliation"],
     queryFn: async () => {
       const res = await endpoints.runReconciliation();
@@ -147,6 +149,30 @@ export default function Dashboard() {
     },
     staleTime: 5 * 60 * 1000,
     retry: false,
+  });
+
+  // Collections funnel + the top of the recovery queue — the honest "failed
+  // payments needing attention" signal: an invoice goes past-due when its
+  // payment fails and enters dunning, so past-due-in-recovery IS the unresolved
+  // failed-payment surface (a raw failed-attempts count is all-time and
+  // dishonest — see the audit). Its own light query so the attention surface
+  // renders without waiting for the heavy overview fetch; each source degrades
+  // independently so a failed fetch never shows a false "all clear".
+  const { data: collections, isLoading: collectionsLoading } = useQuery({
+    queryKey: ["dashboard-collections"],
+    queryFn: async () => {
+      const [funnelRes, queueRes] = await Promise.all([
+        endpoints.getCollectionsFunnel().catch(() => null),
+        endpoints.getCollectionsQueue({ status: "past_due", per_page: 5 }).catch(() => null),
+      ]);
+      return {
+        funnel: funnelRes?.data?.data ?? null,
+        queue: queueRes?.data?.data ?? null,
+        queueTotal: queueRes?.data?.meta?.total ?? null,
+        failed: funnelRes === null && queueRes === null,
+      };
+    },
+    staleTime: 60 * 1000,
   });
 
   // Stable references (only change when the query result does) so the derived
@@ -175,23 +201,32 @@ export default function Dashboard() {
     return (canceled / denom) * 100;
   }, [subscriptions, activeSubs]);
 
-  // Overdue receivables, per currency, from the already-fetched invoices.
-  const overdueByCur = useMemo(() => {
-    const sums = {};
-    invoices
-      .filter((inv) => inv.status === "past_due")
-      .forEach((inv) => {
-        const cur = (inv.currency || "USD").toUpperCase();
-        sums[cur] = (sums[cur] || 0) + (inv.amount_due ?? inv.total ?? 0);
-      });
-    return sums;
-  }, [invoices]);
-  const overdueCount = useMemo(
-    () => invoices.filter((inv) => inv.status === "past_due").length,
-    [invoices]
-  );
-  const attentionCount =
-    overdueCount + openDisputes + churnAlerts + (reconDiscrepancies > 0 ? 1 : 0);
+  // Failed payments in recovery, from the Collections funnel/queue (the honest
+  // current-unresolved signal, FX-normalized).
+  const funnel = collections?.funnel ?? null;
+  const pastDueCount = funnel?.past_due?.count ?? 0;
+  const atRiskAmount = funnel?.past_due?.amount ?? null;
+  const collectionsCurrency = funnel?.reporting_currency || "USD";
+  const fxExcluded = funnel?.fx_excluded_currencies ?? [];
+  const failingInvoices = collections?.queue ?? [];
+  // Authoritative total = the funnel count; fall back to the queue's own total
+  // if only the funnel failed. This is the honest "how many need attention".
+  const failingCount = pastDueCount || collections?.queueTotal || 0;
+  const collectionsFailed = collections?.failed ?? false;
+
+  // Attention gating. The payments card and the recon/dispute/churn tiles each
+  // render from their own settled source (progressive); "all clear" shows ONLY
+  // when every source has settled with nothing to do (never while one failed).
+  const showPaymentsCard = collectionsLoading || failingCount > 0 || collectionsFailed;
+  const allClear =
+    !loading &&
+    !collectionsLoading &&
+    !reconLoading &&
+    !collectionsFailed &&
+    failingCount === 0 &&
+    reconDiscrepancies === 0 &&
+    openDisputes === 0 &&
+    churnAlerts === 0;
 
   // Revenue-over-time, one series per currency: different currencies cannot be
   // summed into one line without FX, so each gets its own (₹ and $ don't add).
@@ -385,16 +420,104 @@ export default function Dashboard() {
         }
       />
 
-      {/* Needs attention: the "what should I fix today" strip */}
-      {!loading &&
-        (attentionCount > 0 ? (
-          <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {/* Needs attention: the exception-first "what should I fix now" surface.
+          Each source renders from its own settled query (progressive); a failed
+          source shows "unavailable" and never a false "all clear". */}
+      <section aria-label="Needs attention" className="mb-6 space-y-3">
+        {/* Failed payments in recovery — the money exception, itemized. */}
+        {showPaymentsCard && (
+          <div className="overflow-hidden rounded-lg border border-destructive/20 bg-destructive/5">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-destructive/10 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <CreditCard className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-destructive">
+                    {collectionsLoading
+                      ? "Checking payments in recovery…"
+                      : collectionsFailed
+                        ? "Payments in recovery — data unavailable"
+                        : `${failingCount.toLocaleString()} invoice${failingCount === 1 ? "" : "s"} failing collection`}
+                  </p>
+                  {!collectionsLoading && !collectionsFailed && atRiskAmount != null && (
+                    <p className="text-xs text-destructive">
+                      {formatCurrency(atRiskAmount, collectionsCurrency)} at risk
+                      {fxExcluded.length ? ` (excludes ${fxExcluded.join(", ")})` : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {!collectionsFailed && (
+                <Button asChild variant="outline" size="sm">
+                  <Link to="/collections">
+                    View all
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              )}
+            </div>
+            {collectionsLoading ? (
+              <div className="space-y-2 p-4">
+                {[0, 1, 2].map((i) => (
+                  <Skeleton key={i} className="h-9 w-full" />
+                ))}
+              </div>
+            ) : collectionsFailed ? (
+              <p className="px-4 py-3 text-sm text-destructive/80" role="status">
+                Couldn’t load the recovery queue — open{" "}
+                <Link to="/collections" className="underline underline-offset-2">
+                  Collections
+                </Link>{" "}
+                to retry.
+              </p>
+            ) : (
+              <>
+                <ul className="divide-y divide-destructive/10">
+                  {failingInvoices.map((it) => (
+                    <li key={it.id}>
+                      <Link
+                        to={`/invoices/${it.id}`}
+                        className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-4 py-2.5 transition-colors hover:bg-destructive/10"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-foreground">
+                            {it.customer_name || "Unnamed customer"}{" "}
+                            <span className="font-normal text-muted-foreground">· {it.invoice_number}</span>
+                          </span>
+                          <span className="block truncate text-xs text-muted-foreground">
+                            {humanizeFailure(it.last_payment_error)} · {it.days_overdue}d overdue
+                          </span>
+                        </span>
+                        <Money
+                          amountMinor={it.amount_remaining}
+                          currency={it.currency}
+                          className="text-sm font-medium"
+                        />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                {failingCount > failingInvoices.length && (
+                  <p className="border-t border-destructive/10 px-4 py-2 text-xs text-muted-foreground">
+                    Showing {failingInvoices.length} of {failingCount.toLocaleString()} —{" "}
+                    <Link to="/collections" className="text-primary underline-offset-2 hover:underline">
+                      view all in Collections
+                    </Link>
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Reconciliation, disputes, churn — count-appropriate exceptions. */}
+        {(reconDiscrepancies > 0 || openDisputes > 0 || churnAlerts > 0) && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {reconDiscrepancies > 0 && (
               <Link
                 to="/finance/reconciliation"
                 className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 transition-colors hover:bg-destructive/15"
               >
-                <Scale className="h-5 w-5 shrink-0 text-destructive" />
+                <Scale className="h-5 w-5 shrink-0 text-destructive" aria-hidden="true" />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-destructive">
                     {reconDiscrepancies.toLocaleString()} reconciliation discrepanc
@@ -404,31 +527,12 @@ export default function Dashboard() {
                 </div>
               </Link>
             )}
-            {overdueCount > 0 && (
-              <Link
-                to="/finance/invoice-aging"
-                className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 transition-colors hover:bg-destructive/15"
-              >
-                <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-destructive">
-                    {overdueCount} overdue invoice{overdueCount === 1 ? "" : "s"}
-                  </p>
-                  <p className="truncate text-xs text-destructive">
-                    {Object.entries(overdueByCur)
-                      .map(([c, v]) => formatCurrency(v, c))
-                      .join(" + ")}{" "}
-                    past due
-                  </p>
-                </div>
-              </Link>
-            )}
             {openDisputes > 0 && (
               <Link
                 to="/disputes"
                 className="flex items-center gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 transition-colors hover:bg-warning/15"
               >
-                <FileQuestion className="h-5 w-5 shrink-0 text-warning" />
+                <FileQuestion className="h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
                 <div>
                   <p className="text-sm font-semibold text-warning">
                     {openDisputes} open dispute{openDisputes === 1 ? "" : "s"}
@@ -442,7 +546,7 @@ export default function Dashboard() {
                 to="/churn"
                 className="flex items-center gap-3 rounded-lg border border-warning/20 bg-warning/5 px-4 py-3 transition-colors hover:bg-warning/15"
               >
-                <TrendingDown className="h-5 w-5 shrink-0 text-warning" />
+                <TrendingDown className="h-5 w-5 shrink-0 text-warning" aria-hidden="true" />
                 <div>
                   <p className="text-sm font-semibold text-warning">
                     {churnAlerts} churn alert{churnAlerts === 1 ? "" : "s"}
@@ -452,13 +556,17 @@ export default function Dashboard() {
               </Link>
             )}
           </div>
-        ) : (
-          <div className="mb-6 flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4 text-success" />
-            All clear — the books reconcile, and there are no overdue invoices, open disputes, or
-            churn alerts.
+        )}
+
+        {/* Resolved state — only when every source settled with nothing to do. */}
+        {allClear && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-4 py-2.5 text-sm text-muted-foreground">
+            <CheckCircle2 className="h-4 w-4 text-success" aria-hidden="true" />
+            You’re all caught up — the books reconcile, no payments are in recovery, and there are
+            no open disputes or churn alerts.
           </div>
-        ))}
+        )}
+      </section>
 
       {/* KPI row */}
       {loading ? (

@@ -95,9 +95,12 @@ reduced-motion-gated.
   icon-only buttons carry `aria-label`; `MotionNumber`/`ChartTooltip` gate on
   `useReducedMotion`.
 
-**Live QA confirmed (test-mode tenant):** exception-first Home renders a "Needs
-attention" strip (reconciliation discrepancies, overdue invoices with per-currency
-totals, churn) before KPIs; InvoicePage shows the full breakdown + failure reason
+**Live QA confirmed (test-mode tenant):** exception-first Home leads with a
+"Needs attention" surface — an itemized "Payments needing attention" card
+(failing invoices with customer, failure reason, days overdue, amount → each
+drilling to its invoice; FX-normalized revenue-at-risk; honest "Showing N of M"
++ "View all" → Collections) plus reconciliation / dispute / churn tiles — before
+KPIs; InvoicePage shows the full breakdown + failure reason
 + journal entries; Reconciliation labels every discrepancy with what/how-much/why;
 multi-currency ($/₹) renders correctly throughout.
 
@@ -244,16 +247,36 @@ prior initiative, stated honestly.)*
 - **Priority:** P1 (backend-blocked). **Affected:** new pages + `App.jsx` routes.
   **Dependencies:** GAP-1/2/3.
 
-### P1-7 · Home attention strip omits failed payments and failed webhooks
-- **Current:** the "Needs attention" strip (`Dashboard.jsx:388-461`) surfaces
-  reconciliation discrepancies, overdue invoices, disputes, and churn — but not
-  **failed payments** or **failed webhooks**, both named in
-  `DASHBOARD_PRINCIPLES.md:61-64` and both one query away
-  (`getPaymentAttempts?status=failed` `api.js:149`; events/webhooks via `/events`).
-- **Problem / impact:** the two most operationally-urgent exceptions for a billing
-  operator aren't on the attention surface.
-- **Solution:** add failed-payment and failed-webhook tiles to the strip.
-- **Priority:** P1. **Affected:** `Dashboard.jsx`. **Dependencies:** none.
+### P1-7 · Home attention strip omits failed payments and failed webhooks — SHIPPED (Batch 2, Item 5), partially
+- **Shipped:** the "Needs attention" surface (`Dashboard.jsx`) now leads with an
+  itemized **"Payments needing attention"** card driven by the Collections
+  funnel + queue (`getCollectionsFunnel` / `getCollectionsQueue`, its own light
+  `["dashboard-collections"]` query so it renders without the heavy overview
+  fetch). A past-due invoice *is* a failed payment in recovery — that is the
+  honest current-unresolved signal, so failed-payment = past-due-in-collections
+  (a raw `getPaymentAttempts?status=failed` count is all-time and lacks
+  `customer_id`; using it would be dishonest — see GAP-7). Each row answers
+  WHAT (customer · invoice number), WHY (humanized `last_payment_error` via the
+  shared `lib/failureLabels.js`), WHAT-object (drills to `/invoices/:id`), and
+  the card header shows revenue-at-risk (`past_due.amount`, FX-normalized with
+  an `excludes …` caveat when `fx_excluded_currencies` is non-empty). Bounded to
+  the top 5 with an honest **"Showing N of M"** footer and a **"View all"** →
+  `/collections` (no Home-specific list page). Reconciliation / disputes / churn
+  remain as count-appropriate tiles. Each source renders from its own settled
+  query (progressive); a failed collections fetch shows **"Payments in
+  recovery — data unavailable"** and *never* a false all-clear. The resolved
+  state is **"You're all caught up"** only when every source settled with
+  nothing to do (`Dashboard.test.jsx` covers itemization/drill, count honesty +
+  FX caveat, partial-failure-not-all-clear, and empty→all-caught-up).
+- **NOT shipped (backend-blocked): failed webhooks.** There is no tenant-wide
+  failed-delivery count or list — delivery status is only per-event /
+  per-endpoint, so a webhook-failure tile would require an N+1 fan-out across
+  every recent event. Retry exists and is safe (`POST /events/:id/redeliver`),
+  but with no count/list endpoint there is nothing honest to surface on Home.
+  Documented as **GAP-8**; no fake tile and no fake Retry were added.
+- **Priority:** P1 (payments) shipped; webhook tile deferred to GAP-8.
+  **Affected:** `Dashboard.jsx`, `lib/failureLabels.js` (extracted from
+  `Collections.jsx`). **Dependencies:** GAP-8 for webhooks.
 
 ### P1-8 · Invoice and Subscription journal legs don't link to their ledger accounts
 - **Current:** `InvoicePage.jsx:583-588` renders `JournalEntries`, but
@@ -560,6 +583,26 @@ No cross-object search endpoint. *Would enable:* ⌘K object search (P1-1) at sc
 *Interim:* client-side search over cached lists works for small tenants; a
 `GET /v1/search?q=` (customers/invoices/subscriptions/plans by name/number/id) scales it.
 
+**GAP-7 · Tenant-wide failed-payment feed — PARTIAL (P1).**
+`getPaymentAttempts?status=failed` (`api.js:149`) exists but is **all-time** (no
+recency window) and carries **no `customer_id`**, so it cannot power an honest,
+actionable "needs attention now" list. Home instead uses the Collections funnel +
+queue (past-due-in-recovery = the current unresolved failed-payment signal), which
+*is* honest and actionable. *Would enable:* a distinct "failed in the last N days
+but not yet past-due" surface — `GET /v1/payments?status=failed&since=…` with the
+linked customer/subscription/invoice. Not blocking; the collections signal covers
+the operational case today.
+
+**GAP-8 · Failed-webhook attention feed — MISSING (P1).**
+No tenant-wide failed-delivery count or list. Delivery status is only per-event /
+per-endpoint, so surfacing "webhooks failing" on Home would require an N+1 fan-out
+across every recent event. Retry exists and is safe (`POST /events/:id/redeliver`),
+but with no aggregate endpoint there is nothing honest to put on the attention
+surface. Missing: `GET /v1/webhooks/failures` (or `/events?delivery=failed`)
+returning recent failed deliveries with endpoint, event, attempt count, last error.
+*Unblocks:* a failed-webhook attention tile (P1-7's remaining half). Until then, no
+fake tile and no fake Retry are shown.
+
 ---
 
 # Reusable Components We Should Build
@@ -643,8 +686,10 @@ responsive 320-1440 / reduced-motion / visual QA). Frontend-only unless noted.
 **Batch 2 — Operator power (P1):**
 5. **DataTable selection + bulk-action bar (P1-3)**; opt-in on Invoices, Collections/
    Dunning, Disputes, Credit Notes.
-6. **⌘K object search (P1-1)** — client-side over cached lists (backend GAP-6 later).
-7. **Home attention tiles (P1-7)** — failed payments + failed webhooks.
+6. **⌘K object search (P1-1)** — ✅ SHIPPED (Customers/Plans/Subscriptions;
+   Invoices/Payments = GAP-6).
+7. **Home attention surface (P1-7)** — ✅ SHIPPED: itemized failed-payments card
+   from the Collections funnel/queue; failed-webhooks deferred to GAP-8.
 
 **Batch 3 — Subscription depth + confirms (P1, partially backend-gated):**
 8. **Subscription journal entries (P1-2, frontend-now)** from its invoices; **MRR/

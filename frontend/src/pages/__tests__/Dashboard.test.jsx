@@ -20,6 +20,8 @@ vi.mock('../../lib/api', () => ({
         getEvents: vi.fn(),
         getMRRWaterfall: vi.fn(),
         runReconciliation: vi.fn(),
+        getCollectionsFunnel: vi.fn(),
+        getCollectionsQueue: vi.fn(),
     }
 }));
 
@@ -52,6 +54,10 @@ describe('Dashboard (redesign)', () => {
             data: { data: { reporting_currency: 'USD', buckets: [], total_outstanding: 0, total_count: 0 } },
         });
         endpoints.runReconciliation.mockResolvedValue({ data: { data: { total_discrepancies: 0 } } });
+        endpoints.getCollectionsFunnel.mockResolvedValue({
+            data: { data: { reporting_currency: 'USD', past_due: { count: 0, amount: 0 }, fx_excluded_currencies: [] } },
+        });
+        endpoints.getCollectionsQueue.mockResolvedValue({ data: { data: [], meta: { total: 0 } } });
     });
 
     it('renders the KPI cards after loading', async () => {
@@ -88,33 +94,104 @@ describe('Dashboard (redesign)', () => {
         expect(screen.getByText('33.3%')).toBeInTheDocument();
     });
 
-    it('surfaces overdue invoices in the needs-attention strip', async () => {
-        endpoints.getInvoices.mockResolvedValue({
+    it('itemizes failing payments in the needs-attention surface, each drilling to its invoice', async () => {
+        endpoints.getCollectionsFunnel.mockResolvedValue({
+            data: {
+                data: {
+                    reporting_currency: 'USD',
+                    past_due: { count: 2, amount: 90000 },
+                    fx_excluded_currencies: [],
+                },
+            },
+        });
+        endpoints.getCollectionsQueue.mockResolvedValue({
             data: {
                 data: [
                     {
-                        id: 'inv_od',
-                        total: 50000,
-                        amount_due: 50000,
-                        status: 'past_due',
+                        id: 'inv_od1',
+                        customer_name: 'Acme Corp',
+                        invoice_number: 'INV-001',
                         currency: 'USD',
-                        customer_id: 'cus_1',
-                        created_at: new Date().toISOString(),
+                        amount_remaining: 50000,
+                        last_payment_error: 'insufficient_funds',
+                        days_overdue: 4,
+                    },
+                    {
+                        id: 'inv_od2',
+                        customer_name: 'Globex',
+                        invoice_number: 'INV-002',
+                        currency: 'USD',
+                        amount_remaining: 40000,
+                        last_payment_error: 'card_declined',
+                        days_overdue: 9,
                     },
                 ],
+                meta: { total: 2 },
             },
         });
 
         renderDashboard();
 
         await waitFor(() => {
-            expect(screen.getByText('1 overdue invoice')).toBeInTheDocument();
+            expect(screen.getByText('2 invoices failing collection')).toBeInTheDocument();
         });
-        // The card links to the aging report.
-        expect(screen.getByText('1 overdue invoice').closest('a')).toHaveAttribute(
-            'href',
-            '/finance/invoice-aging'
-        );
+        // Revenue at risk, FX-normalized.
+        expect(screen.getByText(/\$900\.00 at risk/)).toBeInTheDocument();
+        // Each row names WHAT (customer + invoice), WHY (humanized failure), and
+        // drills to WHAT object (the invoice).
+        const acmeRow = screen.getByText('Acme Corp').closest('a');
+        expect(acmeRow).toHaveAttribute('href', '/invoices/inv_od1');
+        expect(within(acmeRow).getByText(/Insufficient funds/)).toBeInTheDocument();
+        expect(within(acmeRow).getByText(/4d overdue/)).toBeInTheDocument();
+        // "View all" drills to the canonical Collections list (no Home-specific page).
+        const viewAllToCollections = screen
+            .getAllByText('View all')
+            .map((el) => el.closest('a'))
+            .find((a) => a?.getAttribute('href') === '/collections');
+        expect(viewAllToCollections).toBeTruthy();
+    });
+
+    it('shows an honest "showing N of M" count and does not imply the whole list is on Home', async () => {
+        endpoints.getCollectionsFunnel.mockResolvedValue({
+            data: {
+                data: {
+                    reporting_currency: 'USD',
+                    past_due: { count: 37, amount: 500000 },
+                    fx_excluded_currencies: ['EUR'],
+                },
+            },
+        });
+        endpoints.getCollectionsQueue.mockResolvedValue({
+            data: {
+                data: [
+                    { id: 'inv_a', customer_name: 'A', invoice_number: 'INV-A', currency: 'USD', amount_remaining: 1000, last_payment_error: 'card_declined', days_overdue: 2 },
+                ],
+                meta: { total: 37 },
+            },
+        });
+
+        renderDashboard();
+
+        await waitFor(() => {
+            expect(screen.getByText('37 invoices failing collection')).toBeInTheDocument();
+        });
+        // Count honesty: the header reflects the true total, the footer says how
+        // many are actually shown, and the FX caveat is surfaced.
+        expect(screen.getByText(/Showing 1 of 37/)).toBeInTheDocument();
+        expect(screen.getByText(/excludes EUR/)).toBeInTheDocument();
+    });
+
+    it('shows "data unavailable" for payments — never a false all-clear — when the collections fetch fails', async () => {
+        endpoints.getCollectionsFunnel.mockRejectedValue(new Error('down'));
+        endpoints.getCollectionsQueue.mockRejectedValue(new Error('down'));
+
+        renderDashboard();
+
+        await waitFor(() => {
+            expect(screen.getByText(/Payments in recovery — data unavailable/)).toBeInTheDocument();
+        });
+        // A failed source must not resolve into "all caught up".
+        expect(screen.queryByText(/all caught up/i)).not.toBeInTheDocument();
     });
 
     it('surfaces ledger reconciliation discrepancies in the needs-attention strip', async () => {
@@ -134,11 +211,13 @@ describe('Dashboard (redesign)', () => {
         );
     });
 
-    it('shows the all-clear line when nothing needs attention', async () => {
+    it('shows the "all caught up" line only when every source settled with nothing to do', async () => {
         renderDashboard();
         await waitFor(() => {
-            expect(screen.getByText(/All clear/)).toBeInTheDocument();
+            expect(screen.getByText(/all caught up/i)).toBeInTheDocument();
         });
+        // No payments card renders when the queue is genuinely empty.
+        expect(screen.queryByText(/failing collection/)).not.toBeInTheDocument();
     });
 
     it('shows a graceful empty state when there are no invoices', async () => {

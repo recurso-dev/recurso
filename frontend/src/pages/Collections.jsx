@@ -8,6 +8,7 @@ import {
 
 import { endpoints } from "../lib/api";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { humanizeFailure } from "@/lib/failureLabels";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
@@ -37,34 +38,6 @@ import {
 } from "@/components/ui/table";
 
 const PER_PAGE = 25;
-
-// Humanize the raw gateway / ACH failure codes stored on the last attempt so an
-// operator reads "Insufficient funds" instead of "insufficient_funds". Unknown
-// codes fall back to a title-cased version of the code itself.
-const FAILURE_LABELS = {
-  card_declined: "Card declined",
-  insufficient_funds: "Insufficient funds",
-  expired_card: "Expired card",
-  incorrect_cvc: "Incorrect CVC",
-  processing_error: "Processing error",
-  do_not_honor: "Do not honor",
-  lost_card: "Lost card",
-  stolen_card: "Stolen card",
-  authentication_required: "Authentication required",
-  ach_return: "ACH return",
-  R01: "ACH: insufficient funds",
-  R02: "ACH: account closed",
-  R03: "ACH: no account",
-  R08: "ACH: payment stopped",
-  R10: "ACH: unauthorized",
-};
-const humanizeFailure = (code) => {
-  if (!code) return "—";
-  if (FAILURE_LABELS[code]) return FAILURE_LABELS[code];
-  return code
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (c) => c.toUpperCase());
-};
 
 const STATUS_TABS = [
   { value: "all", label: "All" },
