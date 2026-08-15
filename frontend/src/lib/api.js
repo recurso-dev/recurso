@@ -151,7 +151,7 @@ export const endpoints = {
   // Pass { immediately: true } to preview an immediate cancel.
   getSubscriptionCancelPreview: (id, params) =>
     api.get(`/subscriptions/${id}/cancel-preview`, { params }),
-  getInvoices: (params) => api.get('/invoices', { params }),
+  getInvoices: (params, config) => api.get('/invoices', { params, ...config }),
   // Single reads powering the addressable /invoices/:id and /credit-notes/:id
   // dashboard routes (DASHBOARD_REDESIGN.md Stage 5).
   getInvoice: (id) => api.get(`/invoices/${id}`),
@@ -161,7 +161,7 @@ export const endpoints = {
   getInvoiceStatusHistory: (id) => api.get(`/invoices/${id}/status-history`),
   // Tenant-wide payments log: every gateway attempt, newest first, paginated,
   // optional { status } filter. Powers /payments.
-  getPaymentAttempts: (params) => api.get(`/payment-attempts`, { params }),
+  getPaymentAttempts: (params, config) => api.get(`/payment-attempts`, { params, ...config }),
   // A single payment attempt as an addressable object, resolved with its
   // invoice/customer/subscription context (Batch 3A — foundation for /payments/:id).
   getPayment: (id) => api.get(`/payment-attempts/${id}`),

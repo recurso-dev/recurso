@@ -593,6 +593,10 @@ func (s *SubscriptionService) GetInvoiceJournalEntries(ctx context.Context, tena
 type paymentAttemptLister interface {
 	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error)
 	List(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error)
+	// SearchList backs the command-palette payment lookup: a tenant-scoped
+	// case-insensitive match on the attempt's invoice_number or gateway payment
+	// reference (newest first). An empty search returns no rows.
+	SearchList(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error)
 	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error)
 }
 
@@ -729,12 +733,44 @@ func (s *SubscriptionService) ListPaymentAttempts(ctx context.Context, tenantID 
 	return items, total, nil
 }
 
+// SearchPaymentAttempts returns one page of the tenant's payment attempts whose
+// invoice_number or gateway payment reference matches a case-insensitive query,
+// plus the matching total. Backs the command-palette payment lookup.
+func (s *SubscriptionService) SearchPaymentAttempts(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error) {
+	if s.paymentAttempts == nil {
+		return []domain.PaymentAttemptListItem{}, 0, nil
+	}
+	items, total, err := s.paymentAttempts.SearchList(ctx, tenantID, search, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	if items == nil {
+		items = []domain.PaymentAttemptListItem{}
+	}
+	return items, total, nil
+}
+
 func (s *SubscriptionService) ListInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, int, error) {
 	invs, err := s.invoiceRepo.ListPaginated(ctx, tenantID, limit, offset)
 	if err != nil {
 		return nil, 0, err
 	}
 	total, err := s.invoiceRepo.CountByTenant(ctx, tenantID)
+	if err != nil {
+		return nil, 0, err
+	}
+	return invs, total, nil
+}
+
+// SearchInvoicesPaginated returns one page of the tenant's invoices matching a
+// case-insensitive invoice_number query, plus the matching total. Backs the
+// command-palette invoice lookup.
+func (s *SubscriptionService) SearchInvoicesPaginated(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]*domain.Invoice, int, error) {
+	invs, err := s.invoiceRepo.SearchPaginated(ctx, tenantID, search, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+	total, err := s.invoiceRepo.CountSearch(ctx, tenantID, search)
 	if err != nil {
 		return nil, 0, err
 	}

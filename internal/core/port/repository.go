@@ -35,6 +35,11 @@ type InvoiceRepository interface {
 	// large account can't return every invoice in one response.
 	ListPaginated(ctx context.Context, tenantID uuid.UUID, limit, offset int) ([]*domain.Invoice, error)
 	CountByTenant(ctx context.Context, tenantID uuid.UUID) (int, error)
+	// SearchPaginated / CountSearch back the command-palette invoice lookup:
+	// a tenant-scoped case-insensitive match on invoice_number (newest first).
+	// An empty search returns no rows (callers gate on a non-empty query).
+	SearchPaginated(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]*domain.Invoice, error)
+	CountSearch(ctx context.Context, tenantID uuid.UUID, search string) (int, error)
 	// ListByCustomerPaginated / CountByCustomer are the dashboard's
 	// customer-scoped list (tenant predicate in SQL — unlike the portal's
 	// GetByCustomerIDPaged, which relies on customer-token auth).

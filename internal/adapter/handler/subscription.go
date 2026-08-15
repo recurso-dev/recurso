@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -340,7 +341,18 @@ func (h *SubscriptionHandler) ListPaymentAttempts(c *gin.Context) {
 	p := ParsePagination(c)
 	status := c.Query("status")
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
-	items, total, err := h.service.ListPaymentAttempts(ctx, tenantID, status, p.PerPage, p.Offset)
+	var (
+		items []domain.PaymentAttemptListItem
+		total int
+		err   error
+	)
+	if q := strings.TrimSpace(c.Query("q")); q != "" {
+		// Command-palette payment lookup: tenant-scoped invoice_number / gateway
+		// reference search (status filter is ignored on the search path).
+		items, total, err = h.service.SearchPaymentAttempts(ctx, tenantID, q, p.PerPage, p.Offset)
+	} else {
+		items, total, err = h.service.ListPaymentAttempts(ctx, tenantID, status, p.PerPage, p.Offset)
+	}
 	if err != nil {
 		respondInternalError(c, err)
 		return
@@ -442,6 +454,9 @@ func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 			return
 		}
 		invs, total, err = h.service.ListInvoicesBySubscriptionPaginated(ctx, tenantID, subscriptionID, p.PerPage, p.Offset)
+	} else if q := strings.TrimSpace(c.Query("q")); q != "" {
+		// Command-palette invoice lookup: tenant-scoped invoice_number search.
+		invs, total, err = h.service.SearchInvoicesPaginated(ctx, tenantID, q, p.PerPage, p.Offset)
 	} else {
 		invs, total, err = h.service.ListInvoicesPaginated(ctx, tenantID, p.PerPage, p.Offset)
 	}

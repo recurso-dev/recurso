@@ -12,6 +12,8 @@ vi.mock("../../../lib/api", () => ({
     getCustomers: vi.fn(),
     getPlans: vi.fn(),
     getSubscriptions: vi.fn(),
+    getInvoices: vi.fn(),
+    getPaymentAttempts: vi.fn(),
   },
 }));
 
@@ -47,6 +49,8 @@ beforeEach(() => {
   endpoints.getCustomers.mockResolvedValue(list([]));
   endpoints.getPlans.mockResolvedValue(list([]));
   endpoints.getSubscriptions.mockResolvedValue(list([]));
+  endpoints.getInvoices.mockResolvedValue(list([]));
+  endpoints.getPaymentAttempts.mockResolvedValue(list([]));
 });
 
 describe("CommandPalette — search", () => {
@@ -173,6 +177,91 @@ describe("CommandPalette — keyboard & navigation", () => {
     const nav = await screen.findByText("Subscriptions");
     await user.click(nav);
     expect(screen.getByTestId("loc")).toHaveTextContent("/subscriptions");
+  });
+});
+
+describe("CommandPalette — Batch F2 financial objects", () => {
+  const invoice = {
+    id: "inv1",
+    invoice_number: "INV-000009",
+    customer_id: "c1",
+    total: 9900,
+    currency: "USD",
+    status: "past_due",
+  };
+  const payment = {
+    id: "pay1",
+    invoice_number: "INV-000018",
+    gateway_payment_intent_id: "pi_abc123",
+    amount: 24000,
+    currency: "USD",
+    status: "returned",
+  };
+
+  it("searches Invoices: identity + amount + status, server-side with q/limit/per_page/signal", async () => {
+    endpoints.getInvoices.mockResolvedValue(list([invoice]));
+    const user = userEvent.setup();
+    renderPalette({ seed: { customers: [{ id: "c1", name: "Acme Corporation" }] } });
+    await user.type(input(), "000009");
+    await waitFor(() => expect(screen.getByText("INV-000009")).toBeInTheDocument());
+    expect(screen.getByText("Invoices")).toBeInTheDocument();
+    expect(screen.getByText("Acme Corporation")).toBeInTheDocument(); // customer from warm cache
+    expect(screen.getByText("Past due")).toBeInTheDocument(); // canonical StatusBadge
+    // Money signature present.
+    expect(document.querySelector(".money")).toBeInTheDocument();
+    // Server-side search: q + both limit conventions + propagated AbortSignal.
+    expect(endpoints.getInvoices).toHaveBeenCalledWith(
+      expect.objectContaining({ q: "000009", limit: 6, per_page: 6 }),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
+    );
+  });
+
+  it("navigates to the canonical invoice object on Enter", async () => {
+    endpoints.getInvoices.mockResolvedValue(list([invoice]));
+    const user = userEvent.setup();
+    renderPalette();
+    await user.type(input(), "000009");
+    await waitFor(() => expect(screen.getByText("INV-000009")).toBeInTheDocument());
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByTestId("loc")).toHaveTextContent("/invoices/inv1");
+  });
+
+  it("searches Payments: identity by invoice + gateway ref, and deep-links to the payment attempt", async () => {
+    endpoints.getPaymentAttempts.mockResolvedValue(list([payment]));
+    const user = userEvent.setup();
+    renderPalette();
+    await user.type(input(), "pi_abc");
+    await waitFor(() => expect(screen.getByText("Payment · INV-000018")).toBeInTheDocument());
+    expect(screen.getByText("Payments")).toBeInTheDocument();
+    expect(screen.getByText("pi_abc123")).toBeInTheDocument(); // gateway reference (secondary)
+    expect(screen.getByText("Returned")).toBeInTheDocument();
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByTestId("loc")).toHaveTextContent("/payments/pay1");
+  });
+
+  it("renders multiple object groups together (Invoices + Payments + Customers)", async () => {
+    endpoints.getCustomers.mockResolvedValue(list([{ id: "c1", name: "Acme Corporation" }]));
+    endpoints.getInvoices.mockResolvedValue(list([invoice]));
+    endpoints.getPaymentAttempts.mockResolvedValue(list([payment]));
+    const user = userEvent.setup();
+    renderPalette();
+    await user.type(input(), "acme");
+    await waitFor(() => expect(screen.getByText("INV-000009")).toBeInTheDocument());
+    expect(screen.getByText("Customers")).toBeInTheDocument();
+    expect(screen.getByText("Invoices")).toBeInTheDocument();
+    expect(screen.getByText("Payments")).toBeInTheDocument();
+    expect(screen.getByText("Acme Corporation")).toBeInTheDocument();
+    expect(screen.getByText("Payment · INV-000018")).toBeInTheDocument();
+  });
+
+  it("tolerates a partial failure of the invoice search", async () => {
+    endpoints.getPaymentAttempts.mockResolvedValue(list([payment]));
+    endpoints.getInvoices.mockRejectedValue(new Error("boom"));
+    const user = userEvent.setup();
+    renderPalette();
+    await user.type(input(), "inv");
+    await waitFor(() => expect(screen.getByText("Payment · INV-000018")).toBeInTheDocument());
+    expect(screen.getByText(/Couldn.t search invoices/i)).toBeInTheDocument();
   });
 });
 

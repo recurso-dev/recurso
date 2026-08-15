@@ -254,6 +254,10 @@ func (m *mockAttemptLister) List(_ context.Context, _ uuid.UUID, _ string, _, _ 
 	return m.items, m.total, nil
 }
 
+func (m *mockAttemptLister) SearchList(_ context.Context, _ uuid.UUID, _ string, _, _ int) ([]domain.PaymentAttemptListItem, int, error) {
+	return m.items, m.total, nil
+}
+
 // GetByID mirrors the real repo's tenant scoping (WHERE tenant_id=$1 AND id=$2):
 // a foreign tenant, or an unknown id, resolves to nothing.
 func (m *mockAttemptLister) GetByID(_ context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error) {

@@ -116,6 +116,50 @@ func (r *PaymentAttemptRepository) List(ctx context.Context, tenantID uuid.UUID,
 	return items, total, rows.Err()
 }
 
+// SearchList returns one page of the tenant's payment attempts whose associated
+// invoice_number or gateway payment reference matches `search` (case-insensitive
+// substring), newest first — the command-palette payment lookup. Tenant-scoped in
+// SQL; an empty search returns no rows. Mirrors List's shape (COUNT(*) OVER()).
+func (r *PaymentAttemptRepository) SearchList(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error) {
+	if search == "" {
+		return []domain.PaymentAttemptListItem{}, 0, nil
+	}
+	like := "%" + search + "%"
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT COUNT(*) OVER() AS total,
+		       pa.id, pa.tenant_id, pa.invoice_id, pa.gateway, pa.method,
+		       pa.gateway_payment_intent_id, pa.status, pa.failure_code, pa.amount,
+		       pa.created_at, pa.updated_at, pa.settled_at,
+		       COALESCE(i.invoice_number, ''), COALESCE(i.currency, '')
+		FROM payment_attempts pa
+		LEFT JOIN invoices i ON i.id = pa.invoice_id
+		WHERE pa.tenant_id = $1
+		  AND (i.invoice_number ILIKE $2 OR pa.gateway_payment_intent_id ILIKE $2)
+		ORDER BY pa.created_at DESC, pa.id DESC
+		LIMIT $3 OFFSET $4`,
+		tenantID, like, limit, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to search payment attempts: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	items := []domain.PaymentAttemptListItem{}
+	total := 0
+	for rows.Next() {
+		var it domain.PaymentAttemptListItem
+		var st string
+		if err := rows.Scan(&total,
+			&it.ID, &it.TenantID, &it.InvoiceID, &it.Gateway, &it.Method,
+			&it.GatewayPaymentIntentID, &st, &it.FailureCode, &it.Amount,
+			&it.CreatedAt, &it.UpdatedAt, &it.SettledAt, &it.InvoiceNumber, &it.Currency); err != nil {
+			return nil, 0, fmt.Errorf("failed to scan payment attempt: %w", err)
+		}
+		it.Status = domain.PaymentAttemptStatus(st)
+		items = append(items, it)
+	}
+	return items, total, rows.Err()
+}
+
 // GetByID returns one payment attempt for the tenant, resolved with the
 // invoice-level facts it belongs to (number, currency, customer, subscription)
 // via a read-time join off the immutable invoice edge. Tenant-scoped; returns
