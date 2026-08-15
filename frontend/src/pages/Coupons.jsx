@@ -6,6 +6,7 @@ import { Plus, BadgePercent } from "lucide-react";
 import { endpoints as api } from "../lib/api";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
@@ -24,6 +25,8 @@ const Coupons = () => {
   const [search, setSearch] = useUrlState("q", "");
   const [statusFilter, setStatusFilter] = useUrlState("status", "all");
   const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  // URL-persisted sort over the complete (page-through) set — Batch F3.
+  const { sort, sortKey, onSortChange } = useTableSort();
 
   const [deactivateTarget, setDeactivateTarget] = useState(null);
 
@@ -94,21 +97,25 @@ const Coupons = () => {
     });
   }, [coupons, statusFilter, search]);
 
-  // Client-side pagination over the filtered set (the whole set is loaded).
-  const pagedCoupons = pageSlice(filteredCoupons, page);
-  // A new search/filter starts back at page 1. Reset in an effect (a separate
-  // tick from the filter's own URL write, so the two don't clobber each other),
-  // skip the first run so a page restored from the URL on mount survives, and
-  // hold setPage in a ref so a plain page change never re-triggers this.
-  useResetPageOnChange(setPage, [search, statusFilter]);
+  // A new search/filter OR a sort change starts back at page 1. Reset in an
+  // effect (a separate tick from the filter's own URL write, so the two don't
+  // clobber each other), skip the first run so a page restored from the URL on
+  // mount survives, and hold setPage in a ref so a plain page change never
+  // re-triggers this. pagedCoupons is computed after `columns`, over the sorted
+  // full set.
+  useResetPageOnChange(setPage, [search, statusFilter, sortKey]);
 
   const columns = [
     {
       key: "code",
       header: "Coupon Code",
+      sortable: true,
+      sortValue: (c) => c.code || "",
       cell: (c) => <span className="font-mono text-sm font-medium text-foreground">{c.code}</span>,
     },
     {
+      // Not sortable: `discount` mixes units (a percent for percent coupons, a
+      // money amount for fixed ones), so any single ordering would be a lie.
       key: "discount",
       header: "Discount",
       align: "right",
@@ -130,6 +137,8 @@ const Coupons = () => {
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (c) => c.status,
       cell: (c) => (
         <StatusBadge status={c.status} />
       ),
@@ -155,6 +164,9 @@ const Coupons = () => {
     },
   ];
 
+  // Sort the full filtered set, THEN paginate (ordering spans everything).
+  const pagedCoupons = pageSlice(sortRows(filteredCoupons, sort, columns), page);
+
   return (
     <div>
       <PageHeader
@@ -178,6 +190,8 @@ const Coupons = () => {
       <DataTable
         columns={columns}
         data={pagedCoupons}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

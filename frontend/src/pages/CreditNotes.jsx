@@ -6,6 +6,7 @@ import { Plus, Receipt, Ban } from "lucide-react";
 import { endpoints } from "../lib/api";
 import { formatDate } from "@/lib/utils";
 import { useUrlState, useResetPageOnChange } from "@/lib/useUrlState";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { useBulkAction } from "@/lib/useBulkAction";
 import { LIST_PAGE_SIZE, fetchAllPages, pageSlice } from "@/lib/pagination";
 import { Money } from "@/components/ui/money";
@@ -21,6 +22,8 @@ const CreditNotes = () => {
   // List state in the URL so returning from a credit note restores search / page.
   const [search, setSearch] = useUrlState("q", "");
   const [page, setPage] = useUrlState("page", 1, { parse: Number });
+  // URL-persisted sort over the complete (page-through) set — Batch F3.
+  const { sort, sortKey, onSortChange } = useTableSort();
 
   // /credit-notes has no free-text search server-side (search is over id +
   // customer name below), so the page holds the complete set — page through it
@@ -52,9 +55,10 @@ const CreditNotes = () => {
         (cn.customer?.name || "").toLowerCase().includes(q),
     );
   }, [creditNotes, search]);
-  const pagedNotes = pageSlice(filteredNotes, page);
-  // A new search starts back at page 1 (URL-safe: separate tick, skips mount).
-  useResetPageOnChange(setPage, [search]);
+  // A new search OR a sort change starts back at page 1 (URL-safe: separate
+  // tick, skips mount so back-nav restore survives). pagedNotes is computed
+  // after `columns` below, over the sorted full set.
+  useResetPageOnChange(setPage, [search, sortKey]);
 
   // Bulk reject: only pending credit notes can be rejected (the backend no-ops
   // the rest); no money moves. Each row gets a stable idempotency key so a retry
@@ -106,6 +110,8 @@ const CreditNotes = () => {
     {
       key: "customer",
       header: "Customer",
+      sortable: true,
+      sortValue: (cn) => cn.customer?.name || "",
       cell: (cn) => (
         <span className="text-muted-foreground">
           {cn.customer ? cn.customer.name : "Unknown Customer"}
@@ -116,17 +122,23 @@ const CreditNotes = () => {
       key: "amount",
       header: "Amount",
       align: "right",
+      sortable: true,
+      sortValue: (cn) => cn.amount,
       cell: (cn) => <Money amountMinor={cn.amount} currency={cn.currency} />,
     },
     {
       key: "balance",
       header: "Balance",
       align: "right",
+      sortable: true,
+      sortValue: (cn) => cn.balance,
       cell: (cn) => <Money amountMinor={cn.balance} currency={cn.currency} className="text-muted-foreground" />,
     },
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (cn) => cn.status,
       cell: (cn) => (
         <StatusBadge status={cn.status} />
       ),
@@ -134,11 +146,17 @@ const CreditNotes = () => {
     {
       key: "created",
       header: "Created",
+      sortable: true,
+      sortValue: (cn) => cn.created_at || "",
       cell: (cn) => (
         <span className="text-muted-foreground">{formatDate(cn.created_at)}</span>
       ),
     },
   ];
+
+  // Sort the full filtered set, THEN paginate — so ordering spans everything,
+  // not just the current page.
+  const pagedNotes = pageSlice(sortRows(filteredNotes, sort, columns), page);
 
   return (
     <div>
@@ -163,6 +181,8 @@ const CreditNotes = () => {
       <DataTable
         columns={columns}
         data={pagedNotes}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}
