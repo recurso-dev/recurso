@@ -63,6 +63,33 @@ func (h *LedgerHandler) GetEntries(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": entries})
 }
 
+// GetTransaction returns one posted transaction (a single journal entry) by its
+// id — the addressable journal-entry object. Each leg carries its account id so
+// the caller can deep-link to the account page. Cross-tenant ids return 404.
+// Read-only.
+func (h *LedgerHandler) GetTransaction(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	txID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid transaction id")
+		return
+	}
+	row, err := h.service.GetTransactionByID(c.Request.Context(), tenantID.(uuid.UUID), txID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch transaction")
+		return
+	}
+	if row == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "transaction not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": row})
+}
+
 // GetTrialBalance returns the caller's tenant trial balance: every account with
 // posted debit/credit totals, its normal-side balance, an abnormal-sign flag,
 // and the debits==credits invariant. Read-only.

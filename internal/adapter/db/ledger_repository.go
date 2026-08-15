@@ -202,7 +202,7 @@ func (r *LedgerRepository) SumWalletBalance(ctx context.Context, tenantID uuid.U
 func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uuid.UUID, ledgerID *int, from, to *time.Time) ([]domain.GeneralLedgerRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.created_at, t.code,
-		        da.code, da.name, ca.code, ca.name,
+		        da.id, da.code, da.name, ca.id, ca.code, ca.name,
 		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
 		        t.accounting_version,
 		        e.id, COALESCE(e.name, '')
@@ -224,7 +224,8 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 		var g domain.GeneralLedgerRow
 		var entityID uuid.NullUUID
 		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
-			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
+			&g.DebitAccountID, &g.DebitAccountCode, &g.DebitAccountName,
+			&g.CreditAccountID, &g.CreditAccountCode, &g.CreditAccountName,
 			&g.Amount, &g.ReferenceID, &g.Description, &g.AccountingVersion, &entityID, &g.EntityName); err != nil {
 			return nil, fmt.Errorf("failed to scan general ledger row: %w", err)
 		}
@@ -245,7 +246,7 @@ func (r *LedgerRepository) GetGeneralLedgerRows(ctx context.Context, tenantID uu
 func (r *LedgerRepository) GetJournalEntriesByReference(ctx context.Context, tenantID, referenceID uuid.UUID) ([]domain.GeneralLedgerRow, error) {
 	rows, err := r.db.QueryContext(ctx,
 		`SELECT t.id, t.created_at, t.code,
-		        da.code, da.name, ca.code, ca.name,
+		        da.id, da.code, da.name, ca.id, ca.code, ca.name,
 		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
 		        t.accounting_version,
 		        e.id, COALESCE(e.name, '')
@@ -265,7 +266,8 @@ func (r *LedgerRepository) GetJournalEntriesByReference(ctx context.Context, ten
 		var g domain.GeneralLedgerRow
 		var entityID uuid.NullUUID
 		if err := rows.Scan(&g.TransactionID, &g.Timestamp, &g.Code,
-			&g.DebitAccountCode, &g.DebitAccountName, &g.CreditAccountCode, &g.CreditAccountName,
+			&g.DebitAccountID, &g.DebitAccountCode, &g.DebitAccountName,
+			&g.CreditAccountID, &g.CreditAccountCode, &g.CreditAccountName,
 			&g.Amount, &g.ReferenceID, &g.Description, &g.AccountingVersion, &entityID, &g.EntityName); err != nil {
 			return nil, fmt.Errorf("failed to scan journal entry row: %w", err)
 		}
@@ -275,6 +277,42 @@ func (r *LedgerRepository) GetJournalEntriesByReference(ctx context.Context, ten
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// GetTransactionByID returns one posted transaction (a single journal entry)
+// by its ledger_transactions.id, flattened with both account ids + codes +
+// names so the entry is independently addressable and each leg deep-links to
+// its account page. Tenant-scoped via the debit account. Returns (nil, nil)
+// when no such transaction exists for the tenant (handler maps to 404).
+// Read-only — mirrors GetJournalEntriesByReference's projection.
+func (r *LedgerRepository) GetTransactionByID(ctx context.Context, tenantID, txID uuid.UUID) (*domain.GeneralLedgerRow, error) {
+	var g domain.GeneralLedgerRow
+	var entityID uuid.NullUUID
+	err := r.db.QueryRowContext(ctx,
+		`SELECT t.id, t.created_at, t.code,
+		        da.id, da.code, da.name, ca.id, ca.code, ca.name,
+		        t.amount::bigint, t.reference_id, COALESCE(t.description, ''),
+		        t.accounting_version,
+		        e.id, COALESCE(e.name, '')
+		 FROM ledger_transactions t
+		 JOIN ledger_accounts da ON da.id = t.debit_account_id
+		 JOIN ledger_accounts ca ON ca.id = t.credit_account_id
+		 LEFT JOIN entities e ON e.tenant_id = da.tenant_id AND e.tb_ledger_id = da.ledger_id
+		 WHERE da.tenant_id = $1 AND t.id = $2`, tenantID, txID).
+		Scan(&g.TransactionID, &g.Timestamp, &g.Code,
+			&g.DebitAccountID, &g.DebitAccountCode, &g.DebitAccountName,
+			&g.CreditAccountID, &g.CreditAccountCode, &g.CreditAccountName,
+			&g.Amount, &g.ReferenceID, &g.Description, &g.AccountingVersion, &entityID, &g.EntityName)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query ledger transaction by id: %w", err)
+	}
+	if entityID.Valid {
+		g.EntityID = &entityID.UUID
+	}
+	return &g, nil
 }
 
 // GetTrialBalanceLines aggregates posted debit and credit totals per account

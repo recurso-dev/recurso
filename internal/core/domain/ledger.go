@@ -309,11 +309,17 @@ type DeferredRollforward struct {
 // accounts value moved between (by code and name), the amount, and its
 // provenance (code, reference, description). Used for the read-only GL export.
 type GeneralLedgerRow struct {
-	TransactionID     uuid.UUID `json:"transaction_id"`
-	Timestamp         time.Time `json:"timestamp"`
-	Code              uint16    `json:"code"`
+	TransactionID uuid.UUID `json:"transaction_id"`
+	Timestamp     time.Time `json:"timestamp"`
+	Code          uint16    `json:"code"`
+	// DebitAccountID/CreditAccountID are the ledger-account primary keys the
+	// posting moved value between. They are surfaced (alongside the human code+
+	// name) purely so a read consumer can deep-link each leg to its account page
+	// (/ledger/accounts/:id). Read-model only — posting never reads these back.
+	DebitAccountID    uuid.UUID `json:"debit_account_id"`
 	DebitAccountCode  int       `json:"debit_account_code"`
 	DebitAccountName  string    `json:"debit_account_name"`
+	CreditAccountID   uuid.UUID `json:"credit_account_id"`
 	CreditAccountCode int       `json:"credit_account_code"`
 	CreditAccountName string    `json:"credit_account_name"`
 	Amount            int64     `json:"amount"` // minor units

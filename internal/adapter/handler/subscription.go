@@ -360,6 +360,52 @@ func (h *SubscriptionHandler) ListPaymentAttempts(c *gin.Context) {
 	})
 }
 
+// GetSubscriptionFinancialSummary returns one subscription's financial position
+// (MRR, recurring value, next-invoice, outstanding). Cross-tenant ids return
+// 404. Read-only.
+func (h *SubscriptionHandler) GetSubscriptionFinancialSummary(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid subscription id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	summary, err := h.service.GetFinancialSummary(ctx, tenantID, id)
+	if err != nil || summary == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "subscription not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": summary})
+}
+
+// GetPaymentAttempt returns one payment attempt as an addressable object,
+// resolved with its invoice/customer/subscription context. Cross-tenant ids
+// return 404 (never leak existence). Read-only.
+func (h *SubscriptionHandler) GetPaymentAttempt(c *gin.Context) {
+	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "tenant_id missing")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid payment id")
+		return
+	}
+	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
+	pa, err := h.service.GetPaymentAttempt(ctx, tenantID, id)
+	if err != nil || pa == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "payment not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": pa})
+}
+
 func (h *SubscriptionHandler) ListInvoices(c *gin.Context) {
 	tenantID, ok := c.MustGet("tenant_id").(uuid.UUID)
 	if !ok {

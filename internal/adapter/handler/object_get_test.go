@@ -242,8 +242,9 @@ func TestGetInvoiceAttemptsBadIdIs400(t *testing.T) {
 // --- GET /v1/payment-attempts (payments log) -------------------------------
 
 type mockAttemptLister struct {
-	items []domain.PaymentAttemptListItem
-	total int
+	items  []domain.PaymentAttemptListItem
+	total  int
+	detail *domain.PaymentAttemptDetail
 }
 
 func (m *mockAttemptLister) ListByInvoice(_ context.Context, _, _ uuid.UUID) ([]*domain.PaymentAttempt, error) {
@@ -251,6 +252,15 @@ func (m *mockAttemptLister) ListByInvoice(_ context.Context, _, _ uuid.UUID) ([]
 }
 func (m *mockAttemptLister) List(_ context.Context, _ uuid.UUID, _ string, _, _ int) ([]domain.PaymentAttemptListItem, int, error) {
 	return m.items, m.total, nil
+}
+
+// GetByID mirrors the real repo's tenant scoping (WHERE tenant_id=$1 AND id=$2):
+// a foreign tenant, or an unknown id, resolves to nothing.
+func (m *mockAttemptLister) GetByID(_ context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error) {
+	if m.detail != nil && m.detail.ID == id && m.detail.TenantID == tenantID {
+		return m.detail, nil
+	}
+	return nil, nil
 }
 
 func TestListPaymentAttemptsReturnsPagedLog(t *testing.T) {
@@ -277,6 +287,210 @@ func TestListPaymentAttemptsReturnsPagedLog(t *testing.T) {
 	body := w.Body.String()
 	if !strings.Contains(body, "INV-9") || !strings.Contains(body, `"total":1`) {
 		t.Fatalf("expected the attempt + a pagination total, got %s", body)
+	}
+}
+
+// --- GET /v1/subscriptions/:id/financial-summary ---------------------------
+
+type planByIDRepo struct {
+	port.PlanRepository
+	plan *domain.Plan
+}
+
+func (r *planByIDRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Plan, error) {
+	if r.plan != nil && r.plan.ID == id {
+		return r.plan, nil
+	}
+	return nil, nil
+}
+
+type subSummaryInvoiceRepo struct {
+	port.InvoiceRepository
+	rows []domain.CustomerFinancialSummaryCurrency
+}
+
+func (r *subSummaryInvoiceRepo) GetSubscriptionFinancialSummary(_ context.Context, _, _ uuid.UUID) ([]domain.CustomerFinancialSummaryCurrency, error) {
+	return r.rows, nil
+}
+
+func newSubFinSummaryHandler(sub *domain.Subscription, plan *domain.Plan) *SubscriptionHandler {
+	svc := service.NewSubscriptionService(
+		&oneSubscriptionRepo{sub: sub}, &subSummaryInvoiceRepo{}, &planByIDRepo{plan: plan},
+		nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	return NewSubscriptionHandler(svc)
+}
+
+func planWith(amount int64, unit domain.IntervalUnit, count int, currency string) *domain.Plan {
+	return &domain.Plan{
+		ID: uuid.New(), IntervalUnit: unit, IntervalCount: count,
+		Prices: []domain.Price{{Currency: currency, Amount: amount}},
+	}
+}
+
+func doGetSubFinSummary(h *SubscriptionHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/subscriptions/"+id+"/financial-summary", nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetSubscriptionFinancialSummary(c)
+	return w
+}
+
+func TestSubFinancialSummaryMonthlyActiveMRR(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	plan := planWith(200000, domain.IntervalMonth, 1, "USD")
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: plan.ID, Status: domain.SubscriptionStatusActive}
+	w := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), tenantID, sub.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned summary: got %d want 200", w.Code)
+	}
+	body := w.Body.String()
+	// Monthly plan → MRR == list price; the subscription will renew → next invoice.
+	for _, want := range []string{`"mrr":200000`, `"recurring_amount":200000`, `"currency":"USD"`, `"next_invoice_date"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("summary missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestSubFinancialSummaryAnnualNormalizesMRR(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	// 1,200,000/yr normalizes to 100,000/mo — MRR must not equal the list price.
+	plan := planWith(1200000, domain.IntervalYear, 1, "USD")
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: plan.ID, Status: domain.SubscriptionStatusActive}
+	body := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), tenantID, sub.ID.String()).Body.String()
+	if !strings.Contains(body, `"mrr":100000`) || !strings.Contains(body, `"recurring_amount":1200000`) {
+		t.Fatalf("annual MRR not normalized to monthly: %s", body)
+	}
+}
+
+func TestSubFinancialSummaryCanceledHasZeroMRRNoNextInvoice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	plan := planWith(200000, domain.IntervalMonth, 1, "USD")
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: plan.ID, Status: domain.SubscriptionStatusCanceled}
+	body := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), tenantID, sub.ID.String()).Body.String()
+	// Non-active → MRR 0 (by the same rule GetMRR uses) and no forecast next invoice.
+	if !strings.Contains(body, `"mrr":0`) {
+		t.Fatalf("canceled subscription must have MRR 0: %s", body)
+	}
+	if strings.Contains(body, `"next_invoice_date"`) {
+		t.Fatalf("canceled subscription must not forecast a next invoice: %s", body)
+	}
+}
+
+func TestSubFinancialSummaryPausedHasZeroMRR(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	plan := planWith(200000, domain.IntervalMonth, 1, "USD")
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: plan.ID, Status: domain.SubscriptionStatusPaused}
+	body := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), tenantID, sub.ID.String()).Body.String()
+	if !strings.Contains(body, `"mrr":0`) || strings.Contains(body, `"next_invoice_date"`) {
+		t.Fatalf("paused subscription: want MRR 0 and no next invoice, got %s", body)
+	}
+}
+
+func TestSubFinancialSummaryCancelAtPeriodEndNoNextInvoice(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	plan := planWith(200000, domain.IntervalMonth, 1, "USD")
+	// Active but set to cancel at period end → still MRR>0 today, but no renewal.
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: tenantID, PlanID: plan.ID, Status: domain.SubscriptionStatusActive, CancelAtPeriodEnd: true}
+	body := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), tenantID, sub.ID.String()).Body.String()
+	if !strings.Contains(body, `"mrr":200000`) {
+		t.Fatalf("active sub keeps MRR even when cancel-at-period-end: %s", body)
+	}
+	if strings.Contains(body, `"next_invoice_date"`) {
+		t.Fatalf("cancel-at-period-end must not forecast a next invoice: %s", body)
+	}
+}
+
+func TestSubFinancialSummaryCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	plan := planWith(200000, domain.IntervalMonth, 1, "USD")
+	sub := &domain.Subscription{ID: uuid.New(), TenantID: uuid.New(), PlanID: plan.ID, Status: domain.SubscriptionStatusActive}
+	if got := doGetSubFinSummary(newSubFinSummaryHandler(sub, plan), uuid.New(), sub.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant summary: got %d want 404 (flat)", got)
+	}
+}
+
+func TestSubFinancialSummaryBadIdIs400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	if got := doGetSubFinSummary(newSubFinSummaryHandler(nil, nil), uuid.New(), "nope").Code; got != http.StatusBadRequest {
+		t.Fatalf("bad id: got %d want 400", got)
+	}
+}
+
+// --- GET /v1/payment-attempts/:id (payment object) -------------------------
+
+func newPaymentGetHandler(detail *domain.PaymentAttemptDetail) *SubscriptionHandler {
+	svc := service.NewSubscriptionService(nil, &oneInvoiceRepo{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	svc.SetPaymentAttemptLister(&mockAttemptLister{detail: detail})
+	return NewSubscriptionHandler(svc)
+}
+
+func doGetPayment(h *SubscriptionHandler, tenantID uuid.UUID, id string) *httptest.ResponseRecorder {
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/payment-attempts/"+id, nil)
+	c.Params = gin.Params{{Key: "id", Value: id}}
+	c.Set("tenant_id", tenantID)
+	h.GetPaymentAttempt(c)
+	return w
+}
+
+func sampleFailedPayment(tenantID uuid.UUID) *domain.PaymentAttemptDetail {
+	return &domain.PaymentAttemptDetail{
+		PaymentAttempt: domain.PaymentAttempt{
+			ID: uuid.New(), TenantID: tenantID, InvoiceID: uuid.New(),
+			Gateway: "stripe", Method: "card", Status: domain.PaymentAttemptFailed,
+			FailureCode: "card_declined", Amount: 5000,
+		},
+		InvoiceNumber: "INV-9", Currency: "USD", CustomerID: uuid.New(),
+	}
+}
+
+func TestGetPaymentReturnsOwnedRowWithContext(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	pa := sampleFailedPayment(tenantID)
+	w := doGetPayment(newPaymentGetHandler(pa), tenantID, pa.ID.String())
+	if w.Code != http.StatusOK {
+		t.Fatalf("owned payment: got %d want 200", w.Code)
+	}
+	body := w.Body.String()
+	// The response resolves the invoice-level context (customer, invoice, currency)
+	// and preserves the failure state — the point of the addressable object.
+	for _, want := range []string{`"customer_id"`, `"invoice_number":"INV-9"`, `"currency":"USD"`, `"failure_code":"card_declined"`, `"status":"failed"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("payment body missing %s: %s", want, body)
+		}
+	}
+}
+
+func TestGetPaymentCrossTenantIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	pa := sampleFailedPayment(uuid.New())
+	if got := doGetPayment(newPaymentGetHandler(pa), uuid.New(), pa.ID.String()).Code; got != http.StatusNotFound {
+		t.Fatalf("cross-tenant payment: got %d want 404 (flat — never confirm existence)", got)
+	}
+}
+
+func TestGetPaymentUnknownIs404(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tenantID := uuid.New()
+	if got := doGetPayment(newPaymentGetHandler(sampleFailedPayment(tenantID)), tenantID, uuid.New().String()).Code; got != http.StatusNotFound {
+		t.Fatalf("unknown payment id: got %d want 404", got)
+	}
+}
+
+func TestGetPaymentBadIdIs400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	if got := doGetPayment(newPaymentGetHandler(nil), uuid.New(), "nope").Code; got != http.StatusBadRequest {
+		t.Fatalf("bad id: got %d want 400", got)
 	}
 }
 

@@ -593,6 +593,7 @@ func (s *SubscriptionService) GetInvoiceJournalEntries(ctx context.Context, tena
 type paymentAttemptLister interface {
 	ListByInvoice(ctx context.Context, tenantID, invoiceID uuid.UUID) ([]*domain.PaymentAttempt, error)
 	List(ctx context.Context, tenantID uuid.UUID, status string, limit, offset int) ([]domain.PaymentAttemptListItem, int, error)
+	GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error)
 }
 
 // SetPaymentAttemptLister enables GetInvoicePaymentAttempts. Without it, that
@@ -622,6 +623,17 @@ func (s *SubscriptionService) GetInvoicePaymentAttempts(ctx context.Context, ten
 		attempts = []*domain.PaymentAttempt{}
 	}
 	return attempts, nil
+}
+
+// GetPaymentAttempt returns one payment attempt for the tenant as an addressable
+// object, resolved with its invoice/customer/subscription context. Returns
+// (nil, nil) when the attempt doesn't exist for the tenant (handler → 404), and
+// when no lister is wired (same as the invoice-history read).
+func (s *SubscriptionService) GetPaymentAttempt(ctx context.Context, tenantID, id uuid.UUID) (*domain.PaymentAttemptDetail, error) {
+	if s.paymentAttempts == nil {
+		return nil, nil
+	}
+	return s.paymentAttempts.GetByID(ctx, tenantID, id)
 }
 
 // invoiceStatusHistoryReader is the narrow read the invoice status timeline
@@ -769,6 +781,91 @@ func (s *SubscriptionService) GetByID(ctx context.Context, tenantID, subscriptio
 		return nil, ErrSubscriptionNotFound
 	}
 	return sub, nil
+}
+
+// subscriptionWillRenew reports whether the subscription will produce another
+// invoice at the end of the current period — the only case where forecasting a
+// next-invoice date/amount is honest. Paused/canceled/past_due/unpaid and any
+// cancel-at-period-end subscription will not renew into a fresh invoice.
+func subscriptionWillRenew(sub *domain.Subscription) bool {
+	if sub.CancelAtPeriodEnd {
+		return false
+	}
+	switch sub.Status {
+	case domain.SubscriptionStatusActive, domain.SubscriptionStatusTrialing:
+		return true
+	default:
+		return false
+	}
+}
+
+// GetFinancialSummary returns one subscription's financial position: recurring
+// value (MRR + list price), next-invoice date/base-amount when it will renew,
+// and its invoice-derived outstanding position per currency. MRR reuses the
+// engine's canonical definition verbatim (monthly-normalized list price,
+// active-only). Returns (nil, nil) when the subscription doesn't exist for the
+// tenant, so the handler returns a flat 404. Read-only.
+func (s *SubscriptionService) GetFinancialSummary(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.SubscriptionFinancialSummary, error) {
+	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if sub == nil || sub.TenantID != tenantID {
+		return nil, nil // not found / cross-tenant → 404
+	}
+
+	summary := &domain.SubscriptionFinancialSummary{
+		SubscriptionID:     sub.ID,
+		Status:             string(sub.Status),
+		CurrentPeriodStart: sub.CurrentPeriodStart,
+		CurrentPeriodEnd:   sub.CurrentPeriodEnd,
+		CouponID:           sub.CouponID,
+		DiscountActive:     sub.CouponAppliedCurrentPeriod,
+		Outstanding:        []domain.CustomerFinancialSummaryCurrency{},
+	}
+
+	// Plan-derived recurring value + MRR. planRepo.GetByID returns (nil, nil) for
+	// a missing plan, so guard on nil before touching Prices.
+	if plan, perr := s.planRepo.GetByID(ctx, sub.PlanID); perr == nil && plan != nil && len(plan.Prices) > 0 {
+		price := plan.Prices[0]
+		summary.Currency = price.Currency
+		summary.RecurringAmount = price.Amount
+		summary.IntervalUnit = string(plan.IntervalUnit)
+		summary.IntervalCount = plan.IntervalCount
+		// MRR — identical definition to the tenant-wide GetMRR: monthly-normalized
+		// list price, counted only for an active subscription (0 otherwise).
+		if sub.Status == domain.SubscriptionStatusActive {
+			summary.MRR = monthlyMinorUnits(price.Amount, plan.IntervalUnit, plan.IntervalCount)
+		}
+		// Next invoice — only when the subscription will actually renew. The amount
+		// is the plan LIST/base price; tax/coupon/add-ons/usage are excluded (no
+		// single deterministic source — documented gap), so it is never the total.
+		if subscriptionWillRenew(sub) {
+			end := sub.CurrentPeriodEnd
+			summary.NextInvoiceDate = &end
+			summary.NextInvoiceBaseAmount = price.Amount
+		}
+	}
+
+	// Invoice-derived position (outstanding/past-due/billed/paid), per currency.
+	rows, err := s.invoiceRepo.GetSubscriptionFinancialSummary(ctx, tenantID, subscriptionID)
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) > 0 {
+		summary.Outstanding = rows
+	}
+
+	// Currency fallback when the plan had no price: use the outstanding position's
+	// currency if any, else USD.
+	if summary.Currency == "" {
+		if len(summary.Outstanding) > 0 {
+			summary.Currency = summary.Outstanding[0].Currency
+		} else {
+			summary.Currency = "USD"
+		}
+	}
+	return summary, nil
 }
 
 // generateEInvoiceAfterCommit registers the government e-invoice (IRN) for a

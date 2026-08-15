@@ -83,3 +83,29 @@ func (h *ReconciliationHandler) ListReconciliationRuns(c *gin.Context) {
 	}
 	c.JSON(http.StatusOK, gin.H{"data": runs})
 }
+
+// GetReconciliationRun returns one recorded run with its stored discrepancy
+// rows — the addressable, explainable run object. Cross-tenant ids return 404.
+// GET /v1/finance/reconciliation/runs/:id
+func (h *ReconciliationHandler) GetReconciliationRun(c *gin.Context) {
+	tenantID, ok := c.Get("tenant_id")
+	if !ok {
+		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid reconciliation run id")
+		return
+	}
+	run, err := h.service.GetRun(c.Request.Context(), tenantID.(uuid.UUID), id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch reconciliation run")
+		return
+	}
+	if run == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "reconciliation run not found")
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": run})
+}
