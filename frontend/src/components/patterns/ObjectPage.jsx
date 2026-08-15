@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import { ArrowLeft } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -46,6 +46,20 @@ import { ErrorState } from "@/components/patterns/ErrorState";
  *  - meta:   ReactNode under the amount (ids, dates — quiet, secondary)
  *  - actions: ReactNode, right-aligned (primary + contextual actions)
  */
+// useListBackDestination — resolve an object page's back-link target. A DataTable
+// row stashes its originating list URL (with filters/search/page/sort) in
+// navigation state as `from`; when that `from` is exactly this object's owning
+// list (`backTo`), we return to it verbatim so the operator lands back on their
+// filtered view. Cross-object navigation and directly-opened object URLs (no
+// matching state) fall back to the static list root. One shared mechanism — no
+// per-page wiring, no second navigation system, browser Back unaffected.
+function useListBackDestination(backTo) {
+  const { state } = useLocation();
+  const from = state?.from;
+  if (backTo && typeof from === "string" && from.split("?")[0] === backTo) return from;
+  return backTo;
+}
+
 export function ObjectHeader({
   backTo,
   backLabel,
@@ -58,11 +72,12 @@ export function ObjectHeader({
   actions,
   className,
 }) {
+  const backDest = useListBackDestination(backTo);
   return (
     <div className={cn("mb-6", className)}>
       {backTo && (
         <Link
-          to={backTo}
+          to={backDest}
           className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
@@ -215,10 +230,11 @@ export function ObjectPageSkeleton({ hasRail = true, className }) {
 // StateBackLink — the contextual back navigation shown in the not-found/error
 // states (e.g. "Back to Invoices"). Renders nothing without a target.
 function StateBackLink({ to, label }) {
+  const backDest = useListBackDestination(to);
   if (!to) return null;
   return (
     <Button asChild variant="ghost" size="sm">
-      <Link to={to}>
+      <Link to={backDest}>
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         {label || "Back"}
       </Link>

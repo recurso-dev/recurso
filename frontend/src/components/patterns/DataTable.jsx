@@ -120,7 +120,12 @@ export function DataTable({
   ariaLabelledby = "page-title",
   ariaLabel,
 }) {
-  const { pathname } = useLocation();
+  const { pathname, search: locationSearch } = useLocation();
+  // The originating list URL (with its filters/search/page/sort) rides along as
+  // navigation state so the object page's back-link can return here exactly —
+  // see ObjectHeader/useListBackDestination. Direct object opens have no state
+  // and fall back to the static list root.
+  const fromUrl = pathname + locationSearch;
   const navigate = useNavigate();
   const [internalSort, setInternalSort] = useState(null);
   const alignClass = {
@@ -184,7 +189,8 @@ export function DataTable({
   // divider. Pure CSS position: sticky — no scroll listeners.
   const stickyHead = "sticky top-0 z-20 bg-muted border-b border-border";
   const stickyWrap = "max-h-[calc(100vh-15rem)]";
-  const activateRow = (row) => (rowHref ? navigate(rowHref(row)) : onRowClick(row));
+  const activateRow = (row) =>
+    rowHref ? navigate(rowHref(row), { state: { from: fromUrl } }) : onRowClick(row);
   const showChevron = interactive && rowChevron;
   const cellPad = density === "compact" ? "[&_td]:py-2 [&_th]:h-9" : "";
 
@@ -429,6 +435,7 @@ export function DataTable({
                             rowHref ? (
                               <Link
                                 to={rowHref(row)}
+                                state={{ from: fromUrl }}
                                 onClick={(e) => e.stopPropagation()}
                                 className="block w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               >
