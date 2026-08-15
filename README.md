@@ -138,7 +138,7 @@ it; the engine runs fully without it.
 One command from clone to a populated dashboard — builds and starts the full stack (API, dashboard, PostgreSQL, TigerBeetle, Mailhog) and loads demo data:
 
 ```bash
-git clone https://github.com/recurso-dev/recurso.git && cd recur-so
+git clone https://github.com/recurso-dev/recurso.git && cd recurso
 make demo
 ```
 
@@ -149,7 +149,7 @@ Then open the dashboard at `http://localhost:5173` and log in with API key `sk_t
 Prefer to run pieces individually?
 
 ```bash
-git clone https://github.com/recurso-dev/recurso.git && cd recur-so
+git clone https://github.com/recurso-dev/recurso.git && cd recurso
 make docker-up    # starts PostgreSQL + TigerBeetle
 make run          # migrations apply automatically
 ```
