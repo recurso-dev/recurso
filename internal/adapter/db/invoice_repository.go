@@ -692,6 +692,45 @@ func (r *InvoiceRepository) CountByTenant(ctx context.Context, tenantID uuid.UUI
 	return n, err
 }
 
+// SearchPaginated returns one page of the tenant's invoices whose invoice_number
+// matches `search` (case-insensitive substring), newest first. Tenant-scoped in
+// SQL, so a query never crosses tenants; an empty search returns no rows.
+func (r *InvoiceRepository) SearchPaginated(ctx context.Context, tenantID uuid.UUID, search string, limit, offset int) ([]*domain.Invoice, error) {
+	if search == "" {
+		return []*domain.Invoice{}, nil
+	}
+	query := `SELECT ` + invoiceListColumns + ` FROM invoices
+		WHERE tenant_id = $1 AND invoice_number ILIKE $2
+		ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+	rows, err := r.db.QueryContext(ctx, query, tenantID, "%"+search+"%", limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	invoices, err := scanInvoiceList(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
+	return invoices, nil
+}
+
+// CountSearch counts the tenant's invoices matching `search` (for pagination
+// metadata on the search path).
+func (r *InvoiceRepository) CountSearch(ctx context.Context, tenantID uuid.UUID, search string) (int, error) {
+	if search == "" {
+		return 0, nil
+	}
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM invoices WHERE tenant_id = $1 AND invoice_number ILIKE $2`,
+		tenantID, "%"+search+"%").Scan(&n)
+	return n, err
+}
+
 // ListByCustomerPaginated returns one page of a customer's invoices within the
 // tenant (newest first). Unlike GetByCustomerIDPaged — the portal path, where
 // customer-token auth does the guarding — this is the dashboard path, so the

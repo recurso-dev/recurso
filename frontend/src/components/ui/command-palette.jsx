@@ -3,11 +3,12 @@ import { useNavigate } from "react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowRight, Plus, Search, BookOpen, Library, Code2, ExternalLink,
-  Users, Package, Repeat, Loader2, AlertTriangle,
+  Users, Package, Repeat, FileText, CreditCard, Loader2, AlertTriangle,
 } from "lucide-react";
 
 import { cn, shortId, formatCurrency } from "@/lib/utils";
 import { Overline } from "@/components/ui/overline";
+import { Money } from "@/components/ui/money";
 import { endpoints } from "@/lib/api";
 import { useDebounce } from "@/hooks/useDebounce";
 import { rankResults } from "@/lib/paletteSearch";
@@ -45,7 +46,11 @@ const intervalAbbr = (u) => (u === "year" ? "yr" : u === "month" ? "mo" : u || "
 function useObjectSearch(type, q, enabled, getter) {
   return useQuery({
     queryKey: ["palette", type, q],
-    queryFn: async ({ signal }) => (await getter({ q, limit: LIMIT }, { signal }))?.data?.data || [],
+    // Both param names: customer/plan/subscription endpoints read `limit`, the
+    // invoice/payment endpoints read `per_page` — send both so the server caps at
+    // LIMIT either way (harmless where a name isn't read).
+    queryFn: async ({ signal }) =>
+      (await getter({ q, limit: LIMIT, per_page: LIMIT }, { signal }))?.data?.data || [],
     enabled,
     staleTime: 30_000,
     retry: false,
@@ -63,10 +68,15 @@ export function CommandPalette({ open, onOpenChange }) {
   const q = debounced.trim();
   const searchEnabled = open && q.length >= MIN_QUERY;
 
-  // Parallel per-object fan-out (Customers / Plans / Subscriptions).
+  // Parallel per-object fan-out (Customers / Plans / Subscriptions / Invoices /
+  // Payments). Invoice + payment search is server-side (GET /invoices?q,
+  // /payment-attempts?q — Batch F2 backend); customers/plans/subscriptions
+  // unchanged.
   const customersQ = useObjectSearch("customers", q, searchEnabled, endpoints.getCustomers);
   const plansQ = useObjectSearch("plans", q, searchEnabled, endpoints.getPlans);
   const subsQ = useObjectSearch("subscriptions", q, searchEnabled, endpoints.getSubscriptions);
+  const invoicesQ = useObjectSearch("invoices", q, searchEnabled, endpoints.getInvoices);
+  const paymentsQ = useObjectSearch("payments", q, searchEnabled, endpoints.getPaymentAttempts);
 
   // Read the shared id→name caches WITHOUT triggering their large fetch —
   // getQueryData is a synchronous snapshot (a list page may have loaded it, else
@@ -113,6 +123,35 @@ export function CommandPalette({ open, onOpenChange }) {
         }),
         rank: { id: (s) => s.id, name: (s) => custName[s.customer_id], secondary: (s) => s.status },
       }));
+      // Invoices — identity is the invoice number, context is the customer;
+      // amount + status ride along. The "search all" deep-link works (the
+      // invoices list consumes ?q).
+      out.push(buildSection("Invoices", FileText, invoicesQ, "/invoices", q, {
+        map: (i) => ({
+          to: `/invoices/${i.id}`,
+          primary: i.invoice_number || shortId(i.id),
+          secondary: custName[i.customer_id] || undefined,
+          amount: i.total,
+          currency: i.currency,
+          status: i.status,
+        }),
+        rank: { id: (i) => i.id, name: (i) => i.invoice_number, secondary: (i) => custName[i.customer_id] },
+      }));
+      // Payments — identity is the payment's invoice, context is the gateway
+      // reference; amount + status ride along. searchAll is suppressed because the
+      // payments-log page doesn't yet consume ?q (documented backend/UI gap).
+      out.push(buildSection("Payments", CreditCard, paymentsQ, "/payments", q, {
+        map: (p) => ({
+          to: `/payments/${p.id}`,
+          primary: p.invoice_number ? `Payment · ${p.invoice_number}` : "Payment",
+          secondary: p.gateway_payment_intent_id || p.method || undefined,
+          amount: p.amount,
+          currency: p.currency,
+          status: p.status,
+        }),
+        rank: { id: (p) => p.id, name: (p) => p.invoice_number, secondary: (p) => p.gateway_payment_intent_id },
+        searchAll: false,
+      }));
     }
 
     // Route / create / help — instant local filter (never blocks on the network).
@@ -126,7 +165,7 @@ export function CommandPalette({ open, onOpenChange }) {
 
     // Object groups only appear when they're loading, errored, or have results.
     return out.filter((s) => s.loading || s.error || s.items.length > 0);
-  }, [searchEnabled, q, customersQ, plansQ, subsQ, custName, planName]);
+  }, [searchEnabled, q, customersQ, plansQ, subsQ, invoicesQ, paymentsQ, custName, planName]);
 
   // Flat, navigable option list (object results + "search all" + nav items;
   // NOT loading/error rows) — the keyboard index space.
@@ -172,7 +211,9 @@ export function CommandPalette({ open, onOpenChange }) {
     }
   };
 
-  const anyLoading = searchEnabled && (customersQ.isLoading || plansQ.isLoading || subsQ.isLoading);
+  const anyLoading =
+    searchEnabled &&
+    (customersQ.isLoading || plansQ.isLoading || subsQ.isLoading || invoicesQ.isLoading || paymentsQ.isLoading);
   const noResults = q.length >= MIN_QUERY && !anyLoading && options.length === 0;
 
   let optionIndex = -1; // running index aligned with `options`
@@ -246,7 +287,7 @@ export function CommandPalette({ open, onOpenChange }) {
 // buildSection turns one object list-query into a render-ready section:
 // ranked+mapped items, a loading/error flag, and a "search all" deep-link when
 // the result set was capped at LIMIT (there may be more on the list page).
-function buildSection(group, icon, listQuery, listPath, q, { map, rank }) {
+function buildSection(group, icon, listQuery, listPath, q, { map, rank, searchAll = true }) {
   const rows = listQuery.data || [];
   const ranked = rankResults(rows, q, rank);
   const items = ranked.map((row) => ({ kind: "object", group, icon, ...map(row) }));
@@ -257,7 +298,7 @@ function buildSection(group, icon, listQuery, listPath, q, { map, rank }) {
     loading: listQuery.isLoading,
     error: listQuery.isError,
     items,
-    searchAll: capped
+    searchAll: capped && searchAll
       ? {
           kind: "searchAll",
           group,
@@ -315,6 +356,9 @@ function Option({ item, index, active, onGo, onHover }) {
               <span className="block truncate text-xs text-muted-foreground">{item.secondary}</span>
             )}
           </span>
+          {item.amount != null && (
+            <Money amountMinor={item.amount} currency={item.currency} size="sm" className="shrink-0" />
+          )}
           {item.status && <StatusBadge status={item.status} />}
         </>
       ) : (
