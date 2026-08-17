@@ -22,3 +22,22 @@ type CloudTenantCustomer struct {
 	SubscriptionID   *uuid.UUID `json:"subscription_id,omitempty" db:"subscription_id"`
 	CreatedAt        time.Time  `json:"created_at" db:"created_at"`
 }
+
+// CloudTenantUsage is one tenant's metered activity for a billing period, in a
+// single currency — the reading the founder charges Recurso Cloud on. Increment
+// 2 measures it; it is not yet turned into a charge.
+//
+//   - TrackedRevenueMinor: everything the tenant invoiced in the period (paid or
+//     not) — the number the free-tier threshold is compared against.
+//   - CollectedVolumeMinor: payments the tenant actually collected in the period
+//     — the base a usage fee (e.g. the published 0.4%) would apply to.
+type CloudTenantUsage struct {
+	ID                   uuid.UUID `json:"id"`
+	TenantID             uuid.UUID `json:"tenant_id" db:"tenant_id"`
+	PeriodStart          time.Time `json:"period_start" db:"period_start"`
+	PeriodEnd            time.Time `json:"period_end" db:"period_end"`
+	Currency             string    `json:"currency" db:"currency"`
+	TrackedRevenueMinor  int64     `json:"tracked_revenue_minor" db:"tracked_revenue_minor"`
+	CollectedVolumeMinor int64     `json:"collected_volume_minor" db:"collected_volume_minor"`
+	ComputedAt           time.Time `json:"computed_at" db:"computed_at"`
+}

@@ -1,6 +1,6 @@
 # Recurso Cloud self-billing — "Recurso runs on Recurso"
 
-**Status:** Increment 1 shipped (customer mirror). Increments 2–4 designed, not built.
+**Status:** Increments 1 (customer mirror) + 2 (usage meter) shipped — both money-free. Increments 3 (plan + subscription + charging) and 4 (collection) designed, not built.
 
 ## The problem
 
@@ -55,15 +55,30 @@ Recurso plans. (Adjustable — this is config, not a hard-coded fact.)
   - **Result:** every signup now shows up as a customer in the founder's account.
     No plan, no subscription, no charge yet.
 
-- **Increment 2 — Recurso Cloud plan + usage metering.** Create the "Recurso
-  Cloud" plan (free base + a metered component). A monthly job measures each
-  tenant's own tracked revenue / collected volume (already in the DB) and pushes
-  it as usage events onto that tenant's subscription. Fills
-  `cloud_tenant_customer.subscription_id`. Still free under quota → no charge.
+- **Increment 2 — usage meter (SHIPPED, money-free).** A daily scheduler
+  (`CloudUsageScheduler`, distributed-locked, gated behind `PLATFORM_TENANT_ID`)
+  measures every tenant's current-month activity into `cloud_tenant_usage`, one
+  reading per `(tenant, period, currency)`:
+  - `tracked_revenue_minor` = `SUM(invoices.total)` in the window (paid or not —
+    matches the published definition; the free-tier threshold compares here).
+  - `collected_volume_minor` = `SUM(payment_attempts.amount)` for succeeded
+    attempts (currency from the invoice) — the base a usage fee applies to.
+  Idempotent upsert, so re-measuring the accruing month just refreshes rows.
+  **Why no plan/subscription here:** in Recurso, creating a (non-trial)
+  subscription immediately raises an invoice (`CreateSubscription` builds the
+  first invoice, even at $0), and a trial auto-converts on schedule — both move
+  money. To keep money strictly out until it's gated, the plan + subscription
+  are created *together with* charging in Increment 3, not here. This increment
+  only reads billing data and writes readings; the invariant harness is
+  unaffected.
 
-- **Increment 3 — charging (money path, invariant-harness gated).** Apply the
-  quota + price, generate the invoice, post the ledger legs. This is the first
-  increment that moves money and must keep reconciliation at zero.
+- **Increment 3 — Recurso Cloud plan + subscription + charging (money path,
+  invariant-harness gated).** Create the "Recurso Cloud" plan (free base + a
+  metered component), subscribe each cloud customer (filling
+  `cloud_tenant_customer.subscription_id`), and turn the `cloud_tenant_usage`
+  readings into a charge: apply the quota + price, generate the invoice, post
+  the ledger legs — all under a controlled billing run that keeps reconciliation
+  at zero. This is the first increment that moves money.
 
 - **Increment 4 — collection + dunning.** Charge the card, retry on failure —
   reusing the existing payment + dunning machinery.

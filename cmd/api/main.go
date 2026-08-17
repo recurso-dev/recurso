@@ -1096,6 +1096,23 @@ func main() {
 		log.Println("Billing cycle scheduler disabled (BILLING_CYCLE_INTERVAL=0)")
 	}
 
+	// Recurso Cloud self-billing usage meter (Increment 2): once a day, measure
+	// every tenant's tracked revenue + collected volume for the current month.
+	// Money-free (readings only). Gated behind PLATFORM_TENANT_ID so the whole
+	// self-billing feature stays off until the founder opts in.
+	if platformID := strings.TrimSpace(os.Getenv("PLATFORM_TENANT_ID")); platformID != "" {
+		if _, err := uuid.Parse(platformID); err != nil {
+			slog.Error("invalid PLATFORM_TENANT_ID — Recurso Cloud usage meter disabled", "value", platformID, "error", err)
+		} else {
+			cloudUsageScheduler := scheduler.NewCloudUsageScheduler(
+				service.NewCloudUsageService(db.NewCloudUsageRepository(database), slog.Default()),
+				locker,
+			)
+			cloudUsageScheduler.Start()
+			defer cloudUsageScheduler.Stop()
+		}
+	}
+
 	// US economic-nexus evaluation (daily): auto-establish nexus when a
 	// state threshold is crossed (ENG-16 Phase 2).
 	nexusStatusService := service.NewNexusStatusService(taxNexusRepo)
