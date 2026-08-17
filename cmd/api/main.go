@@ -494,6 +494,29 @@ func main() {
 	// the seller tax jurisdiction for non-GST tenants — so a US signup invoices
 	// under US sales tax from day one instead of the env default.
 	authService.SetPrimaryCountrySetter(db.NewEntityRepository(database).SetPrimaryCountry)
+	// Recurso Cloud self-billing ("Recurso runs on Recurso"): when
+	// PLATFORM_TENANT_ID names the founder's own tenant, every signup is
+	// mirrored as a Customer inside that tenant's account, and existing tenants
+	// are backfilled once at boot. Unset → feature off (no mirroring). No money
+	// moves in this increment; charging lands in a later one.
+	if platformID := strings.TrimSpace(os.Getenv("PLATFORM_TENANT_ID")); platformID != "" {
+		if pid, err := uuid.Parse(platformID); err != nil {
+			slog.Error("invalid PLATFORM_TENANT_ID — Recurso Cloud self-billing disabled", "value", platformID, "error", err)
+		} else {
+			cloudBilling := service.NewCloudBillingService(pid, customerService, db.NewCloudBillingRepository(database), tenantRepo, slog.Default())
+			authService.SetCloudProvisioner(cloudBilling.ProvisionTenant)
+			go func() {
+				n, err := cloudBilling.Backfill(context.Background())
+				if err != nil {
+					slog.Error("Recurso Cloud backfill failed", "error", err)
+					return
+				}
+				if n > 0 {
+					slog.Info("Recurso Cloud backfill provisioned customers for existing tenants", "count", n)
+				}
+			}()
+		}
+	}
 	// Phase 2 auth: password reset + TOTP MFA. The reset link points at the
 	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
 	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)

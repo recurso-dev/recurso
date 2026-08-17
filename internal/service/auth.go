@@ -96,6 +96,12 @@ type AuthService struct {
 	appBaseURL   string
 	logger       *slog.Logger
 
+	// Recurso Cloud self-billing (optional): when wired via SetCloudProvisioner,
+	// each new signup is mirrored as a Customer inside the platform/founder
+	// tenant's own Recurso account. Best-effort — a failure here never fails the
+	// signup (a startup backfill re-tries). Nil when PLATFORM_TENANT_ID is unset.
+	provisionCloudCustomer func(ctx context.Context, tenant *domain.Tenant) error
+
 	// Phase 3 dependency (OAuth social login). Configured via ConfigureOAuth so
 	// the base constructor and existing callers stay unchanged; LoginWithOAuth
 	// guards against nil.
@@ -244,6 +250,13 @@ func (s *AuthService) SetPrimaryCountrySetter(fn func(ctx context.Context, tenan
 	s.setPrimaryCountry = fn
 }
 
+// SetCloudProvisioner wires Recurso Cloud self-billing: fn mirrors a new signup
+// tenant as a Customer inside the platform tenant's own account. Left unset
+// (nil) when PLATFORM_TENANT_ID is not configured, disabling the feature.
+func (s *AuthService) SetCloudProvisioner(fn func(ctx context.Context, tenant *domain.Tenant) error) {
+	s.provisionCloudCustomer = fn
+}
+
 // Register creates a tenant (reusing the tenant-creation path), its first user
 // as the owner, and opens a session. The tenant API key is still returned so
 // CLI/dev flows keep a key. country ("" to skip) is the registrant's declared
@@ -281,6 +294,16 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 		if err := s.setPrimaryCountry(ctx, tenant.ID, country); err != nil {
 			s.logger.Warn("failed to stamp registration country on primary entity; seller jurisdiction falls back to env defaults",
 				"tenant_id", tenant.ID, "country", country, "error", err)
+		}
+	}
+
+	// Recurso Cloud self-billing: mirror this signup as a customer of the
+	// founder's own Recurso account. Best-effort — a failure must not fail the
+	// signup; the startup backfill re-tries any tenant that slips through.
+	if s.provisionCloudCustomer != nil {
+		if err := s.provisionCloudCustomer(ctx, tenant); err != nil {
+			s.logger.Warn("failed to provision Recurso Cloud customer for new tenant; startup backfill will retry",
+				"tenant_id", tenant.ID, "error", err)
 		}
 	}
 
