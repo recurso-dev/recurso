@@ -55,6 +55,14 @@ const entityParams = (entityId) => (entityId ? { entity_id: entityId } : {});
 const idemConfig = (key) => (key ? { headers: { 'Idempotency-Key': key } } : undefined);
 
 export const endpoints = {
+  // --- Founder / platform (cross-tenant; gated by a FOUNDER_TOKEN, NOT the
+  // tenant session). Sends only the bearer token, no tenant cookie. ---
+  platformMetrics: (token) =>
+    axios.get(`${API_ROOT}/platform/metrics`, {
+      headers: { Authorization: `Bearer ${token}` },
+      withCredentials: false,
+    }),
+
   // --- Auth (session, cookie-based) ---
   authRegister: (data) => axios.post(`${API_ROOT}/auth/register`, data),
   authLogin: (email, password) =>

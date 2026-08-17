@@ -16,6 +16,25 @@ type PlatformMetrics struct {
 	ByPlanTier       map[string]int   `json:"by_plan_tier"`
 	RecentSignups    []PlatformSignup `json:"recent_signups"`
 	GeneratedAt      time.Time        `json:"generated_at"`
+
+	// Recurso Cloud self-billing dry-run (Increment 3a): what each tenant WOULD
+	// be charged this period. A preview only — no invoice, no money. Empty until
+	// the usage meter + preview run (PLATFORM_TENANT_ID set).
+	CloudCharges          []PlatformCloudCharge `json:"cloud_charges"`
+	CloudChargeTotalMinor int64                 `json:"cloud_charge_total_minor"`
+	CloudChargeCurrency   string                `json:"cloud_charge_currency"`
+}
+
+// PlatformCloudCharge is one tenant's dry-run Recurso Cloud charge for the
+// current period, with the tenant's identity, in the reporting currency.
+type PlatformCloudCharge struct {
+	TenantID             string `json:"tenant_id"`
+	Name                 string `json:"name"`
+	Email                string `json:"email"`
+	TrackedRevenueMinor  int64  `json:"tracked_revenue_minor"`
+	CollectedVolumeMinor int64  `json:"collected_volume_minor"`
+	WouldChargeMinor     int64  `json:"would_charge_minor"`
+	Reason               string `json:"reason"`
 }
 
 // PlatformSignup is one recent tenant in the founder feed.

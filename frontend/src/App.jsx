@@ -114,6 +114,9 @@ const BillingSettings = lazy(() => import('./pages/settings/BillingSettings'))
 const Organizations = lazy(() => import('./pages/Organizations'))
 const GSTReturns = lazy(() => import('./pages/GSTReturns'))
 const AskAnalytics = lazy(() => import('./pages/AskAnalytics'))
+// Founder/operator view — cross-tenant, gated by FOUNDER_TOKEN (not the tenant
+// session), so it lives OUTSIDE the tenant dashboard shell + PrivateRoute.
+const Platform = lazy(() => import('./pages/Platform'))
 
 const PageFallback = () => (
     <div className="flex h-full min-h-[40vh] w-full items-center justify-center">
@@ -154,6 +157,9 @@ function App() {
                     <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/verify-email" element={<VerifyEmail />} />
                     <Route path="/accept-invite" element={<AcceptInvite />} />
+
+                    {/* Founder/operator view (public route; self-gates on a FOUNDER_TOKEN) */}
+                    <Route path="/platform" element={<Platform />} />
 
                     {/* Hosted Checkout (public) */}
                     <Route path="/checkout/:id" element={<Checkout />} />

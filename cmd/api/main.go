@@ -1641,6 +1641,7 @@ func main() {
 	// returning 404 (feature off) when unset, so no tenant login can reach it.
 	founderToken := os.Getenv("FOUNDER_TOKEN")
 	platformRepo := db.NewPlatformRepository(database)
+	platformChargeRepo := db.NewCloudChargeRepository(database)
 	r.GET("/platform/metrics", func(c *gin.Context) {
 		if founderToken == "" {
 			c.Status(http.StatusNotFound)
@@ -1655,6 +1656,19 @@ func main() {
 			slog.Error("platform metrics query failed", "error", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compute platform metrics"})
 			return
+		}
+		// Attach the money-free Recurso Cloud charge dry-run for the current
+		// month (what each tenant WOULD be charged). Best-effort: a failure here
+		// leaves the funnel metrics intact rather than failing the whole view.
+		periodStart, _ := service.MonthBounds(time.Now().UTC())
+		if charges, err := platformChargeRepo.ListPreviewsWithTenant(c.Request.Context(), periodStart); err != nil {
+			slog.Warn("platform metrics: cloud charge preview unavailable", "error", err)
+		} else {
+			pm.CloudCharges = charges
+			pm.CloudChargeCurrency = getEnvDefault("REPORTING_CURRENCY", "USD")
+			for _, ch := range charges {
+				pm.CloudChargeTotalMinor += ch.WouldChargeMinor
+			}
 		}
 		c.JSON(http.StatusOK, pm)
 	})
