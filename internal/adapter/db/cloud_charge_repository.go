@@ -44,6 +44,36 @@ func (r *CloudChargeRepository) UpsertPreview(ctx context.Context, rows []*domai
 	return nil
 }
 
+// ListPreviewsWithTenant returns the dry-run charges for a period joined to each
+// tenant's name/email — the founder-facing view. Ordered by would-charge
+// descending so the biggest bills surface first.
+func (r *CloudChargeRepository) ListPreviewsWithTenant(ctx context.Context, periodStart time.Time) ([]domain.PlatformCloudCharge, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT p.tenant_id, COALESCE(t.name, ''), COALESCE(t.email, ''),
+		       p.tracked_revenue_minor, p.collected_volume_minor, p.would_charge_minor, p.reason
+		FROM cloud_charge_preview p
+		LEFT JOIN tenants t ON t.id = p.tenant_id
+		WHERE p.period_start = $1
+		ORDER BY p.would_charge_minor DESC, p.tracked_revenue_minor DESC`,
+		periodStart,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []domain.PlatformCloudCharge
+	for rows.Next() {
+		var c domain.PlatformCloudCharge
+		if err := rows.Scan(&c.TenantID, &c.Name, &c.Email,
+			&c.TrackedRevenueMinor, &c.CollectedVolumeMinor, &c.WouldChargeMinor, &c.Reason); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // ListPreviewByPeriod returns all dry-run charges for a period (by period_start),
 // newest computation reflected. Read-only.
 func (r *CloudChargeRepository) ListPreviewByPeriod(ctx context.Context, periodStart time.Time) ([]*domain.CloudChargePreview, error) {

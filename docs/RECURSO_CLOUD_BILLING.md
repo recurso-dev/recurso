@@ -96,8 +96,13 @@ Recurso plans. (Adjustable — this is config, not a hard-coded fact.)
 
 Set `PLATFORM_TENANT_ID=<founder tenant id>` on the Cloud Run API. On the next
 boot the backfill mirrors existing tenants; new signups mirror automatically.
-(To also see the raw cross-tenant funnel, `FOUNDER_TOKEN` still gates
-`GET /platform/metrics`.)
+
+**Operator view:** with `FOUNDER_TOKEN` also set, the founder page at
+`/platform` (a public route that self-gates on the token, held in memory only —
+never localStorage) shows the signup funnel and the money-free charge dry-run —
+each tenant, its tracked revenue / collected volume, and what it *would* be
+charged this month. It calls the `FOUNDER_TOKEN`-gated `GET /platform/metrics`,
+which now includes `cloud_charges` for the current period.
 
 ## Non-goals / guardrails
 
