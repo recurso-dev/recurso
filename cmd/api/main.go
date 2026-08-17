@@ -1104,10 +1104,17 @@ func main() {
 		if _, err := uuid.Parse(platformID); err != nil {
 			slog.Error("invalid PLATFORM_TENANT_ID — Recurso Cloud usage meter disabled", "value", platformID, "error", err)
 		} else {
+			cloudUsageRepo := db.NewCloudUsageRepository(database)
 			cloudUsageScheduler := scheduler.NewCloudUsageScheduler(
-				service.NewCloudUsageService(db.NewCloudUsageRepository(database), slog.Default()),
+				service.NewCloudUsageService(cloudUsageRepo, slog.Default()),
 				locker,
 			)
+			// Increment 3 dry-run: after each measurement, compute (money-free)
+			// what each tenant WOULD be charged, normalized to the reporting
+			// currency via FX, and store it in cloud_charge_preview for review.
+			cloudChargeSvc := service.NewCloudChargeService(cloudUsageRepo, db.NewCloudChargeRepository(database), slog.Default())
+			cloudChargeSvc.SetFX(fxProvider, fxFallback, reportingCurrency)
+			cloudUsageScheduler.SetPreviewer(cloudChargeSvc)
 			cloudUsageScheduler.Start()
 			defer cloudUsageScheduler.Stop()
 		}

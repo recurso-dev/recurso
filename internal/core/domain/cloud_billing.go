@@ -41,3 +41,46 @@ type CloudTenantUsage struct {
 	CollectedVolumeMinor int64     `json:"collected_volume_minor" db:"collected_volume_minor"`
 	ComputedAt           time.Time `json:"computed_at" db:"computed_at"`
 }
+
+// Recurso Cloud pricing (the published model on recurso.dev). Amounts are minor
+// units of the reporting currency (USD cents). Free up to $10,000 of tracked
+// revenue a month; above that, the lower of 0.4% of collected volume or a flat
+// $99 cap.
+const (
+	CloudFreeTierTrackedRevenueMinor int64 = 10_000_00 // $10,000
+	CloudUsageRateBps                int64 = 40        // 0.4% = 40 basis points
+	CloudMonthlyCapMinor             int64 = 99_00     // $99
+)
+
+// ComputeCloudCharge applies the Recurso Cloud pricing to one tenant's period
+// totals (already normalized to the reporting currency) and returns the amount
+// to charge in minor units plus a human reason. Pure function — the single
+// source of truth for what a tenant owes, so it can be unit-tested exhaustively
+// and reused by both the dry-run preview and (later) real invoicing.
+func ComputeCloudCharge(trackedRevenueMinor, collectedVolumeMinor int64) (int64, string) {
+	if trackedRevenueMinor <= CloudFreeTierTrackedRevenueMinor {
+		return 0, "under $10,000 free tier"
+	}
+	pct := collectedVolumeMinor * CloudUsageRateBps / 10_000 // 0.4% of collected volume
+	if pct <= CloudMonthlyCapMinor {
+		return pct, "0.4% of collected volume"
+	}
+	return CloudMonthlyCapMinor, "$99 monthly cap"
+}
+
+// CloudChargePreview is one tenant's DRY-RUN charge for a period: what Recurso
+// Cloud would bill, in the reporting currency, with the usage it was computed
+// from. It is a preview only — no invoice, no ledger, no money. Used to review
+// pricing before real charging is enabled.
+type CloudChargePreview struct {
+	ID                   uuid.UUID `json:"id"`
+	PeriodStart          time.Time `json:"period_start" db:"period_start"`
+	PeriodEnd            time.Time `json:"period_end" db:"period_end"`
+	TenantID             uuid.UUID `json:"tenant_id" db:"tenant_id"`
+	Currency             string    `json:"currency" db:"currency"`
+	TrackedRevenueMinor  int64     `json:"tracked_revenue_minor" db:"tracked_revenue_minor"`
+	CollectedVolumeMinor int64     `json:"collected_volume_minor" db:"collected_volume_minor"`
+	WouldChargeMinor     int64     `json:"would_charge_minor" db:"would_charge_minor"`
+	Reason               string    `json:"reason" db:"reason"`
+	ComputedAt           time.Time `json:"computed_at" db:"computed_at"`
+}

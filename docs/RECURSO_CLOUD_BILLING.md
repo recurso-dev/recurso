@@ -1,6 +1,6 @@
 # Recurso Cloud self-billing — "Recurso runs on Recurso"
 
-**Status:** Increments 1 (customer mirror) + 2 (usage meter) shipped — both money-free. Increments 3 (plan + subscription + charging) and 4 (collection) designed, not built.
+**Status:** Increments 1 (customer mirror), 2 (usage meter), and 3a (charge dry-run) shipped — all money-free. Increment 3b (real charging: plan + subscription + invoice + ledger) is built up to the point of billing but **gated off pending founder review of the dry-run**. Increment 4 (collection) designed, not built.
 
 ## The problem
 
@@ -72,13 +72,22 @@ Recurso plans. (Adjustable — this is config, not a hard-coded fact.)
   only reads billing data and writes readings; the invariant harness is
   unaffected.
 
-- **Increment 3 — Recurso Cloud plan + subscription + charging (money path,
-  invariant-harness gated).** Create the "Recurso Cloud" plan (free base + a
-  metered component), subscribe each cloud customer (filling
-  `cloud_tenant_customer.subscription_id`), and turn the `cloud_tenant_usage`
-  readings into a charge: apply the quota + price, generate the invoice, post
-  the ledger legs — all under a controlled billing run that keeps reconciliation
-  at zero. This is the first increment that moves money.
+- **Increment 3a — charge dry-run (SHIPPED, money-free).** After each usage
+  measurement, compute what every tenant WOULD be charged and store it in
+  `cloud_charge_preview` — no invoice, no ledger, no money. `ComputeCloudCharge`
+  (in `domain`, pure + exhaustively unit-tested) is the single source of truth
+  for the pricing: free at/under $10k tracked revenue, else the lower of 0.4% of
+  collected volume or the $99 cap. Each tenant's per-currency usage is
+  normalized to the reporting currency (USD) via the existing FX service before
+  the thresholds apply. The founder reviews these previews before real charging
+  is turned on.
+
+- **Increment 3b — real charging (NOT ENABLED; the money path).** Create the
+  "Recurso Cloud" plan, subscribe each cloud customer (filling
+  `cloud_tenant_customer.subscription_id`), and turn the reviewed previews into
+  actual invoices + ledger legs under a controlled billing run that keeps
+  reconciliation at zero — reusing the exact `ComputeCloudCharge` the dry-run
+  showed. Gated behind founder approval; invariant-harness gated.
 
 - **Increment 4 — collection + dunning.** Charge the card, retry on failure —
   reusing the existing payment + dunning machinery.
