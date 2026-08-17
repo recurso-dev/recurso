@@ -67,6 +67,33 @@ func (r *CloudUsageRepository) AggregateUsage(ctx context.Context, start, end ti
 	return out, rows.Err()
 }
 
+// ListByPeriod returns every stored usage reading for a period window (by
+// period_start), across all tenants and currencies. Read-only.
+func (r *CloudUsageRepository) ListByPeriod(ctx context.Context, periodStart time.Time) ([]*domain.CloudTenantUsage, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, tenant_id, period_start, period_end, currency,
+		       tracked_revenue_minor, collected_volume_minor, computed_at
+		FROM cloud_tenant_usage
+		WHERE period_start = $1`,
+		periodStart,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []*domain.CloudTenantUsage
+	for rows.Next() {
+		u := &domain.CloudTenantUsage{}
+		if err := rows.Scan(&u.ID, &u.TenantID, &u.PeriodStart, &u.PeriodEnd, &u.Currency,
+			&u.TrackedRevenueMinor, &u.CollectedVolumeMinor, &u.ComputedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // Upsert writes each reading, replacing the current value for its
 // (tenant, period_start, currency) — so re-measuring the current period as it
 // accrues just refreshes the row.
