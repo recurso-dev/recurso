@@ -21,7 +21,7 @@ func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 		INSERT INTO unbilled_charges (id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
-	_, err := r.DB.Exec(query,
+	_, err := r.DB.Exec(query, //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
 		charge.ID,
 		charge.SubscriptionID,
 		charge.Amount,
@@ -47,13 +47,14 @@ func (r *UnbilledChargeRepository) ListBySubscriptionIDPaged(subscriptionID uuid
 }
 
 func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.UnbilledCharge, error) {
+	//nolint:gosec // fixed fragments with $n placeholders; no caller value is spliced
 	query := `
 		SELECT id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at
 		FROM unbilled_charges
 		WHERE subscription_id = $1 AND status = 'pending'
 		ORDER BY created_at ASC` + pageClause
 	args := append([]interface{}{subscriptionID}, pageArgs...)
-	rows, err := r.DB.Query(query, args...)
+	rows, err := r.DB.Query(query, args...) //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
 	if err != nil {
 		return nil, err
 	}
@@ -78,6 +79,9 @@ func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID
 		}
 		charges = append(charges, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return charges, nil
 }
 
@@ -90,6 +94,6 @@ func (r *UnbilledChargeRepository) MarkAsInvoiced(chargeIDs []uuid.UUID) error {
 		SET status = 'invoiced'
 		WHERE id = ANY($1)
 	`
-	_, err := r.DB.Exec(query, pq.Array(chargeIDs))
+	_, err := r.DB.Exec(query, pq.Array(chargeIDs)) //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
 	return err
 }

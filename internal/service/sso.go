@@ -191,7 +191,7 @@ func (s *SSOService) LoginRedirectURL(ctx context.Context, tenantID uuid.UUID) (
 	}
 	authURL, err := sp.MakeRedirectAuthenticationRequest("")
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", domain.ErrSSOInvalidAssertion, err)
+		return "", fmt.Errorf("%w: %w", domain.ErrSSOInvalidAssertion, err)
 	}
 	return authURL.String(), nil
 }
@@ -210,7 +210,7 @@ func (s *SSOService) ProcessACS(ctx context.Context, tenantID uuid.UUID, req *ht
 	}
 	assertion, err := sp.ParseResponse(req, nil)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", domain.ErrSSOInvalidAssertion, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrSSOInvalidAssertion, err)
 	}
 	// Reject replays: an assertion may be consumed exactly once. crewjam validates
 	// the signature, audience and timing above but does NOT dedupe assertion IDs,
@@ -284,7 +284,7 @@ func buildIDPMetadata(conn *domain.SSOConnection) (*saml.EntityDescriptor, error
 	if conn.IDPMetadataXML != "" {
 		md, err := samlsp.ParseMetadata([]byte(conn.IDPMetadataXML))
 		if err != nil {
-			return nil, fmt.Errorf("%w: bad IdP metadata XML: %v", domain.ErrSSOInvalidAssertion, err)
+			return nil, fmt.Errorf("%w: bad IdP metadata XML: %w", domain.ErrSSOInvalidAssertion, err)
 		}
 		return md, nil
 	}

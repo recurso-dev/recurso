@@ -62,6 +62,7 @@ func (r *TaxNexusRepository) SetStates(ctx context.Context, tenantID uuid.UUID, 
 	if entityID != nil {
 		conflict = "(tenant_id, entity_id, state_code) WHERE entity_id IS NOT NULL"
 	}
+	//nolint:gosec // only a literal clause chosen by a bool is interpolated; every value is a $n placeholder
 	ins := fmt.Sprintf(`
 		INSERT INTO tenant_tax_nexus (id, tenant_id, entity_id, state_code, nexus_type, established_at)
 		VALUES ($1, $2, $3, $4, $5, $6)
@@ -211,6 +212,9 @@ func (r *TaxNexusRepository) ListThresholds(ctx context.Context) ([]domain.Nexus
 		t.StateCode = strings.TrimSpace(t.StateCode)
 		out = append(out, t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
@@ -243,6 +247,9 @@ func (r *TaxNexusRepository) SalesByState(ctx context.Context, tenantID uuid.UUI
 			return nil, err
 		}
 		out = append(out, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

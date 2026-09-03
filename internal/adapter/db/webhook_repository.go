@@ -91,6 +91,9 @@ func (r *WebhookEndpointRepository) ListByTenantID(ctx context.Context, tenantID
 		endpoint.Events = []string(events)
 		endpoints = append(endpoints, &endpoint)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return endpoints, nil
 }
 
@@ -151,6 +154,9 @@ func (r *WebhookEndpointRepository) GetByTenantAndEventType(ctx context.Context,
 		}
 		endpoint.Events = []string(events)
 		endpoints = append(endpoints, &endpoint)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return endpoints, nil
 }
@@ -348,6 +354,9 @@ func (r *EventDeliveryRepository) ListByEventID(ctx context.Context, eventID uui
 		}
 		deliveries = append(deliveries, &delivery)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return deliveries, nil
 }
 
@@ -392,6 +401,9 @@ func (r *EventDeliveryRepository) ListByEndpointID(ctx context.Context, endpoint
 			return nil, err
 		}
 		deliveries = append(deliveries, &delivery)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return deliveries, nil
 }

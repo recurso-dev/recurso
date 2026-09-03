@@ -74,10 +74,10 @@ func (h *InvoicePDFHandler) applyBranding(ctx context.Context, tenantID uuid.UUI
 		data.SellerName = b.CompanyName
 	}
 	if b.LogoDataURL != "" {
-		data.LogoDataURL = template.URL(b.LogoDataURL)
+		data.LogoDataURL = template.URL(b.LogoDataURL) //nolint:gosec // validated image data-URL (invoice_branding.go)
 	}
 	if b.SignatureDataURL != "" {
-		data.SignatureImageURL = template.URL(b.SignatureDataURL)
+		data.SignatureImageURL = template.URL(b.SignatureDataURL) //nolint:gosec // validated image data-URL (invoice_branding.go)
 	}
 	if b.SignatoryName != "" {
 		data.SignedBy = b.SignatoryName
@@ -166,7 +166,7 @@ func (h *InvoicePDFHandler) DownloadPDF(c *gin.Context) {
 	// The e-invoice QR is GST-only — the IRN is set only on e-invoiced invoices.
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
-			data.QRCodeData = template.URL(qr)
+			data.QRCodeData = template.URL(qr) //nolint:gosec // data-URL produced by GenerateQRCode, not caller input
 		}
 	}
 
@@ -234,7 +234,7 @@ func (h *InvoicePDFHandler) PortalDownloadPDF(c *gin.Context) {
 	h.applyUSSellerIdentity(ctx, inv.TenantID, &data)
 	if data.IRN != "" {
 		if qr, qerr := service.GenerateQRCode("SignedQRCode:" + data.IRN); qerr == nil {
-			data.QRCodeData = template.URL(qr)
+			data.QRCodeData = template.URL(qr) //nolint:gosec // data-URL produced by GenerateQRCode, not caller input
 		}
 	}
 

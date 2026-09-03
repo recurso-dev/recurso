@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,7 +51,7 @@ func (r *WalletRepository) Create(ctx context.Context, w *domain.Wallet) error {
 func (r *WalletRepository) GetByID(ctx context.Context, tenantID, id uuid.UUID) (*domain.Wallet, error) {
 	w, err := scanWallet(r.db.QueryRowContext(ctx,
 		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND id = $2`, tenantID, id))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -66,7 +67,7 @@ func (r *WalletRepository) GetByCustomerEntityAndCurrency(ctx context.Context, t
 	w, err := scanWallet(r.db.QueryRowContext(ctx,
 		`SELECT `+walletColumns+` FROM wallets WHERE tenant_id = $1 AND customer_id = $2 AND entity_id = $3 AND UPPER(currency) = UPPER($4) AND closed_at IS NULL`,
 		tenantID, customerID, entityID, currency))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -278,6 +279,7 @@ func (r *WalletRepository) Drain(ctx context.Context, tenantID, walletID uuid.UU
 	if err != nil {
 		return 0, fmt.Errorf("failed to select wallet residues: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 	type residue struct {
 		id        uuid.UUID
 		remaining int64
@@ -286,12 +288,10 @@ func (r *WalletRepository) Drain(ctx context.Context, tenantID, walletID uuid.UU
 	for rows.Next() {
 		var res residue
 		if err := rows.Scan(&res.id, &res.remaining); err != nil {
-			_ = rows.Close()
 			return 0, err
 		}
 		residues = append(residues, res)
 	}
-	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return 0, err
 	}
@@ -345,17 +345,16 @@ func (r *WalletRepository) ExpireOverdue(ctx context.Context, now time.Time) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to find expired wallet residue: %w", err)
 	}
+	defer func() { _ = rows.Close() }()
 	type target struct{ walletID, tenantID uuid.UUID }
 	var targets []target
 	for rows.Next() {
 		var tgt target
 		if err := rows.Scan(&tgt.walletID, &tgt.tenantID); err != nil {
-			_ = rows.Close()
 			return nil, err
 		}
 		targets = append(targets, tgt)
 	}
-	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}

@@ -558,6 +558,7 @@ func (r *InvoiceRepository) GetByCustomerIDPaged(ctx context.Context, customerID
 }
 
 func (r *InvoiceRepository) getByCustomerID(ctx context.Context, customerID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.Invoice, error) {
+	//nolint:gosec // pageClause is one of two literal constants passed by the exported wrappers
 	query := `
 		SELECT
 			id, tenant_id, subscription_id, customer_id, invoice_number, status,
@@ -600,6 +601,9 @@ func (r *InvoiceRepository) getByCustomerID(ctx context.Context, customerID uuid
 		invoices = append(invoices, inv)
 	}
 	if err := r.hydrateLineItems(ctx, invoices); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 	return invoices, nil
@@ -828,6 +832,9 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 		inv.CustomerName = name.String
 		invoices = append(invoices, inv)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return invoices, nil
 }
 
@@ -900,6 +907,7 @@ func (r *InvoiceRepository) ListCollectionsQueue(ctx context.Context, tenantID u
 		limit = 50
 	}
 	args = append(args, limit, f.Offset)
+	//nolint:gosec // `where` is fixed fragments with $n placeholders from collectionsQueueWhere
 	query := `
 		SELECT
 			i.id, i.customer_id, COALESCE(c.name, ''), COALESCE(c.email, ''),

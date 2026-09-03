@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/bsm/redislock"
@@ -25,7 +26,7 @@ func (l *RedisLocker) Obtain(ctx context.Context, key string, ttl time.Duration)
 	// Try to obtain lock
 	lock, err := l.client.Obtain(ctx, key, ttl, nil)
 
-	if err == redislock.ErrNotObtained {
+	if errors.Is(err, redislock.ErrNotObtained) {
 		return nil, false, nil // Could not acquire
 	} else if err != nil {
 		return nil, false, err // Connection error

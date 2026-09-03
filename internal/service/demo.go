@@ -48,7 +48,7 @@ func NewDemoService(auth *AuthService, users port.UserRepository, keys demoKeyCr
 	s.runSeed = func(ctx context.Context, args ...string) error {
 		runCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(runCtx, s.seedBin, args...)
+		cmd := exec.CommandContext(runCtx, s.seedBin, args...) //nolint:gosec // seedBin is deployment config; args are internal constants
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			detail := string(out)

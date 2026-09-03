@@ -266,10 +266,10 @@ func toEventDeliveryResponse(d *domain.EventDelivery, endpointURL string) EventD
 
 // respondWebhookServiceError maps webhook service errors to the error envelope.
 func respondWebhookServiceError(c *gin.Context, err error) {
-	switch err {
-	case service.ErrEventNotFound, service.ErrEndpointNotFound:
+	switch {
+	case errors.Is(err, service.ErrEventNotFound), errors.Is(err, service.ErrEndpointNotFound):
 		respondError(c, http.StatusNotFound, codeNotFound, err.Error())
-	case service.ErrInvalidDeliveryStatus:
+	case errors.Is(err, service.ErrInvalidDeliveryStatus):
 		respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 	default:
 		respondInternalError(c, err)

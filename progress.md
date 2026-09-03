@@ -1,5 +1,49 @@
 # Progress log
 
+## 2026-09-03 — cross-repo hygiene wave (SDK/docs re-sync, lint policy, migrations, route split)
+
+Assessment first (all five repos): the API repo was healthy and its backlog
+honestly empty, but the edges had rotted — `recurso-node` main carried nine
+unresolved merge-conflict markers (1.8.0 was committed on top of a file that
+did not compile; nothing shipped because publish is release-triggered and
+npm still serves 1.2.0), the docs spec copy was 12 paths behind, Go/Node
+covered 37%/45% of the spec, and no CI anywhere checked any of it.
+
+Shipped, one branch per repo (`claude/recurso-repos-capabilities-jgz87l`):
+
+- **recurso-node 1.9.0** — conflict resolved, schema regenerated, 47
+  resources / 282 methods (220/220 in-scope paths), 298 tests, push/PR CI,
+  CHANGELOG, lockfile re-synced.
+- **recurso-go 1.7.0** — 45 resources / 276 methods (216/220; the four
+  remaining are Prometheus/founder/marketing endpoints, skipped on purpose),
+  112 test funcs, CI, CHANGELOG.
+- **recurso-python 1.11.0** — the 15 accounting drill-down endpoints via
+  openapi-python-client regen normalised to the existing style, MockTransport
+  test, CI on 3.11/3.12, CHANGELOG.
+- **docs** — byte-identical spec copy, 13 new reference pages, an
+  explain-any-number concept page, "scoped keys (coming soon)" removed.
+- **recurso** — `scripts/sdk_drift.py` + `sdk-drift` CI job (docs copy must
+  match; SDK path coverage ratchets against `scripts/sdk_drift_baseline.json`);
+  pinned `.golangci.yml` with 72 findings fixed or justified per site
+  (real fixes: TLS 1.2 floor on SMTP, 25 missing `rows.Err()` checks,
+  wrapped-error comparisons, context-bound DNS lookups); coverage floor
+  (`scripts/coverage_gate.sh`, floor 41%, measured 43% with Postgres);
+  `migrate down -all` verified 175→0→175 against Postgres 16 after adding
+  six missing downs and fixing 000007's down (it dropped `tenants`, owned
+  by 000001, so rollback had never worked); orphaned `migrations/` dir
+  removed and its two unported organization indexes shipped as 000175;
+  last three raw `{"error"}` sites moved to the envelope and the vestigial
+  exported `Respond*` helpers deleted; hand-rolled limit parsing converged;
+  `/v1` route table (273 registrations) extracted to `cmd/api/routes_v1.go`
+  with a typed `v1Handlers` struct (main.go 2311→1972 lines; the OpenAPI
+  drift test scans both files). Frontend: ESLint 9 flat config with React 19
+  hook rules, 15 new page test suites (754→818 tests), raw-UUID inputs in
+  BuyGift/CancelFlowStep replaced with pickers, EntitiesSettings empty state.
+  Root case-duplicate reports merged (`bugs-found.md`→`BUGS_FOUND.md`,
+  `production-readiness.md`→`PRODUCTION_READINESS.md`).
+
+Founder-blocked: npm/PyPI tokens for the first real SDK releases.
+
 ## 2026-08-05 → 08-12 — the design initiative → v0.11.0, then SDK/docs sync
 
 **`v0.11.0 — The design release` published 2026-08-12.** The arc: a founder
@@ -384,7 +428,7 @@ HIGH, #261 accounting currency-exponent MED). All five smoke findings closed:
 S1 incremental card sync (#256), S2 nested billing_address (#259), S3 GET
 subscription by id (#258), S4 lump-sum quote line (#264), S5 entity country
 alias (#263). SDKs synced (node/go/python). Scorecard 8.5/10
-(production-readiness.md); bugs BUG-001..006 in bugs-found.md.
+(PRODUCTION_READINESS.md); bugs BUG-001..006 in BUGS_FOUND.md.
 
 Remaining backlog: pagination-consistency sweep (docs/design-pagination.md —
 start with documenting actual defaults in OpenAPI, zero behavior risk),

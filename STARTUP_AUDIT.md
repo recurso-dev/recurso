@@ -200,7 +200,7 @@ Ordered by **(customer-unblock × trust) ÷ effort**, with external dependencies
 
 | # | Work | Why it's the buy path | Blocked? |
 |---|---|---|:--:|
-| 0 | **Repo hygiene**: the stray `import` binary + `" 2"/" 3"` dupes are already gitignored/untracked; only two lowercase legacy report files (`bugs-found.md`, `production-readiness.md`) are tracked — dedupe in a careful pass (case-insensitive FS). | Credibility; a buyer *will* look at the repo. | no |
+| 0 | **Repo hygiene**: the stray `import` binary + `" 2"/" 3"` dupes are already gitignored/untracked; the two lowercase legacy report files (`bugs-found.md`, `production-readiness.md`) have been merged into their uppercase counterparts (done). | Credibility; a buyer *will* look at the repo. | no |
 | 1 | **Email verification** (token issue + verify endpoint + UI + tests). | Closes signup trust/abuse hole; table-stakes. | no |
 | 2 | **Import from Stripe** (customers→plans→subscriptions→PMs, dry-run + report + tests). | The switching-cost killer. Highest single "can I actually adopt this" unlock. | no (build against fixtures) |
 | 3 | **Backups + tested restore runbook** + **public status page** + **legal pages** (Privacy/Terms/DPA). | Trust table-stakes before anyone wires revenue. | partly (legal review) |

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -74,8 +73,7 @@ func (h *WalletHandler) List(c *gin.Context) {
 	if !ok {
 		return
 	}
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "200"))
-	limit, _ = clampLimitOffset(limit, 0, 200, 500)
+	limit, _ := parseLimitOffset(c, 200, 500)
 	wallets, err := h.svc.ListWallets(ctx, tenantID, limit)
 	if err != nil {
 		respondWalletError(c, err)
@@ -153,8 +151,7 @@ func (h *WalletHandler) ListTransactions(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid wallet id")
 		return
 	}
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "100"))
-	limit, _ = clampLimitOffset(limit, 0, 100, 500)
+	limit, _ := parseLimitOffset(c, 100, 500)
 	txs, err := h.svc.ListTransactions(ctx, tenantID, id, limit)
 	if err != nil {
 		respondWalletError(c, err)

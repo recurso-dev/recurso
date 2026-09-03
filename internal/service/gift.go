@@ -370,7 +370,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 		// operator retries via a manual credit note. Never leave this silent.
 		slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total, "error", err)
-		return nil, fmt.Errorf("%w: %v", ErrGiftCanceledCreditFailed, err)
+		return nil, fmt.Errorf("%w: %w", ErrGiftCanceledCreditFailed, err)
 	}
 	result.CreditNote = cn
 	return result, nil

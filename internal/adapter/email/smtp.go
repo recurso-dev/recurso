@@ -58,11 +58,12 @@ func (s *SMTPSender) Send(ctx context.Context, msg port.EmailMessage) error {
 	if s.config.UseTLS {
 		// TLS connection
 		tlsConfig := &tls.Config{
+			MinVersion:         tls.VersionTLS12,
 			InsecureSkipVerify: false,
 			ServerName:         s.config.Host,
 		}
 
-		conn, err := tls.Dial("tcp", addr, tlsConfig)
+		conn, err := (&tls.Dialer{Config: tlsConfig}).DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("TLS dial failed: %w", err)
 		}

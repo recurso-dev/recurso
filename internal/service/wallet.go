@@ -504,7 +504,7 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 
 	// B1: charge on the gateway the card was saved on (BYO or platform). Without
 	// a router, every card charges on the platform `charger`.
-	charger := walletCharger(s.charger)
+	charger := s.charger
 	if s.chargerRouter != nil {
 		c, rerr := s.chargerRouter.ChargerFor(ctx, connID)
 		if rerr != nil || c == nil {

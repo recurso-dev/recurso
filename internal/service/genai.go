@@ -193,6 +193,7 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 	}
 
 	// Cap the result set regardless of what the model generated.
+	//nolint:gosec // by design: model-generated SQL runs under the read-only genai role after guardGeneratedSQL
 	wrapped := "SELECT * FROM (" + sqlQuery + ") AS genai_result LIMIT 500"
 
 	rows, err := tx.QueryContext(ctx, wrapped)
@@ -230,6 +231,9 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 			}
 		}
 		results = append(results, rowMap)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, sqlQuery, err
 	}
 
 	return results, sqlQuery, nil

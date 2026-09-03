@@ -238,6 +238,8 @@ const MagicLinkTemplate = `
 `
 
 // PasswordResetTemplate for admin-dashboard password reset requests.
+//
+//nolint:gosec // email copy mentioning "password", not a credential
 const PasswordResetTemplate = `
 <h1>Reset your password</h1>
 <p>Hello,</p>
@@ -734,6 +736,8 @@ const NexusCrossedTemplate = `
 // a refund on its way back to their payment method, or spendable account
 // credit that will offset future invoices. A silent credit/refund is a
 // "where's my money?" support ticket; this closes the loop.
+//
+//nolint:gosec // email copy; "credit" trips the credential heuristic
 const CreditNoteIssuedTemplate = `
 {{if .IsRefund}}<h1>Your refund is on its way</h1>
 <p>Hello {{.CustomerName}},</p>

@@ -100,7 +100,7 @@ func (h *QuoteHandler) UpdateQuote(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
 			return
 		}
-		if err == service.ErrQuoteNotEditable {
+		if errors.Is(err, service.ErrQuoteNotEditable) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}
@@ -126,7 +126,7 @@ func (h *QuoteHandler) DeleteQuote(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "quote not found")
 			return
 		}
-		if err == service.ErrQuoteNotEditable {
+		if errors.Is(err, service.ErrQuoteNotEditable) {
 			respondError(c, http.StatusBadRequest, codeValidationFailed, err.Error())
 			return
 		}

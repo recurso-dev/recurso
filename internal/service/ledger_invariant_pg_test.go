@@ -1157,6 +1157,7 @@ func (h *invariantHarness) opBackdateOneEvent(rng *rand.Rand) {
 	if err != nil {
 		h.t.Fatalf("list pending events: %v", err)
 	}
+	defer func() { _ = rows.Close() }()
 	var ids []uuid.UUID
 	for rows.Next() {
 		var id uuid.UUID
@@ -1165,7 +1166,9 @@ func (h *invariantHarness) opBackdateOneEvent(rng *rand.Rand) {
 		}
 		ids = append(ids, id)
 	}
-	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		h.t.Fatalf("iterate pending events: %v", err)
+	}
 	if len(ids) == 0 {
 		return
 	}

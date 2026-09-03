@@ -92,11 +92,15 @@ func (s *IntegrationConnectionService) validateEndpointURL(raw string) error {
 	if ip := net.ParseIP(host); ip != nil {
 		ips = []net.IP{ip}
 	} else {
-		resolved, err := net.LookupIP(host)
+		lookupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		resolved, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
 		if err != nil || len(resolved) == 0 {
 			return IntegrationConnectionValidationError("endpoint host could not be resolved")
 		}
-		ips = resolved
+		for _, a := range resolved {
+			ips = append(ips, a.IP)
+		}
 	}
 	for _, ip := range ips {
 		if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLinkLocalUnicast() {

@@ -1,0 +1,62 @@
+# golangci-lint configuration (v2 schema).
+#
+# Before this file existed CI ran `golangci-lint` with `version: latest` and
+# the default linter set only. On a money/SQL codebase that left the classic
+# leak and error-wrapping bugs unlinted, and an unpinned tool meant a new
+# golangci release could turn CI red with no code change. The action version
+# is pinned in .github/workflows/ci.yml; this file pins the policy.
+version: "2"
+
+run:
+  timeout: 10m
+  tests: true
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose      # HTTP response bodies must be closed (gateway/accounting clients)
+    - errorlint      # errors.Is/As instead of == / type switches on wrapped errors
+    - rowserrcheck   # sql.Rows.Err() checked after iteration
+    - sqlclosecheck  # sql.Rows / Stmt closed
+    - gosec          # security smells (SQL string building, weak crypto, file perms)
+    - misspell
+    - noctx          # HTTP requests without a context
+    - unconvert
+    - durationcheck
+    - nilerr
+  settings:
+    gosec:
+      excludes:
+        - G104 # unhandled errors — errcheck already covers this with better scoping
+        - G115 # int→smaller-int conversions; money is int64 end-to-end and the
+               # remaining casts are in pagination/exponent math already bounds-checked
+    errcheck:
+      exclude-functions:
+        - (*database/sql.Rows).Close
+        - (*database/sql.Tx).Rollback
+        - (io.Closer).Close
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - std-error-handling
+    rules:
+      # Test helpers legitimately ignore errors and use weak randomness.
+      - path: _test\.go
+        linters: [gosec, errorlint, bodyclose, noctx]
+      # Demo/seed tooling is not a production path.
+      - path: cmd/(demo_seed|seed|demo_activity)/
+        linters: [gosec]
+      # The mock gateway simulates declines with math/rand on purpose.
+      - path: internal/adapter/gateway/mock\.go
+        linters: [gosec]
+
+issues:
+  # Report everything in one pass; the defaults silently cap at 50 per linter.
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt

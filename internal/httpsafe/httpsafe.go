@@ -5,11 +5,13 @@
 package httpsafe
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"syscall"
+	"time"
 )
 
 // ErrDisallowedURL is returned for a non-http(s) URL or one whose host resolves
@@ -46,12 +48,14 @@ func ValidateExternalURL(raw string) error {
 		}
 		return nil
 	}
-	ips, err := net.LookupIP(host)
-	if err != nil || len(ips) == 0 {
+	lookupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	if err != nil || len(addrs) == 0 {
 		return ErrDisallowedURL
 	}
-	for _, ip := range ips {
-		if isDisallowed(ip) {
+	for _, a := range addrs {
+		if isDisallowed(a.IP) {
 			return ErrDisallowedURL
 		}
 	}

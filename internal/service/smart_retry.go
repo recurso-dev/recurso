@@ -130,7 +130,7 @@ func (s *SmartRetryService) selectEpsilonGreedy(ctx context.Context, dContext do
 	decayedEpsilon := s.epsilon / (1.0 + 0.001*float64(atomic.LoadInt64(&s.totalDecisions)))
 
 	// Exploration: randomly pick an action
-	if rand.Float64() < decayedEpsilon {
+	if rand.Float64() < decayedEpsilon { //nolint:gosec // exploration sampling, not a security boundary
 		return domain.DefaultDunningActions[rand.Intn(len(domain.DefaultDunningActions))]
 	}
 
@@ -204,7 +204,7 @@ func (s *SmartRetryService) selectUCB1(ctx context.Context, dContext domain.Dunn
 
 	if totalTrials == 0 {
 		// No data yet — pick randomly
-		return domain.DefaultDunningActions[rand.Intn(len(domain.DefaultDunningActions))]
+		return domain.DefaultDunningActions[rand.Intn(len(domain.DefaultDunningActions))] //nolint:gosec // exploration sampling, not a security boundary
 	}
 
 	bestActionID := ""
@@ -301,6 +301,7 @@ func betaSample(alpha, beta float64) float64 {
 func gammaSample(alpha float64) float64 {
 	if alpha < 1 {
 		// Boost alpha for the algorithm, then adjust
+		//nolint:gosec // exploration sampling, not a security boundary
 		return gammaSample(alpha+1) * math.Pow(rand.Float64(), 1.0/alpha)
 	}
 
@@ -310,6 +311,7 @@ func gammaSample(alpha float64) float64 {
 	for {
 		var x, v float64
 		for {
+			//nolint:gosec // exploration sampling, not a security boundary
 			x = rand.NormFloat64()
 			v = 1.0 + c*x
 			if v > 0 {
@@ -317,6 +319,7 @@ func gammaSample(alpha float64) float64 {
 			}
 		}
 		v = v * v * v
+		//nolint:gosec // exploration sampling, not a security boundary
 		u := rand.Float64()
 
 		if u < 1.0-0.0331*(x*x)*(x*x) {

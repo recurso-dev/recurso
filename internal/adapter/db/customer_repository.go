@@ -250,6 +250,9 @@ func (r *CustomerRepository) FindByEmailAcrossTenants(ctx context.Context, email
 		}
 		customers = append(customers, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return customers, nil
 }
 
@@ -328,6 +331,9 @@ func (r *CustomerRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 		customers = append(customers, &c)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return customers, nil
 }
 
@@ -434,6 +440,9 @@ func (r *CustomerRepository) GetCustomersWithExpiringCards(ctx context.Context, 
 			return nil, err
 		}
 		results = append(results, cust)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return results, nil
 }

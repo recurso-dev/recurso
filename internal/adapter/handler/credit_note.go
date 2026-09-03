@@ -66,7 +66,7 @@ func (h *CreditNoteHandler) DownloadPDF(c *gin.Context) {
 			if b.LogoDataURL != "" {
 				// Safe as template.URL: validated to a strict image data-URL shape
 				// at write time (see invoice_branding.go).
-				data.LogoDataURL = template.URL(b.LogoDataURL)
+				data.LogoDataURL = template.URL(b.LogoDataURL) //nolint:gosec // validated image data-URL (invoice_branding.go)
 			}
 		}
 	}

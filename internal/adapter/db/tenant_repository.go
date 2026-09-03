@@ -157,6 +157,9 @@ func (r *TenantRepository) GetTenantByKey(ctx context.Context, keyValue string) 
 			return &lt, lm, nil
 		}
 	}
+	if err := rows.Err(); err != nil {
+		return nil, false, fmt.Errorf("failed to scan API keys: %w", err)
+	}
 
 	return nil, false, fmt.Errorf("invalid API key")
 }
@@ -203,6 +206,9 @@ func (r *TenantRepository) ListTenants(ctx context.Context) ([]*domain.Tenant, e
 		t.Email = email.String
 		tenants = append(tenants, &t)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return tenants, nil
 }
 
@@ -248,6 +254,9 @@ func (r *TenantRepository) ListAPIKeys(ctx context.Context, tenantID uuid.UUID) 
 			k.KeyValue = prefix.String + "****"
 		}
 		keys = append(keys, &k)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return keys, nil
 }

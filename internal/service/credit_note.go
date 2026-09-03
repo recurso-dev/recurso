@@ -193,7 +193,7 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 	// 1. Validate Customer belongs to Tenant
 	customer, err := s.customerRepo.GetByID(ctx, req.CustomerID)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid customer: %v", ErrCreditNoteValidation, err)
+		return nil, fmt.Errorf("%w: invalid customer: %w", ErrCreditNoteValidation, err)
 	}
 	if customer.TenantID != tenantID {
 		return nil, fmt.Errorf("%w: customer does not belong to tenant", ErrCreditNoteValidation)

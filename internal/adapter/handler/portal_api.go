@@ -178,7 +178,7 @@ func (h *PortalAPIHandler) RequestMagicLink(c *gin.Context) {
 
 	link, err := h.portalService.RequestMagicLink(c.Request.Context(), req.Email)
 	if err != nil {
-		if err == service.ErrCustomerNotFound {
+		if errors.Is(err, service.ErrCustomerNotFound) {
 			c.JSON(http.StatusOK, gin.H{"message": genericMsg})
 			return
 		}
@@ -625,7 +625,7 @@ func (h *PortalAPIHandler) RaiseDispute(c *gin.Context) {
 
 	dispute, err := h.portalService.RaiseDispute(c.Request.Context(), customerID.(uuid.UUID), invoiceID, req.Reason)
 	if err != nil {
-		if err == service.ErrInvoiceNotFound {
+		if errors.Is(err, service.ErrInvoiceNotFound) {
 			respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
 			return
 		}

@@ -84,7 +84,7 @@ func (h *WebhookHandler) HandleGoCardless(c *gin.Context) {
 			// Dedup store unavailable: fail the WHOLE batch closed (S4).
 			// GoCardless redelivers on a non-2xx; per-event dedup skips whatever
 			// completed before the outage, so nothing is double-processed.
-			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "dedup store unavailable; retry"})
+			respondErrorStatus(c, http.StatusServiceUnavailable, "dedup store unavailable; retry")
 			return
 		}
 		if done {

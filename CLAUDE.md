@@ -27,7 +27,22 @@ swallows the failure (this exact mistake shipped a broken button once).
 - **Invariant harness**: any invoice-creating flow must post its ledger legs
   (see ADR-002) or randomized-sequence reconciliation fails CI. The E2E suite
   ends with the same zero-discrepancy gate.
-- Frontend CI runs lint + build + vitest; Go pre-commit runs golangci-lint.
+- Frontend CI runs lint + build + vitest; Go pre-commit runs golangci-lint
+  with the pinned policy in `.golangci.yml` (errorlint, gosec, rowserrcheck,
+  sqlclosecheck, bodyclose, noctx, …). Suppress a false positive per site with
+  `//nolint:<linter> // reason`, never by loosening the config.
+- **Coverage floor**: CI fails when total Go statement coverage drops below
+  `scripts/coverage_floor.txt` (`scripts/coverage_gate.sh`). Raise it when
+  coverage rises.
+- **SDK & docs drift**: `scripts/sdk_drift.py` checks out `recurso-go`,
+  `recurso-node`, `recurso-python` and `docs` in CI and fails when the docs
+  copy of `openapi.yaml` differs or an SDK's covered-path count drops below
+  `scripts/sdk_drift_baseline.json`. After adding SDK methods run
+  `scripts/sdk_drift.py --update-baseline`; after changing the spec re-copy
+  it into `docs/api-reference/openapi.yaml`.
+- **Migrations must round-trip**: every `.up.sql` has a `.down.sql` and
+  `migrate down -all` reaches version 0 (verified with golang-migrate against
+  Postgres 16). Never drop a table another migration owns.
 
 ## Backend conventions
 
@@ -50,9 +65,9 @@ swallows the failure (this exact mistake shipped a broken button once).
   import handlers, action shapes (`{status}`/`{message}`), and a few
   `{data}`+sibling-key responses. (The old "dunning-campaign/cancel-flow are
   unwrapped" note is now STALE — those endpoints DO wrap `{data:}` in current
-  code; only their delete responses stay `{status:"deleted"}`.) Three raw
-  `{"error":...}` sites still bypass the canonical error envelope
-  (`webhook.go`, `webhook_gocardless.go`, the founder metrics endpoint).
+  code; only their delete responses stay `{status:"deleted"}`.) Every error
+  response goes through `respondError`/`httperr.Respond` — no raw
+  `gin.H{"error": ...}` sites remain; don't add one.
 
 ## Frontend conventions
 
