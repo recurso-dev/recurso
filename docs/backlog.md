@@ -24,9 +24,9 @@ converged on `parseLimitOffset`, and the /v1 route table moved out of
 (React 19 hook rules), 15 previously untested pages covered (754→818
 tests), three raw-UUID inputs replaced with pickers.
 
-**Still open from this wave (founder):** npm/PyPI publish — `recurso` is
-not on PyPI and npm still serves node 1.2.0; the SDK repos now carry
-CHANGELOGs and CI, so the first releases are a tag + secrets away.
+SDK publishing to npm/PyPI is deliberately not being pursued right now
+(founder decision, 2026-09-03); the SDK repos carry CHANGELOGs and CI so it
+can be picked up later without further prep.
 **Engineering-ready:** #13 is now only the OpenAPI documentation half
 (defaults per endpoint); #14 unchanged; the other four Go `main.go`
 sections (public/auth/portal wiring) could follow `routes_v1.go`.

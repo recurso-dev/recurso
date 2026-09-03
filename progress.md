@@ -42,7 +42,7 @@ Shipped, one branch per repo (`claude/recurso-repos-capabilities-jgz87l`):
   Root case-duplicate reports merged (`bugs-found.md`→`BUGS_FOUND.md`,
   `production-readiness.md`→`PRODUCTION_READINESS.md`).
 
-Founder-blocked: npm/PyPI tokens for the first real SDK releases.
+SDK publishing to npm/PyPI is parked by founder decision; nothing else is blocked.
 
 ## 2026-08-05 → 08-12 — the design initiative → v0.11.0, then SDK/docs sync
 
