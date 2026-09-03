@@ -11,10 +11,10 @@ import (
 )
 
 // TestOpenAPISpecCoversRegisteredRoutes fails when a route registered in
-// main.go has no corresponding entry in the embedded OpenAPI spec, so the
+// main.go / routes_v1.go has no corresponding entry in the embedded OpenAPI spec, so the
 // documented surface can't silently drift from the served one (ENG-10).
 //
-// Routes are discovered by scanning main.go's gin registrations — the router
+// Routes are discovered by scanning main.go and routes_v1.go's gin registrations — the router
 // is wired inside main(), so static scanning is the only way to enumerate it
 // without refactoring startup. If a route is intentionally undocumented, add
 // it to the allowlist below with a reason.
@@ -24,9 +24,17 @@ func TestOpenAPISpecCoversRegisteredRoutes(t *testing.T) {
 		// none currently
 	}
 
-	src, err := os.ReadFile("main.go")
-	if err != nil {
-		t.Fatalf("read main.go: %v", err)
+	// Route registrations live in main.go (public, auth, portal) and
+	// routes_v1.go (the /v1 table); scan both so a route moved between them
+	// is never lost from the gate.
+	var src []byte
+	for _, name := range []string{"main.go", "routes_v1.go"} {
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		src = append(src, b...)
+		src = append(src, '\n')
 	}
 
 	// Group receivers → path prefixes (see main.go's r.Group calls).
@@ -47,7 +55,7 @@ func TestOpenAPISpecCoversRegisteredRoutes(t *testing.T) {
 	var spec struct {
 		Paths map[string]map[string]any `yaml:"paths"`
 	}
-	if err := yaml.Unmarshal([]byte(openAPISpecYAML), &spec); err != nil {
+	if err := yaml.Unmarshal(openAPISpecYAML, &spec); err != nil {
 		t.Fatalf("parse embedded spec: %v", err)
 	}
 
