@@ -22,6 +22,8 @@ import {
 } from "@/components/ui/sheet";
 
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Multi-tenant admin: group tenants under an organization and see
 // consolidated MRR across them.
 const Organizations = () => {
@@ -34,6 +36,7 @@ const Organizations = () => {
   // Detail sheet state
   const [selected, setSelected] = useState(null);
   const [addTenantId, setAddTenantId] = useState("");
+  const [addTenantError, setAddTenantError] = useState(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const {
@@ -99,8 +102,18 @@ const Organizations = () => {
       toast.error(err?.response?.data?.error?.message || "Failed to add tenant"),
   });
   const addingTenant = addTenantMutation.isPending;
+  // There is no founder-level "list all tenants" endpoint to back a picker
+  // (see docs/backlog.md), so the operator pastes the tenant's ID. Validate the
+  // shape client-side so a typo fails here, not as an opaque 4xx.
   const submitAddTenant = () => {
     if (!selected || !addTenantId.trim()) return;
+    if (!UUID_RE.test(addTenantId.trim())) {
+      setAddTenantError(
+        "That doesn't look like a tenant ID. It's a 36-character UUID, e.g. 123e4567-e89b-12d3-a456-426614174000."
+      );
+      return;
+    }
+    setAddTenantError(null);
     addTenantMutation.mutate();
   };
 
@@ -319,20 +332,38 @@ const Organizations = () => {
                 </ul>
               )}
 
-              <div className="mt-3 flex gap-2">
-                <Input
-                  value={addTenantId}
-                  onChange={(e) => setAddTenantId(e.target.value)}
-                  placeholder="tenant uuid"
-                  className="font-mono"
-                />
-                <Button
-                  size="sm"
-                  onClick={submitAddTenant}
-                  disabled={addingTenant || !addTenantId.trim()}
-                >
-                  {addingTenant ? "Adding…" : "Add"}
-                </Button>
+              <div className="mt-3 space-y-1.5">
+                <Label htmlFor="add-tenant-id">Tenant ID</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="add-tenant-id"
+                    value={addTenantId}
+                    onChange={(e) => {
+                      setAddTenantId(e.target.value);
+                      if (addTenantError) setAddTenantError(null);
+                    }}
+                    placeholder="123e4567-e89b-12d3-a456-426614174000"
+                    className="font-mono"
+                    aria-invalid={addTenantError ? true : undefined}
+                    aria-describedby="add-tenant-help"
+                  />
+                  <Button
+                    size="sm"
+                    onClick={submitAddTenant}
+                    disabled={addingTenant || !addTenantId.trim()}
+                  >
+                    {addingTenant ? "Adding…" : "Add"}
+                  </Button>
+                </div>
+                {addTenantError ? (
+                  <p role="alert" className="text-xs text-destructive">
+                    {addTenantError}
+                  </p>
+                ) : (
+                  <p id="add-tenant-help" className="text-xs text-muted-foreground">
+                    Ask the tenant for the ID shown on their Account profile page (Tenant ID).
+                  </p>
+                )}
               </div>
             </div>
 

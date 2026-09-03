@@ -11,10 +11,34 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { usePlans } from "@/lib/useCustomers";
 import { OFFER_TYPES } from "./cancelFlowConfig";
 
 const textareaClass =
   "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+// Plan picker for a plan-switch offer — backed by the shared plans cache so the
+// operator chooses by name rather than pasting a UUID.
+function PlanSwitchField({ value, onChange }) {
+  const { plans, isLoading } = usePlans();
+  return (
+    <div>
+      <Label className="text-xs" htmlFor="switch-to-plan-id">Switch to plan</Label>
+      <Select value={value || ""} onValueChange={onChange}>
+        <SelectTrigger id="switch-to-plan-id">
+          <SelectValue placeholder={isLoading ? "Loading plans…" : "Select a plan"} />
+        </SelectTrigger>
+        <SelectContent>
+          {plans.map((p) => (
+            <SelectItem key={p.id} value={p.id}>
+              {p.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
 
 // Fields shown for a single retention offer, keyed by its type.
 function OfferFields({ offer, onChange }) {
@@ -70,14 +94,10 @@ function OfferFields({ offer, onChange }) {
       );
     case "plan_switch":
       return (
-        <div>
-          <Label className="text-xs" htmlFor="switch-to-plan-id">Switch to plan ID</Label>
-          <Input id="switch-to-plan-id"
-            value={offer.switch_to_plan_id ?? ""}
-            onChange={(e) => set({ switch_to_plan_id: e.target.value })}
-            placeholder="plan uuid"
-          />
-        </div>
+        <PlanSwitchField
+          value={offer.switch_to_plan_id}
+          onChange={(v) => set({ switch_to_plan_id: v })}
+        />
       );
     default:
       return null;

@@ -221,7 +221,7 @@ const Integrations = () => {
         return;
       }
       // Hand off to the provider's consent screen; we return via the backend callback.
-      window.location.href = authUrl;
+      window.location.assign(authUrl);
     } catch (err) {
       toast.error(err?.response?.data?.error?.message || "Failed to start connection");
       setConnecting(null);

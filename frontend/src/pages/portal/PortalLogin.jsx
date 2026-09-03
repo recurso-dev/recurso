@@ -8,6 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 
+
+// Module-level so React keeps the same component identity across renders
+// (defining it inside the page would remount it on every keystroke).
+const Logo = () => (
+  <div className="mb-8 flex items-center justify-center gap-2">
+    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
+      R
+    </div>
+    <span className="text-xl font-semibold tracking-tight text-foreground">
+      Recurso
+    </span>
+  </div>
+);
+
 const PortalLogin = () => {
   // Support prefilled links from the admin dashboard: /portal/login?email=…
   const [searchParams] = useSearchParams();
@@ -41,7 +55,7 @@ const PortalLogin = () => {
       } else {
         setError(data.error?.message || "Failed to send login link");
       }
-    } catch (err) {
+    } catch {
       setError("Network error. Please try again.");
     } finally {
       setLoading(false);
@@ -63,21 +77,11 @@ const PortalLogin = () => {
       } else {
         setError("Failed to verify link");
       }
-    } catch (err) {
+    } catch {
       setError("Failed to verify link");
     }
   };
 
-  const Logo = () => (
-    <div className="mb-8 flex items-center justify-center gap-2">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-lg font-bold text-primary-foreground">
-        R
-      </div>
-      <span className="text-xl font-semibold tracking-tight text-foreground">
-        Recurso
-      </span>
-    </div>
-  );
 
   if (success) {
     return (

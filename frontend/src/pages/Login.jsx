@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link, useSearchParams } from "react-router";
-import axios from "axios";
 import { Layers, LogIn, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 
-import { API_BASE, API_ROOT, endpoints } from "@/lib/api";
+import { API_ROOT, endpoints } from "@/lib/api";
 import { useAuth } from "@/auth/AuthProvider";
 import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
@@ -93,9 +92,7 @@ export default function Login() {
     setChecking(true);
     setError(null);
     try {
-      await axios.get(`${API_BASE}/account`, {
-        headers: { Authorization: `Bearer ${key}` },
-      });
+      await endpoints.verifyApiKey(key);
       loginWithApiKey(key);
       navigate("/");
     } catch (err) {

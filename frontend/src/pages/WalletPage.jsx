@@ -191,6 +191,7 @@ export default function WalletPage() {
   const residueReconciles = paidResidue + promoResidue === wallet.balance;
 
   // Promotional residue expiring within 30 days — a real, dated warning.
+  // eslint-disable-next-line react-hooks/purity -- "expiring soon" is a wall-clock fact at render time
   const now = Date.now();
   const expiringSoon = openTopUps.filter(
     (t) => t.expires_at && new Date(t.expires_at).getTime() - now < 30 * DAY

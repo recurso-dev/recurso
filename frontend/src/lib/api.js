@@ -128,6 +128,11 @@ export const endpoints = {
   // the command palette can propagate an AbortSignal for request cancellation.
   getPlans: (params, config) => api.get('/plans', { params, ...config }),
   getAccount: () => api.get('/account'),
+  // API-key login probe: hits /account with an explicit bearer so a pasted key
+  // is verified BEFORE it is stored (lib/authToken.js). Same instance as every
+  // other tenant call, so the base URL / credentials semantics stay in one place.
+  verifyApiKey: (key) =>
+    api.get('/account', { headers: { Authorization: `Bearer ${key}` } }),
   updateAccount: (data) => api.put('/account', data),
   // Managed-cloud trial/billing status + plan catalog (read-only).
   getBillingStatus: () => api.get('/billing/status'),

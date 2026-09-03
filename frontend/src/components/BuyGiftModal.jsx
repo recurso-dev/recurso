@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 
 import { endpoints } from "../lib/api";
+import { useCustomers } from "../lib/useCustomers";
+import { CustomerSelect } from "@/components/patterns/CustomerSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,6 +26,8 @@ import {
 
 // BuyGiftModal creates a gift subscription code on behalf of a buyer customer.
 const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
+  // Shared react-query customer cache (ADR-005) — never ask for a raw UUID.
+  const { customers } = useCustomers();
   const [buyerCustomerId, setBuyerCustomerId] = useState("");
   const [planId, setPlanId] = useState(plans[0]?.id || "");
   const [durationMonths, setDurationMonths] = useState("12");
@@ -103,13 +107,13 @@ const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="gift-buyer">Buyer customer ID</Label>
-              <Input
+              <Label htmlFor="gift-buyer">Paying customer</Label>
+              <CustomerSelect
                 id="gift-buyer"
-                required
                 value={buyerCustomerId}
-                onChange={(e) => setBuyerCustomerId(e.target.value)}
-                placeholder="Customer UUID paying for the gift"
+                onChange={setBuyerCustomerId}
+                customers={customers}
+                placeholder="Select the customer paying for the gift"
               />
             </div>
             <div className="space-y-1.5">
@@ -148,7 +152,7 @@ const BuyGiftModal = ({ isOpen, onClose, plans, onSuccess }) => {
               <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={loading}>
                 Cancel
               </Button>
-              <Button type="submit" size="sm" disabled={loading}>
+              <Button type="submit" size="sm" disabled={loading || !buyerCustomerId}>
                 {loading ? "Creating…" : "Create gift"}
               </Button>
             </DialogFooter>
