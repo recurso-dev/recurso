@@ -56,6 +56,22 @@ func verifyRazorpaySignature(body []byte, signature, secret string) bool {
 	return hmac.Equal([]byte(expectedMAC), []byte(signature))
 }
 
+// razorpayEventID returns the dedup key for a delivery. Razorpay sends a unique
+// X-Razorpay-Event-Id per event, but that header sits OUTSIDE the HMAC (which
+// covers the body only), so a captured delivery replayed with the header
+// stripped would otherwise skip dedup entirely: alreadyProcessed treats an
+// empty id as "no dedup", and payment.captured is not idempotent for the
+// customer-visible side effects. Fall back to a hash of the signed body — a
+// byte-identical replay then dedups, and a legitimate delivery is never
+// rejected for a missing header.
+func razorpayEventID(c *gin.Context, body []byte) string {
+	if id := c.GetHeader("X-Razorpay-Event-Id"); id != "" {
+		return id
+	}
+	sum := sha256.Sum256(body)
+	return "body:" + hex.EncodeToString(sum[:])
+}
+
 func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
@@ -103,7 +119,10 @@ func (h *WebhookHandler) HandleRazorpay(c *gin.Context) {
 	// without this a duplicate re-runs non-idempotent side effects (the
 	// payment-failed email, the dunning bandit outcome). Recorded only after a
 	// 2xx below, so a failed delivery is still retried (ENG-162).
-	eventID := c.GetHeader("X-Razorpay-Event-Id")
+	eventID := razorpayEventID(c, body)
+	if c.GetHeader("X-Razorpay-Event-Id") == "" {
+		h.logger.Warn("razorpay webhook without X-Razorpay-Event-Id; deduplicating on body hash", "event", event.Event, "ip", c.ClientIP())
+	}
 	if h.alreadyProcessed(c, "razorpay", eventID) {
 		return
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	cryptorand "crypto/rand"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log"
@@ -1578,6 +1579,15 @@ func main() {
 	}
 	r.Use(middleware.RequestIDMiddleware())
 	r.Use(middleware.SecureMiddleware())
+	// Cap request bodies (default 2 MiB; MAX_REQUEST_BODY_BYTES overrides). The
+	// migration importers accept 25 MiB dumps and cap themselves, so they are
+	// exempt. Without this, an unauthenticated webhook POST could stream an
+	// unbounded body into memory before its signature is checked.
+	maxBody := int64(2 << 20)
+	if v, err := strconv.ParseInt(os.Getenv("MAX_REQUEST_BODY_BYTES"), 10, 64); err == nil && v > 0 {
+		maxBody = v
+	}
+	r.Use(middleware.BodyLimitMiddleware(maxBody, "/v1/import/"))
 	// Report panics + 5xx to Sentry (inert unless SENTRY_DSN is set).
 	r.Use(middleware.SentryMiddleware())
 	// Prometheus metrics: record every request (method/route/status + latency).
@@ -1628,7 +1638,7 @@ func main() {
 	// from a trusted network).
 	metricsToken := os.Getenv("METRICS_TOKEN")
 	r.GET("/metrics", func(c *gin.Context) {
-		if metricsToken != "" && c.GetHeader("Authorization") != "Bearer "+metricsToken {
+		if metricsToken != "" && subtle.ConstantTimeCompare([]byte(c.GetHeader("Authorization")), []byte("Bearer "+metricsToken)) != 1 {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
@@ -1648,7 +1658,7 @@ func main() {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		if c.GetHeader("Authorization") != "Bearer "+founderToken {
+		if subtle.ConstantTimeCompare([]byte(c.GetHeader("Authorization")), []byte("Bearer "+founderToken)) != 1 {
 			c.Status(http.StatusUnauthorized)
 			return
 		}
