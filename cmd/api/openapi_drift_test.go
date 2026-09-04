@@ -11,24 +11,26 @@ import (
 )
 
 // TestOpenAPISpecCoversRegisteredRoutes fails when a route registered in
-// main.go / routes_v1.go has no corresponding entry in the embedded OpenAPI spec, so the
-// documented surface can't silently drift from the served one (ENG-10).
+// any of the cmd/api route files has no corresponding entry in the embedded
+// OpenAPI spec, so the documented surface can't silently drift from the served
+// one (ENG-10).
 //
-// Routes are discovered by scanning main.go and routes_v1.go's gin registrations — the router
-// is wired inside main(), so static scanning is the only way to enumerate it
-// without refactoring startup. If a route is intentionally undocumented, add
-// it to the allowlist below with a reason.
+// Routes are discovered by scanning the gin registrations in main.go and the
+// routes_*.go tables — the router is wired inside main(), so static scanning is
+// the only way to enumerate it without refactoring startup. If a route is
+// intentionally undocumented, add it to the allowlist below with a reason.
 func TestOpenAPISpecCoversRegisteredRoutes(t *testing.T) {
 	// Intentionally undocumented routes.
 	allowlist := map[string]string{
 		// none currently
 	}
 
-	// Route registrations live in main.go (public, auth, portal) and
-	// routes_v1.go (the /v1 table); scan both so a route moved between them
-	// is never lost from the gate.
+	// Route registrations live in routes_public.go, routes_auth.go,
+	// routes_portal.go and routes_v1.go; main.go is wiring only but is scanned
+	// too, so a route moved between any of them (or left behind in main.go) is
+	// never lost from the gate.
 	var src []byte
-	for _, name := range []string{"main.go", "routes_v1.go"} {
+	for _, name := range []string{"main.go", "routes_v1.go", "routes_public.go", "routes_auth.go", "routes_portal.go"} {
 		b, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
@@ -37,7 +39,7 @@ func TestOpenAPISpecCoversRegisteredRoutes(t *testing.T) {
 		src = append(src, '\n')
 	}
 
-	// Group receivers → path prefixes (see main.go's r.Group calls).
+	// Group receivers → path prefixes (see the r.Group calls in routes_*.go).
 	prefixes := map[string]string{
 		"r":         "",
 		"v1":        "/v1",
