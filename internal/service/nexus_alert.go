@@ -79,7 +79,7 @@ func (s *NexusAlertService) EvaluateAndAlert(ctx context.Context, tenantID uuid.
 
 		claimed, err := s.store.ClaimNexusAlert(ctx, tenantID, st.StateCode, year, level, st.ProximityPct)
 		if err != nil {
-			s.logger.Error("claim nexus alert", "tenant_id", tenantID, "state", st.StateCode, "level", level, "error", err)
+			s.logger.ErrorContext(ctx, "claim nexus alert", "tenant_id", tenantID, "state", st.StateCode, "level", level, "error", err)
 			continue
 		}
 		if !claimed {
@@ -93,7 +93,7 @@ func (s *NexusAlertService) EvaluateAndAlert(ctx context.Context, tenantID uuid.
 			recipientLoaded = true
 		}
 		if recipientEmail == "" {
-			s.logger.Warn("nexus alert: no recipient for tenant; alert recorded but not sent", "tenant_id", tenantID, "state", st.StateCode)
+			s.logger.WarnContext(ctx, "nexus alert: no recipient for tenant; alert recorded but not sent", "tenant_id", tenantID, "state", st.StateCode)
 			continue
 		}
 
@@ -109,10 +109,10 @@ func (s *NexusAlertService) EvaluateAndAlert(ctx context.Context, tenantID uuid.
 			SettingsURL:    s.settingsURL,
 		}
 		if err := s.notifier.SendNexusThresholdAlert(ctx, level, data); err != nil {
-			s.logger.Error("send nexus alert", "tenant_id", tenantID, "state", st.StateCode, "level", level, "error", err)
+			s.logger.ErrorContext(ctx, "send nexus alert", "tenant_id", tenantID, "state", st.StateCode, "level", level, "error", err)
 			continue
 		}
-		s.logger.Info("nexus threshold alert sent", "tenant_id", tenantID, "state", st.StateCode, "level", level, "proximity", st.ProximityPct)
+		s.logger.InfoContext(ctx, "nexus threshold alert sent", "tenant_id", tenantID, "state", st.StateCode, "level", level, "proximity", st.ProximityPct)
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func levelFor(st domain.NexusStateStatus, year int) string {
 func (s *NexusAlertService) recipient(ctx context.Context, tenantID uuid.UUID) (emailAddr, name string) {
 	users, err := s.users.ListByTenant(ctx, tenantID)
 	if err != nil {
-		s.logger.Error("nexus alert: list users", "tenant_id", tenantID, "error", err)
+		s.logger.ErrorContext(ctx, "nexus alert: list users", "tenant_id", tenantID, "error", err)
 		return "", ""
 	}
 	var owner, admin, fallback *domain.User

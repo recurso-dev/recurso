@@ -98,7 +98,7 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 		rec.Status = domain.EUInvoiceStatusFailed
 		rec.ErrorMessage = err.Error()
 		_ = s.invoices.Upsert(ctx, rec)
-		s.logger.Warn("eu e-invoice generation failed", "invoice_id", inv.ID, "error", err)
+		s.logger.WarnContext(ctx, "eu e-invoice generation failed", "invoice_id", inv.ID, "error", err)
 		return rec, err
 	}
 	rec.Document = string(doc)
@@ -114,9 +114,9 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 		next := time.Now().UTC().Add(EUEInvoiceBackoff[0])
 		rec.NextRetryAt = &next
 		if err := s.invoices.Upsert(ctx, rec); err != nil {
-			s.logger.Error("eu e-invoice: persist after transmit failure", "invoice_id", inv.ID, "error", err)
+			s.logger.ErrorContext(ctx, "eu e-invoice: persist after transmit failure", "invoice_id", inv.ID, "error", err)
 		}
-		s.logger.Warn("eu e-invoice transmit failed; document stored and scheduled for retry", "invoice_id", inv.ID, "error", terr, "next_retry_at", next)
+		s.logger.WarnContext(ctx, "eu e-invoice transmit failed; document stored and scheduled for retry", "invoice_id", inv.ID, "error", terr, "next_retry_at", next)
 		return rec, terr
 	}
 	rec.Status = res.Status
@@ -124,7 +124,7 @@ func (s *EUEInvoiceService) GenerateForInvoice(ctx context.Context, inv *domain.
 	if err := s.invoices.Upsert(ctx, rec); err != nil {
 		return rec, fmt.Errorf("eu e-invoice: persist: %w", err)
 	}
-	s.logger.Info("eu e-invoice generated and sent", "invoice_id", inv.ID, "message_id", rec.MessageID)
+	s.logger.InfoContext(ctx, "eu e-invoice generated and sent", "invoice_id", inv.ID, "message_id", rec.MessageID)
 	return rec, nil
 }
 

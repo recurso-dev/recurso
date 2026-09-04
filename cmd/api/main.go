@@ -856,7 +856,6 @@ func main() {
 				}
 				return nil
 			})
-			crmWorker.Start()
 			defer crmWorker.Stop()
 			log.Println("HubSpot CRM sync configured (EXPERIMENTAL, daily; per-tenant + env)")
 		}
@@ -893,7 +892,6 @@ func main() {
 			}
 			return nil
 		})
-		exportWorker.Start()
 		defer exportWorker.Stop()
 		log.Println("S3 finance export configured (EXPERIMENTAL, daily; per-tenant + env)")
 	}
@@ -929,6 +927,14 @@ func main() {
 		}()
 	}
 	startWorker(retryWorker.Start)
+	// Optional experimental workers: registered here rather than started at
+	// their wiring site so they share workerCtx and the drain wait group.
+	if crmWorker != nil {
+		startWorker(crmWorker.Start)
+	}
+	if exportWorker != nil {
+		startWorker(exportWorker.Start)
+	}
 	startWorker(webhookWorker.Start)
 	startWorker(churnWorker.Start)
 	startWorker(revrecWorker.Start)

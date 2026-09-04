@@ -52,7 +52,7 @@ func (s *DunningCampaignService) TriggerCampaign(ctx context.Context, invoiceID 
 		return fmt.Errorf("failed to check existing execution: %w", err)
 	}
 	if existing != nil {
-		s.logger.Info("dunning campaign already active for invoice", "invoice_id", invoiceID)
+		s.logger.InfoContext(ctx, "dunning campaign already active for invoice", "invoice_id", invoiceID)
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (s *DunningCampaignService) TriggerCampaign(ctx context.Context, invoiceID 
 	}
 
 	if len(campaign.Steps) == 0 {
-		s.logger.Warn("dunning campaign has no steps", "campaign_id", campaign.ID)
+		s.logger.WarnContext(ctx, "dunning campaign has no steps", "campaign_id", campaign.ID)
 		return nil
 	}
 
@@ -97,10 +97,10 @@ func (s *DunningCampaignService) TriggerCampaign(ctx context.Context, invoiceID 
 	// Mark invoice as managed by campaign so the legacy dunning scheduler skips it
 	inv.DunningManagedBy = "campaign"
 	if err := s.invoiceRepo.Update(ctx, inv); err != nil {
-		s.logger.Error("failed to set dunning_managed_by on invoice", "error", err, "invoice_id", invoiceID)
+		s.logger.ErrorContext(ctx, "failed to set dunning_managed_by on invoice", "error", err, "invoice_id", invoiceID)
 	}
 
-	s.logger.Info("dunning campaign triggered",
+	s.logger.InfoContext(ctx, "dunning campaign triggered",
 		"campaign_id", campaign.ID,
 		"invoice_id", invoiceID,
 		"first_step_at", nextStepAt,
@@ -127,7 +127,7 @@ func (s *DunningCampaignService) ProcessDueSteps(ctx context.Context) error {
 
 	for _, exec := range executions {
 		if err := s.processExecution(ctx, exec); err != nil {
-			s.logger.Error("failed to process dunning execution",
+			s.logger.ErrorContext(ctx, "failed to process dunning execution",
 				"execution_id", exec.ID,
 				"invoice_id", exec.InvoiceID,
 				"error", err,
@@ -181,7 +181,7 @@ func (s *DunningCampaignService) processExecution(ctx context.Context, exec *dom
 	switch step.Channel {
 	case domain.DunningChannelEmail:
 		if err := s.sendDunningCampaignEmail(ctx, step, customer, inv); err != nil {
-			s.logger.Error("failed to send dunning campaign email", "error", err, "step_id", step.ID)
+			s.logger.ErrorContext(ctx, "failed to send dunning campaign email", "error", err, "step_id", step.ID)
 		}
 
 	case domain.DunningChannelSMS:
@@ -195,7 +195,7 @@ func (s *DunningCampaignService) processExecution(ctx context.Context, exec *dom
 				To:   customer.Phone,
 				Body: body,
 			}); err != nil {
-				s.logger.Error("failed to send dunning SMS", "error", err, "step_id", step.ID)
+				s.logger.ErrorContext(ctx, "failed to send dunning SMS", "error", err, "step_id", step.ID)
 			}
 		}
 
@@ -203,9 +203,9 @@ func (s *DunningCampaignService) processExecution(ctx context.Context, exec *dom
 		if step.IsPaymentWall {
 			inv.PaymentWallActive = true
 			if err := s.invoiceRepo.Update(ctx, inv); err != nil {
-				s.logger.Error("failed to set payment wall", "error", err, "invoice_id", inv.ID)
+				s.logger.ErrorContext(ctx, "failed to set payment wall", "error", err, "invoice_id", inv.ID)
 			}
-			s.logger.Info("payment wall activated", "invoice_id", inv.ID)
+			s.logger.InfoContext(ctx, "payment wall activated", "invoice_id", inv.ID)
 		}
 	}
 
@@ -281,12 +281,12 @@ func (s *DunningCampaignService) MarkRecovered(ctx context.Context, invoiceID uu
 		}
 		if changed {
 			if err := s.invoiceRepo.Update(ctx, inv); err != nil {
-				s.logger.Error("failed to update invoice after campaign recovery", "error", err, "invoice_id", invoiceID)
+				s.logger.ErrorContext(ctx, "failed to update invoice after campaign recovery", "error", err, "invoice_id", invoiceID)
 			}
 		}
 	}
 
-	s.logger.Info("dunning campaign marked recovered", "invoice_id", invoiceID, "execution_id", exec.ID)
+	s.logger.InfoContext(ctx, "dunning campaign marked recovered", "invoice_id", invoiceID, "execution_id", exec.ID)
 	return nil
 }
 
@@ -380,7 +380,7 @@ func (s *DunningCampaignService) EnsureDefaultCampaign(ctx context.Context, tena
 	}
 
 	campaign.Steps = steps
-	s.logger.Info("default dunning campaign created", "tenant_id", tenantID, "campaign_id", campaign.ID)
+	s.logger.InfoContext(ctx, "default dunning campaign created", "tenant_id", tenantID, "campaign_id", campaign.ID)
 	return campaign, nil
 }
 

@@ -79,7 +79,7 @@ func (s *UsageService) billPayInAdvance(ctx context.Context, sub *domain.Subscri
 		return
 	}
 	if _, err := s.payInAdvance.BillEvent(ctx, sub, event); err != nil {
-		slog.Error("pay-in-advance billing failed — reconciliation needed",
+		slog.ErrorContext(ctx, "pay-in-advance billing failed — reconciliation needed",
 			"event_id", event.ID, "subscription_id", sub.ID, "error", err)
 	}
 }

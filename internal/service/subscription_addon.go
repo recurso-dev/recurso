@@ -56,7 +56,7 @@ func (s *SubscriptionService) AddAddon(ctx context.Context, tenantID, subscripti
 		return nil, err
 	}
 
-	s.logger.Info("subscription add-on attached",
+	s.logger.InfoContext(ctx, "subscription add-on attached",
 		"subscription_id", subscriptionID, "add_on_plan_id", planID, "quantity", quantity)
 
 	return addon, nil

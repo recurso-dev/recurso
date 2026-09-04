@@ -90,17 +90,17 @@ func (s *CloudChargeService) PreviewPeriod(ctx context.Context, periodStart, per
 			if normalizer == nil {
 				// No FX available and a foreign-currency reading — skip it rather
 				// than mis-price by treating, say, INR minor units as USD cents.
-				s.logger.Warn("cloud charge preview: no FX to normalize a reading; skipping",
+				s.logger.WarnContext(ctx, "cloud charge preview: no FX to normalize a reading; skipping",
 					"tenant_id", u.TenantID, "currency", u.Currency)
 				continue
 			}
 			if tracked, _, err = normalizer.convert(ctx, tracked, u.Currency, s.reportingCurrency); err != nil {
-				s.logger.Warn("cloud charge preview: FX convert (tracked) failed; skipping reading",
+				s.logger.WarnContext(ctx, "cloud charge preview: FX convert (tracked) failed; skipping reading",
 					"tenant_id", u.TenantID, "currency", u.Currency, "error", err)
 				continue
 			}
 			if collected, _, err = normalizer.convert(ctx, collected, u.Currency, s.reportingCurrency); err != nil {
-				s.logger.Warn("cloud charge preview: FX convert (collected) failed; skipping reading",
+				s.logger.WarnContext(ctx, "cloud charge preview: FX convert (collected) failed; skipping reading",
 					"tenant_id", u.TenantID, "currency", u.Currency, "error", err)
 				continue
 			}
@@ -136,7 +136,7 @@ func (s *CloudChargeService) PreviewPeriod(ctx context.Context, periodStart, per
 	for _, p := range previews {
 		totalCharge += p.WouldChargeMinor
 	}
-	s.logger.Info("Recurso Cloud dry-run charge preview computed (no money moved)",
+	s.logger.InfoContext(ctx, "Recurso Cloud dry-run charge preview computed (no money moved)",
 		"tenants", len(previews), "would_charge_total_minor", totalCharge, "currency", s.reportingCurrency)
 	return previews, nil
 }

@@ -242,12 +242,12 @@ func (s *WalletService) CloseWallet(ctx context.Context, tenantID, walletID uuid
 		eid := entityPtr(w.EntityID)
 		if res.Refunded > 0 {
 			if _, lErr := s.ledger.RecordWalletRefund(ctx, tenantID, eid, res.RefundTxID, res.Refunded, "Wallet closed — paid balance refunded"); lErr != nil {
-				slog.Error("wallet refund ledger posting failed", "wallet_id", walletID, "error", lErr)
+				slog.ErrorContext(ctx, "wallet refund ledger posting failed", "wallet_id", walletID, "error", lErr)
 			}
 		}
 		if res.Forfeited > 0 {
 			if _, lErr := s.ledger.RecordWalletForfeit(ctx, tenantID, eid, res.ForfeitTxID, res.Forfeited, "Wallet closed — promotional balance forfeited"); lErr != nil {
-				slog.Error("wallet forfeit ledger posting failed", "wallet_id", walletID, "error", lErr)
+				slog.ErrorContext(ctx, "wallet forfeit ledger posting failed", "wallet_id", walletID, "error", lErr)
 			}
 		}
 	}
@@ -347,7 +347,7 @@ func (s *WalletService) postTopUpLedger(ctx context.Context, tenantID, entityID 
 		_, err = s.ledger.RecordWalletTopUp(ctx, tenantID, entityPtr(entityID), wtx.ID, wtx.Amount, fmt.Sprintf("Wallet top-up (%s)", source))
 	}
 	if err != nil {
-		slog.Error("wallet top-up ledger posting failed", "wallet_tx_id", wtx.ID, "error", err)
+		slog.ErrorContext(ctx, "wallet top-up ledger posting failed", "wallet_tx_id", wtx.ID, "error", err)
 	}
 }
 
@@ -415,7 +415,7 @@ func (s *WalletService) DrainForInvoice(ctx context.Context, inv *domain.Invoice
 	}
 	if s.ledger != nil {
 		if _, lErr := s.ledger.RecordWalletDrain(ctx, inv.TenantID, entityPtr(w.EntityID), inv.CustomerID, inv.ID, drained, "Wallet applied to invoice"); lErr != nil {
-			slog.Error("wallet drain ledger posting failed", "invoice_id", inv.ID, "error", lErr)
+			slog.ErrorContext(ctx, "wallet drain ledger posting failed", "invoice_id", inv.ID, "error", lErr)
 		}
 	}
 	return drained, nil
@@ -464,7 +464,7 @@ func (s *WalletService) ExpireOverdueCredits(ctx context.Context) (int, error) {
 	if s.ledger != nil {
 		for _, e := range expiries {
 			if _, lErr := s.ledger.RecordWalletExpiry(ctx, e.TenantID, entityPtr(e.EntityID), e.ExpiryTxID, e.Amount, "Wallet promotional credit expired"); lErr != nil {
-				slog.Error("wallet expiry ledger posting failed", "wallet_id", e.WalletID, "error", lErr)
+				slog.ErrorContext(ctx, "wallet expiry ledger posting failed", "wallet_id", e.WalletID, "error", lErr)
 			}
 		}
 	}
@@ -509,7 +509,7 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	if s.chargerRouter != nil {
 		c, rerr := s.chargerRouter.ChargerFor(ctx, connID)
 		if rerr != nil || c == nil {
-			slog.Warn("wallet auto-recharge: could not resolve saved-card gateway", "wallet_id", w.ID, "error", rerr)
+			slog.WarnContext(ctx, "wallet auto-recharge: could not resolve saved-card gateway", "wallet_id", w.ID, "error", rerr)
 			s.notifyRechargeFailure(ctx, w, "payment gateway unavailable")
 			return false
 		}
@@ -523,7 +523,7 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	idemKey := fmt.Sprintf("wallet-recharge-%s-%d", w.ID, w.Balance)
 	result, err := charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amount, w.Currency, w.ID.String(), idemKey)
 	if err != nil || result == nil || !result.Success {
-		slog.Warn("wallet auto-recharge charge failed", "wallet_id", w.ID, "error", err)
+		slog.WarnContext(ctx, "wallet auto-recharge charge failed", "wallet_id", w.ID, "error", err)
 		s.notifyRechargeFailure(ctx, w, "payment failed")
 		return false
 	}
@@ -544,18 +544,18 @@ func (s *WalletService) rechargeWallet(ctx context.Context, w *domain.Wallet) bo
 	}
 	applied, err := s.wallets.TopUp(ctx, wtx)
 	if err != nil {
-		slog.Error("wallet auto-recharge charged but top-up record failed — reconcile manually",
+		slog.ErrorContext(ctx, "wallet auto-recharge charged but top-up record failed — reconcile manually",
 			"wallet_id", w.ID, "amount", amount, "payment_id", result.PaymentID, "error", err)
 		return false
 	}
 	if !applied {
 		// Another sweep already credited this recharge — the gateway
 		// idempotency key also deduped the charge, so this is a clean no-op.
-		slog.Info("wallet auto-recharge already applied by a concurrent sweep — skipping", "wallet_id", w.ID)
+		slog.InfoContext(ctx, "wallet auto-recharge already applied by a concurrent sweep — skipping", "wallet_id", w.ID)
 		return false
 	}
 	s.postTopUpLedger(ctx, w.TenantID, w.EntityID, wtx, domain.WalletSourceManual) // cash received
-	slog.Info("wallet auto-recharged", "wallet_id", w.ID, "amount", amount)
+	slog.InfoContext(ctx, "wallet auto-recharged", "wallet_id", w.ID, "amount", amount)
 	return true
 }
 
@@ -570,6 +570,6 @@ func (s *WalletService) notifyRechargeFailure(ctx context.Context, w *domain.Wal
 	subject := "Wallet auto-recharge failed"
 	body := fmt.Sprintf("Auto-recharge for your %s wallet could not complete: %s. Please update your payment method.", w.Currency, reason)
 	if err := s.notifier.SendEmail(ctx, customer.Email, subject, body); err != nil {
-		slog.Warn("wallet recharge-failure notification failed", "wallet_id", w.ID, "error", err)
+		slog.WarnContext(ctx, "wallet recharge-failure notification failed", "wallet_id", w.ID, "error", err)
 	}
 }

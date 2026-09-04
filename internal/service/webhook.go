@@ -135,7 +135,7 @@ func (s *WebhookService) PublishEvent(ctx context.Context, input PublishEventInp
 	// Create EventDelivery records for all matching endpoints (best-effort)
 	endpoints, err := s.endpointRepo.GetByTenantAndEventType(ctx, input.TenantID, input.Type)
 	if err != nil {
-		slog.Error("failed to fetch webhook endpoints", "error", err, "tenant_id", input.TenantID, "event_type", input.Type)
+		slog.ErrorContext(ctx, "failed to fetch webhook endpoints", "error", err, "tenant_id", input.TenantID, "event_type", input.Type)
 	}
 	for _, endpoint := range endpoints {
 		delivery := &domain.EventDelivery{
@@ -146,7 +146,7 @@ func (s *WebhookService) PublishEvent(ctx context.Context, input PublishEventInp
 			NextRetryAt:       nil, // immediate first attempt
 		}
 		if err := s.deliveryRepo.Create(ctx, delivery); err != nil {
-			slog.Error("failed to create webhook delivery", "error", err, "event_id", event.ID, "endpoint_id", endpoint.ID)
+			slog.ErrorContext(ctx, "failed to create webhook delivery", "error", err, "event_id", event.ID, "endpoint_id", endpoint.ID)
 		}
 	}
 

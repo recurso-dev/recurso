@@ -63,7 +63,7 @@ func (s *AuthService) validateTOTPSingleUse(ctx context.Context, user *domain.Us
 	}
 	if err := s.users.SetMFALastTimestep(ctx, user.TenantID, user.ID, ts); err != nil {
 		if s.logger != nil {
-			s.logger.Error("failed to persist consumed TOTP timestep; rejecting to prevent replay", "user_id", user.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to persist consumed TOTP timestep; rejecting to prevent replay", "user_id", user.ID, "error", err)
 		}
 		return false
 	}
@@ -120,7 +120,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 		if err := s.mailer.SendPasswordReset(ctx, user.Email, link); err != nil {
 			// Best-effort: the token exists, so surface the failure to logs but
 			// do not leak it to the caller.
-			s.logger.Error("failed to send password reset email", "error", err)
+			s.logger.ErrorContext(ctx, "failed to send password reset email", "error", err)
 		}
 	}
 	return nil
@@ -201,7 +201,7 @@ func (s *AuthService) issueEmailVerification(ctx context.Context, user *domain.U
 	if s.verifyMailer != nil {
 		if err := s.verifyMailer.SendVerification(ctx, user.Email, link); err != nil {
 			// Best-effort: the token exists, so log the failure but don't leak it.
-			s.logger.Error("failed to send verification email", "error", err)
+			s.logger.ErrorContext(ctx, "failed to send verification email", "error", err)
 		}
 	}
 	return nil

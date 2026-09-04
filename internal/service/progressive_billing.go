@@ -69,7 +69,7 @@ func (s *InvoiceService) isProgressive(ctx context.Context, subID uuid.UUID) boo
 	}
 	th, err := s.ProgressiveRepo.GetThreshold(ctx, subID)
 	if err != nil {
-		slog.Warn("progressive: threshold lookup failed", "subscription_id", subID, "error", err)
+		slog.WarnContext(ctx, "progressive: threshold lookup failed", "subscription_id", subID, "error", err)
 		return false
 	}
 	return th != nil
@@ -86,17 +86,17 @@ func (s *InvoiceService) isProgressive(ctx context.Context, subID uuid.UUID) boo
 func (s *InvoiceService) claimProgressiveDelta(ctx context.Context, sub *domain.Subscription, ch domain.Charge, amounts domain.ChargeAmounts, periodStart, upTo time.Time, currency string) (int64, bool) {
 	cumQty, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, upTo)
 	if err != nil {
-		slog.Warn("progressive: aggregation failed", "charge_id", ch.ID, "error", err)
+		slog.WarnContext(ctx, "progressive: aggregation failed", "charge_id", ch.ID, "error", err)
 		return 0, false
 	}
 	oldWM, err := s.ProgressiveRepo.GetWatermark(ctx, sub.ID, ch.ID, periodStart)
 	if err != nil {
-		slog.Warn("progressive: watermark read failed", "charge_id", ch.ID, "error", err)
+		slog.WarnContext(ctx, "progressive: watermark read failed", "charge_id", ch.ID, "error", err)
 		return 0, false
 	}
 	delta, newWM, err := progressiveDelta(ch.ChargeModel, amounts, cumQty, oldWM, currency)
 	if err != nil {
-		slog.Warn("progressive: rating failed", "charge_id", ch.ID, "error", err)
+		slog.WarnContext(ctx, "progressive: rating failed", "charge_id", ch.ID, "error", err)
 		return 0, false
 	}
 	if delta == 0 {
@@ -104,7 +104,7 @@ func (s *InvoiceService) claimProgressiveDelta(ctx context.Context, sub *domain.
 	}
 	won, err := s.ProgressiveRepo.AdvanceWatermarkCAS(ctx, sub.TenantID, sub.ID, ch.ID, periodStart, oldWM, newWM)
 	if err != nil {
-		slog.Warn("progressive: watermark CAS failed", "charge_id", ch.ID, "error", err)
+		slog.WarnContext(ctx, "progressive: watermark CAS failed", "charge_id", ch.ID, "error", err)
 		return 0, false
 	}
 	return delta, won
@@ -307,7 +307,7 @@ func (s *InvoiceService) billProgressive(ctx context.Context, sub *domain.Subscr
 	// ledger dual-write.
 	if s.LedgerPoster != nil {
 		if err := s.LedgerPoster.RecordInvoice(ctx, inv); err != nil {
-			slog.Error("progressive: ledger post failed — reconciliation needed", "invoice_id", inv.ID, "error", err)
+			slog.ErrorContext(ctx, "progressive: ledger post failed — reconciliation needed", "invoice_id", inv.ID, "error", err)
 		}
 	}
 	return inv, nil

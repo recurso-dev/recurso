@@ -101,7 +101,7 @@ func (s *CloudBillingService) ProvisionTenant(ctx context.Context, tenant *domai
 		return fmt.Errorf("record cloud mapping: %w", err)
 	}
 
-	s.logger.Info("recurso cloud: provisioned customer for tenant",
+	s.logger.InfoContext(ctx, "recurso cloud: provisioned customer for tenant",
 		"tenant_id", tenant.ID, "customer_id", cust.ID)
 	return nil
 }
@@ -122,14 +122,14 @@ func (s *CloudBillingService) Backfill(ctx context.Context) (int, error) {
 		}
 		existing, err := s.repo.GetByTenant(ctx, s.platformTenantID, t.ID)
 		if err != nil {
-			s.logger.Warn("recurso cloud backfill: mapping check failed", "tenant_id", t.ID, "error", err)
+			s.logger.WarnContext(ctx, "recurso cloud backfill: mapping check failed", "tenant_id", t.ID, "error", err)
 			continue
 		}
 		if existing != nil {
 			continue
 		}
 		if err := s.ProvisionTenant(ctx, t); err != nil {
-			s.logger.Warn("recurso cloud backfill: provision failed", "tenant_id", t.ID, "error", err)
+			s.logger.WarnContext(ctx, "recurso cloud backfill: provision failed", "tenant_id", t.ID, "error", err)
 			continue
 		}
 		provisioned++

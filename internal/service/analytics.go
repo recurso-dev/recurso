@@ -343,7 +343,7 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 		perEntityCount[*eff]++
 	}
 	if unattributed > 0 {
-		slog.Warn("MRR-by-entity: subscriptions with no attributable entity excluded from the breakdown",
+		slog.WarnContext(ctx, "MRR-by-entity: subscriptions with no attributable entity excluded from the breakdown",
 			"tenant_id", tenantID, "unattributed_subscriptions", unattributed)
 	}
 
@@ -369,7 +369,7 @@ func (s *AnalyticsService) GetMRRByEntity(ctx context.Context, tenantID uuid.UUI
 	// a subscription still references) would silently vanish — surface it.
 	for entityID := range perEntityCurrency {
 		if !rosterIDs[entityID] {
-			slog.Warn("MRR-by-entity: subscriptions reference an entity absent from the roster; their MRR is not shown",
+			slog.WarnContext(ctx, "MRR-by-entity: subscriptions reference an entity absent from the roster; their MRR is not shown",
 				"tenant_id", tenantID, "entity_id", entityID)
 		}
 	}

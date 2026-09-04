@@ -236,7 +236,7 @@ func (s *AccountingService) syncInvoiceToConnection(ctx context.Context, conn *d
 	productExtID, productCode, err := s.invoiceProductRef(ctx, conn, gw, invoice)
 	if err != nil {
 		// Non-fatal: the invoice still syncs with bare description lines.
-		slog.Warn("could not resolve product ref for invoice; syncing with bare description lines",
+		slog.WarnContext(ctx, "could not resolve product ref for invoice; syncing with bare description lines",
 			"invoice_id", invoice.ID, "connection_id", conn.ID, "error", err)
 	} else {
 		refs.ProductExternalID = productExtID
@@ -291,13 +291,13 @@ func (s *AccountingService) syncProductToConnection(ctx context.Context, conn *d
 // clearStaleMapping removes a mapping whose external ID the provider no
 // longer recognizes, so the entity can be re-created cleanly.
 func (s *AccountingService) clearStaleMapping(ctx context.Context, conn *domain.AccountingConnection, entityType string, entityID uuid.UUID, externalID string) {
-	slog.Info("external accounting entity gone at provider; clearing mapping and re-creating",
+	slog.InfoContext(ctx, "external accounting entity gone at provider; clearing mapping and re-creating",
 		"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "external_id", externalID)
 	if s.mappingRepo == nil {
 		return
 	}
 	if err := s.mappingRepo.Delete(ctx, conn.ID, entityType, entityID); err != nil {
-		slog.Error("failed to delete stale accounting mapping",
+		slog.ErrorContext(ctx, "failed to delete stale accounting mapping",
 			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
 	}
 }
@@ -310,7 +310,7 @@ func (s *AccountingService) lookupMapping(ctx context.Context, conn *domain.Acco
 	}
 	m, err := s.mappingRepo.Get(ctx, conn.ID, entityType, entityID)
 	if err != nil {
-		slog.Error("failed to look up accounting mapping",
+		slog.ErrorContext(ctx, "failed to look up accounting mapping",
 			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
 		return "", false
 	}
@@ -335,7 +335,7 @@ func (s *AccountingService) upsertMapping(ctx context.Context, conn *domain.Acco
 		ExternalID:   externalID,
 	}
 	if err := s.mappingRepo.Upsert(ctx, m); err != nil {
-		slog.Error("failed to upsert accounting mapping",
+		slog.ErrorContext(ctx, "failed to upsert accounting mapping",
 			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
 	}
 }
@@ -369,7 +369,7 @@ func (s *AccountingService) ensureFreshToken(ctx context.Context, conn *domain.A
 		return s.markConnectionError(ctx, conn, accounting.IsInvalidGrant(err), err)
 	}
 
-	slog.Info("refreshed accounting OAuth token", "connection_id", conn.ID, "provider", conn.Provider)
+	slog.InfoContext(ctx, "refreshed accounting OAuth token", "connection_id", conn.ID, "provider", conn.Provider)
 	return nil
 }
 
@@ -384,7 +384,7 @@ func (s *AccountingService) markConnectionError(ctx context.Context, conn *domai
 		conn.LastError = "refresh token rejected (invalid_grant); reconnect required: " + cause.Error()
 	}
 	if err := s.connRepo.Update(ctx, conn); err != nil {
-		slog.Error("failed to persist connection error state", "connection_id", conn.ID, "error", err)
+		slog.ErrorContext(ctx, "failed to persist connection error state", "connection_id", conn.ID, "error", err)
 	}
 	return cause
 }
@@ -422,7 +422,7 @@ func (s *AccountingService) TriggerSyncAsync(tenantID uuid.UUID, provider string
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
 		if err := s.syncForTenant(ctx, tenantID, force, provider); err != nil {
-			slog.Error("manual accounting sync failed", "tenant_id", tenantID, "provider", provider, "error", err)
+			slog.ErrorContext(ctx, "manual accounting sync failed", "tenant_id", tenantID, "provider", provider, "error", err)
 		}
 	})
 	return true
@@ -457,7 +457,7 @@ func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUI
 		}
 
 		if err := s.ensureFreshToken(ctx, conn); err != nil {
-			slog.Error("skipping connection, token refresh failed",
+			slog.ErrorContext(ctx, "skipping connection, token refresh failed",
 				"connection_id", conn.ID, "provider", conn.Provider, "error", err)
 			continue
 		}
@@ -479,7 +479,7 @@ func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUI
 		for {
 			customers, err := s.customerRepo.List(ctx, tenantID, domain.CustomerFilter{Limit: customerLimit, Offset: customerOffset})
 			if err != nil {
-				slog.Error("failed to list customers for sync", "error", err)
+				slog.ErrorContext(ctx, "failed to list customers for sync", "error", err)
 				break
 			}
 			if len(customers) == 0 {
@@ -508,7 +508,7 @@ func (s *AccountingService) syncForTenant(ctx context.Context, tenantID uuid.UUI
 		var legErr error
 		invoices, err := s.invoiceRepo.List(ctx, tenantID)
 		if err != nil {
-			slog.Error("failed to list invoices for sync", "error", err)
+			slog.ErrorContext(ctx, "failed to list invoices for sync", "error", err)
 			legErr = fmt.Errorf("list invoices: %w", err)
 		} else {
 			for _, invoice := range invoices {
@@ -576,7 +576,7 @@ func (s *AccountingService) unchangedSinceLastSync(ctx context.Context, conn *do
 	}
 	m, err := s.mappingRepo.Get(ctx, conn.ID, entityType, entityID)
 	if err != nil {
-		slog.Error("failed to look up accounting mapping for dirty check; syncing entity",
+		slog.ErrorContext(ctx, "failed to look up accounting mapping for dirty check; syncing entity",
 			"connection_id", conn.ID, "entity_type", entityType, "entity_id", entityID, "error", err)
 		return false
 	}
@@ -641,6 +641,6 @@ func (s *AccountingService) logSyncResult(ctx context.Context, conn *domain.Acco
 	}
 
 	if err := s.connRepo.CreateSyncLog(ctx, syncLog); err != nil {
-		slog.Error("failed to create sync log", "error", err)
+		slog.ErrorContext(ctx, "failed to create sync log", "error", err)
 	}
 }

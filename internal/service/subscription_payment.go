@@ -106,7 +106,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 	if s.notificationService != nil {
 		customer, custErr := s.customerRepo.GetByID(ctx, inv.CustomerID)
 		if custErr != nil {
-			s.logger.Error("failed to fetch customer for payment notification", "error", custErr, "customer_id", inv.CustomerID)
+			s.logger.ErrorContext(ctx, "failed to fetch customer for payment notification", "error", custErr, "customer_id", inv.CustomerID)
 		} else if customer != nil {
 			err := s.notificationService.SendPaymentReceived(ctx, PaymentData{
 				CustomerName:  domain.PtrToString(customer.Name),
@@ -116,7 +116,7 @@ func (s *SubscriptionService) MarkInvoicePaid(ctx context.Context, invoiceID uui
 				PaymentDate:   now.Format("Jan 02, 2006"),
 			})
 			if err != nil {
-				s.logger.Error("failed to send payment received notification", "error", err, "invoice_id", inv.ID)
+				s.logger.ErrorContext(ctx, "failed to send payment received notification", "error", err, "invoice_id", inv.ID)
 			}
 		}
 	}
@@ -190,7 +190,7 @@ func (s *SubscriptionService) ReverseSettledPayment(ctx context.Context, invoice
 		}
 	}
 
-	s.logger.Warn("payment reversed (bank return); invoice reopened for collection",
+	s.logger.WarnContext(ctx, "payment reversed (bank return); invoice reopened for collection",
 		"invoice_id", inv.ID, "invoice_number", inv.InvoiceNumber)
 	return true, nil
 }

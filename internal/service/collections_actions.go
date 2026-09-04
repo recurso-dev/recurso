@@ -114,7 +114,7 @@ func (s *CollectionsActionService) RetryNow(ctx context.Context, tenantID, invoi
 		// not-retryable rather than a false success.
 		return ErrRetryNotPastDue
 	}
-	s.logger.Info("manual retry-now requeued invoice", "invoice_id", invoiceID, "tenant_id", tenantID)
+	s.logger.InfoContext(ctx, "manual retry-now requeued invoice", "invoice_id", invoiceID, "tenant_id", tenantID)
 	return nil
 }
 
@@ -127,7 +127,7 @@ func (s *CollectionsActionService) SetPaused(ctx context.Context, tenantID, invo
 	if !ok {
 		return ErrCollectionInvoiceNotFound
 	}
-	s.logger.Info("dunning pause toggled", "invoice_id", invoiceID, "paused", paused, "tenant_id", tenantID)
+	s.logger.InfoContext(ctx, "dunning pause toggled", "invoice_id", invoiceID, "paused", paused, "tenant_id", tenantID)
 	return nil
 }
 
@@ -145,14 +145,14 @@ func (s *CollectionsActionService) MarkUncollectible(ctx context.Context, tenant
 	if s.ledger != nil && s.invoices != nil {
 		inv, ierr := s.invoices.GetByID(ctx, invoiceID)
 		if ierr != nil || inv == nil || inv.TenantID != tenantID {
-			s.logger.Error("write-off ledger reversal skipped: invoice lookup failed",
+			s.logger.ErrorContext(ctx, "write-off ledger reversal skipped: invoice lookup failed",
 				"invoice_id", invoiceID, "error", ierr)
 		} else if lerr := s.ledger.RecordInvoiceWriteOff(ctx, inv); lerr != nil {
 			// Surface loudly for reconciliation; the status change stands — the
 			// tie-out's unscheduled bucket keeps un-reversed write-offs visible.
-			s.logger.Error("write-off ledger reversal failed", "invoice_id", invoiceID, "error", lerr)
+			s.logger.ErrorContext(ctx, "write-off ledger reversal failed", "invoice_id", invoiceID, "error", lerr)
 		}
 	}
-	s.logger.Info("invoice manually marked uncollectible", "invoice_id", invoiceID, "tenant_id", tenantID)
+	s.logger.InfoContext(ctx, "invoice manually marked uncollectible", "invoice_id", invoiceID, "tenant_id", tenantID)
 	return nil
 }

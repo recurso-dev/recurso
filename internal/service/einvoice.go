@@ -91,7 +91,7 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 			return nil, fmt.Errorf("resolve entity GST config: %w", err)
 		}
 		if cfg == nil || cfg.GSTIN == "" {
-			s.logger.Warn("e-invoice skipped: issuing entity has no GST registration",
+			s.logger.WarnContext(ctx, "e-invoice skipped: issuing entity has no GST registration",
 				"invoice_id", invoice.ID, "entity_id", *invoice.EntityID)
 			invoice.EInvoiceStatus = "NA"
 			return nil, nil
@@ -101,7 +101,7 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 	// Build the e-invoice request
 	req, err := s.buildRequest(ctx, invoice, customer)
 	if err != nil {
-		s.logger.Error("failed to build e-invoice request", "error", err, "invoice_id", invoice.ID)
+		s.logger.ErrorContext(ctx, "failed to build e-invoice request", "error", err, "invoice_id", invoice.ID)
 		invoice.EInvoiceStatus = "FAILED"
 		invoice.EInvoiceErrorMessage = fmt.Sprintf("build request failed: %v", err)
 		// UTC: the claim query reads e_invoice_next_retry_at in UTC, and the
@@ -115,7 +115,7 @@ func (s *EInvoiceService) GenerateEInvoice(ctx context.Context, invoice *domain.
 	// Call GSP adapter
 	resp, err := s.gspAdapter.GenerateIRNFull(ctx, req)
 	if err != nil {
-		s.logger.Error("e-invoice generation failed", "error", err, "invoice_id", invoice.ID)
+		s.logger.ErrorContext(ctx, "e-invoice generation failed", "error", err, "invoice_id", invoice.ID)
 		invoice.EInvoiceStatus = "FAILED"
 		invoice.EInvoiceErrorMessage = err.Error()
 		// Schedule first retry
@@ -160,14 +160,14 @@ func (s *EInvoiceService) RetryFailedEInvoice(ctx context.Context, invoiceID uui
 	if err != nil {
 		// Update invoice with error state
 		if updateErr := s.invoiceRepo.Update(ctx, invoice); updateErr != nil {
-			s.logger.Error("failed to update invoice after retry failure", "error", updateErr, "invoice_id", invoiceID)
+			s.logger.ErrorContext(ctx, "failed to update invoice after retry failure", "error", updateErr, "invoice_id", invoiceID)
 		}
 		return resp, err
 	}
 
 	// Success — persist
 	if updateErr := s.invoiceRepo.Update(ctx, invoice); updateErr != nil {
-		s.logger.Error("failed to update invoice after retry success", "error", updateErr, "invoice_id", invoiceID)
+		s.logger.ErrorContext(ctx, "failed to update invoice after retry success", "error", updateErr, "invoice_id", invoiceID)
 		return resp, updateErr
 	}
 
@@ -220,7 +220,7 @@ func (s *EInvoiceService) CancelEInvoice(ctx context.Context, invoiceID uuid.UUI
 		return fmt.Errorf("failed to update invoice after cancellation: %w", err)
 	}
 
-	s.logger.Info("e-invoice cancelled", "invoice_id", invoiceID, "irn", invoice.IRN, "cancel_code", cancelCode)
+	s.logger.InfoContext(ctx, "e-invoice cancelled", "invoice_id", invoiceID, "irn", invoice.IRN, "cancel_code", cancelCode)
 	return nil
 }
 
@@ -266,7 +266,7 @@ func (s *EInvoiceService) buildRequest(ctx context.Context, invoice *domain.Invo
 		// entity uses its own registration.
 		gstConfig, err := s.gstConfigRepo.GetByTenantEntity(ctx, invoice.TenantID, invoice.EntityID)
 		if err != nil {
-			s.logger.Warn("failed to get GST config", "error", err, "tenant_id", invoice.TenantID)
+			s.logger.WarnContext(ctx, "failed to get GST config", "error", err, "tenant_id", invoice.TenantID)
 		}
 		if gstConfig != nil {
 			seller = port.EInvoiceSeller{

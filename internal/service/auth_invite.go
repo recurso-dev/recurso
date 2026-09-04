@@ -56,7 +56,7 @@ func (s *AuthService) InviteUser(ctx context.Context, tenantID uuid.UUID, actorR
 		if err := s.mailer.SendInvite(ctx, user.Email, user.Name, link); err != nil {
 			// Best-effort: the account + token already exist, so surface to logs
 			// but don't fail the invite.
-			s.logger.Error("failed to send team invite email", "error", err)
+			s.logger.ErrorContext(ctx, "failed to send team invite email", "error", err)
 		}
 	}
 	return user, nil

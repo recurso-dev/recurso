@@ -149,7 +149,7 @@ func (s *SubscriptionService) applyCreditToInvoice(ctx context.Context, inv *dom
 	}
 	applied, err := s.creditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.EntityID, inv.Currency, inv.ID, inv.Total)
 	if err != nil {
-		s.logger.Error("credit application failed", "invoice_id", inv.ID, "error", err)
+		s.logger.ErrorContext(ctx, "credit application failed", "invoice_id", inv.ID, "error", err)
 		return
 	}
 	if applied > 0 {
@@ -158,7 +158,7 @@ func (s *SubscriptionService) applyCreditToInvoice(ctx context.Context, inv *dom
 		if applied >= inv.Total {
 			inv.Status = domain.InvoiceStatusPaid
 		}
-		s.logger.Info("applied account credit to charge invoice", "invoice_id", inv.ID, "credit_applied", applied)
+		s.logger.InfoContext(ctx, "applied account credit to charge invoice", "invoice_id", inv.ID, "credit_applied", applied)
 	}
 }
 
@@ -454,7 +454,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 			// gateway plan/price id, which rarely exists on real gateways.
 			// Billing is unaffected — Recurso's own invoicing + checkout/retry
 			// collect the money — so this is a Warn, not an Error.
-			s.logger.Warn("optional gateway-side subscription not created; billing proceeds via Recurso invoicing",
+			s.logger.WarnContext(ctx, "optional gateway-side subscription not created; billing proceeds via Recurso invoicing",
 				"error", err,
 				"plan_code", plan.Code,
 			)
@@ -506,7 +506,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		// Dual-write to ledger (outside TX — TigerBeetle is a separate system)
 		if s.ledger != nil {
 			if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
-				s.logger.Error("ledger write failed — will need reconciliation",
+				s.logger.ErrorContext(ctx, "ledger write failed — will need reconciliation",
 					"error", err,
 					"invoice_id", invID,
 					"amount", total,
@@ -515,7 +515,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 		}
 	}
 
-	s.logger.Info("subscription created",
+	s.logger.InfoContext(ctx, "subscription created",
 		"subscription_id", subID,
 		"customer_id", input.CustomerID,
 		"plan_id", input.PlanID,
@@ -535,7 +535,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 			NextBillingDate: end.Format("Jan 02, 2006"),
 		})
 		if err != nil {
-			s.logger.Error("failed to send subscription created notification", "error", err, "subscription_id", subID)
+			s.logger.ErrorContext(ctx, "failed to send subscription created notification", "error", err, "subscription_id", subID)
 		}
 	}
 
@@ -917,7 +917,7 @@ func (s *SubscriptionService) generateEInvoiceAfterCommit(ctx context.Context, i
 	switch {
 	case s.einvoiceService != nil:
 		if _, err := s.einvoiceService.GenerateEInvoice(ctx, invoice); err != nil {
-			s.logger.Error("e-invoice generation failed for proration (will retry)", "error", err, "invoice_id", invoice.ID)
+			s.logger.ErrorContext(ctx, "e-invoice generation failed for proration (will retry)", "error", err, "invoice_id", invoice.ID)
 		}
 	case s.gspAdapter != nil && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business":
 		resp, err := s.gspAdapter.GenerateIRN(ctx, invoice)
@@ -927,7 +927,7 @@ func (s *SubscriptionService) generateEInvoiceAfterCommit(ctx context.Context, i
 			invoice.EInvoiceStatus = "GENERATED"
 			invoice.AckNo = resp.AckNo
 		} else {
-			s.logger.Error("error generating IRN for proration invoice", "error", err, "invoice_id", invoice.ID)
+			s.logger.ErrorContext(ctx, "error generating IRN for proration invoice", "error", err, "invoice_id", invoice.ID)
 			invoice.EInvoiceStatus = "FAILED"
 		}
 	default:
@@ -936,7 +936,7 @@ func (s *SubscriptionService) generateEInvoiceAfterCommit(ctx context.Context, i
 
 	// Persist the IRN/status (and any retry scheduling) onto the committed row.
 	if err := s.invoiceRepo.Update(ctx, invoice); err != nil {
-		s.logger.Error("failed to persist proration e-invoice result", "invoice_id", invoice.ID, "error", err)
+		s.logger.ErrorContext(ctx, "failed to persist proration e-invoice result", "invoice_id", invoice.ID, "error", err)
 	}
 }
 

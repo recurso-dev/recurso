@@ -292,7 +292,7 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	// exact trap this exists to close.
 	if country = strings.ToUpper(strings.TrimSpace(country)); country != "" && s.setPrimaryCountry != nil {
 		if err := s.setPrimaryCountry(ctx, tenant.ID, country); err != nil {
-			s.logger.Warn("failed to stamp registration country on primary entity; seller jurisdiction falls back to env defaults",
+			s.logger.WarnContext(ctx, "failed to stamp registration country on primary entity; seller jurisdiction falls back to env defaults",
 				"tenant_id", tenant.ID, "country", country, "error", err)
 		}
 	}
@@ -302,7 +302,7 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	// signup; the startup backfill re-tries any tenant that slips through.
 	if s.provisionCloudCustomer != nil {
 		if err := s.provisionCloudCustomer(ctx, tenant); err != nil {
-			s.logger.Warn("failed to provision Recurso Cloud customer for new tenant; startup backfill will retry",
+			s.logger.WarnContext(ctx, "failed to provision Recurso Cloud customer for new tenant; startup backfill will retry",
 				"tenant_id", tenant.ID, "error", err)
 		}
 	}
@@ -336,7 +336,7 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 	// must never turn a successful signup into an error; the user can resend.
 	if s.verifyTokens != nil {
 		if err := s.issueEmailVerification(ctx, user); err != nil {
-			s.logger.Warn("failed to issue email verification at signup", "user_id", user.ID, "error", err)
+			s.logger.WarnContext(ctx, "failed to issue email verification at signup", "user_id", user.ID, "error", err)
 		}
 	}
 
@@ -350,7 +350,7 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 			bg, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			if err := s.signupNotifier.SendNewSignupAlert(bg, s.signupNotifyEmail, company, owner, ctry); err != nil {
-				s.logger.Warn("failed to send new-signup alert", "error", err, "tenant_id", tenantID)
+				s.logger.WarnContext(ctx, "failed to send new-signup alert", "error", err, "tenant_id", tenantID)
 			}
 		})
 	}
@@ -364,7 +364,7 @@ func (s *AuthService) Register(ctx context.Context, companyName, name, email, pa
 			bg, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			if err := s.signupContactSync.AddSignupContact(bg, owner, company, ctry); err != nil {
-				s.logger.Warn("failed to sync new-signup contact to marketing tool", "error", err, "tenant_id", tenantID)
+				s.logger.WarnContext(ctx, "failed to sync new-signup contact to marketing tool", "error", err, "tenant_id", tenantID)
 			}
 		})
 	}
@@ -405,12 +405,12 @@ const (
 func (s *AuthService) registerFailedLogin(ctx context.Context, user *domain.User) {
 	if err := s.users.RegisterFailedLogin(ctx, user.ID, maxFailedLogins, lockoutDuration); err != nil {
 		if s.logger != nil {
-			s.logger.Error("failed to record failed login attempt", "user_id", user.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to record failed login attempt", "user_id", user.ID, "error", err)
 		}
 		return
 	}
 	if user.FailedLoginAttempts+1 >= maxFailedLogins && s.logger != nil {
-		s.logger.Warn("account locked after repeated failed auth attempts",
+		s.logger.WarnContext(ctx, "account locked after repeated failed auth attempts",
 			"user_id", user.ID, "email", user.Email, "lock_minutes", int(lockoutDuration.Minutes()))
 	}
 }

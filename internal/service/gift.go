@@ -121,7 +121,7 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 		}
 
 		if err := s.invoiceService.InvoiceRepo.Create(ctx, inv); err != nil {
-			slog.Warn("failed to create gift buyer invoice", "error", err, "gift_id", gift.ID)
+			slog.WarnContext(ctx, "failed to create gift buyer invoice", "error", err, "gift_id", gift.ID)
 		} else {
 			// Post the buyer invoice's double-entry leg, like every other
 			// invoice-creating path. A gift purchase is a one-off (no
@@ -132,7 +132,7 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 			if err := s.giftRepo.SetInvoiceID(ctx, gift.ID, tenantID, invID); err != nil {
 				// Best-effort: an unlinked gift can still be canceled, it just
 				// can't be auto-credited (the operator issues credit manually).
-				slog.Warn("failed to link gift purchase invoice", "error", err, "gift_id", gift.ID)
+				slog.WarnContext(ctx, "failed to link gift purchase invoice", "error", err, "gift_id", gift.ID)
 			} else {
 				gift.InvoiceID = &invID
 			}
@@ -150,7 +150,7 @@ func (s *GiftService) PurchaseGift(ctx context.Context, tenantID uuid.UUID, buye
 			RedeemURL:      fmt.Sprintf("%s/portal/redeem?code=%s", s.notificationService.baseURL, code),
 		})
 		if emailErr != nil {
-			slog.Warn("failed to send gift notification email", "error", emailErr, "gift_id", gift.ID)
+			slog.WarnContext(ctx, "failed to send gift notification email", "error", emailErr, "gift_id", gift.ID)
 		}
 	}
 
@@ -317,7 +317,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 
 	result := &GiftCancelResult{Gift: gift}
 	if gift.InvoiceID == nil || s.invoiceService == nil {
-		slog.Warn("gift canceled without a linked purchase invoice — no automatic compensation",
+		slog.WarnContext(ctx, "gift canceled without a linked purchase invoice — no automatic compensation",
 			"gift_id", gift.ID, "buyer_customer_id", gift.BuyerCustomerID)
 		return result, nil
 	}
@@ -330,7 +330,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 	// that was ACH-reversed back to open is voided, not credited.
 	voided, err := s.invoiceService.InvoiceRepo.VoidIfOpen(ctx, tenantID, *gift.InvoiceID)
 	if err != nil {
-		slog.Error("gift canceled but voiding the purchase invoice failed",
+		slog.ErrorContext(ctx, "gift canceled but voiding the purchase invoice failed",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
 		return nil, fmt.Errorf("gift canceled, but resolving the purchase invoice failed: %w", err)
 	}
@@ -341,7 +341,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 
 	inv, err := s.invoiceService.InvoiceRepo.GetByIDPublic(ctx, *gift.InvoiceID)
 	if err != nil {
-		slog.Error("gift canceled but re-reading the purchase invoice failed — verify the buyer was compensated",
+		slog.ErrorContext(ctx, "gift canceled but re-reading the purchase invoice failed — verify the buyer was compensated",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "error", err)
 		return nil, fmt.Errorf("gift canceled, but resolving the purchase invoice failed: %w", err)
 	}
@@ -353,7 +353,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 	if s.creditNotes == nil {
 		// Payment landed after the fail-closed pre-check (cancel raced a
 		// checkout) and credit issuance isn't wired. Never leave this silent.
-		slog.Error("gift canceled but credit issuance is UNWIRED — issue the buyer's credit manually",
+		slog.ErrorContext(ctx, "gift canceled but credit issuance is UNWIRED — issue the buyer's credit manually",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total)
 		return nil, fmt.Errorf("%w (credit issuance is not configured)", ErrGiftCanceledCreditFailed)
 	}
@@ -368,7 +368,7 @@ func (s *GiftService) CancelGift(ctx context.Context, tenantID, giftID, actorID 
 	if err != nil {
 		// The gift is canceled but the credit failed — surface loudly; the
 		// operator retries via a manual credit note. Never leave this silent.
-		slog.Error("gift canceled but credit issuance FAILED — issue the buyer's credit manually",
+		slog.ErrorContext(ctx, "gift canceled but credit issuance FAILED — issue the buyer's credit manually",
 			"gift_id", gift.ID, "invoice_id", *gift.InvoiceID, "amount", inv.Total, "error", err)
 		return nil, fmt.Errorf("%w: %w", ErrGiftCanceledCreditFailed, err)
 	}
