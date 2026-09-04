@@ -6,6 +6,15 @@ Vite + shadcn/Radix + Tremor + react-query). Deploys are automatic on merge to
 main: Cloudflare Workers (dashboard, app.recurso.dev) and Google Cloud Build →
 Cloud Run (API, api.recurso.dev).
 
+## Skills
+
+Repeatable workflows live in `.claude/skills/` and load on demand:
+`recurso-preflight` (every CI gate, locally, incl. starting Postgres in the
+sandbox), `recurso-migration` (numbered up/down pair + round-trip check),
+`recurso-add-endpoint` (handler → route table → OpenAPI → tests → SDKs/docs),
+`recurso-sdk-sync` (bring the three SDKs and the docs spec copy back in line,
+update the drift baseline). Prefer them over re-deriving the steps.
+
 ## Commands
 
 | What | Command |
