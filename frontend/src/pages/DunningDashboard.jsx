@@ -8,13 +8,19 @@ import { useMemo } from "react";
 import { endpoints } from "../lib/api";
 import { makeChartTooltip, chartCategoryColors, chartDefaults } from "@/components/charts/ChartTooltip";
 import { Button } from "@/components/ui/button";
-import { formatNumber, fromMinorUnits, formatDateTime } from "@/lib/utils";
+import { formatNumber, fromMinorUnits, formatDateTime, formatCurrencyHeadline } from "@/lib/utils";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { StatCard } from "@/components/patterns/StatCard";
 import { EmptyState } from "@/components/patterns/EmptyState";
 import { CardGridSkeleton, Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -23,21 +29,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
-// Recovered-revenue money is shown with no fraction digits (headline currency).
-// Amounts arrive in minor units; convert with the currency's real exponent.
-const formatMoney = (amount, currency) => {
-  const major = fromMinorUnits(amount, currency);
-  try {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      maximumFractionDigits: 0,
-    }).format(major);
-  } catch {
-    return `${currency} ${major.toFixed(0)}`;
-  }
-};
 
 // Last 12 calendar months as "YYYY-MM", oldest first (matches the API window).
 const lastTwelveMonths = () => {
@@ -112,7 +103,9 @@ const DunningDashboard = () => {
   // raw minor-unit amount. The raw per-currency breakdown is shown as context.
   const recoveredTotals = recovered?.recovered_amount_total || {};
   const primaryCurrency = recovered?.reporting_currency || "USD";
-  const recoveredValue = formatMoney(recovered?.reporting_total || 0, primaryCurrency);
+  // Headline money: minor units → the currency's own exponent; a whole amount
+  // drops its ".00" but non-zero cents are never truncated (ANTI_PATTERNS).
+  const recoveredValue = formatCurrencyHeadline(recovered?.reporting_total || 0, primaryCurrency);
   const sourceCurrencies = Object.keys(recoveredTotals).filter((c) => c !== primaryCurrency);
   const recoveredSubtitleParts = [`${recovered?.recovered_count || 0} invoices`];
   if (recovered?.recovered_count > 0) {
@@ -120,7 +113,7 @@ const DunningDashboard = () => {
   }
   if (sourceCurrencies.length > 0) {
     recoveredSubtitleParts.push(
-      `incl. ${sourceCurrencies.map((c) => formatMoney(recoveredTotals[c], c)).join(", ")}`
+      `incl. ${sourceCurrencies.map((c) => formatCurrencyHeadline(recoveredTotals[c], c)).join(", ")}`
     );
   }
 
@@ -437,23 +430,36 @@ const DunningDashboard = () => {
                   {formatNumber(timing?.sample_size || 0)} retries analyzed
                 </span>
               </div>
-              {/* 24 hourly bars; height encodes success rate, best hour emphasized. */}
-              <div className="flex h-32 items-end gap-1" role="img" aria-label="Retry success rate by hour of day">
-                {hourRates.map((h) => (
-                  <div key={h.bucket} className="flex flex-1 flex-col items-center gap-1" title={`${fmtHour(h.bucket)} — ${(h.success_rate * 100).toFixed(0)}% of ${h.total}`}>
-                    <div
-                      className={
-                        "w-full rounded-t " +
-                        (h.bucket === timing?.best_hour ? "bg-success/50" : "bg-muted-foreground/30")
-                      }
-                      style={{ height: `${maxHourRate > 0 ? Math.max(2, (h.success_rate / maxHourRate) * 100) : 2}%` }}
-                    />
-                    {h.bucket % 6 === 0 && (
-                      <span className="text-[10px] text-muted-foreground">{h.bucket}</span>
-                    )}
-                  </div>
-                ))}
-              </div>
+              {/* 24 hourly bars; height encodes success rate, best hour emphasized.
+                  Each bar's figure is a shared Tooltip (not a native title); the
+                  group's aria-label is the AT summary. Local provider: pages
+                  render without the app-level one in tests. */}
+              <TooltipProvider delayDuration={150}>
+                <div className="flex h-32 items-end gap-1" role="img" aria-label="Retry success rate by hour of day">
+                  {hourRates.map((h) => (
+                    <Tooltip key={h.bucket}>
+                      <TooltipTrigger asChild>
+                        <div className="flex flex-1 flex-col items-center gap-1">
+                          <div
+                            className={
+                              "w-full rounded-t " +
+                              (h.bucket === timing?.best_hour ? "bg-success/50" : "bg-muted-foreground/30")
+                            }
+                            style={{ height: `${maxHourRate > 0 ? Math.max(2, (h.success_rate / maxHourRate) * 100) : 2}%` }}
+                          />
+                          {h.bucket % 6 === 0 && (
+                            <span className="text-[10px] text-muted-foreground">{h.bucket}</span>
+                          )}
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {fmtHour(h.bucket)} — {(h.success_rate * 100).toFixed(0)}% of{" "}
+                        {formatNumber(h.total)} retries succeeded
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </div>
+              </TooltipProvider>
             </div>
           )}
         </CardContent>

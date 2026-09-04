@@ -55,6 +55,7 @@ export default function Subscriptions() {
   const {
     data: subsData,
     isLoading: loading,
+    isFetching,
     error: queryError,
     refetch,
   } = useQuery({
@@ -186,7 +187,7 @@ export default function Subscriptions() {
     <div>
       <PageHeader
         title="Subscriptions"
-        description="Track and manage your recurring subscriptions."
+        description="Every recurring contract with its plan, list price and next invoice date. Filter by status or plan to work trials, past-due accounts and cancellations."
         actions={
           <Button onClick={() => navigate("/subscriptions/new")}>
             <Plus className="h-4 w-4" />
@@ -199,6 +200,7 @@ export default function Subscriptions() {
         columns={columns}
         data={subs}
         loading={loading}
+        isFetching={isFetching}
         error={error}
         onRetry={refetch}
         rowHref={(row) => `/subscriptions/${row.id}`}

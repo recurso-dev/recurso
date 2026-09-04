@@ -52,6 +52,10 @@ function IndeterminateCheckbox({ indeterminate, ...props }) {
  * Props:
  *  - columns, data (required)
  *  - loading, error, onRetry
+ *  - isFetching — react-query's background-refetch flag. While rows are already
+ *    on screen it shows a thin progress line (+ aria-busy) instead of the
+ *    skeleton, so a refetch/page turn is visible without a flash. Ignored while
+ *    loading, errored or empty (those states already speak for themselves).
  *  - onRowClick(row) — row activation. v2 semantics: the FIRST column's
  *    content is wrapped in a real <button> that carries keyboard focus and
  *    AT semantics; the <tr> itself keeps only a mouse-convenience onClick
@@ -92,6 +96,7 @@ export function DataTable({
   columns,
   data = [],
   loading = false,
+  isFetching = false,
   error = null,
   onRetry,
   onRowClick,
@@ -176,6 +181,7 @@ export function DataTable({
 
   const showToolbar = Boolean(search || toolbar);
   const interactive = Boolean(onRowClick || rowHref);
+  const refreshing = isFetching && !loading && !error && rows.length > 0;
   // Sticky header (Batch D): the table body scrolls inside the bounded wrapper
   // (stickyWrap), so each header cell pins to the top. Opaque bg so scrolling
   // rows don't bleed through; z above rows; a travelling bottom border for the
@@ -315,7 +321,14 @@ export function DataTable({
         </div>
       )}
 
-      <Card className="overflow-hidden" aria-busy={loading || undefined}>
+      <Card className="relative overflow-hidden" aria-busy={loading || refreshing || undefined}>
+        {refreshing && (
+          <div
+            data-testid="datatable-refreshing"
+            aria-hidden="true"
+            className="absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-primary/70"
+          />
+        )}
         {error ? (
           <ErrorState message={error} onRetry={onRetry} />
         ) : loading ? (
@@ -331,7 +344,7 @@ export function DataTable({
           />
         ) : (
           <Table
-            className={cn(cellPad)}
+            className={cn(cellPad, "transition-opacity", refreshing && "opacity-70")}
             wrapperClassName={stickyWrap}
             aria-labelledby={ariaLabel ? undefined : ariaLabelledby}
             aria-label={ariaLabel}
@@ -381,6 +394,7 @@ export function DataTable({
               </TableRow>
             </TableHeader>
             <TableBody>
+              {/* eslint-disable-next-line react-hooks/refs -- isNewRow reads prevIdsRef during render on purpose (new-row reveal, see above) */}
               {rows.map((row) => {
                 const id = getRowId(row);
                 return (

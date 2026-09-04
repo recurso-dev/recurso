@@ -13,6 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useTableSort, sortRows } from "@/lib/tableSort";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -59,6 +66,10 @@ const Metering = () => {
     const plan = planNames[s.plan_id] || `${String(s.id).slice(0, 8)}…`;
     return `${cust} — ${plan}`;
   };
+
+  // Fully-loaded list (one fetch, no server paging), so sorting the complete
+  // set client-side is honest; the sort persists in the URL (Batch F3).
+  const { sort, onSortChange } = useTableSort();
 
   // Metrics + alerts load together; one cache entry for the page.
   const {
@@ -206,6 +217,8 @@ const Metering = () => {
     {
       key: "name",
       header: "Metric",
+      sortable: true,
+      sortValue: (m) => m.name,
       cell: (m) => (
         <div>
           <div className="font-medium text-foreground">{m.name}</div>
@@ -223,9 +236,21 @@ const Metering = () => {
             {m.field_name ? `(${m.field_name})` : ""}
           </Badge>
           {m.expression ? (
-            <code className="max-w-[16rem] truncate text-xs text-muted-foreground" title={m.expression}>
-              {m.expression}
-            </code>
+            // Truncated in the cell; the full expression opens on hover AND on
+            // keyboard focus (tabIndex) — never a hover-only native title.
+            <TooltipProvider delayDuration={150}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <code
+                    tabIndex={0}
+                    className="max-w-[16rem] truncate rounded text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {m.expression}
+                  </code>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm break-all font-mono">{m.expression}</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           ) : null}
         </div>
       ),
@@ -283,7 +308,9 @@ const Metering = () => {
 
       <DataTable
         columns={metricColumns}
-        data={metrics}
+        data={sortRows(metrics, sort, metricColumns)}
+        sort={sort}
+        onSortChange={onSortChange}
         rowHref={(m) => `/billable-metrics/${m.id}`}
         loading={loading}
         error={error}

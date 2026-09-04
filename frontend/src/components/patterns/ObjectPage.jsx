@@ -107,7 +107,11 @@ export function ObjectHeader({
             </div>
           )}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {/* Wraps (never shrink-0): several actions at a narrow width fold onto a
+            second line instead of pushing the header sideways. */}
+        {actions && (
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div>
+        )}
       </div>
     </div>
   );

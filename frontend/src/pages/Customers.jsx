@@ -53,6 +53,7 @@ export default function Customers() {
   const {
     data: customersData,
     isLoading: loading,
+    isFetching,
     error: queryError,
   } = useQuery({
     queryKey: ["customers", { page, q: debouncedSearch, status }],
@@ -156,7 +157,7 @@ export default function Customers() {
     <div>
       <PageHeader
         title="Customers"
-        description="Manage your customer base and their subscriptions."
+        description="Everyone you bill, with status, risk score and subscription count. Search by name or email; open a customer for their balance, subscriptions and invoices."
         actions={
           <Button onClick={() => navigate("/customers/new")}>
             <Plus className="h-4 w-4" />
@@ -169,6 +170,7 @@ export default function Customers() {
         columns={columns}
         data={customers}
         loading={loading}
+        isFetching={isFetching}
         error={error}
         onRetry={fetchCustomers}
         rowHref={(c) => `/customers/${c.id}`}

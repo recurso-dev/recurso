@@ -29,6 +29,7 @@ export function useUrlState(key, defaultValue, options = {}) {
   // only the stable [key, setParams]) — otherwise it would recreate every render
   // and loop any effect that lists it as a dependency.
   const cfg = useRef(null);
+  // eslint-disable-next-line react-hooks/refs -- latest-ref idiom: written during render on purpose (see above)
   cfg.current = { defaultValue, parse, serialize };
 
   const setValue = useCallback(
@@ -79,6 +80,7 @@ export function useUrlState(key, defaultValue, options = {}) {
  */
 export function useResetPageOnChange(setPage, deps) {
   const setPageRef = useRef(setPage);
+  // eslint-disable-next-line react-hooks/refs -- latest-ref idiom: keeps the effect's deps to the serialized key only
   setPageRef.current = setPage;
   const firstRun = useRef(true);
   const key = JSON.stringify(deps);

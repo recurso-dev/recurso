@@ -21,6 +21,7 @@ export default function VerifyEmail() {
   // its cleanup would flip `active` to false, and the in-flight verification
   // would resolve into a dead closure that never sets status → spinner forever.
   const refreshRef = useRef(refreshUser);
+  // eslint-disable-next-line react-hooks/refs -- latest-ref idiom: mirrored during render on purpose (see above)
   refreshRef.current = refreshUser;
 
   const [status, setStatus] = useState(token ? "verifying" : "invalid");

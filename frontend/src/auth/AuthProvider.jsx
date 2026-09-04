@@ -105,6 +105,7 @@ export const AuthProvider = ({ children }) => {
     // userRef mirrors the latest user so refreshUser can stay useCallback-stable
     // while still returning the current user on a best-effort failure.
     const userRef = useRef(user)
+    // eslint-disable-next-line react-hooks/refs -- latest-ref idiom: mirrored during render on purpose (see above)
     userRef.current = user
 
     // Re-resolve the current user from /auth/me (e.g. after email verification
