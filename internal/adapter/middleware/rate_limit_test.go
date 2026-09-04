@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/redis/go-redis/v9"
 )
 
 // TestRateLimitMiddleware_BlocksPastLimit proves the fixed-window limiter (used
@@ -62,5 +63,36 @@ func TestRateLimitMiddleware_SeparateScopesSeparateBuckets(t *testing.T) {
 	// A different scope must have its own fresh bucket, not inherit /a's count.
 	if got := call("/b"); got != http.StatusOK {
 		t.Fatalf("first /b (separate scope): got %d, want 200 — scopes share a bucket", got)
+	}
+}
+
+// TestRateLimitMiddleware_RedisErrorFallsBackToLocal guards the fail-closed
+// behaviour: when Redis is configured but unreachable, the limiter must still
+// enforce the window from its in-memory fallback rather than admit every
+// request — this middleware is the brute-force ceiling on the public auth
+// endpoints, and a Redis blip must not lift it.
+func TestRateLimitMiddleware_RedisErrorFallsBackToLocal(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	// A client pointed at a closed port errors on every command.
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", DialTimeout: 200 * time.Millisecond, MaxRetries: -1})
+	r := gin.New()
+	r.Use(RateLimitMiddleware(rdb, "test-redis-down", 2, time.Minute))
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	do := func() int {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, "/x", nil)
+		req.RemoteAddr = "203.0.113.9:1234"
+		r.ServeHTTP(w, req)
+		return w.Code
+	}
+	if got := do(); got != http.StatusOK {
+		t.Fatalf("1st: got %d, want 200", got)
+	}
+	if got := do(); got != http.StatusOK {
+		t.Fatalf("2nd: got %d, want 200", got)
+	}
+	if got := do(); got != http.StatusTooManyRequests {
+		t.Fatalf("3rd with redis down: got %d, want 429 (fallback must still limit)", got)
 	}
 }
