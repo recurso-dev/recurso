@@ -22,8 +22,13 @@ FROM alpine:3.24
 
 WORKDIR /app
 
-# Install certificates for external APIs (e.g., Payment Gateway)
-RUN apk --no-cache add ca-certificates \
+# Upgrade the base packages first: the alpine tag pins a point release whose
+# openssl/libssl can already have a fixed CVE in the repository, and the
+# Build & Push job's Trivy scan fails on any fixed HIGH/CRITICAL (that is
+# what caught CVE-2026-14456 on alpine 3.24.1). Then certificates for
+# external APIs (e.g., Payment Gateway).
+RUN apk --no-cache upgrade \
+    && apk --no-cache add ca-certificates \
     && addgroup -S recurso && adduser -S recurso -G recurso
 
 COPY --from=builder --chown=recurso:recurso /app/recurso-api .
