@@ -34,7 +34,7 @@ func DefaultDunningConfig() DunningConfig {
 
 // InvoiceRepoForDunning interface for dunning scheduler
 type InvoiceRepoForDunning interface {
-	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
+	ClaimOverdueForDunning(ctx context.Context, lease time.Duration, limit int) ([]domain.OverdueInvoice, error)
 	UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error
 	UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error
 	MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error
@@ -155,23 +155,47 @@ func (s *DunningScheduler) processDunning() {
 		}
 	}()
 
-	invoices, err := s.invoiceRepo.GetOverdueInvoices(ctx)
-	if err != nil {
-		slog.Error("failed to fetch overdue invoices", "error", err)
-		return
+	// Claim, don't read: the lock above is best-effort (a no-op without Redis,
+	// and its lease can lapse mid-sweep), and this was the one money-path
+	// sweep without an atomic claim (ADR-003). Each batch leases its rows for
+	// dunningClaimLease so a concurrent instance claims a disjoint set;
+	// processInvoice then records the real next retry date (or marks the
+	// invoice uncollectible), which supersedes the lease. Batches are bounded
+	// so a huge backlog is worked across ticks rather than in one unbounded
+	// pass.
+	total := 0
+	for batch := 0; batch < dunningMaxBatchesPerTick; batch++ {
+		invoices, err := s.invoiceRepo.ClaimOverdueForDunning(ctx, dunningClaimLease, dunningClaimBatch)
+		if err != nil {
+			slog.Error("failed to claim overdue invoices", "error", err)
+			return
+		}
+		if len(invoices) == 0 {
+			break
+		}
+		slog.Info("processing overdue invoices for dunning", "count", len(invoices), "batch", batch+1)
+		for _, invoice := range invoices {
+			s.processInvoice(ctx, invoice)
+		}
+		total += len(invoices)
+		if len(invoices) < dunningClaimBatch {
+			break
+		}
 	}
-
-	if len(invoices) == 0 {
+	if total == 0 {
 		slog.Info("no overdue invoices for dunning")
-		return
-	}
-
-	slog.Info("processing overdue invoices for dunning", "count", len(invoices))
-
-	for _, invoice := range invoices {
-		s.processInvoice(ctx, invoice)
 	}
 }
+
+const (
+	// dunningClaimBatch bounds one claim; dunningMaxBatchesPerTick bounds a tick.
+	dunningClaimBatch        = 50
+	dunningMaxBatchesPerTick = 20
+	// dunningClaimLease keeps a claimed invoice out of other instances' sweeps
+	// long enough to email and reschedule it; a crash mid-way returns it to the
+	// pool when the lease lapses.
+	dunningClaimLease = 15 * time.Minute
+)
 
 // processInvoice handles a single overdue invoice
 func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.OverdueInvoice) {

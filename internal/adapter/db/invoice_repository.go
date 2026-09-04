@@ -814,7 +814,52 @@ func (r *InvoiceRepository) GetOverdueInvoices(ctx context.Context) ([]domain.Ov
 		return nil, fmt.Errorf("failed to query overdue invoices: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
+	return scanOverdueInvoices(rows)
+}
 
+// ClaimOverdueForDunning is GetOverdueInvoices with an atomic lease: the
+// eligible rows are locked with SKIP LOCKED, their next_retry_at is pushed
+// `lease` into the future in the same statement, and only then are they
+// returned — so a second instance running the same sweep sees them as not due
+// and claims a disjoint set (ADR-003). The projection matches
+// GetOverdueInvoices; the RETURNING rows are joined to customers for the
+// email fields.
+func (r *InvoiceRepository) ClaimOverdueForDunning(ctx context.Context, lease time.Duration, limit int) ([]domain.OverdueInvoice, error) {
+	query := `
+		WITH claimed AS (
+			UPDATE invoices
+			SET next_retry_at = NOW() + $1 * INTERVAL '1 second', updated_at = NOW()
+			WHERE id IN (
+				SELECT id FROM invoices
+				WHERE status IN ('open', 'past_due')
+				  AND due_date < NOW()
+				  AND (next_retry_at IS NULL OR next_retry_at <= NOW())
+				  AND (dunning_managed_by = 'scheduler' OR dunning_managed_by IS NULL)
+				  AND NOT dunning_paused
+				ORDER BY due_date ASC
+				LIMIT $2
+				FOR UPDATE SKIP LOCKED
+			)
+			RETURNING id, tenant_id, customer_id, invoice_number, total, currency,
+			          due_date, retry_count, next_retry_at, (mandate_cycle_key IS NOT NULL) AS is_mandate
+		)
+		SELECT i.id, i.tenant_id, i.customer_id,
+		       c.name AS customer_name, c.email AS customer_email,
+		       i.invoice_number, i.total AS amount, i.currency,
+		       i.due_date, i.retry_count, i.next_retry_at, i.is_mandate
+		FROM claimed i
+		JOIN customers c ON i.customer_id = c.id
+		ORDER BY i.due_date ASC`
+	rows, err := r.db.QueryContext(ctx, query, int64(lease.Seconds()), limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to claim overdue invoices: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	return scanOverdueInvoices(rows)
+}
+
+// scanOverdueInvoices reads the shared overdue projection.
+func scanOverdueInvoices(rows *sql.Rows) ([]domain.OverdueInvoice, error) {
 	var invoices []domain.OverdueInvoice
 	for rows.Next() {
 		var inv domain.OverdueInvoice
