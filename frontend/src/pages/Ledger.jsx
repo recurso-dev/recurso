@@ -72,7 +72,10 @@ export default function Ledger() {
     placeholderData: (prev) => prev,
   });
   const entries = entriesQuery.data ?? [];
-  const entriesLoading = entriesQuery.isFetching;
+  // isLoading (first load only) drives the skeleton; a page turn or account
+  // switch keeps the placeholder rows on screen and just shows DataTable's
+  // refetch line — otherwise placeholderData above would never get to work.
+  const entriesLoading = entriesQuery.isLoading;
   // The table renders ENTRIES, so its error/retry must be the entries query's
   // (the accounts error previously masked entry failures and Retry refetched
   // the wrong query). An accounts failure surfaces via the picker's state.
@@ -297,6 +300,7 @@ export default function Ledger() {
         columns={columns}
         data={entries}
         loading={entriesLoading}
+        isFetching={entriesQuery.isFetching}
         error={error}
         onRetry={retry}
         onRowClick={(e) => setSelectedEntry(e)}

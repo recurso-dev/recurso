@@ -30,18 +30,16 @@ export default [
         { allowConstantExport: true },
       ],
       // eslint-plugin-react-hooks 6+/7 ships the React Compiler rule set.
-      // This app does not run the compiler, and two of those rules flag
-      // deliberate, documented idioms used throughout the codebase rather
-      // than bugs — so they are switched off here instead of mass-editing:
-      //  - set-state-in-effect: the "copy loaded server data into local form
-      //    state" pattern (`useEffect(() => { if (data) setForm(data) }, [data])`)
-      //    on every settings page and slide-over (30 sites).
+      // This app does not run the compiler. Two of those rules flag
+      // deliberate, documented idioms rather than bugs, and are relaxed
+      // NARROWLY rather than globally, so a new file can't adopt them unseen:
+      //  - set-state-in-effect: off only for the files listed in the override
+      //    below (the "copy loaded server data into local form state" pattern).
       //  - refs: the "latest ref" idiom (`ref.current = value` during render)
-      //    in AuthProvider, useUrlState, VerifyEmail and DataTable's
-      //    new-row reveal — each with an inline comment on why.
+      //    stays ON; each site carries a `// eslint-disable-next-line
+      //    react-hooks/refs -- reason` (AuthProvider, useUrlState, VerifyEmail,
+      //    DataTable's new-row reveal).
       // Revisit both if the React Compiler is ever adopted.
-      'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/refs': 'off',
       'react/prop-types': 'off', // specific to this project preferences
       'react/no-unescaped-entities': 'off',
       // Design-system guard (DASHBOARD_REDESIGN.md Stage 1): raw Tailwind
@@ -60,6 +58,45 @@ export default [
         },
       ],
     },
+  },
+
+  {
+    // The "copy loaded server data into local state" idiom
+    // (`useEffect(() => { if (data) setForm(data) }, [data])`) on settings
+    // pages, slide-overs and a few list pages. Listed per file: a file not on
+    // this list gets the rule at full strength, so add to the list (with a
+    // reason in the PR) rather than re-widening the rule.
+    files: [
+      'src/components/IntegrationConnections.jsx',
+      'src/components/PaymentGateways.jsx',
+      'src/components/patterns/MotionState.jsx',
+      'src/components/slide-overs/CancelFlowDetail.jsx',
+      'src/components/slide-overs/CustomerDetail.jsx',
+      'src/components/slide-overs/DunningCampaignDetail.jsx',
+      'src/components/slide-overs/PlanCharges.jsx',
+      'src/components/slide-overs/PlanDetail.jsx',
+      'src/components/ui/command-palette.jsx',
+      'src/lib/useReducedMotion.js',
+      'src/pages/AskAnalytics.jsx',
+      'src/pages/CreateQuote.jsx',
+      'src/pages/Dashboard.jsx',
+      'src/pages/FinanceReconciliation.jsx',
+      'src/pages/Ledger.jsx',
+      'src/pages/Login.jsx',
+      'src/pages/Security.jsx',
+      'src/pages/Settings.jsx',
+      'src/pages/SubscriptionPage.jsx',
+      'src/pages/portal/PortalDashboard.jsx',
+      'src/pages/portal/PortalPaymentMethod.jsx',
+      'src/pages/settings/EUEInvoiceSettings.jsx',
+      'src/pages/settings/GSTSettings.jsx',
+      'src/pages/settings/IRPSettings.jsx',
+      'src/pages/settings/InvoiceBranding.jsx',
+      'src/pages/settings/MCPSettings.jsx',
+      'src/pages/settings/TaxNexusSettings.jsx',
+      'src/pages/settings/USTaxSettings.jsx',
+    ],
+    rules: { 'react-hooks/set-state-in-effect': 'off' },
   },
 
   {

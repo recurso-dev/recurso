@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, HeartHandshake } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormSheet } from "@/components/patterns/FormSheet";
@@ -65,10 +66,15 @@ const CancelFlows = () => {
     </Button>
   );
 
+  // Fully-loaded list (one fetch, no server paging), so sorting the complete
+  // set client-side is honest; the sort persists in the URL (Batch F3).
+  const { sort, onSortChange } = useTableSort();
   const columns = [
     {
       key: "name",
       header: "Flow",
+      sortable: true,
+      sortValue: (f) => f.name,
       cell: (f) => (
         <span className="flex items-center gap-2">
           <span className="font-medium text-foreground">{f.name}</span>
@@ -79,11 +85,15 @@ const CancelFlows = () => {
     {
       key: "cooldown",
       header: "Cooldown",
+      sortable: true,
+      sortValue: (f) => Number(f.cooldown_days) || 0,
       cell: (f) => <span className="text-muted-foreground">{f.cooldown_days} days</span>,
     },
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (f) => (f.is_active ? "active" : "inactive"),
       cell: (f) => <StatusBadge status={f.is_active ? "active" : "inactive"} />,
     },
   ];
@@ -98,7 +108,9 @@ const CancelFlows = () => {
 
       <DataTable
         columns={columns}
-        data={flows}
+        data={sortRows(flows, sort, columns)}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

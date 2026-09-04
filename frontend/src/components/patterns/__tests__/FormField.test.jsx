@@ -26,4 +26,24 @@ describe("FormField", () => {
     // a11y wiring is preserved alongside the motion.
     expect(screen.getByRole("textbox")).toHaveAttribute("aria-invalid", "true");
   });
+
+  it("associates the label with the control when no htmlFor/id is given", () => {
+    render(
+      <FormField label="Email" description="Where receipts go">
+        <input />
+      </FormField>,
+    );
+    const input = screen.getByLabelText("Email");
+    expect(input).toHaveAttribute("id");
+    expect(input).toHaveAccessibleDescription("Where receipts go");
+  });
+
+  it("keeps the child's own id when the caller set one but no htmlFor", () => {
+    render(
+      <FormField label="Email">
+        <input id="email" />
+      </FormField>,
+    );
+    expect(screen.getByLabelText("Email")).toHaveAttribute("id", "email");
+  });
 });

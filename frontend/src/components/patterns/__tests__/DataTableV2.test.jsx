@@ -154,3 +154,20 @@ describe("DataTable v2 — column priority and footer", () => {
     expect(screen.getByText("$951.00")).toBeInTheDocument();
   });
 });
+
+describe("DataTable v2 — background refetch", () => {
+  it("shows the refresh line over existing rows instead of a skeleton", () => {
+    wrap(<DataTable columns={columns} data={rows} isFetching />);
+    expect(screen.getByTestId("datatable-refreshing")).toBeInTheDocument();
+    expect(screen.getByRole("table")).toBeInTheDocument(); // rows stay on screen
+    expect(screen.getByRole("table").closest("[aria-busy]")).toHaveAttribute("aria-busy", "true");
+  });
+
+  it("does not show the refresh line while loading or empty", () => {
+    const { unmount } = wrap(<DataTable columns={columns} data={[]} loading isFetching />);
+    expect(screen.queryByTestId("datatable-refreshing")).not.toBeInTheDocument();
+    unmount();
+    wrap(<DataTable columns={columns} data={[]} isFetching />);
+    expect(screen.queryByTestId("datatable-refreshing")).not.toBeInTheDocument();
+  });
+});

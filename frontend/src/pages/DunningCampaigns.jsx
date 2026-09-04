@@ -5,6 +5,7 @@ import { Plus, Megaphone } from "lucide-react";
 
 import { endpoints as api } from "../lib/api";
 import { formatDate } from "@/lib/utils";
+import { useTableSort, sortRows } from "@/lib/tableSort";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { FormSheet } from "@/components/patterns/FormSheet";
@@ -76,10 +77,15 @@ const DunningCampaigns = () => {
     </Button>
   );
 
+  // Fully-loaded list (one fetch, no server paging), so sorting the complete
+  // set client-side is honest; the sort persists in the URL (Batch F3).
+  const { sort, onSortChange } = useTableSort();
   const columns = [
     {
       key: "name",
       header: "Campaign",
+      sortable: true,
+      sortValue: (c) => c.name,
       cell: (c) => <span className="font-medium text-foreground">{c.name}</span>,
     },
     {
@@ -90,11 +96,15 @@ const DunningCampaigns = () => {
     {
       key: "status",
       header: "Status",
+      sortable: true,
+      sortValue: (c) => (c.is_active ? "active" : "inactive"),
       cell: (c) => <StatusBadge status={c.is_active ? "active" : "inactive"} />,
     },
     {
       key: "created",
       header: "Created",
+      sortable: true,
+      sortValue: (c) => (c.created_at ? Date.parse(c.created_at) || null : null),
       cell: (c) => <span className="text-muted-foreground">{formatDate(c.created_at)}</span>,
     },
   ];
@@ -109,7 +119,9 @@ const DunningCampaigns = () => {
 
       <DataTable
         columns={columns}
-        data={campaigns}
+        data={sortRows(campaigns, sort, columns)}
+        sort={sort}
+        onSortChange={onSortChange}
         loading={loading}
         error={error}
         onRetry={refetch}

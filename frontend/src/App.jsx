@@ -2,7 +2,6 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router'
 import { lazy, Suspense } from 'react'
 import Login from './pages/Login'
-import Landing from './pages/Landing'
 import DashboardLayout from "./components/layout/DashboardLayout"
 import { useAuth } from './auth/AuthProvider'
 
@@ -21,7 +20,11 @@ import { useAuth } from './auth/AuthProvider'
 // Multi-tenant + tax + GenAI
 
 const Dashboard = lazy(() => import('./pages/Dashboard'))
-// Route-level code splitting: every page beyond the login/home critical path
+// The signed-out marketing page is only ever rendered for anonymous visitors at
+// "/" (PrivateRoute below, inside the same Suspense boundary), so signed-in
+// dashboard loads never pay for its copy and icons.
+const Landing = lazy(() => import('./pages/Landing'))
+// Route-level code splitting: every page beyond the login critical path
 // loads on demand, so the entry chunk stays small and Tremor/recharts land in
 // route chunks. All pages are default exports, which lazy() consumes directly.
 const Customers = lazy(() => import('./pages/Customers'))
