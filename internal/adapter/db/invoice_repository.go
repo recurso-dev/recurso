@@ -452,25 +452,6 @@ const retryInvoiceColumns = `
 	COALESCE(dunning_action_id, ''), COALESCE(dunning_context_key, ''),
 	COALESCE(last_payment_error, ''), COALESCE(dunning_managed_by, 'scheduler')`
 
-func (r *InvoiceRepository) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
-	query := `
-		SELECT` + retryInvoiceColumns + `
-		FROM invoices
-		WHERE status IN ('open', 'past_due')
-		  AND next_retry_at IS NOT NULL
-		  AND next_retry_at <= $1
-		  AND dunning_managed_by = 'worker'
-		  AND NOT dunning_paused
-		LIMIT 10
-	`
-	rows, err := r.db.QueryContext(ctx, query, time.Now().UTC())
-	if err != nil {
-		return nil, fmt.Errorf("failed to query retry invoices: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	return scanRetryInvoices(rows)
-}
-
 // ClaimDueForRetry atomically leases up to `limit` due retry invoices for THIS
 // worker instance and returns them, pushing each claimed row's next_retry_at
 // forward by `lease` so a second instance (Cloud Run scales to many, and the

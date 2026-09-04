@@ -78,8 +78,9 @@ func TestCollectionsActions_Postgres(t *testing.T) {
 		t.Errorf("requeue must hand to worker with next_retry set: managed_by=%q next_retry=%v", managedBy, nextRetry)
 	}
 
-	// It should now be claimable by the retry worker.
-	claimed, err := repo.ClaimDueForRetry(ctx, time.Minute, 10)
+	// It should now be claimable by the retry worker. The limit is large so
+	// other tenants' due rows in a shared database cannot crowd ours out.
+	claimed, err := repo.ClaimDueForRetry(ctx, time.Minute, 1000)
 	if err != nil {
 		t.Fatalf("ClaimDueForRetry: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestCollectionsActions_Postgres(t *testing.T) {
 	if ok, err := repo.SetDunningPaused(ctx, tenantID, paused, true); err != nil || !ok {
 		t.Fatalf("SetDunningPaused: ok=%v err=%v", ok, err)
 	}
-	claimed2, err := repo.ClaimDueForRetry(ctx, time.Minute, 10)
+	claimed2, err := repo.ClaimDueForRetry(ctx, time.Minute, 1000)
 	if err != nil {
 		t.Fatalf("ClaimDueForRetry after pause: %v", err)
 	}
