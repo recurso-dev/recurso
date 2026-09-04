@@ -19,13 +19,8 @@ type mockInvoiceRepo struct {
 	updated  []*domain.Invoice
 }
 
-func (m *mockInvoiceRepo) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
-	return m.invoices, nil
-}
-
 func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error) {
-	// The atomic claim leases the same due rows the worker would otherwise
-	// SELECT; for the mock it behaves like GetDueForRetry.
+	// The atomic claim leases the due rows; the mock hands back its fixture.
 	return m.invoices, nil
 }
 

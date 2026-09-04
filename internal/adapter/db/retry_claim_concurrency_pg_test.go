@@ -89,6 +89,7 @@ func TestClaimDueForRetry_ConcurrentClaimsDisjoint_Postgres(t *testing.T) {
 	var ready, wg sync.WaitGroup
 	var mu sync.Mutex
 	claimCount := map[uuid.UUID]int{}
+	claimTenant := map[uuid.UUID]uuid.UUID{}
 	start := make(chan struct{})
 	ready.Add(workers)
 	for w := 0; w < workers; w++ {
@@ -97,8 +98,9 @@ func TestClaimDueForRetry_ConcurrentClaimsDisjoint_Postgres(t *testing.T) {
 			defer wg.Done()
 			ready.Done()
 			<-start
-			// Long lease so a claimed row can't come back due within the test.
-			invs, err := repo.ClaimDueForRetry(ctx, time.Hour, 100)
+			// Long lease so a claimed row can't come back due within the test, and
+			// a limit no other tenant's leftovers in a shared database can crowd.
+			invs, err := repo.ClaimDueForRetry(ctx, time.Hour, 1000)
 			if err != nil {
 				t.Errorf("ClaimDueForRetry: %v", err)
 				return
@@ -106,6 +108,7 @@ func TestClaimDueForRetry_ConcurrentClaimsDisjoint_Postgres(t *testing.T) {
 			mu.Lock()
 			for _, inv := range invs {
 				claimCount[inv.ID]++
+				claimTenant[inv.ID] = inv.TenantID
 			}
 			mu.Unlock()
 		}()
@@ -115,11 +118,17 @@ func TestClaimDueForRetry_ConcurrentClaimsDisjoint_Postgres(t *testing.T) {
 	wg.Wait()
 
 	// No invoice was claimed by both workers (the double-charge invariant), and
-	// only due worker-managed invoices were claimed.
+	// only due worker-managed invoices were claimed. The sweep is deliberately
+	// tenant-agnostic, so rows other tests left due in a shared database may
+	// come back too; eligibility is judged for this tenant's rows only, while
+	// the double-claim check stays global.
 	claimedDue := 0
 	for id, c := range claimCount {
 		if c > 1 {
 			t.Fatalf("invoice %s was claimed %d times — concurrent workers would double-charge it", id, c)
+		}
+		if claimTenant[id] != tenantID {
+			continue
 		}
 		if !due[id] {
 			t.Errorf("a non-eligible invoice %s was claimed", id)

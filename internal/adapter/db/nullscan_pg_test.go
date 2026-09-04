@@ -154,37 +154,25 @@ func TestBackgroundJobNullScans_Postgres(t *testing.T) {
 		t.Fatalf("seed retry invoice (NULL e-invoice cols): %v", err)
 	}
 
+	// --- ClaimDueForRetry (ADR-003) is the retry sweep's only read path and
+	// goes through scanRetryInvoices: it must not abort on the NULL e-invoice
+	// columns, must return the due row leased (next_retry_at advanced into the
+	// future), and a second immediate claim must NOT return it (a concurrent
+	// instance is locked out until the lease lapses). The limit is large so
+	// other tenants' due rows in a shared database cannot crowd ours out. ---
 	invRepo := NewInvoiceRepository(conn)
-	retry, err := invRepo.GetDueForRetry(ctx)
+	claimed, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 1000)
 	if err != nil {
-		t.Fatalf("GetDueForRetry must not abort on NULL e-invoice columns: %v", err)
-	}
-	var retried bool
-	for _, inv := range retry {
-		if inv.ID == invID {
-			retried = true
-			if inv.HSNCode != "" || inv.IRN != "" || inv.EInvoiceStatus != "" {
-				t.Errorf("NULL e-invoice cols should scan to empty, got hsn=%q irn=%q status=%q",
-					inv.HSNCode, inv.IRN, inv.EInvoiceStatus)
-			}
-		}
-	}
-	if !retried {
-		t.Fatal("worker-managed retry invoice was not returned")
-	}
-
-	// --- ClaimDueForRetry (ADR-003): the atomic claim must return the same due
-	// row, lease it by advancing next_retry_at into the future, and a second
-	// immediate claim must NOT return it (a concurrent instance is locked out
-	// until the lease lapses). ---
-	claimed, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 10)
-	if err != nil {
-		t.Fatalf("ClaimDueForRetry: %v", err)
+		t.Fatalf("ClaimDueForRetry must not abort on NULL e-invoice columns: %v", err)
 	}
 	var claimedFound bool
 	for _, inv := range claimed {
 		if inv.ID == invID {
 			claimedFound = true
+			if inv.HSNCode != "" || inv.IRN != "" || inv.EInvoiceStatus != "" {
+				t.Errorf("NULL e-invoice cols should scan to empty, got hsn=%q irn=%q status=%q",
+					inv.HSNCode, inv.IRN, inv.EInvoiceStatus)
+			}
 			if inv.NextRetryAt == nil || !inv.NextRetryAt.After(time.Now()) {
 				t.Errorf("claim must lease next_retry_at into the future, got %v", inv.NextRetryAt)
 			}
@@ -194,7 +182,7 @@ func TestBackgroundJobNullScans_Postgres(t *testing.T) {
 		t.Fatal("ClaimDueForRetry did not return the due retry invoice")
 	}
 	// A second claim in the same window must skip the just-leased row.
-	again, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 10)
+	again, err := invRepo.ClaimDueForRetry(ctx, 10*time.Minute, 1000)
 	if err != nil {
 		t.Fatalf("second ClaimDueForRetry: %v", err)
 	}

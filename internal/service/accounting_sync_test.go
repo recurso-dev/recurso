@@ -137,10 +137,6 @@ func (m *acctSyncInvoiceRepo) List(ctx context.Context, tenantID uuid.UUID) ([]*
 
 func (m *acctSyncInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error { return nil }
 
-func (m *acctSyncInvoiceRepo) GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-
 func (m *acctSyncInvoiceRepo) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
 	return nil
 }

@@ -99,7 +99,6 @@ type InvoiceRepository interface {
 	RequeueForRetry(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
 	SetDunningPaused(ctx context.Context, tenantID, invoiceID uuid.UUID, paused bool) (bool, error)
 	MarkUncollectibleScoped(ctx context.Context, tenantID, invoiceID uuid.UUID) (bool, error)
-	GetDueForRetry(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimDueForRetry atomically leases up to `limit` due retry invoices for
 	// the calling worker instance, advancing next_retry_at by `lease` so a
 	// second instance can't claim the same rows in the same cycle (ADR-003).
