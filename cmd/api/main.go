@@ -1603,6 +1603,9 @@ func main() {
 	// Prometheus metrics: record every request (method/route/status + latency).
 	httpMetrics := metrics.NewHTTPMetrics()
 	r.Use(middleware.MetricsMiddleware(httpMetrics))
+	// Pool gauges and business-event counters ride on the same scrape.
+	httpMetrics.SetDBStats(database.Stats)
+	webhookService.SetEventObserver(httpMetrics.IncEvent)
 	// Rate limit (per key/IP): RATE_LIMIT_PER_MINUTE, default 500.
 	rateLimit, _ := strconv.Atoi(getEnvDefault("RATE_LIMIT_PER_MINUTE", "500"))
 	if rateLimit <= 0 {

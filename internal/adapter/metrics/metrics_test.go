@@ -1,9 +1,11 @@
 package metrics
 
 import (
+	"database/sql"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 )
 
 func render(m *HTTPMetrics) string {
@@ -101,4 +103,42 @@ func fmtSscan(s string, v *int) (int, error) {
 	}
 	*v = n
 	return 1, nil
+}
+
+func TestHTTPMetrics_EventsAndDBPool(t *testing.T) {
+	m := NewHTTPMetrics()
+	m.IncEvent("invoice.created")
+	m.IncEvent("invoice.created")
+	m.IncEvent("payment.succeeded")
+	m.IncEvent("")
+	m.SetDBStats(func() sql.DBStats {
+		return sql.DBStats{MaxOpenConnections: 25, OpenConnections: 4, InUse: 1, Idle: 3, WaitCount: 7, WaitDuration: 1500 * time.Millisecond}
+	})
+	var b strings.Builder
+	m.WriteProm(&b)
+	out := b.String()
+	for _, want := range []string{
+		"# TYPE recurso_events_total counter\n",
+		"recurso_events_total{type=\"invoice.created\"} 2\n",
+		"recurso_events_total{type=\"payment.succeeded\"} 1\n",
+		"recurso_events_total{type=\"<unknown>\"} 1\n",
+		"db_pool_max_open_connections 25\n",
+		"db_pool_open_connections 4\n",
+		"db_pool_in_use_connections 1\n",
+		"db_pool_idle_connections 3\n",
+		"# TYPE db_pool_wait_count_total counter\n",
+		"db_pool_wait_count_total 7\n",
+		"db_pool_wait_duration_seconds_total 1.5\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// Without a pool registered the db_pool_* family is absent entirely (no
+	// misleading zeros).
+	var b2 strings.Builder
+	NewHTTPMetrics().WriteProm(&b2)
+	if strings.Contains(b2.String(), "db_pool_") {
+		t.Errorf("db_pool_* emitted without SetDBStats")
+	}
 }
