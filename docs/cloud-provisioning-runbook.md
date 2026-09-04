@@ -208,7 +208,7 @@ git checkout <RECURSO_TAG>          # e.g. v0.2.3, current release
 ### 5b. Generate per-customer secrets and write `.env`
 
 Every instance gets **freshly generated** secrets — never reuse a password or
-`API_SECRET` across customers. Generate them on the box and never let them
+encryption key across customers. Generate them on the box and never let them
 leave it except into the backup bucket (which is per-customer and encrypted).
 
 ```bash
@@ -216,7 +216,8 @@ cd /opt/recurso/<CUSTOMER_SLUG>
 umask 077
 
 POSTGRES_PASSWORD="$(openssl rand -base64 30 | tr -d '/+=' | cut -c1-32)"
-API_SECRET="$(openssl rand -base64 48 | tr -d '/+=' | cut -c1-48)"
+# Must decode to exactly 32 bytes (hex or base64); the API refuses to boot otherwise.
+GATEWAY_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 
 cat > .env <<EOF
 # Recurso Cloud — <CUSTOMER_SLUG> — provisioned $(date -u +%F)
@@ -228,7 +229,8 @@ POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 POSTGRES_DB=recurso
 
 # --- API ---
-API_SECRET=${API_SECRET}
+# 32-byte key that encrypts stored gateway/integration credentials at rest.
+GATEWAY_ENCRYPTION_KEY=${GATEWAY_ENCRYPTION_KEY}
 BASE_URL=https://<CUSTOMER_DOMAIN>
 PORTAL_URL=https://<CUSTOMER_DOMAIN>
 
@@ -257,12 +259,12 @@ chmod 600 .env
 
 The variable names above are exactly those consumed by `docker-compose.prod.yml`
 and the API binary (cross-checked against `.env.example`): `POSTGRES_USER`,
-`POSTGRES_PASSWORD`, `POSTGRES_DB`, and `API_SECRET` are read by the compose
-file; `DATABASE_URL` is derived inside compose from the Postgres trio, so you
+`POSTGRES_PASSWORD`, and `POSTGRES_DB` are read by the compose file (it
+refuses to start when any is unset); `DATABASE_URL` is derived inside compose from the Postgres trio, so you
 do **not** set it here. `BASE_URL`/`PORTAL_URL`, `ALERT_WEBHOOK_URL`,
 `ALERT_WEBHOOK_FORMAT`, and the payment/SMTP keys are read by the API.
 
-> Record `POSTGRES_PASSWORD` and `API_SECRET` in your secrets manager
+> Record `POSTGRES_PASSWORD` and `GATEWAY_ENCRYPTION_KEY` in your secrets manager
 > (1Password/Bitwarden vault item named `recurso-cloud/<CUSTOMER_SLUG>`)
 > immediately — the disk is the only other copy, and you'll need them for
 > restore.
@@ -534,7 +536,7 @@ and outside their peak billing hours.
 - [ ] ufw active: only 22/80/443 open; 8080/5432/3000 not reachable externally
 - [ ] SSH: root + password login refused, fail2ban `sshd` jail active
 - [ ] unattended-upgrades enabled, auto-reboot off
-- [ ] `.env` is `chmod 600`; `POSTGRES_PASSWORD` + `API_SECRET` saved to vault
+- [ ] `.env` is `chmod 600`; `POSTGRES_PASSWORD` + `GATEWAY_ENCRYPTION_KEY` saved to vault
 - [ ] First `backup.sh` run succeeded and the dump landed in `<S3_BUCKET>`
 - [ ] Test `[CRITICAL]` + recovery alert seen in `#recurso-ops`
 - [ ] Instance added to the external uptime monitor / status page

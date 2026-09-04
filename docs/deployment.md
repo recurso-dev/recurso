@@ -10,7 +10,7 @@ git clone https://github.com/recurso-dev/recurso.git && cd recur-so
 # 1. Configure
 cp .env.example .env
 # Edit .env — at minimum set POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB
-# and API_SECRET. See .env.example for the full annotated list
+# and a gateway encryption key. See .env.example for the full annotated list
 # (payments, SMTP, AI, etc. all degrade gracefully to mocks if unset).
 
 # 2. Launch

@@ -26,7 +26,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/recurso-dev/recurso:latest
+          # Pinned to a release tag: `latest` is pushed by BOTH the main build
+          # and the tag build, so two replicas could pull different images.
+          # Bump this on each release.
+          image: ghcr.io/recurso-dev/recurso:v0.13.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -44,11 +48,21 @@ spec:
                 name: recurso-config
             - secretRef:
                 name: recurso-secrets
-          livenessProbe:
+          # Migrations run before the listener opens, so give the process a
+          # generous startup window instead of a liveness kill mid-migration.
+          startupProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 36
+          # Liveness must be shallow: /health returns 503 while Postgres is
+          # unreachable, and using it here restarted every pod at once on a
+          # database blip. The process being able to accept a TCP connection is
+          # the "alive" signal; /health stays the readiness gate.
+          livenessProbe:
+            tcpSocket:
+              port: 8080
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3

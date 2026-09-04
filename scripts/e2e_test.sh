@@ -1,5 +1,7 @@
 #!/bin/bash
-set -e
+# -o pipefail: a failing command inside a pipeline (curl | jq) must fail the
+# step, not be masked by the last stage succeeding.
+set -eo pipefail
 
 # Colors
 GREEN='\033[0;32m'
@@ -314,3 +316,5 @@ else
 fi
 
 echo -e "${GREEN}✅ All Scenario Checks Passed!${NC}"
+# Sentinel asserted by CI: proves the script ran to its last check.
+echo "E2E_VERIFICATION_COMPLETE"

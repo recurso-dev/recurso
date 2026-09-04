@@ -1548,7 +1548,11 @@ func main() {
 	dunningCampaignHandler := handler.NewDunningCampaignHandler(dunningCampaignService)
 
 	// 8. Setup Router
-	r := gin.Default()
+	// gin.New + Recovery + a slog access log: gin.Default()'s logger wrote
+	// plain-text lines into the JSON log stream.
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.AccessLog())
 
 	// Register custom binding validators (currency/country) so request structs
 	// can declare `binding:"required,currency"` and reject malformed codes at

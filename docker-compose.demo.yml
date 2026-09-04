@@ -20,7 +20,6 @@ services:
       - DEMO_RESET_INTERVAL=1h
       - DEMO_SEED_BIN=/app/demo-seed
       - DATABASE_URL=postgres://user:password@postgres:5432/recurso?sslmode=disable
-      - API_SECRET=demo_only_secret
       - APP_ENV=production
       - GIN_MODE=release
     restart: unless-stopped

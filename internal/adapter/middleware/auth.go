@@ -86,7 +86,9 @@ func extractBearerToken(c *gin.Context) (string, bool) {
 func resolveAPIKey(c *gin.Context, token string, cache *verifiedKeyCache, repo *db.TenantRepository, logger *slog.Logger, serverLive bool) (uuid.UUID, bool, bool) {
 	// Dev bypass — ONLY in development mode AND when explicitly enabled.
 	if token == "recurso_secret" {
-		if os.Getenv("APP_ENV") == "development" && os.Getenv("ALLOW_DEV_BYPASS") == "true" {
+		// Never on a live-gateway server, whatever the env says: a misapplied
+		// APP_ENV must not turn a fixed string into a production credential.
+		if os.Getenv("APP_ENV") == "development" && os.Getenv("ALLOW_DEV_BYPASS") == "true" && !serverLive {
 			devTenantID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
 			logger.Debug("dev bypass auth used", "tenant_id", devTenantID)
 			return devTenantID, serverLive, true

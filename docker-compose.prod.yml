@@ -19,11 +19,15 @@ services:
   api:
     build: .
     restart: always
-    ports:
-      - "8080:8080"
+    # Not published on the host: the frontend's nginx is the only front door
+    # (it proxies /v1, /auth, /portal/*, /checkout, /version). Publishing 8080
+    # here bypassed it.
+    expose:
+      - "8080"
     environment:
-      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
-      - API_SECRET=${API_SECRET}
+      # `:?` makes compose refuse to start with an unset password instead of
+      # silently connecting with an empty one.
+      - DATABASE_URL=postgres://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:?POSTGRES_DB is required}?sslmode=disable
       - GIN_MODE=release
       - TIGERBEETLE_ADDRESS=tigerbeetle:3000
       - REDIS_URL=redis://redis:6379
@@ -32,8 +36,10 @@ services:
       # twice (ENG-161).
       - REQUIRE_REDIS=true
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks:
       - recurso_net
 
@@ -59,6 +65,11 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
