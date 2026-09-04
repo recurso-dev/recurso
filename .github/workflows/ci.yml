@@ -6,6 +6,16 @@ on:
   pull_request:
     branches: [main]
 
+# Least privilege: the default GITHUB_TOKEN is read-only for every job; the
+# build job widens to packages:write itself. A superseded push on the same
+# ref cancels the older run instead of burning runners.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   GO_VERSION: "1.25.13"
   REGISTRY: ghcr.io
@@ -15,6 +25,7 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -32,6 +43,7 @@ jobs:
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -60,6 +72,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:15
@@ -180,6 +193,7 @@ jobs:
   sdk-drift:
     name: SDK & docs drift
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
@@ -209,6 +223,7 @@ jobs:
   security:
     name: Security Scan
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
 
@@ -218,7 +233,7 @@ jobs:
 
       - name: govulncheck (known Go vulnerabilities)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
           govulncheck ./...
 
       - name: Trivy filesystem & config scan
@@ -234,6 +249,7 @@ jobs:
   e2e:
     name: E2E
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
 
@@ -252,10 +268,18 @@ jobs:
           docker compose logs api
           exit 1
 
+      # The script exits non-zero on any failed assertion, but a future edit
+      # that no-ops a step would still pass silently — so assert the completion
+      # sentinel the script prints only after its last check (the same
+      # anti-false-green stance as the ledger and OpenAPI gates).
       - name: Run e2e tests
         run: |
           chmod +x scripts/e2e_test.sh
-          ./scripts/e2e_test.sh
+          out=$(./scripts/e2e_test.sh 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          echo "$out" | grep -q 'E2E_VERIFICATION_COMPLETE' || {
+            echo "FATAL: e2e script finished without reaching its final check"; exit 1;
+          }
 
       - name: Dump API logs on failure
         if: failure()
@@ -268,6 +292,7 @@ jobs:
   build:
     name: Build & Push
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     needs: [lint, frontend, test, e2e, security, sdk-drift]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:

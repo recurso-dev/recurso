@@ -1,0 +1,12 @@
+# Keep at least one API pod serving through node drains and rollouts.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: recurso-api
+  namespace: recurso
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: recurso
+      component: api

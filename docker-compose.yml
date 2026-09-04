@@ -12,7 +12,6 @@ services:
       - "8080:8080"
     environment:
       - DATABASE_URL=postgres://user:password@postgres:5432/recurso?sslmode=disable
-      - API_SECRET=recurso_secret
       - APP_ENV=development
       - GIN_MODE=release
       # Real distributed locker + idempotency store, so the local stack behaves

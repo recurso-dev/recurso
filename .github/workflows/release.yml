@@ -5,15 +5,46 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 env:
   GO_VERSION: "1.25.13"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # A tag build runs the same gates as main: Postgres-backed suites including
+  # the ledger invariant harness (which SKIPS silently without a database —
+  # the previous plain `go test ./...` here was a false green), the migration
+  # round-trip, lint, and the OpenAPI drift test.
   test:
     name: Build & Test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: user
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: recurso_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v5
 
@@ -21,11 +52,42 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.5.0
+
       - name: Build
         run: go build ./...
 
+      - name: Create scratch DBs
+        run: PGPASSWORD=password psql -h localhost -U user -d recurso_test -c "CREATE DATABASE recurso_repo_test;" -c "CREATE DATABASE recurso_migr;"
+
+      - name: Migrations round-trip (up, down -all, up)
+        env:
+          MIGRATE_DB: postgres://user:password@localhost:5432/recurso_migr?sslmode=disable
+        run: |
+          go install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
+          M="$(go env GOPATH)/bin/migrate -path internal/adapter/db/migrations -database $MIGRATE_DB"
+          $M up && $M down -all && $M up
+
       - name: Run tests
-        run: go test ./...
+        env:
+          DATABASE_URL: postgres://user:password@localhost:5432/recurso_test?sslmode=disable
+          TEST_DATABASE_URL: postgres://user:password@localhost:5432/recurso_repo_test?sslmode=disable
+          TEST_REDIS_URL: redis://localhost:6379/0
+          APP_ENV: test
+        run: go test -race ./...
+
+      - name: Assert ledger invariant harness ran (not skipped)
+        env:
+          TEST_DATABASE_URL: postgres://user:password@localhost:5432/recurso_repo_test?sslmode=disable
+          APP_ENV: test
+        run: |
+          out=$(go test -run '^TestLedgerInvariants_RandomizedBillingSequences$' -v ./internal/service/ 2>&1) || { echo "$out"; exit 1; }
+          echo "$out" | grep -q -- '--- PASS: TestLedgerInvariants_RandomizedBillingSequences' || {
+            echo "$out"; echo "FATAL: ledger invariant harness did not run to a PASS"; exit 1;
+          }
 
   docker:
     name: Build & Push Image
