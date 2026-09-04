@@ -107,7 +107,7 @@ func (b *PayInAdvanceBiller) BillEvent(ctx context.Context, sub *domain.Subscrip
 			continue
 		}
 
-		if err := b.unbilled.Create(&domain.UnbilledCharge{
+		if err := b.unbilled.Create(ctx, &domain.UnbilledCharge{
 			ID:             uuid.New(),
 			SubscriptionID: sub.ID,
 			Amount:         fee,

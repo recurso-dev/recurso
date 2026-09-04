@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/xml"
 	"fmt"
+	"github.com/recurso-dev/recurso/internal/validate"
 	"sort"
 
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -195,8 +196,8 @@ func BuildUBLInvoice(inv *domain.Invoice, seller, buyer domain.EUParty) ([]byte,
 	if inv.InvoiceNumber == "" {
 		return nil, fmt.Errorf("eu e-invoice: invoice number is required (BT-1)")
 	}
-	if len(inv.Currency) != 3 {
-		return nil, fmt.Errorf("eu e-invoice: a 3-letter currency is required (BT-5)")
+	if !validate.Currency(inv.Currency) {
+		return nil, fmt.Errorf("eu e-invoice: a valid ISO 4217 currency is required (BT-5)")
 	}
 	for label, p := range map[string]domain.EUParty{"seller": seller, "buyer": buyer} {
 		if p.Name == "" {

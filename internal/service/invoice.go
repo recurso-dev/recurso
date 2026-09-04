@@ -330,7 +330,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// different currency than the plan price cannot be billed on this invoice;
 	// they stay unbilled. Each billable charge is taxed independently at its own
 	// HSN (falling back to the tenant SAC when unset), mirroring add-ons.
-	charges, err := s.UnbilledChargeRepo.ListBySubscriptionID(sub.ID)
+	charges, err := s.UnbilledChargeRepo.ListBySubscriptionID(ctx, sub.ID)
 	var billableCharges []*domain.UnbilledCharge
 	if err == nil {
 		for _, c := range charges {
@@ -563,7 +563,13 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		for _, c := range billableCharges {
 			ids = append(ids, c.ID)
 		}
-		_ = s.UnbilledChargeRepo.MarkAsInvoiced(ids)
+		// A failure here is a double-bill in waiting: the charges stay
+		// "pending" and the next invoice sweeps them up again. Nothing
+		// downstream notices, so shout with the ids an operator needs.
+		if err := s.UnbilledChargeRepo.MarkAsInvoiced(ctx, ids); err != nil {
+			slog.Error("failed to mark one-off charges as invoiced — they will be billed AGAIN on the next invoice unless corrected",
+				"invoice_id", inv.ID, "subscription_id", sub.ID, "charge_ids", ids, "error", err)
+		}
 	}
 
 	// Claim the rated usage windows on the now-committed invoice. A claim

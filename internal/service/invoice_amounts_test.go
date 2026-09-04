@@ -58,14 +58,14 @@ type mockUCRepoForInvAmt struct {
 	invoicedIDs []uuid.UUID
 }
 
-func (m *mockUCRepoForInvAmt) ListBySubscriptionID(subID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+func (m *mockUCRepoForInvAmt) ListBySubscriptionID(_ context.Context, subID uuid.UUID) ([]*domain.UnbilledCharge, error) {
 	if m.listErr != nil {
 		return nil, m.listErr
 	}
 	return m.charges, nil
 }
 
-func (m *mockUCRepoForInvAmt) MarkAsInvoiced(ids []uuid.UUID) error {
+func (m *mockUCRepoForInvAmt) MarkAsInvoiced(_ context.Context, ids []uuid.UUID) error {
 	m.invoicedIDs = append(m.invoicedIDs, ids...)
 	return nil
 }

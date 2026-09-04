@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -295,7 +296,7 @@ func (s *SubscriptionService) CreateSubscription(ctx context.Context, input Crea
 	price := plan.Prices[0]
 
 	// firstPeriodFactor is 1.0 except for a prorated first_of_month stub period.
-	subtotal := int64(float64(price.Amount) * firstPeriodFactor)
+	subtotal := int64(math.Round(float64(price.Amount) * firstPeriodFactor))
 	discount := int64(0)
 	var couponID *uuid.UUID
 

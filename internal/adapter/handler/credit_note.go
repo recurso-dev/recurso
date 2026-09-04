@@ -115,11 +115,11 @@ func (h *CreditNoteHandler) CreateCreditNote(c *gin.Context) {
 
 	cn, err := h.service.Create(ctx, tenantID, userID, userRole, req)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
-			status = http.StatusBadRequest
+			respondErrorStatus(c, http.StatusBadRequest, err.Error())
+			return
 		}
-		respondErrorStatus(c, status, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 
@@ -212,11 +212,11 @@ func (h *CreditNoteHandler) ApproveCreditNote(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	cn, err := h.service.Approve(ctx, tenantID, cnID, userID)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
-			status = http.StatusBadRequest
+			respondErrorStatus(c, http.StatusBadRequest, err.Error())
+			return
 		}
-		respondErrorStatus(c, status, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": cn})
@@ -241,11 +241,11 @@ func (h *CreditNoteHandler) RejectCreditNote(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	cn, err := h.service.Reject(ctx, tenantID, cnID, userID)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
-			status = http.StatusBadRequest
+			respondErrorStatus(c, http.StatusBadRequest, err.Error())
+			return
 		}
-		respondErrorStatus(c, status, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": cn})
@@ -272,11 +272,11 @@ func (h *CreditNoteHandler) VoidCreditNote(c *gin.Context) {
 	ctx := context.WithValue(c.Request.Context(), domain.TenantIDKey, tenantID)
 	cn, err := h.service.Void(ctx, tenantID, cnID, userID)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrCreditNoteValidation) {
-			status = http.StatusBadRequest
+			respondErrorStatus(c, http.StatusBadRequest, err.Error())
+			return
 		}
-		respondErrorStatus(c, status, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"data": cn})

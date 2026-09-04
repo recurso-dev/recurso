@@ -23,6 +23,10 @@ var ErrCreditNoteValidation = errors.New("credit note validation failed")
 // originating invoice's tax rate: a full refund reverses the full invoice tax,
 // a partial refund reverses proportionally. Zero when the invoice carried no
 // tax. Capped at the invoice tax so rounding can never over-reverse.
+//
+// For a SERIES of refunds on one invoice use refundTaxSlice: rounding each
+// slice independently can over-reverse in aggregate (two 50% refunds of a
+// 101-tax invoice each round to 51).
 func refundTaxPortion(refundAmount, invoiceTax, invoiceTotal int64) int64 {
 	if refundAmount <= 0 || invoiceTax <= 0 || invoiceTotal <= 0 {
 		return 0
@@ -32,6 +36,37 @@ func refundTaxPortion(refundAmount, invoiceTax, invoiceTotal int64) int64 {
 		tax = invoiceTax
 	}
 	return tax
+}
+
+// refundTaxSlice allocates the tax slice for a refund of amount given the
+// refunds already active on the same invoice (priorRefunded). The slice is the
+// difference of the cumulative proportions, so across any sequence of refunds
+// the slices sum to refundTaxPortion(total refunded) ≤ invoiceTax exactly —
+// the same cumulative-rounding rule that keeps GSTR-1 CDNR tie-outs whole.
+func refundTaxSlice(amount, priorRefunded, invoiceTax, invoiceTotal int64) int64 {
+	if priorRefunded < 0 {
+		priorRefunded = 0
+	}
+	return refundTaxPortion(priorRefunded+amount, invoiceTax, invoiceTotal) - refundTaxPortion(priorRefunded, invoiceTax, invoiceTotal)
+}
+
+// priorRefundedExcluding returns the active refunds already recorded against an
+// invoice, excluding the note being processed (which is inserted before its
+// ledger legs post). On a read failure it returns 0 — the slice then degrades
+// to the single-refund proportion, never to nothing.
+func (s *CreditNoteService) priorRefundedExcluding(ctx context.Context, invoiceID uuid.UUID, cn *domain.CreditNote) int64 {
+	sum, err := s.repo.SumActiveRefundsForInvoice(ctx, invoiceID)
+	if err != nil {
+		s.logger.Warn("could not read prior refunds for tax allocation; using single-refund proportion", "invoice_id", invoiceID, "credit_note_id", cn.ID, "error", err)
+		return 0
+	}
+	if cn.Type == domain.CreditNoteTypeRefund && cn.RefundStatus != "" && cn.RefundStatus != domain.RefundStatusFailed {
+		sum -= cn.Amount
+	}
+	if sum < 0 {
+		sum = 0
+	}
+	return sum
 }
 
 // ErrRefundNotFound marks gateway refund webhook events whose refund id does
@@ -272,11 +307,21 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 			// from it. Standalone credits (no invoice) reverse no supply and stay
 			// gross-only.
 			if inv.Total > 0 {
-				cn.TaxAmount = refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+				// Allocate against refunds already active on the invoice so a
+				// series of partial refunds never reverses more tax than the
+				// invoice carried (the note is not inserted yet, so the sum is
+				// exactly the prior ones).
+				var prior int64
+				if cnType == domain.CreditNoteTypeRefund {
+					if p, err := s.repo.SumActiveRefundsForInvoice(ctx, inv.ID); err == nil {
+						prior = p
+					}
+				}
+				cn.TaxAmount = refundTaxSlice(cn.Amount, prior, inv.TaxAmount, inv.Total)
 				cn.Subtotal = cn.Amount - cn.TaxAmount
-				cn.IGSTAmount = refundTaxPortion(cn.Amount, inv.IGSTAmount, inv.Total)
-				cn.CGSTAmount = refundTaxPortion(cn.Amount, inv.CGSTAmount, inv.Total)
-				cn.SGSTAmount = refundTaxPortion(cn.Amount, inv.SGSTAmount, inv.Total)
+				cn.IGSTAmount = refundTaxSlice(cn.Amount, prior, inv.IGSTAmount, inv.Total)
+				cn.CGSTAmount = refundTaxSlice(cn.Amount, prior, inv.CGSTAmount, inv.Total)
+				cn.SGSTAmount = refundTaxSlice(cn.Amount, prior, inv.SGSTAmount, inv.Total)
 				cn.TaxType = inv.TaxType
 				cn.HSNCode = inv.HSNCode
 			}
@@ -431,6 +476,10 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 
 	// Ledger reversal: debit Refunds, credit Cash. Same soft-fail stance as
 	// invoice/payment postings — the reconciliation job surfaces any gap.
+	// The GST slice of this refund, allocated against the refunds already
+	// active on the invoice so a series of partials never over-reverses; used
+	// by both the ledger reversal and the net rev-rec unwind below.
+	refundTax := refundTaxSlice(cn.Amount, s.priorRefundedExcluding(ctx, inv.ID, cn), inv.TaxAmount, inv.Total)
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
@@ -438,8 +487,8 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 		// Reverse the GST portion of the refund out of Tax Payable — otherwise the
 		// output-tax liability booked at invoice time stays overstated forever on
 		// every refunded GST invoice (ENG-191b). Proportional to the refund.
-		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
-			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+		if refundTax > 0 {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, refundTax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
 				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
@@ -456,7 +505,7 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 		// on partial refunds — Refunds expense went negative and the deferred-revenue
 		// rollforward broke. (Full refunds happened to be clamped to net by the
 		// reverse>deferred guard, which is why this only bit partial refunds.)
-		netRefund := cn.Amount - refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+		netRefund := cn.Amount - refundTax
 		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
@@ -979,12 +1028,16 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 	}
 	cn.RefundStatus = status
 
+	// The GST slice of this refund, allocated against the refunds already
+	// active on the invoice so a series of partials never over-reverses; used
+	// by both the ledger reversal and the net rev-rec unwind below.
+	refundTax := refundTaxSlice(cn.Amount, s.priorRefundedExcluding(ctx, inv.ID, cn), inv.TaxAmount, inv.Total)
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
 			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
 		}
-		if tax := refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total); tax > 0 {
-			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, tax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
+		if refundTax > 0 {
+			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, refundTax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
 				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
@@ -997,7 +1050,7 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 		// on partial refunds — Refunds expense went negative and the deferred-revenue
 		// rollforward broke. (Full refunds happened to be clamped to net by the
 		// reverse>deferred guard, which is why this only bit partial refunds.)
-		netRefund := cn.Amount - refundTaxPortion(cn.Amount, inv.TaxAmount, inv.Total)
+		netRefund := cn.Amount - refundTax
 		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
 			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
