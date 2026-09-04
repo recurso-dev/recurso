@@ -111,6 +111,13 @@ type InvoiceRepository interface {
 	// settled the invoice (needed later for API refunds).
 	SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error
 	GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error)
+	// ClaimOverdueForDunning atomically leases up to `limit` overdue
+	// scheduler-managed invoices for the calling instance by pushing
+	// next_retry_at forward by `lease` (ADR-003), so two instances sweeping at
+	// once never dun the same invoice twice. The sweep then sets the real next
+	// retry date per invoice; an invoice whose processing died mid-way comes
+	// back due when the lease lapses.
+	ClaimOverdueForDunning(ctx context.Context, lease time.Duration, limit int) ([]domain.OverdueInvoice, error)
 	GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error)
 	// ClaimFailedEInvoices atomically leases due failed e-invoices so exactly one
 	// runner retries each — preventing duplicate government IRN submissions under
