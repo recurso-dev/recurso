@@ -19,6 +19,16 @@ type WebhookService struct {
 	endpointRepo port.WebhookEndpointRepository
 	eventRepo    port.EventRepository
 	deliveryRepo port.EventDeliveryRepository
+	// observeEvent is called once per successfully persisted event with its
+	// type; nil-safe optional wiring (metrics counter in main), like Set*.
+	observeEvent func(eventType string)
+}
+
+// SetEventObserver registers a callback invoked with the type of every event
+// PublishEvent persists. Used to feed the /metrics business-event counters
+// without the service depending on the metrics adapter.
+func (s *WebhookService) SetEventObserver(fn func(eventType string)) {
+	s.observeEvent = fn
 }
 
 func NewWebhookService(
@@ -130,6 +140,9 @@ func (s *WebhookService) PublishEvent(ctx context.Context, input PublishEventInp
 
 	if err := s.eventRepo.Create(ctx, event); err != nil {
 		return nil, err
+	}
+	if s.observeEvent != nil {
+		s.observeEvent(event.Type)
 	}
 
 	// Create EventDelivery records for all matching endpoints (best-effort)
