@@ -11,8 +11,11 @@ composition root.
 ## Package map
 
 **`cmd/` — entrypoints:**
-- `cmd/api/main.go` (~2192 lines) — the API server / composition root (DB,
-  migrations, services, middleware, routes, schedulers, workers).
+- `cmd/api/main.go` — the API server / composition root (DB, migrations,
+  services, middleware, schedulers, workers, route wiring).
+- `cmd/api/routes_{public,auth,portal,v1}.go` — the route tables, one
+  `<x>Handlers` struct + `register<X>Routes` function per surface; `main()`
+  fills the structs and calls them after the last `r.Use`.
 - `cmd/mcp/` — the MCP server (separate build: `Dockerfile.mcp`,
   `cloudbuild.mcp.yaml`).
 - `cmd/seed/`, `cmd/demo_seed/` (~1506 lines), `cmd/demo_activity/` — seeding.

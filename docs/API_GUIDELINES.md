@@ -31,7 +31,7 @@ hidden on 500s:** `respondInternalError` (`respond.go:49-53`) logs the real erro
 server-side and returns a fixed `internal_error` body.
 
 **Deviations (audit):** three raw `{"error":"..."}` sites bypass the envelope —
-`webhook.go:153`, `webhook_gocardless.go:87`, `main.go:1583` (founder endpoint).
+`webhook.go:153`, `webhook_gocardless.go:87`, `routes_public.go` (founder endpoint).
 
 ## 3. Authentication
 
@@ -71,7 +71,7 @@ zero adopters yet.
 ## 6. Idempotency
 
 **HTTP** (`middleware/idempotency.go`): applies to mutating methods on `/v1`
-(wired `main.go:1761`); `Idempotency-Key` is *recommended, not required*; keyed
+(wired in `routes_v1.go`); `Idempotency-Key` is *recommended, not required*; keyed
 `idem:<tenant>:<method>:<path>:<key>`; atomic `Claim` → replay (`X-Idempotency-Hit`)
 or `409` on in-flight duplicate; 5xx/panic release the reservation. **Ledger**
 (deeper layer): unique `(reference_id, code)`, extended to `(reference_id, code,
@@ -96,11 +96,12 @@ under the existing key.
 
 ## 9. Versioning
 
-Single `/v1` group (`main.go:1759`); no `/v2`. Root-level unversioned:
-`/auth/*`, `/portal/*`, `/checkout/*`, `/webhooks/*`, `/health`, `/version`.
+Single `/v1` group (`routes_v1.go`); no `/v2`. Root-level unversioned:
+`/auth/*` (`routes_auth.go`), `/portal/*` (`routes_portal.go`), `/checkout/*`,
+`/webhooks/*`, `/health`, `/version` (`routes_public.go`).
 **Breaking-change idiom:** add the new verb, keep the old one one release for
 in-flight clients, then remove — as done for portal magic-link (`GET`→`POST
-/portal/auth/verify`, both live at `main.go:1731-1732`).
+/portal/auth/verify`, both live in `routes_portal.go`).
 
 ## 10. Webhooks
 
@@ -116,7 +117,7 @@ attempts.
 
 - **Code:** `internal/adapter/handler/{httperr,respond,response,pagination}.go`,
   `internal/adapter/middleware/{auth,idempotency,rate_limit}.go`,
-  `internal/validate/`, `cmd/api/{main.go,openapi.yaml,openapi_drift_test.go}`.
+  `internal/validate/`, `cmd/api/{main.go,routes_public.go,routes_auth.go,routes_portal.go,routes_v1.go,openapi.yaml,openapi_drift_test.go}`.
 - **ADRs:** ADR-001 (rate-limit scoping), ADR-002 (ledger posting), ADR-003
   (claim-based workers), ADR-006 (token connections).
 - **Evidence file:** `docs/evidence/api-contract.md`.

@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	cryptorand "crypto/rand"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"log"
@@ -33,7 +32,6 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/gateway"
 	"github.com/recurso-dev/recurso/internal/adapter/gsp"
 	"github.com/recurso-dev/recurso/internal/adapter/handler"
-	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 	"github.com/recurso-dev/recurso/internal/adapter/marketing"
 	"github.com/recurso-dev/recurso/internal/adapter/memory"
 	"github.com/recurso-dev/recurso/internal/adapter/metrics"
@@ -1646,105 +1644,18 @@ func main() {
 
 	r.LoadHTMLGlob("internal/adapter/templates/*.html")
 
-	// Prometheus scrape endpoint. Optionally bearer-gated via METRICS_TOKEN so it
-	// can be exposed without leaking internal metrics; open when unset (scrape
-	// from a trusted network).
-	metricsToken := os.Getenv("METRICS_TOKEN")
-	r.GET("/metrics", func(c *gin.Context) {
-		if metricsToken != "" && subtle.ConstantTimeCompare([]byte(c.GetHeader("Authorization")), []byte("Bearer "+metricsToken)) != 1 {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		c.Header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		httpMetrics.WriteProm(c.Writer)
-	})
+	// Route tables live in routes_public.go, routes_auth.go, routes_portal.go
+	// and routes_v1.go; main() only wires their dependencies. Everything below
+	// runs after the last r.Use so every route inherits the full chain above.
 
-	// Founder-only platform metrics: a cross-tenant funnel snapshot (signups,
-	// activation, trials, plan/billing breakdown). This is the ONLY cross-tenant
-	// surface, kept deliberately outside tenant auth — gated by FOUNDER_TOKEN and
-	// returning 404 (feature off) when unset, so no tenant login can reach it.
+	// /metrics is optionally bearer-gated via METRICS_TOKEN (open when unset).
+	metricsToken := os.Getenv("METRICS_TOKEN")
+
+	// /platform/metrics (founder-only cross-tenant funnel) is gated by
+	// FOUNDER_TOKEN and 404s when unset.
 	founderToken := os.Getenv("FOUNDER_TOKEN")
 	platformRepo := db.NewPlatformRepository(database)
 	platformChargeRepo := db.NewCloudChargeRepository(database)
-	r.GET("/platform/metrics", func(c *gin.Context) {
-		if founderToken == "" {
-			c.Status(http.StatusNotFound)
-			return
-		}
-		if subtle.ConstantTimeCompare([]byte(c.GetHeader("Authorization")), []byte("Bearer "+founderToken)) != 1 {
-			c.Status(http.StatusUnauthorized)
-			return
-		}
-		pm, err := platformRepo.PlatformMetrics(c.Request.Context())
-		if err != nil {
-			slog.Error("platform metrics query failed", "error", err)
-			httperr.Respond(c, http.StatusInternalServerError, httperr.CodeInternalError, "failed to compute platform metrics")
-			return
-		}
-		// Attach the money-free Recurso Cloud charge dry-run for the current
-		// month (what each tenant WOULD be charged). Best-effort: a failure here
-		// leaves the funnel metrics intact rather than failing the whole view.
-		periodStart, _ := service.MonthBounds(time.Now().UTC())
-		if charges, err := platformChargeRepo.ListPreviewsWithTenant(c.Request.Context(), periodStart); err != nil {
-			slog.Warn("platform metrics: cloud charge preview unavailable", "error", err)
-		} else {
-			pm.CloudCharges = charges
-			pm.CloudChargeCurrency = getEnvDefault("REPORTING_CURRENCY", "USD")
-			for _, ch := range charges {
-				pm.CloudChargeTotalMinor += ch.WouldChargeMinor
-			}
-		}
-		c.JSON(http.StatusOK, pm)
-	})
-
-	r.GET("/health", func(c *gin.Context) {
-		status := "ok"
-		httpStatus := http.StatusOK
-		components := gin.H{}
-
-		// Check Postgres. Never return the raw error — /health is public and
-		// unauthenticated, and a connection error can leak the host/port (and
-		// sometimes credentials) from the DSN. Log it server-side; expose only
-		// the component status.
-		if err := database.Ping(); err != nil {
-			slog.Error("health check: postgres ping failed", "error", err)
-			status = "degraded"
-			httpStatus = http.StatusServiceUnavailable
-			components["postgres"] = gin.H{"status": "down"}
-		} else {
-			components["postgres"] = gin.H{"status": "up"}
-		}
-
-		// Check Redis (same info-disclosure stance as Postgres above).
-		if rdb != nil {
-			if err := rdb.Ping(c.Request.Context()).Err(); err != nil {
-				slog.Error("health check: redis ping failed", "error", err)
-				components["redis"] = gin.H{"status": "down"}
-				// Redis down is degraded, not critical
-				if status == "ok" {
-					status = "degraded"
-				}
-			} else {
-				components["redis"] = gin.H{"status": "up"}
-			}
-		}
-
-		// Check TigerBeetle. Report the ACTUAL boot-time connection state
-		// (tbConnected), not ledgerService != nil — the ledger service is always
-		// constructed (PG-only mode passes a nil TB client), so the latter would
-		// always say "connected" and mask a real TigerBeetle outage.
-		if tbConnected {
-			components["tigerbeetle"] = gin.H{"status": "connected"}
-		} else {
-			components["tigerbeetle"] = gin.H{"status": "disconnected"}
-		}
-
-		c.JSON(httpStatus, gin.H{
-			"status":     status,
-			"version":    version,
-			"components": components,
-		})
-	})
 
 	// gateway_mode drives the dashboard's "Test mode" chip: "test" when any
 	// configured gateway key is a test key, "live" when keys are live-only,
@@ -1758,14 +1669,6 @@ func main() {
 		} else {
 			gatewayMode = "live"
 		}
-	}
-	r.GET("/version", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": version, "gateway_mode": gatewayMode})
-	})
-
-	// OpenAPI specification (public): GET /openapi.yaml, GET /openapi.json
-	if err := registerOpenAPIRoutes(r); err != nil {
-		log.Fatalf("Failed to register OpenAPI routes: %v", err)
 	}
 
 	// Public Routes — stricter rate limit (20 req/min per IP) for endpoints
@@ -1781,91 +1684,50 @@ func main() {
 	// bucket keys per-tenant on the authed v1 routes.
 	expensiveLimit := middleware.RateLimitMiddleware(rdb, "expensive", 30, time.Minute)
 
-	r.GET("/checkout/:id", publicLimit, checkoutHandler.ShowCheckout)
-	r.POST("/checkout/:id/pay", publicLimit, checkoutHandler.InitiatePayment)
-	r.GET("/checkout/:id/success", publicLimit, checkoutHandler.CheckoutSuccess)
-	r.POST("/checkout/:id/razorpay/verify", publicLimit, checkoutHandler.RazorpayVerify)
-	r.POST("/payments/order", publicLimit, paymentHandler.CreateOrder)
 	// Recurso Cloud waitlist (ENG-12): public demand capture from the website.
-	r.POST("/waitlist", publicLimit, handler.NewWaitlistHandler(db.NewWaitlistRepository(database)).Join)
-	r.POST("/webhooks/razorpay", webhookHandler.HandleRazorpay) // Webhooks need higher limits
-	r.POST("/webhooks/stripe", webhookHandler.HandleStripe)
-	// BYO increment 3: per-connection webhook endpoints. Each tenant's gateway
-	// account posts to its own URL, so we verify with that connection's own
-	// signing secret (looked up by :connID) before trusting the payload.
-	r.POST("/webhooks/razorpay/:connID", webhookHandler.HandleRazorpay)
-	r.POST("/webhooks/stripe/:connID", webhookHandler.HandleStripe)
-	r.POST("/webhooks/gocardless", webhookHandler.HandleGoCardless)
-	r.POST("/webhooks/gocardless/:connID", webhookHandler.HandleGoCardless)
-	// Dashboard auth (public): register creates tenant + owner user + session;
-	// login/logout/me operate purely on the recurso_session cookie.
-	r.POST("/auth/register", publicLimit, authHandler.Register)
-	r.POST("/auth/login", publicLimit, authHandler.Login)
+	waitlistHandler := handler.NewWaitlistHandler(db.NewWaitlistRepository(database))
+
+	// Sandbox entry point (/auth/demo) exists only in DEMO_MODE with a demo
+	// service; a nil demoHandler leaves the route unregistered (404).
+	var demoHandler *handler.DemoHandler
 	if demo.Enabled() && demoService != nil {
-		demoHandler := handler.NewDemoHandler(demoService, authService, secureCookie)
-		r.POST("/auth/demo", publicLimit, demoHandler.StartSession) // sandbox entry (404 outside DEMO_MODE)
+		demoHandler = handler.NewDemoHandler(demoService, authService, secureCookie)
 	}
-	r.POST("/auth/login/mfa", publicLimit, authHandler.LoginMFA)
-	r.POST("/auth/logout", sessionLimit, authHandler.Logout)
-	r.GET("/auth/me", sessionLimit, authHandler.Me)
-	// Password reset (public): forgot-password always answers generically; the
-	// reset itself consumes a single-use emailed token.
-	r.POST("/auth/forgot-password", publicLimit, authHandler.ForgotPassword)
-	r.POST("/auth/reset-password", publicLimit, authHandler.ResetPassword)
-	// Email verification: verify-email consumes the emailed token (public);
-	// resend re-issues a link to the logged-in user (session-gated).
-	r.POST("/auth/verify-email", publicLimit, authHandler.VerifyEmail)
-	r.POST("/auth/verify-email/resend", sessionLimit, authHandler.ResendVerification)
 
-	// OAuth social login (public). /providers reflects which providers are
-	// configured; /start issues the CSRF-state + PKCE cookie and redirects to
-	// the provider; /callback validates, find-or-creates a user, opens a session
-	// and redirects to the dashboard. Disabled/unknown providers 404.
-	r.GET("/auth/oauth/providers", sessionLimit, oauthHandler.Providers)
-	r.GET("/auth/oauth/:provider/start", publicLimit, oauthHandler.Start)
-	r.GET("/auth/oauth/:provider/callback", publicLimit, oauthHandler.Callback)
+	registerPublicRoutes(r, &publicHandlers{
+		accountingHandler:  accountingHandler,
+		checkoutHandler:    checkoutHandler,
+		database:           database,
+		founderToken:       founderToken,
+		gatewayMode:        gatewayMode,
+		httpMetrics:        httpMetrics,
+		metricsToken:       metricsToken,
+		paymentHandler:     paymentHandler,
+		platformChargeRepo: platformChargeRepo,
+		platformRepo:       platformRepo,
+		publicLimit:        publicLimit,
+		rdb:                rdb,
+		tbConnected:        tbConnected,
+		waitlistHandler:    waitlistHandler,
+		webhookHandler:     webhookHandler,
+	})
 
-	// SAML SSO SP endpoints (public, per-tenant by UUID). metadata renders the
-	// SP descriptor; login 302s to the IdP when enabled; acs consumes the
-	// SAMLResponse, maps to an existing tenant user (no JIT), opens a session.
-	r.GET("/auth/saml/:tenantID/metadata", publicLimit, ssoHandler.Metadata)
-	r.GET("/auth/saml/:tenantID/login", publicLimit, ssoHandler.Login)
-	r.POST("/auth/saml/:tenantID/acs", publicLimit, ssoHandler.ACS)
+	registerAuthRoutes(r, &authHandlers{
+		authHandler:  authHandler,
+		demoHandler:  demoHandler,
+		oauthHandler: oauthHandler,
+		publicLimit:  publicLimit,
+		sessionLimit: sessionLimit,
+		ssoHandler:   ssoHandler,
+	})
 
-	// Customer Portal Auth (P25)
-	// OAuth callbacks arrive as bare browser redirects from the provider (no
-	// session cookie, no API key) — authentication is the HMAC-signed state
-	// the handler verifies. Locally this was a hard 401; in production it only
-	// worked when the operator's dashboard cookie happened to ride along.
-	r.GET("/v1/accounting/callback/:provider", publicLimit, accountingHandler.OAuthCallback)
-	r.POST("/portal/auth/request", publicLimit, portalAPIHandler.RequestMagicLink)
-	r.GET("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink)  // deprecated: query-string token, kept one release for links in flight
-	r.POST("/portal/auth/verify", publicLimit, portalAPIHandler.VerifyMagicLink) // preferred: token in POST body (not logged/refererred)
-
-	// Protected Customer Portal Routes
-	portal := r.Group("/portal/api")
-	portal.Use(middleware.PortalAuthMiddleware(portalService))
-	// Double-submit CSRF backstop behind the session cookie's SameSite=Lax:
-	// state-changing portal calls must echo the portal_csrf cookie in the
-	// X-CSRF-Token header. Runs after auth so tokens are only issued to a valid
-	// session; safe GETs lazily mint the cookie so pre-existing sessions heal.
-	portal.Use(middleware.PortalCSRFMiddleware(secureCookie))
-	{
-		portal.GET("/profile", portalAPIHandler.GetProfile)
-		portal.GET("/invoices", portalAPIHandler.GetInvoices)
-		// Customer-scoped invoice PDF (ownership-checked in the handler) so the
-		// portal's Download-PDF button has a public, token-authed endpoint (ENG-152).
-		portal.GET("/invoices/:id/pdf", pdfHandler.PortalDownloadPDF)
-		portal.PUT("/payment-method", portalAPIHandler.UpdatePaymentMethod)
-		portal.POST("/payment-method/setup-intent", portalAPIHandler.StartPaymentMethodSetup)
-		portal.POST("/payment-method/bank-setup-intent", portalAPIHandler.StartBankAccountSetup) // ACH (Inc 3a)
-		portal.POST("/payment-method/confirm", portalAPIHandler.ConfirmPaymentMethod)
-		portal.POST("/payment-method/mandate", portalAPIHandler.StartMandateReauth)
-		portal.GET("/disputes", portalAPIHandler.GetDisputes)
-		portal.POST("/invoices/:id/dispute", portalAPIHandler.RaiseDispute)
-		portal.POST("/redeem", portalAPIHandler.RedeemGift)
-		portal.POST("/logout", portalAPIHandler.Logout)
-	}
+	registerPortalRoutes(r, &portalHandlers{
+		pdfHandler:       pdfHandler,
+		portalAPIHandler: portalAPIHandler,
+		portalService:    portalService,
+		publicLimit:      publicLimit,
+		secureCookie:     secureCookie,
+	})
 
 	// Protected Routes (dashboard session cookie OR tenant API key — both
 	// resolve to the same tenant_id, so every handler below is unchanged).
