@@ -14,10 +14,12 @@ import (
 //
 // Every handler error response MUST go through respondError (or the
 // httperr package) so the envelope stays consistent. Success shapes are
-// unchanged by this convention.
+// unchanged by this convention: most handlers wrap as {"data": ...}, but
+// that is a handler-by-handler convention, not something enforced here.
 //
-// NOTE for cmd/api/openapi.yaml maintainers: the Error schema's oneOf can
-// collapse to this single object shape — bare-string errors are gone.
+// cmd/api/openapi.yaml's Error schema documents exactly this object shape
+// (the old oneOf with a bare-string variant is gone), and its `code`
+// examples list the httperr constants — add new codes in both places.
 
 // Local aliases so swept handler call sites stay short.
 const (
