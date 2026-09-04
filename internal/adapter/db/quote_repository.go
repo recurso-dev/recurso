@@ -180,7 +180,7 @@ func (r *QuoteRepository) List(ctx context.Context, tenantID uuid.UUID, filter d
 		argIdx++
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIdx)
+		query += fmt.Sprintf(" OFFSET $%d", argIdx) //nolint:gosec // G202: only a positional placeholder index is interpolated; the value is bound
 		args = append(args, filter.Offset)
 	}
 

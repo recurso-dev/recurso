@@ -44,7 +44,7 @@ steps:
   # 2. The gate: the full suite WITH a database. A failing test fails the build,
   #    so the commit never deploys. Tests run their own migrations.
   - id: Test
-    name: golang:1.25
+    name: golang:1.26
     env:
       - CGO_ENABLED=1
       - 'TEST_DATABASE_URL=postgres://test:test@postgres:5432/recurso_test?sslmode=disable'

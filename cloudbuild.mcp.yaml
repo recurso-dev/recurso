@@ -30,7 +30,7 @@ steps:
   # 1. The gate: the MCP suite (in-process mock /v1, no DB). A failing test
   #    fails the build, so a broken commit never deploys.
   - id: Test
-    name: golang:1.25
+    name: golang:1.26
     env:
       - CGO_ENABLED=0
     entrypoint: bash

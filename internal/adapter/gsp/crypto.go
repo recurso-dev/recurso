@@ -19,7 +19,7 @@ func decryptSEK(encryptedSEKBase64 string, privateKey *rsa.PrivateKey) ([]byte, 
 		return nil, fmt.Errorf("failed to base64 decode SEK: %w", err)
 	}
 
-	sek, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, encryptedSEK)
+	sek, err := rsa.DecryptPKCS1v15(rand.Reader, privateKey, encryptedSEK) //nolint:staticcheck // SA1019: the NIC IRP protocol mandates RSA PKCS#1 v1.5 for the session encryption key
 	if err != nil {
 		return nil, fmt.Errorf("failed to RSA decrypt SEK: %w", err)
 	}

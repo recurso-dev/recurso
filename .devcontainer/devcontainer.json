@@ -4,8 +4,8 @@
   "service": "workspace",
   "workspaceFolder": "/workspaces/recur-so",
   "features": {
-    "ghcr.io/devcontainers/features/go:1": { "version": "1.25" },
-    "ghcr.io/devcontainers/features/node:1": { "version": "20" },
+    "ghcr.io/devcontainers/features/go:1": { "version": "1.26" },
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" },
     "ghcr.io/devcontainers/features/docker-in-docker:2": {}
   },
   "forwardPorts": [8080, 5173, 8025],

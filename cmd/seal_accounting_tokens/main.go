@@ -15,7 +15,7 @@ import (
 func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://user:password@127.0.0.1:5432/recurso?sslmode=disable"
+		dbURL = "postgres://user:password@127.0.0.1:5432/recurso?sslmode=disable" //nolint:gosec // G101: local-tooling default DSN with placeholder credentials
 	}
 
 	encKey := os.Getenv("GATEWAY_ENCRYPTION_KEY")

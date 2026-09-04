@@ -331,7 +331,7 @@ func (r *UsageRepository) QueryUsage(ctx context.Context, tenantID uuid.UUID, fi
 	}
 	if filter.Dimension != "" {
 		args = append(args, filter.Dimension)
-		query += fmt.Sprintf(" AND ue.dimension = $%d", len(args))
+		query += fmt.Sprintf(" AND ue.dimension = $%d", len(args)) //nolint:gosec // G202: only a positional placeholder index is interpolated; the value is bound
 	}
 	query += " GROUP BY 1, 2 ORDER BY 1, 2"
 
@@ -379,7 +379,7 @@ func (r *UsageRepository) ListRecentEvents(ctx context.Context, tenantID uuid.UU
 	args = append(args, limit)
 	query += fmt.Sprintf(" ORDER BY ue.timestamp DESC LIMIT $%d", len(args))
 	args = append(args, offset)
-	query += fmt.Sprintf(" OFFSET $%d", len(args))
+	query += fmt.Sprintf(" OFFSET $%d", len(args)) //nolint:gosec // G202: only a positional placeholder index is interpolated; the value is bound
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

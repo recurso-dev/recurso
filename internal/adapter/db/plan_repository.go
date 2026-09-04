@@ -167,7 +167,7 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 		argIdx++
 	}
 	if filter.Offset > 0 {
-		query += fmt.Sprintf(" OFFSET $%d", argIdx)
+		query += fmt.Sprintf(" OFFSET $%d", argIdx) //nolint:gosec // G202: only a positional placeholder index is interpolated; the value is bound
 		args = append(args, filter.Offset)
 	}
 
