@@ -18,7 +18,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o r
 RUN CGO_ENABLED=1 GOOS=linux go build -o demo-seed ./cmd/demo_seed
 
 # Run Stage
-FROM alpine:3.21
+FROM alpine:3.24
 
 WORKDIR /app
 
