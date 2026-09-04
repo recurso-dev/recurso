@@ -48,7 +48,9 @@ swallows the failure (this exact mistake shipped a broken button once).
   copy of `openapi.yaml` differs or an SDK's covered-path count drops below
   `scripts/sdk_drift_baseline.json`. After adding SDK methods run
   `scripts/sdk_drift.py --update-baseline`; after changing the spec re-copy
-  it into `docs/api-reference/openapi.yaml`.
+  it into `docs/api-reference/openapi.yaml`. On `main` the job checks out the
+  siblings' default branches, so merge the sibling PRs before (or with) the
+  API PR that raised the baseline.
 - **Migrations must round-trip**: every `.up.sql` has a `.down.sql` and
   `migrate down -all` reaches version 0; CI's Test job runs up → down -all → up
   with golang-migrate against a throwaway database. Never drop a table another
