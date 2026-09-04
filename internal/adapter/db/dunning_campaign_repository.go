@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -48,7 +49,7 @@ func (r *DunningCampaignRepository) GetCampaignByID(ctx context.Context, id, ten
 	err := r.db.QueryRowContext(ctx, query, id, tenantID).Scan(
 		&c.ID, &c.TenantID, &c.Name, &c.IsActive, &c.TriggerEvent, &c.CreatedAt, &c.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -75,7 +76,7 @@ func (r *DunningCampaignRepository) GetActiveCampaignForTenant(ctx context.Conte
 	err := r.db.QueryRowContext(ctx, query, tenantID, triggerEvent).Scan(
 		&c.ID, &c.TenantID, &c.Name, &c.IsActive, &c.TriggerEvent, &c.CreatedAt, &c.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

@@ -6,6 +6,7 @@ import { endpoints } from "@/lib/api";
 import { toast } from "@/components/ui/sonner";
 import { PageHeader } from "@/components/patterns/PageHeader";
 import { ErrorState } from "@/components/patterns/ErrorState";
+import { EmptyState } from "@/components/patterns/EmptyState";
 import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { FormField } from "@/components/patterns/FormField";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -112,6 +113,20 @@ export default function EntitiesSettings() {
           message="We couldn't reach the settings service. Please try again."
           onRetry={refetch}
         />
+      ) : entities.length === 0 ? (
+        <Card className="mt-6 overflow-hidden">
+          <EmptyState
+            icon={Building2}
+            title="No legal entities yet"
+            description="Add an entity to bill under its own books, tax identity, and invoice series."
+            action={
+              <Button onClick={openCreate}>
+                <Plus className="h-4 w-4" />
+                Add entity
+              </Button>
+            }
+          />
+        </Card>
       ) : (
         <Card className="mt-6">
           <Table>

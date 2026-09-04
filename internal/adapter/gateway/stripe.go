@@ -127,7 +127,7 @@ func (s *StripeGateway) CreateOrder(ctx context.Context, amount int64, currency 
 		pi, err = s.sc.PaymentIntents.New(params)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("stripe create order failed: %v", err)
+		return nil, fmt.Errorf("stripe create order failed: %w", err)
 	}
 
 	return &port.PaymentOrder{
@@ -346,7 +346,8 @@ func (s *StripeGateway) ChargeSavedPaymentMethod(ctx context.Context, stripeCust
 	if err != nil {
 		// Declines / authentication_required arrive as *stripe.Error — a dunning
 		// failure, not an infra error.
-		if stripeErr, ok := err.(*stripe.Error); ok {
+		var stripeErr *stripe.Error
+		if errors.As(err, &stripeErr) {
 			return &port.PaymentResult{
 				Success:   false,
 				ErrorCode: string(stripeErr.Code),
@@ -385,7 +386,7 @@ func (s *StripeGateway) VerifyPayment(ctx context.Context, orderID, paymentID, s
 
 	pi, err := s.sc.PaymentIntents.Get(orderID, nil)
 	if err != nil {
-		return fmt.Errorf("failed to fetch stripe payment intent: %v", err)
+		return fmt.Errorf("failed to fetch stripe payment intent: %w", err)
 	}
 
 	if pi.Status != stripe.PaymentIntentStatusSucceeded {
@@ -414,7 +415,7 @@ func (s *StripeGateway) CreateSubscription(ctx context.Context, planID string, t
 		}
 		c, err := s.sc.Customers.New(cParams)
 		if err != nil {
-			return "", fmt.Errorf("failed to create stripe customer: %v", err)
+			return "", fmt.Errorf("failed to create stripe customer: %w", err)
 		}
 		customerID = c.ID
 	}
@@ -437,7 +438,7 @@ func (s *StripeGateway) CreateSubscription(ctx context.Context, planID string, t
 
 	sub, err := s.sc.Subscriptions.New(subParams)
 	if err != nil {
-		return "", fmt.Errorf("failed to create stripe subscription: %v", err)
+		return "", fmt.Errorf("failed to create stripe subscription: %w", err)
 	}
 
 	return sub.ID, nil

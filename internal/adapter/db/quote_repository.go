@@ -215,6 +215,9 @@ func (r *QuoteRepository) List(ctx context.Context, tenantID uuid.UUID, filter d
 		quotes = append(quotes, &quote)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return quotes, nil
 }
 

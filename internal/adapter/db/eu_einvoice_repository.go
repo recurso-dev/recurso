@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -122,7 +123,7 @@ func scanEUInvoice(s interface{ Scan(...any) error }) (*domain.EUInvoice, error)
 func (r *EUInvoiceRepository) GetByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (*domain.EUInvoice, error) {
 	e, err := scanEUInvoice(r.db.QueryRowContext(ctx,
 		`SELECT `+euInvoiceColumns+` FROM eu_einvoices WHERE invoice_id = $1`, invoiceID))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

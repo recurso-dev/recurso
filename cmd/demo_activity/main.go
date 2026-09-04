@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -72,7 +73,7 @@ func createSubscription(custID, planID string) string {
 
 func post(endpoint string, body interface{}) map[string]interface{} {
 	jsonBody, _ := json.Marshal(body)
-	req, _ := http.NewRequest("POST", baseURL+endpoint, bytes.NewBuffer(jsonBody))
+	req, _ := http.NewRequestWithContext(context.Background(), "POST", baseURL+endpoint, bytes.NewBuffer(jsonBody))
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
@@ -96,7 +97,7 @@ func post(endpoint string, body interface{}) map[string]interface{} {
 }
 
 func get(endpoint string) map[string]interface{} {
-	req, _ := http.NewRequest("GET", baseURL+endpoint, nil)
+	req, _ := http.NewRequestWithContext(context.Background(), "GET", baseURL+endpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	client := &http.Client{}

@@ -150,7 +150,7 @@ func (h *WebhookHandler) alreadyProcessed(c *gin.Context, gateway, eventID strin
 	processed, err := h.inboundDedup.WasProcessed(c.Request.Context(), gateway, eventID)
 	if err != nil {
 		h.logger.Error("webhook dedup check failed; deferring to gateway retry", "gateway", gateway, "event_id", eventID, "error", err)
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "dedup store unavailable; retry"})
+		respondErrorStatus(c, http.StatusServiceUnavailable, "dedup store unavailable; retry")
 		return true
 	}
 	if processed {

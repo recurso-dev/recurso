@@ -34,8 +34,10 @@ api.interceptors.request.use(
   (config) => {
     // Legacy API-key mode: the key lives in memory only (see lib/authToken.js),
     // never in localStorage. The backend accepts "Bearer <api_key>".
+    // An explicit per-request Authorization header wins (verifyApiKey probes a
+    // freshly pasted key while an older key may still be held in memory).
     const token = getApiKey();
-    if (token) {
+    if (token && !config.headers?.['Authorization']) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;
@@ -128,6 +130,11 @@ export const endpoints = {
   // the command palette can propagate an AbortSignal for request cancellation.
   getPlans: (params, config) => api.get('/plans', { params, ...config }),
   getAccount: () => api.get('/account'),
+  // API-key login probe: hits /account with an explicit bearer so a pasted key
+  // is verified BEFORE it is stored (lib/authToken.js). Same instance as every
+  // other tenant call, so the base URL / credentials semantics stay in one place.
+  verifyApiKey: (key) =>
+    api.get('/account', { headers: { Authorization: `Bearer ${key}` } }),
   updateAccount: (data) => api.put('/account', data),
   // Managed-cloud trial/billing status + plan catalog (read-only).
   getBillingStatus: () => api.get('/billing/status'),

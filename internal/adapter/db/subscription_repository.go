@@ -198,7 +198,7 @@ func (r *SubscriptionRepository) CountActiveByCustomer(ctx context.Context, tena
 }
 
 func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, tenantID uuid.UUID) ([]*domain.Subscription, error) {
-	query := `SELECT ` + subscriptionColumns("") + ` FROM subscriptions WHERE status = 'active' AND tenant_id = $1`
+	query := `SELECT ` + subscriptionColumns("") + ` FROM subscriptions WHERE status = 'active' AND tenant_id = $1` //nolint:gosec // column list is a compile-time constant
 	rows, err := r.db.QueryContext(ctx, query, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query active subscriptions: %w", err)
@@ -213,10 +213,14 @@ func (r *SubscriptionRepository) GetActiveSubscriptions(ctx context.Context, ten
 		}
 		subs = append(subs, sub)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return subs, nil
 }
 
 func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, filter domain.SubscriptionFilter) ([]*domain.Subscription, error) {
+	//nolint:gosec // column list is a compile-time constant; filters append $n placeholders
 	query := `
 		SELECT ` + subscriptionColumns("s.") + `
 		FROM subscriptions s
@@ -282,6 +286,9 @@ func (r *SubscriptionRepository) List(ctx context.Context, tenantID uuid.UUID, f
 			return nil, err
 		}
 		subs = append(subs, sub)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return subs, nil
 }
@@ -412,6 +419,9 @@ func (r *SubscriptionRepository) GetSubscriptionsDueTomorrow(ctx context.Context
 		sub.CustomerName = customerName.String
 		subs = append(subs, sub)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return subs, nil
 }
 
@@ -459,6 +469,7 @@ func (r *SubscriptionRepository) MarkPreChargeNotificationSent(ctx context.Conte
 // Cross-tenant by design: the trial scheduler runs globally (like the dunning
 // and pre-charge jobs) and resolves the owning tenant from each row.
 func (r *SubscriptionRepository) GetExpiredTrials(ctx context.Context) ([]*domain.Subscription, error) {
+	//nolint:gosec // fixed fragments with $n placeholders; no caller value is spliced
 	query := `
 		SELECT ` + subscriptionColumns("") + `
 		FROM subscriptions
@@ -509,6 +520,7 @@ func (r *SubscriptionRepository) SetCommitment(ctx context.Context, tenantID, su
 // A successful renewal advances current_period_end (undue); a failed one
 // simply lets the lease lapse and retries on a later tick.
 func (r *SubscriptionRepository) ClaimDueForRenewal(ctx context.Context, lease time.Duration, limit int) ([]*domain.Subscription, error) {
+	//nolint:gosec // fixed fragments with $n placeholders; no caller value is spliced
 	query := `
 		UPDATE subscriptions SET renewal_claimed_at = NOW()
 		WHERE id IN (

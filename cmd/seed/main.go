@@ -280,7 +280,7 @@ func main() {
 		// (Deferred -> Tax Payable), and — these are 'paid' — Code-3
 		// settlement (Cash -> AR). Same semantics the live posting path
 		// uses (internal/service/ledger.go).
-		total := int64(amount + 36000)
+		total := amount + 36000
 		if _, err := conn.Exec(`INSERT INTO ledger_transactions
 			(id, debit_account_id, credit_account_id, amount, ledger_id, code, reference_id, occurrence, description, created_at)
 			VALUES

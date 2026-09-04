@@ -118,7 +118,7 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 			CreditAmount: req.CreditAmount,
 		})
 	if err != nil {
-		if err == domain.ErrDisputeNotFound {
+		if errors.Is(err, domain.ErrDisputeNotFound) {
 			respondError(c, http.StatusNotFound, codeNotFound, "dispute not found")
 			return
 		}

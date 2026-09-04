@@ -120,7 +120,7 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 	invoiceID, err := uuid.Parse(invoiceIDStr)
 	if err != nil {
 		h.logger.Warn("invalid invoice_id in stripe metadata", "invoice_id", invoiceIDStr)
-		return nil
+		return nil //nolint:nilerr // malformed metadata is not retryable; ack so Stripe stops redelivering
 	}
 
 	// MarkInvoicePaid reads the invoice through the tenant-scoped repository,
@@ -312,7 +312,7 @@ func (h *WebhookHandler) handleInvoicePaymentFailed(ctx context.Context, event s
 	invoiceID, err := uuid.Parse(invoiceIDStr)
 	if err != nil {
 		h.logger.Warn("invalid invoice_id in stripe invoice metadata", "invoice_id", invoiceIDStr)
-		return nil
+		return nil //nolint:nilerr // malformed metadata is not retryable; ack so Stripe stops redelivering
 	}
 
 	inv, err := h.invoiceRepo.GetByIDPublic(ctx, invoiceID)

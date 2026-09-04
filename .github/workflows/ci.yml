@@ -22,10 +22,12 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
+      # Version pinned: `latest` let a new golangci release turn CI red with
+      # no code change. Policy (linters, exclusions) lives in .golangci.yml.
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.5.0
 
   frontend:
     name: Frontend
@@ -90,7 +92,24 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Create scratch DB for postgres-backed tests
-        run: PGPASSWORD=password psql -h localhost -U user -d recurso_test -c "CREATE DATABASE recurso_repo_test;"
+        run: PGPASSWORD=password psql -h localhost -U user -d recurso_test -c "CREATE DATABASE recurso_repo_test;" -c "CREATE DATABASE recurso_migr;"
+
+      # Every .up.sql needs a .down.sql that actually reverses it: rollback on
+      # this repo silently did not work past version 7 for months because one
+      # down dropped a table another migration owned. Apply everything, roll
+      # all the way back to zero, and apply again against a throwaway database.
+      - name: Migrations round-trip (up, down -all, up)
+        env:
+          MIGRATE_DB: postgres://user:password@localhost:5432/recurso_migr?sslmode=disable
+        run: |
+          go install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
+          M="$(go env GOPATH)/bin/migrate -path internal/adapter/db/migrations -database $MIGRATE_DB"
+          $M up
+          $M down -all
+          left=$(PGPASSWORD=password psql -h localhost -U user -d recurso_migr -tAc "select count(*) from pg_tables where schemaname='public' and tablename <> 'schema_migrations'")
+          if [ "$left" != "0" ]; then echo "FATAL: $left tables remain after migrate down -all"; exit 1; fi
+          $M up
+          echo "OK: migrations round-trip"
 
       - name: Run tests
         env:
@@ -128,11 +147,64 @@ jobs:
           }
           echo "OK: ledger invariant harness executed against Postgres"
 
+      # Same anti-false-green guard for the OpenAPI drift gate: CLAUDE.md
+      # calls it a hard gate, so assert the test itself ran to a PASS rather
+      # than trusting it stayed inside `go test ./...`.
+      - name: Assert OpenAPI drift gate ran (not skipped)
+        run: |
+          out=$(go test -run '^TestOpenAPISpecCoversRegisteredRoutes$' -v ./cmd/api/ 2>&1) || {
+            echo "$out"; echo "FATAL: OpenAPI drift gate failed"; exit 1;
+          }
+          echo "$out" | grep -q -- '--- PASS: TestOpenAPISpecCoversRegisteredRoutes' || {
+            echo "$out"; echo "FATAL: OpenAPI drift gate did not run to a PASS"; exit 1;
+          }
+          echo "OK: OpenAPI drift gate executed"
+
+      # Coverage ratchet: the profile used to be uploaded and never read. The
+      # floor lives in scripts/coverage_floor.txt; raise it when coverage
+      # rises, never lower it without a note in the PR.
+      - name: Enforce coverage floor
+        run: scripts/coverage_gate.sh coverage.out scripts/coverage_floor.txt
+
       - name: Upload coverage
         uses: actions/upload-artifact@v5
         with:
           name: coverage
           path: coverage.out
+
+  # Cross-repo drift: the SDKs and the docs site track cmd/api/openapi.yaml by
+  # hand. This job checks out the sibling repos and fails when the docs copy
+  # of the spec differs or an SDK's covered-path count drops below its
+  # recorded baseline (scripts/sdk_drift_baseline.json). Raising coverage
+  # updates the baseline via `scripts/sdk_drift.py --update-baseline`.
+  sdk-drift:
+    name: SDK & docs drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: recurso
+      # A coordinated change ships as same-named branches across the repos.
+      # Check each sibling out at this branch when it exists, else at its
+      # default branch, so a PR is judged against the state it will merge with.
+      - name: Check out sibling repos
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          for repo in recurso-go recurso-node recurso-python docs; do
+            url="https://github.com/recurso-dev/${repo}.git"
+            if git ls-remote --exit-code --heads "$url" "$BRANCH" >/dev/null 2>&1; then
+              echo "${repo}: branch ${BRANCH}"
+              git clone --quiet --depth 1 --branch "$BRANCH" "$url" "$repo"
+            else
+              echo "${repo}: default branch"
+              git clone --quiet --depth 1 "$url" "$repo"
+            fi
+          done
+      - name: Check drift
+        working-directory: recurso
+        run: python3 scripts/sdk_drift.py --report
 
   security:
     name: Security Scan
@@ -196,7 +268,7 @@ jobs:
   build:
     name: Build & Push
     runs-on: ubuntu-latest
-    needs: [lint, frontend, test, e2e, security]
+    needs: [lint, frontend, test, e2e, security, sdk-drift]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read

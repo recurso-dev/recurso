@@ -334,7 +334,7 @@ func (s *NotificationService) wrapInBaseTemplate(subject string, content string)
 		Content template.HTML
 	}{
 		Subject: subject,
-		Content: template.HTML(content),
+		Content: template.HTML(content), //nolint:gosec // content is the escaped output of renderTemplate (html/template)
 	}
 
 	tmpl, err := template.New("base").Parse(email.EmailBaseTemplate)

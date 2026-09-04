@@ -58,6 +58,7 @@ func (r *IRPConfigRepository) Upsert(ctx context.Context, entityID *uuid.UUID, c
 	if entityID != nil {
 		conflict = "(tenant_id, environment, entity_id) WHERE entity_id IS NOT NULL"
 	}
+	//nolint:gosec // only a literal clause chosen by a bool is interpolated; every value is a $n placeholder
 	query := fmt.Sprintf(`
 		INSERT INTO tenant_irp_configs (tenant_id, entity_id, environment, client_id, client_secret, username, password, gstin, is_enabled, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())

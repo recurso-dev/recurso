@@ -32,6 +32,7 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/gateway"
 	"github.com/recurso-dev/recurso/internal/adapter/gsp"
 	"github.com/recurso-dev/recurso/internal/adapter/handler"
+	"github.com/recurso-dev/recurso/internal/adapter/httperr"
 	"github.com/recurso-dev/recurso/internal/adapter/marketing"
 	"github.com/recurso-dev/recurso/internal/adapter/memory"
 	"github.com/recurso-dev/recurso/internal/adapter/metrics"
@@ -1654,7 +1655,7 @@ func main() {
 		pm, err := platformRepo.PlatformMetrics(c.Request.Context())
 		if err != nil {
 			slog.Error("platform metrics query failed", "error", err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to compute platform metrics"})
+			httperr.Respond(c, http.StatusInternalServerError, httperr.CodeInternalError, "failed to compute platform metrics")
 			return
 		}
 		// Attach the money-free Recurso Cloud charge dry-run for the current
@@ -1848,410 +1849,70 @@ func main() {
 	// serverLive gates API keys by mode: live keys require a live-gateway
 	// server, test keys require a non-live one.
 	serverLive := gatewayMode == "live"
-	v1 := r.Group("/v1")
-	v1.Use(middleware.SessionOrAPIKeyMiddleware(tenantRepo, authService, serverLive))
-	v1.Use(middleware.IdempotencyMiddleware(idempotencyStore)) // P30: Idempotency
-	v1.Use(middleware.Audit(auditLogRepo))                     // C2: append-only config audit trail
-	{
-		v1.POST("/plans", catalogHandler.CreatePlan)
-		v1.GET("/plans", catalogHandler.ListPlans)
-		v1.GET("/plans/:id", catalogHandler.GetPlan)
-		v1.PUT("/plans/:id", catalogHandler.UpdatePlan)
-
-		// Entitlement Engine v1
-		v1.PUT("/plans/:id/entitlements", entitlementHandler.SetPlanEntitlements)
-		v1.GET("/plans/:id/entitlements", entitlementHandler.GetPlanEntitlements)
-		v1.GET("/customers/:id/entitlements", entitlementHandler.GetCustomerEntitlements)
-		v1.GET("/entitlements/check", entitlementHandler.CheckEntitlement)
-
-		v1.POST("/customers", customerHandler.CreateCustomer)
-		v1.GET("/customers", customerHandler.ListCustomers)
-
-		// Migration: dry-run preview (no writes) then idempotent commit.
-		v1.POST("/import/stripe/preview", expensiveLimit, stripeImportHandler.Preview)
-		v1.POST("/import/stripe/commit", expensiveLimit, stripeImportHandler.Commit)
-		v1.POST("/import/stripe/compare", expensiveLimit, stripeImportHandler.Compare)
-		// Chargebee migration: dry-run preview then idempotent commit.
-		v1.POST("/import/chargebee/preview", expensiveLimit, chargebeeImportHandler.Preview)
-		v1.POST("/import/chargebee/commit", expensiveLimit, chargebeeImportHandler.Commit)
-		v1.POST("/import/chargebee/compare", expensiveLimit, chargebeeImportHandler.Compare)
-		// RevenueCat migration: dry-run preview then idempotent commit.
-		v1.POST("/import/revenuecat/preview", expensiveLimit, revenuecatImportHandler.Preview)
-		v1.POST("/import/revenuecat/commit", expensiveLimit, revenuecatImportHandler.Commit)
-		v1.POST("/import/revenuecat/compare", expensiveLimit, revenuecatImportHandler.Compare)
-
-		v1.GET("/import/compare-reports", compareReportHandler.List)
-		v1.GET("/import/compare-reports/:id", compareReportHandler.Get)
-		v1.GET("/import/compare-reports/:id/document", expensiveLimit, compareReportHandler.Document)
-		v1.GET("/customers/:id", customerHandler.GetCustomer)
-		v1.PUT("/customers/:id", customerHandler.UpdateCustomer)
-		v1.PUT("/customers/:id/payment-method", customerHandler.UpdatePaymentMethod)
-		// Ledger-backed credits: a customer's consolidated account-credit statement.
-		v1.GET("/customers/:id/credit-statement", creditNoteHandler.GetCreditStatement)
-		v1.GET("/customers/:id/financial-summary", customerHandler.GetFinancialSummary)
-
-		v1.POST("/subscriptions", subscriptionHandler.CreateSubscription)
-		v1.PUT("/subscriptions/:id", subscriptionHandler.UpdateSubscription)
-		v1.GET("/subscriptions/:id/preview-change", subscriptionHandler.PreviewPlanChange)
-		// Multi-product catalog v1: subscription add-ons
-		v1.POST("/subscriptions/:id/addons", subscriptionHandler.AddAddon)
-		v1.GET("/subscriptions/:id/addons", subscriptionHandler.ListAddons)
-		v1.DELETE("/subscriptions/:id/addons/:addonId", subscriptionHandler.RemoveAddon)
-		v1.GET("/subscriptions", subscriptionHandler.ListSubscriptions)
-		v1.GET("/subscriptions/:id", subscriptionHandler.GetSubscription)
-		v1.GET("/subscriptions/:id/history", subscriptionHandler.GetSubscriptionHistory)
-		// Financial position (MRR, recurring value, next invoice, outstanding).
-		v1.GET("/subscriptions/:id/financial-summary", subscriptionHandler.GetSubscriptionFinancialSummary)
-		v1.GET("/invoices", subscriptionHandler.ListInvoices)
-		v1.GET("/invoices/:id", subscriptionHandler.GetInvoice)
-		v1.GET("/invoices/:id/journal-entries", subscriptionHandler.GetInvoiceJournalEntries)
-		v1.GET("/invoices/:id/payment-attempts", subscriptionHandler.GetInvoicePaymentAttempts)
-		v1.GET("/invoices/:id/status-history", subscriptionHandler.GetInvoiceStatusHistory)
-		v1.GET("/payment-attempts", subscriptionHandler.ListPaymentAttempts)
-		// A single payment attempt as an addressable object, resolved with its
-		// invoice/customer/subscription context. Read-only.
-		v1.GET("/payment-attempts/:id", subscriptionHandler.GetPaymentAttempt)
-		// Invoice PDF is tenant-scoped: it renders the buyer's legal name,
-		// address, and GSTIN, so it must never be publicly fetchable by UUID.
-		v1.GET("/invoices/:id/pdf", expensiveLimit, pdfHandler.DownloadPDF)
-		v1.GET("/invoices/:id/preview", expensiveLimit, pdfHandler.PreviewHTML)
-		v1.POST("/invoices/:id/send", advancedBillingHandler.SendInvoice) // email the invoice + Pay Now link
-
-		// Usage Platform v1
-		v1.POST("/usage/events", usageHandler.RecordEvent)
-		v1.POST("/usage/events/batch", usageHandler.RecordEventsBatch)        // <=500 events, per-item results (C1)
-		v1.GET("/usage", usageHandler.QueryUsage)                             // time-windowed buckets
-		v1.GET("/usage/dimensions", usageHandler.ListDimensions)              // dimension catalog
-		v1.GET("/usage/events", usageHandler.ListRecentEvents)                // raw event stream (debugging)
-		v1.GET("/subscriptions/:id/usage", usageHandler.GetSubscriptionUsage) // current period + lifetime
-
-		// Usage-based billing v1 (spec_usage_billing.md)
-		v1.POST("/billable-metrics", meteringHandler.CreateMetric)
-		v1.GET("/billable-metrics", meteringHandler.ListMetrics)
-		v1.GET("/billable-metrics/:id", meteringHandler.GetMetric)
-		v1.GET("/billable-metrics/:id/charges", meteringHandler.GetMetricCharges)
-		v1.PUT("/billable-metrics/:id", meteringHandler.UpdateMetric)
-		v1.DELETE("/billable-metrics/:id", meteringHandler.DeleteMetric)
-		v1.PUT("/plans/:id/charges", meteringHandler.SetPlanCharges)
-		v1.GET("/plans/:id/charges", meteringHandler.GetPlanCharges)
-		v1.POST("/plans/:id/simulate-charges", meteringHandler.SimulateCharges)   // A1.6 read-only pricing simulator
-		v1.GET("/subscriptions/:id/usage-amount", meteringHandler.GetUsageAmount) // live pre-invoice preview
-
-		v1.PUT("/subscriptions/:id/commitment", subscriptionHandler.SetCommitment) // minimum commitment (B2)
-
-		// Prepaid wallets (Lago-parity B1)
-		v1.POST("/wallets", walletHandler.Create)
-		v1.GET("/wallets", walletHandler.List)
-		v1.GET("/wallets/:id", walletHandler.Get)
-		v1.POST("/wallets/:id/top-up", walletHandler.TopUp)
-		v1.POST("/wallets/:id/close", walletHandler.Close)
-		v1.GET("/wallets/:id/transactions", walletHandler.ListTransactions)
-		v1.PUT("/wallets/:id/auto-recharge", walletHandler.UpdateAutoRecharge)
-		v1.GET("/customers/:id/wallets", walletHandler.ListForCustomer)
-
-		// Usage threshold alerts (Lago-parity B3)
-		v1.POST("/usage-alerts", usageAlertHandler.Create)
-		v1.GET("/usage-alerts", usageAlertHandler.List)
-		v1.PUT("/usage-alerts/:id", usageAlertHandler.Update)
-		v1.DELETE("/usage-alerts/:id", usageAlertHandler.Delete)
-
-		// Append-only audit trail (Lago-parity C2)
-		v1.GET("/audit-logs", auditHandler.List)
-
-		// Analytics (Cached)
-		analytics := v1.Group("/analytics")
-		analytics.Use(middleware.CacheMiddleware(rdb, 5*time.Minute))
-		{
-			analytics.GET("/mrr", analyticsHandler.GetMRR)
-			analytics.GET("/mrr/by-entity", analyticsHandler.GetMRRByEntity)
-			analytics.GET("/entities-overview", analyticsHandler.GetEntitiesOverview)
-			analytics.GET("/mrr/waterfall", analyticsHandler.GetMRRWaterfall)
-			analytics.GET("/invoice-aging", analyticsHandler.GetInvoiceAging)
-			analytics.GET("/unit-economics", analyticsHandler.GetUnitEconomics)
-			analytics.GET("/revenue-by-plan", analyticsHandler.GetRevenueByPlan)
-			analytics.GET("/revenue-by-geography", analyticsHandler.GetRevenueByGeography)
-			analytics.GET("/usage", analyticsHandler.GetUsageStats)
-			analytics.GET("/dunning/overview", dunningHandler.GetOverview)
-			analytics.GET("/dunning/weights", dunningHandler.GetWeights)
-			analytics.GET("/dunning/history", dunningHandler.GetHistory)
-			analytics.GET("/dunning/recovered", dunningHandler.GetRecovered)
-			analytics.GET("/dunning/timing", dunningHandler.GetTiming)
-			analytics.GET("/collections/funnel", collectionsHandler.GetFunnel)
-			analytics.GET("/collections/failures", collectionsHandler.GetFailures)
-		}
-		v1.POST("/analytics/ask", analyticsHandler.Ask) // P48 GenAI
-
-		// Collections Intelligence — operator worklist of currently-failing
-		// invoices. Uncached: operational data that changes on every retry.
-		v1.GET("/collections/queue", collectionsHandler.GetQueue)
-		// Manual controls (Inc 3). Mutate a single invoice's dunning state only.
-		v1.POST("/collections/invoices/:id/retry-now", collectionsHandler.RetryNow)
-		v1.POST("/collections/invoices/:id/pause", collectionsHandler.PauseDunning)
-		v1.POST("/collections/invoices/:id/mark-uncollectible", collectionsHandler.MarkUncollectible)
-
-		v1.POST("/coupons", couponHandler.CreateCoupon) // P7
-		v1.GET("/coupons", couponHandler.ListCoupons)
-		v1.GET("/coupons/:id", couponHandler.GetCoupon)
-		v1.PUT("/coupons/:id", couponHandler.UpdateCoupon)
-
-		// Developer / Settings
-		v1.GET("/developer/keys", tenantHandler.ListKeys)
-		v1.POST("/developer/keys", tenantHandler.CreateKey)
-		v1.DELETE("/developer/keys/:id", tenantHandler.RevokeKey)
-
-		// Team management (dashboard users). Reads are open to any authed
-		// member; writes are gated to owner/admin inside the handler.
-		v1.GET("/users", teamHandler.ListUsers)
-		v1.POST("/users", teamHandler.CreateUser)
-		v1.POST("/users/invite", teamHandler.InviteUser)
-		v1.PATCH("/users/:id", teamHandler.UpdateUser)
-		v1.DELETE("/users/:id", teamHandler.DeleteUser)
-
-		// Account security for the logged-in dashboard user (TOTP MFA + active
-		// session management). API-key callers have no user and are rejected.
-		v1.POST("/auth/mfa/setup", authHandler.MFASetup)
-		v1.POST("/auth/mfa/verify", authHandler.MFAVerify)
-		v1.POST("/auth/mfa/disable", authHandler.MFADisable)
-		v1.GET("/auth/sessions", authHandler.ListSessions)
-		v1.DELETE("/auth/sessions/:id", authHandler.RevokeSession)
-		v1.DELETE("/auth/sessions", authHandler.RevokeOtherSessions)
-
-		// SAML SSO connection config (tenant-scoped; writes gated to owner/admin
-		// inside the handler). The public SP endpoints live under /auth/saml.
-		// BYO gateway connections (increment 4): tenants connect their own
-		// Stripe/Razorpay. Writes are owner/admin-gated in the handler.
-		v1.GET("/gateway-connections", gatewayConnHandler.List)
-		v1.POST("/gateway-connections", gatewayConnHandler.Connect)
-		// BYO integrations (increment 5): per-tenant tax/CRM/storage credentials.
-		v1.GET("/integration-connections", integrationConnHandler.List)
-		v1.POST("/integration-connections", integrationConnHandler.Connect)
-		v1.DELETE("/integration-connections/:category/:provider", integrationConnHandler.Disconnect)
-		v1.PUT("/gateway-connections/:provider/webhook-secret", gatewayConnHandler.SetWebhookSecret)
-		v1.DELETE("/gateway-connections/:provider", gatewayConnHandler.Disconnect)
-
-		v1.GET("/sso/connection", ssoHandler.GetConnection)
-		v1.PUT("/sso/connection", ssoHandler.UpsertConnection)
-		v1.DELETE("/sso/connection", ssoHandler.DeleteConnection)
-
-		// Advanced Billing (P15)
-		v1.POST("/subscriptions/:id/charges", advancedBillingHandler.AddUnbilledCharge)
-		v1.GET("/subscriptions/:id/charges", advancedBillingHandler.ListUnbilledCharges)
-		v1.POST("/subscriptions/:id/advance", advancedBillingHandler.GenerateAdvanceInvoice)
-		v1.POST("/subscriptions/:id/bill-usage", advancedBillingHandler.BillUsageNow) // A5 interim progressive bill
-
-		// Heavy read-only finance reports get the same 5-minute Redis cache as
-		// /analytics/*: they re-aggregate the whole ledger per request and are
-		// viewed far more often than their inputs change. Reconciliation stays
-		// uncached on purpose — its "Run again" button must actually re-run.
-		reportCache := middleware.CacheMiddleware(rdb, 5*time.Minute)
-
-		// Ledger (P22)
-		v1.GET("/ledger/accounts", ledgerHandler.ListAccounts)
-		v1.GET("/ledger/entries", ledgerHandler.GetEntries)
-		// A single posted transaction (journal entry) — addressable, each leg
-		// deep-linkable to its account. Read-only.
-		v1.GET("/ledger/transactions/:id", ledgerHandler.GetTransaction)
-		// Provable-ledger auditor outputs (ENG-192): trial balance + GL export
-		v1.GET("/ledger/trial-balance", reportCache, ledgerHandler.GetTrialBalance)
-		v1.GET("/ledger/export", expensiveLimit, ledgerHandler.ExportGL)
-		v1.GET("/ledger/deferred-rollforward", reportCache, ledgerHandler.GetDeferredRollforward)
-
-		// Ledger Reconciliation — on-demand drift report for the caller's tenant
-		v1.GET("/finance/reconciliation", reconciliationHandler.RunReconciliation)
-		v1.POST("/finance/reconciliation/runs", reconciliationHandler.RecordReconciliation)
-		v1.GET("/finance/reconciliation/runs", reconciliationHandler.ListReconciliationRuns)
-		// A single recorded run with its stored discrepancy rows — the
-		// addressable, explainable run object. Read-only.
-		v1.GET("/finance/reconciliation/runs/:id", reconciliationHandler.GetReconciliationRun)
-
-		// Month-end close pack (B2) — trial balance + reconciliation + deferred
-		// rollforward + GL export pointer + a ready-to-close verdict. Uncached
-		// like reconciliation: the close verdict must reflect the ledger now.
-		v1.GET("/finance/close-pack", closePackHandler.GetClosePack)
-
-		// Credit Notes (P23)
-		v1.POST("/credit-notes", creditNoteHandler.CreateCreditNote)
-		v1.GET("/credit-notes", creditNoteHandler.ListCreditNotes)
-		v1.GET("/credit-notes/:id", creditNoteHandler.GetCreditNote)
-		v1.GET("/credit-notes/:id/journal-entries", creditNoteHandler.GetCreditNoteJournalEntries)
-		v1.GET("/credit-notes/:id/pdf", expensiveLimit, creditNoteHandler.DownloadPDF)
-		v1.POST("/credit-notes/:id/approve", creditNoteHandler.ApproveCreditNote)
-		v1.POST("/credit-notes/:id/reject", creditNoteHandler.RejectCreditNote)
-		v1.POST("/credit-notes/:id/void", creditNoteHandler.VoidCreditNote)
-
-		// Webhooks & Events (P24)
-		v1.POST("/webhooks", webhookMgmtHandler.CreateEndpoint)
-		v1.GET("/webhooks", webhookMgmtHandler.ListEndpoints)
-		v1.PUT("/webhooks/:id/status", webhookMgmtHandler.UpdateEndpointStatus)
-		v1.DELETE("/webhooks/:id", webhookMgmtHandler.DeleteEndpoint)
-		v1.GET("/webhooks/:id/deliveries", webhookMgmtHandler.ListEndpointDeliveries)
-
-		// Account (Tenant) Management
-		v1.GET("/account", tenantHandler.GetAccount)
-		v1.PUT("/account", tenantHandler.UpdateAccount)
-		// Managed-cloud billing/trial status + plan catalog (read-only).
-		v1.GET("/billing/status", billingHandler.Status)
-		v1.GET("/billing/plans", billingHandler.Plans)
-
-		// Quotes (P27)
-		v1.POST("/quotes", quoteHandler.CreateQuote)
-		v1.GET("/quotes", quoteHandler.ListQuotes)
-		v1.GET("/quotes/:id", quoteHandler.GetQuote)
-		v1.PUT("/quotes/:id", quoteHandler.UpdateQuote)
-		v1.DELETE("/quotes/:id", quoteHandler.DeleteQuote)
-		v1.POST("/quotes/:id/send", quoteHandler.SendQuote)
-		v1.POST("/quotes/:id/accept", quoteHandler.AcceptQuote)
-		v1.POST("/quotes/:id/decline", quoteHandler.DeclineQuote)
-		v1.POST("/quotes/:id/convert", quoteHandler.ConvertToInvoice)
-
-		// Invoice disputes (Track 2) — admin API only; no dashboard UI yet.
-		v1.GET("/disputes", disputeHandler.ListDisputes)
-		v1.GET("/disputes/:id", disputeHandler.GetDispute)
-		v1.POST("/disputes/:id/resolve", disputeHandler.ResolveDispute)
-
-		v1.GET("/events", webhookMgmtHandler.ListEvents)
-		v1.GET("/events/types", webhookMgmtHandler.GetEventTypes)
-		v1.GET("/events/:id/deliveries", webhookMgmtHandler.ListEventDeliveries)
-		v1.POST("/events/:id/redeliver", webhookMgmtHandler.RedeliverEvent)
-
-		// GST Settings (P30)
-		v1.GET("/settings/gst", gstHandler.GetConfig)
-		v1.PUT("/settings/gst", gstHandler.UpdateConfig)
-		// US sales-tax nexus config
-		v1.GET("/settings/tax/nexus", taxNexusHandler.GetNexus)
-		v1.PUT("/settings/tax/nexus", taxNexusHandler.SetNexus)
-		v1.GET("/settings/tax/nexus/status", taxNexusHandler.GetNexusStatus)
-		v1.GET("/settings/tax/liability", taxNexusHandler.GetLiabilityReport)
-		v1.GET("/settings/tax/registrations", taxNexusHandler.GetRegistrations)
-		v1.PUT("/settings/tax/registrations", taxNexusHandler.SetRegistrations)
-		v1.POST("/settings/gst/validate", gstHandler.ValidateGSTIN)
-		v1.GET("/india/gstr1", gstHandler.GetGSTR1)
-		v1.GET("/india/gstr3b", gstHandler.GetGSTR3B)
-
-		// E-Invoice (P25)
-		v1.GET("/invoices/:id/einvoice", einvoiceHandler.GetEInvoiceStatus)
-		v1.POST("/invoices/:id/einvoice/retry", einvoiceHandler.RetryEInvoice)
-		v1.POST("/invoices/:id/einvoice/cancel", einvoiceHandler.CancelEInvoice)
-		v1.GET("/settings/irp", einvoiceHandler.GetIRPConfig)
-		v1.PUT("/settings/irp", einvoiceHandler.UpdateIRPConfig)
-		v1.POST("/settings/irp/test", einvoiceHandler.TestIRPConnection)
-		// EU e-invoicing config (Track C): opt-in + EN 16931 seller identity.
-		v1.GET("/settings/eu-einvoice", euConfigHandler.GetEUConfig)
-		v1.PUT("/settings/eu-einvoice", euConfigHandler.UpdateEUConfig)
-		v1.POST("/crm/sync", crmSyncHandler.SyncNow)
-		v1.GET("/settings/tax/us", usTaxConfigHandler.GetUSTaxConfig)
-		v1.PUT("/settings/tax/us", usTaxConfigHandler.UpdateUSTaxConfig)
-
-		v1.GET("/settings/invoice-branding", invoiceBrandingHandler.GetBranding)
-		v1.PUT("/settings/invoice-branding", invoiceBrandingHandler.UpdateBranding)
-		// EU e-invoicing per invoice (Track C inc 2): inspect the generated UBL +
-		// delivery status, and manually regenerate/re-transmit a failed one.
-		v1.GET("/invoices/:id/eu-einvoice", euEInvoiceHandler.GetEUEInvoice)
-		v1.POST("/invoices/:id/eu-einvoice/retry", euEInvoiceHandler.RetryEUEInvoice)
-		v1.GET("/settings/mcp", mcpSettingsHandler.GetMCPSettings)
-		v1.PUT("/settings/mcp", mcpSettingsHandler.UpdateMCPSettings)
-
-		// Legal entities (Multi-Entity Books)
-		v1.GET("/entities", entityHandler.ListEntities)
-		v1.POST("/entities", entityHandler.CreateEntity)
-		v1.GET("/entities/:id", entityHandler.GetEntity)
-		v1.PUT("/entities/:id", entityHandler.UpdateEntity)
-		v1.DELETE("/entities/:id", entityHandler.DeleteEntity)
-
-		// Consent API (P30 - RBI compliance)
-		v1.POST("/consents", consentHandler.RecordConsent)
-		v1.POST("/consents/revoke", consentHandler.RevokeConsent)
-		v1.GET("/customers/:id/consents", consentHandler.GetCustomerConsents)
-		v1.GET("/subscriptions/:id/consent", consentHandler.GetSubscriptionConsent)
-
-		// Cancellation API (P30 - easy cancellation)
-		// Deterministic financial forecast of a cancellation, before the mutation.
-		v1.GET("/subscriptions/:id/cancel-preview", cancellationHandler.PreviewCancel)
-		v1.POST("/subscriptions/:id/cancel", cancellationHandler.CancelSubscription)
-		v1.POST("/subscriptions/:id/reactivate", cancellationHandler.ReactivateSubscription)
-		v1.POST("/subscriptions/:id/pause", subscriptionHandler.PauseSubscription)
-		v1.POST("/subscriptions/:id/resume", subscriptionHandler.ResumeSubscription)
-		v1.GET("/cancellation-reasons", cancellationHandler.GetCancellationReasons)
-
-		// Referral & Gift API
-		v1.GET("/referrals", referralHandler.ListReferrals)
-		v1.POST("/referrals", referralHandler.CreateReferral)
-		v1.POST("/referrals/generate-code", referralHandler.GenerateCode)
-		v1.POST("/referrals/:id/qualify", referralHandler.QualifyReferral)
-		v1.GET("/gifts", giftHandler.ListGifts)
-
-		// Gift API (P43)
-		v1.POST("/gifts/purchase", giftHandler.PurchaseGift)
-		v1.POST("/gifts/redeem", giftHandler.RedeemGift)
-		v1.POST("/gifts/:id/cancel", giftHandler.CancelGift)
-
-		// Phase 2: UPI Mandates
-		v1.POST("/mandates", mandateHandler.CreateMandate)
-		v1.GET("/mandates", mandateHandler.ListMandates)
-		v1.GET("/mandates/:id", mandateHandler.GetMandate)
-		v1.POST("/mandates/:id/revoke", mandateHandler.RevokeMandate)
-
-		// Phase 2: Offline Payments / Virtual Accounts
-		v1.POST("/virtual-accounts", offlinePaymentHandler.CreateVirtualAccount)
-		v1.GET("/virtual-accounts", offlinePaymentHandler.ListVirtualAccounts)
-		v1.POST("/payments/offline", offlinePaymentHandler.RecordOfflinePayment)
-		v1.GET("/payments/offline", offlinePaymentHandler.ListOfflinePayments)
-
-		// Revenue Recognition Report
-		v1.GET("/finance/revrec/report", reportCache, revrecHandler.GetReport)
-		v1.GET("/finance/revrec/waterfall", reportCache, revrecHandler.GetWaterfall)
-
-		// Phase 2: Organizations (Multi-Entity)
-		v1.GET("/organizations", orgHandler.ListOrganizations)
-		v1.POST("/organizations", orgHandler.CreateOrganization)
-		v1.GET("/organizations/:id", orgHandler.GetOrganization)
-		v1.PUT("/organizations/:id", orgHandler.UpdateOrganization)
-		v1.DELETE("/organizations/:id", orgHandler.DeleteOrganization)
-		v1.POST("/organizations/:id/tenants", orgHandler.AddTenant)
-		v1.GET("/organizations/:id/tenants", orgHandler.ListTenants)
-		v1.DELETE("/organizations/:id/tenants/:tenant_id", orgHandler.RemoveTenant)
-		v1.GET("/organizations/:id/analytics/mrr", orgHandler.GetConsolidatedMRR)
-
-		// Phase 2: Accounting / ERP Integrations
-		v1.GET("/accounting/connections", accountingHandler.ListConnections)
-		v1.POST("/accounting/connect/:provider", accountingHandler.InitiateOAuth)
-		v1.POST("/accounting/connect-token/:provider", accountingHandler.ConnectTokenBased)
-		// (moved to a public route below — the callback is a browser redirect
-		// from the provider carrying no session; the HMAC-signed state is its
-		// authentication)
-		v1.DELETE("/accounting/connections/:id", accountingHandler.Disconnect)
-		v1.POST("/accounting/sync", accountingHandler.TriggerSync)
-		v1.GET("/accounting/sync/status", accountingHandler.SyncStatus)
-
-		// Phase 2: Churn Scoring
-		v1.GET("/customers/:id/churn", churnHandler.GetCustomerChurn)
-		v1.GET("/churn/high-risk", churnHandler.GetHighRiskCustomers)
-		v1.GET("/churn/alerts", churnHandler.GetAlerts)
-		v1.POST("/churn/alerts/:id/ack", churnHandler.AcknowledgeAlert)
-
-		// Cancel Flows (Retention Interventions)
-		v1.GET("/cancel-flows", cancelFlowHandler.ListFlows)
-		v1.POST("/cancel-flows", cancelFlowHandler.CreateFlow)
-		v1.GET("/cancel-flows/:id", cancelFlowHandler.GetFlow)
-		v1.PUT("/cancel-flows/:id", cancelFlowHandler.UpdateFlow)
-		v1.POST("/cancel-flows/:id/steps", cancelFlowHandler.CreateStep)
-		v1.PUT("/cancel-flows/steps/:id", cancelFlowHandler.UpdateStep)
-		v1.DELETE("/cancel-flows/steps/:id", cancelFlowHandler.DeleteStep)
-		v1.POST("/cancel-flows/sessions/start", cancelFlowHandler.StartSession)
-		v1.POST("/cancel-flows/sessions/:id/submit", cancelFlowHandler.SubmitStep)
-		v1.GET("/cancel-flows/sessions/:id", cancelFlowHandler.GetSession)
-		v1.GET("/cancel-flows/stats", cancelFlowHandler.GetStats)
-
-		// Dunning Campaigns (Multi-Channel)
-		v1.GET("/dunning-campaigns", dunningCampaignHandler.ListCampaigns)
-		v1.POST("/dunning-campaigns", dunningCampaignHandler.CreateCampaign)
-		v1.GET("/dunning-campaigns/:id", dunningCampaignHandler.GetCampaign)
-		v1.PUT("/dunning-campaigns/:id", dunningCampaignHandler.UpdateCampaign)
-		v1.POST("/dunning-campaigns/:id/steps", dunningCampaignHandler.CreateStep)
-		v1.PUT("/dunning-campaigns/steps/:id", dunningCampaignHandler.UpdateStep)
-		v1.DELETE("/dunning-campaigns/steps/:id", dunningCampaignHandler.DeleteStep)
-		v1.GET("/invoices/:id/payment-wall", dunningCampaignHandler.GetPaymentWallStatus)
-	}
+	registerV1Routes(r, &v1Handlers{
+		accountingHandler:       accountingHandler,
+		advancedBillingHandler:  advancedBillingHandler,
+		analyticsHandler:        analyticsHandler,
+		auditHandler:            auditHandler,
+		auditLogRepo:            auditLogRepo,
+		authHandler:             authHandler,
+		authService:             authService,
+		billingHandler:          billingHandler,
+		cancelFlowHandler:       cancelFlowHandler,
+		cancellationHandler:     cancellationHandler,
+		catalogHandler:          catalogHandler,
+		chargebeeImportHandler:  chargebeeImportHandler,
+		churnHandler:            churnHandler,
+		closePackHandler:        closePackHandler,
+		collectionsHandler:      collectionsHandler,
+		compareReportHandler:    compareReportHandler,
+		consentHandler:          consentHandler,
+		couponHandler:           couponHandler,
+		creditNoteHandler:       creditNoteHandler,
+		crmSyncHandler:          crmSyncHandler,
+		customerHandler:         customerHandler,
+		disputeHandler:          disputeHandler,
+		dunningCampaignHandler:  dunningCampaignHandler,
+		dunningHandler:          dunningHandler,
+		einvoiceHandler:         einvoiceHandler,
+		entitlementHandler:      entitlementHandler,
+		entityHandler:           entityHandler,
+		euConfigHandler:         euConfigHandler,
+		euEInvoiceHandler:       euEInvoiceHandler,
+		expensiveLimit:          expensiveLimit,
+		gatewayConnHandler:      gatewayConnHandler,
+		giftHandler:             giftHandler,
+		gstHandler:              gstHandler,
+		idempotencyStore:        idempotencyStore,
+		integrationConnHandler:  integrationConnHandler,
+		invoiceBrandingHandler:  invoiceBrandingHandler,
+		ledgerHandler:           ledgerHandler,
+		mandateHandler:          mandateHandler,
+		mcpSettingsHandler:      mcpSettingsHandler,
+		meteringHandler:         meteringHandler,
+		offlinePaymentHandler:   offlinePaymentHandler,
+		orgHandler:              orgHandler,
+		pdfHandler:              pdfHandler,
+		quoteHandler:            quoteHandler,
+		rdb:                     rdb,
+		reconciliationHandler:   reconciliationHandler,
+		referralHandler:         referralHandler,
+		revenuecatImportHandler: revenuecatImportHandler,
+		revrecHandler:           revrecHandler,
+		serverLive:              serverLive,
+		ssoHandler:              ssoHandler,
+		stripeImportHandler:     stripeImportHandler,
+		subscriptionHandler:     subscriptionHandler,
+		taxNexusHandler:         taxNexusHandler,
+		teamHandler:             teamHandler,
+		tenantHandler:           tenantHandler,
+		tenantRepo:              tenantRepo,
+		usTaxConfigHandler:      usTaxConfigHandler,
+		usageAlertHandler:       usageAlertHandler,
+		usageHandler:            usageHandler,
+		walletHandler:           walletHandler,
+		webhookMgmtHandler:      webhookMgmtHandler,
+	})
 
 	// 9. Start Server
 	port := os.Getenv("PORT")

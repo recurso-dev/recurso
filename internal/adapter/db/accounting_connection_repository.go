@@ -222,6 +222,7 @@ func (r *AccountingConnectionRepository) ListSyncLogsFiltered(ctx context.Contex
 		return nil, 0, err
 	}
 
+	//nolint:gosec // `where` is built from fixed fragments with $n placeholders; no caller value is spliced
 	query := `SELECT l.id, l.tenant_id, l.connection_id, COALESCE(c.provider, ''),
 		l.entity_type, l.entity_id,
 		COALESCE(l.external_id,''),

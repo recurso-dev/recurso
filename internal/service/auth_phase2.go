@@ -97,7 +97,7 @@ func (s *AuthService) RequestPasswordReset(ctx context.Context, email string) er
 	user, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		// No such account: silently succeed (no enumeration).
-		return nil
+		return nil //nolint:nilerr // anti-enumeration by design
 	}
 
 	raw, tokenHash, err := newSessionToken()

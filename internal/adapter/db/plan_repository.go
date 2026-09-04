@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -71,7 +72,7 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 		&plan.ID, &plan.TenantID, &plan.Name, &plan.Code,
 		&plan.IntervalUnit, &plan.IntervalCount, &plan.Active, &plan.HSNCode, &plan.CreatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil // Not found
 	}
 	if err != nil {
@@ -94,6 +95,9 @@ func (r *PlanRepository) GetByID(ctx context.Context, id uuid.UUID) (*domain.Pla
 		plan.Prices = append(plan.Prices, p)
 	}
 
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return plan, nil
 }
 
@@ -181,24 +185,39 @@ func (r *PlanRepository) List(ctx context.Context, tenantID uuid.UUID, filter do
 		}
 
 		// Fetch Prices for each plan (N+1 but acceptable for MVP Catalog size)
-		priceQuery := `SELECT id, plan_id, currency, amount, type, created_at FROM prices WHERE plan_id = $1`
-		pRows, err := r.db.QueryContext(ctx, priceQuery, p.ID)
+		prices, err := r.loadPrices(ctx, p.ID)
 		if err != nil {
 			return nil, err
 		}
-
-		for pRows.Next() {
-			var price domain.Price
-			if err := pRows.Scan(&price.ID, &price.PlanID, &price.Currency, &price.Amount, &price.Type, &price.CreatedAt); err != nil {
-				_ = pRows.Close()
-				return nil, err
-			}
-			p.Prices = append(p.Prices, price)
-		}
-		_ = pRows.Close()
+		p.Prices = prices
 
 		plans = append(plans, &p)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 
 	return plans, nil
+}
+
+// loadPrices returns one plan's prices; a separate function so the rows
+// close on every exit path.
+func (r *PlanRepository) loadPrices(ctx context.Context, planID uuid.UUID) ([]domain.Price, error) {
+	pRows, err := r.db.QueryContext(ctx, `SELECT id, plan_id, currency, amount, type, created_at FROM prices WHERE plan_id = $1`, planID)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = pRows.Close() }()
+	var prices []domain.Price
+	for pRows.Next() {
+		var price domain.Price
+		if err := pRows.Scan(&price.ID, &price.PlanID, &price.Currency, &price.Amount, &price.Type, &price.CreatedAt); err != nil {
+			return nil, err
+		}
+		prices = append(prices, price)
+	}
+	if err := pRows.Err(); err != nil {
+		return nil, err
+	}
+	return prices, nil
 }

@@ -151,6 +151,7 @@ func titleFromSnake(s string) string {
 	return strings.Join(words, " ")
 }
 
+//nolint:gosec // HTML template; the "credit" token trips the credential heuristic
 const CreditNotePDFTemplate = `<!DOCTYPE html>
 <html lang="en">
 <head>

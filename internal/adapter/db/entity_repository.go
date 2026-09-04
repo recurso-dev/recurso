@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -56,7 +57,7 @@ func (r *EntityRepository) List(ctx context.Context, tenantID uuid.UUID) ([]*dom
 func (r *EntityRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) (*domain.Entity, error) {
 	e, err := scanEntity(r.db.QueryRowContext(ctx,
 		`SELECT `+entityColumns+` FROM entities WHERE id = $1 AND tenant_id = $2`, id, tenantID))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -69,7 +70,7 @@ func (r *EntityRepository) GetByID(ctx context.Context, id, tenantID uuid.UUID) 
 func (r *EntityRepository) GetPrimary(ctx context.Context, tenantID uuid.UUID) (*domain.Entity, error) {
 	e, err := scanEntity(r.db.QueryRowContext(ctx,
 		`SELECT `+entityColumns+` FROM entities WHERE tenant_id = $1 AND is_primary`, tenantID))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

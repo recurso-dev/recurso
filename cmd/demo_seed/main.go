@@ -62,7 +62,7 @@ func main() {
 		log.Fatalf("open db: %v", err)
 	}
 	defer func() { _ = conn.Close() }()
-	if err := conn.Ping(); err != nil {
+	if err := conn.PingContext(context.Background()); err != nil {
 		log.Fatalf("ping db: %v", err)
 	}
 

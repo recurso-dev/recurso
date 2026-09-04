@@ -58,6 +58,7 @@ func (r *GSTConfigRepository) Upsert(ctx context.Context, tenantID uuid.UUID, en
 	if entityID != nil {
 		conflict = "(tenant_id, entity_id) WHERE entity_id IS NOT NULL"
 	}
+	//nolint:gosec // only a literal clause chosen by a bool is interpolated; every value is a $n placeholder
 	query := fmt.Sprintf(`
 		INSERT INTO tenant_gst_configs (tenant_id, entity_id, gstin, state_code, state_name, sac_code, gst_rate, pan,
 		                                legal_name, trade_name, address, has_lut, updated_at)

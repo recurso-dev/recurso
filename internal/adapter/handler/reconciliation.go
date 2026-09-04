@@ -2,7 +2,6 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -70,12 +69,7 @@ func (h *ReconciliationHandler) ListReconciliationRuns(c *gin.Context) {
 		respondError(c, http.StatusUnauthorized, codeUnauthorized, "unauthorized")
 		return
 	}
-	limit := 50
-	if v := c.Query("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			limit = n
-		}
-	}
+	limit, _ := parseLimitOffset(c, 50, 250)
 	runs, err := h.service.ListRuns(c.Request.Context(), tenantID.(uuid.UUID), limit)
 	if err != nil {
 		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to list reconciliation runs")

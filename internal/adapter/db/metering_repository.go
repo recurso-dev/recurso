@@ -52,7 +52,7 @@ func (r *BillableMetricRepository) GetByID(ctx context.Context, tenantID, id uui
 		tenantID, id,
 	)
 	m, err := scanMetric(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -67,7 +67,7 @@ func (r *BillableMetricRepository) GetByCode(ctx context.Context, tenantID uuid.
 		tenantID, code,
 	)
 	m, err := scanMetric(row)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

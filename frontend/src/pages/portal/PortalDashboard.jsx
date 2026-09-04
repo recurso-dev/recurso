@@ -95,50 +95,6 @@ const PortalDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    // The httpOnly session cookie can't be read from JS to pre-check login, so
-    // we just load data; fetchData() redirects to /portal/login on a 401.
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [navigate]);
-
-  // Returning from a 3DS/bank redirect during card setup: Stripe appends
-  // ?setup_intent=... to the return_url. Finalize server-side so the saved
-  // card actually becomes the customer's default — without this the card
-  // exists on Stripe but is never persisted, and dunning keeps retrying the
-  // old one.
-  useEffect(() => {
-    const setupIntentId = new URLSearchParams(window.location.search).get(
-      "setup_intent",
-    );
-    if (!setupIntentId) return;
-    window.history.replaceState(null, "", window.location.pathname);
-    fetch(`${API_BASE}/portal/api/payment-method/confirm`, {
-      method: "POST",
-      credentials: "include",
-      headers: authHeaders,
-      body: JSON.stringify({ setup_intent_id: setupIntentId }),
-    })
-      .then(async (res) => {
-        const body = await res.json().catch(() => ({}));
-        if (res.ok && body.data?.status === "saved") {
-          toast.success("Your payment method has been updated.");
-          fetchData();
-        } else {
-          toast.error(
-            body?.error?.message ||
-              "We couldn't confirm your new payment method. Please try again.",
-          );
-        }
-      })
-      .catch(() =>
-        toast.error(
-          "We couldn't confirm your new payment method. Please try again.",
-        ),
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const fetchDisputes = async () => {
     const res = await fetch(`${API_BASE}/portal/api/disputes`, {
       credentials: "include",
@@ -189,6 +145,50 @@ const PortalDashboard = () => {
     }
   };
 
+  useEffect(() => {
+    // The httpOnly session cookie can't be read from JS to pre-check login, so
+    // we just load data; fetchData() redirects to /portal/login on a 401.
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate]);
+
+  // Returning from a 3DS/bank redirect during card setup: Stripe appends
+  // ?setup_intent=... to the return_url. Finalize server-side so the saved
+  // card actually becomes the customer's default — without this the card
+  // exists on Stripe but is never persisted, and dunning keeps retrying the
+  // old one.
+  useEffect(() => {
+    const setupIntentId = new URLSearchParams(window.location.search).get(
+      "setup_intent",
+    );
+    if (!setupIntentId) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    fetch(`${API_BASE}/portal/api/payment-method/confirm`, {
+      method: "POST",
+      credentials: "include",
+      headers: authHeaders,
+      body: JSON.stringify({ setup_intent_id: setupIntentId }),
+    })
+      .then(async (res) => {
+        const body = await res.json().catch(() => ({}));
+        if (res.ok && body.data?.status === "saved") {
+          toast.success("Your payment method has been updated.");
+          fetchData();
+        } else {
+          toast.error(
+            body?.error?.message ||
+              "We couldn't confirm your new payment method. Please try again.",
+          );
+        }
+      })
+      .catch(() =>
+        toast.error(
+          "We couldn't confirm your new payment method. Please try again.",
+        ),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleLogout = async () => {
     try {
       // The server clears the httpOnly session cookie on this call.
@@ -197,7 +197,7 @@ const PortalDashboard = () => {
         credentials: "include",
         headers: { ...portalCsrfHeader() },
       });
-    } catch (err) {
+    } catch {
       // Ignore errors
     }
     navigate("/portal/login");

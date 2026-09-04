@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -76,7 +77,7 @@ func (r *ReconciliationRunRepository) GetByID(ctx context.Context, tenantID, id 
 		Scan(&d.ID, &d.TenantID, &d.RunBy, &d.RunAt,
 			&d.InvoicesChecked, &d.PaidInvoicesChecked, &d.TotalDiscrepancies,
 			&d.TBCompared, &d.TBAccountsChecked, &d.TBTransfersChecked, &d.CreatedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

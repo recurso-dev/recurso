@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -287,9 +286,7 @@ func (h *UsageHandler) ListRecentEvents(c *gin.Context) {
 		}
 		customerID = &id
 	}
-	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
-	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
-	limit, offset = clampLimitOffset(limit, offset, 50, 200)
+	limit, offset := parseLimitOffset(c, 50, 200)
 	events, err := h.svc.ListRecentEvents(ctx, tenantID, customerID, c.Query("dimension"), limit, offset)
 	if err != nil {
 		respondUsageError(c, err)

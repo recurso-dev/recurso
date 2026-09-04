@@ -37,6 +37,9 @@ func (r *DunningRepository) GetWeights(ctx context.Context, contextKey string) (
 		}
 		weights = append(weights, w)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return weights, nil
 }
 
@@ -91,6 +94,9 @@ func (r *DunningRepository) GetAllWeights(ctx context.Context) ([]domain.Dunning
 		}
 		weights = append(weights, w)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return weights, nil
 }
 
@@ -116,6 +122,9 @@ func (r *DunningRepository) GetRecentHistory(ctx context.Context, tenantID uuid.
 			return nil, err
 		}
 		history = append(history, h)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 	return history, nil
 }

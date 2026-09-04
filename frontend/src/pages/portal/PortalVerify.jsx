@@ -44,7 +44,7 @@ const PortalVerify = () => {
         } else {
           navigate("/portal/login?error=invalid");
         }
-      } catch (err) {
+      } catch {
         navigate("/portal/login?error=network");
       }
     };

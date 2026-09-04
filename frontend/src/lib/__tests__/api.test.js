@@ -41,6 +41,11 @@ describe("api endpoint contracts", () => {
     endpoints.getCustomer("cus_1");
     expect(lastCall(inst.get)[0]).toBe("/customers/cus_1");
 
+    // API-key probe: same /account path, explicit bearer for the pasted key.
+    endpoints.verifyApiKey("sk_live_x");
+    expect(lastCall(inst.get)[0]).toBe("/account");
+    expect(lastCall(inst.get)[1]).toMatchObject({ headers: { Authorization: "Bearer sk_live_x" } });
+
     endpoints.getInvoicePdf("inv_1");
     expect(lastCall(inst.get)[0]).toBe("/invoices/inv_1/pdf");
     expect(lastCall(inst.get)[1]).toMatchObject({ responseType: "blob" });

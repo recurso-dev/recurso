@@ -38,7 +38,7 @@ const (
 	// CR AR) summing to it. A dropped leg silently overstates AR and the
 	// Customer-Credit liability with the books still balanced.
 	DiscrepancyMissingCreditApplicationTx      = "missing_credit_application_transaction"
-	DiscrepancyCreditApplicationAmountMismatch = "credit_application_amount_mismatch"
+	DiscrepancyCreditApplicationAmountMismatch = "credit_application_amount_mismatch" //nolint:gosec // discrepancy code, not a credential
 	// Write-off completeness: an invoice marked `uncollectible` must carry its
 	// write-off legs (codes 22 deferred + 26 bad-debt + 23 tax, all CR A/R)
 	// summing to its total. A dropped leg leaves A/R (and Deferred) overstated —

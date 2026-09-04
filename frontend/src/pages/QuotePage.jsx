@@ -146,6 +146,7 @@ export default function QuotePage() {
 
   const expired =
     quote.valid_until &&
+    // eslint-disable-next-line react-hooks/purity -- "expired" is a wall-clock fact at render time
     new Date(quote.valid_until).getTime() < Date.now() &&
     !["accepted", "declined"].includes(status) &&
     !quote.invoice_id;

@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -207,7 +208,7 @@ func (r *PaymentAttemptRepository) GetByPaymentIntentID(ctx context.Context, pay
 	}
 	a, err := scanPaymentAttempt(r.db.QueryRowContext(ctx,
 		`SELECT `+paymentAttemptColumns+` FROM payment_attempts WHERE gateway_payment_intent_id = $1`, paymentIntentID))
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

@@ -3,6 +3,7 @@ package redis
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -35,7 +36,7 @@ func NewRedisIdempotencyStore(client *redis.Client, ttl time.Duration) port.Idem
 
 func (s *RedisIdempotencyStore) Get(ctx context.Context, key string) (*domain.StoredResponse, error) {
 	val, err := s.client.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return nil, nil // Not found
 	}
 	if err != nil {

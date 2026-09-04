@@ -5,6 +5,32 @@ previous full update 2026-07-28).
 Items marked **founder** are blocked on credentials/infrastructure only the
 founder can provide; everything else is engineering-ready.
 
+## 2026-09-03 state: repo-hygiene wave shipped; SDKs + docs re-synced
+
+Since 08-12 the SDKs and docs had drifted from the spec and the Node SDK's
+main branch carried unresolved merge-conflict markers (did not compile).
+This wave: Node fixed and 118→220/220 in-scope paths; Go 98→216/220;
+Python 205→220/220; docs copy byte-identical with 13 new reference pages;
+a cross-repo `sdk-drift` CI job (ratchet baseline in
+`scripts/sdk_drift_baseline.json`) so the gap cannot silently reopen.
+Backend: pinned `.golangci.yml` (errorlint/gosec/rowserrcheck/sqlclosecheck/
+bodyclose/noctx; 72 findings fixed or justified per-site), coverage floor
+gate, six missing `.down.sql` files plus a broken 000007 down (migrate
+down -all now reaches 0), orphaned top-level `migrations/` dir removed and
+its unported organization indexes shipped as 000175, the three remaining
+raw `{"error"}` sites moved to the envelope, hand-rolled limit parsing
+converged on `parseLimitOffset`, and the /v1 route table moved out of
+`main.go` into `cmd/api/routes_v1.go`. Frontend: ESLint 9 flat config
+(React 19 hook rules), 15 previously untested pages covered (754→818
+tests), three raw-UUID inputs replaced with pickers.
+
+SDK publishing to npm/PyPI is deliberately not being pursued right now
+(founder decision, 2026-09-03); the SDK repos carry CHANGELOGs and CI so it
+can be picked up later without further prep.
+**Engineering-ready:** #13 is now only the OpenAPI documentation half
+(defaults per endpoint); #14 unchanged; the other four Go `main.go`
+sections (public/auth/portal wiring) could follow `routes_v1.go`.
+
 ## 2026-08-12 state: engineering-ready queue is EMPTY
 
 Everything actionable below is done, struck, or founder-blocked. Since the
@@ -79,7 +105,7 @@ are synced to the current spec.
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
 | ~~12b~~ | ~~React 19 + react-router 8 upgrade~~ | — | — | **DONE** — React 18.2 → 19.2.8, react-router-dom 7 → react-router 8.3.0 (v8 dropped the -dom package; 51 imports renamed), Tremor/lucide React-18 peers overridden to a single React 19, `.trivyignore` (GHSA-qwww-vcr4-c8h2) removed. lint/build/161 tests green. |
-| 13 | Pagination consistency on list endpoints | MED — silent truncation has bitten twice (CLAUDE.md) | MED | A few endpoints default `limit=10`, some 50/100/200, many unbounded. Normalize on `ParsePagination` + document defaults in OpenAPI. |
+| 13 | Pagination consistency on list endpoints | MED — silent truncation has bitten twice (CLAUDE.md) | LOW (remaining) | Parsing half done 2026-09-03: every hand-rolled `limit` parse now goes through `parseLimitOffset` with its endpoint's existing default/cap preserved. Remaining: document the per-endpoint defaults in OpenAPI. |
 | 14 | Interface-embedding test mocks | LOW-MED — every port widening breaks/panics mocks (`mockLedgerRepoFor*`, `stubCollectionsAgg`, …) | MED | Either generate mocks or convert to narrow per-test interfaces (capability-assertion pattern used by webhook/CRM paths is the house style now). |
 | 15 | Dunning-campaign + cancel-flow responses are unwrapped (no `{data:}`) | LOW — known API quirk, clients must stay tolerant | LOW | Breaking change; batch with a future v2 or additive alias. |
 | 16 | `head` HTTP-tool alias footgun, iCloud `" 2"` duplicate files | — | — | Environment quirks, documented in memory; no code change. |

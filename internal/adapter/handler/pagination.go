@@ -72,12 +72,17 @@ func parseLimitOffset(c *gin.Context, def, max int) (int, int) {
 }
 
 // clampLimitOffset bounds ad-hoc limit/offset query params that predate
-// ParsePagination: limit falls back to def when non-positive and is capped
-// at max; offset is floored at 0. Negative values otherwise reach Postgres
-// as invalid LIMIT/OFFSET (or force unbounded scans).
+// ParsePagination: limit falls back to def when non-positive and is CAPPED at
+// max (a caller asking for more gets the cap, never a surprise downgrade to
+// the default — silent truncation has bitten twice); offset is floored at 0.
+// Negative values otherwise reach Postgres as invalid LIMIT/OFFSET (or force
+// unbounded scans).
 func clampLimitOffset(limit, offset, def, max int) (int, int) {
-	if limit <= 0 || limit > max {
+	if limit <= 0 {
 		limit = def
+	}
+	if limit > max {
+		limit = max
 	}
 	if offset < 0 {
 		offset = 0

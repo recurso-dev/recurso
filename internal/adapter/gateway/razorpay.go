@@ -37,7 +37,7 @@ func (g *RazorpayGateway) CreateOrder(ctx context.Context, amount int64, currenc
 
 	body, err := g.client.Order.Create(data, nil)
 	if err != nil {
-		return nil, fmt.Errorf("razorpay create order failed: %v", err)
+		return nil, fmt.Errorf("razorpay create order failed: %w", err)
 	}
 
 	id, ok := body["id"].(string)
@@ -74,7 +74,7 @@ func (g *RazorpayGateway) VerifyPayment(ctx context.Context, orderID, paymentID,
 func (g *RazorpayGateway) GetOrderInvoiceID(ctx context.Context, orderID string) (string, error) {
 	body, err := g.client.Order.Fetch(orderID, nil, nil)
 	if err != nil {
-		return "", fmt.Errorf("razorpay fetch order %s failed: %v", orderID, err)
+		return "", fmt.Errorf("razorpay fetch order %s failed: %w", orderID, err)
 	}
 	notes, ok := body["notes"].(map[string]interface{})
 	if !ok {
@@ -105,7 +105,7 @@ func (g *RazorpayGateway) CreateSubscription(ctx context.Context, planID string,
 
 	body, err := g.client.Subscription.Create(data, nil)
 	if err != nil {
-		return "", fmt.Errorf("razorpay create subscription failed: %v", err)
+		return "", fmt.Errorf("razorpay create subscription failed: %w", err)
 	}
 
 	id, ok := body["id"].(string)
@@ -144,7 +144,7 @@ func (g *RazorpayGateway) CreateMandate(ctx context.Context, customerEmail, cust
 
 	body, err := g.client.Invoice.Create(data, nil)
 	if err != nil {
-		return nil, fmt.Errorf("razorpay create mandate failed: %v", err)
+		return nil, fmt.Errorf("razorpay create mandate failed: %w", err)
 	}
 
 	tokenID, _ := body["token_id"].(string)
@@ -204,7 +204,7 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 		},
 	}, idemHeaders)
 	if err != nil {
-		return &port.PaymentResult{Success: false, ErrorCode: "mandate_order_failed", ErrorMsg: err.Error()}, nil
+		return &port.PaymentResult{Success: false, ErrorCode: "mandate_order_failed", ErrorMsg: err.Error()}, nil //nolint:nilerr // a declined debit is a result, not an infra error
 	}
 	orderID, _ := order["id"].(string)
 
@@ -224,7 +224,7 @@ func (g *RazorpayGateway) ExecuteMandateDebit(ctx context.Context, req port.Mand
 		"description": "Recurring debit for invoice " + req.InvoiceID,
 	}, idemHeaders)
 	if err != nil {
-		return &port.PaymentResult{Success: false, ErrorCode: "mandate_debit_failed", ErrorMsg: err.Error()}, nil
+		return &port.PaymentResult{Success: false, ErrorCode: "mandate_debit_failed", ErrorMsg: err.Error()}, nil //nolint:nilerr // a declined debit is a result, not an infra error
 	}
 
 	// The recurring payment id (pay_*) is refundable; the webhook also records it.
@@ -283,7 +283,7 @@ func (g *RazorpayGateway) CreateVirtualAccount(ctx context.Context, customerID, 
 
 	body, err := g.client.VirtualAccount.Create(data, nil)
 	if err != nil {
-		return nil, fmt.Errorf("razorpay create virtual account failed: %v", err)
+		return nil, fmt.Errorf("razorpay create virtual account failed: %w", err)
 	}
 
 	vaID, _ := body["id"].(string)

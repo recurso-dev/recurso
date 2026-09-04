@@ -178,5 +178,8 @@ func (r *CouponRepository) List(ctx context.Context, tenantID uuid.UUID, limit, 
 		}
 		coupons = append(coupons, &c)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return coupons, nil
 }

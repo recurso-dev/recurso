@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -80,7 +81,7 @@ func (h *ReferralHandler) CreateReferral(c *gin.Context) {
 	)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err == service.ErrSelfReferral || err == service.ErrAlreadyReferred {
+		if errors.Is(err, service.ErrSelfReferral) || errors.Is(err, service.ErrAlreadyReferred) {
 			status = http.StatusBadRequest
 		}
 		respondErrorStatus(c, status, err.Error())

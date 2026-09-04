@@ -279,6 +279,7 @@ export default function Dashboard() {
   // loaded sets (honest client-side deltas; MRR gets none because no history
   // endpoint exists to compare against).
   const DAY = 86_400_000;
+  // eslint-disable-next-line react-hooks/purity -- wall-clock windowing is the point of these deltas
   const now = Date.now();
   const inWindow = (ts, start, end) => {
     const t = new Date(ts).getTime();

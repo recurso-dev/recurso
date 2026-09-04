@@ -502,5 +502,8 @@ func (r *UsageRepository) GetUsageStats(ctx context.Context, tenantID uuid.UUID)
 		}
 		stats = append(stats, &s)
 	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
 	return stats, nil
 }
