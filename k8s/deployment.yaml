@@ -29,7 +29,7 @@ spec:
           # Pinned to a release tag: `latest` is pushed by BOTH the main build
           # and the tag build, so two replicas could pull different images.
           # Bump this on each release.
-          image: ghcr.io/recurso-dev/recurso:v0.13.0
+          image: ghcr.io/recurso-dev/recurso:v0.14.0
           imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
