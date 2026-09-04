@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/recurso-dev/recurso/actions"><img src="https://github.com/recurso-dev/recurso/workflows/CI/badge.svg" alt="Build Status" /></a>
-  <a href="https://github.com/recurso-dev/recurso"><img src="https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white" alt="Go 1.25+" /></a>
+  <a href="https://github.com/recurso-dev/recurso"><img src="https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white" alt="Go 1.26+" /></a>
   <a href="https://github.com/recurso-dev/recurso/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License" /></a>
   <a href="https://github.com/recurso-dev/recurso/stargazers"><img src="https://img.shields.io/github/stars/recurso-dev/recurso?style=social" alt="GitHub Stars" /></a>
 </p>
@@ -131,7 +131,7 @@ best-effort mirror that's written non-fatally when connected and only read as a
 fallback — enable it (via `TIGERBEETLE_ADDRESS`) when ledger throughput warrants
 it; the engine runs fully without it.
 
-**Stack:** Go 1.25+ &middot; PostgreSQL &middot; TigerBeetle (optional) &middot; Hexagonal Architecture (Ports & Adapters)
+**Stack:** Go 1.26+ &middot; PostgreSQL &middot; TigerBeetle (optional) &middot; Hexagonal Architecture (Ports & Adapters)
 
 ## Quick Start
 

@@ -123,7 +123,7 @@ func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		if os.Getenv("APP_ENV") == "development" {
-			dbURL = "postgres://user:password@localhost:5432/recurso?sslmode=disable"
+			dbURL = "postgres://user:password@localhost:5432/recurso?sslmode=disable" //nolint:gosec // G101: development-only placeholder DSN, unused whenever DATABASE_URL is set
 			log.Println("Warning: DATABASE_URL not set, using development default")
 		} else {
 			log.Fatal("DATABASE_URL environment variable is required")
@@ -322,9 +322,9 @@ func main() {
 	// DEMO_MODE: forced to mock below — a demo must never submit an IRN.
 	var gspAdapter port.GSPAdapter
 	if nicKeyPath := os.Getenv("NIC_PRIVATE_KEY_PATH"); nicKeyPath != "" && !demo.Enabled() {
-		nicKeyPEM, err := os.ReadFile(nicKeyPath)
+		nicKeyPEM, err := os.ReadFile(nicKeyPath) //nolint:gosec // G703: operator-configured key path from the environment
 		if err != nil {
-			log.Printf("Warning: Failed to read NIC private key from %s: %v. Falling back to mock.", nicKeyPath, err)
+			log.Printf("Warning: Failed to read NIC private key from %s: %v. Falling back to mock.", nicKeyPath, err) //nolint:gosec // G706: operator-configured path echoed for the operator, not request input
 			gspAdapter = gsp.NewMockGSPAdapter()
 		} else {
 			nicEnv := os.Getenv("NIC_ENVIRONMENT")
@@ -337,7 +337,7 @@ func main() {
 				gspAdapter = gsp.NewMockGSPAdapter()
 			} else {
 				gspAdapter = nicAdapter
-				log.Printf("Using NIC GSP Adapter (environment: %s)", nicEnv)
+				log.Printf("Using NIC GSP Adapter (environment: %s)", nicEnv) //nolint:gosec // G706: operator-configured environment name, not request input
 			}
 		}
 	} else {
@@ -530,7 +530,7 @@ func main() {
 	// Opt-in via SIGNUP_NOTIFY_EMAIL; delivery needs SMTP_HOST (else console-only).
 	if signupNotifyEmail := os.Getenv("SIGNUP_NOTIFY_EMAIL"); signupNotifyEmail != "" {
 		authService.ConfigureSignupNotify(signupNotifyEmail, notificationService)
-		log.Printf("New-signup alerts enabled → %s", signupNotifyEmail)
+		log.Printf("New-signup alerts enabled → %s", signupNotifyEmail) //nolint:gosec // G706: operator-configured address, not request input
 	}
 	// New-signup → marketing tool (Brevo) contact sync. Opt-in via BREVO_API_KEY;
 	// BREVO_LIST_ID (optional) drops the contact into an onboarding list.
@@ -740,12 +740,12 @@ func main() {
 	// fallback for unknown providers. OAuth client credentials are needed
 	// to complete the connect flow and to refresh expired tokens.
 	oauthConfigs := map[string]*accounting.OAuthConfig{
-		"quickbooks": {
+		"quickbooks": { //nolint:gosec // G101: env var name, not a credential
 			ClientID:     getEnvDefault("QBO_CLIENT_ID", ""),
 			ClientSecret: getEnvDefault("QBO_CLIENT_SECRET", ""),
 			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
 		},
-		"xero": {
+		"xero": { //nolint:gosec // G101: env var name, not a credential
 			ClientID:     getEnvDefault("XERO_CLIENT_ID", ""),
 			ClientSecret: getEnvDefault("XERO_CLIENT_SECRET", ""),
 			TokenURL:     "https://identity.xero.com/connect/token",
@@ -1090,7 +1090,7 @@ func main() {
 		} else if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 			billingCycleInterval = d
 		} else {
-			log.Printf("Invalid BILLING_CYCLE_INTERVAL %q; using default 5m", raw)
+			log.Printf("Invalid BILLING_CYCLE_INTERVAL %q; using default 5m", raw) //nolint:gosec // G706: operator-configured value echoed for the operator, not request input
 		}
 	}
 	if billingCycleInterval > 0 {
@@ -1153,7 +1153,7 @@ func main() {
 		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 			progressiveSweepInterval = d
 		} else {
-			log.Printf("Invalid PROGRESSIVE_SWEEP_INTERVAL %q; using default %s", raw, scheduler.DefaultProgressiveSweepInterval)
+			log.Printf("Invalid PROGRESSIVE_SWEEP_INTERVAL %q; using default %s", raw, scheduler.DefaultProgressiveSweepInterval) //nolint:gosec // G706: operator-configured value echoed for the operator, not request input
 		}
 	}
 	progressiveBillingScheduler := scheduler.NewProgressiveBillingScheduler(
@@ -1579,7 +1579,7 @@ func main() {
 		}
 	}
 	if err := r.SetTrustedProxies(trustedProxies); err != nil {
-		log.Fatalf("invalid TRUSTED_PROXIES %v: %v", trustedProxies, err)
+		log.Fatalf("invalid TRUSTED_PROXIES %v: %v", trustedProxies, err) //nolint:gosec // G706: operator-configured CIDR list, not request input
 	}
 
 	// Global Middleware (Phase 47)
@@ -1987,7 +1987,7 @@ func main() {
 		}
 	}()
 
-	log.Printf("Starting Recurso API on %s", serverAddr)
+	log.Printf("Starting Recurso API on %s", serverAddr) //nolint:gosec // G706: listen address from configuration, not request input
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Server failed: %v", err)
 	}

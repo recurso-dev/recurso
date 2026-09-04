@@ -1,6 +1,6 @@
 # Dev Container compose stack.
 #
-# Brings up a Go 1.25 + Node 20 workspace container (see devcontainer.json)
+# Brings up a Go 1.26 + Node 24 workspace container (see devcontainer.json)
 # wired to a Postgres instance, so GitHub Codespaces / VS Code Dev Containers
 # get a working development database out of the box.
 #

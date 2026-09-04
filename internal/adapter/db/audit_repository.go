@@ -68,7 +68,7 @@ func (r *AuditLogRepository) List(ctx context.Context, tenantID uuid.UUID, filte
 	query += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d", len(args))
 	if filter.Offset > 0 {
 		args = append(args, filter.Offset)
-		query += fmt.Sprintf(" OFFSET $%d", len(args))
+		query += fmt.Sprintf(" OFFSET $%d", len(args)) //nolint:gosec // G202: only a positional placeholder index is interpolated; the value is bound
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)

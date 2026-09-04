@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Go toolchain to 1.26.8** everywhere it is pinned: CI and release
+  workflows, both Dockerfiles, both Cloud Build configs, the devcontainer
+  and `go.mod`. Go 1.25 left the supported window with 1.27's release.
+  golangci-lint moves to v2.13.2 (built with Go 1.26); its new gosec
+  taint-analysis rules (G701/G703/G706) and broader G101/G202 checks are
+  suppressed per site, each with a reason, where the input is operator
+  configuration or a positional placeholder index rather than request data.
+  `crypto/rsa.DecryptPKCS1v15` is deprecated in 1.26 but the NIC IRP
+  protocol mandates it for the session key, so that call is annotated too.
+- **Node 24 LTS** for the frontend image, the Frontend CI job and the
+  devcontainer (was 22 / 20).
+- razorpay-go 1.4.0 → 1.4.1, which requires Go 1.26 and had been held back.
+
 ## [0.13.0] - 2026-08-14 — The depth release
 
 Where 0.12.0 made every core object a *place*, 0.13.0 made those places

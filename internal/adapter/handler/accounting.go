@@ -158,7 +158,7 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 
 	switch provider {
 	case "quickbooks":
-		config = &accounting.OAuthConfig{
+		config = &accounting.OAuthConfig{ //nolint:gosec // G101: env var name, not a credential
 			ClientID:     os.Getenv("QBO_CLIENT_ID"),
 			ClientSecret: os.Getenv("QBO_CLIENT_SECRET"),
 			RedirectURL:  baseURL + "/v1/accounting/callback/quickbooks",
@@ -167,7 +167,7 @@ func (h *AccountingHandler) InitiateOAuth(c *gin.Context) {
 			Scopes:       []string{"com.intuit.quickbooks.accounting"},
 		}
 	case "xero":
-		config = &accounting.OAuthConfig{
+		config = &accounting.OAuthConfig{ //nolint:gosec // G101: env var name, not a credential
 			ClientID:     os.Getenv("XERO_CLIENT_ID"),
 			ClientSecret: os.Getenv("XERO_CLIENT_SECRET"),
 			RedirectURL:  baseURL + "/v1/accounting/callback/xero",
@@ -231,14 +231,14 @@ func (h *AccountingHandler) OAuthCallback(c *gin.Context) {
 	var config *accounting.OAuthConfig
 	switch provider {
 	case "quickbooks":
-		config = &accounting.OAuthConfig{
+		config = &accounting.OAuthConfig{ //nolint:gosec // G101: env var name, not a credential
 			ClientID:     os.Getenv("QBO_CLIENT_ID"),
 			ClientSecret: os.Getenv("QBO_CLIENT_SECRET"),
 			RedirectURL:  baseURL + "/v1/accounting/callback/quickbooks",
 			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
 		}
 	case "xero":
-		config = &accounting.OAuthConfig{
+		config = &accounting.OAuthConfig{ //nolint:gosec // G101: env var name, not a credential
 			ClientID:     os.Getenv("XERO_CLIENT_ID"),
 			ClientSecret: os.Getenv("XERO_CLIENT_SECRET"),
 			RedirectURL:  baseURL + "/v1/accounting/callback/xero",

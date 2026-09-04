@@ -16,7 +16,7 @@ import (
 func main() {
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		dbURL = "postgres://user:password@localhost:5432/recurso?sslmode=disable"
+		dbURL = "postgres://user:password@localhost:5432/recurso?sslmode=disable" //nolint:gosec // G101: local-tooling default DSN with placeholder credentials
 	}
 
 	dbx, err := sqlx.Connect("postgres", dbURL)
@@ -53,7 +53,7 @@ func main() {
 	}
 
 	// Trigger RevRec manually
-	log.Printf("Creating RevRec schedule for invoice %s...", inv.InvoiceNumber)
+	log.Printf("Creating RevRec schedule for invoice %s...", inv.InvoiceNumber) //nolint:gosec // G706: invoice number from the local database in a dev tool
 	if err := revrecService.CreateScheduleForInvoice(ctx, inv, nil); err != nil {
 		log.Fatalf("failed to create schedule: %v", err)
 	}

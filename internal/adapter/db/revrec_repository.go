@@ -49,7 +49,7 @@ func (r *RevRecRepository) CreateEvents(ctx context.Context, events []*domain.Re
 			query += ", "
 		}
 		base := i * 7
-		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7)
+		query += fmt.Sprintf("($%d, $%d, $%d, $%d, $%d, $%d, $%d)", base+1, base+2, base+3, base+4, base+5, base+6, base+7) //nolint:gosec // G202: only positional placeholder indexes are interpolated; values are bound
 		args = append(args, e.ID, e.RevenueScheduleID, e.TenantID, e.Amount, e.RecognitionDate, e.Status, e.CreatedAt)
 	}
 

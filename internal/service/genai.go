@@ -193,10 +193,9 @@ func (s *GenAIService) Ask(ctx context.Context, tenantID uuid.UUID, question str
 	}
 
 	// Cap the result set regardless of what the model generated.
-	//nolint:gosec // by design: model-generated SQL runs under the read-only genai role after guardGeneratedSQL
-	wrapped := "SELECT * FROM (" + sqlQuery + ") AS genai_result LIMIT 500"
+	wrapped := "SELECT * FROM (" + sqlQuery + ") AS genai_result LIMIT 500" //nolint:gosec // G202: by design, model-generated SQL runs under the read-only genai role after guardGeneratedSQL
 
-	rows, err := tx.QueryContext(ctx, wrapped)
+	rows, err := tx.QueryContext(ctx, wrapped) //nolint:gosec // G701: by design, model-generated SQL runs under the read-only genai role after guardGeneratedSQL
 	if err != nil {
 		return nil, sqlQuery, fmt.Errorf("failed to execute AI-generated query: %w", err)
 	}
