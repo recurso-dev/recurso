@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/recurso-dev/recurso/internal/validate"
 	"time"
 
 	"github.com/google/uuid"
@@ -47,8 +48,8 @@ func (s *CatalogService) CreatePlan(ctx context.Context, input CreatePlanInput) 
 	if input.Code == "" {
 		return nil, fmt.Errorf("code is required")
 	}
-	if len(input.Currency) != 3 {
-		return nil, fmt.Errorf("currency must be a 3-letter code")
+	if !validate.Currency(input.Currency) {
+		return nil, fmt.Errorf("currency must be a valid ISO 4217 code")
 	}
 	switch input.IntervalUnit {
 	case "day", "week", "month", "year":

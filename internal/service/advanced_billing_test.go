@@ -34,10 +34,10 @@ type fakeUCRepo struct {
 	bySub map[uuid.UUID][]*domain.UnbilledCharge
 }
 
-func (r *fakeUCRepo) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+func (r *fakeUCRepo) ListBySubscriptionID(_ context.Context, subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
 	return r.bySub[subscriptionID], nil
 }
-func (r *fakeUCRepo) ListBySubscriptionIDPaged(subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
+func (r *fakeUCRepo) ListBySubscriptionIDPaged(_ context.Context, subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
 	return r.bySub[subscriptionID], nil
 }
 

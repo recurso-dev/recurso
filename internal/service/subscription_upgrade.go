@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -42,10 +43,10 @@ func (s *SubscriptionService) CalculateProration(
 	unusedDuration := remainingDuration // In simple terms, unused time on old plan matches remaining time on new plan
 
 	// Calculate Credit for Old Plan (Unused Time)
-	creditAmount := int64(float64(currentPlanPrice) * (unusedDuration / totalDuration))
+	creditAmount := int64(math.Round(float64(currentPlanPrice) * (unusedDuration / totalDuration)))
 
 	// Calculate Charge for New Plan (Remaining Time)
-	chargeAmount := int64(float64(newPlanPrice) * (remainingDuration / totalDuration))
+	chargeAmount := int64(math.Round(float64(newPlanPrice) * (remainingDuration / totalDuration)))
 
 	return &ProrationResult{
 		CreditAmount:       creditAmount,

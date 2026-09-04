@@ -34,7 +34,7 @@ type piaUnbilledRepo struct {
 	created []*domain.UnbilledCharge
 }
 
-func (r *piaUnbilledRepo) Create(c *domain.UnbilledCharge) error {
+func (r *piaUnbilledRepo) Create(_ context.Context, c *domain.UnbilledCharge) error {
 	r.created = append(r.created, c)
 	return nil
 }

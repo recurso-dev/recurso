@@ -80,11 +80,11 @@ func (h *ReferralHandler) CreateReferral(c *gin.Context) {
 		req.Currency,
 	)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, service.ErrSelfReferral) || errors.Is(err, service.ErrAlreadyReferred) {
-			status = http.StatusBadRequest
+			respondErrorStatus(c, http.StatusBadRequest, err.Error())
+			return
 		}
-		respondErrorStatus(c, status, err.Error())
+		respondInternalError(c, err)
 		return
 	}
 

@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 
 	"github.com/google/uuid"
@@ -16,12 +17,12 @@ func NewUnbilledChargeRepository(db *sql.DB) *UnbilledChargeRepository {
 	return &UnbilledChargeRepository{DB: db}
 }
 
-func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
+func (r *UnbilledChargeRepository) Create(ctx context.Context, charge *domain.UnbilledCharge) error {
 	query := `
 		INSERT INTO unbilled_charges (id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
-	_, err := r.DB.Exec(query, //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
+	_, err := r.DB.ExecContext(ctx, query,
 		charge.ID,
 		charge.SubscriptionID,
 		charge.Amount,
@@ -36,17 +37,17 @@ func (r *UnbilledChargeRepository) Create(charge *domain.UnbilledCharge) error {
 	return err
 }
 
-func (r *UnbilledChargeRepository) ListBySubscriptionID(subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
-	return r.listBySubscriptionID(subscriptionID, ``)
+func (r *UnbilledChargeRepository) ListBySubscriptionID(ctx context.Context, subscriptionID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+	return r.listBySubscriptionID(ctx, subscriptionID, ``)
 }
 
 // ListBySubscriptionIDPaged bounds the API-facing list (see the port comment:
 // invoice generation stays unbounded by design).
-func (r *UnbilledChargeRepository) ListBySubscriptionIDPaged(subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
-	return r.listBySubscriptionID(subscriptionID, ` LIMIT $2 OFFSET $3`, limit, offset)
+func (r *UnbilledChargeRepository) ListBySubscriptionIDPaged(ctx context.Context, subscriptionID uuid.UUID, limit, offset int) ([]*domain.UnbilledCharge, error) {
+	return r.listBySubscriptionID(ctx, subscriptionID, ` LIMIT $2 OFFSET $3`, limit, offset)
 }
 
-func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.UnbilledCharge, error) {
+func (r *UnbilledChargeRepository) listBySubscriptionID(ctx context.Context, subscriptionID uuid.UUID, pageClause string, pageArgs ...interface{}) ([]*domain.UnbilledCharge, error) {
 	//nolint:gosec // fixed fragments with $n placeholders; no caller value is spliced
 	query := `
 		SELECT id, subscription_id, amount, currency, description, hsn_code, status, period_start, period_end, created_at
@@ -54,7 +55,7 @@ func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID
 		WHERE subscription_id = $1 AND status = 'pending'
 		ORDER BY created_at ASC` + pageClause
 	args := append([]interface{}{subscriptionID}, pageArgs...)
-	rows, err := r.DB.Query(query, args...) //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
+	rows, err := r.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,7 +86,7 @@ func (r *UnbilledChargeRepository) listBySubscriptionID(subscriptionID uuid.UUID
 	return charges, nil
 }
 
-func (r *UnbilledChargeRepository) MarkAsInvoiced(chargeIDs []uuid.UUID) error {
+func (r *UnbilledChargeRepository) MarkAsInvoiced(ctx context.Context, chargeIDs []uuid.UUID) error {
 	if len(chargeIDs) == 0 {
 		return nil
 	}
@@ -94,6 +95,6 @@ func (r *UnbilledChargeRepository) MarkAsInvoiced(chargeIDs []uuid.UUID) error {
 		SET status = 'invoiced'
 		WHERE id = ANY($1)
 	`
-	_, err := r.DB.Exec(query, pq.Array(chargeIDs)) //nolint:noctx // port has no ctx; widening it breaks the embedded mocks (backlog #14)
+	_, err := r.DB.ExecContext(ctx, query, pq.Array(chargeIDs))
 	return err
 }

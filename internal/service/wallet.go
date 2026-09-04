@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"github.com/recurso-dev/recurso/internal/validate"
 	"log/slog"
 	"strings"
 	"time"
@@ -118,8 +119,8 @@ func (s *WalletService) CreateWallet(ctx context.Context, tenantID uuid.UUID, in
 		return nil, WalletValidationError("invalid customer_id")
 	}
 	currency := strings.ToUpper(strings.TrimSpace(in.Currency))
-	if len(currency) != 3 {
-		return nil, WalletValidationError("currency must be an ISO 3-letter code")
+	if !validate.Currency(currency) {
+		return nil, WalletValidationError("currency must be a valid ISO 4217 code")
 	}
 	if err := validateAutoRecharge(in.AutoRechargeThreshold, in.AutoRechargeAmount); err != nil {
 		return nil, err

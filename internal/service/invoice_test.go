@@ -49,11 +49,11 @@ type MockUnbilledChargeRepo struct {
 	port.UnbilledChargeRepository
 }
 
-func (m *MockUnbilledChargeRepo) ListBySubscriptionID(subID uuid.UUID) ([]*domain.UnbilledCharge, error) {
+func (m *MockUnbilledChargeRepo) ListBySubscriptionID(_ context.Context, subID uuid.UUID) ([]*domain.UnbilledCharge, error) {
 	return []*domain.UnbilledCharge{}, nil
 }
 
-func (m *MockUnbilledChargeRepo) MarkAsInvoiced(ids []uuid.UUID) error {
+func (m *MockUnbilledChargeRepo) MarkAsInvoiced(_ context.Context, ids []uuid.UUID) error {
 	return nil
 }
 

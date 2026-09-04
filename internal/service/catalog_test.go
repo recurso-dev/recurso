@@ -108,17 +108,22 @@ func TestCreatePlan_Validation(t *testing.T) {
 		{
 			name:    "currency too short",
 			modify:  func(i *CreatePlanInput) { i.Currency = "US" },
-			wantErr: "currency must be a 3-letter code",
+			wantErr: "currency must be a valid ISO 4217 code",
 		},
 		{
 			name:    "currency too long",
 			modify:  func(i *CreatePlanInput) { i.Currency = "USDX" },
-			wantErr: "currency must be a 3-letter code",
+			wantErr: "currency must be a valid ISO 4217 code",
 		},
 		{
 			name:    "empty currency",
 			modify:  func(i *CreatePlanInput) { i.Currency = "" },
-			wantErr: "currency must be a 3-letter code",
+			wantErr: "currency must be a valid ISO 4217 code",
+		},
+		{
+			name:    "three letters but not a currency",
+			modify:  func(i *CreatePlanInput) { i.Currency = "ABC" },
+			wantErr: "currency must be a valid ISO 4217 code",
 		},
 		{
 			name:    "invalid interval unit",

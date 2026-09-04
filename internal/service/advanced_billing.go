@@ -56,7 +56,7 @@ func (s *AdvancedBillingService) AddUnbilledCharge(ctx context.Context, subscrip
 		CreatedAt:      time.Now(),
 	}
 
-	if err := s.UnbilledChargeRepo.Create(charge); err != nil {
+	if err := s.UnbilledChargeRepo.Create(ctx, charge); err != nil {
 		return nil, err
 	}
 
@@ -70,5 +70,5 @@ func (s *AdvancedBillingService) ListUnbilledCharges(ctx context.Context, subscr
 	if _, err := s.SubscriptionRepo.GetByID(ctx, subscriptionID); err != nil {
 		return nil, err
 	}
-	return s.UnbilledChargeRepo.ListBySubscriptionIDPaged(subscriptionID, limit, offset)
+	return s.UnbilledChargeRepo.ListBySubscriptionIDPaged(ctx, subscriptionID, limit, offset)
 }

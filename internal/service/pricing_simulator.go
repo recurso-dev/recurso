@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/recurso-dev/recurso/internal/validate"
 	"math/big"
 	"strings"
 
@@ -80,7 +81,7 @@ func (s *MeteringService) SimulateCharges(ctx context.Context, tenantID, planID 
 	if currency == "" && len(plan.Prices) > 0 {
 		currency = strings.ToUpper(strings.TrimSpace(plan.Prices[0].Currency))
 	}
-	if len(currency) != 3 {
+	if !validate.Currency(currency) {
 		return nil, MeteringValidationError("currency is required (or the plan must have a price)")
 	}
 
