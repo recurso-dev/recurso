@@ -345,7 +345,7 @@ const Organizations = () => {
                     placeholder="123e4567-e89b-12d3-a456-426614174000"
                     className="font-mono"
                     aria-invalid={addTenantError ? true : undefined}
-                    aria-describedby="add-tenant-help"
+                    aria-describedby={addTenantError ? "add-tenant-error" : "add-tenant-help"}
                   />
                   <Button
                     size="sm"
@@ -356,7 +356,7 @@ const Organizations = () => {
                   </Button>
                 </div>
                 {addTenantError ? (
-                  <p role="alert" className="text-xs text-destructive">
+                  <p id="add-tenant-error" role="alert" className="text-xs text-destructive">
                     {addTenantError}
                   </p>
                 ) : (

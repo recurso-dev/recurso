@@ -34,8 +34,10 @@ api.interceptors.request.use(
   (config) => {
     // Legacy API-key mode: the key lives in memory only (see lib/authToken.js),
     // never in localStorage. The backend accepts "Bearer <api_key>".
+    // An explicit per-request Authorization header wins (verifyApiKey probes a
+    // freshly pasted key while an older key may still be held in memory).
     const token = getApiKey();
-    if (token) {
+    if (token && !config.headers?.['Authorization']) {
       config.headers['Authorization'] = `Bearer ${token}`;
     }
     return config;

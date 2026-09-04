@@ -32,3 +32,21 @@ func TestParseLimitOffset(t *testing.T) {
 		}
 	}
 }
+
+// With def < max, an over-cap request is clamped to max rather than reset to
+// def: a caller asking for 300 of a 250-cap list gets 250, not 50.
+func TestClampLimitOffset_OverCapClampsToMax(t *testing.T) {
+	cases := []struct{ limit, offset, wantLimit, wantOffset int }{
+		{300, 0, 250, 0},
+		{0, 10, 50, 10},
+		{-1, -1, 50, 0},
+		{250, 5, 250, 5},
+		{7, 0, 7, 0},
+	}
+	for _, tc := range cases {
+		limit, offset := clampLimitOffset(tc.limit, tc.offset, 50, 250)
+		if limit != tc.wantLimit || offset != tc.wantOffset {
+			t.Errorf("clampLimitOffset(%d,%d,50,250) = %d/%d, want %d/%d", tc.limit, tc.offset, limit, offset, tc.wantLimit, tc.wantOffset)
+		}
+	}
+}

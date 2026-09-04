@@ -50,8 +50,9 @@ swallows the failure (this exact mistake shipped a broken button once).
   `scripts/sdk_drift.py --update-baseline`; after changing the spec re-copy
   it into `docs/api-reference/openapi.yaml`.
 - **Migrations must round-trip**: every `.up.sql` has a `.down.sql` and
-  `migrate down -all` reaches version 0 (verified with golang-migrate against
-  Postgres 16). Never drop a table another migration owns.
+  `migrate down -all` reaches version 0; CI's Test job runs up → down -all → up
+  with golang-migrate against a throwaway database. Never drop a table another
+  migration owns.
 
 ## Backend conventions
 

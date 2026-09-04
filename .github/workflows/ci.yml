@@ -92,7 +92,24 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
 
       - name: Create scratch DB for postgres-backed tests
-        run: PGPASSWORD=password psql -h localhost -U user -d recurso_test -c "CREATE DATABASE recurso_repo_test;"
+        run: PGPASSWORD=password psql -h localhost -U user -d recurso_test -c "CREATE DATABASE recurso_repo_test;" -c "CREATE DATABASE recurso_migr;"
+
+      # Every .up.sql needs a .down.sql that actually reverses it: rollback on
+      # this repo silently did not work past version 7 for months because one
+      # down dropped a table another migration owned. Apply everything, roll
+      # all the way back to zero, and apply again against a throwaway database.
+      - name: Migrations round-trip (up, down -all, up)
+        env:
+          MIGRATE_DB: postgres://user:password@localhost:5432/recurso_migr?sslmode=disable
+        run: |
+          go install -tags postgres github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.1
+          M="$(go env GOPATH)/bin/migrate -path internal/adapter/db/migrations -database $MIGRATE_DB"
+          $M up
+          $M down -all
+          left=$(PGPASSWORD=password psql -h localhost -U user -d recurso_migr -tAc "select count(*) from pg_tables where schemaname='public' and tablename <> 'schema_migrations'")
+          if [ "$left" != "0" ]; then echo "FATAL: $left tables remain after migrate down -all"; exit 1; fi
+          $M up
+          echo "OK: migrations round-trip"
 
       - name: Run tests
         env:
