@@ -89,9 +89,10 @@ renders).
 ## 8. OpenAPI drift gate
 
 `cmd/api/openapi_drift_test.go` fails CI if any registered `method path` is
-absent from the embedded `openapi.yaml`. Spec has 246 paths / 304 operations /
-288 operationIds → **~16 operations lack an operationId** (drift gate doesn't
-catch that). Adding a verb to an existing path merges under the existing key.
+absent from the embedded `openapi.yaml`. Spec has 263 paths / 323 operations /
+323 operationIds → every operation carries an operationId (the drift gate
+doesn't check that, so keep it so). Adding a verb to an existing path merges
+under the existing key.
 
 ## 9. Versioning
 

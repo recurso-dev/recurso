@@ -587,7 +587,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Plan'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Plan'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -676,7 +679,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Plan'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Plan'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -1379,7 +1385,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Customer'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Customer'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1481,7 +1490,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Subscription'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1672,7 +1684,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Subscription'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1745,7 +1760,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlanChangePreview'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PlanChangePreview'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1773,7 +1791,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelSubscriptionResponse'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelSubscriptionResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1895,7 +1916,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UnbilledCharge'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/UnbilledCharge'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1944,9 +1968,20 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Invoice'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invoice'
         '200':
           description: Nothing due (data is null).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: 'null'
+                    description: Always null — there was no unbilled usage to invoice.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1977,7 +2012,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Invoice'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Invoice'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2018,7 +2056,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubscriptionAddon'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionAddon'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2686,7 +2727,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Coupon'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Coupon'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2750,6 +2794,26 @@ paths:
       responses:
         '200':
           description: Raw usage events, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        subscription_id: { type: string, format: uuid }
+                        customer_id: { type: string, format: uuid }
+                        dimension: { type: string }
+                        quantity: { type: integer, format: int64 }
+                        timestamp: { type: string, format: date-time }
+                        properties:
+                          type: object
+                          additionalProperties: { type: string }
+                        transaction_id: { type: string }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3409,6 +3473,14 @@ paths:
       responses:
         '200':
           description: Status updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [active, inactive]
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -3598,7 +3670,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/MRRMetrics'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/MRRMetrics'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -3993,12 +4068,15 @@ paths:
                   type: string
                   format: uuid
       responses:
-        '200':
+        '201':
           description: Gateway order.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaymentOrder'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/PaymentOrder'
         '400':
           $ref: '#/components/responses/BadRequest'
         '404':
@@ -4401,7 +4479,7 @@ paths:
       operationId: verifyPortalMagicLink
       tags: [Customer Portal]
       summary: Verify a magic link and start a session
-      description: Exchanges the emailed token for a 7-day portal session. The session token is also set as the `portal_session` cookie.
+      description: Exchanges the emailed token for a 7-day portal session. The session token is delivered only as the httpOnly `portal_session` cookie — it is never in the JSON body.
       security: []
       parameters:
         - name: token
@@ -4411,15 +4489,13 @@ paths:
             type: string
       responses:
         '200':
-          description: Session created.
+          description: Session created (cookie set).
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   message:
-                    type: string
-                  session_token:
                     type: string
         '400':
           $ref: '#/components/responses/BadRequest'
@@ -5031,7 +5107,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningOverview'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningOverview'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -5102,6 +5181,17 @@ paths:
       responses:
         '200':
           description: Requeued for retry.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        const: requeued
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
         '401': { $ref: '#/components/responses/Unauthorized' }
@@ -5127,6 +5217,16 @@ paths:
       responses:
         '200':
           description: Dunning pause state updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      dunning_paused:
+                        type: boolean
         '404': { $ref: '#/components/responses/NotFound' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
@@ -5146,6 +5246,17 @@ paths:
       responses:
         '200':
           description: Invoice marked uncollectible.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        const: uncollectible
         '404': { $ref: '#/components/responses/NotFound' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
@@ -5310,7 +5421,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIKey'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/APIKey'
         '401':
           $ref: '#/components/responses/Unauthorized'
 
@@ -5501,15 +5615,28 @@ paths:
           description: Filter to one posting code (e.g. 3 = payment). Omit for all.
           schema:
             type: integer
+        - name: page
+          in: query
+          required: false
+          description: 1-based page number (default 1). Ignored when `offset` is given.
+          schema:
+            type: integer
+        - name: per_page
+          in: query
+          required: false
+          description: Page size (default 50, max 250). Alias of `limit`.
+          schema:
+            type: integer
         - name: limit
           in: query
           required: false
-          description: Page size (default 50, max 250).
+          description: Page size (default 50, max 250). Same as `per_page`; when both are sent `limit` wins.
           schema:
             type: integer
         - name: offset
           in: query
           required: false
+          description: Row offset (default 0). Overrides the offset computed from `page`.
           schema:
             type: integer
       responses:
@@ -6737,7 +6864,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Consent'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Consent'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -6814,7 +6944,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Consent'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Consent'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7069,7 +7202,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Subscription'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Subscription'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7152,12 +7288,15 @@ paths:
               schema:
                 type: object
                 properties:
-                  mandate:
-                    $ref: '#/components/schemas/Mandate'
-                  auth_url:
-                    type: string
-                    format: uri
-                    description: URL where the customer authorizes the mandate.
+                  data:
+                    type: object
+                    properties:
+                      mandate:
+                        $ref: '#/components/schemas/Mandate'
+                      auth_url:
+                        type: string
+                        format: uri
+                        description: URL where the customer authorizes the mandate.
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7262,7 +7401,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/VirtualAccount'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/VirtualAccount'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7343,7 +7485,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OfflinePayment'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/OfflinePayment'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7412,7 +7557,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Organization'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/Organization'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7679,8 +7827,22 @@ paths:
       responses:
         '200':
           description: Existing connection refreshed.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AccountingConnection'
         '201':
           description: Connection created.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/AccountingConnection'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -7953,9 +8115,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/CancelFlow'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CancelFlow'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -7984,7 +8149,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlow'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlow'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8003,7 +8171,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlow'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlow'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8037,7 +8208,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlow'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlow'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8074,7 +8248,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlowStep'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlowStep'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8106,7 +8283,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlowStep'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlowStep'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8159,7 +8339,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StartSessionResult'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/StartSessionResult'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8178,7 +8361,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/CancelFlowSession'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/CancelFlowSession'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8212,7 +8398,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubmitStepResult'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubmitStepResult'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8236,7 +8425,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/FlowStats'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/FlowStats'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8253,9 +8445,12 @@ paths:
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/DunningCampaign'
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DunningCampaign'
         '401':
           $ref: '#/components/responses/Unauthorized'
     post:
@@ -8281,7 +8476,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningCampaign'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningCampaign'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8300,7 +8498,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningCampaign'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningCampaign'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8332,7 +8533,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningCampaign'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningCampaign'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8379,7 +8583,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningCampaignStep'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningCampaignStep'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8420,7 +8627,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/DunningCampaignStep'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/DunningCampaignStep'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8462,11 +8672,14 @@ paths:
               schema:
                 type: object
                 properties:
-                  invoice_id:
-                    type: string
-                    format: uuid
-                  payment_wall_active:
-                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      invoice_id:
+                        type: string
+                        format: uuid
+                      payment_wall_active:
+                        type: boolean
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -8490,22 +8703,25 @@ paths:
               schema:
                 type: object
                 properties:
-                  recovered_amount_total:
+                  data:
                     type: object
-                    additionalProperties: { type: integer, format: int64 }
-                    description: Total recovered, in minor units, keyed by currency.
-                  recovered_count: { type: integer }
-                  avg_attempts: { type: number }
-                  avg_days_to_recover: { type: number }
-                  monthly:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        month: { type: string }
-                        currency: { type: string }
-                        amount: { type: integer, format: int64 }
-                        count: { type: integer }
+                    properties:
+                      recovered_amount_total:
+                        type: object
+                        additionalProperties: { type: integer, format: int64 }
+                        description: Total recovered, in minor units, keyed by currency.
+                      recovered_count: { type: integer }
+                      avg_attempts: { type: number }
+                      avg_days_to_recover: { type: number }
+                      monthly:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            month: { type: string }
+                            currency: { type: string }
+                            amount: { type: integer, format: int64 }
+                            count: { type: integer }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
   /v1/analytics/dunning/timing:
@@ -8910,7 +9126,7 @@ paths:
         - { name: actor, in: query, schema: { type: string } }
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
-        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 500 } }
+        - { name: limit, in: query, schema: { type: integer, default: 100, maximum: 250 } }
         - { name: offset, in: query, schema: { type: integer, default: 0 } }
       responses:
         "200":
@@ -9344,9 +9560,12 @@ paths:
               schema:
                 type: object
                 properties:
-                  feature_key: { type: string }
-                  granted: { type: boolean }
-                  limit_value: { type: [integer, 'null'], format: int64 }
+                  data:
+                    type: object
+                    properties:
+                      feature_key: { type: string }
+                      granted: { type: boolean }
+                      limit_value: { type: [integer, 'null'], format: int64 }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
@@ -9424,7 +9643,10 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/SubscriptionUsage'
+                type: object
+                properties:
+                  data:
+                    $ref: '#/components/schemas/SubscriptionUsage'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -9909,6 +10131,14 @@ paths:
       responses:
         '200':
           description: Disconnected.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: disconnected
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -9945,6 +10175,14 @@ paths:
       responses:
         '200':
           description: Updated.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: updated
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -10049,6 +10287,14 @@ paths:
       responses:
         '200':
           description: Disconnected.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    const: disconnected
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
@@ -10634,7 +10880,7 @@ components:
             code:
               type: string
               description: Stable machine-readable error code.
-              examples: [BAD_REQUEST, UNAUTHORIZED, NOT_FOUND, CONFLICT, VALIDATION_ERROR, INVALID_API_KEY, RATE_LIMITED, INTERNAL_ERROR]
+              examples: [validation_failed, unauthorized, forbidden, not_found, conflict, rate_limited, internal_error, invalid_api_key, key_mode_mismatch, over_refund, invoice_not_paid, invoice_already_paid]
             message:
               type: string
               description: Human-readable explanation.

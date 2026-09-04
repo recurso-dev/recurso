@@ -7,9 +7,9 @@
 // Codes are stable snake_case machine identifiers; messages are
 // human-readable and may change without notice.
 //
-// NOTE for cmd/api/openapi.yaml maintainers: the Error schema's oneOf
-// (bare string | code+message object) can collapse to the single object
-// shape documented above — the API no longer emits bare-string errors.
+// cmd/api/openapi.yaml's Error schema documents exactly this object shape
+// and lists the codes below as examples — keep both in sync when adding a
+// code.
 package httperr
 
 import (
