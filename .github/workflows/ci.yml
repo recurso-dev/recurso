@@ -167,22 +167,24 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: recurso
-      - uses: actions/checkout@v5
-        with:
-          repository: recurso-dev/recurso-go
-          path: recurso-go
-      - uses: actions/checkout@v5
-        with:
-          repository: recurso-dev/recurso-node
-          path: recurso-node
-      - uses: actions/checkout@v5
-        with:
-          repository: recurso-dev/recurso-python
-          path: recurso-python
-      - uses: actions/checkout@v5
-        with:
-          repository: recurso-dev/docs
-          path: docs
+      # A coordinated change ships as same-named branches across the repos.
+      # Check each sibling out at this branch when it exists, else at its
+      # default branch, so a PR is judged against the state it will merge with.
+      - name: Check out sibling repos
+        env:
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: |
+          set -euo pipefail
+          for repo in recurso-go recurso-node recurso-python docs; do
+            url="https://github.com/recurso-dev/${repo}.git"
+            if git ls-remote --exit-code --heads "$url" "$BRANCH" >/dev/null 2>&1; then
+              echo "${repo}: branch ${BRANCH}"
+              git clone --quiet --depth 1 --branch "$BRANCH" "$url" "$repo"
+            else
+              echo "${repo}: default branch"
+              git clone --quiet --depth 1 "$url" "$repo"
+            fi
+          done
       - name: Check drift
         working-directory: recurso
         run: python3 scripts/sdk_drift.py --report
