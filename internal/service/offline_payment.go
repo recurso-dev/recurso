@@ -94,7 +94,7 @@ func (s *OfflinePaymentService) ReconcileVirtualAccount(ctx context.Context, raz
 	va, err := s.repo.IncrementAmountReceived(ctx, razorpayVAID, amount, expectedTenant)
 	if err != nil {
 		if expectedTenant != uuid.Nil && errors.Is(err, sql.ErrNoRows) {
-			slog.Warn("virtual-account credit referenced an unknown or cross-tenant VA — ignoring",
+			slog.WarnContext(ctx, "virtual-account credit referenced an unknown or cross-tenant VA — ignoring",
 				"razorpay_va_id", razorpayVAID, "expected_tenant", expectedTenant)
 			return nil
 		}

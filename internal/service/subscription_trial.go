@@ -174,7 +174,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	// Dual-write to ledger (best-effort; reconciliation covers gaps).
 	if s.ledger != nil {
 		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
-			s.logger.Error("ledger write failed on trial conversion — will need reconciliation",
+			s.logger.ErrorContext(ctx, "ledger write failed on trial conversion — will need reconciliation",
 				"error", err, "invoice_id", invID, "amount", total)
 		}
 	}
@@ -182,7 +182,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	// Apply any account credit to the first invoice (ENG-154).
 	s.applyCreditToInvoice(ctx, invoice)
 
-	s.logger.Info("trial converted to active",
+	s.logger.InfoContext(ctx, "trial converted to active",
 		"subscription_id", sub.ID, "invoice_id", invID, "amount", total)
 
 	// Notify the customer that their first invoice is due (best-effort).
@@ -195,7 +195,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 			Amount:        formatAmount(total, price.Currency),
 			DueDate:       dueDate.Format("Jan 02, 2006"),
 		}); err != nil {
-			s.logger.Error("failed to send trial conversion invoice notification", "error", err, "invoice_id", invID)
+			s.logger.ErrorContext(ctx, "failed to send trial conversion invoice notification", "error", err, "invoice_id", invID)
 		}
 	}
 

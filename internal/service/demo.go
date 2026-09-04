@@ -107,7 +107,7 @@ func (s *DemoService) EnsureBootstrapped(ctx context.Context) (uuid.UUID, error)
 			Livemode:  false,
 			CreatedAt: time.Now().UTC(),
 		}); err != nil {
-			slog.Warn("demo bootstrap: API key creation failed", "error", err)
+			slog.WarnContext(ctx, "demo bootstrap: API key creation failed", "error", err)
 		}
 	}
 
@@ -129,7 +129,7 @@ func (s *DemoService) Reset(ctx context.Context) error {
 // double-seed). Missing binary logs loudly instead of failing boot.
 func (s *DemoService) seed(ctx context.Context, tenantID uuid.UUID, reset bool) {
 	if s.seedBin == "" {
-		slog.Warn("DEMO_MODE: demo_seed binary not configured (DEMO_SEED_BIN); dashboard will be empty",
+		slog.WarnContext(ctx, "DEMO_MODE: demo_seed binary not configured (DEMO_SEED_BIN); dashboard will be empty",
 			"hint", "go build -o demo-seed ./cmd/demo_seed && DEMO_SEED_BIN=./demo-seed")
 		return
 	}
@@ -140,8 +140,8 @@ func (s *DemoService) seed(ctx context.Context, tenantID uuid.UUID, reset bool) 
 	if err := s.runSeed(ctx, args...); err != nil {
 		// "already present" from the double-seed guard is the idempotent
 		// happy path on warm boots.
-		slog.Info("demo seed run finished with message", "reset", reset, "detail", err.Error())
+		slog.InfoContext(ctx, "demo seed run finished with message", "reset", reset, "detail", err.Error())
 		return
 	}
-	slog.Info("demo data seeded", "tenant_id", tenantID, "reset", reset)
+	slog.InfoContext(ctx, "demo data seeded", "tenant_id", tenantID, "reset", reset)
 }

@@ -51,7 +51,7 @@ func (s *NexusStatusService) DatasetCertified(ctx context.Context) (bool, error)
 func (s *NexusStatusService) Status(ctx context.Context, tenantID uuid.UUID, year int) ([]domain.NexusStateStatus, error) {
 	if _, err := s.EvaluateEconomicNexus(ctx, tenantID, year); err != nil {
 		// Evaluation failure shouldn't block the read view.
-		s.logger.Error("economic-nexus evaluation failed", "tenant_id", tenantID, "error", err)
+		s.logger.ErrorContext(ctx, "economic-nexus evaluation failed", "tenant_id", tenantID, "error", err)
 	}
 
 	nexus, err := s.repo.ListByTenant(ctx, tenantID)
@@ -142,7 +142,7 @@ func (s *NexusStatusService) EvaluateEconomicNexus(ctx context.Context, tenantID
 			return established, err
 		}
 		if isNew {
-			s.logger.Info("economic nexus established",
+			s.logger.InfoContext(ctx, "economic nexus established",
 				"tenant_id", tenantID, "state", sl.StateCode,
 				"taxable_sales", sl.TaxableSales, "txn_count", sl.TxnCount)
 			established = append(established, sl.StateCode)

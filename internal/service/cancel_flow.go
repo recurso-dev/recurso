@@ -97,7 +97,7 @@ func (s *CancelFlowService) StartSession(ctx context.Context, input StartSession
 		result.FirstStep = &flow.Steps[0]
 	}
 
-	s.logger.Info("cancel flow session started",
+	s.logger.InfoContext(ctx, "cancel flow session started",
 		"session_id", session.ID,
 		"customer_id", input.CustomerID,
 		"subscription_id", input.SubscriptionID,
@@ -274,7 +274,7 @@ func (s *CancelFlowService) processOfferStep(ctx context.Context, session *domai
 
 	// Apply the offer
 	if err := s.applyOffer(ctx, session, offerResponse.Offer); err != nil {
-		s.logger.Error("failed to apply retention offer", "error", err, "session_id", session.ID)
+		s.logger.ErrorContext(ctx, "failed to apply retention offer", "error", err, "session_id", session.ID)
 		return false, fmt.Errorf("failed to apply offer: %w", err)
 	}
 
@@ -295,7 +295,7 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		if err != nil {
 			return fmt.Errorf("failed to pause subscription: %w", err)
 		}
-		s.logger.Info("subscription paused via retention offer",
+		s.logger.InfoContext(ctx, "subscription paused via retention offer",
 			"subscription_id", session.SubscriptionID,
 			"pause_months", offer.PauseMonths,
 			"resume_at", resumeAt,
@@ -309,7 +309,7 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		if err != nil {
 			return fmt.Errorf("failed to switch plan: %w", err)
 		}
-		s.logger.Info("subscription plan switched via retention offer",
+		s.logger.InfoContext(ctx, "subscription plan switched via retention offer",
 			"subscription_id", session.SubscriptionID,
 			"new_plan_id", offer.SwitchToPlanID,
 		)
@@ -319,7 +319,7 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		if err != nil {
 			return fmt.Errorf("failed to extend subscription period: %w", err)
 		}
-		s.logger.Info("subscription trial extended via retention offer",
+		s.logger.InfoContext(ctx, "subscription trial extended via retention offer",
 			"subscription_id", session.SubscriptionID,
 			"extension_days", offer.ExtensionDays,
 		)
@@ -336,7 +336,7 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		if err != nil {
 			return fmt.Errorf("failed to apply retention discount: %w", err)
 		}
-		s.logger.Info("retention discount applied",
+		s.logger.InfoContext(ctx, "retention discount applied",
 			"subscription_id", session.SubscriptionID,
 			"discount_percent", offer.DiscountPercent,
 			"duration_months", offer.DiscountDurationMonths,
@@ -344,7 +344,7 @@ func (s *CancelFlowService) applyOffer(ctx context.Context, session *domain.Canc
 		)
 
 	case domain.OfferTypeCustom:
-		s.logger.Info("custom offer accepted",
+		s.logger.InfoContext(ctx, "custom offer accepted",
 			"subscription_id", session.SubscriptionID,
 		)
 	}
@@ -366,7 +366,7 @@ func (s *CancelFlowService) processConfirmationStep(ctx context.Context, session
 		return fmt.Errorf("failed to cancel subscription: %w", err)
 	}
 
-	s.logger.Info("subscription cancelled via cancel flow",
+	s.logger.InfoContext(ctx, "subscription cancelled via cancel flow",
 		"session_id", session.ID,
 		"subscription_id", session.SubscriptionID,
 		"reason", session.CancellationReason,
@@ -466,7 +466,7 @@ func (s *CancelFlowService) EnsureDefaultFlow(ctx context.Context, tenantID uuid
 
 	flow.Steps = []domain.CancelFlowStep{*step1, *step2, *step3}
 
-	s.logger.Info("default cancel flow created", "tenant_id", tenantID, "flow_id", flow.ID)
+	s.logger.InfoContext(ctx, "default cancel flow created", "tenant_id", tenantID, "flow_id", flow.ID)
 	return flow, nil
 }
 

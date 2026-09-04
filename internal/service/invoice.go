@@ -165,7 +165,7 @@ func (s *InvoiceService) generateEUEInvoiceAfterCommit(ctx context.Context, inv 
 		return
 	}
 	if _, err := s.EUEInvoiceService.GenerateForInvoice(ctx, inv, customer); err != nil {
-		slog.Warn("eu e-invoice generation failed (stored for retry)", "error", err, "invoice_id", inv.ID)
+		slog.WarnContext(ctx, "eu e-invoice generation failed (stored for retry)", "error", err, "invoice_id", inv.ID)
 	}
 }
 
@@ -198,7 +198,7 @@ func (s *InvoiceService) notifyInvoiceCreated(inv *domain.Invoice) {
 			return
 		}
 		if err := s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(inv, customer)); err != nil {
-			slog.Error("failed to send invoice email", "error", err, "invoice_id", inv.ID)
+			slog.ErrorContext(ctx, "failed to send invoice email", "error", err, "invoice_id", inv.ID)
 		}
 	})
 }
@@ -232,7 +232,7 @@ func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *d
 	switch {
 	case s.EInvoiceService != nil:
 		if _, err := s.EInvoiceService.GenerateEInvoice(ctx, inv); err != nil {
-			slog.Error("e-invoice generation failed (will retry)", "error", err, "invoice_id", inv.ID)
+			slog.ErrorContext(ctx, "e-invoice generation failed (will retry)", "error", err, "invoice_id", inv.ID)
 		}
 	case s.GSPAdapter != nil && customer.BillingAddress.Country == "India" && domain.PtrToString(customer.GSTIN) != "" && customer.TaxType == "business":
 		resp, err := s.GSPAdapter.GenerateIRN(ctx, inv)
@@ -242,7 +242,7 @@ func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *d
 			inv.EInvoiceStatus = "GENERATED"
 			inv.AckNo = resp.AckNo
 		} else {
-			slog.Error("error generating IRN", "error", err, "invoice_id", inv.ID)
+			slog.ErrorContext(ctx, "error generating IRN", "error", err, "invoice_id", inv.ID)
 			inv.EInvoiceStatus = "FAILED"
 		}
 	default:
@@ -250,7 +250,7 @@ func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *d
 	}
 	// Persist the IRN/status (and any retry scheduling) onto the committed row.
 	if err := s.InvoiceRepo.Update(ctx, inv); err != nil {
-		slog.Error("failed to persist e-invoice result", "invoice_id", inv.ID, "error", err)
+		slog.ErrorContext(ctx, "failed to persist e-invoice result", "invoice_id", inv.ID, "error", err)
 	}
 }
 
@@ -335,7 +335,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	if err == nil {
 		for _, c := range charges {
 			if c.Currency != "" && !strings.EqualFold(c.Currency, price.Currency) {
-				slog.Warn("skipping unbilled charge with mismatched currency",
+				slog.WarnContext(ctx, "skipping unbilled charge with mismatched currency",
 					"charge_id", c.ID, "charge_currency", c.Currency, "invoice_currency", price.Currency)
 				continue
 			}
@@ -364,19 +364,19 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	if s.AddonRepo != nil {
 		addons, addonErr := s.AddonRepo.ListBySubscriptionID(ctx, sub.TenantID, sub.ID)
 		if addonErr != nil {
-			slog.Warn("skipping subscription add-ons: list failed",
+			slog.WarnContext(ctx, "skipping subscription add-ons: list failed",
 				"error", addonErr, "subscription_id", sub.ID)
 		}
 		for _, a := range addons {
 			addonPlan, planErr := s.PlanRepo.GetByID(ctx, a.PlanID)
 			if planErr != nil || addonPlan == nil || len(addonPlan.Prices) == 0 {
-				slog.Warn("skipping add-on: plan unavailable",
+				slog.WarnContext(ctx, "skipping add-on: plan unavailable",
 					"error", planErr, "add_on_id", a.ID, "add_on_plan_id", a.PlanID)
 				continue
 			}
 			addonPrice := addonPlan.Prices[0]
 			if addonPrice.Currency != "" && !strings.EqualFold(addonPrice.Currency, price.Currency) {
-				slog.Warn("skipping add-on with mismatched currency",
+				slog.WarnContext(ctx, "skipping add-on with mismatched currency",
 					"add_on_id", a.ID, "add_on_currency", addonPrice.Currency, "invoice_currency", price.Currency)
 				continue
 			}
@@ -505,7 +505,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// DR Customer Credit / CR AR inside the drainer. Best-effort.
 	if s.WalletDrainer != nil && inv.Total > 0 {
 		if drained, err := s.WalletDrainer.DrainForInvoice(ctx, inv); err != nil {
-			slog.Error("wallet drain failed on invoice generation", "invoice_id", inv.ID, "error", err)
+			slog.ErrorContext(ctx, "wallet drain failed on invoice generation", "invoice_id", inv.ID, "error", err)
 		} else if drained > 0 {
 			inv.AmountPaid += drained
 			inv.AmountDue = inv.Total - inv.AmountPaid - inv.CreditApplied
@@ -513,9 +513,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 				inv.Status = domain.InvoiceStatusPaid
 			}
 			if err := s.InvoiceRepo.Update(ctx, inv); err != nil {
-				slog.Error("failed to persist wallet application", "invoice_id", inv.ID, "error", err)
+				slog.ErrorContext(ctx, "failed to persist wallet application", "invoice_id", inv.ID, "error", err)
 			}
-			slog.Info("applied wallet balance to invoice", "invoice_id", inv.ID, "wallet_applied", drained)
+			slog.InfoContext(ctx, "applied wallet balance to invoice", "invoice_id", inv.ID, "wallet_applied", drained)
 		}
 	}
 
@@ -525,14 +525,14 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 	// The applicable ceiling is what remains AFTER the wallet drain.
 	if s.CreditApplier != nil && inv.Total-inv.AmountPaid > 0 {
 		if applied, err := s.CreditApplier.ApplyAdjustmentCredits(ctx, inv.TenantID, inv.CustomerID, inv.EntityID, inv.Currency, inv.ID, inv.Total-inv.AmountPaid); err != nil {
-			slog.Error("credit application failed on invoice generation", "invoice_id", inv.ID, "error", err)
+			slog.ErrorContext(ctx, "credit application failed on invoice generation", "invoice_id", inv.ID, "error", err)
 		} else if applied > 0 {
 			inv.CreditApplied = applied
 			inv.AmountDue = inv.Total - inv.AmountPaid - applied
 			if inv.AmountPaid+applied >= inv.Total {
 				inv.Status = domain.InvoiceStatusPaid
 			}
-			slog.Info("applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)
+			slog.InfoContext(ctx, "applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)
 		}
 	}
 
@@ -567,7 +567,7 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		// "pending" and the next invoice sweeps them up again. Nothing
 		// downstream notices, so shout with the ids an operator needs.
 		if err := s.UnbilledChargeRepo.MarkAsInvoiced(ctx, ids); err != nil {
-			slog.Error("failed to mark one-off charges as invoiced — they will be billed AGAIN on the next invoice unless corrected",
+			slog.ErrorContext(ctx, "failed to mark one-off charges as invoiced — they will be billed AGAIN on the next invoice unless corrected",
 				"invoice_id", inv.ID, "subscription_id", sub.ID, "charge_ids", ids, "error", err)
 		}
 	}
@@ -581,9 +581,9 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 		for _, rating := range ratings {
 			claimed, err := s.RatingRepo.Create(ctx, rating)
 			if err != nil {
-				slog.Error("failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
+				slog.ErrorContext(ctx, "failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
 			} else if !claimed {
-				slog.Error("usage window was rated concurrently — possible double bill",
+				slog.ErrorContext(ctx, "usage window was rated concurrently — possible double bill",
 					"invoice_id", inv.ID, "charge_id", rating.ChargeID, "period_start", rating.PeriodStart)
 			}
 		}
@@ -694,9 +694,9 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 		for _, rating := range ratings {
 			claimed, err := s.RatingRepo.Create(ctx, rating)
 			if err != nil {
-				slog.Error("failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
+				slog.ErrorContext(ctx, "failed to persist usage rating claim", "invoice_id", inv.ID, "charge_id", rating.ChargeID, "error", err)
 			} else if !claimed {
-				slog.Error("usage window was rated concurrently — possible double bill",
+				slog.ErrorContext(ctx, "usage window was rated concurrently — possible double bill",
 					"invoice_id", inv.ID, "charge_id", rating.ChargeID, "period_start", rating.PeriodStart)
 			}
 		}
@@ -729,7 +729,7 @@ type meteredLine struct {
 func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscription, customer *domain.Customer, plan *domain.Plan, currency string, invID uuid.UUID) []meteredLine {
 	charges, err := s.ChargeRepo.ListByPlan(ctx, sub.TenantID, sub.PlanID)
 	if err != nil {
-		slog.Warn("skipping metered lines: charge list failed", "error", err, "subscription_id", sub.ID)
+		slog.WarnContext(ctx, "skipping metered lines: charge list failed", "error", err, "subscription_id", sub.ID)
 		return nil
 	}
 
@@ -768,7 +768,7 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 		if s.RatingRepo != nil {
 			rated, err := s.RatingRepo.Exists(ctx, sub.ID, ch.ID, periodStart)
 			if err != nil {
-				slog.Warn("skipping metered charge: rating check failed", "error", err, "charge_id", ch.ID)
+				slog.WarnContext(ctx, "skipping metered charge: rating check failed", "error", err, "charge_id", ch.ID)
 				continue
 			}
 			if rated {
@@ -786,14 +786,14 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 
 		amounts, ok := ch.Amounts[cur]
 		if !ok {
-			slog.Warn("skipping metered charge without pricing for invoice currency",
+			slog.WarnContext(ctx, "skipping metered charge without pricing for invoice currency",
 				"charge_id", ch.ID, "metric", ch.Metric.Code, "invoice_currency", cur)
 			continue
 		}
 
 		qtyRat, err := meteredQuantity(ctx, s.UsageRepo, sub.ID, ch, periodStart, periodEnd)
 		if err != nil {
-			slog.Warn("skipping metered charge: aggregation failed", "error", err, "metric", ch.Metric.Code)
+			slog.WarnContext(ctx, "skipping metered charge: aggregation failed", "error", err, "metric", ch.Metric.Code)
 			continue
 		}
 		if qtyRat.Sign() == 0 {
@@ -802,7 +802,7 @@ func (s *InvoiceService) meteredLines(ctx context.Context, sub *domain.Subscript
 
 		amount, err := RateChargeRat(ch.ChargeModel, amounts, qtyRat, cur)
 		if err != nil {
-			slog.Warn("skipping metered charge: rating failed", "error", err, "metric", ch.Metric.Code)
+			slog.WarnContext(ctx, "skipping metered charge: rating failed", "error", err, "metric", ch.Metric.Code)
 			continue
 		}
 
@@ -856,7 +856,7 @@ func (s *InvoiceService) filteredMeteredLines(ctx context.Context, sub *domain.S
 	rateSubset := func(amounts domain.ChargeAmounts, values []string, exclude bool, label string) {
 		qty, err := s.UsageRepo.AggregateForMetricFiltered(ctx, sub.ID, *ch.Metric, ch.FilterKey, values, exclude, periodStart, periodEnd)
 		if err != nil {
-			slog.Warn("skipping filtered charge subset: aggregation failed", "error", err, "charge_id", ch.ID, "filter", label)
+			slog.WarnContext(ctx, "skipping filtered charge subset: aggregation failed", "error", err, "charge_id", ch.ID, "filter", label)
 			return
 		}
 		if qty == 0 {
@@ -864,7 +864,7 @@ func (s *InvoiceService) filteredMeteredLines(ctx context.Context, sub *domain.S
 		}
 		amount, err := RateCharge(ch.ChargeModel, amounts, qty, cur)
 		if err != nil {
-			slog.Warn("skipping filtered charge subset: rating failed", "error", err, "charge_id", ch.ID, "filter", label)
+			slog.WarnContext(ctx, "skipping filtered charge subset: rating failed", "error", err, "charge_id", ch.ID, "filter", label)
 			return
 		}
 		tax := s.TaxResolver.ResolveInvoiceTax(ctx, sub.TenantID, customer, currency, amount, hsn)
@@ -1009,7 +1009,7 @@ func (s *InvoiceService) GenerateAdvanceInvoice(ctx context.Context, subID uuid.
 
 	sub.CurrentPeriodEnd = newEndDate
 	if err := s.SubscriptionRepo.Update(ctx, sub); err != nil {
-		slog.Warn("failed to update subscription period after advance invoice", "error", err, "subscription_id", sub.ID)
+		slog.WarnContext(ctx, "failed to update subscription period after advance invoice", "error", err, "subscription_id", sub.ID)
 	}
 
 	s.notifyInvoiceCreated(inv) // email the customer their advance invoice + Pay Now link (best-effort)

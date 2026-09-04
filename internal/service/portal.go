@@ -88,7 +88,7 @@ func (s *PortalService) RequestMagicLink(ctx context.Context, email string) (*do
 		if err := s.emailSender.Send(ctx, msg); err != nil {
 			// The link is created; delivery failure shouldn't 500 the request,
 			// but it must be visible in logs.
-			slog.Error("failed to send magic link email", "error", err, "customer_id", customer.ID)
+			slog.ErrorContext(ctx, "failed to send magic link email", "error", err, "customer_id", customer.ID)
 		}
 	}
 

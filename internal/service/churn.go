@@ -108,7 +108,7 @@ func (s *ChurnService) saveSnapshot(ctx context.Context, tenantID, customerID uu
 		features.CurrentMRR, features.UsageTrend, score, "v1", time.Now(),
 	)
 	if err != nil {
-		slog.Error("failed to save churn snapshot", "error", err)
+		slog.ErrorContext(ctx, "failed to save churn snapshot", "error", err)
 	}
 }
 
@@ -134,7 +134,7 @@ func (s *ChurnService) checkAlertThresholds(ctx context.Context, tenantID, custo
 				uuid.New(), tenantID, customerID, prevScore, newScore, t.threshold, t.alertType, time.Now(),
 			)
 			if err != nil {
-				slog.Error("failed to create churn alert", "error", err)
+				slog.ErrorContext(ctx, "failed to create churn alert", "error", err)
 			}
 		}
 	}
@@ -237,7 +237,7 @@ func (s *ChurnService) AnalyzeAllCustomers(ctx context.Context, tenantID uuid.UU
 
 		for _, customer := range customers {
 			if err := s.AnalyzeCustomer(ctx, customer.ID); err != nil {
-				slog.Error("failed to analyze customer", "customer_id", customer.ID, "error", err)
+				slog.ErrorContext(ctx, "failed to analyze customer", "customer_id", customer.ID, "error", err)
 			}
 		}
 

@@ -122,7 +122,7 @@ func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 	renewed := 0
 	for _, sub := range subs {
 		if err := s.RenewSubscription(ctx, sub); err != nil {
-			slog.Error("subscription renewal failed (lease will retry)",
+			slog.ErrorContext(ctx, "subscription renewal failed (lease will retry)",
 				"subscription_id", sub.ID, "error", err)
 			continue
 		}
@@ -153,7 +153,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 		if err := s.subs.Update(ctx, sub); err != nil {
 			return fmt.Errorf("failed to finalize period-end cancellation: %w", err)
 		}
-		slog.Info("subscription canceled at period end", "subscription_id", sub.ID)
+		slog.InfoContext(ctx, "subscription canceled at period end", "subscription_id", sub.ID)
 		return nil
 	}
 
@@ -185,7 +185,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 
 	s.attemptPayment(ctx, inv)
 
-	slog.Info("subscription renewed",
+	slog.InfoContext(ctx, "subscription renewed",
 		"subscription_id", sub.ID, "invoice_id", inv.ID,
 		"total", inv.Total, "period_end", sub.CurrentPeriodEnd)
 	return nil
@@ -217,7 +217,7 @@ func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice
 	if s.chargerRouter != nil {
 		c, rerr := s.chargerRouter.ChargerFor(ctx, gatewayConnID)
 		if rerr != nil || c == nil {
-			slog.Warn("renewal: could not resolve saved-card gateway; invoice left open for dunning",
+			slog.WarnContext(ctx, "renewal: could not resolve saved-card gateway; invoice left open for dunning",
 				"invoice_id", inv.ID, "error", rerr)
 			return
 		}
@@ -229,12 +229,12 @@ func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice
 	idemKey := fmt.Sprintf("renewal-%s", inv.ID)
 	result, err := charger.ChargeSavedPaymentMethod(ctx, stripeCustomerID, paymentMethodID, amountDue, inv.Currency, inv.ID.String(), idemKey)
 	if err != nil || result == nil || !result.Success {
-		slog.Warn("renewal payment attempt failed; invoice left open for dunning",
+		slog.WarnContext(ctx, "renewal payment attempt failed; invoice left open for dunning",
 			"invoice_id", inv.ID, "error", err)
 		return
 	}
 	if _, err := s.settler.MarkInvoicePaid(ctx, inv.ID); err != nil {
-		slog.Error("renewal charge succeeded but settlement failed (webhook will reconcile)",
+		slog.ErrorContext(ctx, "renewal charge succeeded but settlement failed (webhook will reconcile)",
 			"invoice_id", inv.ID, "error", err)
 	}
 }

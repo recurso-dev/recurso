@@ -76,16 +76,16 @@ func (s *RevRecService) ProcessDueEvents(ctx context.Context) error {
 		// attributable and idempotent per event).
 		txID, err := s.ledger.RecordRecognition(ctx, e.TenantID, e.EntityID, e.Amount, e.ID)
 		if err != nil {
-			slog.Error("revenue recognition ledger transfer failed", "event_id", e.ID, "error", err)
+			slog.ErrorContext(ctx, "revenue recognition ledger transfer failed", "event_id", e.ID, "error", err)
 			if markErr := s.repo.MarkEventFailed(ctx, e.ID, err.Error()); markErr != nil {
-				slog.Error("failed to mark recognition event as failed", "event_id", e.ID, "error", markErr)
+				slog.ErrorContext(ctx, "failed to mark recognition event as failed", "event_id", e.ID, "error", markErr)
 			}
 			continue
 		}
 
 		// 2. Mark as Recognized in PG
 		if err := s.repo.MarkEventRecognized(ctx, e.ID, txID); err != nil {
-			slog.Error("failed to mark recognition event as recognized", "event_id", e.ID, "error", err)
+			slog.ErrorContext(ctx, "failed to mark recognition event as recognized", "event_id", e.ID, "error", err)
 		}
 	}
 	return nil
@@ -182,7 +182,7 @@ func (s *RevRecService) UnwindOnCancel(ctx context.Context, tenantID, subscripti
 		// recognition keys and idempotent under (reference_id, code=2).
 		if forfeited > 0 && s.ledger != nil {
 			if _, err := s.ledger.RecordRecognition(ctx, tenantID, sched.EntityID, forfeited, sched.ID); err != nil {
-				slog.Error("forfeit recognition ledger post failed — reconciliation needed",
+				slog.ErrorContext(ctx, "forfeit recognition ledger post failed — reconciliation needed",
 					"schedule_id", sched.ID, "amount", forfeited, "error", err)
 			}
 		}
@@ -260,7 +260,7 @@ func (s *RevRecService) UnwindOnRefund(ctx context.Context, tenantID uuid.UUID, 
 	if s.ledger != nil {
 		if _, err := s.ledger.RecordDeferredRefundReversal(ctx, tenantID, entityID, creditNoteID, reverse,
 			"Deferred reversal for refund"); err != nil {
-			slog.Error("deferred reversal ledger post failed — reconciliation needed",
+			slog.ErrorContext(ctx, "deferred reversal ledger post failed — reconciliation needed",
 				"credit_note_id", creditNoteID, "amount", reverse, "error", err)
 		}
 	}
@@ -387,7 +387,7 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 	// (goes negative) and double-recognizes revenue. The original schedule is left
 	// intact and continues recognizing.
 	if existing, err := s.repo.GetActiveScheduleByInvoice(ctx, invoice.TenantID, invoice.ID); err != nil {
-		slog.Error("revrec: failed to check for an existing schedule; skipping to avoid a duplicate",
+		slog.ErrorContext(ctx, "revrec: failed to check for an existing schedule; skipping to avoid a duplicate",
 			"invoice_id", invoice.ID, "error", err)
 		return nil
 	} else if existing != nil {
@@ -403,7 +403,7 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 	if sub == nil && s.subRepo != nil {
 		fetched, err := s.subRepo.GetByID(ctx, *invoice.SubscriptionID)
 		if err != nil {
-			slog.Error("failed to fetch subscription for revrec schedule", "subscription_id", *invoice.SubscriptionID, "error", err)
+			slog.ErrorContext(ctx, "failed to fetch subscription for revrec schedule", "subscription_id", *invoice.SubscriptionID, "error", err)
 		} else {
 			sub = fetched
 		}
@@ -442,7 +442,7 @@ func (s *RevRecService) CreateScheduleForInvoice(ctx context.Context, invoice *d
 	// net (the standing reconciler invariant then surfaces any shortfall).
 	if invoice.SubscriptionID != nil && netRevenue > 0 {
 		if consumed, err := s.repo.ConsumeScheduleDebt(ctx, *invoice.SubscriptionID, netRevenue); err != nil {
-			slog.Error("revrec: schedule-debt read failed; scheduling the full net",
+			slog.ErrorContext(ctx, "revrec: schedule-debt read failed; scheduling the full net",
 				"invoice_id", invoice.ID, "subscription_id", *invoice.SubscriptionID, "error", err)
 		} else if consumed > 0 {
 			netRevenue -= consumed

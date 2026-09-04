@@ -69,8 +69,11 @@ func TestClaimDueForRenewal_ExclusiveAndFiltered_Postgres(t *testing.T) {
 	// (mandate row above references a sub; make a sub that carries mandate_id itself)
 	excluded := []uuid.UUID{
 		insertSub(&mandateID, "", "", "active", true),
-		insertSub(nil, "rzp_sub_1", "", "active", true),
-		insertSub(nil, "", "sub_stripe_1", "active", true),
+		// Gateway ids carry unique indexes, so derive them from the tenant:
+		// a fixed literal made the second run against a shared database fail
+		// on a duplicate key before any assertion ran.
+		insertSub(nil, "rzp_sub_"+tenantID.String()[:8], "", "active", true),
+		insertSub(nil, "", "sub_stripe_"+tenantID.String()[:8], "active", true),
 		insertSub(nil, "", "", "canceled", true),
 		insertSub(nil, "", "", "active", false),
 	}

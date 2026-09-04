@@ -47,7 +47,9 @@ func respondErrorStatus(c *gin.Context, status int, message string) {
 // a fixed message. Echoing err.Error() to clients leaked SQL/driver detail
 // from 116 call sites before this existed — never reintroduce that.
 func respondInternalError(c *gin.Context, err error) {
-	slog.Error("internal error",
+	// ErrorContext so the context handler stamps request_id / tenant_id: the
+	// client only sees "internal error", so the log line is the whole trail.
+	slog.ErrorContext(c.Request.Context(), "internal error",
 		"method", c.Request.Method, "path", c.FullPath(), "error", err)
 	httperr.Respond(c, http.StatusInternalServerError, httperr.CodeInternalError, "internal error")
 }

@@ -150,7 +150,7 @@ func (s *DunningRecoveryService) RecordIfRecovered(ctx context.Context, inv *dom
 	if s.campaignLookup != nil {
 		exec, err := s.campaignLookup.GetExecutionByInvoice(ctx, inv.ID)
 		if err != nil {
-			s.logger.Error("failed to look up dunning campaign execution", "invoice_id", inv.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to look up dunning campaign execution", "invoice_id", inv.ID, "error", err)
 		} else if exec != nil {
 			campaignID = &exec.CampaignID
 			strategy = "campaign"
@@ -188,11 +188,11 @@ func (s *DunningRecoveryService) RecordIfRecovered(ctx context.Context, inv *dom
 	}
 
 	if err := s.repo.Insert(ctx, rec); err != nil {
-		s.logger.Error("failed to record dunning recovery", "invoice_id", inv.ID, "error", err)
+		s.logger.ErrorContext(ctx, "failed to record dunning recovery", "invoice_id", inv.ID, "error", err)
 		return false
 	}
 
-	s.logger.Info("dunning recovery recorded",
+	s.logger.InfoContext(ctx, "dunning recovery recorded",
 		"invoice_id", inv.ID,
 		"amount", rec.Amount,
 		"currency", rec.Currency,

@@ -103,7 +103,7 @@ func (s *SubscriptionService) computePlanChangeProration(
 	newPrice := newPlan.Prices[0].Amount
 	if sub.CouponAppliedCurrentPeriod && sub.CouponID != nil && s.couponRepo != nil {
 		if coupon, cerr := s.couponRepo.GetByID(ctx, tenantID, *sub.CouponID); cerr != nil {
-			s.logger.Error("plan-change proration: coupon load failed; prorating at list prices",
+			s.logger.ErrorContext(ctx, "plan-change proration: coupon load failed; prorating at list prices",
 				"subscription_id", sub.ID, "coupon_id", *sub.CouponID, "error", cerr)
 		} else {
 			currentPrice -= couponDiscountFor(coupon, currentPrice)
@@ -270,18 +270,18 @@ func (s *SubscriptionService) persistPlanChange(ctx context.Context, chargeInvoi
 
 	if chargeInvoice != nil {
 		if err := s.invoiceRepo.Create(ctx, chargeInvoice); err != nil {
-			s.logger.Error("failed to create proration invoice after plan flip", "subscription_id", sub.ID, "error", err)
+			s.logger.ErrorContext(ctx, "failed to create proration invoice after plan flip", "subscription_id", sub.ID, "error", err)
 			return fmt.Errorf("plan updated but failed to create proration invoice: %w", err)
 		}
 	}
 	if creditNote != nil {
 		if s.creditNoteRepo != nil {
 			if err := s.creditNoteRepo.Create(ctx, creditNote); err != nil {
-				s.logger.Error("failed to create downgrade credit note after plan flip", "subscription_id", sub.ID, "error", err)
+				s.logger.ErrorContext(ctx, "failed to create downgrade credit note after plan flip", "subscription_id", sub.ID, "error", err)
 				return fmt.Errorf("plan updated but failed to create downgrade credit note: %w", err)
 			}
 		} else {
-			s.logger.Warn("downgrade proration credit not persisted (no credit-note repo configured)",
+			s.logger.WarnContext(ctx, "downgrade proration credit not persisted (no credit-note repo configured)",
 				"subscription_id", sub.ID, "amount", creditNote.Amount)
 		}
 	}
@@ -444,7 +444,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 	// plan change.
 	if chargeInvoice != nil && s.ledger != nil {
 		if err := s.ledger.RecordInvoice(ctx, chargeInvoice); err != nil {
-			s.logger.Error("upgrade proration ledger invoice post failed — reconciliation needed",
+			s.logger.ErrorContext(ctx, "upgrade proration ledger invoice post failed — reconciliation needed",
 				"invoice_id", chargeInvoice.ID, "amount", chargeInvoice.Total, "error", err)
 		}
 	}
@@ -493,11 +493,11 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		revenueReversal := int64(0)
 		if s.revrecService != nil && netCredit > 0 {
 			if reduced, err := s.revrecService.ReduceScheduleForDowngrade(ctx, tenantID, subscriptionID, netCredit); err != nil {
-				s.logger.Error("downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
+				s.logger.ErrorContext(ctx, "downgrade schedule reduction failed", "subscription_id", subscriptionID, "error", err)
 			} else if shortfall := netCredit - reduced; shortfall > 0 {
 				reversed, rErr := s.revrecService.ReverseRecognizedForDowngrade(ctx, tenantID, subscriptionID, shortfall)
 				if rErr != nil {
-					s.logger.Error("downgrade recognized-revenue reversal failed — funding the shortfall from Deferred",
+					s.logger.ErrorContext(ctx, "downgrade recognized-revenue reversal failed — funding the shortfall from Deferred",
 						"subscription_id", subscriptionID, "error", rErr)
 				}
 				revenueReversal = reversed
@@ -509,7 +509,7 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 				// revenue the business already credited back and over-drain Deferred.
 				if residual := shortfall - reversed; residual > 0 {
 					if dErr := s.revrecService.RecordScheduleDebt(ctx, subscriptionID, residual); dErr != nil {
-						s.logger.Error("downgrade schedule-debt record failed — a later schedule may over-recognize",
+						s.logger.ErrorContext(ctx, "downgrade schedule-debt record failed — a later schedule may over-recognize",
 							"subscription_id", subscriptionID, "amount", residual, "error", dErr)
 					}
 				}
@@ -520,19 +520,19 @@ func (s *SubscriptionService) UpdateSubscription(ctx context.Context, tenantID, 
 		if s.ledger != nil {
 			if deferredPortion > 0 {
 				if _, err := s.ledger.RecordDowngradeCredit(ctx, tenantID, creditNote.EntityID, creditNote.ID, deferredPortion, "Plan downgrade credit (net, deferred portion)"); err != nil {
-					s.logger.Error("downgrade credit ledger post failed — reconciliation needed",
+					s.logger.ErrorContext(ctx, "downgrade credit ledger post failed — reconciliation needed",
 						"credit_note_id", creditNote.ID, "amount", deferredPortion, "error", err)
 				}
 			}
 			if revenueReversal > 0 {
 				if _, err := s.ledger.RecordDowngradeRevenueReversal(ctx, tenantID, creditNote.EntityID, creditNote.ID, revenueReversal, "Plan downgrade credit (net, recognized portion)"); err != nil {
-					s.logger.Error("downgrade revenue reversal ledger post failed — reconciliation needed",
+					s.logger.ErrorContext(ctx, "downgrade revenue reversal ledger post failed — reconciliation needed",
 						"credit_note_id", creditNote.ID, "amount", revenueReversal, "error", err)
 				}
 			}
 			if taxCredit > 0 {
 				if _, err := s.ledger.RecordDowngradeTaxReversal(ctx, tenantID, creditNote.EntityID, creditNote.ID, taxCredit, "Plan downgrade GST reversal"); err != nil {
-					s.logger.Error("downgrade tax reversal ledger post failed — reconciliation needed",
+					s.logger.ErrorContext(ctx, "downgrade tax reversal ledger post failed — reconciliation needed",
 						"credit_note_id", creditNote.ID, "amount", taxCredit, "error", err)
 				}
 			}

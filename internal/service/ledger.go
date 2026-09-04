@@ -244,7 +244,7 @@ func (s *LedgerService) SetupTenantAccounts(ctx context.Context, tenantID uuid.U
 		if s.tbClient != nil {
 			acc.UserData128 = domain.UUIDToUint128(tenantID)
 			if err := s.tbClient.CreateAccounts(ctx, []*domain.LedgerAccount{acc}); err != nil {
-				slog.Warn("TB CreateAccounts failed (non-fatal)", "error", err)
+				slog.WarnContext(ctx, "TB CreateAccounts failed (non-fatal)", "error", err)
 			}
 		}
 	}
@@ -264,7 +264,7 @@ func (s *LedgerService) CreateCustomerAccounts(ctx context.Context, customerID u
 
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateAccount(ctx, account); err != nil {
-			slog.Warn("PG CreateAccount failed", "error", err)
+			slog.WarnContext(ctx, "PG CreateAccount failed", "error", err)
 		}
 	}
 
@@ -390,7 +390,7 @@ func (s *LedgerService) RecordInvoice(ctx context.Context, invoice *domain.Invoi
 	// so surface it rather than losing it in a log line.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransactions(ctx, transfers); err != nil {
-			slog.Error("PG CreateTransactions failed", "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransactions failed", "error", err)
 			return fmt.Errorf("ledger write failed for invoice %s: %w", invoice.ID, err)
 		}
 	}
@@ -512,7 +512,7 @@ func (s *LedgerService) RecordPaymentWithSettled(ctx context.Context, invoice *d
 	if s.pgRepo != nil {
 		for _, transfer := range transfers {
 			if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-				slog.Error("PG CreateTransaction failed for payment", "error", err)
+				slog.ErrorContext(ctx, "PG CreateTransaction failed for payment", "error", err)
 				return fmt.Errorf("ledger write failed for payment on invoice %s: %w", invoice.ID, err)
 			}
 		}
@@ -779,7 +779,7 @@ func (s *LedgerService) RecordPaymentReversal(ctx context.Context, invoice *doma
 	// (reversals are US-ACH/USD; TDS is India/INR) — warn if that assumption
 	// ever breaks so the books can be reviewed (design non-goal).
 	if n, err := s.pgRepo.CountTransactionsByReferenceAndCode(ctx, invoice.ID, domain.LedgerCodeTDSReceivable); err == nil && n > 0 {
-		slog.Warn("payment reversal on a TDS invoice — TDS legs are not reversed; review the books",
+		slog.WarnContext(ctx, "payment reversal on a TDS invoice — TDS legs are not reversed; review the books",
 			"invoice_id", invoice.ID, "tds_legs", n)
 	}
 
@@ -862,7 +862,7 @@ func (s *LedgerService) RecordRefund(ctx context.Context, tenantID uuid.UUID, en
 	// Always write to PG; surface failures so callers can retry/reconcile.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed for refund", "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransaction failed for refund", "error", err)
 			return fmt.Errorf("ledger write failed for refund on credit note %s: %w", creditNoteID, err)
 		}
 	}
@@ -915,7 +915,7 @@ func (s *LedgerService) RecordDeferredRefundReversal(ctx context.Context, tenant
 
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed for deferred reversal", "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransaction failed for deferred reversal", "error", err)
 			return uuid.Nil, fmt.Errorf("ledger write failed for deferred reversal on credit note %s: %w", creditNoteID, err)
 		}
 	}
@@ -970,7 +970,7 @@ func (s *LedgerService) RecordRefundTaxReversal(ctx context.Context, tenantID uu
 
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed for refund tax reversal", "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransaction failed for refund tax reversal", "error", err)
 			return uuid.Nil, fmt.Errorf("ledger write failed for refund tax reversal on credit note %s: %w", creditNoteID, err)
 		}
 	}
@@ -1302,7 +1302,7 @@ func (s *LedgerService) postEntityTransfer(ctx context.Context, ent ledgerEntity
 	}
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed", "code", code, "reference_id", referenceID, "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransaction failed", "code", code, "reference_id", referenceID, "error", err)
 			return uuid.Nil, fmt.Errorf("ledger write failed (code %d, ref %s): %w", code, referenceID, err)
 		}
 	}
@@ -1362,7 +1362,7 @@ func (s *LedgerService) RecordRecognition(ctx context.Context, tenantID uuid.UUI
 	// Always write to PG; surface failures so callers can retry/reconcile.
 	if s.pgRepo != nil {
 		if err := s.pgRepo.CreateTransaction(ctx, transfer); err != nil {
-			slog.Error("PG CreateTransaction failed", "error", err)
+			slog.ErrorContext(ctx, "PG CreateTransaction failed", "error", err)
 			return uuid.Nil, fmt.Errorf("ledger write failed for revenue recognition: %w", err)
 		}
 	}

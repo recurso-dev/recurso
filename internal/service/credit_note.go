@@ -57,7 +57,7 @@ func refundTaxSlice(amount, priorRefunded, invoiceTax, invoiceTotal int64) int64
 func (s *CreditNoteService) priorRefundedExcluding(ctx context.Context, invoiceID uuid.UUID, cn *domain.CreditNote) int64 {
 	sum, err := s.repo.SumActiveRefundsForInvoice(ctx, invoiceID)
 	if err != nil {
-		s.logger.Warn("could not read prior refunds for tax allocation; using single-refund proportion", "invoice_id", invoiceID, "credit_note_id", cn.ID, "error", err)
+		s.logger.WarnContext(ctx, "could not read prior refunds for tax allocation; using single-refund proportion", "invoice_id", invoiceID, "credit_note_id", cn.ID, "error", err)
 		return 0
 	}
 	if cn.Type == domain.CreditNoteTypeRefund && cn.RefundStatus != "" && cn.RefundStatus != domain.RefundStatusFailed {
@@ -168,7 +168,7 @@ func (s *CreditNoteService) notifyIssued(cn *domain.CreditNote, customer *domain
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.notifier.SendCreditNoteIssued(ctx, data); err != nil {
-			s.logger.Error("credit-note issuance email failed", "credit_note_id", cn.ID, "error", err)
+			s.logger.ErrorContext(ctx, "credit-note issuance email failed", "credit_note_id", cn.ID, "error", err)
 		}
 	})
 }
@@ -202,7 +202,7 @@ func (s *CreditNoteService) ApplyAdjustmentCredits(ctx context.Context, tenantID
 	}
 	if applied > 0 && s.ledger != nil {
 		if _, lErr := s.ledger.RecordCreditApplication(ctx, tenantID, entityID, customerID, invoiceID, applied, "Account credit applied to invoice"); lErr != nil {
-			s.logger.Error("credit application ledger post failed — reconciliation needed",
+			s.logger.ErrorContext(ctx, "credit application ledger post failed — reconciliation needed",
 				"invoice_id", invoiceID, "amount", applied, "error", lErr)
 		}
 	}
@@ -364,7 +364,7 @@ func (s *CreditNoteService) Create(ctx context.Context, tenantID, creatorID uuid
 		// Best-effort; a failure is logged for reconciliation.
 		if s.ledger != nil {
 			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.EntityID, cn.ID, cn.Amount, "Adjustment credit issued"); err != nil {
-				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
+				s.logger.ErrorContext(ctx, "adjustment credit issuance ledger post failed — reconciliation needed",
 					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
 			}
 		}
@@ -443,7 +443,7 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	}
 
 	if manual {
-		s.logger.Warn("refund credit note requires manual processing",
+		s.logger.WarnContext(ctx, "refund credit note requires manual processing",
 			"credit_note_id", cn.ID, "invoice_id", inv.ID)
 		return nil
 	}
@@ -482,14 +482,14 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 	refundTax := refundTaxSlice(cn.Amount, s.priorRefundedExcluding(ctx, inv.ID, cn), inv.TaxAmount, inv.Total)
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
-			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
+			s.logger.ErrorContext(ctx, "ledger refund write failed", "error", err, "credit_note_id", cn.ID)
 		}
 		// Reverse the GST portion of the refund out of Tax Payable — otherwise the
 		// output-tax liability booked at invoice time stays overstated forever on
 		// every refunded GST invoice (ENG-191b). Proportional to the refund.
 		if refundTax > 0 {
 			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, refundTax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
-				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
+				s.logger.ErrorContext(ctx, "ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
 	}
@@ -507,15 +507,15 @@ func (s *CreditNoteService) createRefund(ctx context.Context, tenantID uuid.UUID
 		// reverse>deferred guard, which is why this only bit partial refunds.)
 		netRefund := cn.Amount - refundTax
 		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
-			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
+			s.logger.ErrorContext(ctx, "rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
-			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
+			s.logger.InfoContext(ctx, "rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
 		}
 	}
 	cn.RefundID = &refundID
 	cn.RefundMessage = message
 
-	s.logger.Info("gateway refund issued for credit note",
+	s.logger.InfoContext(ctx, "gateway refund issued for credit note",
 		"credit_note_id", cn.ID,
 		"invoice_id", inv.ID,
 		"payment_id", inv.GatewayPaymentID,
@@ -532,10 +532,10 @@ func (s *CreditNoteService) markRefundFailed(ctx context.Context, cn *domain.Cre
 	cn.RefundStatus = domain.RefundStatusFailed
 	cn.RefundMessage = message
 	if err := s.repo.UpdateRefund(ctx, cn.ID, domain.RefundStatusFailed, nil, message); err != nil {
-		s.logger.Error("failed to mark credit note refund as failed",
+		s.logger.ErrorContext(ctx, "failed to mark credit note refund as failed",
 			"credit_note_id", cn.ID, "error", err, "refund_message", message)
 	}
-	s.logger.Error("credit note refund failed", "credit_note_id", cn.ID, "reason", message)
+	s.logger.ErrorContext(ctx, "credit note refund failed", "credit_note_id", cn.ID, "reason", message)
 }
 
 // ProcessGatewayRefundEvent consumes a gateway refund webhook (Stripe
@@ -569,7 +569,7 @@ func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refun
 	if expectedTenant != uuid.Nil && cn.TenantID != expectedTenant {
 		// A BYO webhook referenced a refund credit note owned by a different
 		// tenant — ignore it (same treatment as an unknown refund id).
-		s.logger.Warn("refund webhook referenced another tenant's credit note — ignoring",
+		s.logger.WarnContext(ctx, "refund webhook referenced another tenant's credit note — ignoring",
 			"refund_id", refundID, "conn_tenant", expectedTenant, "credit_note_tenant", cn.TenantID)
 		return nil
 	}
@@ -578,7 +578,7 @@ func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refun
 		// Terminal state: keep it. Re-delivered success events land here
 		// (already processed), as would a late failure event after success was
 		// recorded — the stored status stays authoritative.
-		s.logger.Info("refund webhook ignored — credit note is not pending",
+		s.logger.InfoContext(ctx, "refund webhook ignored — credit note is not pending",
 			"credit_note_id", cn.ID,
 			"refund_id", refundID,
 			"refund_status", cn.RefundStatus,
@@ -602,7 +602,7 @@ func (s *CreditNoteService) ProcessGatewayRefundEvent(ctx context.Context, refun
 		return fmt.Errorf("failed to persist refund %s outcome on credit note %s: %w", refundID, cn.ID, err)
 	}
 
-	s.logger.Info("credit note refund status advanced via webhook",
+	s.logger.InfoContext(ctx, "credit note refund status advanced via webhook",
 		"credit_note_id", cn.ID,
 		"refund_id", refundID,
 		"refund_status", status,
@@ -634,7 +634,7 @@ func (s *CreditNoteService) List(ctx context.Context, tenantID uuid.UUID, filter
 			// Fallback (archived or past the window): single fetch, best-effort.
 			customer, err := s.customerRepo.GetByID(ctx, cn.CustomerID)
 			if err != nil {
-				s.logger.Warn("credit note list: customer hydration failed",
+				s.logger.WarnContext(ctx, "credit note list: customer hydration failed",
 					"credit_note_id", cn.ID, "customer_id", cn.CustomerID, "error", err)
 			} else if customer != nil {
 				cn.Customer = customer
@@ -813,7 +813,7 @@ func (s *CreditNoteService) ExpireDueCredits(ctx context.Context) (int, error) {
 		}
 		if _, lErr := s.ledger.RecordCreditExpiry(ctx, e.TenantID, e.EntityID, e.CreditNoteID, e.Amount,
 			"Account credit expired"); lErr != nil {
-			s.logger.Error("credit expiry ledger post failed — reconciliation needed",
+			s.logger.ErrorContext(ctx, "credit expiry ledger post failed — reconciliation needed",
 				"credit_note_id", e.CreditNoteID, "amount", e.Amount, "error", lErr)
 		}
 	}
@@ -869,7 +869,7 @@ func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approve
 				// The gateway already refunded the customer; reverting to pending
 				// would let a re-approval double-refund. Leave the credit note
 				// issued and surface it for reconciliation instead.
-				s.logger.Error("refund succeeded at gateway but post-processing failed — leaving credit note issued; reconciliation needed",
+				s.logger.ErrorContext(ctx, "refund succeeded at gateway but post-processing failed — leaving credit note issued; reconciliation needed",
 					"credit_note_id", cn.ID, "error", err)
 			} else {
 				// No money moved — safe to revert to pending so it can be retried.
@@ -881,7 +881,7 @@ func (s *CreditNoteService) Approve(ctx context.Context, tenantID, cnID, approve
 		// Adjustment credit
 		if s.ledger != nil {
 			if _, err := s.ledger.RecordAdjustmentCreditIssued(ctx, tenantID, cn.EntityID, cn.ID, cn.Amount, "Adjustment credit issued (approved)"); err != nil {
-				s.logger.Error("adjustment credit issuance ledger post failed — reconciliation needed",
+				s.logger.ErrorContext(ctx, "adjustment credit issuance ledger post failed — reconciliation needed",
 					"credit_note_id", cn.ID, "amount", cn.Amount, "error", err)
 			}
 		}
@@ -978,7 +978,7 @@ func (s *CreditNoteService) Void(ctx context.Context, tenantID, cnID, actorID uu
 	if s.ledger != nil {
 		if _, lErr := s.ledger.RecordCreditVoid(ctx, written.TenantID, written.EntityID, written.CreditNoteID, written.Amount,
 			"Account credit voided"); lErr != nil {
-			s.logger.Error("credit void ledger post failed — reconciliation needed",
+			s.logger.ErrorContext(ctx, "credit void ledger post failed — reconciliation needed",
 				"credit_note_id", written.CreditNoteID, "amount", written.Amount, "actor_id", actorID, "error", lErr)
 		}
 	}
@@ -995,7 +995,7 @@ func (s *CreditNoteService) Void(ctx context.Context, tenantID, cnID, actorID uu
 func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, tenantID uuid.UUID, inv *domain.Invoice, cn *domain.CreditNote) (charged bool, err error) {
 	manual := inv.GatewayPaymentID == ""
 	if manual {
-		s.logger.Warn("refund credit note requires manual processing",
+		s.logger.WarnContext(ctx, "refund credit note requires manual processing",
 			"credit_note_id", cn.ID, "invoice_id", inv.ID)
 		cn.RefundStatus = domain.RefundStatusManualRequired
 		cn.RefundMessage = fmt.Sprintf("invoice %s has no gateway payment id on record", inv.InvoiceNumber)
@@ -1034,11 +1034,11 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 	refundTax := refundTaxSlice(cn.Amount, s.priorRefundedExcluding(ctx, inv.ID, cn), inv.TaxAmount, inv.Total)
 	if s.ledger != nil {
 		if err := s.ledger.RecordRefund(ctx, tenantID, inv.EntityID, cn.ID, cn.Amount, "Refund for invoice "+inv.InvoiceNumber); err != nil {
-			s.logger.Error("ledger refund write failed", "error", err, "credit_note_id", cn.ID)
+			s.logger.ErrorContext(ctx, "ledger refund write failed", "error", err, "credit_note_id", cn.ID)
 		}
 		if refundTax > 0 {
 			if _, err := s.ledger.RecordRefundTaxReversal(ctx, tenantID, inv.EntityID, cn.ID, refundTax, "GST reversal on refund for invoice "+inv.InvoiceNumber); err != nil {
-				s.logger.Error("ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
+				s.logger.ErrorContext(ctx, "ledger refund tax reversal write failed", "error", err, "credit_note_id", cn.ID)
 			}
 		}
 	}
@@ -1052,15 +1052,15 @@ func (s *CreditNoteService) executeRefundGatewayAndLedger(ctx context.Context, t
 		// reverse>deferred guard, which is why this only bit partial refunds.)
 		netRefund := cn.Amount - refundTax
 		if reversed, err := s.revrec.UnwindOnRefund(ctx, tenantID, inv.EntityID, inv.ID, cn.ID, netRefund); err != nil {
-			s.logger.Error("rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
+			s.logger.ErrorContext(ctx, "rev-rec unwind on refund failed", "error", err, "credit_note_id", cn.ID)
 		} else if reversed > 0 {
-			s.logger.Info("rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
+			s.logger.InfoContext(ctx, "rev-rec deferred reversed on refund", "credit_note_id", cn.ID, "amount", reversed)
 		}
 	}
 	cn.RefundID = &refundID
 	cn.RefundMessage = message
 
-	s.logger.Info("gateway refund issued for approved credit note",
+	s.logger.InfoContext(ctx, "gateway refund issued for approved credit note",
 		"credit_note_id", cn.ID,
 		"invoice_id", inv.ID,
 		"payment_id", inv.GatewayPaymentID,

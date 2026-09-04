@@ -266,7 +266,7 @@ func (r *TaxResolver) resolveSellerJurisdiction(ctx context.Context, tenantID uu
 	if r.gstConfigs != nil && tenantID != uuid.Nil {
 		c, err := r.gstConfigs.GetByTenantID(ctx, tenantID)
 		if err != nil {
-			r.logger.Warn("tenant GST config lookup failed; trying entity country / env defaults",
+			r.logger.WarnContext(ctx, "tenant GST config lookup failed; trying entity country / env defaults",
 				"tenant_id", tenantID, "error", err)
 		} else if c != nil && (c.GSTIN != "" || c.StateCode != "") {
 			state = c.StateCode
@@ -376,7 +376,7 @@ func (r *TaxResolver) resolveIndiaGST(ctx context.Context, engine port.TaxEngine
 		FallbackRate: fallbackRate,
 	})
 	if err != nil || calc == nil {
-		r.logger.Warn("GST calculation failed; invoicing without tax", "error", err)
+		r.logger.WarnContext(ctx, "GST calculation failed; invoicing without tax", "error", err)
 		return InvoiceTax{}
 	}
 	return InvoiceTax{
@@ -432,7 +432,7 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 	if r.nexusRepo != nil {
 		declaredAny, inState, err := r.nexusRepo.NexusFor(ctx, tenantID, buyerState)
 		if err != nil {
-			r.logger.Warn("nexus lookup failed; not gating US sales tax",
+			r.logger.WarnContext(ctx, "nexus lookup failed; not gating US sales tax",
 				"tenant_id", tenantID, "state", buyerState, "error", err)
 		} else if declaredAny && !inState {
 			return InvoiceTax{
@@ -476,7 +476,7 @@ func (r *TaxResolver) resolveUSSalesTax(ctx context.Context, engine port.TaxEngi
 		if us, ok := engine.(*tax.USSalesTaxEngine); ok && us.ProviderName() != "" {
 			provider = us.ProviderName()
 		}
-		r.logger.Warn("US sales tax provider lookup failed; invoicing at 0%",
+		r.logger.WarnContext(ctx, "US sales tax provider lookup failed; invoicing at 0%",
 			"provider", provider, "error", err)
 		return InvoiceTax{
 			TaxType: "sales_tax_error",
@@ -510,7 +510,7 @@ func (r *TaxResolver) resolveEUVAT(ctx context.Context, engine port.TaxEngine, s
 		IsBusiness:    isBusiness,
 	})
 	if err != nil || calc == nil {
-		r.logger.Warn("VAT calculation failed; invoicing without tax", "error", err)
+		r.logger.WarnContext(ctx, "VAT calculation failed; invoicing without tax", "error", err)
 		return InvoiceTax{}
 	}
 	return InvoiceTax{Total: calc.TotalTax, TaxType: calc.TaxType, Note: joinNotes(calc.Note, extraNote), Rate: calc.TaxRate}
@@ -548,12 +548,12 @@ func (r *TaxResolver) reverseChargeDecision(ctx context.Context, sellerCountry, 
 	switch {
 	case errors.Is(err, tax.ErrVATUnavailable):
 		// Never fail the invoice on a VIES outage: degrade to presence-based.
-		r.logger.Warn("VIES unavailable; applying presence-based reverse charge",
+		r.logger.WarnContext(ctx, "VIES unavailable; applying presence-based reverse charge",
 			"validator", r.vatValidator.Name(), "country", cc, "error", err)
 		return true, "reverse charge applied on VAT-number presence — " + r.vatValidator.Name() + " unavailable, number unverified (needs review)"
 	case err != nil:
 		// Format/input rejection: definitively not eligible. Charge VAT.
-		r.logger.Info("VAT number failed validation; charging VAT",
+		r.logger.InfoContext(ctx, "VAT number failed validation; charging VAT",
 			"validator", r.vatValidator.Name(), "country", cc, "error", err)
 		return false, "buyer VAT number failed validation via " + r.vatValidator.Name() + "; VAT charged"
 	case res != nil && res.Valid:

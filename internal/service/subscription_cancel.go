@@ -43,12 +43,12 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	// still succeeds if these fail; the notification fields just stay blank).
 	customer, err := s.customerRepo.GetByID(ctx, sub.CustomerID)
 	if err != nil {
-		s.logger.Warn("cancel: customer lookup failed; notification fields may be blank",
+		s.logger.WarnContext(ctx, "cancel: customer lookup failed; notification fields may be blank",
 			"subscription_id", sub.ID, "error", err)
 	}
 	plan, err := s.planRepo.GetByID(ctx, sub.PlanID)
 	if err != nil {
-		s.logger.Warn("cancel: plan lookup failed; notification fields may be blank",
+		s.logger.WarnContext(ctx, "cancel: plan lookup failed; notification fields may be blank",
 			"subscription_id", sub.ID, "error", err)
 	}
 
@@ -73,12 +73,12 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	if s.gateway != nil {
 		if sub.RazorpaySubscriptionID != "" {
 			if err := s.gateway.CancelSubscription(ctx, sub.RazorpaySubscriptionID); err != nil {
-				s.logger.Error("failed to cancel subscription on payment gateway", "error", err, "gateway", "razorpay", "subscription_id", sub.RazorpaySubscriptionID)
+				s.logger.ErrorContext(ctx, "failed to cancel subscription on payment gateway", "error", err, "gateway", "razorpay", "subscription_id", sub.RazorpaySubscriptionID)
 			}
 		}
 		if sub.StripeSubscriptionID != "" {
 			if err := s.gateway.CancelSubscription(ctx, sub.StripeSubscriptionID); err != nil {
-				s.logger.Error("failed to cancel subscription on payment gateway", "error", err, "gateway", "stripe", "subscription_id", sub.StripeSubscriptionID)
+				s.logger.ErrorContext(ctx, "failed to cancel subscription on payment gateway", "error", err, "gateway", "stripe", "subscription_id", sub.StripeSubscriptionID)
 			}
 		}
 	}
@@ -91,9 +91,9 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	// rates the full period when it closes.
 	if immediately && s.finalUsageInvoicer != nil {
 		if finalInv, err := s.finalUsageInvoicer.GenerateFinalUsageInvoice(ctx, sub, now); err != nil {
-			s.logger.Error("final usage invoice on cancel failed", "error", err, "subscription_id", sub.ID)
+			s.logger.ErrorContext(ctx, "final usage invoice on cancel failed", "error", err, "subscription_id", sub.ID)
 		} else if finalInv != nil {
-			s.logger.Info("final usage invoice generated on cancel",
+			s.logger.InfoContext(ctx, "final usage invoice generated on cancel",
 				"subscription_id", sub.ID, "invoice_id", finalInv.ID, "total", finalInv.Total)
 		}
 	}
@@ -105,9 +105,9 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	// (and the natural recognition schedule) running to period end. Best-effort.
 	if immediately && s.revrecService != nil {
 		if forfeited, err := s.revrecService.UnwindOnCancel(ctx, tenantID, subscriptionID); err != nil {
-			s.logger.Error("rev-rec unwind on cancel failed", "error", err, "subscription_id", subscriptionID)
+			s.logger.ErrorContext(ctx, "rev-rec unwind on cancel failed", "error", err, "subscription_id", subscriptionID)
 		} else if forfeited > 0 {
-			s.logger.Info("rev-rec deferred forfeited on cancel", "subscription_id", subscriptionID, "amount", forfeited)
+			s.logger.InfoContext(ctx, "rev-rec deferred forfeited on cancel", "subscription_id", subscriptionID, "amount", forfeited)
 		}
 	}
 

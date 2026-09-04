@@ -344,7 +344,7 @@ func (s *QuoteService) ConvertToInvoice(ctx context.Context, id, tenantID uuid.U
 	// create/proration/mandate paths.
 	if s.ledger != nil {
 		if err := s.ledger.RecordInvoice(ctx, invoice); err != nil {
-			slog.Error("ledger write failed on quote conversion — needs reconciliation",
+			slog.ErrorContext(ctx, "ledger write failed on quote conversion — needs reconciliation",
 				"invoice_id", invoice.ID, "quote_id", quote.ID, "error", err)
 		}
 	}

@@ -217,7 +217,7 @@ func (s *UsageAlertService) evaluateOne(ctx context.Context, a *domain.UsageAler
 	}
 	qty, err := s.usage.AggregateForMetric(tctx, sub.ID, *metric, sub.CurrentPeriodStart, s.now())
 	if err != nil {
-		slog.Warn("usage alert aggregation failed", "alert_id", a.ID, "error", err)
+		slog.WarnContext(ctx, "usage alert aggregation failed", "alert_id", a.ID, "error", err)
 		return false
 	}
 
@@ -255,7 +255,7 @@ func (s *UsageAlertService) evaluateOne(ctx context.Context, a *domain.UsageAler
 				"period_start":    sub.CurrentPeriodStart,
 			},
 		}); err != nil {
-			slog.Error("usage alert webhook emission failed", "alert_id", a.ID, "error", err)
+			slog.ErrorContext(ctx, "usage alert webhook emission failed", "alert_id", a.ID, "error", err)
 		}
 	}
 	if s.notifier != nil {
@@ -263,10 +263,10 @@ func (s *UsageAlertService) evaluateOne(ctx context.Context, a *domain.UsageAler
 			subject := fmt.Sprintf("Usage alert: %s", a.MetricCode)
 			body := fmt.Sprintf("Your %s usage this period (%d) has crossed the configured threshold.", a.MetricCode, qty)
 			if err := s.notifier.SendEmail(tctx, customer.Email, subject, body); err != nil {
-				slog.Warn("usage alert email failed", "alert_id", a.ID, "error", err)
+				slog.WarnContext(ctx, "usage alert email failed", "alert_id", a.ID, "error", err)
 			}
 		}
 	}
-	slog.Info("usage alert fired", "alert_id", a.ID, "metric", a.MetricCode, "quantity", qty)
+	slog.InfoContext(ctx, "usage alert fired", "alert_id", a.ID, "metric", a.MetricCode, "quantity", qty)
 	return true
 }

@@ -76,20 +76,30 @@ func (w *CRMSyncWorker) crmForTenant(ctx context.Context, tenantID uuid.UUID) CR
 	return w.crm
 }
 
-func (w *CRMSyncWorker) Start() {
+// Start runs the tick loop until ctx is cancelled or Stop is called. It is
+// registered with main's worker group like every other worker, so shutdown
+// cancels an in-flight sweep instead of letting it run to completion during
+// drain (each tenant's RunOnce derives from ctx).
+func (w *CRMSyncWorker) Start(ctx context.Context) {
 	w.ticker = time.NewTicker(w.interval)
-	go func() {
-		for {
-			select {
-			case <-w.done:
-				return
-			case <-w.ticker.C:
-				if _, err := w.RunOnce(context.Background()); err != nil {
-					slog.Error("crm sync sweep failed", "error", err)
-				}
+	defer w.ticker.Stop()
+	w.announce()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-w.done:
+			return
+		case <-w.ticker.C:
+			if _, err := w.RunOnce(ctx); err != nil {
+				slog.ErrorContext(ctx, "crm sync sweep failed", "error", err)
 			}
 		}
-	}()
+	}
+}
+
+// announce logs the startup line once the loop is live.
+func (w *CRMSyncWorker) announce() {
 	slog.Info("crm sync worker started (daily)")
 }
 
