@@ -39,11 +39,19 @@ func TestClaimDueExecutions_ExclusiveAndLeased_Postgres(t *testing.T) {
 	mustExec(t, conn, `INSERT INTO dunning_campaigns (id, tenant_id, name, is_active, trigger_event, created_at, updated_at)
 		VALUES ($1,$2,'Recovery',TRUE,'payment_failed',NOW(),NOW())`, campaignID, tenantID)
 
+	// The claim is deliberately tenant-agnostic, so a shared test database may
+	// hand back other tests' due executions too. Only this test's rows are
+	// judged, and the claim limit is large enough that leftovers cannot crowd
+	// them out.
 	const n = 8
+	const claimLimit = 1000
+	mine := map[uuid.UUID]bool{}
 	for i := 0; i < n; i++ {
+		id := uuid.New()
+		mine[id] = true
 		mustExec(t, conn, `INSERT INTO dunning_campaign_executions (id, tenant_id, invoice_id, campaign_id, current_step_index, status, started_at, next_step_at)
 			VALUES ($1,$2,$3,$4,0,'active',NOW(), NOW() - INTERVAL '1 minute')`,
-			uuid.New(), tenantID, uuid.New(), campaignID)
+			id, tenantID, uuid.New(), campaignID)
 	}
 
 	repo := db.NewDunningCampaignRepository(conn)
@@ -59,14 +67,16 @@ func TestClaimDueExecutions_ExclusiveAndLeased_Postgres(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			execs, err := repo.ClaimDueExecutions(ctx, now, lease, n)
+			execs, err := repo.ClaimDueExecutions(ctx, now, lease, claimLimit)
 			if err != nil {
 				t.Errorf("ClaimDueExecutions: %v", err)
 				return
 			}
 			mu.Lock()
 			for _, e := range execs {
-				claimed[e.ID]++
+				if mine[e.ID] {
+					claimed[e.ID]++
+				}
 			}
 			mu.Unlock()
 		}()
@@ -82,12 +92,15 @@ func TestClaimDueExecutions_ExclusiveAndLeased_Postgres(t *testing.T) {
 		}
 	}
 
-	// The claimed rows are leased past `now`, so an immediate re-claim sees none.
-	again, err := repo.ClaimDueExecutions(ctx, now, lease, n)
+	// The claimed rows are leased past `now`, so an immediate re-claim sees
+	// none of them (other tenants' rows may still come back).
+	again, err := repo.ClaimDueExecutions(ctx, now, lease, claimLimit)
 	if err != nil {
 		t.Fatalf("re-claim: %v", err)
 	}
-	if len(again) != 0 {
-		t.Errorf("re-claim returned %d rows, want 0 (lease should hide claimed rows)", len(again))
+	for _, e := range again {
+		if mine[e.ID] {
+			t.Errorf("execution %s was re-claimed inside its lease (lease should hide claimed rows)", e.ID)
+		}
 	}
 }
