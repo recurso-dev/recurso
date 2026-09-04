@@ -72,4 +72,12 @@ describe("IRPSettings", () => {
     expect(await screen.findByText("invalid client secret")).toBeInTheDocument();
     expect(endpoints.updateIRPConfig).not.toHaveBeenCalled();
   });
+  it("shows a retryable error instead of a blank saveable form when the fetch fails", async () => {
+    endpoints.getIRPConfig.mockRejectedValueOnce(new Error("boom"));
+    render(<IRPSettings />, { wrapper });
+    await screen.findByText("Couldn't load IRP settings");
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(endpoints.getIRPConfig).toHaveBeenCalledTimes(2));
+  });
 });

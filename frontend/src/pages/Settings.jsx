@@ -11,6 +11,7 @@ import { FormField } from "@/components/patterns/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import {
   Select,
   SelectContent,
@@ -26,7 +27,7 @@ export default function Settings() {
 
   // Shared account resource — keyed ["account"] so Profile (read-only view)
   // and this editor read the same cache and a save here refreshes both.
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
     queryKey: ["account"],
     queryFn: async () => (await endpoints.getAccount()).data.data || null,
   });
@@ -89,62 +90,70 @@ export default function Settings() {
       />
 
       <div className="max-w-2xl">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">General information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <FormField label="Company name" htmlFor="company-name">
-              <Input
-                id="company-name"
-                value={account.name}
-                onChange={(e) => setAccount({ ...account, name: e.target.value })}
-                placeholder="e.g. Acme Corp"
-                disabled={loading}
-              />
-            </FormField>
-            <FormField label="Support email" htmlFor="support-email">
-              <Input
-                id="support-email"
-                type="email"
-                value={account.email}
-                onChange={(e) => setAccount({ ...account, email: e.target.value })}
-                placeholder="support@example.com"
-                disabled={loading}
-              />
-            </FormField>
-            {primary && (
-              <FormField
-                label="Business country"
-                htmlFor="business-country"
-                description="Sets your tax regime (India GST · US sales tax · EU VAT) and invoice format. Stored on your primary legal entity."
-              >
-                <Select
-                  value={businessCountry || undefined}
-                  onValueChange={(code) => setPendingCountry(code)}
-                  disabled={countryMutation.isPending}
-                >
-                  <SelectTrigger id="business-country" className="w-full">
-                    <SelectValue placeholder="Select your business country" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COUNTRIES.map((c) => (
-                      <SelectItem key={c.code} value={c.code}>
-                        {c.name} ({c.code})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        {loadError ? (
+          <ErrorState
+            title="Couldn't load account settings"
+            message="We couldn't reach the settings service, so the form is hidden to avoid saving blanks over your saved settings."
+            onRetry={() => refetch()}
+          />
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">General information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <FormField label="Company name" htmlFor="company-name">
+                <Input
+                  id="company-name"
+                  value={account.name}
+                  onChange={(e) => setAccount({ ...account, name: e.target.value })}
+                  placeholder="e.g. Acme Corp"
+                  disabled={loading}
+                />
               </FormField>
-            )}
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving || loading}>
-                <Save className="h-4 w-4" />
-                {saving ? "Saving..." : "Save changes"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+              <FormField label="Support email" htmlFor="support-email">
+                <Input
+                  id="support-email"
+                  type="email"
+                  value={account.email}
+                  onChange={(e) => setAccount({ ...account, email: e.target.value })}
+                  placeholder="support@example.com"
+                  disabled={loading}
+                />
+              </FormField>
+              {primary && (
+                <FormField
+                  label="Business country"
+                  htmlFor="business-country"
+                  description="Sets your tax regime (India GST · US sales tax · EU VAT) and invoice format. Stored on your primary legal entity."
+                >
+                  <Select
+                    value={businessCountry || undefined}
+                    onValueChange={(code) => setPendingCountry(code)}
+                    disabled={countryMutation.isPending}
+                  >
+                    <SelectTrigger id="business-country" className="w-full">
+                      <SelectValue placeholder="Select your business country" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COUNTRIES.map((c) => (
+                        <SelectItem key={c.code} value={c.code}>
+                          {c.name} ({c.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </FormField>
+              )}
+              <div className="flex justify-end">
+                <Button onClick={handleSave} disabled={saving || loading}>
+                  <Save className="h-4 w-4" />
+                  {saving ? "Saving..." : "Save changes"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <ConfirmDialog

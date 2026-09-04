@@ -47,4 +47,12 @@ describe("USTaxSettings", () => {
     render(<USTaxSettings />, { wrapper });
     await waitFor(() => expect(screen.getByLabelText("EIN")).toHaveValue(""));
   });
+  it("shows a retryable error instead of a blank saveable form when the fetch fails", async () => {
+    endpoints.getUSTaxConfig.mockRejectedValueOnce(new Error("boom"));
+    render(<USTaxSettings />, { wrapper });
+    await screen.findByText("Couldn't load US tax identity");
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(endpoints.getUSTaxConfig).toHaveBeenCalledTimes(2));
+  });
 });

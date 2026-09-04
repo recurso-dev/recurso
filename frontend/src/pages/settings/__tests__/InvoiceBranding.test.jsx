@@ -67,4 +67,12 @@ describe("InvoiceBranding", () => {
     );
     expect(screen.getAllByRole("button", { name: /upload image/i })).toHaveLength(2);
   });
+  it("shows a retryable error instead of a blank saveable form when the fetch fails", async () => {
+    endpoints.getInvoiceBranding.mockRejectedValueOnce(new Error("boom"));
+    render(<InvoiceBranding />, { wrapper });
+    await screen.findByText("Couldn't load invoice branding");
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(endpoints.getInvoiceBranding).toHaveBeenCalledTimes(2));
+  });
 });

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 import {
   Select,
   SelectContent,
@@ -35,7 +36,7 @@ export default function IRPSettings() {
   const [entityId, setEntityId] = useState("");
 
   // Load the saved config; a missing config just leaves the defaults.
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
     queryKey: ["irp-config", entityId],
     queryFn: async () => (await endpoints.getIRPConfig(entityId)).data?.data || null,
   });
@@ -82,6 +83,12 @@ export default function IRPSettings() {
 
       {loading ? (
         <Skeleton className="h-96 w-full rounded-xl" />
+      ) : loadError ? (
+        <ErrorState
+          title="Couldn't load IRP settings"
+          message="We couldn't reach the settings service, so the form is hidden to avoid saving blanks over your saved credentials."
+          onRetry={() => refetch()}
+        />
       ) : (
         <form onSubmit={handleSave}>
           <Card>

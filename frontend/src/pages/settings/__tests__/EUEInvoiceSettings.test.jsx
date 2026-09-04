@@ -84,4 +84,12 @@ describe("EUEInvoiceSettings", () => {
     );
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("seller identity incomplete"));
   });
+  it("shows a retryable error instead of a blank saveable form when the fetch fails", async () => {
+    endpoints.getEUEInvoiceConfig.mockRejectedValueOnce(new Error("boom"));
+    render(<EUEInvoiceSettings />, { wrapper });
+    await screen.findByText("Couldn't load EU e-invoicing settings");
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(endpoints.getEUEInvoiceConfig).toHaveBeenCalledTimes(2));
+  });
 });

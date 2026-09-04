@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 
 const EMPTY = {
   company_name: "",
@@ -101,7 +102,7 @@ function ImageField({ id, label, description, value, onChange, previewClass }) {
 export default function InvoiceBranding() {
   const [config, setConfig] = useState(EMPTY);
 
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
     queryKey: ["invoice-branding"],
     queryFn: async () => (await endpoints.getInvoiceBranding()).data?.data || null,
   });
@@ -133,6 +134,12 @@ export default function InvoiceBranding() {
 
       {loading ? (
         <Skeleton className="h-96 w-full rounded-xl" />
+      ) : loadError ? (
+        <ErrorState
+          title="Couldn't load invoice branding"
+          message="We couldn't reach the settings service, so the form is hidden to avoid saving blanks over your saved branding."
+          onRetry={() => refetch()}
+        />
       ) : (
         <form onSubmit={handleSave}>
           <Card>
