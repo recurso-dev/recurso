@@ -7,8 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-09-04 — The hardening release
+
+0.13.0 made every object deep; 0.14.0 made the whole thing trustworthy under
+load. Two strands ran back to back. First, the Stripe-grade polish programme
+(`docs/DASHBOARD_POLISH_AUDIT.md`, Batches A–F) finished the dashboard's
+financial language, object lifecycle, tables, labels and navigation, and the
+money-free Recurso Cloud self-billing increments landed alongside. Then an
+engineering wave went through the backend and the pipeline: the security and
+money-path fixes a billing engine cannot ship without, atomic dunning, real
+operator observability, CI that cannot go green by accident, a spec that says
+what the handlers actually return, and a current toolchain. Every increment
+merged as its own green-CI PR.
+
+### Added
+
+- **Financial object chain, addressable end to end.** Subscription → Invoice
+  → Payment → Journal Entry → Reconciliation Run are all real pages; Payment
+  (`/payments/:id`), Journal Entry and Reconciliation Run pages explain the
+  financial story in plain language with the raw gateway detail kept as a
+  technical note (#691, #692).
+- **Home answers "what needs attention".** An exception-first surface with
+  itemized failing payments: who, why (humanized error), which invoice, how
+  long (#690).
+- **⌘K object search** across customers, plans, subscriptions, invoices and
+  payments (#689, #711); **DataTable selection with safe bulk actions**
+  (send invoices, reject credit notes) that refuse no-op successes (#686,
+  #687).
+- **Navigation that keeps context.** URL-persisted list state and worklist
+  sorting, context-preserving back-navigation, ledger postings that drill to
+  their accounts (#680, #681, #685, #710, #712).
+- **Dashboard motion**, phases 4a–7: stat cards and financial numbers,
+  new-row reveal, status transitions, ledger and reconciliation signature
+  moments, empty states and the activity feed, payment-attempt lifecycle
+  (#667–#672).
+- **Design primitives.** The `<Money>` size vocabulary and object hero,
+  `<Overline>` for every uppercase micro-label, a shared Checkbox, sticky
+  table headers with real accessible names, and one canonical object-page
+  lifecycle (`useObjectQuery`) across all fifteen standard detail pages
+  (#675, #695, #697, #701, #704).
+- **Recurso Cloud self-billing, money-free.** Each signup is mirrored as a
+  customer of the founder tenant, a usage meter tracks revenue and collected
+  volume, a charge dry-run shows what each tenant would pay, and a
+  founder-only operator view reads it all (#714–#717).
+- **Operator observability.** A slow-query log at the database driver layer
+  (`SLOW_QUERY_THRESHOLD_MS`), `db_pool_*` connection-pool gauges and
+  `recurso_events_total{type}` business-event counters on `/metrics`, and a
+  structured JSON access log with the request id (#725, #743).
+- **CI and ops.** Repo skills for preflight, migrations, endpoints and SDK
+  sync; migration round-trip, coverage-floor, ledger-harness and SDK/docs
+  drift gates; least-privilege workflow tokens, timeouts and concurrency; a
+  release workflow that runs the real Postgres-backed gates on a tag; an E2E
+  completion sentinel; Dependabot; k8s startup probe, TCP liveness and a
+  PodDisruptionBudget (#718, #719, #725).
+- **OpenAPI accuracy.** The `{data}` envelope documented on the 43
+  operations whose handlers wrap, schemas for 11 previously schemaless
+  responses, real snake_case error codes, corrected pagination caps; the
+  docs copy and the Node SDK types regenerated from it (#740).
+
 ### Changed
 
+- **Dunning claims are atomic (ADR-003).** The scheduler leases overdue
+  invoices with `FOR UPDATE SKIP LOCKED` in batches, so two instances can
+  never dun the same customer twice (#722).
+- **Shutdown reaches every worker**, and internal-error and service logs
+  carry request and tenant ids (#724).
+- **Settings pages** (US tax, IRP, EU e-invoicing, branding, general) show a
+  retryable error instead of a blank, saveable form when the load fails
+  (#723).
+- **Frontend Batch F** completion: header wrapping, shared tooltips, a
+  background-refetch indicator, client sorting on fully loaded lists, lazy
+  Landing, dunning money through the shared formatter, `FormField` ids via
+  `useId`, and lint rules narrowed from global to per-file (#742).
+- **Dependencies.** gin 1.12, google/uuid 1.6, lib/pq 1.12, validator
+  10.30, golang-migrate 4.19, redislock 0.10, crewjam/saml 0.5, sentry-go
+  0.49, MCP go-sdk 1.7, go-redis 9.19, x/oauth2 0.36; the npm minor/patch
+  group, jest-dom 7; checkout/setup-go/setup-node v7, login-action v4,
+  action-gh-release v3; alpine 3.24 (#726–#744).
+- Sibling SDK and docs PRs must merge before the API PR that raises the
+  drift baseline; documented in the sync skill and CLAUDE.md (#719).
 - **Go toolchain to 1.26.8** everywhere it is pinned: CI and release
   workflows, both Dockerfiles, both Cloud Build configs, the devcontainer
   and `go.mod`. Go 1.25 left the supported window with 1.27's release.
@@ -21,6 +98,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node 24 LTS** for the frontend image, the Frontend CI job and the
   devcontainer (was 22 / 20).
 - razorpay-go 1.4.0 → 1.4.1, which requires Go 1.26 and had been held back.
+- The production image is pinned to `v0.14.0` in `k8s/deployment.yaml`.
+
+### Fixed
+
+- **P0: raw minor units rendered as money** (a 100x misread) on finance
+  screens (#678), and **silent truncation** of lists at the default page
+  size (#684).
+- **Money paths.** A guard against re-billing unbilled charges, a
+  cumulative cap so refund tax can never exceed the invoice's tax, proration
+  that rounds instead of truncating, no internal error text leaking to
+  clients, and ISO 4217 validation on every currency input (#721).
+- Object pages no longer hang on the skeleton when a query is paused
+  offline (#698); the ErrorBoundary recovers from stale chunks (#674).
+- Three Postgres tests that failed on a reused database now tolerate other
+  tenants' rows, and the dead `GetDueForRetry` read with its `LIMIT 10` is
+  gone (#748).
+- The runtime image upgrades base packages, clearing CVE-2026-14456 in
+  openssl on alpine 3.24 (#746).
+
+### Security
+
+- Razorpay webhooks are replay-protected by a body-hash fallback when the
+  event id is missing; the rate limiter falls back locally instead of
+  failing open when Redis is unreachable; request bodies are capped
+  (`MAX_REQUEST_BODY_BYTES`, importers exempt); operator tokens compare in
+  constant time; HSTS is sent only on TLS (#720).
+- The dev bypass token additionally requires a non-live server; the API is
+  no longer published on the host in the production compose file; nginx
+  sends nosniff, frame-deny, referrer and permissions policies; `API_SECRET`,
+  which nothing read, is gone from every config (#725).
+- quic-go pinned past GO-2026-5676 (#735).
 
 ## [0.13.0] - 2026-08-14 — The depth release
 
