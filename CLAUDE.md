@@ -67,6 +67,11 @@ swallows the failure (this exact mistake shipped a broken button once).
   set (silent truncation has bitten twice), and use `ParsePagination`/
   `clampLimitOffset` for new list endpoints. Never paginate a processing sweep.
 - Nullable text columns scan through `sql.NullString`, never bare `string`.
+- Test doubles for port interfaces embed `porttest.Unimplemented<Iface>`
+  (`internal/core/port/porttest`, generated; `go generate` it after changing
+  an interface) and override only the methods the code under test calls. An
+  unexpected call panics with the interface and method name instead of
+  returning a silent nil, and no stub boilerplate is needed.
 - Optional service dependencies use nil-safe `Set*` wiring
   (`SetLedgerService`, `SetCreditApplier`, …) — follow that idiom.
 - Workers over due rows use atomic claims, not locks (ADR-003).

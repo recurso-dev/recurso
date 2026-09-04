@@ -14,18 +14,16 @@ import (
 	"github.com/recurso-dev/recurso/internal/adapter/accounting"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port/porttest"
 )
 
 // --- Mock AccountingConnectionRepository ---
 
 type acctSyncConnRepo struct {
+	porttest.UnimplementedAccountingConnectionRepository
 	conns    []*domain.AccountingConnection
 	updates  []domain.AccountingConnection // snapshots at Update time
 	syncLogs []*domain.AccountingSyncLog
-}
-
-func (m *acctSyncConnRepo) Create(ctx context.Context, conn *domain.AccountingConnection) error {
-	return nil
 }
 
 func (m *acctSyncConnRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.AccountingConnection, error) {
@@ -45,8 +43,6 @@ func (m *acctSyncConnRepo) Update(ctx context.Context, conn *domain.AccountingCo
 	return nil
 }
 
-func (m *acctSyncConnRepo) Delete(ctx context.Context, id uuid.UUID) error { return nil }
-
 func (m *acctSyncConnRepo) GetActiveConnections(ctx context.Context) ([]*domain.AccountingConnection, error) {
 	return m.conns, nil
 }
@@ -63,10 +59,9 @@ func (m *acctSyncConnRepo) ListSyncLogs(ctx context.Context, tenantID uuid.UUID,
 // --- Mock CustomerRepository ---
 
 type acctSyncCustomerRepo struct {
+	porttest.UnimplementedCustomerRepository
 	customer *domain.Customer
 }
-
-func (m *acctSyncCustomerRepo) Create(ctx context.Context, c *domain.Customer) error { return nil }
 
 func (m *acctSyncCustomerRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Customer, error) {
 	if m.customer == nil {
@@ -90,28 +85,12 @@ func (m *acctSyncCustomerRepo) List(ctx context.Context, tenantID uuid.UUID, fil
 	return []*domain.Customer{m.customer}, nil
 }
 
-func (m *acctSyncCustomerRepo) FindByEmailAcrossTenants(ctx context.Context, email string) ([]*domain.Customer, error) {
-	return nil, nil
-}
-
-func (m *acctSyncCustomerRepo) Update(ctx context.Context, c *domain.Customer) error { return nil }
-
-func (m *acctSyncCustomerRepo) UpdateRisk(ctx context.Context, customerID uuid.UUID, score int, factors map[string]interface{}) error {
-	return nil
-}
-
-func (m *acctSyncCustomerRepo) UpdatePaymentMethod(ctx context.Context, customerID uuid.UUID, brand, last4 string, expMonth, expYear int) error {
-	return nil
-}
-
 // --- Mock InvoiceRepository ---
 
 type acctSyncInvoiceRepo struct {
-	port.InvoiceRepository
+	porttest.UnimplementedInvoiceRepository
 	invoice *domain.Invoice
 }
-
-func (m *acctSyncInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) error { return nil }
 
 func (m *acctSyncInvoiceRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
 	if m.invoice == nil {
@@ -124,10 +103,6 @@ func (m *acctSyncInvoiceRepo) GetByIDPublic(ctx context.Context, id uuid.UUID) (
 	return m.GetByID(ctx, id)
 }
 
-func (m *acctSyncInvoiceRepo) GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-
 func (m *acctSyncInvoiceRepo) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error) {
 	if m.invoice == nil {
 		return nil, nil
@@ -135,43 +110,16 @@ func (m *acctSyncInvoiceRepo) List(ctx context.Context, tenantID uuid.UUID) ([]*
 	return []*domain.Invoice{m.invoice}, nil
 }
 
-func (m *acctSyncInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error { return nil }
-
-func (m *acctSyncInvoiceRepo) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
-	return nil
-}
-
-func (m *acctSyncInvoiceRepo) UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error {
-	return nil
-}
-
-func (m *acctSyncInvoiceRepo) MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error {
-	return nil
-}
-
-func (m *acctSyncInvoiceRepo) GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error) {
-	return nil, nil
-}
-
 func (m *acctSyncInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Time, _ int) ([]*domain.Invoice, error) {
 	return m.GetFailedEInvoices(ctx)
-}
-
-func (m *acctSyncInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-
-func (m *acctSyncInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
-	return nil
 }
 
 // --- Mock PlanRepository ---
 
 type acctSyncPlanRepo struct {
+	porttest.UnimplementedPlanRepository
 	plan *domain.Plan
 }
-
-func (m *acctSyncPlanRepo) Create(ctx context.Context, plan *domain.Plan) error { return nil }
 
 func (m *acctSyncPlanRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Plan, error) {
 	if m.plan == nil {
@@ -184,16 +132,10 @@ func (m *acctSyncPlanRepo) GetByCode(ctx context.Context, tenantID uuid.UUID, co
 	return nil, errors.New("not found")
 }
 
-func (m *acctSyncPlanRepo) Update(ctx context.Context, plan *domain.Plan) error { return nil }
-
-func (m *acctSyncPlanRepo) List(ctx context.Context, tenantID uuid.UUID, filter domain.PlanFilter) ([]*domain.Plan, error) {
-	return nil, nil
-}
-
 // --- Mock SubscriptionRepository ---
 
 type acctSyncSubRepo struct {
-	port.SubscriptionRepository
+	porttest.UnimplementedSubscriptionRepository
 	sub *domain.Subscription
 	err error
 }
@@ -211,6 +153,7 @@ func (m *acctSyncSubRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Su
 // --- Mock AccountingMappingRepository ---
 
 type acctSyncMappingRepo struct {
+	porttest.UnimplementedAccountingMappingRepository
 	mappings map[string]*domain.AccountingEntityMapping
 	upserts  []*domain.AccountingEntityMapping
 	deletes  []string // acctMappingKey of each Delete call
@@ -267,6 +210,7 @@ func (m *acctSyncMappingRepo) seedSyncedAt(conn *domain.AccountingConnection, en
 // fabricated ID. externalIDs listed in gone simulate objects deleted at the
 // provider: calls carrying them fail with port.ErrExternalGone.
 type acctSyncRecordingGateway struct {
+	porttest.UnimplementedAccountingGateway
 	err  error
 	gone map[string]bool
 

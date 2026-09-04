@@ -8,13 +8,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
 	"github.com/recurso-dev/recurso/internal/core/port"
+	"github.com/recurso-dev/recurso/internal/core/port/porttest"
 	"github.com/recurso-dev/recurso/internal/service"
 )
 
 // --- Mock InvoiceRepository ---
 
 type mockInvoiceRepo struct {
-	port.InvoiceRepository
+	porttest.UnimplementedInvoiceRepository
 	invoices []*domain.Invoice
 	updated  []*domain.Invoice
 }
@@ -30,40 +31,8 @@ func (m *mockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error
 }
 
 // Stubs for interface compliance
-func (m *mockInvoiceRepo) Create(ctx context.Context, inv *domain.Invoice) error { return nil }
-func (m *mockInvoiceRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
-	return nil, nil
-}
-func (m *mockInvoiceRepo) GetByIDPublic(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
-	return nil, nil
-}
-func (m *mockInvoiceRepo) GetByCustomerID(ctx context.Context, customerID uuid.UUID) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-func (m *mockInvoiceRepo) List(ctx context.Context, tenantID uuid.UUID) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-func (m *mockInvoiceRepo) UpdateRetryInfo(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int) error {
-	return nil
-}
-func (m *mockInvoiceRepo) UpdateRetryInfoWithDunning(ctx context.Context, invoiceID uuid.UUID, nextRetry time.Time, retryCount int, managedBy string) error {
-	return nil
-}
-func (m *mockInvoiceRepo) MarkAsUncollectible(ctx context.Context, invoiceID uuid.UUID) error {
-	return nil
-}
-func (m *mockInvoiceRepo) GetOverdueInvoices(ctx context.Context) ([]domain.OverdueInvoice, error) {
-	return nil, nil
-}
 func (m *mockInvoiceRepo) ClaimFailedEInvoices(ctx context.Context, _, _ time.Time, _ int) ([]*domain.Invoice, error) {
 	return m.GetFailedEInvoices(ctx)
-}
-
-func (m *mockInvoiceRepo) GetFailedEInvoices(ctx context.Context) ([]*domain.Invoice, error) {
-	return nil, nil
-}
-func (m *mockInvoiceRepo) UpdateEInvoiceStatus(ctx context.Context, tenantID, invoiceID uuid.UUID, status, irn, ackNo, signedQR, ackDate, errorMsg string) error {
-	return nil
 }
 
 // --- Mock PaymentGateway ---
