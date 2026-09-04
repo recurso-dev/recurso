@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 go test ./internal/mcp/...
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags "-X main.version=${VERSION}" -o recurso-mcp ./cmd/mcp
 
 # Run Stage
-FROM alpine:3.21
+FROM alpine:3.24
 
 WORKDIR /app
 
