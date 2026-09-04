@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/patterns/LoadingSkeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 
 const EMPTY = { legal_name: "", ein: "", address: "" };
 
@@ -18,7 +19,7 @@ const EMPTY = { legal_name: "", ein: "", address: "" };
 export default function USTaxSettings() {
   const [config, setConfig] = useState(EMPTY);
 
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
     queryKey: ["us-tax-config"],
     queryFn: async () => (await endpoints.getUSTaxConfig()).data?.data || null,
   });
@@ -50,6 +51,12 @@ export default function USTaxSettings() {
 
       {loading ? (
         <Skeleton className="h-72 w-full rounded-xl" />
+      ) : loadError ? (
+        <ErrorState
+          title="Couldn't load US tax identity"
+          message="We couldn't reach the settings service, so the form is hidden to avoid saving blanks over your saved identity."
+          onRetry={() => refetch()}
+        />
       ) : (
         <form onSubmit={handleSave}>
           <Card>

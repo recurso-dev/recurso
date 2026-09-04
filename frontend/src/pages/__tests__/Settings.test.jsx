@@ -78,4 +78,13 @@ describe("Settings — General section", () => {
     expect(screen.getByLabelText("Company name")).toHaveValue("Acme");
     expect(screen.getByLabelText("Support email")).toHaveValue("a@b.co");
   });
+  it("shows a retryable error instead of a blank saveable form when the fetch fails", async () => {
+    endpoints.getAccount.mockRejectedValueOnce(new Error("boom"));
+    render(<Settings />, { wrapper });
+    await screen.findByText("Couldn't load account settings");
+    expect(screen.queryByRole("button", { name: /save/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    await waitFor(() => expect(endpoints.getAccount).toHaveBeenCalledTimes(2));
+    await screen.findByLabelText("Company name");
+  });
 });

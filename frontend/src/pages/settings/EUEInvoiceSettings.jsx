@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
+import { ErrorState } from "@/components/patterns/ErrorState";
 
 const EMPTY = {
   enabled: false,
@@ -31,7 +32,7 @@ export default function EUEInvoiceSettings() {
   const [entityId, setEntityId] = useState("");
 
   // Load the saved config; a missing config (404) just leaves the defaults.
-  const { data, isLoading: loading } = useQuery({
+  const { data, isLoading: loading, isError: loadError, refetch } = useQuery({
     queryKey: ["eu-einvoice-config", entityId],
     queryFn: async () => (await endpoints.getEUEInvoiceConfig(entityId)).data?.data || null,
   });
@@ -64,6 +65,12 @@ export default function EUEInvoiceSettings() {
 
       {loading ? (
         <Skeleton className="h-96 w-full rounded-xl" />
+      ) : loadError ? (
+        <ErrorState
+          title="Couldn't load EU e-invoicing settings"
+          message="We couldn't reach the settings service, so the form is hidden to avoid saving blanks over your saved configuration."
+          onRetry={() => refetch()}
+        />
       ) : (
         <form onSubmit={handleSave}>
           <Card>
