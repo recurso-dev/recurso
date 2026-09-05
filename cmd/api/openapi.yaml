@@ -2084,6 +2084,8 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/SubscriptionAddon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -4990,7 +4992,7 @@ paths:
           required: false
           schema:
             type: string
-            enum: [open, resolved]
+            enum: [open, resolved, rejected]
           description: Filter by dispute status.
       responses:
         '200':
@@ -5047,17 +5049,45 @@ paths:
           description: Dispute ID.
       requestBody:
         required: false
+        description: Optional; an empty body accepts the dispute with no note and no credit.
         content:
           application/json:
             schema:
               type: object
               properties:
+                outcome:
+                  type: string
+                  enum: [accept, reject]
+                  default: accept
+                  description: >
+                    accept (default) closes the dispute in the customer's favor
+                    (status → resolved); reject declines it (status → rejected).
                 note:
                   type: string
                   description: Optional admin resolution note.
+                issue_credit:
+                  type: boolean
+                  default: false
+                  description: >
+                    Accept only. When true, issues an adjustment credit note
+                    (reason dispute_resolution) against the disputed invoice
+                    before the dispute is closed. Ignored on reject.
+                credit_amount:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                  description: >
+                    Credit amount in minor units. 0 or omitted means the
+                    invoice's amount still due (falling back to its total).
+                    Must not exceed the invoice total (today that violation
+                    surfaces as 500, not 400; 400 covers only a malformed body,
+                    an unknown outcome, or a negative credit_amount).
       responses:
         '200':
-          description: Dispute resolved.
+          description: >
+            Dispute resolved. Action-shape `{status}` object (not the Dispute
+            resource, not wrapped in data); credit_note is present only when
+            a credit was issued.
           content:
             application/json:
               schema:
@@ -5065,7 +5095,13 @@ paths:
                 properties:
                   status:
                     type: string
+                    enum: [resolved, rejected]
                     example: resolved
+                  credit_note:
+                    $ref: '#/components/schemas/CreditNote'
+                    description: Present only when issue_credit was true on accept.
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -5236,8 +5272,11 @@ paths:
       tags: [Collections]
       summary: Manually write off an invoice as uncollectible
       description: >
-        Operator-initiated write-off (status change only, no ledger leg — matching
-        the automated path). Only flips a still-collectible invoice.
+        Operator-initiated write-off: flips a still-collectible (open or
+        past_due) invoice to uncollectible and posts the write-off reversal
+        (still-deferred portion DR Deferred Revenue / CR AR, already-recognized
+        portion DR Bad Debt Expense / CR AR, tax DR Tax Payable / CR AR) so AR
+        stops carrying money that will never arrive. Any other status → 404.
       parameters:
         - name: id
           in: path
@@ -9978,6 +10017,7 @@ paths:
   /auth/oauth/providers:
     get:
       operationId: listOAuthProviders
+      security: []
       tags: [Auth]
       summary: List social-login providers and whether each is enabled
       description: >
@@ -9999,6 +10039,7 @@ paths:
   /auth/oauth/{provider}/start:
     get:
       operationId: startOAuthLogin
+      security: []
       tags: [Auth]
       summary: Begin an OAuth login (redirect to the provider)
       description: >
@@ -10015,6 +10056,7 @@ paths:
   /auth/oauth/{provider}/callback:
     get:
       operationId: oauthCallback
+      security: []
       tags: [Auth]
       summary: OAuth callback (provider redirects here)
       description: >
@@ -10371,6 +10413,7 @@ paths:
   /auth/saml/{tenantID}/metadata:
     get:
       operationId: getSAMLMetadata
+      security: []
       tags: [Auth]
       summary: SP metadata XML for a tenant
       description: Returns the Service Provider metadata document (application/samlmetadata+xml). 404 when the tenant has no SSO connection.
@@ -10386,6 +10429,7 @@ paths:
   /auth/saml/{tenantID}/login:
     get:
       operationId: samlLogin
+      security: []
       tags: [Auth]
       summary: SP-initiated SAML login (redirect to the IdP)
       description: 302-redirects to the IdP with a SAML AuthnRequest when the tenant's connection is enabled; 404 otherwise.
@@ -10398,6 +10442,7 @@ paths:
   /auth/saml/{tenantID}/acs:
     post:
       operationId: samlACS
+      security: []
       tags: [Auth]
       summary: Assertion Consumer Service (IdP posts the SAMLResponse here)
       description: >
@@ -10854,7 +10899,11 @@ components:
         tax_amount:
           type: integer
           format: int64
-          description: Tax on a positive net (0 for credits).
+          description: >-
+            Tax netted across both sides: GST collected on the new-plan charge
+            (at the new plan's rate/HSN) minus GST reversed on the old-plan
+            credit (at the old plan's rate/HSN). Positive on an upgrade,
+            negative on a downgrade credit.
         total_amount:
           type: integer
           format: int64
@@ -12047,6 +12096,9 @@ components:
         attempt_status:
           type: string
           description: Status of the latest payment attempt (ACH), if one exists.
+        dunning_paused:
+          type: boolean
+          description: True when an operator has paused automated dunning on the invoice.
 
     CollectionsBucket:
       type: object
@@ -13167,7 +13219,8 @@ components:
           type: string
         status:
           type: string
-          enum: [open, resolved]
+          enum: [open, resolved, rejected]
+          description: open, resolved (closed in the customer's favor) or rejected (reviewed and declined).
         note:
           type: [string, 'null']
           description: Admin resolution note; null while open.
