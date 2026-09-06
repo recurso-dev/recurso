@@ -11,6 +11,12 @@ import (
 // tenant, e.g. when resolving an already-resolved or non-existent dispute.
 var ErrDisputeNotFound = errors.New("dispute not found")
 
+// ErrDisputeCreditExceedsTotal is returned when a resolution credit is larger
+// than the disputed invoice's total: a caller-supplied credit_amount above the
+// total is a validation failure, not a server fault, so the handler maps it
+// to 400.
+var ErrDisputeCreditExceedsTotal = errors.New("credit amount exceeds the invoice total")
+
 // DisputeStatus represents the lifecycle state of an invoice dispute.
 type DisputeStatus string
 

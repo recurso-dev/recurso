@@ -30,8 +30,10 @@ Canonical `{"error":{"code","message"}}` — defined in
 hidden on 500s:** `respondInternalError` (`respond.go:49-53`) logs the real error
 server-side and returns a fixed `internal_error` body.
 
-**Deviations (audit):** three raw `{"error":"..."}` sites bypass the envelope —
-`webhook.go:153`, `webhook_gocardless.go:87`, `routes_public.go` (founder endpoint).
+**Deviations (audit):** none remain. The three raw `{"error":"..."}` sites the
+earlier audit found (the Stripe and GoCardless webhook handlers and the founder
+metrics endpoint) now go through `respondError`/`httperr.Respond`; don't add a
+new one.
 
 ## 3. Authentication
 

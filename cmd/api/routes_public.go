@@ -103,7 +103,7 @@ func registerPublicRoutes(r *gin.Engine, h *publicHandlers) {
 		// unauthenticated, and a connection error can leak the host/port (and
 		// sometimes credentials) from the DSN. Log it server-side; expose only
 		// the component status.
-		if err := h.database.Ping(); err != nil { //nolint:noctx // moved verbatim from main.go; switching to PingContext is a behaviour change for a follow-up
+		if err := h.database.PingContext(c.Request.Context()); err != nil {
 			slog.Error("health check: postgres ping failed", "error", err)
 			status = "degraded"
 			httpStatus = http.StatusServiceUnavailable
