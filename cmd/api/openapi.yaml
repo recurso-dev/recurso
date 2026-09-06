@@ -5392,8 +5392,9 @@ paths:
       tags: [Developer]
       summary: Revoke an API key
       description: >
-        Soft-deactivates the key. Authentication filters on the active flag,
-        so a revoked key stops working immediately and cannot be restored.
+        Soft-deactivates the key; it cannot be restored. Authentication caches
+        a verified key for up to five minutes, so a revoked key can keep
+        working for that long before requests start failing with 401.
         Owner/admin only for dashboard sessions.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -10400,13 +10401,13 @@ paths:
         - bearerAuth: []
       responses:
         '200':
-          description: Connection removed.
+          description: Connection removed. Action-shape `{status}` object, not wrapped in data.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  message: { type: string }
+                  status: { type: string, enum: [removed] }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
