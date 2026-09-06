@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -386,5 +387,30 @@ func TestDisputeService_ResolveWithOutcome_NonOpenRejected(t *testing.T) {
 	if _, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
 		DisputeResolution{Accept: false}); err != domain.ErrDisputeNotFound {
 		t.Fatalf("err = %v, want ErrDisputeNotFound for an already-closed dispute", err)
+	}
+}
+
+func TestDisputeService_ResolveWithOutcome_OverTotalCreditIsValidationError(t *testing.T) {
+	tenant := uuid.New()
+	id := uuid.New()
+	invID := uuid.New()
+	disp := &disputeMockRepo{items: []*domain.InvoiceDispute{
+		{ID: id, TenantID: tenant, Status: domain.DisputeStatusOpen, InvoiceID: invID},
+	}}
+	inv := &disputeMockInvoiceRepo{invoices: map[uuid.UUID]*domain.Invoice{
+		invID: {ID: invID, TenantID: tenant, Total: 10000, AmountDue: 10000},
+	}}
+	svc := NewDisputeService(disp)
+	// The over-total check runs before any credit-note call, so a zero-value
+	// credit-note service is enough to get past the "issuer wired" guard.
+	svc.SetCreditIssuer(&CreditNoteService{}, inv)
+
+	_, err := svc.ResolveWithOutcome(context.Background(), tenant, uuid.Nil, "owner", id,
+		DisputeResolution{Accept: true, IssueCredit: true, CreditAmount: 10001})
+	if !errors.Is(err, domain.ErrDisputeCreditExceedsTotal) {
+		t.Fatalf("err = %v, want ErrDisputeCreditExceedsTotal", err)
+	}
+	if disp.items[0].Status != domain.DisputeStatusOpen {
+		t.Errorf("dispute should remain open when the credit is refused, got %q", disp.items[0].Status)
 	}
 }

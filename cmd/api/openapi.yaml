@@ -5079,9 +5079,10 @@ paths:
                   description: >
                     Credit amount in minor units. 0 or omitted means the
                     invoice's amount still due (falling back to its total).
-                    Must not exceed the invoice total (today that violation
-                    surfaces as 500, not 400; 400 covers only a malformed body,
-                    an unknown outcome, or a negative credit_amount).
+                    Must not exceed the invoice total; a larger value is a
+                    400 validation_failed (as are a malformed body, an unknown
+                    outcome and a negative credit_amount) and the dispute
+                    stays open.
       responses:
         '200':
           description: >

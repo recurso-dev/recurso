@@ -128,7 +128,7 @@ func (s *DisputeService) ResolveWithOutcome(
 			}
 		}
 		if amount > inv.Total {
-			return nil, fmt.Errorf("credit amount exceeds the invoice total")
+			return nil, domain.ErrDisputeCreditExceedsTotal
 		}
 
 		invoiceID := inv.ID

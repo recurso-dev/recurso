@@ -122,6 +122,10 @@ func (h *DisputeHandler) ResolveDispute(c *gin.Context) {
 			respondError(c, http.StatusNotFound, codeNotFound, "dispute not found")
 			return
 		}
+		if errors.Is(err, domain.ErrDisputeCreditExceedsTotal) {
+			respondError(c, http.StatusBadRequest, codeValidationFailed, "credit_amount exceeds the invoice total")
+			return
+		}
 		respondInternalError(c, err)
 		return
 	}
