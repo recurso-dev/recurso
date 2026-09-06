@@ -32,6 +32,30 @@ func (failingGSP) GetIRNByDocDetails(context.Context, string, string, string) (*
 	return nil, errors.New("IRP unavailable")
 }
 
+// sweepUntilClaimed runs the worker sweep until the invoice under test has
+// been claimed and processed (its e_invoice_next_retry_at is either cleared or
+// pushed into the future). The claim is tenant-agnostic and batched (20 rows,
+// oldest first), so on a shared test database other tests' leftover FAILED
+// rows can fill the first batches; each sweep leases the rows it took, so the
+// loop always makes progress.
+func sweepUntilClaimed(t *testing.T, conn *sql.DB, w *EInvoiceRetryWorker, invID uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < 50; i++ {
+		w.processRetries(ctx)
+		var done bool
+		if err := conn.QueryRowContext(ctx,
+			`SELECT e_invoice_next_retry_at IS NULL OR e_invoice_next_retry_at > (NOW() AT TIME ZONE 'UTC')
+			   FROM invoices WHERE id = $1`, invID).Scan(&done); err != nil {
+			t.Fatalf("read invoice: %v", err)
+		}
+		if done {
+			return
+		}
+	}
+	t.Fatalf("invoice %s was never claimed by the retry sweep after 50 passes", invID)
+}
+
 // TestEInvoiceRetryWorker_CountAdvancesOnFailure_Postgres proves the ENG-179
 // fix: when a retry FAILS, the invoice's e_invoice_retry_count advances (so
 // maxEInvoiceRetries is eventually reached). Before the fix, the worker's stale
@@ -80,7 +104,7 @@ func TestEInvoiceRetryWorker_CountAdvancesOnFailure_Postgres(t *testing.T) {
 		db.NewIRPConfigRepository(conn), db.NewGSTConfigRepository(conn))
 	w := NewEInvoiceRetryWorker(invoiceRepo, einvoiceSvc)
 
-	w.processRetries(ctx)
+	sweepUntilClaimed(t, conn, w, invID)
 
 	var count int
 	var nextRetry sql.NullTime
@@ -137,12 +161,15 @@ func TestEInvoiceRetryWorker_MaxRetries_Postgres(t *testing.T) {
 		VALUES ($1,$2,$3,'INR',10000,10000,0,0,'open',$4,'FAILED',5, (NOW() AT TIME ZONE 'UTC') - INTERVAL '1 minute', NOW(), NOW())`,
 		invID, tenantID, customerID, "INV-EI-"+invID.String()[:8])
 
+	// This row never reaches the GSP (it is at the ceiling), but the sweep may
+	// pick up other tests' below-ceiling rows on a shared database, so give the
+	// service a failing adapter rather than nil — a nil adapter panics there.
 	invoiceRepo := db.NewInvoiceRepository(conn)
-	einvoiceSvc := service.NewEInvoiceService(nil, invoiceRepo, db.NewCustomerRepository(sqlxConn),
+	einvoiceSvc := service.NewEInvoiceService(failingGSP{}, invoiceRepo, db.NewCustomerRepository(sqlxConn),
 		db.NewIRPConfigRepository(conn), db.NewGSTConfigRepository(conn))
 	w := NewEInvoiceRetryWorker(invoiceRepo, einvoiceSvc)
 
-	w.processRetries(ctx)
+	sweepUntilClaimed(t, conn, w, invID)
 
 	var nextRetry sql.NullTime
 	var errMsg sql.NullString
