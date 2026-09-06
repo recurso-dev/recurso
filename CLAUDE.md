@@ -40,9 +40,11 @@ swallows the failure (this exact mistake shipped a broken button once).
   with the pinned policy in `.golangci.yml` (errorlint, gosec, rowserrcheck,
   sqlclosecheck, bodyclose, noctx, …). Suppress a false positive per site with
   `//nolint:<linter> // reason`, never by loosening the config.
-- **Coverage floor**: CI fails when total Go statement coverage drops below
-  `scripts/coverage_floor.txt` (`scripts/coverage_gate.sh`). Raise it when
-  coverage rises.
+- **Coverage floors**: CI fails when total Go statement coverage drops below
+  `scripts/coverage_floor.txt` (`scripts/coverage_gate.sh`), and when any
+  frontend metric drops below the `test.coverage.thresholds` in
+  `frontend/vite.config.js` (`npm run test:coverage`). Raise them when
+  coverage rises; never lower one to get a PR green.
 - **SDK & docs drift**: `scripts/sdk_drift.py` checks out `recurso-go`,
   `recurso-node`, `recurso-python` and `docs` in CI and fails when the docs
   copy of `openapi.yaml` differs or an SDK's covered-path count drops below

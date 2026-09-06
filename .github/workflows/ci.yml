@@ -65,9 +65,9 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Unit tests
+      - name: Unit tests (with coverage thresholds)
         working-directory: frontend
-        run: npx vitest run
+        run: npm run test:coverage
 
   test:
     name: Test

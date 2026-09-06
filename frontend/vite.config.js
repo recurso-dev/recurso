@@ -59,6 +59,22 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.js',
     css: true,
+    // `npm run test:coverage` (CI's Unit tests step) fails when any metric
+    // drops below its threshold. Raise a threshold when coverage rises; never
+    // lower one to get a PR green. Measured at 66/60/52/68 (statements/branches/functions/lines)
+    // when introduced.
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/__tests__/**', 'src/**/*.test.{js,jsx}', 'src/test/**', 'src/main.jsx'],
+      reporter: ['text-summary'],
+      thresholds: {
+        statements: 64,
+        branches: 57,
+        functions: 50,
+        lines: 66,
+      },
+    },
   },
   server: {
     proxy: {
