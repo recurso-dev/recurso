@@ -27,9 +27,13 @@ tests), three raw-UUID inputs replaced with pickers.
 SDK publishing to npm/PyPI is deliberately not being pursued right now
 (founder decision, 2026-09-03); the SDK repos carry CHANGELOGs and CI so it
 can be picked up later without further prep.
-**Engineering-ready:** #13 is now only the OpenAPI documentation half
-(defaults per endpoint); #14 unchanged; the other four Go `main.go`
-sections (public/auth/portal wiring) could follow `routes_v1.go`.
+**2026-09-06 update:** the engineering-ready queue is empty again. #13's
+documentation half shipped (every list endpoint's default and cap in
+OpenAPI, verified call site by call site), #14 closed with the generated
+`porttest` doubles (#751), the public/auth/portal route tables followed
+`routes_v1.go` out of `main.go` (#753), #15 was found already fixed, and
+v0.14.0 ("the hardening release") is prepared on `main` awaiting its tag.
+Full notes in `progress.md`.
 
 ## 2026-08-12 state: engineering-ready queue is EMPTY
 
@@ -105,9 +109,9 @@ are synced to the current spec.
 | # | Item | Impact | Effort | Notes |
 |---|------|--------|--------|-------|
 | ~~12b~~ | ~~React 19 + react-router 8 upgrade~~ | — | — | **DONE** — React 18.2 → 19.2.8, react-router-dom 7 → react-router 8.3.0 (v8 dropped the -dom package; 51 imports renamed), Tremor/lucide React-18 peers overridden to a single React 19, `.trivyignore` (GHSA-qwww-vcr4-c8h2) removed. lint/build/161 tests green. |
-| 13 | Pagination consistency on list endpoints | MED — silent truncation has bitten twice (CLAUDE.md) | LOW (remaining) | Parsing half done 2026-09-03: every hand-rolled `limit` parse now goes through `parseLimitOffset` with its endpoint's existing default/cap preserved. Remaining: document the per-endpoint defaults in OpenAPI. |
-| 14 | Interface-embedding test mocks | LOW-MED — every port widening breaks/panics mocks (`mockLedgerRepoFor*`, `stubCollectionsAgg`, …) | MED | Either generate mocks or convert to narrow per-test interfaces (capability-assertion pattern used by webhook/CRM paths is the house style now). |
-| 15 | Dunning-campaign + cancel-flow responses are unwrapped (no `{data:}`) | LOW — known API quirk, clients must stay tolerant | LOW | Breaking change; batch with a future v2 or additive alias. |
+| ~~13~~ | ~~Pagination consistency on list endpoints~~ | — | — | **DONE (2026-09-06)** — parsing half converged on `parseLimitOffset` on 09-03; the documentation half mapped all 31 paginated handlers to their routes and fixed the spec where it disagreed with the code: `/v1/invoices` and `/v1/payment-attempts` gained their page/per_page (+ limit/offset alias) parameters with defaults, the portal invoice/dispute lists their limit/offset, ledger entries its schema bounds, reconciliation runs' cap 200→250, dunning history's cap 200→500. Dunning history also had a real footgun: the handler capped at 500 but the service reset anything above 200 to 50 (silent truncation) — the service now clamps like everything else. Docs pages corrected in lockstep (the dunning-history page had described four query parameters and a paging envelope that never existed). |
+| ~~14~~ | ~~Interface-embedding test mocks~~ | — | — | **DONE (#751)** — generated `porttest.Unimplemented<Iface>` doubles for all 62 port interfaces (`go generate ./internal/core/port/porttest`); an unexpected call panics with the interface and method name instead of returning a silent nil. Convention recorded in CLAUDE.md; existing stubs converted opportunistically. |
+| ~~15~~ | ~~Dunning-campaign + cancel-flow responses are unwrapped (no `{data:}`)~~ | — | — | **ALREADY FIXED (verified 2026-09-05)** — both endpoints wrap `{data:}` in current code; only their delete responses stay `{status:"deleted"}`. CLAUDE.md note updated. |
 | 16 | `head` HTTP-tool alias footgun, iCloud `" 2"` duplicate files | — | — | Environment quirks, documented in memory; no code change. |
 
 ## Recently closed (context for the ranking)

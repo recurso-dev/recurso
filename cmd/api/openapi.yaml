@@ -2147,6 +2147,23 @@ paths:
             customer_id or subscription_id is provided.
           schema:
             type: string
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - name: limit
+          in: query
+          required: false
+          description: Alias of `per_page` (default 50, max 250); when both are sent `limit` wins.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 250
+        - name: offset
+          in: query
+          required: false
+          description: Row offset (default 0). Overrides the offset computed from `page`.
+          schema:
+            type: integer
+            minimum: 0
       responses:
         '200':
           description: Invoices for the tenant.
@@ -2332,8 +2349,10 @@ paths:
       parameters:
         - { name: status, in: query, required: false, schema: { type: string, enum: [initiated, processing, succeeded, failed, returned] } }
         - { name: q, in: query, required: false, description: "Case-insensitive substring search on the attempt's invoice_number or gateway payment reference (tenant-scoped), newest first. Backs the command-palette payment lookup; the status filter is ignored on the search path.", schema: { type: string } }
-        - { name: page, in: query, required: false, schema: { type: integer } }
-        - { name: per_page, in: query, required: false, schema: { type: integer } }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PerPage'
+        - { name: limit, in: query, required: false, description: "Alias of per_page (default 50, max 250); when both are sent limit wins.", schema: { type: integer, minimum: 1, maximum: 250 } }
+        - { name: offset, in: query, required: false, description: "Row offset (default 0). Overrides the offset computed from page.", schema: { type: integer, minimum: 0 } }
       responses:
         '200':
           description: The payments log page.
@@ -4562,6 +4581,24 @@ paths:
       summary: List the logged-in customer's invoices
       security:
         - portalSession: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 1000, max 1000 — a DoS bound, not a paging default).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 1000
+        - name: offset
+          in: query
+          required: false
+          description: Row offset (default 0).
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: The customer's invoices.
@@ -4913,6 +4950,24 @@ paths:
       summary: List the logged-in customer's invoice disputes
       security:
         - portalSession: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 1000, max 1000 — a DoS bound, not a paging default).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 1000
+        - name: offset
+          in: query
+          required: false
+          description: Row offset (default 0).
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: The customer's disputes.
@@ -5181,11 +5236,11 @@ paths:
       parameters:
         - name: limit
           in: query
-          description: Maximum records to return (values outside 1-200 fall back to 50).
+          description: Maximum records to return (default 50; a value above 500 is capped at 500, a non-positive value falls back to 50).
           schema:
             type: integer
             minimum: 1
-            maximum: 200
+            maximum: 500
             default: 50
       responses:
         '200':
@@ -5662,24 +5717,33 @@ paths:
           description: 1-based page number (default 1). Ignored when `offset` is given.
           schema:
             type: integer
+            minimum: 1
+            default: 1
         - name: per_page
           in: query
           required: false
           description: Page size (default 50, max 250). Alias of `limit`.
           schema:
             type: integer
+            minimum: 1
+            maximum: 250
+            default: 50
         - name: limit
           in: query
           required: false
           description: Page size (default 50, max 250). Same as `per_page`; when both are sent `limit` wins.
           schema:
             type: integer
+            minimum: 1
+            maximum: 250
         - name: offset
           in: query
           required: false
           description: Row offset (default 0). Overrides the offset computed from `page`.
           schema:
             type: integer
+            minimum: 0
+            default: 0
       responses:
         '200':
           description: Ledger transfers touching the account.
@@ -5907,7 +5971,7 @@ paths:
         The tenant's recorded reconciliation runs, newest first — when it was
         checked, by whom, and whether it tied out (total_discrepancies == 0).
       parameters:
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
+        - { name: limit, in: query, required: false, description: "Maximum runs to return, newest first (default 50, max 250).", schema: { type: integer, minimum: 1, default: 50, maximum: 250 } }
       responses:
         '200':
           description: The recorded runs.
