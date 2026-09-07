@@ -57,9 +57,23 @@ func (s *DunningAnalyticsService) GetWeightsByContext(ctx context.Context) ([]do
 	return s.repo.GetAllWeights(ctx)
 }
 
+// dunningHistoryDefaultLimit / dunningHistoryMaxLimit bound GetRecentHistory
+// the same way the HTTP layer's clampLimitOffset does: a non-positive limit
+// falls back to the default and a larger one is CAPPED, never reset to the
+// default (a caller asking for 300 used to silently get 50 — the exact
+// silent-truncation footgun CLAUDE.md warns about). The handler passes the
+// same cap, so the two layers agree.
+const (
+	dunningHistoryDefaultLimit = 50
+	dunningHistoryMaxLimit     = 500
+)
+
 func (s *DunningAnalyticsService) GetRecentHistory(ctx context.Context, tenantID uuid.UUID, limit int) ([]domain.DunningHistory, error) {
-	if limit <= 0 || limit > 200 {
-		limit = 50
+	if limit <= 0 {
+		limit = dunningHistoryDefaultLimit
+	}
+	if limit > dunningHistoryMaxLimit {
+		limit = dunningHistoryMaxLimit
 	}
 	return s.repo.GetRecentHistory(ctx, tenantID, limit)
 }

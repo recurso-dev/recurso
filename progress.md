@@ -1,5 +1,56 @@
 # Progress log
 
+## 2026-09-04 → 09-06 — v0.14.0 "the hardening release" prepared, then follow-ups
+
+Ten PRs on `main` since 09-03, each its own green-CI squash merge, then the
+release PR (#750: CHANGELOG 0.14.0, k8s image pin) — the tag is the founder's
+step. In order:
+
+- **#722 dunning atomic claim (ADR-003)** — the last money-path sweep without
+  a lease: `ClaimOverdueForDunning` (CTE, `FOR UPDATE SKIP LOCKED`, batches of
+  50, 15-minute lease); two instances no longer dun the same customer twice.
+- **#723 settings pages** render an error state on a failed load instead of
+  a blank saveable form; **#742** Batch F polish.
+- **#724 workers** honour cancellation (`Start(ctx)` via `startWorker`) and
+  249 service log calls carry the request context.
+- **#725 CI/ops** — least-privilege workflow token, per-branch concurrency,
+  job timeouts, E2E sentinel, Dependabot config, k8s startup probe + PDB,
+  access log middleware, dev auth bypass only when the server isn't live.
+- **#735 / #744 / #749 dependencies + toolchain** — gin 1.12, quic-go pinned
+  for GO-2026-5676, six safe module bumps, Go 1.26.8 / Node 24 / golangci-lint
+  v2.13.2 with 29 per-site suppressions (each with a reason).
+- **#743 observability** — slow-query log around the pq connector
+  (`SLOW_QUERY_THRESHOLD_MS`), `db_pool_*` gauges, `recurso_events_total`.
+- **#746 image** — `apk upgrade` in the runtime stage (Trivy blocked the
+  main build on a fixed openssl CVE).
+- **#751 porttest** — generated `Unimplemented<Iface>` doubles for all 62
+  port interfaces; unexpected calls panic by name. Backlog #14 closed.
+- **#753 route split** — public/auth/portal tables out of `main.go`
+  (1995→1857 lines); verified 323 registrations identical by an extractor
+  over both trees.
+- **#754 spec corrections + docs#86** — 59 new reference pages (323/323
+  operations documented), ten spec mismatches fixed against the handlers,
+  Node types regenerated (#18).
+- **#755** over-total dispute credit is a 400 not a 500; `/health` pings with
+  the request context; API_GUIDELINES no longer lists envelope deviations.
+- **#756 coverage floors** — vitest coverage thresholds in CI
+  (64/57/50/66), Go floor 41→43, `npm audit fix`, three more Postgres tests
+  made uncrowdable (verified against a deliberately crowded database).
+- **Pagination documentation (backlog #13, closed)** — every paginated
+  handler mapped to its route; spec and docs pages fixed where they
+  disagreed with the code, and one real footgun removed: dunning history's
+  service reset any `limit` above 200 to 50 while the handler capped at
+  500. Both layers now clamp to 500.
+
+Verification evidence: every PR carried the local gate (gofmt, golangci-lint
+v2.13.2, build/vet, the Postgres suite with the invariant harness, the
+coverage floors, the OpenAPI drift test, frontend lint/build/vitest, the
+cross-repo drift check) and merged only on a green head; main-branch runs
+were confirmed after each merge, Build & Push included.
+
+Open: the v0.14.0 tag (founder); Tailwind 4 / ESLint 10 majors held back by
+the Dependabot ignore rules on purpose.
+
 ## 2026-09-03 — cross-repo hygiene wave (SDK/docs re-sync, lint policy, migrations, route split)
 
 Assessment first (all five repos): the API repo was healthy and its backlog
