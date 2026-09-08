@@ -18,7 +18,7 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.7.0
 	github.com/pquerna/otp v1.5.0
 	github.com/razorpay/razorpay-go v1.4.1
-	github.com/redis/go-redis/v9 v9.19.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stripe/stripe-go/v76 v76.25.0
 	github.com/tigerbeetle/tigerbeetle-go v0.15.3
