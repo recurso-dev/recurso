@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/recurso-dev/recurso/internal/core/domain"
@@ -21,6 +22,7 @@ type SavedCardCharger interface {
 type gatewayConnectionOpener interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*domain.GatewayConnection, error)
 	OpenSecret(conn *domain.GatewayConnection) (string, error)
+	OpenWebhookSecret(conn *domain.GatewayConnection) (string, error)
 }
 
 // SavedCardGatewayRouter returns the off-session charger a saved card must be
@@ -30,7 +32,7 @@ type gatewayConnectionOpener interface {
 //
 //   - nil connection id  → the platform gateway (all pre-B1 cards and tenants
 //     without a BYO connection);
-//   - a connection id    → that tenant's BYO Stripe gateway, built from the
+//   - a connection id    → that tenant's BYO Stripe or Wompi gateway, built from the
 //     stored (decrypted) credentials.
 //
 // A connection that can't be loaded or opened is a hard error, not a silent
@@ -40,6 +42,7 @@ type gatewayConnectionOpener interface {
 type SavedCardGatewayRouter struct {
 	conns       gatewayConnectionOpener
 	buildStripe func(secret string) SavedCardCharger
+	buildWompi  func(publicKey, privateKey, eventsSecret, integritySecret string) SavedCardCharger
 	platform    SavedCardCharger
 }
 
@@ -48,6 +51,11 @@ type SavedCardGatewayRouter struct {
 // constructs a Stripe charger from a decrypted secret.
 func NewSavedCardGatewayRouter(conns gatewayConnectionOpener, buildStripe func(secret string) SavedCardCharger, platform SavedCardCharger) *SavedCardGatewayRouter {
 	return &SavedCardGatewayRouter{conns: conns, buildStripe: buildStripe, platform: platform}
+}
+
+// SetWompiBuilder sets the constructor for Wompi saved-card chargers.
+func (r *SavedCardGatewayRouter) SetWompiBuilder(b func(publicKey, privateKey, eventsSecret, integritySecret string) SavedCardCharger) {
+	r.buildWompi = b
 }
 
 // ChargerFor returns the charger for a saved card's gateway connection.
@@ -62,12 +70,32 @@ func (r *SavedCardGatewayRouter) ChargerFor(ctx context.Context, gatewayConnecti
 	if conn == nil {
 		return nil, fmt.Errorf("saved-card gateway connection %s not found", *gatewayConnectionID)
 	}
-	if conn.Provider != domain.GatewayStripe {
-		return nil, fmt.Errorf("saved-card gateway connection %s is %s, not stripe", *gatewayConnectionID, conn.Provider)
+	switch conn.Provider {
+	case domain.GatewayStripe:
+		secret, err := r.conns.OpenSecret(conn)
+		if err != nil || secret == "" {
+			return nil, fmt.Errorf("open saved-card gateway secret for %s: %w", *gatewayConnectionID, err)
+		}
+		return r.buildStripe(secret), nil
+	case domain.GatewayWompi:
+		if r.buildWompi == nil {
+			return nil, fmt.Errorf("wompi saved-card charger not configured")
+		}
+		secret, err := r.conns.OpenSecret(conn)
+		if err != nil || secret == "" {
+			return nil, fmt.Errorf("open saved-card gateway secret for %s: %w", *gatewayConnectionID, err)
+		}
+		webhookSecret, _ := r.conns.OpenWebhookSecret(conn)
+		prvKey, integritySecret := parseWompiSecret(secret)
+		return r.buildWompi(conn.PublicKey, prvKey, webhookSecret, integritySecret), nil
+	default:
+		return nil, fmt.Errorf("saved-card gateway connection %s has unsupported provider %s", *gatewayConnectionID, conn.Provider)
 	}
-	secret, err := r.conns.OpenSecret(conn)
-	if err != nil || secret == "" {
-		return nil, fmt.Errorf("open saved-card gateway secret for %s: %w", *gatewayConnectionID, err)
+}
+
+func parseWompiSecret(secret string) (privateKey, integritySecret string) {
+	if parts := strings.SplitN(secret, ":", 2); len(parts) == 2 {
+		return parts[0], parts[1]
 	}
-	return r.buildStripe(secret), nil
+	return secret, ""
 }

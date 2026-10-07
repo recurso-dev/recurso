@@ -33,6 +33,7 @@ const COUNTRY_ISO = {
   India: "IN",
   Canada: "CA",
   "United Kingdom": "GB",
+  Colombia: "CO",
 };
 
 const INDIA_STATES = [

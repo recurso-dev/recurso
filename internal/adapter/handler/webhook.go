@@ -29,9 +29,13 @@ type WebhookHandler struct {
 	inboundDedup           InboundWebhookDedup // nil-safe; when unset, dedup is skipped
 	paymentAttempts        paymentAttemptStore // nil-safe; ACH async settlement state (Inc 3b)
 	stripeWebhookSecret    string
+	wompiEventsSecret      string
 	gatewayConns           gatewayConnResolver // nil-safe; per-connection (BYO) webhook secrets
 	logger                 *slog.Logger
 }
+
+// SetWompiEventsSecret configures the platform/env signing secret for Wompi webhooks.
+func (h *WebhookHandler) SetWompiEventsSecret(s string) { h.wompiEventsSecret = s }
 
 // gatewayConnResolver resolves a BYO connection by id and decrypts its webhook
 // signing secret. Satisfied by *service.GatewayConnectionService. Used only by

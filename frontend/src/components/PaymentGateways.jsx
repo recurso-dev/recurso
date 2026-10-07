@@ -69,6 +69,27 @@ const GATEWAYS = [
       urlLabel: "Open GoCardless developers",
     },
   },
+  {
+    id: "wompi",
+    name: "Wompi (Bancolombia)",
+    publicLabel: "Public key",
+    publicPlaceholder: "pub_test_… / pub_prod_…",
+    secretLabel: "Private key",
+    secretPlaceholder: "prv_test_… / prv_prod_…",
+    integrityPlaceholder: "test_integrity_… / prod_integrity_…",
+    hasIntegrityKey: true,
+    guide: {
+      steps: [
+        "Inicia sesión en el Dashboard de Wompi (wompi.co).",
+        "Ve a Desarrolladores → Llaves de integración técnica.",
+        "Copia la Llave pública (pub_...) y la Llave privada (prv_...).",
+        "Copia el Secreto de integridad (test_integrity_... / prod_integrity_...).",
+        "Para webhooks, copia el Secreto de eventos y pega la URL de webhook provista abajo en tu panel de Wompi.",
+      ],
+      url: "https://comercios.wompi.co/desarrolladores",
+      urlLabel: "Abrir Dashboard de Wompi",
+    },
+  },
 ];
 
 // Webhooks are served at the API origin (not under /v1); API_ROOT strips the
@@ -81,7 +102,7 @@ export default function PaymentGateways() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [connectTarget, setConnectTarget] = useState(null); // gateway being connected
-  const [form, setForm] = useState({ mode: "test", public_key: "", secret_key: "", webhook_secret: "" });
+  const [form, setForm] = useState({ mode: "test", public_key: "", secret_key: "", integrity_secret: "", webhook_secret: "" });
   const [saving, setSaving] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
@@ -109,17 +130,23 @@ export default function PaymentGateways() {
 
   const openConnect = (gateway) => {
     setConnectTarget(gateway);
-    setForm({ mode: "test", public_key: "", secret_key: "", webhook_secret: "" });
+    setForm({ mode: "test", public_key: "", secret_key: "", integrity_secret: "", webhook_secret: "" });
   };
 
   const submitConnect = async () => {
     setSaving(true);
     try {
+      // If gateway is Wompi, encode privateKey:integritySecret in secret_key
+      let finalSecretKey = form.secret_key;
+      if (connectTarget.id === "wompi" && form.integrity_secret) {
+        finalSecretKey = `${form.secret_key}:${form.integrity_secret}`;
+      }
+
       await api.connectGateway({
         provider: connectTarget.id,
         mode: form.mode,
         public_key: form.public_key,
-        secret_key: form.secret_key,
+        secret_key: finalSecretKey,
         webhook_secret: form.webhook_secret,
       });
       toast.success(`${connectTarget.name} connected.`);
@@ -334,7 +361,7 @@ export default function PaymentGateways() {
                 </div>
               )}
               <div className="space-y-1.5">
-                <Label htmlFor="gw-secret">{connectTarget.noPublicKey ? "Access token" : "Secret key"}</Label>
+                <Label htmlFor="gw-secret">{connectTarget.secretLabel || (connectTarget.noPublicKey ? "Access token" : "Secret key")}</Label>
                 <Input
                   id="gw-secret"
                   type="password"
@@ -344,6 +371,19 @@ export default function PaymentGateways() {
                   className="font-mono"
                 />
               </div>
+              {connectTarget.hasIntegrityKey && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="gw-integrity">Integrity secret</Label>
+                  <Input
+                    id="gw-integrity"
+                    type="password"
+                    value={form.integrity_secret}
+                    onChange={(e) => setForm({ ...form, integrity_secret: e.target.value })}
+                    placeholder={connectTarget.integrityPlaceholder}
+                    className="font-mono"
+                  />
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 You can add the webhook signing secret after connecting, once you've created a
                 webhook at the URL shown on the card.

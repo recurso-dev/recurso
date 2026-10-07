@@ -37,6 +37,7 @@ const MANDATE_CURRENCIES = [
   { code: "INR", label: "INR — UPI (India)" },
   { code: "EUR", label: "EUR — SEPA bank debit" },
   { code: "GBP", label: "GBP — Bacs bank debit" },
+  { code: "COP", label: "COP — Wompi debit (Colombia)" },
 ];
 
 // UPI Autopay mandates: standing authorizations to debit a customer up to a

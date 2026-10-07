@@ -116,6 +116,106 @@ export default function Checkout() {
   const [gateway, setGateway] = useState(null);
   const [rzpOrder, setRzpOrder] = useState(null); // Razorpay order details
 
+  // Wompi direct card form state
+  const [wompiCard, setWompiCard] = useState({
+    number: "",
+    cvc: "",
+    exp_month: "",
+    exp_year: "",
+    card_holder: "",
+    installments: 1,
+    save_card: true,
+  });
+  const [wompiSubmitting, setWompiSubmitting] = useState(false);
+  const [wompiError, setWompiError] = useState(null);
+  const [wompiToken, setWompiToken] = useState(null);
+  // ...
+  // (router will also store publicKey etc. above — these are scoped here)
+  // ...
+  const wompiPromise = useMemo(() => {
+    if (!publishableKey) return null;
+    // We don't need to load Wompi.js — tokenization goes straight to Wompi's
+    // /v1/tokens/cards endpoint from the browser using the publishable key.
+    return Promise.resolve({ sandbox: publishableKey.includes("test") });
+  }, [publishableKey]);
+
+  // Tokenize the card with Wompi API (browser-side, using the public key so the
+  // PAN never reaches Recurso). Mirrors how the Wompi hosted widget works
+  // internally — same endpoint, same shape.
+  const wompiTokenize = async (card) => {
+    const base = publishableKey.includes("test")
+      ? "https://sandbox.wompi.co/v1"
+      : "https://production.wompi.co/v1";
+    const res = await fetch(`${base}/tokens/cards`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publishableKey}`,
+      },
+      body: JSON.stringify({
+        number: card.number,
+        cvc: card.cvc,
+        exp_month: card.exp_month,
+        exp_year: card.exp_year,
+        card_holder: card.card_holder,
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      const errs = body?.error?.messages || body?.error?.reason || {};
+      const msg = Object.values(errs).flat().join(" ") || body?.error?.reason || "Tokenization failed";
+      throw new Error(msg);
+    }
+    const data = await res.json();
+    return data.data.id; // "tok_..."
+  };
+
+  const submitWompi = async (e) => {
+    e.preventDefault();
+    setWompiSubmitting(true);
+    setWompiError(null);
+    try {
+      // 1. Tokenize the card client-side via Wompi API
+      const tokenId = await wompiTokenize(wompiCard);
+      setWompiToken(tokenId);
+
+      // 2. POST to our backend — it talks to Wompi's /transactions
+      const res = await fetch(`${API_BASE}/checkout/${id}/wompi/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          card_token: tokenId,
+          installments: Number(wompiCard.installments) || 1,
+          save_payment_method: wompiCard.save_card,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Payment failed");
+
+      // Recurso marks the invoice paid via /v1/transactions response — when
+      // Wompi returns APPROVED synchronously, the server returns the invoice
+      // already in `paid` state and we jump straight to the success screen.
+      if (data.data?.status === "paid") {
+        setStatus("paid");
+        return;
+      }
+      // PENDING: wait for the webhook. We poll once after a short delay.
+      await new Promise((r) => setTimeout(r, 2500));
+      const verify = await fetch(`${API_BASE}/checkout/${id}`);
+      const verifyData = await verify.json();
+      if (verifyData.data?.status === "paid") setStatus("paid");
+      else if (verifyData.data?.status === "failed") {
+        setError("Payment was declined by Wompi. Please try another card.");
+      } else {
+        setStatus("processing");
+      }
+    } catch (err) {
+      setWompiError(err.message);
+    } finally {
+      setWompiSubmitting(false);
+    }
+  };
+
   // Load the invoice for display + paid check.
   useEffect(() => {
     fetch(`${API_BASE}/checkout/${id}`)
@@ -401,6 +501,128 @@ export default function Checkout() {
             netbanking).
           </p>
         </div>
+      ) : gateway === "wompi" ? (
+        // Wompi direct card form. Tokenize via the Wompi public API from
+        // the browser, then POST the token to Recurso's /wompi/pay endpoint
+        // which finalises the charge through the private Wompi API. Card
+        // details never leave the browser for the merchant.
+        <form onSubmit={submitWompi} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="wompi-holder">Cardholder name</Label>
+            <Input
+              id="wompi-holder"
+              value={wompiCard.card_holder}
+              onChange={(e) =>
+                setWompiCard((p) => ({ ...p, card_holder: e.target.value }))
+              }
+              placeholder="As appears on card"
+              required
+              className="font-mono"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wompi-number">Card number</Label>
+            <Input
+              id="wompi-number"
+              value={wompiCard.number}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "").slice(0, 19);
+                setWompiCard((p) => ({ ...p, number: digits }));
+              }}
+              placeholder="4242 4242 4242 4242"
+              inputMode="numeric"
+              autoComplete="cc-number"
+              required
+              className="font-mono"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="wompi-exp">Expiry (MM/YY)</Label>
+              <Input
+                id="wompi-exp"
+                value={wompiCard.exp_month && wompiCard.exp_year
+                  ? `${wompiCard.exp_month}/${wompiCard.exp_year}`
+                  : ""}
+                onChange={(e) => {
+                  const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                  const mm = v.slice(0, 2);
+                  const yy = v.slice(2, 4);
+                  setWompiCard((p) => ({
+                    ...p,
+                    exp_month: mm,
+                    exp_year: yy,
+                  }));
+                }}
+                placeholder="12/28"
+                inputMode="numeric"
+                autoComplete="cc-exp"
+                required
+                className="font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="wompi-cvc">CVC</Label>
+              <Input
+                id="wompi-cvc"
+                type="password"
+                value={wompiCard.cvc}
+                onChange={(e) =>
+                  setWompiCard((p) => ({ ...p, cvc: e.target.value.slice(0, 4) }))
+                }
+                placeholder="123"
+                inputMode="numeric"
+                autoComplete="cc-csc"
+                required
+                className="font-mono"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="wompi-inst">Cuotas (1-36)</Label>
+            <Input
+              id="wompi-inst"
+              type="number"
+              min="1"
+              max="36"
+              value={wompiCard.installments}
+              onChange={(e) =>
+                setWompiCard((p) => ({ ...p, installments: Number(e.target.value) || 1 }))
+              }
+              className="font-mono"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={wompiCard.save_card}
+              onChange={(e) =>
+                setWompiCard((p) => ({ ...p, save_card: e.target.checked }))
+              }
+              className="h-4 w-4 rounded border-input text-primary focus-visible:ring-2 focus-visible:ring-ring"
+            />
+            Save this card for future invoices
+          </label>
+          {wompiError && (
+            <div className="rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {wompiError}
+            </div>
+          )}
+          <Button
+            type="submit"
+            disabled={wompiSubmitting}
+            size="lg"
+            className="w-full"
+          >
+            {wompiSubmitting
+              ? "Processing…"
+              : `Pay ${formatCurrency(invoice.total, invoice.currency)}`}
+          </Button>
+          <p className="text-center text-xs text-subtle">
+            Card data is sent directly to Wompi for tokenization. Recurso never
+            sees your card number or CVC.
+          </p>
+        </form>
       ) : gateway && gateway !== "stripe" ? (
         <div className="rounded-lg bg-warning/5 px-3 py-3 text-sm text-warning ring-1 ring-inset ring-warning/20">
           Self-serve checkout for {invoice.currency} isn't available here yet.

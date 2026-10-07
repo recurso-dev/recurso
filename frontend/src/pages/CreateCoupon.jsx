@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/select";
 
 // Currency choices when the tenant has no plans yet (mirrors CreatePlan).
-const FALLBACK_CURRENCIES = ["USD", "INR", "EUR", "GBP"];
+const FALLBACK_CURRENCIES = ["USD", "INR", "EUR", "GBP", "COP"];
 
 const symbolFor = (cur) => {
   try {

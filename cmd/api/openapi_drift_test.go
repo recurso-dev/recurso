@@ -22,7 +22,9 @@ import (
 func TestOpenAPISpecCoversRegisteredRoutes(t *testing.T) {
 	// Intentionally undocumented routes.
 	allowlist := map[string]string{
-		// none currently
+		"post /checkout/{id}/wompi/pay": "Wompi direct payment endpoint",
+		"post /webhooks/wompi":          "Wompi inbound webhook receiver",
+		"post /webhooks/wompi/{connID}": "Wompi BYO inbound webhook receiver",
 	}
 
 	// Route registrations live in routes_public.go, routes_auth.go,

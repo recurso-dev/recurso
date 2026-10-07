@@ -23,6 +23,9 @@ func (f *fakeConnOpener) GetByID(_ context.Context, _ uuid.UUID) (*domain.Gatewa
 func (f *fakeConnOpener) OpenSecret(_ *domain.GatewayConnection) (string, error) {
 	return f.secret, f.secErr
 }
+func (f *fakeConnOpener) OpenWebhookSecret(_ *domain.GatewayConnection) (string, error) {
+	return f.secret, f.secErr
+}
 
 // namedCharger records which gateway a charge was routed to.
 type namedCharger struct{ name string }

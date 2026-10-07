@@ -15,6 +15,7 @@ export const COUNTRIES = [
   { code: "AU", name: "Australia" },
   { code: "SG", name: "Singapore" },
   { code: "AE", name: "United Arab Emirates" },
+  { code: "CO", name: "Colombia" },
 ];
 
 export const COUNTRY_NAME = Object.fromEntries(COUNTRIES.map((c) => [c.code, c.name]));

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 type ConnectionVault interface {
 	List(ctx context.Context, tenantID uuid.UUID) ([]*domain.GatewayConnection, error)
 	OpenSecret(conn *domain.GatewayConnection) (string, error)
+	OpenWebhookSecret(conn *domain.GatewayConnection) (string, error)
 }
 
 // GatewayResolver builds a per-tenant SmartRouter from the tenant's stored
@@ -33,6 +35,7 @@ type GatewayResolver struct {
 	buildRazorpay   func(keyID, secret string) port.PaymentGateway
 	buildStripe     func(secret string) port.PaymentGateway
 	buildGoCardless func(token, environment string) port.PaymentGateway
+	buildWompi      func(publicKey, privateKey, eventsSecret, integritySecret string) port.PaymentGateway
 
 	mu    sync.RWMutex
 	cache map[uuid.UUID]cachedRouter
@@ -53,6 +56,9 @@ func NewGatewayResolver(vault ConnectionVault, env *SmartRouter) *GatewayResolve
 		buildStripe: func(secret string) port.PaymentGateway { return NewStripeGateway(secret, "") },
 		buildGoCardless: func(token, environment string) port.PaymentGateway {
 			return NewGoCardlessGateway(token, environment)
+		},
+		buildWompi: func(publicKey, privateKey, eventsSecret, integritySecret string) port.PaymentGateway {
+			return NewWompiGateway(publicKey, privateKey, eventsSecret, integritySecret)
 		},
 		cache: map[uuid.UUID]cachedRouter{},
 	}
@@ -94,6 +100,7 @@ func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter 
 	razorpay := r.env.Razorpay
 	stripe := r.env.Stripe
 	var gocardless port.PaymentGateway
+	var wompi port.PaymentGateway
 
 	for _, conn := range conns {
 		if !conn.HasSecret() {
@@ -116,6 +123,10 @@ func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter 
 				env = "sandbox"
 			}
 			gocardless = r.buildGoCardless(secret, env)
+		case domain.GatewayWompi:
+			webhookSecret, _ := r.vault.OpenWebhookSecret(conn)
+			prvKey, integritySecret := parseWompiSecret(secret)
+			wompi = r.buildWompi(conn.PublicKey, prvKey, webhookSecret, integritySecret)
 		}
 	}
 
@@ -143,6 +154,12 @@ func (r *GatewayResolver) build(conns []*domain.GatewayConnection) *SmartRouter 
 			}
 		}
 	}
+	if wompi != nil {
+		extra["wompi"] = wompi
+		if _, taken := overrides["COP"]; !taken {
+			overrides["COP"] = "wompi"
+		}
+	}
 	router.currencyOverrides = overrides
 	router.Extra = extra
 	return router
@@ -165,6 +182,24 @@ func (r *GatewayResolver) RazorpayFor(ctx context.Context, tenantID uuid.UUID) p
 		return router.Razorpay
 	}
 	return r.env.Razorpay
+}
+
+// WompiFor mirrors StripeFor for the Wompi slot.
+func (r *GatewayResolver) WompiFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+	if router := r.For(ctx, tenantID); router != nil && router.Extra != nil && router.Extra["wompi"] != nil {
+		return router.Extra["wompi"]
+	}
+	if r.env != nil && r.env.Extra != nil {
+		return r.env.Extra["wompi"]
+	}
+	return nil
+}
+
+func parseWompiSecret(secret string) (privateKey, integritySecret string) {
+	if parts := strings.SplitN(secret, ":", 2); len(parts) == 2 {
+		return parts[0], parts[1]
+	}
+	return secret, ""
 }
 
 // connectionsSignature is a stable fingerprint of a tenant's connection set;

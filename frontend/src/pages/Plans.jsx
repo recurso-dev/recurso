@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const CURRENCY_FILTERS = ["all", "USD", "INR"];
+const CURRENCY_FILTERS = ["all", "USD", "INR", "EUR", "GBP", "COP"];
 const INTERVAL_FILTERS = ["all", "month", "year"];
 const PAGE_SIZE = 10;
 

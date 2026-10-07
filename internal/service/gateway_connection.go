@@ -81,7 +81,7 @@ func (s *GatewayConnectionService) Connect(ctx context.Context, tenantID uuid.UU
 
 	provider := domain.GatewayProvider(strings.ToLower(strings.TrimSpace(in.Provider)))
 	if !domain.ValidGatewayProvider(provider) {
-		return nil, GatewayConnectionValidationError("provider must be one of: stripe, razorpay")
+		return nil, GatewayConnectionValidationError("provider must be one of: stripe, razorpay, gocardless, wompi")
 	}
 
 	mode := domain.GatewayMode(strings.ToLower(strings.TrimSpace(in.Mode)))

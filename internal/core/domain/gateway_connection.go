@@ -17,12 +17,13 @@ const (
 	GatewayStripe     GatewayProvider = "stripe"
 	GatewayRazorpay   GatewayProvider = "razorpay"
 	GatewayGoCardless GatewayProvider = "gocardless"
+	GatewayWompi      GatewayProvider = "wompi"
 )
 
 // ValidGatewayProvider reports whether p is a connectable provider.
 func ValidGatewayProvider(p GatewayProvider) bool {
 	switch p {
-	case GatewayStripe, GatewayRazorpay, GatewayGoCardless:
+	case GatewayStripe, GatewayRazorpay, GatewayGoCardless, GatewayWompi:
 		return true
 	}
 	return false

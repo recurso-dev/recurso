@@ -158,6 +158,7 @@ func registerPublicRoutes(r *gin.Engine, h *publicHandlers) {
 	r.POST("/checkout/:id/pay", h.publicLimit, h.checkoutHandler.InitiatePayment)
 	r.GET("/checkout/:id/success", h.publicLimit, h.checkoutHandler.CheckoutSuccess)
 	r.POST("/checkout/:id/razorpay/verify", h.publicLimit, h.checkoutHandler.RazorpayVerify)
+	r.POST("/checkout/:id/wompi/pay", h.publicLimit, h.checkoutHandler.WompiDirectPay)
 	r.POST("/payments/order", h.publicLimit, h.paymentHandler.CreateOrder)
 	// Recurso Cloud waitlist (ENG-12): public demand capture from the website.
 	r.POST("/waitlist", h.publicLimit, h.waitlistHandler.Join)
@@ -170,6 +171,8 @@ func registerPublicRoutes(r *gin.Engine, h *publicHandlers) {
 	r.POST("/webhooks/stripe/:connID", h.webhookHandler.HandleStripe)
 	r.POST("/webhooks/gocardless", h.webhookHandler.HandleGoCardless)
 	r.POST("/webhooks/gocardless/:connID", h.webhookHandler.HandleGoCardless)
+	r.POST("/webhooks/wompi", h.webhookHandler.HandleWompi)
+	r.POST("/webhooks/wompi/:connID", h.webhookHandler.HandleWompi)
 
 	// OAuth callbacks arrive as bare browser redirects from the provider (no
 	// session cookie, no API key) — authentication is the HMAC-signed state

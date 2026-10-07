@@ -84,6 +84,11 @@ func (r *SmartRouter) gatewayFor(currency string) (port.PaymentGateway, error) {
 		}
 		return r.Razorpay, nil
 	}
+	if cur == "COP" {
+		if gw := r.resolveByName("wompi"); gw != nil {
+			return gw, nil
+		}
+	}
 	if r.Stripe == nil {
 		return nil, fmt.Errorf("stripe gateway not configured for currency %s", currency)
 	}

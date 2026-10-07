@@ -55,6 +55,7 @@ type checkoutBuyerSetter interface {
 type checkoutGatewayResolver interface {
 	StripeFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
 	RazorpayFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
+	WompiFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway
 }
 
 // checkoutConnLookup resolves a tenant's active connection so the browser gets
@@ -73,6 +74,7 @@ type CheckoutHandler struct {
 	publishableKey string
 	razorpay       razorpayVerifier
 	razorpayKeyID  string
+	wompiPublicKey string
 	customers      checkoutCustomerReader
 	buyerSetter    checkoutBuyerSetter
 	// Per-tenant (BYO) resolution; nil => env values above (backward compat).
@@ -145,6 +147,20 @@ func (h *CheckoutHandler) SetBuyerDetails(customers checkoutCustomerReader, sett
 func (h *CheckoutHandler) SetRazorpay(v razorpayVerifier, keyID string) {
 	h.razorpay = v
 	h.razorpayKeyID = keyID
+}
+
+// SetWompi sets the default Wompi public key for browser checkout.
+func (h *CheckoutHandler) SetWompi(publicKey string) {
+	h.wompiPublicKey = publicKey
+}
+
+func (h *CheckoutHandler) wompiFor(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+	if h.gwResolver != nil {
+		if w := h.gwResolver.WompiFor(ctx, tenantID); w != nil {
+			return w
+		}
+	}
+	return h.paymentGateway
 }
 
 // NewCheckoutHandler wires the checkout. gw creates orders (currency-routed);
@@ -254,6 +270,7 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 	// that actually created the order above.
 	stripePubKey := h.publicKeyFor(payCtx, invoice.TenantID, domain.GatewayStripe, h.publishableKey)
 	razorpayKeyID := h.publicKeyFor(payCtx, invoice.TenantID, domain.GatewayRazorpay, h.razorpayKeyID)
+	wompiPubKey := h.publicKeyFor(payCtx, invoice.TenantID, domain.GatewayWompi, h.wompiPublicKey)
 
 	// A gateway the frontend would drive with a missing browser-side key is a
 	// dead end (silent PaymentIntent churn on Stripe, a throwing Razorpay
@@ -264,6 +281,10 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 	}
 	if gatewayName == "razorpay" && razorpayKeyID == "" {
 		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Razorpay key id)")
+		return
+	}
+	if gatewayName == "wompi" && wompiPubKey == "" {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "checkout is not fully configured (missing Wompi public key)")
 		return
 	}
 
@@ -289,6 +310,7 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 			"client_secret":   order.ClientSecret,
 			"publishable_key": stripePubKey,
 			"razorpay_key_id": razorpayKeyID,
+			"wompi_public_key": wompiPubKey,
 		},
 	})
 }
@@ -481,6 +503,113 @@ func (h *CheckoutHandler) RazorpayVerify(c *gin.Context) {
 	}
 	if req.PaymentID != "" {
 		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, req.PaymentID)
+	}
+
+	respondCheckoutStatus(c, invoice, "paid")
+}
+
+type wompiDirectPayRequest struct {
+	CardToken         string `json:"card_token" binding:"required"`
+	Installments      int    `json:"installments"`
+	SavePaymentMethod bool   `json:"save_payment_method"`
+	Brand             string `json:"brand"`
+	Last4             string `json:"last4"`
+	ExpMonth          int    `json:"exp_month"`
+	ExpYear           int    `json:"exp_year"`
+}
+
+type wompiDirectCharger interface {
+	ChargeToken(ctx context.Context, customerEmail, cardToken string, installments int, amount int64, currency, invoiceID string) (*port.PaymentResult, error)
+	CreatePaymentSource(ctx context.Context, customerEmail, cardToken string) (string, error)
+}
+
+// WompiDirectPay processes direct card payments tokenized in the browser and confirms the invoice.
+func (h *CheckoutHandler) WompiDirectPay(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "invalid invoice ID")
+		return
+	}
+
+	ctx := c.Request.Context()
+	invoice, err := h.invoiceRepo.GetByIDPublic(ctx, id)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, codeInternalError, "failed to fetch invoice")
+		return
+	}
+	if invoice == nil {
+		respondError(c, http.StatusNotFound, codeNotFound, "invoice not found")
+		return
+	}
+	if invoice.Status == domain.InvoiceStatusPaid {
+		respondCheckoutStatus(c, invoice, "paid")
+		return
+	}
+
+	var req wompiDirectPayRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, codeValidationFailed, "card_token is required")
+		return
+	}
+
+	gw := h.wompiFor(ctx, invoice.TenantID)
+	wompiCharger, ok := gw.(wompiDirectCharger)
+	if !ok || wompiCharger == nil {
+		respondError(c, http.StatusServiceUnavailable, codeInternalError, "wompi payment gateway is not available")
+		return
+	}
+
+	// 1. Fetch buyer email
+	var customerEmail string
+	if h.customers != nil {
+		if cust, _ := h.customers.GetByIDPublic(ctx, invoice.CustomerID); cust != nil {
+			customerEmail = cust.Email
+		}
+	}
+	if customerEmail == "" {
+		customerEmail = "billing@customer.com"
+	}
+
+	// 2. Charge the card token
+	res, err := wompiCharger.ChargeToken(ctx, customerEmail, req.CardToken, req.Installments, invoice.Total, invoice.Currency, invoice.ID.String())
+	if err != nil || res == nil || !res.Success {
+		errMsg := "payment declined by wompi"
+		if res != nil && res.ErrorMsg != "" {
+			errMsg = res.ErrorMsg
+		} else if err != nil {
+			errMsg = err.Error()
+		}
+		respondError(c, http.StatusBadRequest, codePaymentFailed, errMsg)
+		return
+	}
+
+	// 3. Optionally save payment method for future recurring subscriptions
+	if req.SavePaymentMethod {
+		if sourceID, err := wompiCharger.CreatePaymentSource(ctx, customerEmail, req.CardToken); err == nil && sourceID != "" {
+			var connID *uuid.UUID
+			if h.connLookup != nil {
+				if conn, err := h.connLookup.GetActive(ctx, invoice.TenantID, domain.GatewayWompi); err == nil && conn != nil {
+					connID = &conn.ID
+				}
+			}
+			if cs, ok := h.customers.(interface {
+				SetDefaultPaymentMethod(ctx context.Context, id uuid.UUID, paymentMethodID, brand, last4 string, expMonth, expYear int, gatewayConnectionID *uuid.UUID) error
+			}); ok {
+				_ = cs.SetDefaultPaymentMethod(ctx, invoice.CustomerID, sourceID, req.Brand, req.Last4, req.ExpMonth, req.ExpYear, connID)
+			}
+		}
+	}
+
+	// 4. Settle invoice
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
+	if h.settler != nil {
+		if _, err := h.settler.MarkInvoicePaid(tenantCtx, invoice.ID); err != nil {
+			respondError(c, http.StatusInternalServerError, codeInternalError, "failed to settle invoice")
+			return
+		}
+	}
+	if res.PaymentID != "" {
+		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, res.PaymentID)
 	}
 
 	respondCheckoutStatus(c, invoice, "paid")

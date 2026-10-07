@@ -31,6 +31,7 @@ const (
 	codeInternalError      = httperr.CodeInternalError
 	codeRateLimited        = httperr.CodeRateLimited
 	codeInvoiceAlreadyPaid = httperr.CodeInvoiceAlreadyPaid
+	codePaymentFailed      = "payment_failed"
 )
 
 // respondError writes the canonical error envelope.

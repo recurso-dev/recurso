@@ -274,6 +274,17 @@ func main() {
 			os.Getenv("ADYEN_MERCHANT_ACCOUNT"), os.Getenv("ADYEN_ENV"), os.Getenv("ADYEN_LIVE_URL_PREFIX")))
 		log.Println("Adyen gateway configured (EXPERIMENTAL — sandbox verification pending)")
 	}
+	var wompiGateway port.PaymentGateway
+	if prvKey := os.Getenv("WOMPI_PRIVATE_KEY"); prvKey != "" && !demo.Enabled() {
+		wompiGateway = gateway.NewWompiGateway(
+			os.Getenv("WOMPI_PUBLIC_KEY"),
+			prvKey,
+			os.Getenv("WOMPI_EVENTS_SECRET"),
+			os.Getenv("WOMPI_INTEGRITY_SECRET"),
+		)
+		paymentGateway.RegisterGateway("wompi", wompiGateway)
+		log.Println("Wompi gateway configured for Colombia (COP)")
+	}
 	if err := paymentGateway.SetCurrencyOverrides(os.Getenv("GATEWAY_CURRENCY_OVERRIDES")); err != nil && !demo.Enabled() {
 		log.Fatalf("Invalid GATEWAY_CURRENCY_OVERRIDES: %v", err)
 	}
@@ -1076,6 +1087,9 @@ func main() {
 			func(secret string) service.SavedCardCharger { return gateway.NewStripeGateway(secret, "") },
 			renewalCharger,
 		)
+		savedCardRouter.SetWompiBuilder(func(publicKey, privateKey, eventsSecret, integritySecret string) service.SavedCardCharger {
+			return gateway.NewWompiGateway(publicKey, privateKey, eventsSecret, integritySecret)
+		})
 		renewalService.SetChargerRouter(savedCardRouter)
 		walletService.SetChargerRouter(savedCardRouter)
 		retryWorker.SetChargerRouter(savedCardRouter)
@@ -1280,6 +1294,7 @@ func main() {
 		GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
 	})
 	checkoutHandler.SetRazorpay(razorpayVerifier, os.Getenv("RAZORPAY_KEY_ID"))
+	checkoutHandler.SetWompi(os.Getenv("WOMPI_PUBLIC_KEY"))
 	// Buyer name/address on Stripe intents — required by India-region accounts
 	// for foreign-currency (export) charges; harmless elsewhere.
 	checkoutBuyer, _ := stripeGateway.(interface {
@@ -1537,6 +1552,7 @@ func main() {
 	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
 	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
 	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))     // ACH async settlement (Inc 3b)
+	webhookHandler.SetWompiEventsSecret(os.Getenv("WOMPI_EVENTS_SECRET"))
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)

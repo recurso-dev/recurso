@@ -250,6 +250,7 @@ const CreateQuote = () => {
                     <SelectItem value="EUR">EUR</SelectItem>
                     <SelectItem value="GBP">GBP</SelectItem>
                     <SelectItem value="INR">INR</SelectItem>
+                    <SelectItem value="COP">COP</SelectItem>
                   </SelectContent>
                 </Select>
               </FormField>

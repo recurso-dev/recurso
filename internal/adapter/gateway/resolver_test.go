@@ -52,6 +52,9 @@ func (v *fakeVault) List(_ context.Context, tenantID uuid.UUID) ([]*domain.Gatew
 func (v *fakeVault) OpenSecret(conn *domain.GatewayConnection) (string, error) {
 	return conn.SecretKeyEnc, nil // plaintext in the fake
 }
+func (v *fakeVault) OpenWebhookSecret(conn *domain.GatewayConnection) (string, error) {
+	return conn.WebhookSecretEnc, nil
+}
 
 // newTestResolver wires a resolver whose env slots and per-tenant builds all
 // produce named stubs, so routing is observable without any SDK/network.
