@@ -1,0 +1,1866 @@
+package main
+
+import (
+	"context"
+	cryptorand "crypto/rand"
+	"errors"
+	"fmt"
+	"log"
+	"log/slog"
+	"net/http"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	sentry "github.com/getsentry/sentry-go"
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx"
+	"github.com/recurso-dev/recurso/internal/adapter/accounting"
+	"github.com/recurso-dev/recurso/internal/adapter/ai"
+	"github.com/recurso-dev/recurso/internal/adapter/alerting"
+	"github.com/recurso-dev/recurso/internal/adapter/crm"
+	"github.com/recurso-dev/recurso/internal/adapter/db"
+	"github.com/recurso-dev/recurso/internal/adapter/einvoice_eu"
+	"github.com/recurso-dev/recurso/internal/adapter/email"
+	"github.com/recurso-dev/recurso/internal/adapter/export"
+	"github.com/recurso-dev/recurso/internal/adapter/fx"
+	"github.com/recurso-dev/recurso/internal/adapter/gateway"
+	"github.com/recurso-dev/recurso/internal/adapter/gsp"
+	"github.com/recurso-dev/recurso/internal/adapter/handler"
+	"github.com/recurso-dev/recurso/internal/adapter/marketing"
+	"github.com/recurso-dev/recurso/internal/adapter/memory"
+	"github.com/recurso-dev/recurso/internal/adapter/metrics"
+	"github.com/recurso-dev/recurso/internal/adapter/middleware"
+	"github.com/recurso-dev/recurso/internal/adapter/notification"
+	redisAdapter "github.com/recurso-dev/recurso/internal/adapter/redis"
+	"github.com/recurso-dev/recurso/internal/adapter/secretbox"
+	"github.com/recurso-dev/recurso/internal/adapter/sms"
+	"github.com/recurso-dev/recurso/internal/adapter/taxprovider"
+	"github.com/recurso-dev/recurso/internal/adapter/telemetry"
+	"github.com/recurso-dev/recurso/internal/adapter/tigerbeetle"
+	"github.com/recurso-dev/recurso/internal/adapter/vatprovider"
+	"github.com/recurso-dev/recurso/internal/adapter/vault"
+	"github.com/recurso-dev/recurso/internal/adapter/worker"
+	"github.com/recurso-dev/recurso/internal/core/domain"
+	"github.com/recurso-dev/recurso/internal/core/port"
+	coretax "github.com/recurso-dev/recurso/internal/core/service/tax"
+	"github.com/recurso-dev/recurso/internal/demo"
+	"github.com/recurso-dev/recurso/internal/logctx"
+	"github.com/recurso-dev/recurso/internal/residency"
+	"github.com/recurso-dev/recurso/internal/scheduler"
+	"github.com/recurso-dev/recurso/internal/service"
+	"github.com/recurso-dev/recurso/internal/validate"
+	"github.com/redis/go-redis/v9"
+)
+
+// version is stamped at build time via:
+//
+//	go build -ldflags "-X main.version=v0.1.0"
+var version = "dev"
+
+// On Cloud Run every revision gets a K_REVISION env var (e.g.
+// "recurso-api-00044-abc"). When the build didn't stamp a version — as with the
+// managed Dockerfile Cloud Build trigger, which leaves it "dev" — fall back to
+// that so /version and /health report the actual deployed revision instead of a
+// generic "dev". A real ldflags-stamped version (release builds) still wins.
+func init() {
+	if version == "dev" {
+		if rev := os.Getenv("K_REVISION"); rev != "" {
+			version = rev
+		}
+	}
+}
+
+func getEnvDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// getEnvBool reads a boolean feature flag, accepting the usual truthy spellings
+// ("true", "1", "yes", "on"). Anything else (including unset) yields fallback.
+func getEnvBool(key string, fallback bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "true", "1", "yes", "on":
+		return true
+	case "false", "0", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func main() {
+	// Structured JSON logging for the whole process: the workers and schedulers
+	// log via slog, so make the default handler emit JSON to stdout for
+	// machine-parseable, queryable logs in any deployment.
+	slog.SetDefault(slog.New(logctx.NewContextHandler(slog.NewJSONHandler(os.Stdout, nil))))
+
+	// Error tracking (Sentry): inert unless SENTRY_DSN is set — sentry calls are
+	// no-ops without a configured client, so this is safe to leave wired.
+	if dsn := os.Getenv("SENTRY_DSN"); dsn != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:         dsn,
+			Environment: getEnvDefault("APP_ENV", "production"),
+			Release:     version,
+		}); err != nil {
+			log.Printf("Sentry init failed: %v", err)
+		} else {
+			log.Println("Sentry error tracking enabled")
+			defer sentry.Flush(2 * time.Second)
+		}
+	}
+
+	// 1. Initialize DB
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		if os.Getenv("APP_ENV") == "development" {
+			dbURL = "postgres://user:password@localhost:5432/recurso?sslmode=disable" //nolint:gosec // G101: development-only placeholder DSN, unused whenever DATABASE_URL is set
+			log.Println("Warning: DATABASE_URL not set, using development default")
+		} else {
+			log.Fatal("DATABASE_URL environment variable is required")
+		}
+	}
+
+	database, err := db.NewConnection(dbURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer func() { _ = database.Close() }()
+
+	// 2. Run Migrations — FAIL CLOSED. A migration error means the DB schema does
+	// not match what this binary expects; booting anyway would serve requests
+	// against a stale/incomplete schema (which is exactly how prod once served
+	// 500s after a deploy that didn't migrate). Exit non-zero so Cloud Run's
+	// health-gated rollout holds the previous healthy revision instead of routing
+	// traffic to a mis-migrated one. RunMigrations already treats ErrNoChange as
+	// success, so any error returned here is a genuine schema failure.
+	if err := db.RunMigrations(dbURL); err != nil {
+		log.Fatalf("FATAL: database migrations failed — refusing to boot on a mismatched schema: %v", err)
+	}
+
+	// 3. Initialize Repositories
+	dbx := sqlx.NewDb(database, "postgres")
+
+	planRepo := db.NewPlanRepository(database)
+	customerRepo := db.NewCustomerRepository(dbx)
+	subscriptionRepo := db.NewSubscriptionRepository(database)
+	invoiceRepo := db.NewInvoiceRepository(database)
+	entitlementRepo := db.NewEntitlementRepository(database) // Entitlement Engine v1
+	usageRepo := db.NewUsageRepository(database)
+	couponRepo := db.NewCouponRepository(database)                       // P7
+	tenantRepo := db.NewTenantRepository(database)                       // P8
+	unbilledChargeRepo := db.NewUnbilledChargeRepository(database)       // P15
+	subscriptionAddonRepo := db.NewSubscriptionAddonRepository(database) // Multi-product catalog v1
+	webhookEndpointRepo := db.NewWebhookEndpointRepository(database)     // P24
+	eventRepo := db.NewEventRepository(database)                         // P24
+	eventDeliveryRepo := db.NewEventDeliveryRepository(database)         // P24
+	magicLinkRepo := db.NewMagicLinkRepository(database)                 // P25
+	portalSessionRepo := db.NewPortalSessionRepository(database)         // P25
+	quoteRepo := db.NewQuoteRepository(database)                         // P27
+	disputeRepo := db.NewDisputeRepository(database)                     // Track 2: invoice disputes
+
+	// Create sqlx wrapper for CreditNoteRepository
+	creditNoteRepo := db.NewCreditNoteRepository(dbx) // P23
+
+	// Notifications (P29)
+	notifier := notification.NewConsoleNotifier()
+	if host := os.Getenv("SMTP_HOST"); host != "" {
+		notifier = notification.NewSMTPNotifier(
+			host,
+			os.Getenv("SMTP_PORT"),
+			os.Getenv("SMTP_USERNAME"),
+			os.Getenv("SMTP_PASSWORD"),
+			os.Getenv("SMTP_FROM"),
+		)
+		log.Println("Using SMTP Notifier")
+	} else {
+		log.Println("Using Console Notifier (Mock)")
+	}
+
+	// DEMO_MODE (docs/spec_demo_mode.md): the public sandbox must never
+	// email a human — force the console notifier regardless of SMTP env.
+	if demo.Enabled() {
+		notifier = notification.NewConsoleNotifier()
+		log.Println("DEMO_MODE: notifier forced to console")
+	}
+
+	var emailSender port.EmailSender = email.NewConsoleSender()
+	if host := os.Getenv("SMTP_HOST"); host != "" {
+		smtpPort, _ := strconv.Atoi(getEnvDefault("SMTP_PORT", "587"))
+		emailSender = email.NewSMTPSender(email.SMTPConfig{
+			Host:     host,
+			Port:     smtpPort,
+			Username: os.Getenv("SMTP_USERNAME"),
+			Password: os.Getenv("SMTP_PASSWORD"),
+			From:     getEnvDefault("SMTP_FROM", "noreply@localhost"),
+			FromName: getEnvDefault("SMTP_FROM_NAME", "Recurso"),
+			UseTLS:   os.Getenv("SMTP_USE_TLS") == "true",
+		})
+		log.Println("Using SMTP Email Sender")
+	} else {
+		log.Println("Using Console Email Sender (emails are logged, not sent — set SMTP_HOST for real delivery)")
+	}
+	baseURL := getEnvDefault("BASE_URL", "http://localhost:8080")
+	notificationService := service.NewNotificationService(emailSender, baseURL)
+	// notificationService is wired to subscriptionService, webhookHandler, schedulers, and cancellationHandler below
+
+	// Ledger (P5) — dual-write: PG (always) + TigerBeetle (optional)
+	ledgerRepo := db.NewLedgerRepository(database)
+	var ledgerService *service.LedgerService
+	tbAddr := getEnvDefault("TIGERBEETLE_ADDRESS", "127.0.0.1:3001")
+	var tbClientForRecon *tigerbeetle.LedgerClient
+	ledgerClient, err := tigerbeetle.NewLedgerClient(0, []string{tbAddr})
+	if err == nil {
+		ledgerService = service.NewLedgerService(ledgerClient, ledgerRepo)
+		tbClientForRecon = ledgerClient
+		defer ledgerClient.Close()
+	} else {
+		slog.Warn("TigerBeetle not connected — ledger PG-only mode", "error", err)
+		ledgerService = service.NewLedgerService(nil, ledgerRepo)
+	}
+
+	// Ledger reconciliation: on-demand drift detection between billing
+	// records (invoices) and the Postgres ledger.
+	reconciliationService := service.NewReconciliationService(ledgerRepo, tbClientForRecon)
+	reconciliationService.SetRunStore(db.NewReconciliationRunRepository(database)) // run-history audit trail
+	reconciliationService.SetReportingResolver(ledgerService)                      // label discrepancy amounts with the tenant's reporting currency
+
+	// 5. Initialize Gateways
+	var razorpayGateway port.PaymentGateway
+	if keyID := os.Getenv("RAZORPAY_KEY_ID"); keyID != "" {
+		razorpayGateway = gateway.NewRazorpayGateway(keyID, os.Getenv("RAZORPAY_KEY_SECRET"))
+		log.Println("Using Real Razorpay Gateway")
+	} else {
+		razorpayGateway = gateway.NewMockGateway()
+		log.Println("Using Razorpay Gateway (Mock — set RAZORPAY_KEY_ID for real payments)")
+	}
+
+	var stripeGateway port.PaymentGateway
+	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
+		stripeGateway = gateway.NewStripeGateway(key, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+		log.Println("Using Real Stripe Gateway")
+	} else {
+		stripeGateway = gateway.NewMockGateway()
+		log.Println("Using Stripe Gateway (Mock)")
+	}
+
+	// DEMO_MODE: no real money can move — both gateways forced to mocks
+	// at the construction site, so stray keys in the env are inert.
+	if demo.Enabled() {
+		razorpayGateway = gateway.NewMockGateway()
+		stripeGateway = gateway.NewMockGateway()
+		log.Println("DEMO_MODE: payment gateways forced to mocks")
+	}
+
+	// Smart Router routes based on Currency (INR -> Razorpay, USD -> Stripe)
+	paymentGateway := gateway.NewSmartRouter(razorpayGateway, stripeGateway)
+
+	// Track D1 (EXPERIMENTAL until sandbox-verified): GoCardless bank debit
+	// and Adyen card processing, reachable via GATEWAY_CURRENCY_OVERRIDES
+	// (e.g. "EUR=gocardless,SGD=adyen").
+	if token := os.Getenv("GOCARDLESS_ACCESS_TOKEN"); token != "" && !demo.Enabled() {
+		paymentGateway.RegisterGateway("gocardless", gateway.NewGoCardlessGateway(token, os.Getenv("GOCARDLESS_ENV")))
+		log.Println("GoCardless gateway configured (EXPERIMENTAL — sandbox verification pending)")
+	}
+	if key := os.Getenv("ADYEN_API_KEY"); key != "" && !demo.Enabled() {
+		paymentGateway.RegisterGateway("adyen", gateway.NewAdyenGateway(key,
+			os.Getenv("ADYEN_MERCHANT_ACCOUNT"), os.Getenv("ADYEN_ENV"), os.Getenv("ADYEN_LIVE_URL_PREFIX")))
+		log.Println("Adyen gateway configured (EXPERIMENTAL — sandbox verification pending)")
+	}
+	if err := paymentGateway.SetCurrencyOverrides(os.Getenv("GATEWAY_CURRENCY_OVERRIDES")); err != nil && !demo.Enabled() {
+		log.Fatalf("Invalid GATEWAY_CURRENCY_OVERRIDES: %v", err)
+	}
+
+	// BYO gateway (docs/spec_byo_gateway.md): per-tenant credentials sealed in
+	// the vault resolve to the tenant's own gateway at charge time; tenants with
+	// no connection fall back to the env router above (D1). Without
+	// GATEWAY_ENCRYPTION_KEY the vault is unavailable and only env gateways are
+	// used — behavior is identical to before this feature.
+	gatewayVault, vaultErr := secretbox.NewFromEnvValue(os.Getenv("GATEWAY_ENCRYPTION_KEY"))
+	if vaultErr != nil {
+		if !errors.Is(vaultErr, secretbox.ErrNoKey) {
+			log.Fatalf("Invalid GATEWAY_ENCRYPTION_KEY: %v", vaultErr)
+		}
+		log.Println("GATEWAY_ENCRYPTION_KEY not set — BYO gateway disabled, using env gateways only")
+	} else {
+		log.Println("BYO gateway vault enabled")
+	}
+	gatewayConnService := service.NewGatewayConnectionService(db.NewGatewayConnectionRepository(database), gatewayVault)
+	gatewayResolver := gateway.NewGatewayResolver(gatewayConnService, paymentGateway)
+	// tenantGateway is a drop-in port.PaymentGateway: every consumer below that
+	// took paymentGateway now takes this wrapper, which routes per-tenant with
+	// env fallback. The concrete paymentGateway is kept only for the env-level
+	// RegisterGateway/SetCurrencyOverrides calls above.
+	tenantGateway := gateway.NewTenantGateway(gatewayResolver, paymentGateway)
+
+	// Card Vault — uses Stripe if key exists, else Mock for dev
+	var cardVault port.CardVault
+	if key := os.Getenv("STRIPE_SECRET_KEY"); key != "" {
+		cardVault = vault.NewStripeVault(key)
+		log.Println("Using Stripe Card Vault")
+	} else {
+		cardVault = vault.NewMockVault()
+		log.Println("Using Mock Card Vault")
+	}
+	_ = cardVault // Available for SmartRouter or payment handlers
+
+	// P25: IRP & GST Config Repositories
+	irpConfigRepo := db.NewIRPConfigRepository(database)
+	gstConfigRepo := db.NewGSTConfigRepository(database)
+	taxNexusRepo := db.NewTaxNexusRepository(database)
+
+	// P25: GSP Adapter — use NIC if private key is available, else mock.
+	// DEMO_MODE: forced to mock below — a demo must never submit an IRN.
+	var gspAdapter port.GSPAdapter
+	if nicKeyPath := os.Getenv("NIC_PRIVATE_KEY_PATH"); nicKeyPath != "" && !demo.Enabled() {
+		nicKeyPEM, err := os.ReadFile(nicKeyPath) //nolint:gosec // G703: operator-configured key path from the environment
+		if err != nil {
+			log.Printf("Warning: Failed to read NIC private key from %s: %v. Falling back to mock.", nicKeyPath, err) //nolint:gosec // G706: operator-configured path echoed for the operator, not request input
+			gspAdapter = gsp.NewMockGSPAdapter()
+		} else {
+			nicEnv := os.Getenv("NIC_ENVIRONMENT")
+			if nicEnv == "" {
+				nicEnv = "sandbox"
+			}
+			nicAdapter, err := gsp.NewNICAdapter(nicEnv, nicKeyPEM, irpConfigRepo)
+			if err != nil {
+				log.Printf("Warning: Failed to create NIC adapter: %v. Falling back to mock.", err)
+				gspAdapter = gsp.NewMockGSPAdapter()
+			} else {
+				gspAdapter = nicAdapter
+				log.Printf("Using NIC GSP Adapter (environment: %s)", nicEnv) //nolint:gosec // G706: operator-configured environment name, not request input
+			}
+		}
+	} else {
+		gspAdapter = gsp.NewMockGSPAdapter() // P25 Mock GSP
+		log.Println("Using Mock GSP Adapter (NIC_PRIVATE_KEY_PATH not set)")
+	}
+
+	// FX Provider — OXR if key set (with static rates as fallback when the
+	// live fetch fails), else static rates. OXR caches rates in-memory for 1h.
+	var fxProvider port.ExchangeRateProvider
+	var fxFallback port.ExchangeRateProvider
+	if oxrKey := os.Getenv("OPENEXCHANGERATES_APP_ID"); oxrKey != "" {
+		fxProvider = fx.NewOpenExchangeRatesProvider(oxrKey)
+		fxFallback = fx.NewStaticRatesProvider()
+		log.Println("Using OpenExchangeRates FX provider (static rates fallback)")
+	} else {
+		fxProvider = fx.NewStaticRatesProvider()
+		log.Println("Using Static FX rates provider")
+	}
+	// Default reporting currency for FX-normalized analytics (MRR). Tenants
+	// with a base_currency set report in that currency instead.
+	reportingCurrency := getEnvDefault("REPORTING_CURRENCY", "USD")
+
+	// Tax Resolver — per-tenant GST config decides the seller jurisdiction
+	// (India + state) when present; env company defaults otherwise. Dispatches
+	// to GST/VAT/SalesTax engines per invoice.
+	companyCountry := getEnvDefault("COMPANY_COUNTRY", "IN")
+	// No hardcoded state default: NewTaxResolver applies the India "TN" default
+	// only when the seller country is India, so a US/EU deployment that leaves
+	// COMPANY_STATE unset doesn't inherit an invalid Indian state.
+	companyState := getEnvDefault("COMPANY_STATE", "")
+	taxResolver := service.NewTaxResolver(gstConfigRepo, companyCountry, companyState)
+	// US sales-tax nexus gating (opt-in): once a tenant declares nexus states,
+	// US tax is collected only there; a tenant with none is unaffected.
+	taxResolver = taxResolver.WithNexusRepo(taxNexusRepo)
+	// A tenant's declared business country (its primary entity's country_code)
+	// becomes the seller jurisdiction when there's no GST registration — so a US
+	// tenant is treated as a US seller (sales tax, no GST) without env config.
+	{
+		entityCountryRepo := db.NewEntityRepository(database)
+		taxResolver = taxResolver.WithPrimaryEntityCountry(func(ctx context.Context, tenantID uuid.UUID) string {
+			e, err := entityCountryRepo.GetPrimary(ctx, tenantID)
+			if err != nil || e == nil {
+				return ""
+			}
+			return e.CountryCode
+		})
+	}
+	// US sales tax — TaxJar when a key is set (the resolver caches rates
+	// in-memory for 24h per state+zip); otherwise the US engine stays an
+	// honest 0% stub (invoices marked sales_tax_stub).
+	if taxjarKey := os.Getenv("TAXJAR_API_KEY"); taxjarKey != "" && !residency.SelfHosted() && !demo.Enabled() {
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewTaxJarProvider(taxjarKey, os.Getenv("TAXJAR_API_URL")))
+		log.Println("US sales tax: TaxJar provider enabled")
+	} else if avalaraAcct := os.Getenv("AVALARA_ACCOUNT_ID"); avalaraAcct != "" && !residency.SelfHosted() && !demo.Enabled() {
+		// Track D3 (EXPERIMENTAL): Avalara AvaTax quotes via uncommitted
+		// SalesOrder transactions. Same residency guard as TaxJar.
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewAvalaraProvider(
+			avalaraAcct, os.Getenv("AVALARA_LICENSE_KEY"),
+			os.Getenv("AVALARA_COMPANY_CODE"), os.Getenv("AVALARA_API_URL")))
+		log.Println("US sales tax: Avalara provider enabled (EXPERIMENTAL — sandbox verification pending)")
+	} else if ziptaxKey := os.Getenv("ZIPTAX_API_KEY"); ziptaxKey != "" && !residency.SelfHosted() && !demo.Enabled() {
+		// Ziptax rate lookup. Same residency guard as the other two, since it is
+		// third-party SaaS egress regardless of which vendor answers.
+		taxResolver = taxResolver.WithSalesTaxProvider(taxprovider.NewZiptaxProvider(ziptaxKey, os.Getenv("ZIPTAX_API_URL")))
+		log.Println("US sales tax: Ziptax provider enabled")
+	} else if residency.SelfHosted() {
+		log.Println("US sales tax: 0% stub (external tax API disabled by RESIDENCY_MODE=self_hosted)")
+	} else {
+		log.Println("US sales tax: 0% stub (no sales-tax provider key set)")
+	}
+
+	// BYO integration credentials (docs/spec_byo_gateway.md increment 5): tenants
+	// connect their own tax/CRM/storage accounts from the dashboard, sealed in the
+	// same vault as gateways. Env config stays the fallback. Per-tenant sales-tax
+	// providers resolve at invoice time; the same residency guard as the env
+	// provider applies (a tenant's TaxJar is still SaaS egress).
+	integrationConnService := service.NewIntegrationConnectionService(db.NewIntegrationConnectionRepository(database), gatewayVault)
+	// Only self-hosted single-tenant may point integration endpoints at private
+	// hosts (e.g. an internal MinIO); multi-tenant blocks it (SSRF guard).
+	integrationConnService.SetAllowPrivateEgress(residency.SelfHosted())
+	if !residency.SelfHosted() && !demo.Enabled() {
+		salesTaxResolver := service.NewSalesTaxProviderResolver(integrationConnService,
+			func(provider string, cfg map[string]string) coretax.SalesTaxProvider {
+				// The tenant supplies only credentials — the provider host is the
+				// vendor default, never a tenant-controlled URL (SSRF guard).
+				switch provider {
+				case "taxjar":
+					return taxprovider.NewTaxJarProvider(cfg["api_key"], "")
+				case "avalara":
+					return taxprovider.NewAvalaraProvider(cfg["account_id"], cfg["license_key"], cfg["company_code"], "")
+				case "ziptax":
+					return taxprovider.NewZiptaxProvider(cfg["api_key"], "")
+				}
+				return nil
+			})
+		taxResolver = taxResolver.WithPerTenantSalesTax(salesTaxResolver.For)
+	}
+	// EU VAT-number validation — VIES when enabled. With it wired, intra-EU
+	// cross-border B2B reverse charge is only granted when the buyer's VAT
+	// number validates; a VIES outage degrades to the presence-based behaviour
+	// (never fails an invoice). Enabled by VIES_ENABLED=true, or implicitly
+	// when VIES_API_URL is set (handy for pointing tests at a stub server).
+	viesURL := os.Getenv("VIES_API_URL")
+	if getEnvBool("VIES_ENABLED", false) || viesURL != "" {
+		taxResolver = taxResolver.WithVATValidator(vatprovider.NewVIESValidator(viesURL))
+		log.Println("EU VAT validation: VIES enabled")
+	} else {
+		log.Println("EU VAT validation: disabled (reverse charge is presence-based)")
+	}
+
+	// 4. Initialize Core Services (Invoice)
+	invoiceService := service.NewInvoiceService(invoiceRepo, planRepo, customerRepo, unbilledChargeRepo, subscriptionRepo, gspAdapter, taxResolver) // P15, P25
+
+	// Usage-based billing v1 (spec_usage_billing.md): billable metrics,
+	// plan charges, and rating of usage into metered invoice lines.
+	billableMetricRepo := db.NewBillableMetricRepository(database)
+	chargeRepo := db.NewChargeRepository(database)
+	usageRatingRepo := db.NewUsageRatingRepository(database)
+	invoiceService.ChargeRepo = chargeRepo
+	invoiceService.UsageRepo = usageRepo
+	invoiceService.RatingRepo = usageRatingRepo
+	invoiceService.CouponRepo = couponRepo // C1: re-apply a `forever` coupon on renewals
+	// A5 progressive billing: the watermark repo + the ledger poster interim
+	// invoices use (billProgressive posts DR AR / CR Revenue itself). The repo is
+	// also the sweep scheduler's candidate source (wired below).
+	progressiveBillingRepo := db.NewProgressiveBillingRepository(database)
+	invoiceService.SetProgressiveBilling(progressiveBillingRepo, ledgerService)
+
+	catalogService := service.NewCatalogService(planRepo)
+	entitlementService := service.NewEntitlementService(entitlementRepo, planRepo, customerRepo, subscriptionRepo) // Entitlement Engine v1
+	usageService := service.NewUsageService(usageRepo, subscriptionRepo, entitlementService)                       // Usage Platform v1
+	// A3: pay-in-advance charges are rated per event and captured as unbilled
+	// charges, folded onto the next invoice by GenerateInvoice.
+	usageService.SetPayInAdvanceBiller(service.NewPayInAdvanceBiller(chargeRepo, planRepo, unbilledChargeRepo))
+	meteringService := service.NewMeteringService(billableMetricRepo, chargeRepo, planRepo, subscriptionRepo, usageRepo)
+	customerService := service.NewCustomerService(customerRepo)
+	customerService.SetSubscriptionRepo(subscriptionRepo) // archive gate: refuse archiving with active subs
+	customerService.SetInvoiceSummarizer(invoiceRepo)     // per-currency financial summary for the customer page
+	tenantService := service.NewTenantService(tenantRepo) // P8 Service
+
+	// Admin-dashboard auth: real user accounts + opaque sessions layered on top
+	// of the existing tenant API-key auth (both resolve to the same tenant_id).
+	userRepo := db.NewUserRepository(database)
+	sessionRepo := db.NewSessionRepository(database)
+	passwordResetRepo := db.NewPasswordResetRepository(database)
+	emailVerificationRepo := db.NewEmailVerificationRepository(database)
+	mfaBackupRepo := db.NewMFABackupCodeRepository(database)
+	mfaLoginTokenRepo := db.NewMFALoginTokenRepository(database)
+	sessionTTLHours, _ := strconv.Atoi(getEnvDefault("SESSION_TTL_HOURS", "168")) // default 7 days
+	if sessionTTLHours <= 0 {
+		sessionTTLHours = 168
+	}
+	authService := service.NewAuthService(userRepo, sessionRepo, tenantService, time.Duration(sessionTTLHours)*time.Hour)
+	// A registration's declared country lands on the primary entity, which is
+	// the seller tax jurisdiction for non-GST tenants — so a US signup invoices
+	// under US sales tax from day one instead of the env default.
+	authService.SetPrimaryCountrySetter(db.NewEntityRepository(database).SetPrimaryCountry)
+	// Recurso Cloud self-billing ("Recurso runs on Recurso"): when
+	// PLATFORM_TENANT_ID names the founder's own tenant, every signup is
+	// mirrored as a Customer inside that tenant's account, and existing tenants
+	// are backfilled once at boot. Unset → feature off (no mirroring). No money
+	// moves in this increment; charging lands in a later one.
+	if platformID := strings.TrimSpace(os.Getenv("PLATFORM_TENANT_ID")); platformID != "" {
+		if pid, err := uuid.Parse(platformID); err != nil {
+			slog.Error("invalid PLATFORM_TENANT_ID — Recurso Cloud self-billing disabled", "value", platformID, "error", err)
+		} else {
+			cloudBilling := service.NewCloudBillingService(pid, customerService, db.NewCloudBillingRepository(database), tenantRepo, slog.Default())
+			authService.SetCloudProvisioner(cloudBilling.ProvisionTenant)
+			go func() {
+				n, err := cloudBilling.Backfill(context.Background())
+				if err != nil {
+					slog.Error("Recurso Cloud backfill failed", "error", err)
+					return
+				}
+				if n > 0 {
+					slog.Info("Recurso Cloud backfill provisioned customers for existing tenants", "count", n)
+				}
+			}()
+		}
+	}
+	// Phase 2 auth: password reset + TOTP MFA. The reset link points at the
+	// admin dashboard (DASHBOARD_URL), falling back to the API base URL for dev.
+	dashboardURL := getEnvDefault("DASHBOARD_URL", baseURL)
+	authService.ConfigurePasswordReset(passwordResetRepo, notificationService, dashboardURL)
+	// Email verification reuses the dashboard host (set above) for its verify
+	// link, so it must be configured after ConfigurePasswordReset.
+	authService.ConfigureEmailVerification(emailVerificationRepo, notificationService)
+	// New-signup alerts: email an internal ops address on every tenant signup.
+	// Opt-in via SIGNUP_NOTIFY_EMAIL; delivery needs SMTP_HOST (else console-only).
+	if signupNotifyEmail := os.Getenv("SIGNUP_NOTIFY_EMAIL"); signupNotifyEmail != "" {
+		authService.ConfigureSignupNotify(signupNotifyEmail, notificationService)
+		log.Printf("New-signup alerts enabled → %s", signupNotifyEmail) //nolint:gosec // G706: operator-configured address, not request input
+	}
+	// New-signup → marketing tool (Brevo) contact sync. Opt-in via BREVO_API_KEY;
+	// BREVO_LIST_ID (optional) drops the contact into an onboarding list.
+	if brevoKey := os.Getenv("BREVO_API_KEY"); brevoKey != "" {
+		listID := 0
+		if v := os.Getenv("BREVO_LIST_ID"); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				listID = n
+			}
+		}
+		authService.ConfigureSignupContactSync(marketing.NewBrevoContactSync(brevoKey, listID))
+		log.Printf("New-signup → Brevo contact sync enabled (list %d)", listID)
+	}
+	authService.ConfigureMFA(mfaBackupRepo, mfaLoginTokenRepo)
+	creditNoteService := service.NewCreditNoteService(creditNoteRepo, customerRepo, invoiceRepo, tenantGateway) // P23 + refunds
+	creditNoteService.SetLedgerService(ledgerService)
+	creditNoteService.SetNotifier(notificationService) // email the customer at refund/credit issuance
+	txManager := db.NewTxManager(database)
+
+	// Revenue Recognition (P5)
+	revrecRepo := db.NewRevRecRepository(database)
+	revrecService := service.NewRevRecService(revrecRepo, ledgerService, subscriptionRepo)
+	// Unwind deferred revenue when a refund is issued (ENG-147).
+	creditNoteService.SetRevRecService(revrecService)
+	// Recognize revenue for an invoice fully covered by wallet/credit at
+	// generation (it never reaches MarkInvoicePaid, which normally schedules it).
+	invoiceService.RevRecScheduler = revrecService
+
+	subscriptionService := service.NewSubscriptionService(
+		subscriptionRepo,
+		invoiceRepo,
+		planRepo,
+		customerRepo,
+		couponRepo,
+		notifier,
+		ledgerService,
+		tenantGateway,
+		gspAdapter,
+		txManager,
+		revrecService,
+		taxResolver,
+	)
+
+	// P25: E-Invoice Service
+	einvoiceService := service.NewEInvoiceService(gspAdapter, invoiceRepo, customerRepo, irpConfigRepo, gstConfigRepo)
+	invoiceService.EInvoiceService = einvoiceService
+
+	// EU e-invoicing (Track C): EN 16931 / UBL 2.1 generation behind a pluggable
+	// transport. Opt-in per tenant (tenant_eu_config.enabled); a mock transport
+	// stands in until a real Peppol Access Point is wired. Nil-safe end to end —
+	// tenants without config are untouched.
+	euInvoiceRepo := db.NewEUInvoiceRepository(database)
+	euEInvoiceService := service.NewEUEInvoiceService(
+		db.NewTenantEUConfigRepository(database),
+		euInvoiceRepo,
+		einvoice_eu.NewMockTransport(),
+	)
+	invoiceService.EUEInvoiceService = euEInvoiceService
+	invoiceService.NotificationService = notificationService // email the customer their invoice + Pay Now link on generation
+	subscriptionService.SetEInvoiceService(einvoiceService)
+	subscriptionService.SetPaymentAttemptLister(db.NewPaymentAttemptRepository(database))             // invoice payment-attempt history
+	subscriptionService.SetInvoiceStatusHistoryReader(db.NewInvoiceStatusHistoryRepository(database)) // invoice status timeline
+	subscriptionService.SetSubscriptionHistoryReader(db.NewSubscriptionHistoryRepository(database))   // subscription status+plan timeline
+	subscriptionService.SetNotificationService(notificationService)
+	subscriptionService.SetFinalUsageInvoicer(invoiceService) // metered final invoice on immediate cancel
+	// Persist downgrade proration credits as spendable adjustment credit notes (ENG-150).
+	subscriptionService.SetCreditNoteRepo(creditNoteRepo)
+	// Apply account credit to proration-upgrade & trial-conversion charge invoices (ENG-154).
+	subscriptionService.SetCreditApplier(creditNoteService)
+
+	// Multi-product catalog v1: enable subscription add-ons on the service
+	// (add/remove/list) and on the recurring invoice path (extra taxed lines).
+	subscriptionService.SetAddonRepository(subscriptionAddonRepo)
+	invoiceService.AddonRepo = subscriptionAddonRepo
+	// Apply adjustment credit-note balances to generated invoices (ENG-153) and
+	// book the settlement in the ledger (ENG-154). creditNoteService wraps the
+	// repo draw-down with the DR Customer-Credit / CR AR posting.
+	invoiceService.CreditApplier = creditNoteService
+
+	// Anonymous instance telemetry — strictly opt-in (TELEMETRY_OPTIN=true).
+	// Disabled (the default) means telemetryClient is nil: zero network calls,
+	// zero rows written; all hooks below are nil-safe no-ops. docs/telemetry.md
+	// documents every payload.
+	telemetryClient := telemetry.NewFromEnv(database, version)
+	if demo.Enabled() {
+		telemetryClient = nil // DEMO_MODE: never phone home
+	}
+	if telemetryClient != nil {
+		telemetryClient.Start(context.Background())
+		defer telemetryClient.Stop()
+		log.Println("Anonymous telemetry enabled (TELEMETRY_OPTIN=true) — see docs/telemetry.md for exactly what is sent")
+	}
+	catalogService.SetTelemetry(telemetryClient)
+	customerService.SetTelemetry(telemetryClient)
+	subscriptionService.SetTelemetry(telemetryClient)
+	invoiceService.Telemetry = telemetryClient
+
+	// Phase 2: Mandate Repository
+	mandateRepo := db.NewMandateRepository(database)
+
+	// Phase 2: Offline Payment Repository
+	offlinePaymentRepo := db.NewOfflinePaymentRepository(database)
+
+	// Phase 2: Organization Repository
+	orgRepo := db.NewOrganizationRepository(database)
+
+	// Phase 2: Accounting Connection Repository
+	acctConnRepo := db.NewAccountingConnectionRepository(database)
+	acctConnRepo.SetVault(gatewayVault) // encrypt OAuth tokens at rest (opportunistic; legacy plaintext still reads)
+
+	// Accounting entity mappings (internal ID -> provider ID per connection)
+	acctMappingRepo := db.NewAccountingMappingRepository(database)
+
+	// AI Service (P45)
+	dunningRepo := db.NewDunningRepository(database)
+	retryService := service.NewSmartRetryService(dunningRepo)
+	if strategy := os.Getenv("DUNNING_STRATEGY"); strategy != "" {
+		retryService.SetStrategy(service.BanditStrategy(strategy))
+		slog.Info("Dunning strategy set", "strategy", strategy)
+	}
+	churnService := service.NewChurnService(customerRepo, invoiceRepo)
+	churnService.SetSubscriptionRepo(subscriptionRepo)
+	churnService.SetPlanRepo(planRepo)
+	churnService.SetDB(database)
+
+	// Cancel Flows
+	cancelFlowRepo := db.NewCancelFlowRepository(database)
+	cancelFlowService := service.NewCancelFlowService(cancelFlowRepo, subscriptionService, notificationService)
+
+	// Dunning Campaigns
+	dunningCampaignRepo := db.NewDunningCampaignRepository(database)
+	var smsSender port.SMSSender
+	if twilioSID := os.Getenv("TWILIO_ACCOUNT_SID"); twilioSID != "" {
+		smsSender = sms.NewTwilioSMSSender(twilioSID, os.Getenv("TWILIO_AUTH_TOKEN"), os.Getenv("TWILIO_FROM_NUMBER"))
+		log.Println("Using Twilio SMS Sender")
+	} else {
+		smsSender = sms.NewConsoleSMSSender()
+		log.Println("Using Console SMS Sender (Mock)")
+	}
+	dunningCampaignService := service.NewDunningCampaignService(dunningCampaignRepo, invoiceRepo, customerRepo, notificationService, smsSender)
+
+	// Dunning Recovery Attribution — provable recovered revenue
+	recoveredPaymentRepo := db.NewRecoveredPaymentRepository(database)
+	dunningRecoveryService := service.NewDunningRecoveryService(recoveredPaymentRepo, os.Getenv("DUNNING_STRATEGY"))
+	dunningRecoveryService.SetCampaignLookup(dunningCampaignRepo)
+	dunningRecoveryService.SetFX(fxProvider, fxFallback, reportingCurrency)
+	dunningRecoveryService.SetTenantLookup(tenantRepo)
+	subscriptionService.SetRecoveryRecorder(dunningRecoveryService)
+
+	// Analytics
+	analyticsService := service.NewAnalyticsService(subscriptionRepo, invoiceRepo, planRepo, usageRepo)
+	analyticsService.SetFX(fxProvider, fxFallback, reportingCurrency)
+	analyticsService.SetTenantLookup(tenantRepo)
+	// Per-tenant reporting currency for the read-only ledger reports (trial
+	// balance, deferred rollforward, close pack), so the UI formats totals with
+	// the tenant's currency exponent.
+	ledgerService.SetReporting(tenantRepo, reportingCurrency)
+	// Per-entity ledger resolution (Multi-Entity Books): postings resolve their
+	// legal entity's ledger; without this they use the primary ledger.
+	ledgerService.SetEntityReader(db.NewEntityRepository(database))
+	// Recognized-revenue lookup for the write-off bad-debt split (accrual
+	// #466/#477): a write-off expenses the already-recognized portion as Bad
+	// Debt instead of reversing it from Deferred. Under the cash model (no
+	// schedule until payment) recognized is 0, so this is a no-op.
+	ledgerService.SetRecognizedReader(revrecRepo)
+	// Cancel an invoice's pending recognition events on write-off so the
+	// reversed-out Deferred isn't re-recognized under accrual. No-op under cash.
+	ledgerService.SetScheduleCanceller(revrecService)
+	// Accrual revenue recognition (#466): build the schedule at ISSUANCE for
+	// subscription invoices, so revenue recognizes over the period regardless of
+	// payment and the month-end tie-out is structurally zero. OFF by default (the
+	// cash model) — enabled per deployment via RECURSO_ACCRUAL_RECOGNITION=true,
+	// so it's an opt-in rollout. The write-off bad-debt split above makes it safe.
+	if strings.EqualFold(os.Getenv("RECURSO_ACCRUAL_RECOGNITION"), "true") {
+		invoiceService.SetAccrualRecognition(true)
+		// Stamp every journal this deployment posts with the accrual model (V2) so
+		// the entries carry their accounting-model provenance (ADR-008).
+		ledgerRepo.SetAccountingVersion(domain.AccountingModelV2)
+		log.Println("Revenue recognition: ACCRUAL (schedules built at invoice issuance)")
+	}
+	mrrSnapshotRepo := db.NewMRRSnapshotRepository(database)
+	analyticsService.SetSnapshotStore(mrrSnapshotRepo)
+	analyticsService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: per-entity MRR scoping + concrete entity on snapshots
+	if agingStore, ok := invoiceRepo.(service.InvoiceAgingStore); ok {
+		analyticsService.SetInvoiceAgingStore(agingStore)
+	}
+	analyticsService.SetCustomerLookup(customerRepo)
+
+	// GenAI (P48)
+	openAIKey := os.Getenv("OPENAI_API_KEY")
+	var llmProvider port.LLMProvider
+	if openAIKey != "" {
+		llmProvider = ai.NewOpenAIProvider(openAIKey)
+	} else {
+		log.Println("Warning: OPENAI_API_KEY not set. GenAI analytics will be unavailable.")
+	}
+	genaiService := service.NewGenAIService(llmProvider, database)
+
+	// Advanced Billing (P15)
+	advancedBillingService := service.NewAdvancedBillingService(unbilledChargeRepo, subscriptionRepo)
+
+	// Webhooks & Events (P24)
+	webhookService := service.NewWebhookService(webhookEndpointRepo, eventRepo, eventDeliveryRepo)
+
+	// Accounting (P41). Syncs run through real QuickBooks/Xero adapters
+	// built from per-connection OAuth tokens; the mock gateway is only the
+	// fallback for unknown providers. OAuth client credentials are needed
+	// to complete the connect flow and to refresh expired tokens.
+	oauthConfigs := map[string]*accounting.OAuthConfig{
+		"quickbooks": { //nolint:gosec // G101: env var name, not a credential
+			ClientID:     getEnvDefault("QBO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("QBO_CLIENT_SECRET", ""),
+			TokenURL:     "https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer",
+		},
+		"xero": { //nolint:gosec // G101: env var name, not a credential
+			ClientID:     getEnvDefault("XERO_CLIENT_ID", ""),
+			ClientSecret: getEnvDefault("XERO_CLIENT_SECRET", ""),
+			TokenURL:     "https://identity.xero.com/connect/token",
+		},
+	}
+	if residency.SelfHosted() {
+		// Residency guarantee: no accounting-SaaS egress. Blank the OAuth
+		// configs so the connect flow can't start; getAdapterForConnection
+		// additionally refuses QuickBooks/Xero syncs for existing connections.
+		oauthConfigs["quickbooks"].ClientID, oauthConfigs["quickbooks"].ClientSecret = "", ""
+		oauthConfigs["xero"].ClientID, oauthConfigs["xero"].ClientSecret = "", ""
+		log.Println("Accounting sync (QuickBooks/Xero) disabled by RESIDENCY_MODE=self_hosted; Tally file export remains available")
+	}
+	qboConfigured := oauthConfigs["quickbooks"].ClientID != ""
+	xeroConfigured := oauthConfigs["xero"].ClientID != ""
+	switch {
+	case qboConfigured && xeroConfigured:
+		log.Println("Accounting sync configured for QuickBooks and Xero")
+	case qboConfigured:
+		log.Println("Accounting sync configured for QuickBooks (set XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable Xero)")
+	case xeroConfigured:
+		log.Println("Accounting sync configured for Xero (set QBO_CLIENT_ID/QBO_CLIENT_SECRET to enable QuickBooks)")
+	case residency.SelfHosted():
+		// Logged above; avoid the misleading "set client id to enable" hint.
+	default:
+		log.Println("Accounting sync running in MOCK mode — set QBO_CLIENT_ID/QBO_CLIENT_SECRET or XERO_CLIENT_ID/XERO_CLIENT_SECRET to enable real providers")
+	}
+	accountingGateway := accounting.NewMockAccountingAdapter()
+	accountingService := service.NewAccountingService(accountingGateway, customerRepo, invoiceRepo, planRepo)
+	accountingService.SetConnectionRepo(acctConnRepo)
+	accountingService.SetMappingRepo(acctMappingRepo)
+	accountingService.SetSubscriptionRepo(subscriptionRepo) // resolve plan ItemRefs on invoice lines
+	accountingService.SetOAuthConfigs(oauthConfigs)
+
+	// Phase 2: Mandate Service
+	mandateService := service.NewMandateService(mandateRepo, tenantGateway, customerRepo, invoiceRepo)
+	// Apply account credit against off-session mandate debits (ENG-153) and book
+	// the settlement in the ledger (ENG-154) via creditNoteService.
+	mandateService.SetCreditApplier(creditNoteService)
+	mandateService.SetLedgerService(ledgerService) // post the debit invoice's ledger leg (F1)
+	// Charge the subscription's real recurring amount (plan price + tax) on each
+	// mandate cycle instead of the authorization ceiling (ENG-165).
+	mandateService.SetBillingResolver(subscriptionRepo, planRepo, taxResolver)
+	// Lago-parity A2: mandate-debit invoices carry rated usage lines and the
+	// subscription period advances with each cycle.
+	mandateService.SetInvoiceService(invoiceService)
+
+	// Phase 2: Offline Payment Service
+	offlinePaymentService := service.NewOfflinePaymentService(offlinePaymentRepo, tenantGateway, invoiceRepo, subscriptionService)
+
+	// Phase 2: Organization Service
+	orgService := service.NewOrganizationService(orgRepo, subscriptionRepo, planRepo)
+	orgService.SetFX(fxProvider, fxFallback, reportingCurrency)
+
+	// Referral (P42)
+	referralRepo := db.NewReferralRepository(dbx)
+	referralService := service.NewReferralService(referralRepo, customerRepo)
+	referralHandler := handler.NewReferralHandler(referralService)
+
+	// Gift (P43)
+	giftRepo := db.NewGiftRepository(dbx)
+	giftService := service.NewGiftService(giftRepo, subscriptionRepo, invoiceService, planRepo, notificationService)
+	// Gift cancellation (account-credit policy) issues the buyer's credit
+	// through the normal credit-note path — approval governance + GL legs.
+	giftService.SetCreditNoteService(creditNoteService)
+	giftHandler := handler.NewGiftHandler(giftService)
+
+	// 6. Initialize Workers
+	retryWorker := worker.NewRetryWorker(invoiceRepo, retryService, tenantGateway, notifier)
+	// ENG-5 Phase 2: charge the customer's saved card off-session on retries.
+	// The mock gateway doesn't implement it, so this stays disabled (interactive
+	// fallback) until real Stripe keys are set.
+	retryStripeCharger, _ := stripeGateway.(interface {
+		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+	})
+	retryWorker.SetSavedMethodCharging(retryStripeCharger, customerRepo)
+	retryWorker.SetDunningCampaignService(dunningCampaignService)
+	retryWorker.SetRecoveryRecorder(dunningRecoveryService)
+	// Successful retries settle through the same ledger-posting MarkInvoicePaid
+	// as checkout and the payment webhooks (idempotent across all three).
+	retryWorker.SetSettler(subscriptionService)
+	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
+	if demo.Enabled() {
+		webhookWorker.DisableDeliveries() // endpoints inspectable, zero egress
+	}
+	churnWorker := worker.NewChurnWorker(churnService, customerRepo, tenantRepo, 24*time.Hour)
+	revrecWorker := worker.NewRevRecWorker(revrecService, 24*time.Hour)
+	// Track D4 (EXPERIMENTAL): daily CRM contact sync. HubSpot private-app
+	// token; SaaS egress, so blocked under RESIDENCY_MODE=self_hosted like
+	// the accounting SaaS adapters.
+	// BYO increment 5c: run the sync when EITHER an env token OR the vault is
+	// available (so a tenant can bring their own HubSpot with no operator token),
+	// resolving a client per tenant with the env token as fallback.
+	var crmWorker *worker.CRMSyncWorker
+	hsToken := os.Getenv("HUBSPOT_ACCESS_TOKEN")
+	if (hsToken != "" || integrationConnService.VaultReady()) && !demo.Enabled() {
+		if residency.SelfHosted() {
+			log.Println("HubSpot CRM sync blocked by RESIDENCY_MODE=self_hosted")
+		} else {
+			var envCRM worker.CRMContactUpserter
+			if hsToken != "" {
+				envCRM = crm.NewHubSpotClient(hsToken)
+			}
+			crmWorker = worker.NewCRMSyncWorker(tenantRepo, customerRepo, subscriptionRepo.(*db.SubscriptionRepository), envCRM)
+			crmWorker.SetPerTenantCRM(func(ctx context.Context, tid uuid.UUID) worker.CRMContactUpserter {
+				if cfg, ok := integrationConnService.Resolve(ctx, tid, domain.IntegrationCRM, "hubspot"); ok {
+					return crm.NewHubSpotClient(cfg["access_token"])
+				}
+				return nil
+			})
+			defer crmWorker.Stop()
+			log.Println("HubSpot CRM sync configured (EXPERIMENTAL, daily; per-tenant + env)")
+		}
+	}
+
+	// Track D5 (EXPERIMENTAL): daily GL export to operator-owned object
+	// storage. Enabled only when S3_EXPORT_BUCKET (+region/keys) is set;
+	// the destination is the operator's own bucket, so it is not
+	// residency-blocked (same egress class as SMTP/webhooks).
+	// BYO increment 5c: run when EITHER the env bucket OR the vault is available;
+	// each tenant's GL exports to their own bucket when connected, else the env
+	// bucket. Not residency-blocked (the destination is operator/tenant-owned).
+	var exportWorker *worker.ExportWorker
+	var envS3 *export.S3Client
+	if bucket := os.Getenv("S3_EXPORT_BUCKET"); bucket != "" {
+		envS3 = export.NewS3Client(bucket,
+			os.Getenv("S3_EXPORT_REGION"),
+			os.Getenv("AWS_ACCESS_KEY_ID"),
+			os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			os.Getenv("S3_EXPORT_ENDPOINT"))
+		if !envS3.Configured() {
+			log.Println("S3_EXPORT_BUCKET set but region/credentials missing; env export disabled")
+			envS3 = nil
+		}
+	}
+	if (envS3 != nil || integrationConnService.VaultReady()) && !demo.Enabled() {
+		exportWorker = worker.NewExportWorker(tenantRepo, ledgerService, envS3, os.Getenv("S3_EXPORT_PREFIX"))
+		exportWorker.SetPerTenantStorage(func(ctx context.Context, tid uuid.UUID) worker.ExportUploader {
+			if cfg, ok := integrationConnService.Resolve(ctx, tid, domain.IntegrationStorage, "s3"); ok {
+				c := export.NewS3Client(cfg["bucket"], cfg["region"], cfg["access_key_id"], cfg["secret_access_key"], cfg["endpoint"])
+				if c.Configured() {
+					return c
+				}
+			}
+			return nil
+		})
+		defer exportWorker.Stop()
+		log.Println("S3 finance export configured (EXPERIMENTAL, daily; per-tenant + env)")
+	}
+
+	// P25: E-Invoice Retry Worker
+	einvoiceWorker := worker.NewEInvoiceRetryWorker(invoiceRepo, einvoiceService)
+
+	// EU e-invoice delivery retry worker (Track C, inc 2b): redrives documents
+	// that failed to transmit to the Access Point, on an exponential backoff.
+	euEInvoiceWorker := worker.NewEUEInvoiceRetryWorker(euInvoiceRepo, euEInvoiceService)
+
+	// Dunning Campaign Worker
+	dunningCampaignWorker := worker.NewDunningCampaignWorker(dunningCampaignService)
+
+	// Phase 2: Accounting Sync Worker (daily). Token refresh happens inside
+	// the accounting service per connection.
+	acctSyncWorker := worker.NewAccountingSyncWorker(acctConnRepo, accountingService, 24*time.Hour)
+
+	// Start Workers in Background. They all select on ctx.Done(), so a single
+	// cancellable context tied to the shutdown signal (cancelWorkers below) lets
+	// them stop their tick loops and drain in-flight work on SIGINT/SIGTERM
+	// instead of being killed mid-operation.
+	workerCtx, cancelWorkers := context.WithCancel(context.Background())
+	// workersWG lets shutdown block until every worker's Start loop has
+	// returned after workerCtx is cancelled, so main() doesn't exit (killing
+	// the process and any in-flight tick) before workers finish draining.
+	var workersWG sync.WaitGroup
+	startWorker := func(start func(context.Context)) {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			start(workerCtx)
+		}()
+	}
+	startWorker(retryWorker.Start)
+	// Optional experimental workers: registered here rather than started at
+	// their wiring site so they share workerCtx and the drain wait group.
+	if crmWorker != nil {
+		startWorker(crmWorker.Start)
+	}
+	if exportWorker != nil {
+		startWorker(exportWorker.Start)
+	}
+	startWorker(webhookWorker.Start)
+	startWorker(churnWorker.Start)
+	startWorker(revrecWorker.Start)
+	startWorker(einvoiceWorker.Start)
+	startWorker(euEInvoiceWorker.Start)
+	startWorker(dunningCampaignWorker.Start)
+	if !demo.Enabled() {
+		startWorker(acctSyncWorker.Start) // parked in DEMO_MODE: no SaaS egress
+	}
+
+	// Distributed Locking & Redis. A working Redis makes the scheduler lock and
+	// the idempotency store real across instances; without it the app falls back
+	// to a no-op locker + per-instance in-memory store, which is only safe on a
+	// single instance (see ENG-161). REQUIRE_REDIS lets a multi-instance
+	// deployment refuse to start rather than silently run the unsafe fallback.
+	requireRedis := strings.EqualFold(os.Getenv("REQUIRE_REDIS"), "true")
+	var locker port.Locker
+	var idempotencyStore port.IdempotencyStore
+	var rdb *redis.Client
+
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		opt, parseErr := redis.ParseURL(redisURL)
+		if parseErr != nil {
+			if requireRedis {
+				log.Fatalf("REQUIRE_REDIS is set but REDIS_URL is invalid: %v", parseErr)
+			}
+			slog.Error("failed to parse REDIS_URL, falling back to in-memory", "error", parseErr)
+		} else {
+			client := redis.NewClient(opt)
+			// redis.NewClient is lazy — PING so a dead/misconfigured Redis fails
+			// loudly here instead of silently at the first Obtain/Get under load.
+			pingCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			pingErr := client.Ping(pingCtx).Err()
+			cancel()
+			if pingErr != nil {
+				_ = client.Close()
+				if requireRedis {
+					log.Fatalf("REQUIRE_REDIS is set but Redis is unreachable at REDIS_URL: %v", pingErr)
+				}
+				slog.Error("Redis unreachable, falling back to in-memory", "error", pingErr)
+			} else {
+				rdb = client
+				locker = redisAdapter.NewRedisLocker(rdb)
+				idempotencyStore = redisAdapter.NewRedisIdempotencyStore(rdb, 24*time.Hour)
+				log.Println("Using Redis for Locker and Idempotency")
+			}
+		}
+	} else if requireRedis {
+		log.Fatal("REQUIRE_REDIS is set but REDIS_URL is empty; refusing to start with a no-op locker")
+	}
+	if locker == nil {
+		locker = memory.NewNoOpLocker()
+		idempotencyStore = memory.NewInMemoryIdempotencyStore(24 * time.Hour)
+		log.Println("⚠️  Using In-Memory Locker and Idempotency (Redis not configured) — safe on a single instance only; set REDIS_URL for multi-instance")
+	}
+
+	// Pre-charge Scheduler (P30 - RBI compliance: 24hr notifications)
+	preChargeScheduler := scheduler.NewPreChargeScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository),
+		notificationService,
+		locker,
+		baseURL,
+	)
+	preChargeScheduler.Start()
+	defer preChargeScheduler.Stop()
+
+	// Dunning Scheduler (P30 - payment retry and escalation)
+	dunningScheduler := scheduler.NewDunningScheduler(
+		invoiceRepo.(*db.InvoiceRepository),
+		notificationService,
+		locker,
+		scheduler.DefaultDunningConfig(),
+		baseURL,
+	)
+	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))          // skip dunning for a settling ACH (Inc 3b)
+	dunningScheduler.SetWriteOffLedger(ledgerService, invoiceRepo.(*db.InvoiceRepository)) // auto-write-off posts its ledger reversal (#466 follow-up)
+	dunningScheduler.Start()
+	defer dunningScheduler.Stop()
+
+	// Trial Scheduler - sends trial-ending reminders and converts expired
+	// trials to active (generating the first invoice, which flows into dunning).
+	trialScheduler := scheduler.NewTrialScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository),
+		subscriptionService,
+		notificationService,
+		locker,
+		baseURL,
+	)
+	trialScheduler.Start()
+	defer trialScheduler.Stop()
+
+	// Card Expiry Scheduler - notifies customers ~30 days before card expires
+	cardExpiryScheduler := scheduler.NewCardExpiringScheduler(
+		customerRepo,
+		notificationService,
+		locker,
+		baseURL,
+	)
+	cardExpiryScheduler.Start()
+	defer cardExpiryScheduler.Stop()
+
+	// Phase 2: Mandate Debit Scheduler (hourly)
+	mandateDebitScheduler := scheduler.NewMandateDebitScheduler(mandateRepo, mandateService, locker)
+	mandateDebitScheduler.Start()
+	defer mandateDebitScheduler.Stop()
+
+	// Prepaid wallets (Lago-parity B1): money-denominated balance drained
+	// at invoice time before credit notes and the gateway (D3).
+	walletRepo := db.NewWalletRepository(database)
+	auditLogRepo := db.NewAuditLogRepository(database) // C2: append-only audit trail
+	walletService := service.NewWalletService(walletRepo, customerRepo, ledgerService)
+	walletService.SetEntityReader(db.NewEntityRepository(database)) // multi-entity: scope wallets to a legal entity
+	walletService.SetNotifier(notifier)
+	invoiceService.WalletDrainer = walletService
+
+	// Usage threshold alerts (Lago-parity B3): evaluated on the billing-
+	// cycle tick, fired once per period via webhook + email.
+	usageAlertRepo := db.NewUsageAlertRepository(database)
+	usageAlertService := service.NewUsageAlertService(usageAlertRepo, subscriptionRepo, billableMetricRepo, usageRepo, customerRepo, entitlementService)
+	usageAlertService.SetNotifier(notifier)
+	usageAlertService.SetEventPublisher(webhookService) // usage.alert.triggered
+
+	// Billing Cycle Scheduler (Lago-parity A1): unattended renewal of
+	// locally-billed subscriptions — invoice (flat + metered), anchor-
+	// preserving period advance, best-effort saved-method payment.
+	// BILLING_CYCLE_INTERVAL=0 disables; default 5m.
+	renewalService := service.NewRenewalService(subscriptionRepo.(*db.SubscriptionRepository), planRepo, invoiceService)
+	renewalCharger, _ := stripeGateway.(interface {
+		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
+	})
+	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
+	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
+	// B1 autopay: route every off-session charge to the gateway the card was
+	// saved on (BYO connection or platform). One shared router across the
+	// renewal, wallet auto-recharge, and dunning-retry paths so a BYO tenant's
+	// recurring charges all land in their own account. renewalCharger is the
+	// platform fallback for cards saved with no connection (pre-B1).
+	if renewalCharger != nil {
+		savedCardRouter := service.NewSavedCardGatewayRouter(
+			gatewayConnService,
+			func(secret string) service.SavedCardCharger { return gateway.NewStripeGateway(secret, "") },
+			renewalCharger,
+		)
+		renewalService.SetChargerRouter(savedCardRouter)
+		walletService.SetChargerRouter(savedCardRouter)
+		retryWorker.SetChargerRouter(savedCardRouter)
+	}
+	var billingCycleScheduler *scheduler.BillingCycleScheduler
+	billingCycleInterval := 5 * time.Minute
+	if raw := os.Getenv("BILLING_CYCLE_INTERVAL"); raw != "" {
+		if raw == "0" {
+			billingCycleInterval = 0
+		} else if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			billingCycleInterval = d
+		} else {
+			log.Printf("Invalid BILLING_CYCLE_INTERVAL %q; using default 5m", raw) //nolint:gosec // G706: operator-configured value echoed for the operator, not request input
+		}
+	}
+	if billingCycleInterval > 0 {
+		billingCycleScheduler = scheduler.NewBillingCycleScheduler(renewalService, locker, billingCycleInterval)
+		billingCycleScheduler.SetWalletMaintainer(walletService)     // wallet expiry + auto-recharge (B1)
+		billingCycleScheduler.SetCreditMaintainer(creditNoteService) // account-credit expiry (ledger-backed credits inc 2)
+		billingCycleScheduler.SetAlertEvaluator(usageAlertService)   // usage thresholds (B3)
+		billingCycleScheduler.Start()
+		defer billingCycleScheduler.Stop()
+	} else {
+		log.Println("Billing cycle scheduler disabled (BILLING_CYCLE_INTERVAL=0)")
+	}
+
+	// Recurso Cloud self-billing usage meter (Increment 2): once a day, measure
+	// every tenant's tracked revenue + collected volume for the current month.
+	// Money-free (readings only). Gated behind PLATFORM_TENANT_ID so the whole
+	// self-billing feature stays off until the founder opts in.
+	if platformID := strings.TrimSpace(os.Getenv("PLATFORM_TENANT_ID")); platformID != "" {
+		if _, err := uuid.Parse(platformID); err != nil {
+			slog.Error("invalid PLATFORM_TENANT_ID — Recurso Cloud usage meter disabled", "value", platformID, "error", err)
+		} else {
+			cloudUsageRepo := db.NewCloudUsageRepository(database)
+			cloudUsageScheduler := scheduler.NewCloudUsageScheduler(
+				service.NewCloudUsageService(cloudUsageRepo, slog.Default()),
+				locker,
+			)
+			// Increment 3 dry-run: after each measurement, compute (money-free)
+			// what each tenant WOULD be charged, normalized to the reporting
+			// currency via FX, and store it in cloud_charge_preview for review.
+			cloudChargeSvc := service.NewCloudChargeService(cloudUsageRepo, db.NewCloudChargeRepository(database), slog.Default())
+			cloudChargeSvc.SetFX(fxProvider, fxFallback, reportingCurrency)
+			cloudUsageScheduler.SetPreviewer(cloudChargeSvc)
+			cloudUsageScheduler.Start()
+			defer cloudUsageScheduler.Stop()
+		}
+	}
+
+	// US economic-nexus evaluation (daily): auto-establish nexus when a
+	// state threshold is crossed (ENG-16 Phase 2).
+	nexusStatusService := service.NewNexusStatusService(taxNexusRepo)
+	nexusScheduler := scheduler.NewNexusScheduler(tenantRepo, nexusStatusService, locker)
+	// Track D · D1: proactively email the tenant when they near or cross a state's
+	// economic-nexus threshold, so a registration obligation is never missed.
+	nexusScheduler.SetAlertService(service.NewNexusAlertService(
+		nexusStatusService, taxNexusRepo, userRepo, notificationService, baseURL,
+	))
+	nexusScheduler.Start()
+	defer nexusScheduler.Stop()
+
+	// Ledger Reconciliation Scheduler (daily) — warns when ledger disagrees with billing records
+	reconciliationScheduler := scheduler.NewReconciliationScheduler(tenantRepo, reconciliationService, locker)
+	reconciliationScheduler.Start()
+	defer reconciliationScheduler.Stop()
+
+	// Progressive-billing sweep (A5) — auto-triggers interim billing for
+	// progressive subscriptions whose accrued usage has crossed the threshold.
+	// PROGRESSIVE_SWEEP_INTERVAL overrides the hourly default (e.g. "15m").
+	progressiveSweepInterval := scheduler.DefaultProgressiveSweepInterval
+	if raw := os.Getenv("PROGRESSIVE_SWEEP_INTERVAL"); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			progressiveSweepInterval = d
+		} else {
+			log.Printf("Invalid PROGRESSIVE_SWEEP_INTERVAL %q; using default %s", raw, scheduler.DefaultProgressiveSweepInterval) //nolint:gosec // G706: operator-configured value echoed for the operator, not request input
+		}
+	}
+	progressiveBillingScheduler := scheduler.NewProgressiveBillingScheduler(
+		progressiveBillingRepo, invoiceService, locker, progressiveSweepInterval,
+	)
+	progressiveBillingScheduler.Start()
+	defer progressiveBillingScheduler.Stop()
+
+	// MRR Snapshot Scheduler (daily) — captures per-subscription MRR history so
+	// the MRR waterfall (new/expansion/contraction/churned) has movement to diff.
+	mrrSnapshotScheduler := scheduler.NewMRRSnapshotScheduler(tenantRepo, analyticsService, locker)
+	mrrSnapshotScheduler.Start()
+	defer mrrSnapshotScheduler.Stop()
+
+	// Subscription Resume Scheduler (daily, issue #111) — auto-resumes paused
+	// subscriptions whose scheduled resume_at has elapsed (e.g. a retention
+	// "pause N months" offer). Claim-based, so multi-instance-safe without Redis.
+	subscriptionResumeScheduler := scheduler.NewSubscriptionResumeScheduler(
+		subscriptionRepo.(*db.SubscriptionRepository), subscriptionService, locker)
+	subscriptionResumeScheduler.Start()
+	defer subscriptionResumeScheduler.Stop()
+
+	// Operational alerting (solo-operator safety net) — POSTs to
+	// ALERT_WEBHOOK_URL on component state transitions; no-op when unset.
+	// See docs/incident-runbook.md.
+	alerter := alerting.NewFromEnv()
+	if _, isNoop := alerter.(alerting.NoopAlerter); isNoop {
+		log.Println("Alerting disabled (set ALERT_WEBHOOK_URL to enable health alerts)")
+	} else {
+		log.Println("Alerting enabled via ALERT_WEBHOOK_URL")
+	}
+	healthChecks := []scheduler.ComponentCheck{
+		{
+			Name:     "postgres",
+			Severity: alerting.SeverityCritical, // system of record — money movement at risk
+			Check:    func(ctx context.Context) error { return database.PingContext(ctx) },
+		},
+	}
+	if rdb != nil { // mirror /health: redis only reported when configured
+		redisClient := rdb
+		healthChecks = append(healthChecks, scheduler.ComponentCheck{
+			Name:     "redis",
+			Severity: alerting.SeverityWarning, // optional: locking/rate-limit degrade
+			Check:    func(ctx context.Context) error { return redisClient.Ping(ctx).Err() },
+		})
+	}
+	// TigerBeetle's client has no liveness probe, so mirror /health exactly:
+	// boot-time connection state. Disconnected at boot fires one warning on
+	// the first evaluation, then stays silent (PG-only ledger mode is safe).
+	tbConnected := tbClientForRecon != nil
+	healthChecks = append(healthChecks, scheduler.ComponentCheck{
+		Name:     "tigerbeetle",
+		Severity: alerting.SeverityWarning, // optional accelerator; ledger is authoritative in PG
+		Check: func(ctx context.Context) error {
+			if !tbConnected {
+				return errors.New("not connected at startup (ledger running PG-only)")
+			}
+			return nil
+		},
+	})
+	healthAlertScheduler := scheduler.NewHealthAlertScheduler(alerter, healthChecks, 0) // 0 = 60s default
+	healthAlertScheduler.Start()
+	defer healthAlertScheduler.Stop()
+
+	// Graceful shutdown: on SIGINT/SIGTERM stop schedulers, then drain the
+	// HTTP server (srv.Shutdown below) so in-flight requests complete.
+	// Stop() blocks until an in-flight tick finishes, so signal all
+	// schedulers concurrently — done sequentially, one slow tick would keep
+	// every scheduler behind it running (and starting new jobs) meanwhile.
+	shutdownSchedulers := func() {
+		stops := []func(){
+			preChargeScheduler.Stop,
+			dunningScheduler.Stop,
+			trialScheduler.Stop,
+			cardExpiryScheduler.Stop,
+			mandateDebitScheduler.Stop,
+			nexusScheduler.Stop,
+			reconciliationScheduler.Stop,
+			progressiveBillingScheduler.Stop,
+			mrrSnapshotScheduler.Stop,
+			subscriptionResumeScheduler.Stop,
+			healthAlertScheduler.Stop,
+		}
+		if billingCycleScheduler != nil {
+			stops = append(stops, billingCycleScheduler.Stop)
+		}
+		var wg sync.WaitGroup
+		for _, stop := range stops {
+			wg.Add(1)
+			go func(stop func()) {
+				defer wg.Done()
+				stop()
+			}(stop)
+		}
+		wg.Wait()
+	}
+
+	// 7. Initialize Handlers
+	catalogHandler := handler.NewCatalogHandler(catalogService)
+	entitlementHandler := handler.NewEntitlementHandler(entitlementService) // Entitlement Engine v1
+	customerHandler := handler.NewCustomerHandler(customerService, subscriptionRepo)
+	billingHandler := handler.NewBillingHandler(tenantService)                                                                                    // Phase B: managed-cloud trial/billing status
+	stripeImportService := service.NewStripeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Stripe → Recurso
+	stripeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                   // read side for the Compare gate
+	stripeImportHandler := handler.NewStripeImportHandler(stripeImportService)
+	chargebeeImportService := service.NewChargebeeImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: Chargebee → Recurso
+	chargebeeImportService.SetSubscriptionReader(subscriptionRepo)                                                                                      // read side for the Compare gate
+	chargebeeImportHandler := handler.NewChargebeeImportHandler(chargebeeImportService)
+	revenuecatImportService := service.NewRevenueCatImportService(customerService, catalogService, subscriptionRepo, db.NewImportRefRepository(database)) // migration: RevenueCat → Recurso
+	revenuecatImportService.SetSubscriptionReader(subscriptionRepo)                                                                                       // read side for the Compare gate
+	revenuecatImportHandler := handler.NewRevenueCatImportHandler(revenuecatImportService)
+	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)
+	subscriptionHandler.SetSellerResolver(taxResolver) // stamp per-tenant invoice tax_regime
+	// Only the real Stripe gateway can verify a PaymentIntent server-side (the
+	// mock can't), so type-assert for the inspector; a nil inspector makes
+	// CheckoutSuccess report status only. subscriptionService is the ledger-path
+	// settler shared with the webhook.
+	checkoutInspector, _ := stripeGateway.(interface {
+		GetPaymentStatus(ctx context.Context, orderID string) (*port.PaymentStatus, error)
+	})
+	checkoutHandler := handler.NewCheckoutHandler(invoiceRepo, tenantGateway, checkoutInspector, subscriptionService, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// INR/Razorpay checkout verification (ENG-4 parity). The mock gateway lacks
+	// GetOrderInvoiceID, so this stays disabled until real Razorpay keys are set.
+	razorpayVerifier, _ := razorpayGateway.(interface {
+		VerifyPayment(ctx context.Context, orderID, paymentID, signature string) error
+		GetOrderInvoiceID(ctx context.Context, orderID string) (string, error)
+	})
+	checkoutHandler.SetRazorpay(razorpayVerifier, os.Getenv("RAZORPAY_KEY_ID"))
+	// Buyer name/address on Stripe intents — required by India-region accounts
+	// for foreign-currency (export) charges; harmless elsewhere.
+	checkoutBuyer, _ := stripeGateway.(interface {
+		SetOrderBuyer(ctx context.Context, orderID, name, line1, city, state, zip, country string) error
+	})
+	checkoutHandler.SetBuyerDetails(customerRepo, checkoutBuyer)
+	// BYO increment 2b: verify, buyer, and browser public keys resolve against
+	// the invoice's tenant (env fallback), so a seller who connected their own
+	// gateway gets order creation AND verification on that account.
+	checkoutHandler.SetTenantGateways(gatewayResolver, gatewayConnService)
+	usageHandler := handler.NewUsageHandler(usageService)
+	meteringHandler := handler.NewMeteringHandler(meteringService)       // Usage-based billing v1
+	walletHandler := handler.NewWalletHandler(walletService)             // Prepaid wallets (B1)
+	usageAlertHandler := handler.NewUsageAlertHandler(usageAlertService) // Usage alerts (B3)
+	auditHandler := handler.NewAuditHandler(auditLogRepo)                // Audit trail (C2)
+	// Phase 48: Unified Portal API Handler
+	analyticsHandler := handler.NewAnalyticsHandler(analyticsService, genaiService)
+	couponHandler := handler.NewCouponHandler(couponRepo)    // P7
+	tenantHandler := handler.NewTenantHandler(tenantService) // P8 Handler
+	// Dashboard auth handlers. Cookies are marked Secure everywhere except
+	// development so they still work over plain http://localhost.
+	secureCookie := os.Getenv("APP_ENV") != "development"
+	authHandler := handler.NewAuthHandler(authService, secureCookie)
+
+	// DEMO_MODE (docs/spec_demo_mode.md): bootstrap the sandbox tenant/user/
+	// key + seed data, expose /auth/demo, and reset on an interval.
+	var demoService *service.DemoService
+	if demo.Enabled() {
+		demoService = service.NewDemoService(authService, userRepo, tenantRepo, os.Getenv("DEMO_SEED_BIN"))
+		if _, err := demoService.EnsureBootstrapped(context.Background()); err != nil {
+			log.Printf("DEMO_MODE bootstrap failed (will still serve): %v", err)
+		}
+		demoResetWorker := worker.NewDemoResetWorker(demoService, demo.ResetInterval())
+		demoResetWorker.Start()
+		defer demoResetWorker.Stop()
+	}
+	teamHandler := handler.NewTeamHandler(authService)
+
+	// Phase 3 auth: native OAuth social login (Google + GitHub). A provider is
+	// only enabled when BOTH its client id and secret are set; the registry
+	// omits unconfigured providers (their endpoints 404 and /providers reports
+	// them disabled). OAUTH_REDIRECT_BASE_URL is the API's public base used to
+	// build each provider's redirect URL (defaults to BASE_URL).
+	oauthRedirectBase := getEnvDefault("OAUTH_REDIRECT_BASE_URL", baseURL)
+	oauthRegistry := service.NewOAuthRegistry(service.OAuthConfig{
+		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GitHubClientID:     os.Getenv("GITHUB_CLIENT_ID"),
+		GitHubClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+		RedirectBaseURL:    oauthRedirectBase,
+	})
+	oauthIdentityRepo := db.NewOAuthIdentityRepository(database)
+	authService.ConfigureOAuth(oauthIdentityRepo)
+	// The state cookie is signed with OAUTH_STATE_SECRET; if unset a random
+	// per-boot secret is used (in-flight logins started before a restart will
+	// then fail state validation and safely redirect to the login error page).
+	oauthStateSecret := []byte(os.Getenv("OAUTH_STATE_SECRET"))
+	if len(oauthStateSecret) == 0 {
+		oauthStateSecret = make([]byte, 32)
+		if _, err := cryptorand.Read(oauthStateSecret); err != nil {
+			log.Fatalf("failed to generate OAuth state secret: %v", err)
+		}
+		log.Println("OAUTH_STATE_SECRET not set — using an ephemeral per-boot secret")
+	}
+	oauthHandler := handler.NewOAuthHandler(authService, oauthRegistry, dashboardURL, oauthStateSecret, secureCookie)
+	for _, st := range oauthRegistry.Statuses() {
+		if st.Enabled {
+			log.Printf("OAuth provider enabled: %s", st.Name)
+		}
+	}
+
+	// Phase 3 auth: SAML SSO foundation (crewjam/saml). One IdP connection per
+	// tenant; SP endpoints are per-tenant and feature-flagged (404 unless the
+	// tenant's connection is enabled). The SP signing key/cert come from
+	// SAML_SP_KEY / SAML_SP_CERT (PEM); if unset an ephemeral self-signed pair is
+	// generated at boot (fine for bringing the SP up — a stable env pair is
+	// recommended before certifying against a real IdP).
+	ssoConnectionRepo := db.NewSSOConnectionRepository(database)
+	ssoReplayStore := db.NewSSOAssertionReplayRepository(database)
+	spKey, spCert, err := service.LoadOrGenerateSPKeyPair(os.Getenv("SAML_SP_KEY"), os.Getenv("SAML_SP_CERT"))
+	if err != nil {
+		log.Fatalf("failed to load SAML SP key/cert: %v", err)
+	}
+	if os.Getenv("SAML_SP_KEY") == "" || os.Getenv("SAML_SP_CERT") == "" {
+		log.Println("SAML_SP_KEY/SAML_SP_CERT not set — generated an ephemeral self-signed SP certificate at boot")
+	}
+	ssoService := service.NewSSOService(ssoConnectionRepo, userRepo, ssoReplayStore, spKey, spCert, oauthRedirectBase)
+	ssoHandler := handler.NewSSOHandler(ssoService, authService, dashboardURL, secureCookie)
+	gatewayConnHandler := handler.NewGatewayConnectionHandler(gatewayConnService)                       // BYO increment 4
+	integrationConnHandler := handler.NewIntegrationConnectionHandler(integrationConnService)           // BYO increment 5 (tax/CRM/storage)
+	advancedBillingHandler := handler.NewAdvancedBillingHandler(advancedBillingService, invoiceService) // P15
+	ledgerHandler := handler.NewLedgerHandler(ledgerService)                                            // P22
+	reconciliationHandler := handler.NewReconciliationHandler(reconciliationService)                    // Ledger reconciliation
+	closePackService := service.NewClosePackService(ledgerService, reconciliationService)               // B2: month-end close pack
+	closePackService.SetRevRecService(revrecService)                                                    // optional schedule-sourced deferred view
+	closePackService.SetUnscheduledDeferralReader(invoiceRepo)                                          // awaiting-payment bucket for the deferred tie-out (#466)
+	closePackHandler := handler.NewClosePackHandler(closePackService)
+	creditNoteHandler := handler.NewCreditNoteHandler(creditNoteService)      // P23
+	webhookMgmtHandler := handler.NewWebhookManagementHandler(webhookService) // P24
+
+	// Portal (P25)
+	// PORTAL_URL is where the customer-facing portal SPA is served; magic
+	// link emails point there. Defaults to the API base URL for dev.
+	portalBaseURL := getEnvDefault("PORTAL_URL", baseURL)
+	// Every customer-facing email link — hosted checkout (Pay Now) and portal
+	// (update-payment-method) — is an SPA route on app.recurso.dev, not the API.
+	notificationService.SetAppBaseURL(getEnvDefault("DASHBOARD_URL", portalBaseURL))
+	portalService := service.NewPortalService(customerRepo, invoiceRepo, magicLinkRepo, portalSessionRepo, disputeRepo, giftService, emailSender, portalBaseURL)
+	portalAPIHandler := handler.NewPortalAPIHandler(portalService)
+	// ENG-5: wire the Stripe SetupIntent card-update flow. The mock gateway
+	// doesn't implement these methods, so the endpoints stay disabled until real
+	// Stripe keys are set. customerRepo (concrete) provides the PM persistence.
+	portalStripeSetup, _ := stripeGateway.(interface {
+		EnsureStripeCustomer(ctx context.Context, existingID, email, name string) (string, error)
+		CreateSetupIntent(ctx context.Context, stripeCustomerID string, metadata map[string]string) (string, error)
+		FinalizeSetupIntent(ctx context.Context, setupIntentID string) (*port.SavedCard, error)
+	})
+	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
+	// B1 autopay: save cards on the tenant's BYO Stripe gateway when connected,
+	// recording the connection so renewal charges the same account.
+	if portalStripeSetup != nil {
+		portalAPIHandler.SetPaymentSetupResolver(handler.NewBYOSetupResolver(
+			func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
+				return gatewayResolver.StripeFor(ctx, tenantID)
+			},
+			func(ctx context.Context, tenantID uuid.UUID) *domain.GatewayConnection {
+				conn, _ := gatewayConnService.GetActive(ctx, tenantID, domain.GatewayStripe)
+				return conn
+			},
+			portalStripeSetup,
+			os.Getenv("STRIPE_PUBLISHABLE_KEY"),
+		))
+	}
+	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
+	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
+	// fake authorization page.
+	if os.Getenv("RAZORPAY_KEY_ID") != "" {
+		portalAPIHandler.SetMandateReauth(customerRepo, mandateService, invoiceRepo)
+	}
+
+	// Invoice disputes (Track 2): admin-facing API; portal-facing raise/list
+	// lives on the portal handler above.
+	disputeService := service.NewDisputeService(disputeRepo)
+	// Accepting a dispute can issue a resolution credit via the (already
+	// ledgered) credit-note path.
+	disputeService.SetCreditIssuer(creditNoteService, invoiceRepo)
+	disputeHandler := handler.NewDisputeHandler(disputeService)
+
+	// Quotes (P27)
+	quoteService := service.NewQuoteService(quoteRepo, invoiceRepo)
+	quoteService.SetLedgerPoster(ledgerService) // post the converted invoice's AR→Revenue leg
+	quoteService.SetTxManager(txManager)        // atomic create-then-claim (non-deferrable quotes.invoice_id FK)
+	quoteHandler := handler.NewQuoteHandler(quoteService)
+
+	// Manual invoices: explicit line items, chosen issuing entity and dates.
+	// Needs the concrete invoice repo (tx-scoped insert + external_ref), exactly
+	// like the quote conversion path above.
+	manualInvoiceService := service.NewManualInvoiceService(
+		invoiceRepo.(*db.InvoiceRepository), customerRepo, db.NewEntityRepository(database), txManager)
+	manualInvoiceService.SetLedgerPoster(ledgerService) // post the invoice's AR→Revenue leg
+	manualInvoiceHandler := handler.NewManualInvoiceHandler(manualInvoiceService)
+
+	// GST & PDF (P30)
+	pdfService := service.NewInvoicePDFService(
+		getEnvDefault("PDF_COMPANY_NAME", "Your Company Name"),
+		getEnvDefault("PDF_COMPANY_ADDRESS", "123 Business Street, City, State - 000000"),
+		getEnvDefault("PDF_COMPANY_GSTIN", ""),
+		getEnvDefault("PDF_COMPANY_PAN", ""),
+		getEnvDefault("PDF_COMPANY_STATE", ""),
+		getEnvDefault("PDF_BANK_DETAILS", "Bank: HDFC Bank\nAccount: 00000000000000\nIFSC: HDFC0000000"),
+		getEnvDefault("PDF_COMPANY_COUNTRY", companyCountry),
+		getEnvDefault("PDF_COMPANY_TAX_ID", ""),
+	)
+	pdfHandler := handler.NewInvoicePDFHandler(pdfService, invoiceRepo, customerRepo)
+	pdfHandler.SetSellerResolver(taxResolver)   // render each invoice under its tenant's regime
+	creditNoteHandler.SetPDFService(pdfService) // credit notes print on the same letterhead
+	// The concrete invoice repository implements the GSTR-1 read side; assert to
+	// the narrow source interface so the export service stays db-agnostic.
+	var gstrService *service.GSTRService
+	if src, ok := invoiceRepo.(service.GSTR1Source); ok {
+		gstrService = service.NewGSTRService(src)
+	}
+	gstHandler := handler.NewGSTHandler(gstConfigRepo, gstrService)
+	// Filing GSTR for the primary entity by its concrete id must resolve the
+	// tenant/default GST config (stored under entity_id IS NULL) for the seller
+	// GSTIN — the primary lookup makes that mapping possible.
+	gstHandler.SetEntityReader(db.NewEntityRepository(database))
+	// A GST-config write changes the seller jurisdiction — drop the resolver's
+	// per-tenant cache so the next invoice sees it immediately (#186).
+	gstHandler.SetSellerJurisdictionInvalidator(taxResolver.InvalidateSellerJurisdiction)
+	taxNexusHandler := handler.NewTaxNexusHandler(taxNexusRepo)
+	taxNexusHandler.SetStatusService(nexusStatusService)
+	einvoiceHandler := handler.NewEInvoiceHandler(einvoiceService, irpConfigRepo)
+	euConfigHandler := handler.NewEUConfigHandler(db.NewTenantEUConfigRepository(database))
+	usTaxConfigRepo := db.NewTenantUSTaxConfigRepository(database)
+	usTaxConfigHandler := handler.NewUSTaxConfigHandler(usTaxConfigRepo)
+	pdfHandler.SetUSTaxIdentity(usTaxConfigRepo) // per-tenant W-9 on US invoices
+
+	compareReportRepo := db.NewCompareReportRepository(database)
+	compareReportHandler := handler.NewCompareReportHandler(compareReportRepo)
+	compareReportHandler.SetTenantNamer(tenantService)
+	stripeImportHandler.SetReportStore(compareReportRepo)
+	chargebeeImportHandler.SetReportStore(compareReportRepo)
+	revenuecatImportHandler.SetReportStore(compareReportRepo)
+
+	invoiceBrandingRepo := db.NewInvoiceBrandingRepository(database)
+	invoiceBrandingHandler := handler.NewInvoiceBrandingHandler(invoiceBrandingRepo)
+	pdfHandler.SetBranding(invoiceBrandingRepo)        // per-tenant logo/signature/bank/terms on invoices
+	creditNoteHandler.SetBranding(invoiceBrandingRepo) // same letterhead on credit notes
+	euEInvoiceHandler := handler.NewEUEInvoiceHandler(euInvoiceRepo, invoiceRepo, customerRepo, euEInvoiceService)
+	mcpSettingsHandler := handler.NewMCPSettingsHandler(db.NewMCPSettingsRepository(database))
+	// Manual CRM sync ("test my HubSpot connection"). Typed-nil trap: only hand
+	// the worker to the handler when it actually exists.
+	var crmSyncHandler *handler.CRMSyncHandler
+	if crmWorker != nil {
+		crmSyncHandler = handler.NewCRMSyncHandler(crmWorker)
+	} else {
+		crmSyncHandler = handler.NewCRMSyncHandler(nil)
+	}
+	entityService := service.NewEntityService(db.NewEntityRepository(database))
+	// The primary entity's country is the seller jurisdiction for non-GST
+	// tenants — an entity update must drop the resolver's cache too (#186).
+	entityService.SetSellerJurisdictionInvalidator(taxResolver.InvalidateSellerJurisdiction)
+	entityHandler := handler.NewEntityHandler(entityService)
+
+	// Consent Service & Handler (P30 - RBI compliance)
+	consentRepo := db.NewConsentRepository(database)
+	consentService := service.NewConsentService(consentRepo)
+	consentHandler := handler.NewConsentHandler(consentService)
+
+	// Cancellation Handler (P30 - easy cancellation)
+	cancellationHandler := handler.NewCancellationHandler(subscriptionService, consentService, notificationService)
+
+	// Dunning Analytics
+	dunningAnalyticsSvc := service.NewDunningAnalyticsService(dunningRepo)
+	dunningHandler := handler.NewDunningHandler(dunningAnalyticsSvc, dunningRecoveryService)
+
+	// Collections Intelligence — operator-facing worklist over the invoice repo,
+	// plus the recovery-funnel / failure-breakdown analytics (fed the invoice-side
+	// aggregates via the recovery service's nil-safe aggregator) and the Inc 3
+	// manual controls (retry-now / pause / write-off), guarded by the ACH
+	// in-flight checker so a manual retry never stacks on a settling attempt.
+	dunningRecoveryService.SetCollectionsAggregator(invoiceRepo)
+	collectionsActionService := service.NewCollectionsActionService(invoiceRepo)
+	collectionsActionService.SetWriteOffLedger(ledgerService, invoiceRepo) // write-off posts its ledger reversal (#466 follow-up)
+	collectionsActionService.SetInFlightChecker(db.NewPaymentAttemptRepository(database))
+	collectionsHandler := handler.NewCollectionsHandler(invoiceRepo, dunningRecoveryService, collectionsActionService)
+
+	// Phase 2: New Handlers
+	mandateHandler := handler.NewMandateHandler(mandateService)
+	offlinePaymentHandler := handler.NewOfflinePaymentHandler(offlinePaymentService)
+	orgHandler := handler.NewOrganizationHandler(orgService)
+	accountingHandler := handler.NewAccountingHandler(acctConnRepo, accountingService, oauthStateSecret, dashboardURL)
+	churnHandler := handler.NewChurnHandler(churnService, database)
+
+	// Payment Handlers
+	paymentHandler := handler.NewPaymentHandler(tenantGateway, invoiceRepo)
+	webhookHandler := handler.NewWebhookHandler(subscriptionService, tenantGateway, retryService, invoiceRepo, subscriptionRepo, customerRepo, notificationService, os.Getenv("STRIPE_WEBHOOK_SECRET"))
+	webhookHandler.SetMandateService(mandateService)
+	webhookHandler.SetOfflinePaymentService(offlinePaymentService)
+	webhookHandler.SetDunningCampaignService(dunningCampaignService)
+	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
+	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
+	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
+	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))     // ACH async settlement (Inc 3b)
+
+	// Revenue Recognition Handler
+	revrecHandler := handler.NewRevRecHandler(revrecService)
+
+	// Cancel Flow & Dunning Campaign Handlers
+	cancelFlowHandler := handler.NewCancelFlowHandler(cancelFlowService)
+	dunningCampaignHandler := handler.NewDunningCampaignHandler(dunningCampaignService)
+
+	// 8. Setup Router
+	// gin.New + Recovery + a slog access log: gin.Default()'s logger wrote
+	// plain-text lines into the JSON log stream.
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(middleware.AccessLog())
+
+	// Register custom binding validators (currency/country) so request structs
+	// can declare `binding:"required,currency"` and reject malformed codes at
+	// bind time with a consistent message.
+	validate.Register()
+
+	// Client IP must not be spoofable. gin.Default() trusts ALL proxies
+	// (0.0.0.0/0), so it reads a client-supplied X-Forwarded-For — letting
+	// anyone reset the per-IP rate limiter (500/min global, 20/min on public
+	// auth endpoints) by sending a random XFF, defeating login/forgot-password/
+	// register brute-force protection. Trust only real proxy CIDRs: loopback +
+	// RFC-1918 private ranges by default (matches the nginx-in-front docker
+	// deployment and is unspoofable by public clients), overridable via
+	// TRUSTED_PROXIES (comma-separated CIDRs) for a different ingress. Set
+	// TRUSTED_PROXIES to a single space (or configure your LB's egress CIDR) if
+	// the app sits behind a public-IP load balancer.
+	trustedProxies := []string{"127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+	if tp := strings.TrimSpace(os.Getenv("TRUSTED_PROXIES")); tp != "" {
+		trustedProxies = trustedProxies[:0]
+		for _, p := range strings.Split(tp, ",") {
+			if s := strings.TrimSpace(p); s != "" {
+				trustedProxies = append(trustedProxies, s)
+			}
+		}
+	}
+	if err := r.SetTrustedProxies(trustedProxies); err != nil {
+		log.Fatalf("invalid TRUSTED_PROXIES %v: %v", trustedProxies, err) //nolint:gosec // G706: operator-configured CIDR list, not request input
+	}
+
+	// Global Middleware (Phase 47)
+	if demo.Enabled() {
+		r.Use(middleware.DemoGuard()) // public-sandbox destructive-edge guard
+		log.Println("DEMO_MODE: sandbox guards active; data resets every", demo.ResetInterval())
+	}
+	r.Use(middleware.RequestIDMiddleware())
+	r.Use(middleware.SecureMiddleware())
+	// Cap request bodies (default 2 MiB; MAX_REQUEST_BODY_BYTES overrides). The
+	// migration importers accept 25 MiB dumps and cap themselves, so they are
+	// exempt. Without this, an unauthenticated webhook POST could stream an
+	// unbounded body into memory before its signature is checked.
+	maxBody := int64(2 << 20)
+	if v, err := strconv.ParseInt(os.Getenv("MAX_REQUEST_BODY_BYTES"), 10, 64); err == nil && v > 0 {
+		maxBody = v
+	}
+	r.Use(middleware.BodyLimitMiddleware(maxBody, "/v1/import/"))
+	// Report panics + 5xx to Sentry (inert unless SENTRY_DSN is set).
+	r.Use(middleware.SentryMiddleware())
+	// Prometheus metrics: record every request (method/route/status + latency).
+	httpMetrics := metrics.NewHTTPMetrics()
+	r.Use(middleware.MetricsMiddleware(httpMetrics))
+	// Pool gauges and business-event counters ride on the same scrape.
+	httpMetrics.SetDBStats(database.Stats)
+	webhookService.SetEventObserver(httpMetrics.IncEvent)
+	// Rate limit (per key/IP): RATE_LIMIT_PER_MINUTE, default 500.
+	rateLimit, _ := strconv.Atoi(getEnvDefault("RATE_LIMIT_PER_MINUTE", "500"))
+	if rateLimit <= 0 {
+		rateLimit = 500
+	}
+	r.Use(middleware.RateLimitMiddleware(rdb, "api", rateLimit, time.Minute))
+
+	// CORS Middleware — comma-separated allowlist. Multiple origins matter:
+	// the dashboard and the marketing site (whose waitlist form POSTs here)
+	// are different origins. The matching request Origin is echoed back —
+	// never "*", since credentials are allowed.
+	corsEnv := os.Getenv("CORS_ORIGIN")
+	if corsEnv == "" {
+		corsEnv = "http://localhost:5173,http://localhost:5174" // Vite dev defaults
+	}
+	allowedOrigins := map[string]bool{}
+	for _, o := range strings.Split(corsEnv, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			allowedOrigins[o] = true
+		}
+	}
+	r.Use(func(c *gin.Context) {
+		if origin := c.GetHeader("Origin"); origin != "" && allowedOrigins[origin] {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Vary", "Origin")
+		}
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, Idempotency-Key, X-Idempotency-Key, X-Portal-Session, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+
+		c.Next()
+	})
+
+	r.LoadHTMLGlob("internal/adapter/templates/*.html")
+
+	// Route tables live in routes_public.go, routes_auth.go, routes_portal.go
+	// and routes_v1.go; main() only wires their dependencies. Everything below
+	// runs after the last r.Use so every route inherits the full chain above.
+
+	// /metrics is optionally bearer-gated via METRICS_TOKEN (open when unset).
+	metricsToken := os.Getenv("METRICS_TOKEN")
+
+	// /platform/metrics (founder-only cross-tenant funnel) is gated by
+	// FOUNDER_TOKEN and 404s when unset.
+	founderToken := os.Getenv("FOUNDER_TOKEN")
+	platformRepo := db.NewPlatformRepository(database)
+	platformChargeRepo := db.NewCloudChargeRepository(database)
+
+	// gateway_mode drives the dashboard's "Test mode" chip: "test" when any
+	// configured gateway key is a test key, "live" when keys are live-only,
+	// "none" when no real gateway is configured (mock).
+	gatewayMode := "none"
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	razorpayKey := os.Getenv("RAZORPAY_KEY_ID")
+	if stripeKey != "" || razorpayKey != "" {
+		if strings.HasPrefix(stripeKey, "sk_test") || strings.HasPrefix(razorpayKey, "rzp_test") {
+			gatewayMode = "test"
+		} else {
+			gatewayMode = "live"
+		}
+	}
+
+	// Public Routes — stricter rate limit (20 req/min per IP) for endpoints
+	// worth brute-forcing (credentials, tokens, payment initiation).
+	publicLimit := middleware.RateLimitMiddleware(rdb, "public", 20, time.Minute)
+	// Session-state endpoints (/auth/me and friends) are hit on every page
+	// load — they get their own, roomier bucket so normal dashboard use can
+	// never lock a user out of their session.
+	sessionLimit := middleware.RateLimitMiddleware(rdb, "session", 120, time.Minute)
+	// Expensive endpoints (import commit/preview/compare — each reprocesses a
+	// whole external billing account; PDF/HTML renders; GL export) get a tight
+	// per-tenant bucket so one API key can't hammer the CPU/IO-heavy paths. The
+	// bucket keys per-tenant on the authed v1 routes.
+	expensiveLimit := middleware.RateLimitMiddleware(rdb, "expensive", 30, time.Minute)
+
+	// Recurso Cloud waitlist (ENG-12): public demand capture from the website.
+	waitlistHandler := handler.NewWaitlistHandler(db.NewWaitlistRepository(database))
+
+	// Sandbox entry point (/auth/demo) exists only in DEMO_MODE with a demo
+	// service; a nil demoHandler leaves the route unregistered (404).
+	var demoHandler *handler.DemoHandler
+	if demo.Enabled() && demoService != nil {
+		demoHandler = handler.NewDemoHandler(demoService, authService, secureCookie)
+	}
+
+	registerPublicRoutes(r, &publicHandlers{
+		accountingHandler:  accountingHandler,
+		checkoutHandler:    checkoutHandler,
+		database:           database,
+		founderToken:       founderToken,
+		gatewayMode:        gatewayMode,
+		httpMetrics:        httpMetrics,
+		metricsToken:       metricsToken,
+		paymentHandler:     paymentHandler,
+		platformChargeRepo: platformChargeRepo,
+		platformRepo:       platformRepo,
+		publicLimit:        publicLimit,
+		rdb:                rdb,
+		tbConnected:        tbConnected,
+		waitlistHandler:    waitlistHandler,
+		webhookHandler:     webhookHandler,
+	})
+
+	registerAuthRoutes(r, &authHandlers{
+		authHandler:  authHandler,
+		demoHandler:  demoHandler,
+		oauthHandler: oauthHandler,
+		publicLimit:  publicLimit,
+		sessionLimit: sessionLimit,
+		ssoHandler:   ssoHandler,
+	})
+
+	registerPortalRoutes(r, &portalHandlers{
+		pdfHandler:       pdfHandler,
+		portalAPIHandler: portalAPIHandler,
+		portalService:    portalService,
+		publicLimit:      publicLimit,
+		secureCookie:     secureCookie,
+	})
+
+	// Protected Routes (dashboard session cookie OR tenant API key — both
+	// resolve to the same tenant_id, so every handler below is unchanged).
+	// serverLive gates API keys by mode: live keys require a live-gateway
+	// server, test keys require a non-live one.
+	serverLive := gatewayMode == "live"
+	registerV1Routes(r, &v1Handlers{
+		accountingHandler:       accountingHandler,
+		advancedBillingHandler:  advancedBillingHandler,
+		analyticsHandler:        analyticsHandler,
+		auditHandler:            auditHandler,
+		auditLogRepo:            auditLogRepo,
+		authHandler:             authHandler,
+		authService:             authService,
+		billingHandler:          billingHandler,
+		cancelFlowHandler:       cancelFlowHandler,
+		cancellationHandler:     cancellationHandler,
+		catalogHandler:          catalogHandler,
+		chargebeeImportHandler:  chargebeeImportHandler,
+		churnHandler:            churnHandler,
+		closePackHandler:        closePackHandler,
+		collectionsHandler:      collectionsHandler,
+		compareReportHandler:    compareReportHandler,
+		consentHandler:          consentHandler,
+		couponHandler:           couponHandler,
+		creditNoteHandler:       creditNoteHandler,
+		crmSyncHandler:          crmSyncHandler,
+		customerHandler:         customerHandler,
+		disputeHandler:          disputeHandler,
+		dunningCampaignHandler:  dunningCampaignHandler,
+		dunningHandler:          dunningHandler,
+		einvoiceHandler:         einvoiceHandler,
+		entitlementHandler:      entitlementHandler,
+		entityHandler:           entityHandler,
+		euConfigHandler:         euConfigHandler,
+		euEInvoiceHandler:       euEInvoiceHandler,
+		expensiveLimit:          expensiveLimit,
+		gatewayConnHandler:      gatewayConnHandler,
+		giftHandler:             giftHandler,
+		gstHandler:              gstHandler,
+		idempotencyStore:        idempotencyStore,
+		integrationConnHandler:  integrationConnHandler,
+		invoiceBrandingHandler:  invoiceBrandingHandler,
+		ledgerHandler:           ledgerHandler,
+		mandateHandler:          mandateHandler,
+		mcpSettingsHandler:      mcpSettingsHandler,
+		meteringHandler:         meteringHandler,
+		offlinePaymentHandler:   offlinePaymentHandler,
+		orgHandler:              orgHandler,
+		pdfHandler:              pdfHandler,
+		manualInvoiceHandler:    manualInvoiceHandler,
+		quoteHandler:            quoteHandler,
+		rdb:                     rdb,
+		reconciliationHandler:   reconciliationHandler,
+		referralHandler:         referralHandler,
+		revenuecatImportHandler: revenuecatImportHandler,
+		revrecHandler:           revrecHandler,
+		serverLive:              serverLive,
+		ssoHandler:              ssoHandler,
+		stripeImportHandler:     stripeImportHandler,
+		subscriptionHandler:     subscriptionHandler,
+		taxNexusHandler:         taxNexusHandler,
+		teamHandler:             teamHandler,
+		tenantHandler:           tenantHandler,
+		tenantRepo:              tenantRepo,
+		usTaxConfigHandler:      usTaxConfigHandler,
+		usageAlertHandler:       usageAlertHandler,
+		usageHandler:            usageHandler,
+		walletHandler:           walletHandler,
+		webhookMgmtHandler:      webhookMgmtHandler,
+	})
+
+	// 9. Start Server
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	serverAddr := fmt.Sprintf(":%s", port)
+	// ReadHeaderTimeout bounds how long a client may take to send request headers,
+	// closing slow-header (Slowloris) connections. Deliberately no ReadTimeout/
+	// WriteTimeout: they'd cap whole-request duration and could truncate large
+	// usage-event ingests or streamed exports (invoice PDFs, GL CSV). IdleTimeout
+	// reaps idle keep-alive connections.
+	srv := &http.Server{
+		Addr:              serverAddr,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		log.Println("Shutting down gracefully...")
+		shutdownSchedulers()
+		cancelWorkers() // stop the background worker tick loops and drain in-flight work
+
+		// Wait for the worker goroutines to actually return, bounded so a stuck
+		// worker can't hang shutdown forever. Each worker's in-flight I/O is
+		// already time-bounded (e.g. the webhook client's 10s HTTP timeout), so
+		// this drain typically completes well inside the budget.
+		workersDone := make(chan struct{})
+		go func() {
+			workersWG.Wait()
+			close(workersDone)
+		}()
+		select {
+		case <-workersDone:
+			log.Println("Background workers drained.")
+		case <-time.After(15 * time.Second):
+			log.Println("Timed out waiting for background workers to drain; exiting anyway.")
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		}
+	}()
+
+	log.Printf("Starting Recurso API on %s", serverAddr) //nolint:gosec // G706: listen address from configuration, not request input
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Fatalf("Server failed: %v", err)
+	}
+	log.Println("Server stopped")
+}
