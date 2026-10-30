@@ -121,7 +121,11 @@ func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 	}
 	renewed := 0
 	for _, sub := range subs {
-		if err := s.RenewSubscription(ctx, sub); err != nil {
+		// The sweep's context names no tenant, but the plan and invoice lookups
+		// in RenewSubscription are tenant-scoped (and, for a workspace with a
+		// dedicated database, tenant-routed): carry the subscription's own tenant.
+		tctx := context.WithValue(ctx, domain.TenantIDKey, sub.TenantID)
+		if err := s.RenewSubscription(tctx, sub); err != nil {
 			slog.ErrorContext(ctx, "subscription renewal failed (lease will retry)",
 				"subscription_id", sub.ID, "error", err)
 			continue
