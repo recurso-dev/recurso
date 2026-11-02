@@ -24,6 +24,10 @@ func RunMigrations(dbURL string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create migrate instance: %w", err)
 	}
+	// Release the migration connection. At startup this runs once and the leak
+	// was invisible; provisioning a database per workspace calls it for every
+	// signup, and each unclosed handle pins a server connection until exit.
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("failed to run migrations: %w", err)

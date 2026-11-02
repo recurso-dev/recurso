@@ -41,10 +41,12 @@ type fakeRenewalInvoicer struct {
 	generated  int
 	finalCalls []time.Time
 	seenPeriod [2]time.Time
+	seenTenant uuid.UUID // tenant carried on the context GenerateInvoice was called with
 }
 
 func (f *fakeRenewalInvoicer) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
 	f.generated++
+	f.seenTenant, _ = ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	f.seenPeriod = [2]time.Time{sub.CurrentPeriodStart, sub.CurrentPeriodEnd}
 	return f.invoice, f.invErr
 }
@@ -347,5 +349,21 @@ func TestProcessDueRenewals_ClaimErrorAborts(t *testing.T) {
 	subRepo.claimErr = errors.New("db down")
 	if _, err := svc.ProcessDueRenewals(context.Background()); err == nil {
 		t.Fatal("expected claim error to abort the sweep")
+	}
+}
+
+// The sweep's own context names no tenant, but the renewal's plan and invoice
+// lookups are tenant-scoped, so each subscription must be renewed on a context
+// carrying that subscription's tenant. Regression: renewals failed with
+// "tenant_id missing from context" when the scheduler ran them.
+func TestProcessDueRenewals_CarriesSubscriptionTenant(t *testing.T) {
+	svc, _, invoicer, sub := renewalFixture()
+
+	renewed, err := svc.ProcessDueRenewals(context.Background())
+	if err != nil || renewed != 1 {
+		t.Fatalf("renewed = %d, err = %v; want 1, nil", renewed, err)
+	}
+	if invoicer.seenTenant != sub.TenantID {
+		t.Fatalf("renewal ran on tenant %v, want the subscription's tenant %v", invoicer.seenTenant, sub.TenantID)
 	}
 }
