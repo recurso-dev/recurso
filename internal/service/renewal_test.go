@@ -150,6 +150,64 @@ func TestRenewSubscription_InvoicesThenAdvancesPeriod(t *testing.T) {
 	}
 }
 
+func TestRenewSubscription_CancelAtPeriodEnd_ChargesFinalUsageInvoice(t *testing.T) {
+	svc, subRepo, invoicer, sub := renewalFixture()
+	sub.CancelAtPeriodEnd = true
+	invoicer.finalInv = &domain.Invoice{
+		ID: uuid.New(), CustomerID: sub.CustomerID, Status: domain.InvoiceStatusOpen, Currency: "USD", Total: 2000,
+	}
+	charger := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	settler := &fakeRenewalSettler{}
+	svc.SetSavedMethodCharging(charger, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1"}, settler)
+
+	if err := svc.RenewSubscription(context.Background(), sub); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if charger.charges != 1 || charger.amount != 2000 {
+		t.Fatalf("charges = %d amount = %d, want one charge of 2000", charger.charges, charger.amount)
+	}
+	if len(settler.settled) != 1 || settler.settled[0] != invoicer.finalInv.ID {
+		t.Fatalf("settled = %v, want the final invoice", settler.settled)
+	}
+	if len(subRepo.updated) != 1 || subRepo.updated[0].Status != domain.SubscriptionStatusCanceled {
+		t.Fatalf("updates = %+v, want one canceled update", subRepo.updated)
+	}
+}
+
+func TestRenewSubscription_CancelAtPeriodEnd_NoFinalInvoiceNoCharge(t *testing.T) {
+	svc, _, _, sub := renewalFixture()
+	sub.CancelAtPeriodEnd = true
+	charger := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	svc.SetSavedMethodCharging(charger, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1"}, &fakeRenewalSettler{})
+
+	if err := svc.RenewSubscription(context.Background(), sub); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if charger.charges != 0 {
+		t.Fatalf("charges = %d, want 0 with no final invoice", charger.charges)
+	}
+}
+
+// A failed cancellation write must not charge: the final invoice stays open and
+// the retry only finishes the cancellation.
+func TestRenewSubscription_CancelAtPeriodEnd_UpdateFailureDoesNotCharge(t *testing.T) {
+	svc, subRepo, invoicer, sub := renewalFixture()
+	sub.CancelAtPeriodEnd = true
+	subRepo.updErr = errors.New("db down")
+	invoicer.finalInv = &domain.Invoice{
+		ID: uuid.New(), CustomerID: sub.CustomerID, Status: domain.InvoiceStatusOpen, Currency: "USD", Total: 2000,
+	}
+	charger := &fakeRenewalCharger{result: &port.PaymentResult{Success: true}}
+	svc.SetSavedMethodCharging(charger, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1"}, &fakeRenewalSettler{})
+
+	if err := svc.RenewSubscription(context.Background(), sub); err == nil {
+		t.Fatal("want an error when the cancellation cannot be persisted")
+	}
+	if charger.charges != 0 {
+		t.Fatalf("charges = %d, want 0 before the cancellation commits", charger.charges)
+	}
+}
+
 func TestRenewSubscription_CancelAtPeriodEnd(t *testing.T) {
 	svc, subRepo, invoicer, sub := renewalFixture()
 	sub.CancelAtPeriodEnd = true

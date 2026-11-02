@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A `cancel_at_period_end` subscription's final usage invoice is now charged to
+  the saved payment method when the cancellation commits. It used to stay open
+  until dunning found it overdue. A declined charge leaves it open for dunning,
+  and the subscription stays canceled.
+
 ## [0.14.0] - 2026-09-04 — The hardening release
 
 0.13.0 made every object deep; 0.14.0 made the whole thing trustworthy under
