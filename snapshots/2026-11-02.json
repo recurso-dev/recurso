@@ -1,0 +1,245 @@
+{
+  "date": "2026-11-02",
+  "repo": {
+    "stargazers_count": 7,
+    "forks_count": 5,
+    "open_issues_count": 16,
+    "subscribers_count": 0
+  },
+  "clones": {
+    "count": 104,
+    "uniques": 50,
+    "clones": [
+      {
+        "timestamp": "2026-10-19T00:00:00Z",
+        "count": 6,
+        "uniques": 5
+      },
+      {
+        "timestamp": "2026-10-20T00:00:00Z",
+        "count": 11,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-10-21T00:00:00Z",
+        "count": 10,
+        "uniques": 6
+      },
+      {
+        "timestamp": "2026-10-22T00:00:00Z",
+        "count": 6,
+        "uniques": 5
+      },
+      {
+        "timestamp": "2026-10-23T00:00:00Z",
+        "count": 12,
+        "uniques": 4
+      },
+      {
+        "timestamp": "2026-10-24T00:00:00Z",
+        "count": 5,
+        "uniques": 5
+      },
+      {
+        "timestamp": "2026-10-25T00:00:00Z",
+        "count": 5,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-10-26T00:00:00Z",
+        "count": 3,
+        "uniques": 3
+      },
+      {
+        "timestamp": "2026-10-27T00:00:00Z",
+        "count": 7,
+        "uniques": 5
+      },
+      {
+        "timestamp": "2026-10-28T00:00:00Z",
+        "count": 12,
+        "uniques": 7
+      },
+      {
+        "timestamp": "2026-10-29T00:00:00Z",
+        "count": 10,
+        "uniques": 4
+      },
+      {
+        "timestamp": "2026-10-30T00:00:00Z",
+        "count": 11,
+        "uniques": 4
+      },
+      {
+        "timestamp": "2026-10-31T00:00:00Z",
+        "count": 0,
+        "uniques": 0
+      },
+      {
+        "timestamp": "2026-11-01T00:00:00Z",
+        "count": 6,
+        "uniques": 1
+      }
+    ]
+  },
+  "views": {
+    "count": 404,
+    "uniques": 268,
+    "views": [
+      {
+        "timestamp": "2026-10-19T00:00:00Z",
+        "count": 8,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-10-20T00:00:00Z",
+        "count": 1,
+        "uniques": 1
+      },
+      {
+        "timestamp": "2026-10-21T00:00:00Z",
+        "count": 0,
+        "uniques": 0
+      },
+      {
+        "timestamp": "2026-10-22T00:00:00Z",
+        "count": 0,
+        "uniques": 0
+      },
+      {
+        "timestamp": "2026-10-23T00:00:00Z",
+        "count": 0,
+        "uniques": 0
+      },
+      {
+        "timestamp": "2026-10-24T00:00:00Z",
+        "count": 13,
+        "uniques": 7
+      },
+      {
+        "timestamp": "2026-10-25T00:00:00Z",
+        "count": 2,
+        "uniques": 2
+      },
+      {
+        "timestamp": "2026-10-26T00:00:00Z",
+        "count": 9,
+        "uniques": 4
+      },
+      {
+        "timestamp": "2026-10-27T00:00:00Z",
+        "count": 13,
+        "uniques": 9
+      },
+      {
+        "timestamp": "2026-10-28T00:00:00Z",
+        "count": 75,
+        "uniques": 22
+      },
+      {
+        "timestamp": "2026-10-29T00:00:00Z",
+        "count": 185,
+        "uniques": 176
+      },
+      {
+        "timestamp": "2026-10-30T00:00:00Z",
+        "count": 86,
+        "uniques": 47
+      },
+      {
+        "timestamp": "2026-10-31T00:00:00Z",
+        "count": 8,
+        "uniques": 6
+      },
+      {
+        "timestamp": "2026-11-01T00:00:00Z",
+        "count": 4,
+        "uniques": 3
+      }
+    ]
+  },
+  "referrers": [
+    {
+      "referrer": "aocr.org",
+      "count": 228,
+      "uniques": 228
+    },
+    {
+      "referrer": "github.com",
+      "count": 7,
+      "uniques": 4
+    },
+    {
+      "referrer": "Bing",
+      "count": 1,
+      "uniques": 1
+    },
+    {
+      "referrer": "Google",
+      "count": 1,
+      "uniques": 1
+    }
+  ],
+  "paths": [
+    {
+      "path": "/recurso-dev/recurso",
+      "title": "Overview",
+      "count": 65,
+      "uniques": 30
+    },
+    {
+      "path": "/recurso-dev/recurso/issues",
+      "title": "/issues",
+      "count": 30,
+      "uniques": 2
+    },
+    {
+      "path": "/recurso-dev/recurso/pulls",
+      "title": "/pulls",
+      "count": 26,
+      "uniques": 4
+    },
+    {
+      "path": "/recurso-dev/recurso/pull/781",
+      "title": "/pull/781",
+      "count": 8,
+      "uniques": 2
+    },
+    {
+      "path": "/recurso-dev/recurso/issues/780",
+      "title": "/issues/780",
+      "count": 5,
+      "uniques": 1
+    },
+    {
+      "path": "/recurso-dev/recurso/issues/779",
+      "title": "/issues/779",
+      "count": 4,
+      "uniques": 2
+    },
+    {
+      "path": "/recurso-dev/recurso/pull/27/files",
+      "title": "/pull/27/files",
+      "count": 3,
+      "uniques": 3
+    },
+    {
+      "path": "/recurso-dev/recurso/pull/335",
+      "title": "/pull/335",
+      "count": 3,
+      "uniques": 3
+    },
+    {
+      "path": "/recurso-dev/recurso/pull/78",
+      "title": "/pull/78",
+      "count": 3,
+      "uniques": 3
+    },
+    {
+      "path": "/recurso-dev/recurso/pull/81",
+      "title": "/pull/81",
+      "count": 3,
+      "uniques": 3
+    }
+  ]
+}
