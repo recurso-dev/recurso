@@ -18,6 +18,9 @@ Where a doc and the code disagree, the code wins (see
 | [DESIGN.md](DESIGN.md) | The token/system constraints — which values are legal | building UI |
 | [ART_DIRECTION.md](ART_DIRECTION.md) | What Recurso *looks like* — the creative direction, hero philosophy, what to show, what's banned | designing a page/section, the website |
 | [BRAND.md](BRAND.md) | How it sounds — voice, words to use/avoid | writing any copy |
+| [QUALITY_BAR.md](QUALITY_BAR.md) | What "high quality" means for a page, and when one is done | building or reviewing any page |
+| [DASHBOARD_PRINCIPLES.md](DASHBOARD_PRINCIPLES.md) | Gold-standard pages, object pages, deep links, financial actions | dashboard work |
+| [MOTION.md](MOTION.md) | What motion is for and its rules (tokens + primitives: [`frontend/MOTION.md`](../frontend/MOTION.md)) | adding motion |
 | [UX_RULES.md](UX_RULES.md) | The behavioral contract + UI audit | building a page |
 | [ANTI_PATTERNS.md](ANTI_PATTERNS.md) | What never to build | anything money/UX |
 | [ACCOUNTING_PRINCIPLES.md](ACCOUNTING_PRINCIPLES.md) | The ledger contract (posting codes 1–25) | any money path |
