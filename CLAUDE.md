@@ -108,11 +108,30 @@ swallows the failure (this exact mistake shipped a broken button once).
 ## Product & design source of truth
 
 Before building UI, writing copy, designing an endpoint, or touching a money
-path, read the relevant doc in `docs/` (index: `docs/README.md`): PRODUCT,
-DESIGN, BRAND, UX_RULES, ANTI_PATTERNS, ACCOUNTING_PRINCIPLES, API_GUIDELINES,
-WEBSITE, COMPETITORS. They are the durable philosophy; this file is the
-mechanical how-to. The through-line: Recurso is accounting-first — every number
-explainable, every event reversible, the books always reconcile.
+path, read the relevant source-of-truth document in `docs/` (index:
+`docs/README.md`):
+
+- PRODUCT.md
+- DESIGN.md
+- BRAND.md
+- UX_RULES.md
+- ANTI_PATTERNS.md
+- ACCOUNTING_PRINCIPLES.md
+- DASHBOARD_PRINCIPLES.md
+- MOTION.md
+- QUALITY_BAR.md
+- API_GUIDELINES.md
+- WEBSITE.md
+- COMPETITORS.md
+
+These documents define the durable product philosophy; this file defines the
+mechanical engineering workflow. Never bypass the product/design source of
+truth for convenience.
+
+The through-line: Recurso is accounting-first. Every important number should
+be explainable, every important event should be traceable, and the books must
+always reconcile. Recurso should feel like a financial operating system, not a
+generic SaaS administration interface.
 
 ## Decisions
 
