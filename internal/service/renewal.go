@@ -31,7 +31,7 @@ type renewalSubscriptionRepo interface {
 
 // renewalInvoicer generates the cycle invoice; *InvoiceService satisfies it.
 type renewalInvoicer interface {
-	GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error)
+	GenerateRenewalInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error)
 	GenerateFinalUsageInvoice(ctx context.Context, sub *domain.Subscription, endedAt time.Time) (*domain.Invoice, error)
 }
 
@@ -141,7 +141,7 @@ func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 //     final invoice (the flat fee was already billed in advance), the
 //     subscription transitions to canceled, and payment is attempted
 //     best-effort. No new period starts.
-//   - otherwise: GenerateInvoice bills next period's flat fee plus the
+//   - otherwise: GenerateRenewalInvoice bills next period's flat fee plus the
 //     elapsed period's usage, the period advances via the anchor-preserving
 //     CalculateNextBillingDate, and payment is attempted best-effort.
 func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subscription) error {
@@ -171,7 +171,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 
 	// Invoice for the closing period BEFORE advancing: GenerateInvoice
 	// rates usage over [CurrentPeriodStart, CurrentPeriodEnd) as it stands.
-	inv, err := s.invoicer.GenerateInvoice(ctx, sub)
+	inv, err := s.invoicer.GenerateRenewalInvoice(ctx, sub)
 	if err != nil {
 		return fmt.Errorf("renewal invoice failed: %w", err)
 	}
@@ -184,10 +184,8 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 	sub.UpdatedAt = now
 	if err := s.subs.Update(ctx, sub); err != nil {
 		// The invoice exists but the period didn't advance: the lease will
-		// re-claim, GenerateInvoice will run again, and the usage_ratings
-		// window claim suppresses duplicate metered lines. The duplicate
-		// flat-fee invoice is surfaced loudly for reconciliation.
-		return fmt.Errorf("period advance failed after invoice %s (flat fee may duplicate on retry): %w", inv.ID, err)
+		// re-claim, and GenerateRenewalInvoice will reuse this invoice.
+		return fmt.Errorf("period advance failed after invoice %s (will retry onto the same invoice): %w", inv.ID, err)
 	}
 
 	s.attemptPayment(ctx, inv)

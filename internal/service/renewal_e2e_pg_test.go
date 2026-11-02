@@ -71,6 +71,7 @@ func (c *scriptedCharger) ChargeSavedPaymentMethod(_ context.Context, stripeCust
 type renewalE2E struct {
 	h       *invariantHarness
 	svc     *RenewalService
+	invoice *InvoiceService
 	charger *scriptedCharger
 	claims  tenantClaims
 }
@@ -96,7 +97,7 @@ func newRenewalE2E(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *renewalE2E {
 	claims := tenantClaims{subRepo.(*db.SubscriptionRepository), h.tenantID, map[uuid.UUID]bool{}}
 	svc := NewRenewalService(claims, planRepo, invoices)
 	svc.SetSavedMethodCharging(charger, customerRepo, h.subSvc)
-	return &renewalE2E{h: h, svc: svc, charger: charger, claims: claims}
+	return &renewalE2E{h: h, svc: svc, invoice: invoices, charger: charger, claims: claims}
 }
 
 // seedDue inserts a customer and an active subscription whose period ended
@@ -508,12 +509,9 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 		}
 	})
 
-	// A failed period advance re-invoices on retry. RenewSubscription documents
-	// that the flat fee may duplicate here; the rating guard must still stop
-	// usage from billing twice.
-	t.Run("a retry after a failed period advance does not re-bill usage", func(t *testing.T) {
-		if got := invoiceTotals(e.invoices(crashSub)); !equalInt64s(got, []int64{105000, 100000}) {
-			t.Fatalf("totals = %v, want usage on the first invoice only", got)
+	t.Run("a retry after a failed period advance bills neither flat fee nor usage again", func(t *testing.T) {
+		if got := invoiceTotals(e.invoices(crashSub)); !equalInt64s(got, []int64{105000}) {
+			t.Fatalf("totals = %v, want one invoice of 105000", got)
 		}
 		if got := e.ratings(crashSub); len(got) != 1 || got[0] != [2]int64{100, 5000} {
 			t.Errorf("ratings = %v, want one of 100 units / 5000", got)
@@ -524,4 +522,89 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 	})
 
 	h.assertClosePackTies("after metered renewals")
+}
+
+// TestRenewalSweep_RetryReusesPeriodInvoice_Postgres proves a billing period gets
+// one renewal invoice however many times its renewal is attempted.
+func TestRenewalSweep_RetryReusesPeriodInvoice_Postgres(t *testing.T) {
+	conn, dbx := openRenewalE2EDB(t)
+	e := newRenewalE2E(t, conn, dbx)
+	h := e.h
+
+	cardSub, _ := e.seedDue("1 minute", false, "cus_retry_pays")
+	e.claims.failUpdate[cardSub] = true
+
+	couponSub, _ := e.seedDue("1 minute", false, "")
+	mustExec(t, conn, `UPDATE subscriptions SET coupon_id = $1, coupon_periods_applied = 1, coupon_applied_current_period = TRUE WHERE id = $2`,
+		h.couponID, couponSub)
+	e.claims.failUpdate[couponSub] = true
+
+	couponProgress := func() (periods int, applied bool) {
+		t.Helper()
+		if err := conn.QueryRowContext(h.ctx,
+			`SELECT coupon_periods_applied, coupon_applied_current_period FROM subscriptions WHERE id = $1`, couponSub).Scan(&periods, &applied); err != nil {
+			t.Fatalf("read coupon progress: %v", err)
+		}
+		return periods, applied
+	}
+
+	e.sweep()
+	h.assertAuditGrade("after failed period advance")
+
+	if got := e.charger.chargesOf("cus_retry_pays"); len(got) != 0 {
+		t.Fatalf("charged %v before the period advanced, want nothing", got)
+	}
+	if _, due := e.subState(cardSub); !due {
+		t.Fatal("period advanced despite the injected failure")
+	}
+	if periods, _ := couponProgress(); periods != 1 {
+		t.Fatalf("coupon periods = %d before the retry commits, want 1", periods)
+	}
+
+	e.sweep()
+	h.assertAuditGrade("after retry")
+
+	t.Run("the retry charges the original invoice once", func(t *testing.T) {
+		got := e.invoices(cardSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusPaid) || got[0].total != 100000 {
+			t.Fatalf("invoices = %+v, want one paid invoice of 100000", got)
+		}
+		if got := e.charger.chargesOf("cus_retry_pays"); !equalInt64s(got, []int64{100000}) {
+			t.Errorf("charged %v, want exactly 100000", got)
+		}
+		if _, due := e.subState(cardSub); due {
+			t.Error("period did not advance on retry")
+		}
+	})
+
+	t.Run("the retry restores coupon progress exactly once", func(t *testing.T) {
+		if got := invoiceTotals(e.invoices(couponSub)); !equalInt64s(got, []int64{20000}) {
+			t.Fatalf("totals = %v, want one invoice of 20000 at 80%% off", got)
+		}
+		if periods, applied := couponProgress(); periods != 2 || !applied {
+			t.Errorf("coupon periods = %d applied = %v, want 2 and true", periods, applied)
+		}
+	})
+
+	t.Run("the unique key refuses a second invoice for the same period", func(t *testing.T) {
+		raceSub, _ := e.seedDue("1 minute", false, "")
+		sub, err := db.NewSubscriptionRepository(conn).GetByID(h.tctx, raceSub)
+		if err != nil {
+			t.Fatalf("load subscription: %v", err)
+		}
+		key := renewalCycleKey(sub)
+		if _, err := e.invoice.generateInvoice(h.tctx, sub, key); err != nil {
+			t.Fatalf("first generation: %v", err)
+		}
+		if _, err := e.invoice.generateInvoice(h.tctx, sub, key); err == nil {
+			t.Fatal("second generation for the same period succeeded, want a unique-key error")
+		}
+		if got := e.invoices(raceSub); len(got) != 1 {
+			t.Errorf("invoices = %+v, want one", got)
+		}
+	})
+
+	// No close-pack assertion here: SumUnscheduledDeferral counts an unpaid
+	// invoice's gross subtotal, so the open 80%-off invoice would not tie out.
+	h.assertAuditGrade("after refused duplicate")
 }

@@ -44,7 +44,7 @@ type fakeRenewalInvoicer struct {
 	seenTenant uuid.UUID // tenant carried on the context GenerateInvoice was called with
 }
 
-func (f *fakeRenewalInvoicer) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
+func (f *fakeRenewalInvoicer) GenerateRenewalInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
 	f.generated++
 	f.seenTenant, _ = ctx.Value(domain.TenantIDKey).(uuid.UUID)
 	f.seenPeriod = [2]time.Time{sub.CurrentPeriodStart, sub.CurrentPeriodEnd}
@@ -390,7 +390,7 @@ type flakyInvoicer struct {
 	invoice   *domain.Invoice
 }
 
-func (f *flakyInvoicer) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
+func (f *flakyInvoicer) GenerateRenewalInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
 	*f.failFirst++
 	if *f.failFirst == 1 {
 		return nil, errors.New("transient failure")
