@@ -608,3 +608,109 @@ func TestRenewalSweep_RetryReusesPeriodInvoice_Postgres(t *testing.T) {
 	// invoice's gross subtotal, so the open 80%-off invoice would not tie out.
 	h.assertAuditGrade("after refused duplicate")
 }
+
+// TestImmediateCancel_ChargesFinalUsage_Postgres proves an immediate cancel
+// bills the elapsed window's usage to the saved card, without the flat fee, and
+// that cancelling again can't charge twice.
+func TestImmediateCancel_ChargesFinalUsage_Postgres(t *testing.T) {
+	conn, dbx := openRenewalE2EDB(t)
+	e := newRenewalE2E(t, conn, dbx)
+	h := e.h
+	h.subSvc.SetFinalUsageInvoicer(e.invoice)
+	h.subSvc.SetFinalInvoiceCharger(e.svc)
+
+	const dimension = "api_calls"
+	planID := e.seedMeteredPlan(dimension)
+	midPeriod := func(card string, units int64) uuid.UUID {
+		t.Helper()
+		subID, customerID := e.seedDueOnPlan(planID, "-15 days", false, card)
+		if units > 0 {
+			err := db.NewUsageRepository(conn).RecordEvent(h.ctx, &domain.UsageEvent{
+				ID: uuid.New(), SubscriptionID: subID, CustomerID: customerID,
+				Dimension: dimension, Quantity: units, Timestamp: time.Now().Add(-time.Hour),
+			})
+			if err != nil {
+				t.Fatalf("record usage: %v", err)
+			}
+		}
+		return subID
+	}
+	cancel := func(subID uuid.UUID) {
+		t.Helper()
+		if _, err := h.subSvc.Cancel(h.tctx, h.tenantID, subID, true, "", ""); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+		if status, _ := e.subState(subID); status != string(domain.SubscriptionStatusCanceled) {
+			t.Errorf("status = %s, want canceled", status)
+		}
+	}
+
+	paysSub := midPeriod("cus_cancel_pays", 40)
+	declinedSub := midPeriod("cus_cancel_declines", 40)
+	e.charger.declined["cus_cancel_declines"] = true
+	noCardSub := midPeriod("", 40)
+	idleSub := midPeriod("cus_cancel_idle", 0)
+
+	cancel(paysSub)
+	cancel(declinedSub)
+	cancel(noCardSub)
+	cancel(idleSub)
+	h.assertAuditGrade("after immediate cancels")
+
+	t.Run("the saved card pays for usage without the flat fee", func(t *testing.T) {
+		got := e.invoices(paysSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusPaid) || got[0].total != 2000 || got[0].paid != 2000 {
+			t.Fatalf("invoices = %+v, want one paid final usage invoice: 40 units x 50 = 2000", got)
+		}
+		if got := e.charger.chargesOf("cus_cancel_pays"); !equalInt64s(got, []int64{2000}) {
+			t.Errorf("charged %v, want exactly 2000", got)
+		}
+	})
+
+	t.Run("the paid invoice's recognition schedule is unwound with the cancel", func(t *testing.T) {
+		var total, active int
+		if err := conn.QueryRowContext(h.ctx,
+			`SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'active') FROM revenue_schedules WHERE subscription_id = $1`, paysSub).Scan(&total, &active); err != nil {
+			t.Fatalf("read schedules: %v", err)
+		}
+		if total != 1 || active != 0 {
+			t.Errorf("schedules = %d, active = %d, want one, unwound", total, active)
+		}
+	})
+
+	t.Run("a declined charge leaves the invoice open", func(t *testing.T) {
+		got := e.invoices(declinedSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusOpen) || got[0].paid != 0 {
+			t.Fatalf("invoices = %+v, want one open unpaid invoice", got)
+		}
+	})
+
+	t.Run("no saved card leaves the invoice open", func(t *testing.T) {
+		got := e.invoices(noCardSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusOpen) || got[0].paid != 0 {
+			t.Fatalf("invoices = %+v, want one open unpaid invoice", got)
+		}
+	})
+
+	t.Run("no usage raises no invoice or charge", func(t *testing.T) {
+		if got := e.invoices(idleSub); len(got) != 0 {
+			t.Fatalf("invoices = %+v, want none", got)
+		}
+		if got := e.charger.chargesOf("cus_cancel_idle"); len(got) != 0 {
+			t.Errorf("charged %v, want nothing", got)
+		}
+	})
+
+	t.Run("cancelling again charges nothing more", func(t *testing.T) {
+		cancel(paysSub)
+		if got := e.charger.chargesOf("cus_cancel_pays"); !equalInt64s(got, []int64{2000}) {
+			t.Errorf("charged %v, want exactly 2000", got)
+		}
+		if got := e.invoices(paysSub); len(got) != 1 {
+			t.Errorf("invoices = %+v, want one", got)
+		}
+	})
+
+	h.assertAuditGrade("after repeat cancel")
+	h.assertClosePackTies("after immediate cancels")
+}

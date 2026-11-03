@@ -159,7 +159,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 		if err := s.subs.Update(ctx, sub); err != nil {
 			return fmt.Errorf("failed to finalize period-end cancellation: %w", err)
 		}
-		s.attemptPayment(ctx, finalInv)
+		s.AttemptPayment(ctx, finalInv)
 		slog.InfoContext(ctx, "subscription canceled at period end", "subscription_id", sub.ID)
 		return nil
 	}
@@ -188,7 +188,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 		return fmt.Errorf("period advance failed after invoice %s (will retry onto the same invoice): %w", inv.ID, err)
 	}
 
-	s.attemptPayment(ctx, inv)
+	s.AttemptPayment(ctx, inv)
 
 	slog.InfoContext(ctx, "subscription renewed",
 		"subscription_id", sub.ID, "invoice_id", inv.ID,
@@ -196,10 +196,10 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 	return nil
 }
 
-// attemptPayment charges the customer's saved payment method for an open
+// AttemptPayment charges the customer's saved payment method for an open
 // renewal or final usage invoice. Strictly best-effort: no saved method, a lookup error,
 // or a gateway decline all leave the invoice open — dunning owns recovery.
-func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice) {
+func (s *RenewalService) AttemptPayment(ctx context.Context, inv *domain.Invoice) {
 	if s.charger == nil || s.lookup == nil || s.settler == nil {
 		return
 	}
