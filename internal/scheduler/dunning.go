@@ -16,19 +16,17 @@ import (
 
 // DunningConfig holds dunning schedule configuration
 type DunningConfig struct {
-	RetryDays        []int // Days between retries (e.g., [1, 3, 7])
-	SuspendAfterDays int   // Suspend service after N days overdue
-	CancelAfterDays  int   // Mark uncollectible after N days
-	MaxRetries       int   // Maximum retry attempts
+	RetryDays       []int // Days between retries (e.g., [1, 3, 7])
+	CancelAfterDays int   // Mark uncollectible after N days
+	MaxRetries      int   // Maximum retry attempts
 }
 
 // DefaultDunningConfig returns sensible defaults
 func DefaultDunningConfig() DunningConfig {
 	return DunningConfig{
-		RetryDays:        []int{2, 3, 4}, // Retry on day 1, 3, 7 after due
-		SuspendAfterDays: 7,
-		CancelAfterDays:  30,
-		MaxRetries:       3,
+		RetryDays:       []int{2, 3, 4}, // Retry on day 1, 3, 7 after due
+		CancelAfterDays: 30,
+		MaxRetries:      3,
 	}
 }
 
@@ -57,11 +55,22 @@ type DunningScheduler struct {
 	locker          port.Locker
 	config          DunningConfig
 	portalBaseURL   string
-	attempts        inFlightChecker // nil-safe; skips dunning for a settling payment
+	attempts        inFlightChecker    // nil-safe; skips dunning for a settling payment
+	canceler        nonPaymentCanceler // nil-safe; ends the subscription on auto-write-off
 	ticker          *time.Ticker
 	done            chan bool
 	stopOnce        sync.Once
 }
+
+// nonPaymentCanceler ends a subscription dunning has given up on. Satisfied by
+// *service.SubscriptionService.
+type nonPaymentCanceler interface {
+	CancelForNonPayment(ctx context.Context, tenantID, subscriptionID uuid.UUID) error
+}
+
+// SetNonPaymentCanceler wires canceling the subscription when the scheduler
+// writes off its invoice. Nil-safe.
+func (s *DunningScheduler) SetNonPaymentCanceler(c nonPaymentCanceler) { s.canceler = c }
 
 // SetPaymentAttempts wires the in-flight checker so dunning skips invoices with
 // a settling payment (e.g. an ACH debit still processing). Nil-safe (Inc 3b).
@@ -231,8 +240,15 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 				tenantCtx := context.WithValue(ctx, domain.TenantIDKey, invoice.TenantID)
 				if full, ferr := s.writeOffReader.GetByID(tenantCtx, invoice.ID); ferr != nil || full == nil {
 					slog.Error("write-off ledger reversal skipped: invoice lookup failed", "invoice_number", invoice.InvoiceNumber, "error", ferr)
-				} else if lerr := s.writeOffLedger.RecordInvoiceWriteOff(tenantCtx, full); lerr != nil {
-					slog.Error("write-off ledger reversal failed", "invoice_number", invoice.InvoiceNumber, "error", lerr)
+				} else {
+					if lerr := s.writeOffLedger.RecordInvoiceWriteOff(tenantCtx, full); lerr != nil {
+						slog.Error("write-off ledger reversal failed", "invoice_number", invoice.InvoiceNumber, "error", lerr)
+					}
+					if s.canceler != nil && full.SubscriptionID != nil {
+						if cerr := s.canceler.CancelForNonPayment(tenantCtx, invoice.TenantID, *full.SubscriptionID); cerr != nil {
+							slog.Error("canceling subscription after write-off failed", "invoice_number", invoice.InvoiceNumber, "error", cerr)
+						}
+					}
 				}
 			}
 		}
@@ -242,18 +258,16 @@ func (s *DunningScheduler) processInvoice(ctx context.Context, invoice domain.Ov
 	// Calculate next retry date
 	nextRetryDays := s.getNextRetryDays(invoice.RetryCount)
 	nextRetry := time.Now().AddDate(0, 0, nextRetryDays)
-	suspensionDate := invoice.DueDate.AddDate(0, 0, s.config.SuspendAfterDays)
 
 	// Send dunning email
 	data := email.DunningEmailData{
-		CustomerName:   invoice.CustomerName,
-		CustomerEmail:  invoice.CustomerEmail,
-		InvoiceNumber:  invoice.InvoiceNumber,
-		Amount:         formatAmount(invoice.Amount, invoice.Currency),
-		DaysOverdue:    daysOverdue,
-		RetryCount:     invoice.RetryCount + 1,
-		NextRetryDate:  nextRetry.Format("January 2, 2006"),
-		SuspensionDate: suspensionDate.Format("January 2, 2006"),
+		CustomerName:  invoice.CustomerName,
+		CustomerEmail: invoice.CustomerEmail,
+		InvoiceNumber: invoice.InvoiceNumber,
+		Amount:        formatAmount(invoice.Amount, invoice.Currency),
+		DaysOverdue:   daysOverdue,
+		RetryCount:    invoice.RetryCount + 1,
+		NextRetryDate: nextRetry.Format("January 2, 2006"),
 		// Real SPA routes: hosted checkout pays the invoice; the portal login
 		// (magic link) fronts the card-update flow. The previous /portal/pay and
 		// /portal/payment-methods paths never existed.

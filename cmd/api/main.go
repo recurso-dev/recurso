@@ -826,6 +826,7 @@ func main() {
 	// as checkout and the payment webhooks (idempotent across all three).
 	retryWorker.SetSettler(subscriptionService)
 	retryWorker.SetWriteOffLedger(ledgerService) // running out of retries posts the ledger reversal
+	retryWorker.SetNonPaymentCanceler(subscriptionService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	if demo.Enabled() {
 		webhookWorker.DisableDeliveries() // endpoints inspectable, zero egress
@@ -1010,6 +1011,7 @@ func main() {
 	)
 	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))          // skip dunning for a settling ACH (Inc 3b)
 	dunningScheduler.SetWriteOffLedger(ledgerService, invoiceRepo.(*db.InvoiceRepository)) // auto-write-off posts its ledger reversal (#466 follow-up)
+	dunningScheduler.SetNonPaymentCanceler(subscriptionService)
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 

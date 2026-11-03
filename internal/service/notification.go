@@ -459,7 +459,7 @@ func (s *NotificationService) SendDunningEmail(ctx context.Context, level int, d
 		subject = "⚠️ Payment Still Pending - Action Required"
 	case 3:
 		tmplStr = email.DunningFinalNoticeTemplate
-		subject = "🚨 Final Notice: Service Suspension"
+		subject = "🚨 Final Notice: Payment Overdue"
 	default:
 		return fmt.Errorf("invalid dunning level: %d", level)
 	}
@@ -538,6 +538,32 @@ func (s *NotificationService) SendSubscriptionCancelled(ctx context.Context, cus
 		To:       customerEmail,
 		ToName:   customerName,
 		Subject:  "Your subscription has been cancelled",
+		HTMLBody: html,
+	})
+}
+
+// SendSubscriptionCanceledNonPayment tells a customer dunning canceled their
+// subscription.
+func (s *NotificationService) SendSubscriptionCanceledNonPayment(ctx context.Context, customerEmail, customerName, planName string) error {
+	data := struct {
+		CustomerName string
+		PlanName     string
+	}{CustomerName: customerName, PlanName: planName}
+
+	content, err := s.renderTemplate(email.SubscriptionCanceledNonPaymentTemplate, data)
+	if err != nil {
+		return err
+	}
+
+	html, err := s.wrapInBaseTemplate("Subscription Canceled", content)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, port.EmailMessage{
+		To:       customerEmail,
+		ToName:   customerName,
+		Subject:  "Your subscription has been canceled",
 		HTMLBody: html,
 	})
 }

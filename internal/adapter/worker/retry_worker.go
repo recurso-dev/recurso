@@ -39,6 +39,12 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
+// nonPaymentCanceler ends a subscription dunning has given up on. Implemented
+// by *service.SubscriptionService.
+type nonPaymentCanceler interface {
+	CancelForNonPayment(ctx context.Context, tenantID, subscriptionID uuid.UUID) error
+}
+
 // noChargeDuePaymentID marks an invoice settled with nothing left to charge; it
 // is not a gateway payment, so it can't be refunded against.
 const noChargeDuePaymentID = "no_charge_due"
@@ -67,6 +73,7 @@ type RetryWorker struct {
 	chargerRouter          savedCardChargerRouter
 	settler                invoiceSettler
 	writeOffLedger         writeOffPoster
+	canceler               nonPaymentCanceler
 }
 
 func NewRetryWorker(
@@ -102,6 +109,10 @@ func (w *RetryWorker) SetSettler(s invoiceSettler) {
 // Nil-safe: without it the status still flips, and reconciliation reports the
 // missing write-off.
 func (w *RetryWorker) SetWriteOffLedger(l writeOffPoster) { w.writeOffLedger = l }
+
+// SetNonPaymentCanceler wires canceling the subscription when retries run out
+// and its invoice is written off. Nil-safe.
+func (w *RetryWorker) SetNonPaymentCanceler(c nonPaymentCanceler) { w.canceler = c }
 
 // SetSavedMethodCharging wires off-session collection with the customer's saved
 // card (ENG-5 Phase 2). When either dependency is nil, retries fall back to the
@@ -220,6 +231,11 @@ func (w *RetryWorker) writeOff(ctx context.Context, inv *domain.Invoice) {
 	}
 	if err := w.writeOffLedger.RecordInvoiceWriteOff(tenantCtx, full); err != nil {
 		slog.Error("retry worker: write-off ledger reversal failed", "invoice_id", inv.ID, "error", err)
+	}
+	if w.canceler != nil && full.SubscriptionID != nil {
+		if err := w.canceler.CancelForNonPayment(tenantCtx, inv.TenantID, *full.SubscriptionID); err != nil {
+			slog.Error("retry worker: canceling subscription after write-off failed", "invoice_id", inv.ID, "error", err)
+		}
 	}
 }
 

@@ -29,13 +29,20 @@ func (tenantScopedReader) GetByID(ctx context.Context, id uuid.UUID) (*domain.In
 	if !ok {
 		return nil, errors.New("tenant_id missing from context")
 	}
-	return &domain.Invoice{ID: id, TenantID: tenantID}, nil
+	return &domain.Invoice{ID: id, TenantID: tenantID, SubscriptionID: &id}, nil
 }
 
 type recordingWriteOffPoster struct{ posted []*domain.Invoice }
 
 func (p *recordingWriteOffPoster) RecordInvoiceWriteOff(_ context.Context, inv *domain.Invoice) error {
 	p.posted = append(p.posted, inv)
+	return nil
+}
+
+type recordingCanceler struct{ canceled []uuid.UUID }
+
+func (c *recordingCanceler) CancelForNonPayment(_ context.Context, _, subscriptionID uuid.UUID) error {
+	c.canceled = append(c.canceled, subscriptionID)
 	return nil
 }
 
@@ -46,6 +53,8 @@ func TestDunning_AutoWriteOffPostsTheLedgerReversal(t *testing.T) {
 	poster := &recordingWriteOffPoster{}
 	s := &DunningScheduler{invoiceRepo: repo, config: DefaultDunningConfig()}
 	s.SetWriteOffLedger(poster, tenantScopedReader{})
+	canceler := &recordingCanceler{}
+	s.SetNonPaymentCanceler(canceler)
 
 	tenantID := uuid.New()
 	s.processInvoice(context.Background(), domain.OverdueInvoice{
@@ -58,5 +67,8 @@ func TestDunning_AutoWriteOffPostsTheLedgerReversal(t *testing.T) {
 	}
 	if len(poster.posted) != 1 || poster.posted[0].TenantID != tenantID {
 		t.Fatalf("posted = %+v, want one write-off for tenant %s", poster.posted, tenantID)
+	}
+	if len(canceler.canceled) != 1 {
+		t.Errorf("canceled %v, want the invoice's subscription", canceler.canceled)
 	}
 }
