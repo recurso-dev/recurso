@@ -39,6 +39,12 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
+// writeOffPoster posts the ledger reversal when dunning gives up on an invoice.
+// Implemented by *service.LedgerService.
+type writeOffPoster interface {
+	RecordInvoiceWriteOff(ctx context.Context, invoice *domain.Invoice) error
+}
+
 // savedCardChargerRouter routes an off-session charge to the gateway a card was
 // saved on (B1 autopay). Implemented by *service.SavedCardGatewayRouter.
 type savedCardChargerRouter interface {
@@ -56,6 +62,7 @@ type RetryWorker struct {
 	customerLookup         customerPaymentLookup
 	chargerRouter          savedCardChargerRouter
 	settler                invoiceSettler
+	writeOffLedger         writeOffPoster
 }
 
 func NewRetryWorker(
@@ -86,6 +93,11 @@ func (w *RetryWorker) SetRecoveryRecorder(rr RecoveryRecorder) {
 func (w *RetryWorker) SetSettler(s invoiceSettler) {
 	w.settler = s
 }
+
+// SetWriteOffLedger wires the ledger reversal posted when retries run out.
+// Nil-safe: without it the status still flips, and reconciliation reports the
+// missing write-off.
+func (w *RetryWorker) SetWriteOffLedger(l writeOffPoster) { w.writeOffLedger = l }
 
 // SetSavedMethodCharging wires off-session collection with the customer's saved
 // card (ENG-5 Phase 2). When either dependency is nil, retries fall back to the
@@ -177,6 +189,33 @@ func (w *RetryWorker) processRetries(ctx context.Context) {
 
 	for _, inv := range invoices {
 		w.processInvoice(ctx, inv)
+	}
+}
+
+// writeOff gives up on an invoice the way the dunning scheduler and the manual
+// action do: the status transition, then the ledger reversal for this caller
+// only. Update runs first so the final attempt's retry count and error persist.
+func (w *RetryWorker) writeOff(ctx context.Context, inv *domain.Invoice) {
+	if err := w.invoiceRepo.Update(ctx, inv); err != nil {
+		slog.Error("retry worker: failed to record final attempt", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	transitioned, err := w.invoiceRepo.MarkUncollectibleScoped(ctx, inv.TenantID, inv.ID)
+	if err != nil {
+		slog.Error("retry worker: failed to mark invoice uncollectible", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	if !transitioned {
+		return
+	}
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+	full, err := w.invoiceRepo.GetByID(tenantCtx, inv.ID)
+	if err != nil || full == nil {
+		slog.Error("retry worker: write-off ledger reversal skipped: invoice lookup failed", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	if err := w.writeOffLedger.RecordInvoiceWriteOff(tenantCtx, full); err != nil {
+		slog.Error("retry worker: write-off ledger reversal failed", "invoice_id", inv.ID, "error", err)
 	}
 }
 
@@ -298,10 +337,14 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	if decision == nil {
 		// Max retries reached
 		slog.Warn("retry worker: max retries reached, marking uncollectible", "invoice_number", inv.InvoiceNumber)
-		inv.Status = domain.InvoiceStatusUncollectible
 		inv.NextRetryAt = nil
 		inv.DunningActionID = ""
 		inv.DunningContextKey = ""
+		if w.writeOffLedger != nil {
+			w.writeOff(ctx, inv)
+			return
+		}
+		inv.Status = domain.InvoiceStatusUncollectible
 		if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
 			slog.Error("retry worker: failed to mark invoice uncollectible", "invoice_id", inv.ID, "error", updateErr)
 		}
