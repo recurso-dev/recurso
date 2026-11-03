@@ -67,9 +67,10 @@ type RenewalService struct {
 
 	// Saved-method charging trio; all nil-safe — without them renewal
 	// invoices are generated open and dunning/notifications take over.
-	charger renewalSavedCharger
-	lookup  renewalPaymentLookup
-	settler renewalSettler
+	charger    renewalSavedCharger
+	lookup     renewalPaymentLookup
+	settler    renewalSettler
+	paymentIDs renewalPaymentIDRecorder // nil-safe
 	// chargerRouter routes each charge to the gateway the card was saved on
 	// (B1 autopay). nil-safe: when unset, `charger` (the platform gateway) is
 	// used for every card, preserving pre-B1 behavior.
@@ -93,6 +94,15 @@ func (s *RenewalService) SetSavedMethodCharging(charger renewalSavedCharger, loo
 	s.lookup = lookup
 	s.settler = settler
 }
+
+// renewalPaymentIDRecorder is satisfied by *db.InvoiceRepository.
+type renewalPaymentIDRecorder interface {
+	SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error
+}
+
+// SetPaymentIDRecorder wires recording the gateway payment id of a saved-card
+// charge (nil-safe; without it only the payment webhook records the id).
+func (s *RenewalService) SetPaymentIDRecorder(r renewalPaymentIDRecorder) { s.paymentIDs = r }
 
 // SetChargerRouter wires BYO-gateway routing (B1 autopay): each saved card is
 // charged on the gateway connection it was saved with. nil-safe — without it,
@@ -237,6 +247,14 @@ func (s *RenewalService) AttemptPayment(ctx context.Context, inv *domain.Invoice
 		slog.WarnContext(ctx, "renewal payment attempt failed; invoice left open for dunning",
 			"invoice_id", inv.ID, "error", err)
 		return
+	}
+	// Refunds are issued against this id. Recorded here too because the webhook
+	// that also records it can arrive late or not at all.
+	if s.paymentIDs != nil && result.PaymentID != "" {
+		if err := s.paymentIDs.SetGatewayPaymentID(ctx, inv.TenantID, inv.ID, result.PaymentID); err != nil {
+			slog.ErrorContext(ctx, "renewal charge succeeded but recording the payment id failed",
+				"invoice_id", inv.ID, "payment_id", result.PaymentID, "error", err)
+		}
 	}
 	if _, err := s.settler.MarkInvoicePaid(ctx, inv.ID); err != nil {
 		slog.ErrorContext(ctx, "renewal charge succeeded but settlement failed (webhook will reconcile)",

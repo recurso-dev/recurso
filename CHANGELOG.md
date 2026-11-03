@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Renewal and dunning charges now record the gateway payment id themselves. Only
+  the payment webhook recorded it, so a refund issued before that webhook landed
+  couldn't reach the gateway and came back as `manual_required`.
 - Dunning now posts the ledger write-off when it gives up on an invoice. The
   retry worker never posted it, and the scheduler's posting always failed on a
   tenant-less context, so reconciliation reported a missing write-off and the
