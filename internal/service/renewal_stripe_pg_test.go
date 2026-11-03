@@ -69,6 +69,7 @@ func TestRenewalSweep_RealStripe_Postgres(t *testing.T) {
 	settler := &settlerFailingOnce{renewalSettler: h.subSvc}
 	customerRepo := db.NewCustomerRepository(dbx)
 	e.svc.SetSavedMethodCharging(charger, customerRepo, h.subSvc)
+	e.svc.SetPaymentIDRecorder(db.NewInvoiceRepository(conn))
 
 	// seedCard saves one of Stripe's test payment methods on a real test customer.
 	seedCard := func(testMethod string) (subID uuid.UUID, stripeCustomerID string) {
@@ -120,6 +121,13 @@ func TestRenewalSweep_RealStripe_Postgres(t *testing.T) {
 		}
 		if pi.Metadata["invoice_id"] == "" {
 			t.Error("payment intent has no invoice_id, so its webhook can't find the invoice")
+		}
+		var recorded string
+		if err := conn.QueryRowContext(h.ctx, `SELECT COALESCE(gateway_payment_id, '') FROM invoices WHERE subscription_id = $1`, paysSub).Scan(&recorded); err != nil {
+			t.Fatalf("read gateway payment id: %v", err)
+		}
+		if recorded != res.PaymentID {
+			t.Errorf("gateway payment id = %q, want %q so a refund can reach Stripe", recorded, res.PaymentID)
 		}
 	})
 
