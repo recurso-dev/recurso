@@ -17,8 +17,9 @@ import (
 
 type mockInvoiceRepo struct {
 	porttest.UnimplementedInvoiceRepository
-	invoices []*domain.Invoice
-	updated  []*domain.Invoice
+	invoices   []*domain.Invoice
+	updated    []*domain.Invoice
+	paymentIDs []string
 }
 
 func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error) {
@@ -28,6 +29,11 @@ func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Durat
 
 func (m *mockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error {
 	m.updated = append(m.updated, inv)
+	return nil
+}
+
+func (m *mockInvoiceRepo) SetGatewayPaymentID(_ context.Context, _, _ uuid.UUID, id string) error {
+	m.paymentIDs = append(m.paymentIDs, id)
 	return nil
 }
 
@@ -569,5 +575,38 @@ func TestRetryWorker_MaxRetries_PostsTheWriteOff(t *testing.T) {
 				t.Errorf("posted %d write-offs, want %d", len(ledger.posted), tc.wantPosted)
 			}
 		})
+	}
+}
+
+func TestRetryWorker_RecordsThePaymentIDRefundsNeed(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-005", Total: 2000, Currency: "USD",
+		Status: domain.InvoiceStatusPastDue, DunningManagedBy: "worker", NextRetryAt: &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: true, PaymentID: "pi_123"}}
+
+	w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), gw, &mockNotifier{})
+	w.processRetries(context.Background())
+
+	if len(repo.paymentIDs) != 1 || repo.paymentIDs[0] != "pi_123" {
+		t.Errorf("recorded payment ids = %v, want [pi_123]", repo.paymentIDs)
+	}
+}
+
+func TestRetryWorker_NoChargeDueRecordsNoPaymentID(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-006", Total: 2000, AmountPaid: 2000, Currency: "USD",
+		Status: domain.InvoiceStatusPastDue, DunningManagedBy: "worker", NextRetryAt: &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+
+	w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), &mockGateway{}, &mockNotifier{})
+	w.processRetries(context.Background())
+
+	if len(repo.paymentIDs) != 0 {
+		t.Errorf("recorded payment ids = %v, want none", repo.paymentIDs)
 	}
 }

@@ -425,3 +425,45 @@ func TestProcessDueRenewals_CarriesSubscriptionTenant(t *testing.T) {
 		t.Fatalf("renewal ran on tenant %v, want the subscription's tenant %v", invoicer.seenTenant, sub.TenantID)
 	}
 }
+
+type fakePaymentIDRecorder struct{ ids map[uuid.UUID]string }
+
+func (f *fakePaymentIDRecorder) SetGatewayPaymentID(_ context.Context, _, invoiceID uuid.UUID, id string) error {
+	f.ids[invoiceID] = id
+	return nil
+}
+
+type failingSettler struct{}
+
+func (failingSettler) MarkInvoicePaid(context.Context, uuid.UUID) (bool, error) {
+	return false, errors.New("settlement down")
+}
+
+// The payment id must survive a failed settlement: the customer has paid, and a
+// refund can only reach the gateway through this id.
+func TestAttemptPayment_RecordsThePaymentIDRefundsNeed(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		settler renewalSettler
+		result  *port.PaymentResult
+		want    string
+	}{
+		{"a successful charge", &fakeRenewalSettler{}, &port.PaymentResult{Success: true, PaymentID: "pi_1"}, "pi_1"},
+		{"settlement fails after the charge", failingSettler{}, &port.PaymentResult{Success: true, PaymentID: "pi_1"}, "pi_1"},
+		{"a decline has no payment to record", &fakeRenewalSettler{}, &port.PaymentResult{Success: false, ErrorCode: "card_declined"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _, _ := renewalFixture()
+			rec := &fakePaymentIDRecorder{ids: map[uuid.UUID]string{}}
+			svc.SetSavedMethodCharging(&fakeRenewalCharger{result: tc.result}, &fakeRenewalLookup{stripeID: "cus_1", methodID: "pm_1"}, tc.settler)
+			svc.SetPaymentIDRecorder(rec)
+
+			inv := &domain.Invoice{ID: uuid.New(), Status: domain.InvoiceStatusOpen, Currency: "USD", Total: 2000}
+			svc.AttemptPayment(context.Background(), inv)
+
+			if got := rec.ids[inv.ID]; got != tc.want {
+				t.Errorf("recorded %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

@@ -39,6 +39,10 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
+// noChargeDuePaymentID marks an invoice settled with nothing left to charge; it
+// is not a gateway payment, so it can't be refunded against.
+const noChargeDuePaymentID = "no_charge_due"
+
 // writeOffPoster posts the ledger reversal when dunning gives up on an invoice.
 // Implemented by *service.LedgerService.
 type writeOffPoster interface {
@@ -127,7 +131,7 @@ func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*
 	if amountDue <= 0 {
 		// Fully covered by wallet/credit — nothing left to collect, so treat it as
 		// paid rather than charging the card for an amount that isn't owed.
-		return &port.PaymentResult{Success: true, PaymentID: "no_charge_due"}, nil
+		return &port.PaymentResult{Success: true, PaymentID: noChargeDuePaymentID}, nil
 	}
 
 	if w.savedCharger != nil && w.customerLookup != nil {
@@ -266,6 +270,13 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	// 3. Handle result
 	if result.Success {
 		slog.Info("retry worker: payment succeeded", "invoice_number", inv.InvoiceNumber, "payment_id", result.PaymentID)
+		// Refunds are issued against this id. Recorded here too because the
+		// webhook that also records it can arrive late or not at all.
+		if result.PaymentID != "" && result.PaymentID != noChargeDuePaymentID {
+			if err := w.invoiceRepo.SetGatewayPaymentID(ctx, inv.TenantID, inv.ID, result.PaymentID); err != nil {
+				slog.Error("retry worker: failed to record payment id", "invoice_id", inv.ID, "payment_id", result.PaymentID, "error", err)
+			}
+		}
 		if w.settler != nil {
 			// Settle through the ledger path — the same idempotent method the
 			// checkout and payment webhooks use, so amount_paid, recovery
