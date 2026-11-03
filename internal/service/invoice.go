@@ -255,6 +255,38 @@ func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *d
 }
 
 func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
+	return s.generateInvoice(ctx, sub, "")
+}
+
+// renewalCycleKey identifies one billing period of one subscription.
+func renewalCycleKey(sub *domain.Subscription) string {
+	return fmt.Sprintf("rn-%s-%d", sub.ID, sub.CurrentPeriodStart.Unix())
+}
+
+// GenerateRenewalInvoice returns the invoice for the subscription's closing
+// period, raising it only if the period has none. A renewal that invoiced but
+// failed to advance its period therefore retries onto the same invoice instead
+// of billing the flat fee twice. A concurrent generation loses on the unique key
+// and returns an error; the lease then retries it onto the winner's invoice.
+func (s *InvoiceService) GenerateRenewalInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
+	key := renewalCycleKey(sub)
+	existing, err := s.InvoiceRepo.GetByRenewalCycleKey(ctx, sub.TenantID, key)
+	if err != nil {
+		return nil, err
+	}
+	if existing == nil {
+		return s.generateInvoice(ctx, sub, key)
+	}
+	// The failed attempt's coupon progress died with its unsaved subscription
+	// update, so restore it from what the invoice actually discounted.
+	sub.CouponAppliedCurrentPeriod = existing.Subtotal-(existing.Total-existing.TaxAmount) > 0
+	if sub.CouponAppliedCurrentPeriod {
+		sub.CouponPeriodsApplied++
+	}
+	return existing, nil
+}
+
+func (s *InvoiceService) generateInvoice(ctx context.Context, sub *domain.Subscription, renewalKey string) (*domain.Invoice, error) {
 	// 1. Fetch Plan
 	plan, err := s.PlanRepo.GetByID(ctx, sub.PlanID)
 	if err != nil {
@@ -456,16 +488,17 @@ func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscr
 
 	// 5. Create Invoice
 	inv := &domain.Invoice{
-		ID:             invID,
-		TenantID:       sub.TenantID,
-		EntityID:       sub.EntityID,
-		SubscriptionID: &sub.ID,
-		CustomerID:     sub.CustomerID,
-		BillingReason:  domain.BillingReasonSubscriptionCycle,
-		Status:         domain.InvoiceStatusOpen,
-		Currency:       price.Currency,
-		Subtotal:       subtotal,
-		TaxAmount:      taxTotal,
+		ID:              invID,
+		TenantID:        sub.TenantID,
+		EntityID:        sub.EntityID,
+		SubscriptionID:  &sub.ID,
+		CustomerID:      sub.CustomerID,
+		BillingReason:   domain.BillingReasonSubscriptionCycle,
+		RenewalCycleKey: renewalKey,
+		Status:          domain.InvoiceStatusOpen,
+		Currency:        price.Currency,
+		Subtotal:        subtotal,
+		TaxAmount:       taxTotal,
 		// Invoice-level tax type from the base charge — all lines for a customer
 		// share the resolved treatment (D3c). Persisted for the liability report.
 		TaxType: baseTax.TaxType,

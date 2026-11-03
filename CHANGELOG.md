@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A scheduled renewal retried after a failed period advance now reuses the
+  period's invoice instead of billing the flat fee a second time. Migration
+  000176 adds a unique `renewal_cycle_key` to invoices.
 - A `cancel_at_period_end` subscription's final usage invoice is now charged to
   the saved payment method when the cancellation commits. It used to stay open
   until dunning found it overdue. A declined charge leaves it open for dunning,

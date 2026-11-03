@@ -858,6 +858,10 @@ func (UnimplementedInvoiceRepository) MarkUncollectibleScoped(context.Context, u
 	panic("porttest: InvoiceRepository.MarkUncollectibleScoped is not implemented")
 }
 
+func (UnimplementedInvoiceRepository) GetByRenewalCycleKey(context.Context, uuid.UUID, string) (*domain.Invoice, error) {
+	panic("porttest: InvoiceRepository.GetByRenewalCycleKey is not implemented")
+}
+
 func (UnimplementedInvoiceRepository) ClaimDueForRetry(context.Context, time.Duration, int) ([]*domain.Invoice, error) {
 	panic("porttest: InvoiceRepository.ClaimDueForRetry is not implemented")
 }

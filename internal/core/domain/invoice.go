@@ -97,6 +97,10 @@ type Invoice struct {
 	// second invoice, so it can't charge again (ENG-164). Empty for all
 	// non-mandate invoices, which the partial unique index leaves unconstrained.
 	MandateCycleKey string `json:"-" db:"mandate_cycle_key"`
+	// RenewalCycleKey is the per-period claim key for scheduled renewals. It is
+	// unique, so a retried renewal reuses the period's invoice instead of raising
+	// a second one. Empty on every other invoice.
+	RenewalCycleKey string `json:"-" db:"renewal_cycle_key"`
 
 	CreatedAt time.Time `json:"created_at"`
 	// UpdatedAt is bumped by InvoiceRepository.Update. The accounting sync
