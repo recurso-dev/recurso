@@ -604,9 +604,8 @@ func TestRenewalSweep_RetryReusesPeriodInvoice_Postgres(t *testing.T) {
 		}
 	})
 
-	// No close-pack assertion here: SumUnscheduledDeferral counts an unpaid
-	// invoice's gross subtotal, so the open 80%-off invoice would not tie out.
 	h.assertAuditGrade("after refused duplicate")
+	h.assertClosePackTies("after renewal retries")
 }
 
 // TestImmediateCancel_ChargesFinalUsage_Postgres proves an immediate cancel
