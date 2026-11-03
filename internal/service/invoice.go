@@ -254,6 +254,17 @@ func (s *InvoiceService) generateEInvoiceAfterCommit(ctx context.Context, inv *d
 	}
 }
 
+// settleIfNothingOwed records an invoice a discount reduced to zero as paid.
+// Left open, dunning would chase it and eventually cancel the subscription for
+// non-payment.
+func settleIfNothingOwed(inv *domain.Invoice) {
+	if inv.Total == 0 {
+		paidAt := inv.CreatedAt
+		inv.Status = domain.InvoiceStatusPaid
+		inv.PaidAt = &paidAt
+	}
+}
+
 func (s *InvoiceService) GenerateInvoice(ctx context.Context, sub *domain.Subscription) (*domain.Invoice, error) {
 	return s.generateInvoice(ctx, sub, "")
 }
@@ -516,6 +527,8 @@ func (s *InvoiceService) generateInvoice(ctx context.Context, sub *domain.Subscr
 		PaymentTerms: terms,
 		RetryCount:   0,
 	}
+
+	settleIfNothingOwed(inv)
 
 	// 6. Persist FIRST — P25 e-invoicing runs after commit (below) so a failed
 	// insert can't orphan an irreversible government IRN (PHASE2 #3).

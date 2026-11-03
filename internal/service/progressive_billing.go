@@ -149,7 +149,12 @@ func (s *InvoiceService) GenerateProgressiveInvoice(ctx context.Context, sub *do
 	if err != nil || th == nil {
 		return nil, err
 	}
+	// A subscription awaiting its renewal is still on its old period: usage past
+	// the period end belongs to the next period's window, which rates it again.
 	upTo := time.Now()
+	if sub.CurrentPeriodEnd.Before(upTo) {
+		upTo = sub.CurrentPeriodEnd
+	}
 	unbilled, err := s.progressiveUnbilled(ctx, sub, upTo)
 	if err != nil {
 		return nil, err

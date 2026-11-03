@@ -121,6 +121,7 @@ func (s *SubscriptionService) ConvertTrialToActive(ctx context.Context, sub *dom
 	if discount > 0 {
 		invoice.LineItems[0].TaxableAmount = taxableBase
 	}
+	settleIfNothingOwed(invoice)
 
 	// P25 e-invoicing is deferred to AFTER the invoice + activation commit (below),
 	// so a rolled-back conversion — including the atomic trial-race loss — can't
