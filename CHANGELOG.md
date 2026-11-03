@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Paying a subscription invoice through hosted checkout now saves the payment
+  method for renewals when the customer has none on file, and the checkout page
+  says so. It used to leave nothing to charge, so every renewal waited for the
+  customer to pay by hand.
 - Dunning now cancels a subscription when it writes off the subscription's
   invoice, and emails the customer. The subscription used to stay active and keep
   renewing. Dunning emails no longer promise a suspension date or data deletion,

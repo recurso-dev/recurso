@@ -31,6 +31,7 @@ type WebhookHandler struct {
 	stripeWebhookSecret    string
 	gatewayConns           gatewayConnResolver // nil-safe; per-connection (BYO) webhook secrets
 	logger                 *slog.Logger
+	checkoutAutopay        *CheckoutAutopay // nil-safe
 }
 
 // gatewayConnResolver resolves a BYO connection by id and decrypts its webhook
@@ -133,6 +134,10 @@ func (h *WebhookHandler) SetInboundWebhookDedup(d InboundWebhookDedup) { h.inbou
 // SetPaymentAttempts wires the ACH async-settlement store so the Stripe webhook
 // records processing/succeeded/failed transitions (Inc 3b). Nil-safe.
 func (h *WebhookHandler) SetPaymentAttempts(s paymentAttemptStore) { h.paymentAttempts = s }
+
+// SetCheckoutAutopay wires saving a checkout's card when its payment webhook
+// lands. Nil-safe.
+func (h *WebhookHandler) SetCheckoutAutopay(a *CheckoutAutopay) { h.checkoutAutopay = a }
 
 // alreadyProcessed acknowledges and returns true when this (gateway, eventID)
 // was already fully processed OR the dedup store could not be consulted — in

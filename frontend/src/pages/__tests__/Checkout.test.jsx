@@ -1,4 +1,4 @@
-import { render, screen, waitFor, cleanup } from "@testing-library/react";
+import { render, screen, waitFor, cleanup, fireEvent } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router";
 import { describe, it, expect, vi, afterEach } from "vitest";
 
@@ -10,6 +10,7 @@ vi.mock("@stripe/stripe-js", () => ({ loadStripe: vi.fn(() => Promise.resolve(nu
 vi.mock("@stripe/react-stripe-js", () => ({
     Elements: ({ children }) => <div>{children}</div>,
     PaymentElement: () => <div data-testid="payment-element" />,
+    AddressElement: () => <div data-testid="address-element" />,
     useStripe: () => null,
     useElements: () => null,
 }));
@@ -61,5 +62,35 @@ describe("Checkout (money-critical public flow)", () => {
         );
         renderAt("inv_paid");
         await waitFor(() => expect(screen.getByText(/paid/i)).toBeInTheDocument());
+    });
+
+    describe("telling the customer their card will be saved", () => {
+        const startPayment = async (saves) => {
+            global.fetch = vi.fn((url, opts) => {
+                const data =
+                    opts?.method === "POST"
+                        ? {
+                              gateway: "stripe",
+                              client_secret: "secret",
+                              publishable_key: "pk_test",
+                              saves_payment_method: saves,
+                          }
+                        : invoice();
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ data }) });
+            });
+            renderAt("inv_1");
+            fireEvent.click(await screen.findByRole("button", { name: /pay/i }));
+            await screen.findByTestId("payment-element");
+        };
+
+        it("discloses saving when the order will save the card", async () => {
+            await startPayment(true);
+            expect(screen.getByText(/saved and charged automatically/i)).toBeInTheDocument();
+        });
+
+        it("says nothing when the order won't save the card", async () => {
+            await startPayment(false);
+            expect(screen.queryByText(/saved and charged automatically/i)).not.toBeInTheDocument();
+        });
     });
 });

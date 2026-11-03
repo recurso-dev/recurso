@@ -182,6 +182,55 @@ func (s *StripeGateway) GetPaymentStatus(ctx context.Context, orderID string) (*
 	}, nil
 }
 
+// PrepareOrderForAutopay attaches a Stripe customer to an unpaid PaymentIntent
+// and asks Stripe to keep its payment method for off-session charges.
+func (s *StripeGateway) PrepareOrderForAutopay(ctx context.Context, orderID, stripeCustomerID string) error {
+	params := &stripe.PaymentIntentParams{
+		Customer:         stripe.String(stripeCustomerID),
+		SetupFutureUsage: stripe.String(string(stripe.PaymentIntentSetupFutureUsageOffSession)),
+	}
+	params.Context = ctx
+	if _, err := s.sc.PaymentIntents.Update(orderID, params); err != nil {
+		return fmt.Errorf("stripe prepare order %s for autopay failed: %w", orderID, err)
+	}
+	return nil
+}
+
+// SavedCardFromOrder returns the method a prepared PaymentIntent paid with, or
+// nil when the intent hasn't succeeded or wasn't prepared to save it.
+// SavedCard.CustomerID holds the Stripe customer id here.
+func (s *StripeGateway) SavedCardFromOrder(ctx context.Context, orderID string) (*port.SavedCard, error) {
+	params := &stripe.PaymentIntentParams{}
+	params.Context = ctx
+	pi, err := s.sc.PaymentIntents.Get(orderID, params)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get payment intent %s failed: %w", orderID, err)
+	}
+	if pi.Status != stripe.PaymentIntentStatusSucceeded ||
+		pi.SetupFutureUsage != stripe.PaymentIntentSetupFutureUsageOffSession ||
+		pi.Customer == nil || pi.PaymentMethod == nil {
+		return nil, nil //nolint:nilnil // nothing to save is a normal outcome
+	}
+	out := &port.SavedCard{Status: string(pi.Status), CustomerID: pi.Customer.ID, PaymentMethodID: pi.PaymentMethod.ID}
+	pm, err := s.sc.PaymentMethods.Get(pi.PaymentMethod.ID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("stripe get payment method %s failed: %w", pi.PaymentMethod.ID, err)
+	}
+	switch {
+	case pm.Card != nil:
+		out.Type = "card"
+		out.Brand = string(pm.Card.Brand)
+		out.Last4 = pm.Card.Last4
+		out.ExpMonth = int(pm.Card.ExpMonth)
+		out.ExpYear = int(pm.Card.ExpYear)
+	case pm.USBankAccount != nil:
+		out.Type = "us_bank_account"
+		out.BankName = pm.USBankAccount.BankName
+		out.Last4 = pm.USBankAccount.Last4
+	}
+	return out, nil
+}
+
 // EnsureStripeCustomer returns existingID unchanged if set, otherwise creates a
 // Stripe Customer for the given email/name and returns its id. Saved payment
 // methods (from the portal SetupIntent flow) attach to this stable customer.

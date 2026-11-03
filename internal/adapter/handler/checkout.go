@@ -78,7 +78,11 @@ type CheckoutHandler struct {
 	// Per-tenant (BYO) resolution; nil => env values above (backward compat).
 	gwResolver checkoutGatewayResolver
 	connLookup checkoutConnLookup
+	autopay    *CheckoutAutopay // nil-safe
 }
+
+// SetAutopay wires keeping the card a subscription invoice is paid with.
+func (h *CheckoutHandler) SetAutopay(a *CheckoutAutopay) { h.autopay = a }
 
 // SetTenantGateways wires per-tenant (BYO) resolution for the checkout verify,
 // buyer, and public-key paths. When unset, the env-wired inspector/razorpay/
@@ -278,17 +282,20 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		}
 	}
 
+	savesCard := gatewayName == "stripe" && h.autopay.Prepare(payCtx, invoice, order.ID)
+
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"order_id":        order.ID,
-			"amount":          order.Amount,
-			"currency":        order.Currency,
-			"invoice_id":      invoice.ID,
-			"invoice_number":  invoice.InvoiceNumber,
-			"gateway":         gatewayName,
-			"client_secret":   order.ClientSecret,
-			"publishable_key": stripePubKey,
-			"razorpay_key_id": razorpayKeyID,
+			"saves_payment_method": savesCard,
+			"order_id":             order.ID,
+			"amount":               order.Amount,
+			"currency":             order.Currency,
+			"invoice_id":           invoice.ID,
+			"invoice_number":       invoice.InvoiceNumber,
+			"gateway":              gatewayName,
+			"client_secret":        order.ClientSecret,
+			"publishable_key":      stripePubKey,
+			"razorpay_key_id":      razorpayKeyID,
 		},
 	})
 }
@@ -392,6 +399,7 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 		// the webhook also sets this).
 		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, st.PaymentID)
 	}
+	h.autopay.Save(tenantCtx, invoice, paymentIntentID)
 
 	respondCheckoutStatus(c, invoice, "paid")
 }
