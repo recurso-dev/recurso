@@ -825,6 +825,7 @@ func main() {
 	// Successful retries settle through the same ledger-posting MarkInvoicePaid
 	// as checkout and the payment webhooks (idempotent across all three).
 	retryWorker.SetSettler(subscriptionService)
+	retryWorker.SetWriteOffLedger(ledgerService) // running out of retries posts the ledger reversal
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	if demo.Enabled() {
 		webhookWorker.DisableDeliveries() // endpoints inspectable, zero egress
