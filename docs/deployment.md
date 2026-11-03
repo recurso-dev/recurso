@@ -110,6 +110,20 @@ Also set the dashboard host so the links point at your SPA, not the API:
 DASHBOARD_URL=https://app.yourdomain.com   # verify/reset links; also PORTAL_URL for the customer portal
 ```
 
+### Failed-renewal alerts
+
+Get an email when scheduled renewals fail or the sweep can't claim due
+subscriptions, at most once an hour per API instance. A declined card isn't a
+failure here; dunning handles those.
+
+```bash
+OPERATOR_ALERT_EMAIL=you@example.com   # defaults to SIGNUP_NOTIFY_EMAIL
+```
+
+Delivery uses the same SMTP transport as above. These alerts come from the API,
+so they can't tell you the API itself is down; use an uptime monitor on `/health`
+for that.
+
 ### New-signup alerts
 
 Get an email every time a new tenant signs up (so you know who's onboarding

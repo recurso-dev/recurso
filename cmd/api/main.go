@@ -1068,6 +1068,12 @@ func main() {
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
 	renewalService.SetPaymentIDRecorder(invoiceRepo)
+	// Failed-renewal alerts: OPERATOR_ALERT_EMAIL, else the signup alert address.
+	// Delivery needs SMTP_HOST (else console-only).
+	if alertEmail := getEnvDefault("OPERATOR_ALERT_EMAIL", os.Getenv("SIGNUP_NOTIFY_EMAIL")); alertEmail != "" {
+		renewalService.SetFailureAlerter(service.NewRenewalFailureAlerter(emailSender, alertEmail))
+		log.Printf("Failed-renewal alerts enabled → %s", alertEmail) //nolint:gosec // G706: operator-configured address
+	}
 	subscriptionService.SetFinalInvoiceCharger(renewalService)
 	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
 	// B1 autopay: route every off-session charge to the gateway the card was
