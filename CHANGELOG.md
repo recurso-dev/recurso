@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Failed scheduled renewals now email the operator, at most once an hour per
+  instance. Set `OPERATOR_ALERT_EMAIL`, or it falls back to `SIGNUP_NOTIFY_EMAIL`.
+
 ### Changed
 
 - Paying a subscription invoice through hosted checkout now saves the payment
