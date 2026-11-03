@@ -27,7 +27,7 @@ type InvoiceRepository struct {
 func (r *InvoiceRepository) SumUnscheduledDeferral(ctx context.Context, tenantID uuid.UUID) (int64, error) {
 	var n int64
 	err := r.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(subtotal), 0)
+		SELECT COALESCE(SUM(total - tax_amount), 0)
 		FROM invoices i
 		WHERE i.tenant_id = $1
 		  AND i.subscription_id IS NOT NULL
