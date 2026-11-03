@@ -610,3 +610,56 @@ func TestRetryWorker_NoChargeDueRecordsNoPaymentID(t *testing.T) {
 		t.Errorf("recorded payment ids = %v, want none", repo.paymentIDs)
 	}
 }
+
+type recordingCanceler struct{ canceled []uuid.UUID }
+
+func (c *recordingCanceler) CancelForNonPayment(_ context.Context, _, subscriptionID uuid.UUID) error {
+	c.canceled = append(c.canceled, subscriptionID)
+	return nil
+}
+
+// subInvoiceRepo reads back an invoice with the subscription it belongs to.
+type subInvoiceRepo struct {
+	writeOffRepo
+	subscriptionID *uuid.UUID
+}
+
+func (r *subInvoiceRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	return &domain.Invoice{ID: id, SubscriptionID: r.subscriptionID}, nil
+}
+
+func TestRetryWorker_MaxRetries_CancelsTheSubscription(t *testing.T) {
+	subID := uuid.New()
+	for _, tc := range []struct {
+		name         string
+		subscription *uuid.UUID
+		transitioned bool
+		want         int
+	}{
+		{"a subscription invoice", &subID, true, 1},
+		{"a one-off invoice has nothing to cancel", nil, true, 0},
+		{"another path already wrote it off", &subID, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			inv := &domain.Invoice{
+				ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-007", Total: 2000, Currency: "USD",
+				Status: domain.InvoiceStatusPastDue, RetryCount: 9, DunningManagedBy: "worker", NextRetryAt: &now,
+			}
+			repo := &subInvoiceRepo{subscriptionID: tc.subscription}
+			repo.invoices = []*domain.Invoice{inv}
+			repo.transitioned = tc.transitioned
+			gw := &mockGateway{result: &port.PaymentResult{Success: false, ErrorCode: "card_declined"}}
+			canceler := &recordingCanceler{}
+
+			w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), gw, &mockNotifier{})
+			w.SetWriteOffLedger(&recordingWriteOff{})
+			w.SetNonPaymentCanceler(canceler)
+			w.processRetries(context.Background())
+
+			if len(canceler.canceled) != tc.want {
+				t.Errorf("canceled %v, want %d", canceler.canceled, tc.want)
+			}
+		})
+	}
+}

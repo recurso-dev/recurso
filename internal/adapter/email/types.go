@@ -20,7 +20,6 @@ type DunningEmailData struct {
 	DaysOverdue      int
 	RetryCount       int
 	NextRetryDate    string
-	SuspensionDate   string
 	PayNowURL        string
 	UpdatePaymentURL string
 }

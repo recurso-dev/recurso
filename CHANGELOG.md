@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Dunning now cancels a subscription when it writes off the subscription's
+  invoice, and emails the customer. The subscription used to stay active and keep
+  renewing. Dunning emails no longer promise a suspension date or data deletion,
+  neither of which ever happened.
+
 ### Fixed
 
 - Renewal and dunning charges now record the gateway payment id themselves. Only

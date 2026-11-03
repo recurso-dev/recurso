@@ -134,6 +134,23 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	return result, nil
 }
 
+// CancelForNonPayment ends a subscription once dunning has written off its
+// invoice, so it stops raising invoices nobody will pay, and tells the customer.
+// Cancel is a no-op on an already-canceled subscription and returns no email,
+// so a repeat sends nothing.
+func (s *SubscriptionService) CancelForNonPayment(ctx context.Context, tenantID, subscriptionID uuid.UUID) error {
+	result, err := s.Cancel(ctx, tenantID, subscriptionID, true, "non_payment", "")
+	if err != nil {
+		return err
+	}
+	if s.notificationService != nil && result.CustomerEmail != "" {
+		if err := s.notificationService.SendSubscriptionCanceledNonPayment(ctx, result.CustomerEmail, result.CustomerName, result.PlanName); err != nil {
+			s.logger.ErrorContext(ctx, "non-payment cancellation email failed", "subscription_id", subscriptionID, "error", err)
+		}
+	}
+	return nil
+}
+
 // Reactivate reactivates a cancelled subscription
 func (s *SubscriptionService) Reactivate(ctx context.Context, tenantID, subscriptionID uuid.UUID) (*domain.Subscription, error) {
 	sub, err := s.subRepo.GetByID(ctx, subscriptionID)
