@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Hosted checkout now charges the amount still due. It charged the invoice total,
+  so a customer with account credit or a wallet balance applied paid that portion
+  twice.
 - Renewal and dunning charges now record the gateway payment id themselves. Only
   the payment webhook recorded it, so a refund issued before that webhook landed
   couldn't reach the gateway and came back as `manual_required`.
