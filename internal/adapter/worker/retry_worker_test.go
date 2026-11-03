@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,8 +17,9 @@ import (
 
 type mockInvoiceRepo struct {
 	porttest.UnimplementedInvoiceRepository
-	invoices []*domain.Invoice
-	updated  []*domain.Invoice
+	invoices   []*domain.Invoice
+	updated    []*domain.Invoice
+	paymentIDs []string
 }
 
 func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Duration, limit int) ([]*domain.Invoice, error) {
@@ -27,6 +29,11 @@ func (m *mockInvoiceRepo) ClaimDueForRetry(ctx context.Context, lease time.Durat
 
 func (m *mockInvoiceRepo) Update(ctx context.Context, inv *domain.Invoice) error {
 	m.updated = append(m.updated, inv)
+	return nil
+}
+
+func (m *mockInvoiceRepo) SetGatewayPaymentID(_ context.Context, _, _ uuid.UUID, id string) error {
+	m.paymentIDs = append(m.paymentIDs, id)
 	return nil
 }
 
@@ -505,5 +512,154 @@ func TestRetryWorker_GatewayError(t *testing.T) {
 	// No outcome should be recorded for infra errors
 	if len(dunningRepo.history) != 0 {
 		t.Errorf("expected 0 history entries for infra error, got %d", len(dunningRepo.history))
+	}
+}
+
+// writeOffRepo is a mockInvoiceRepo whose give-up calls are observable. Its
+// tenant-scoped read fails on a tenant-less context, like the real repository.
+type writeOffRepo struct {
+	mockInvoiceRepo
+	marked       int
+	transitioned bool
+}
+
+func (r *writeOffRepo) MarkUncollectibleScoped(_ context.Context, _, _ uuid.UUID) (bool, error) {
+	r.marked++
+	return r.transitioned, nil
+}
+
+func (r *writeOffRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	if _, ok := ctx.Value(domain.TenantIDKey).(uuid.UUID); !ok {
+		return nil, errors.New("tenant_id missing from context")
+	}
+	return &domain.Invoice{ID: id, Status: domain.InvoiceStatusUncollectible}, nil
+}
+
+type recordingWriteOff struct{ posted []uuid.UUID }
+
+func (l *recordingWriteOff) RecordInvoiceWriteOff(_ context.Context, inv *domain.Invoice) error {
+	l.posted = append(l.posted, inv.ID)
+	return nil
+}
+
+func TestRetryWorker_MaxRetries_PostsTheWriteOff(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		transitioned bool
+		wantPosted   int
+	}{
+		{"this worker made the transition", true, 1},
+		{"another path already wrote it off", false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			inv := &domain.Invoice{
+				ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-004", Total: 2000, Currency: "USD",
+				Status: domain.InvoiceStatusPastDue, RetryCount: 9, DunningManagedBy: "worker", NextRetryAt: &now,
+			}
+			repo := &writeOffRepo{mockInvoiceRepo: mockInvoiceRepo{invoices: []*domain.Invoice{inv}}, transitioned: tc.transitioned}
+			gw := &mockGateway{result: &port.PaymentResult{Success: false, ErrorCode: "card_declined"}}
+			ledger := &recordingWriteOff{}
+
+			w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), gw, &mockNotifier{})
+			w.SetWriteOffLedger(ledger)
+			w.processRetries(context.Background())
+
+			if len(repo.updated) != 1 || repo.updated[0].RetryCount != 10 || repo.updated[0].LastPaymentError != "card_declined" {
+				t.Fatalf("updates = %+v, want the final attempt recorded", repo.updated)
+			}
+			if repo.marked != 1 {
+				t.Errorf("marked uncollectible %d times, want 1", repo.marked)
+			}
+			if len(ledger.posted) != tc.wantPosted {
+				t.Errorf("posted %d write-offs, want %d", len(ledger.posted), tc.wantPosted)
+			}
+		})
+	}
+}
+
+func TestRetryWorker_RecordsThePaymentIDRefundsNeed(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-005", Total: 2000, Currency: "USD",
+		Status: domain.InvoiceStatusPastDue, DunningManagedBy: "worker", NextRetryAt: &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+	gw := &mockGateway{result: &port.PaymentResult{Success: true, PaymentID: "pi_123"}}
+
+	w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), gw, &mockNotifier{})
+	w.processRetries(context.Background())
+
+	if len(repo.paymentIDs) != 1 || repo.paymentIDs[0] != "pi_123" {
+		t.Errorf("recorded payment ids = %v, want [pi_123]", repo.paymentIDs)
+	}
+}
+
+func TestRetryWorker_NoChargeDueRecordsNoPaymentID(t *testing.T) {
+	now := time.Now()
+	inv := &domain.Invoice{
+		ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-006", Total: 2000, AmountPaid: 2000, Currency: "USD",
+		Status: domain.InvoiceStatusPastDue, DunningManagedBy: "worker", NextRetryAt: &now,
+	}
+	repo := &mockInvoiceRepo{invoices: []*domain.Invoice{inv}}
+
+	w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), &mockGateway{}, &mockNotifier{})
+	w.processRetries(context.Background())
+
+	if len(repo.paymentIDs) != 0 {
+		t.Errorf("recorded payment ids = %v, want none", repo.paymentIDs)
+	}
+}
+
+type recordingCanceler struct{ canceled []uuid.UUID }
+
+func (c *recordingCanceler) CancelForNonPayment(_ context.Context, _, subscriptionID uuid.UUID) error {
+	c.canceled = append(c.canceled, subscriptionID)
+	return nil
+}
+
+// subInvoiceRepo reads back an invoice with the subscription it belongs to.
+type subInvoiceRepo struct {
+	writeOffRepo
+	subscriptionID *uuid.UUID
+}
+
+func (r *subInvoiceRepo) GetByID(_ context.Context, id uuid.UUID) (*domain.Invoice, error) {
+	return &domain.Invoice{ID: id, SubscriptionID: r.subscriptionID}, nil
+}
+
+func TestRetryWorker_MaxRetries_CancelsTheSubscription(t *testing.T) {
+	subID := uuid.New()
+	for _, tc := range []struct {
+		name         string
+		subscription *uuid.UUID
+		transitioned bool
+		want         int
+	}{
+		{"a subscription invoice", &subID, true, 1},
+		{"a one-off invoice has nothing to cancel", nil, true, 0},
+		{"another path already wrote it off", &subID, false, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now()
+			inv := &domain.Invoice{
+				ID: uuid.New(), TenantID: uuid.New(), InvoiceNumber: "INV-007", Total: 2000, Currency: "USD",
+				Status: domain.InvoiceStatusPastDue, RetryCount: 9, DunningManagedBy: "worker", NextRetryAt: &now,
+			}
+			repo := &subInvoiceRepo{subscriptionID: tc.subscription}
+			repo.invoices = []*domain.Invoice{inv}
+			repo.transitioned = tc.transitioned
+			gw := &mockGateway{result: &port.PaymentResult{Success: false, ErrorCode: "card_declined"}}
+			canceler := &recordingCanceler{}
+
+			w := NewRetryWorker(repo, service.NewSmartRetryService(&mockDunningRepo{weights: make(map[string]domain.DunningWeight)}), gw, &mockNotifier{})
+			w.SetWriteOffLedger(&recordingWriteOff{})
+			w.SetNonPaymentCanceler(canceler)
+			w.processRetries(context.Background())
+
+			if len(canceler.canceled) != tc.want {
+				t.Errorf("canceled %v, want %d", canceler.canceled, tc.want)
+			}
+		})
 	}
 }

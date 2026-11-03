@@ -825,6 +825,8 @@ func main() {
 	// Successful retries settle through the same ledger-posting MarkInvoicePaid
 	// as checkout and the payment webhooks (idempotent across all three).
 	retryWorker.SetSettler(subscriptionService)
+	retryWorker.SetWriteOffLedger(ledgerService) // running out of retries posts the ledger reversal
+	retryWorker.SetNonPaymentCanceler(subscriptionService)
 	webhookWorker := worker.NewWebhookWorker(eventDeliveryRepo, webhookEndpointRepo, eventRepo)
 	if demo.Enabled() {
 		webhookWorker.DisableDeliveries() // endpoints inspectable, zero egress
@@ -1009,6 +1011,7 @@ func main() {
 	)
 	dunningScheduler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))          // skip dunning for a settling ACH (Inc 3b)
 	dunningScheduler.SetWriteOffLedger(ledgerService, invoiceRepo.(*db.InvoiceRepository)) // auto-write-off posts its ledger reversal (#466 follow-up)
+	dunningScheduler.SetNonPaymentCanceler(subscriptionService)
 	dunningScheduler.Start()
 	defer dunningScheduler.Stop()
 
@@ -1064,6 +1067,13 @@ func main() {
 		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
+	renewalService.SetPaymentIDRecorder(invoiceRepo)
+	// Failed-renewal alerts: OPERATOR_ALERT_EMAIL, else the signup alert address.
+	// Delivery needs SMTP_HOST (else console-only).
+	if alertEmail := getEnvDefault("OPERATOR_ALERT_EMAIL", os.Getenv("SIGNUP_NOTIFY_EMAIL")); alertEmail != "" {
+		renewalService.SetFailureAlerter(service.NewRenewalFailureAlerter(emailSender, alertEmail))
+		log.Printf("Failed-renewal alerts enabled → %s", alertEmail) //nolint:gosec // G706: operator-configured address
+	}
 	subscriptionService.SetFinalInvoiceCharger(renewalService)
 	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
 	// B1 autopay: route every off-session charge to the gateway the card was
@@ -1401,8 +1411,9 @@ func main() {
 	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
 	// B1 autopay: save cards on the tenant's BYO Stripe gateway when connected,
 	// recording the connection so renewal charges the same account.
+	var checkoutAutopay *handler.CheckoutAutopay
 	if portalStripeSetup != nil {
-		portalAPIHandler.SetPaymentSetupResolver(handler.NewBYOSetupResolver(
+		setupResolver := handler.NewBYOSetupResolver(
 			func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
 				return gatewayResolver.StripeFor(ctx, tenantID)
 			},
@@ -1412,7 +1423,11 @@ func main() {
 			},
 			portalStripeSetup,
 			os.Getenv("STRIPE_PUBLISHABLE_KEY"),
-		))
+		)
+		portalAPIHandler.SetPaymentSetupResolver(setupResolver)
+		// Paying a subscription invoice at checkout also saves the card for renewals.
+		checkoutAutopay = handler.NewCheckoutAutopay(customerRepo, setupResolver)
+		checkoutHandler.SetAutopay(checkoutAutopay)
 	}
 	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
 	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
@@ -1537,7 +1552,8 @@ func main() {
 	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
 	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
 	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
-	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))     // ACH async settlement (Inc 3b)
+	webhookHandler.SetCheckoutAutopay(checkoutAutopay)
+	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database)) // ACH async settlement (Inc 3b)
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)

@@ -429,7 +429,7 @@ const DunningSecondReminderTemplate = `
     </div>
 </div>
 
-<p><strong>Your access may be suspended</strong> if payment is not received by {{.SuspensionDate}}.</p>
+<p><strong>Your subscription may be canceled</strong> if we can't collect this payment.</p>
 
 <p style="text-align: center;">
     <a href="{{.PayNowURL}}" class="btn" style="background: #f59e0b;">Pay Now</a>
@@ -438,9 +438,9 @@ const DunningSecondReminderTemplate = `
 <p>Need help? Reply to this email or contact our support team.</p>
 `
 
-// DunningFinalNoticeTemplate for final notice before service suspension (Day 7)
+// DunningFinalNoticeTemplate for the last notice before dunning gives up.
 const DunningFinalNoticeTemplate = `
-<h1>🚨 Final Notice: Service Suspension</h1>
+<h1>🚨 Final Notice: Payment Overdue</h1>
 <p>Hello {{.CustomerName}},</p>
 <p>Despite multiple attempts, we have been unable to collect payment for your account.</p>
 
@@ -453,24 +453,22 @@ const DunningFinalNoticeTemplate = `
         <span class="info-label">Days Overdue</span>
         <span class="info-value" style="color: #ef4444;">{{.DaysOverdue}} days</span>
     </div>
-    <div class="info-row">
-        <span class="info-label">Suspension Date</span>
-        <span class="info-value" style="color: #ef4444;">{{.SuspensionDate}}</span>
-    </div>
 </div>
 
-<p><strong>Your service will be suspended on {{.SuspensionDate}}</strong> unless payment is received.</p>
-
-<p>After suspension:</p>
-<ul>
-    <li>You will lose access to your account</li>
-    <li>Data may be deleted after 30 days</li>
-    <li>You can reactivate anytime by paying the outstanding amount</li>
-</ul>
+<p><strong>Your subscription will be canceled</strong> if we can't collect this payment.</p>
 
 <p style="text-align: center;">
-    <a href="{{.PayNowURL}}" class="btn" style="background: #ef4444;">Pay Now to Avoid Suspension</a>
+    <a href="{{.PayNowURL}}" class="btn" style="background: #ef4444;">Pay Now</a>
 </p>
+`
+
+// SubscriptionCanceledNonPaymentTemplate tells a customer dunning canceled their
+// subscription.
+const SubscriptionCanceledNonPaymentTemplate = `
+<h1>Your Subscription Was Canceled</h1>
+<p>Hello {{.CustomerName}},</p>
+<p>We couldn't collect payment for your {{.PlanName}} subscription after several attempts, so it has been canceled and you won't be billed for it again.</p>
+<p>Need help or want to resubscribe? Reply to this email or contact our support team.</p>
 `
 
 // CardExpiringTemplate for card expiry warning notification

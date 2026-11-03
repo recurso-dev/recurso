@@ -78,7 +78,11 @@ type CheckoutHandler struct {
 	// Per-tenant (BYO) resolution; nil => env values above (backward compat).
 	gwResolver checkoutGatewayResolver
 	connLookup checkoutConnLookup
+	autopay    *CheckoutAutopay // nil-safe
 }
+
+// SetAutopay wires keeping the card a subscription invoice is paid with.
+func (h *CheckoutHandler) SetAutopay(a *CheckoutAutopay) { h.autopay = a }
 
 // SetTenantGateways wires per-tenant (BYO) resolution for the checkout verify,
 // buyer, and public-key paths. When unset, the env-wired inspector/razorpay/
@@ -162,6 +166,11 @@ func NewCheckoutHandler(repo port.InvoiceRepository, gw port.PaymentGateway, ins
 	}
 }
 
+// checkoutAmountDue is what a checkout payment should collect on an invoice.
+func checkoutAmountDue(invoice *domain.Invoice) int64 {
+	return invoice.Total - invoice.AmountPaid - invoice.CreditApplied
+}
+
 // ShowCheckout returns invoice data as JSON for the frontend checkout page.
 func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -189,7 +198,8 @@ func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 			"subtotal":       invoice.Subtotal,
 			"tax_amount":     invoice.TaxAmount,
 			"total":          invoice.Total,
-			"display_amount": domain.FormatMoneyPlain(invoice.Total, invoice.Currency),
+			"amount_due":     checkoutAmountDue(invoice),
+			"display_amount": domain.FormatMoneyPlain(checkoutAmountDue(invoice), invoice.Currency),
 			"due_date":       invoice.DueDate.Format("2006-01-02"),
 			"customer_id":    invoice.CustomerID,
 		},
@@ -219,12 +229,20 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
+	// Collect only what's still owed: Total net of any wallet drain and account
+	// credit already applied (mirrors the renewal and retry charges).
+	amountDue := checkoutAmountDue(invoice)
+	if amountDue <= 0 {
+		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "nothing left to pay on this invoice")
+		return
+	}
+
 	// Public endpoint: carry the invoice's tenant so BYO routing picks the
 	// seller's own gateway (falls back to the env gateway when unset).
 	payCtx := context.WithValue(c.Request.Context(), domain.TenantIDKey, invoice.TenantID)
 	order, err := h.paymentGateway.CreateOrder(
 		payCtx,
-		invoice.Total,
+		amountDue,
 		invoice.Currency,
 		invoice.InvoiceNumber,
 		invoice.ID.String(),
@@ -278,17 +296,20 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		}
 	}
 
+	savesCard := gatewayName == "stripe" && h.autopay.Prepare(payCtx, invoice, order.ID)
+
 	c.JSON(http.StatusOK, gin.H{
 		"data": gin.H{
-			"order_id":        order.ID,
-			"amount":          order.Amount,
-			"currency":        order.Currency,
-			"invoice_id":      invoice.ID,
-			"invoice_number":  invoice.InvoiceNumber,
-			"gateway":         gatewayName,
-			"client_secret":   order.ClientSecret,
-			"publishable_key": stripePubKey,
-			"razorpay_key_id": razorpayKeyID,
+			"saves_payment_method": savesCard,
+			"order_id":             order.ID,
+			"amount":               order.Amount,
+			"currency":             order.Currency,
+			"invoice_id":           invoice.ID,
+			"invoice_number":       invoice.InvoiceNumber,
+			"gateway":              gatewayName,
+			"client_secret":        order.ClientSecret,
+			"publishable_key":      stripePubKey,
+			"razorpay_key_id":      razorpayKeyID,
 		},
 	})
 }
@@ -392,6 +413,7 @@ func (h *CheckoutHandler) CheckoutSuccess(c *gin.Context) {
 		// the webhook also sets this).
 		_ = h.invoiceRepo.SetGatewayPaymentID(ctx, invoice.TenantID, invoice.ID, st.PaymentID)
 	}
+	h.autopay.Save(tenantCtx, invoice, paymentIntentID)
 
 	respondCheckoutStatus(c, invoice, "paid")
 }

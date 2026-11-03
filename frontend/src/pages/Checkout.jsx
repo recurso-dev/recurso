@@ -96,7 +96,7 @@ function PaymentForm({ invoice, onPaid, onProcessing }) {
       >
         {submitting
           ? "Processing..."
-          : `Pay ${formatCurrency(invoice.total, invoice.currency)}`}
+          : `Pay ${formatCurrency(invoice.amount_due ?? invoice.total, invoice.currency)}`}
       </Button>
     </form>
   );
@@ -112,6 +112,7 @@ export default function Checkout() {
 
   // Payment session (from POST /pay)
   const [clientSecret, setClientSecret] = useState(null);
+  const [savesPaymentMethod, setSavesPaymentMethod] = useState(false);
   const [publishableKey, setPublishableKey] = useState(null);
   const [gateway, setGateway] = useState(null);
   const [rzpOrder, setRzpOrder] = useState(null); // Razorpay order details
@@ -155,6 +156,7 @@ export default function Checkout() {
     setGateway(null);
     setClientSecret(null);
     setPublishableKey(null);
+    setSavesPaymentMethod(false);
     setRzpOrder(null);
     setError(null);
     setStatus("open");
@@ -232,6 +234,7 @@ export default function Checkout() {
       setGateway(data.data.gateway);
       setClientSecret(data.data.client_secret || null);
       setPublishableKey(data.data.publishable_key || null);
+      setSavesPaymentMethod(Boolean(data.data.saves_payment_method));
       if (data.data.gateway === "razorpay") {
         setRzpOrder(data.data);
         openRazorpay(data.data);
@@ -362,6 +365,13 @@ export default function Checkout() {
             {formatCurrency(invoice.total, invoice.currency)}
           </span>
         </div>
+        {invoice.amount_due != null && invoice.amount_due !== invoice.total && (
+          <SummaryRow
+            label="Amount due"
+            value={formatCurrency(invoice.amount_due, invoice.currency)}
+            strong
+          />
+        )}
         <SummaryRow label="Due date" value={invoice.due_date} />
       </div>
 
@@ -378,6 +388,12 @@ export default function Checkout() {
             onPaid={() => setStatus("paid")}
             onProcessing={() => setStatus("processing")}
           />
+          {savesPaymentMethod && (
+            <p className="mt-3 text-center text-xs text-subtle">
+              Your payment method will be saved and charged automatically for
+              future invoices on this subscription until you cancel.
+            </p>
+          )}
         </Elements>
       ) : gateway === "stripe" ? (
         // gateway said "stripe" but the key or client_secret is missing —
@@ -394,7 +410,7 @@ export default function Checkout() {
             size="lg"
             className="w-full"
           >
-            {`Pay ${formatCurrency(invoice.total, invoice.currency)}`}
+            {`Pay ${formatCurrency(invoice.amount_due ?? invoice.total, invoice.currency)}`}
           </Button>
           <p className="text-center text-xs text-subtle">
             A secure Razorpay window opens to complete your payment (UPI, cards,
@@ -415,7 +431,7 @@ export default function Checkout() {
         >
           {initiating
             ? "Starting..."
-            : `Pay ${formatCurrency(invoice.total, invoice.currency)}`}
+            : `Pay ${formatCurrency(invoice.amount_due ?? invoice.total, invoice.currency)}`}
         </Button>
       )}
 

@@ -67,9 +67,11 @@ type RenewalService struct {
 
 	// Saved-method charging trio; all nil-safe — without them renewal
 	// invoices are generated open and dunning/notifications take over.
-	charger renewalSavedCharger
-	lookup  renewalPaymentLookup
-	settler renewalSettler
+	charger    renewalSavedCharger
+	lookup     renewalPaymentLookup
+	settler    renewalSettler
+	paymentIDs renewalPaymentIDRecorder // nil-safe
+	alerter    renewalAlerter           // nil-safe
 	// chargerRouter routes each charge to the gateway the card was saved on
 	// (B1 autopay). nil-safe: when unset, `charger` (the platform gateway) is
 	// used for every card, preserving pre-B1 behavior.
@@ -94,6 +96,24 @@ func (s *RenewalService) SetSavedMethodCharging(charger renewalSavedCharger, loo
 	s.settler = settler
 }
 
+// renewalAlerter hears about a sweep's failures. Satisfied by
+// *RenewalFailureAlerter.
+type renewalAlerter interface {
+	RenewalsFailed(ctx context.Context, failed, claimed int, errs []error)
+}
+
+// SetFailureAlerter wires alerting on failed renewals (nil-safe).
+func (s *RenewalService) SetFailureAlerter(a renewalAlerter) { s.alerter = a }
+
+// renewalPaymentIDRecorder is satisfied by *db.InvoiceRepository.
+type renewalPaymentIDRecorder interface {
+	SetGatewayPaymentID(ctx context.Context, tenantID, invoiceID uuid.UUID, gatewayPaymentID string) error
+}
+
+// SetPaymentIDRecorder wires recording the gateway payment id of a saved-card
+// charge (nil-safe; without it only the payment webhook records the id).
+func (s *RenewalService) SetPaymentIDRecorder(r renewalPaymentIDRecorder) { s.paymentIDs = r }
+
 // SetChargerRouter wires BYO-gateway routing (B1 autopay): each saved card is
 // charged on the gateway connection it was saved with. nil-safe — without it,
 // every card charges on the platform `charger`.
@@ -117,9 +137,14 @@ const renewalBatchLimit = 200
 func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 	subs, err := s.subs.ClaimDueForRenewal(ctx, renewalClaimLease, renewalBatchLimit)
 	if err != nil {
-		return 0, fmt.Errorf("failed to claim due renewals: %w", err)
+		err = fmt.Errorf("failed to claim due renewals: %w", err)
+		if s.alerter != nil {
+			s.alerter.RenewalsFailed(ctx, 0, 0, []error{err})
+		}
+		return 0, err
 	}
 	renewed := 0
+	var failures []error
 	for _, sub := range subs {
 		// The sweep's context names no tenant, but the plan and invoice lookups
 		// in RenewSubscription are tenant-scoped (and, for a workspace with a
@@ -128,9 +153,13 @@ func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 		if err := s.RenewSubscription(tctx, sub); err != nil {
 			slog.ErrorContext(ctx, "subscription renewal failed (lease will retry)",
 				"subscription_id", sub.ID, "error", err)
+			failures = append(failures, fmt.Errorf("subscription %s: %w", sub.ID, err))
 			continue
 		}
 		renewed++
+	}
+	if len(failures) > 0 && s.alerter != nil {
+		s.alerter.RenewalsFailed(ctx, len(failures), len(subs), failures)
 	}
 	return renewed, nil
 }
@@ -237,6 +266,14 @@ func (s *RenewalService) AttemptPayment(ctx context.Context, inv *domain.Invoice
 		slog.WarnContext(ctx, "renewal payment attempt failed; invoice left open for dunning",
 			"invoice_id", inv.ID, "error", err)
 		return
+	}
+	// Refunds are issued against this id. Recorded here too because the webhook
+	// that also records it can arrive late or not at all.
+	if s.paymentIDs != nil && result.PaymentID != "" {
+		if err := s.paymentIDs.SetGatewayPaymentID(ctx, inv.TenantID, inv.ID, result.PaymentID); err != nil {
+			slog.ErrorContext(ctx, "renewal charge succeeded but recording the payment id failed",
+				"invoice_id", inv.ID, "payment_id", result.PaymentID, "error", err)
+		}
 	}
 	if _, err := s.settler.MarkInvoicePaid(ctx, inv.ID); err != nil {
 		slog.ErrorContext(ctx, "renewal charge succeeded but settlement failed (webhook will reconcile)",

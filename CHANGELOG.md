@@ -7,8 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Failed scheduled renewals now email the operator, at most once an hour per
+  instance. Set `OPERATOR_ALERT_EMAIL`, or it falls back to `SIGNUP_NOTIFY_EMAIL`.
+
+### Changed
+
+- Paying a subscription invoice through hosted checkout now saves the payment
+  method for renewals when the customer has none on file, and the checkout page
+  says so. It used to leave nothing to charge, so every renewal waited for the
+  customer to pay by hand.
+- Dunning now cancels a subscription when it writes off the subscription's
+  invoice, and emails the customer. The subscription used to stay active and keep
+  renewing. Dunning emails no longer promise a suspension date or data deletion,
+  neither of which ever happened.
+
 ### Fixed
 
+- Hosted checkout now charges the amount still due. It charged the invoice total,
+  so a customer with account credit or a wallet balance applied paid that portion
+  twice.
+- Renewal and dunning charges now record the gateway payment id themselves. Only
+  the payment webhook recorded it, so a refund issued before that webhook landed
+  couldn't reach the gateway and came back as `manual_required`.
+- Dunning now posts the ledger write-off when it gives up on an invoice. The
+  retry worker never posted it, and the scheduler's posting always failed on a
+  tenant-less context, so reconciliation reported a missing write-off and the
+  close pack refused to close.
 - An immediately canceled subscription's final usage invoice is now charged to
   the saved payment method. It used to stay open until dunning found it
   overdue. A declined charge leaves it open for dunning, and the subscription

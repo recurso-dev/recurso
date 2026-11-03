@@ -39,6 +39,22 @@ type invoiceSettler interface {
 	MarkInvoicePaid(ctx context.Context, invoiceID uuid.UUID) (bool, error)
 }
 
+// nonPaymentCanceler ends a subscription dunning has given up on. Implemented
+// by *service.SubscriptionService.
+type nonPaymentCanceler interface {
+	CancelForNonPayment(ctx context.Context, tenantID, subscriptionID uuid.UUID) error
+}
+
+// noChargeDuePaymentID marks an invoice settled with nothing left to charge; it
+// is not a gateway payment, so it can't be refunded against.
+const noChargeDuePaymentID = "no_charge_due"
+
+// writeOffPoster posts the ledger reversal when dunning gives up on an invoice.
+// Implemented by *service.LedgerService.
+type writeOffPoster interface {
+	RecordInvoiceWriteOff(ctx context.Context, invoice *domain.Invoice) error
+}
+
 // savedCardChargerRouter routes an off-session charge to the gateway a card was
 // saved on (B1 autopay). Implemented by *service.SavedCardGatewayRouter.
 type savedCardChargerRouter interface {
@@ -56,6 +72,8 @@ type RetryWorker struct {
 	customerLookup         customerPaymentLookup
 	chargerRouter          savedCardChargerRouter
 	settler                invoiceSettler
+	writeOffLedger         writeOffPoster
+	canceler               nonPaymentCanceler
 }
 
 func NewRetryWorker(
@@ -87,6 +105,15 @@ func (w *RetryWorker) SetSettler(s invoiceSettler) {
 	w.settler = s
 }
 
+// SetWriteOffLedger wires the ledger reversal posted when retries run out.
+// Nil-safe: without it the status still flips, and reconciliation reports the
+// missing write-off.
+func (w *RetryWorker) SetWriteOffLedger(l writeOffPoster) { w.writeOffLedger = l }
+
+// SetNonPaymentCanceler wires canceling the subscription when retries run out
+// and its invoice is written off. Nil-safe.
+func (w *RetryWorker) SetNonPaymentCanceler(c nonPaymentCanceler) { w.canceler = c }
+
 // SetSavedMethodCharging wires off-session collection with the customer's saved
 // card (ENG-5 Phase 2). When either dependency is nil, retries fall back to the
 // interactive gateway path — behavior is unchanged for customers without a
@@ -115,7 +142,7 @@ func (w *RetryWorker) chargeInvoice(ctx context.Context, inv *domain.Invoice) (*
 	if amountDue <= 0 {
 		// Fully covered by wallet/credit — nothing left to collect, so treat it as
 		// paid rather than charging the card for an amount that isn't owed.
-		return &port.PaymentResult{Success: true, PaymentID: "no_charge_due"}, nil
+		return &port.PaymentResult{Success: true, PaymentID: noChargeDuePaymentID}, nil
 	}
 
 	if w.savedCharger != nil && w.customerLookup != nil {
@@ -180,6 +207,38 @@ func (w *RetryWorker) processRetries(ctx context.Context) {
 	}
 }
 
+// writeOff gives up on an invoice the way the dunning scheduler and the manual
+// action do: the status transition, then the ledger reversal for this caller
+// only. Update runs first so the final attempt's retry count and error persist.
+func (w *RetryWorker) writeOff(ctx context.Context, inv *domain.Invoice) {
+	if err := w.invoiceRepo.Update(ctx, inv); err != nil {
+		slog.Error("retry worker: failed to record final attempt", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	transitioned, err := w.invoiceRepo.MarkUncollectibleScoped(ctx, inv.TenantID, inv.ID)
+	if err != nil {
+		slog.Error("retry worker: failed to mark invoice uncollectible", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	if !transitioned {
+		return
+	}
+	tenantCtx := context.WithValue(ctx, domain.TenantIDKey, inv.TenantID)
+	full, err := w.invoiceRepo.GetByID(tenantCtx, inv.ID)
+	if err != nil || full == nil {
+		slog.Error("retry worker: write-off ledger reversal skipped: invoice lookup failed", "invoice_id", inv.ID, "error", err)
+		return
+	}
+	if err := w.writeOffLedger.RecordInvoiceWriteOff(tenantCtx, full); err != nil {
+		slog.Error("retry worker: write-off ledger reversal failed", "invoice_id", inv.ID, "error", err)
+	}
+	if w.canceler != nil && full.SubscriptionID != nil {
+		if err := w.canceler.CancelForNonPayment(tenantCtx, inv.TenantID, *full.SubscriptionID); err != nil {
+			slog.Error("retry worker: canceling subscription after write-off failed", "invoice_id", inv.ID, "error", err)
+		}
+	}
+}
+
 func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	slog.Info("retry worker: retrying invoice", "invoice_number", inv.InvoiceNumber, "attempt", inv.RetryCount+1)
 
@@ -227,6 +286,13 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	// 3. Handle result
 	if result.Success {
 		slog.Info("retry worker: payment succeeded", "invoice_number", inv.InvoiceNumber, "payment_id", result.PaymentID)
+		// Refunds are issued against this id. Recorded here too because the
+		// webhook that also records it can arrive late or not at all.
+		if result.PaymentID != "" && result.PaymentID != noChargeDuePaymentID {
+			if err := w.invoiceRepo.SetGatewayPaymentID(ctx, inv.TenantID, inv.ID, result.PaymentID); err != nil {
+				slog.Error("retry worker: failed to record payment id", "invoice_id", inv.ID, "payment_id", result.PaymentID, "error", err)
+			}
+		}
 		if w.settler != nil {
 			// Settle through the ledger path — the same idempotent method the
 			// checkout and payment webhooks use, so amount_paid, recovery
@@ -298,10 +364,14 @@ func (w *RetryWorker) processInvoice(ctx context.Context, inv *domain.Invoice) {
 	if decision == nil {
 		// Max retries reached
 		slog.Warn("retry worker: max retries reached, marking uncollectible", "invoice_number", inv.InvoiceNumber)
-		inv.Status = domain.InvoiceStatusUncollectible
 		inv.NextRetryAt = nil
 		inv.DunningActionID = ""
 		inv.DunningContextKey = ""
+		if w.writeOffLedger != nil {
+			w.writeOff(ctx, inv)
+			return
+		}
+		inv.Status = domain.InvoiceStatusUncollectible
 		if updateErr := w.invoiceRepo.Update(ctx, inv); updateErr != nil {
 			slog.Error("retry worker: failed to mark invoice uncollectible", "invoice_id", inv.ID, "error", updateErr)
 		}

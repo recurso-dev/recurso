@@ -713,3 +713,49 @@ func TestImmediateCancel_ChargesFinalUsage_Postgres(t *testing.T) {
 	h.assertAuditGrade("after repeat cancel")
 	h.assertClosePackTies("after immediate cancels")
 }
+
+// TestCancelForNonPayment_Postgres proves giving up on a renewal invoice leaves
+// the books clean and stops the subscription raising more invoices.
+func TestCancelForNonPayment_Postgres(t *testing.T) {
+	conn, dbx := openRenewalE2EDB(t)
+	e := newRenewalE2E(t, conn, dbx)
+	h := e.h
+
+	subID, _ := e.seedDue("1 minute", false, "cus_never_pays")
+	e.charger.declined["cus_never_pays"] = true
+	e.sweep()
+
+	var invoiceID uuid.UUID
+	if err := conn.QueryRowContext(h.ctx, `SELECT id FROM invoices WHERE subscription_id = $1`, subID).Scan(&invoiceID); err != nil {
+		t.Fatalf("read invoice: %v", err)
+	}
+	repo := db.NewInvoiceRepository(conn)
+	if ok, err := repo.MarkUncollectibleScoped(h.tctx, h.tenantID, invoiceID); err != nil || !ok {
+		t.Fatalf("mark uncollectible: ok=%v err=%v", ok, err)
+	}
+	inv, err := repo.GetByID(h.tctx, invoiceID)
+	if err != nil {
+		t.Fatalf("load invoice: %v", err)
+	}
+	if err := h.ledger.RecordInvoiceWriteOff(h.tctx, inv); err != nil {
+		t.Fatalf("write off: %v", err)
+	}
+
+	if err := h.subSvc.CancelForNonPayment(h.tctx, h.tenantID, subID); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if err := h.subSvc.CancelForNonPayment(h.tctx, h.tenantID, subID); err != nil {
+		t.Fatalf("repeat cancel: %v", err)
+	}
+	if status, _ := e.subState(subID); status != string(domain.SubscriptionStatusCanceled) {
+		t.Errorf("status = %s, want canceled", status)
+	}
+
+	mustExec(t, conn, `UPDATE subscriptions SET current_period_end = NOW() - INTERVAL '1 minute' WHERE id = $1`, subID)
+	e.sweep()
+	if got := e.invoices(subID); len(got) != 1 {
+		t.Errorf("invoices = %+v, want no new invoice after cancellation", got)
+	}
+	h.assertAuditGrade("after non-payment cancel")
+	h.assertClosePackTies("after non-payment cancel")
+}
