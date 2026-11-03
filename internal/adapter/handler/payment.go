@@ -56,12 +56,19 @@ func (h *PaymentHandler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// Collect only what's still owed, net of any wallet drain and credit applied.
+	amountDue := checkoutAmountDue(invoice)
+	if amountDue <= 0 {
+		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "nothing left to pay on this invoice")
+		return
+	}
+
 	// Create Order on Gateway. Public endpoint: carry the invoice's tenant so
 	// BYO routing picks the seller's own gateway (env fallback when unset).
 	payCtx := context.WithValue(c.Request.Context(), domain.TenantIDKey, invoice.TenantID)
 	order, err := h.gateway.CreateOrder(
 		payCtx,
-		invoice.Total,
+		amountDue,
 		invoice.Currency,
 		invoice.InvoiceNumber,
 		invoice.ID.String(),

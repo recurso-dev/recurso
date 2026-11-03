@@ -166,6 +166,11 @@ func NewCheckoutHandler(repo port.InvoiceRepository, gw port.PaymentGateway, ins
 	}
 }
 
+// checkoutAmountDue is what a checkout payment should collect on an invoice.
+func checkoutAmountDue(invoice *domain.Invoice) int64 {
+	return invoice.Total - invoice.AmountPaid - invoice.CreditApplied
+}
+
 // ShowCheckout returns invoice data as JSON for the frontend checkout page.
 func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -193,7 +198,8 @@ func (h *CheckoutHandler) ShowCheckout(c *gin.Context) {
 			"subtotal":       invoice.Subtotal,
 			"tax_amount":     invoice.TaxAmount,
 			"total":          invoice.Total,
-			"display_amount": domain.FormatMoneyPlain(invoice.Total, invoice.Currency),
+			"amount_due":     checkoutAmountDue(invoice),
+			"display_amount": domain.FormatMoneyPlain(checkoutAmountDue(invoice), invoice.Currency),
 			"due_date":       invoice.DueDate.Format("2006-01-02"),
 			"customer_id":    invoice.CustomerID,
 		},
@@ -223,12 +229,20 @@ func (h *CheckoutHandler) InitiatePayment(c *gin.Context) {
 		return
 	}
 
+	// Collect only what's still owed: Total net of any wallet drain and account
+	// credit already applied (mirrors the renewal and retry charges).
+	amountDue := checkoutAmountDue(invoice)
+	if amountDue <= 0 {
+		respondError(c, http.StatusBadRequest, codeInvoiceAlreadyPaid, "nothing left to pay on this invoice")
+		return
+	}
+
 	// Public endpoint: carry the invoice's tenant so BYO routing picks the
 	// seller's own gateway (falls back to the env gateway when unset).
 	payCtx := context.WithValue(c.Request.Context(), domain.TenantIDKey, invoice.TenantID)
 	order, err := h.paymentGateway.CreateOrder(
 		payCtx,
-		invoice.Total,
+		amountDue,
 		invoice.Currency,
 		invoice.InvoiceNumber,
 		invoice.ID.String(),

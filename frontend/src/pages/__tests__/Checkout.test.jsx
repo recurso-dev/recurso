@@ -50,6 +50,18 @@ describe("Checkout (money-critical public flow)", () => {
         await waitFor(() => expect(screen.getAllByText(/\$42\.00/).length).toBeGreaterThan(0));
     });
 
+    it("asks for the amount due, not the total, when credit was applied", async () => {
+        global.fetch = vi.fn(() =>
+            Promise.resolve({
+                ok: true,
+                json: () => Promise.resolve({ data: invoice({ total: 5000, amount_due: 3000 }) }),
+            })
+        );
+        renderAt("inv_credit");
+        expect(await screen.findByRole("button", { name: /pay \$30\.00/i })).toBeInTheDocument();
+        expect(screen.getByText("Amount due")).toBeInTheDocument();
+    });
+
     it("shows a not-found error when the invoice can't be loaded", async () => {
         global.fetch = vi.fn(() => Promise.resolve({ ok: false }));
         renderAt("missing");
