@@ -138,8 +138,9 @@ func (s *RenewalService) ProcessDueRenewals(ctx context.Context) (int, error) {
 // RenewSubscription processes one claimed subscription at period end.
 //
 //   - cancel_at_period_end: the elapsed period's usage is rated onto a
-//     final invoice (the flat fee was already billed in advance) and the
-//     subscription transitions to canceled. No new period starts.
+//     final invoice (the flat fee was already billed in advance), the
+//     subscription transitions to canceled, and payment is attempted
+//     best-effort. No new period starts.
 //   - otherwise: GenerateInvoice bills next period's flat fee plus the
 //     elapsed period's usage, the period advances via the anchor-preserving
 //     CalculateNextBillingDate, and payment is attempted best-effort.
@@ -147,7 +148,8 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 	now := s.now()
 
 	if sub.CancelAtPeriodEnd {
-		if _, err := s.invoicer.GenerateFinalUsageInvoice(ctx, sub, sub.CurrentPeriodEnd); err != nil {
+		finalInv, err := s.invoicer.GenerateFinalUsageInvoice(ctx, sub, sub.CurrentPeriodEnd)
+		if err != nil {
 			return fmt.Errorf("final usage invoice failed: %w", err)
 		}
 		sub.Status = domain.SubscriptionStatusCanceled
@@ -157,6 +159,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 		if err := s.subs.Update(ctx, sub); err != nil {
 			return fmt.Errorf("failed to finalize period-end cancellation: %w", err)
 		}
+		s.attemptPayment(ctx, finalInv)
 		slog.InfoContext(ctx, "subscription canceled at period end", "subscription_id", sub.ID)
 		return nil
 	}
@@ -196,7 +199,7 @@ func (s *RenewalService) RenewSubscription(ctx context.Context, sub *domain.Subs
 }
 
 // attemptPayment charges the customer's saved payment method for an open
-// renewal invoice. Strictly best-effort: no saved method, a lookup error,
+// renewal or final usage invoice. Strictly best-effort: no saved method, a lookup error,
 // or a gateway decline all leave the invoice open — dunning owns recovery.
 func (s *RenewalService) attemptPayment(ctx context.Context, inv *domain.Invoice) {
 	if s.charger == nil || s.lookup == nil || s.settler == nil {

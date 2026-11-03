@@ -53,12 +53,16 @@ func (c tenantClaims) ClaimDueForRenewal(ctx context.Context, lease time.Duratio
 type scriptedCharger struct {
 	declined map[string]bool
 	charges  []string // idempotency keys, in order
-	amounts  []int64
+	amounts  map[string][]int64
+}
+
+func (c *scriptedCharger) chargesOf(stripeCustomerID string) []int64 {
+	return c.amounts[stripeCustomerID]
 }
 
 func (c *scriptedCharger) ChargeSavedPaymentMethod(_ context.Context, stripeCustomerID, _ string, amount int64, _, _, idempotencyKey string) (*port.PaymentResult, error) {
 	c.charges = append(c.charges, idempotencyKey)
-	c.amounts = append(c.amounts, amount)
+	c.amounts[stripeCustomerID] = append(c.amounts[stripeCustomerID], amount)
 	return &port.PaymentResult{Success: !c.declined[stripeCustomerID]}, nil
 }
 
@@ -88,7 +92,7 @@ func newRenewalE2E(t *testing.T, conn *sql.DB, dbx *sqlx.DB) *renewalE2E {
 	invoices.LedgerPoster = h.ledger
 	invoices.RevRecScheduler = h.revrec
 
-	charger := &scriptedCharger{declined: map[string]bool{}}
+	charger := &scriptedCharger{declined: map[string]bool{}, amounts: map[string][]int64{}}
 	claims := tenantClaims{subRepo.(*db.SubscriptionRepository), h.tenantID, map[uuid.UUID]bool{}}
 	svc := NewRenewalService(claims, planRepo, invoices)
 	svc.SetSavedMethodCharging(charger, customerRepo, h.subSvc)
@@ -411,7 +415,12 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 	_, end = e.period(cancelSub)
 	usage(cancelSub, cancelCust, end.Add(-time.Hour), 40)
 
-	idleCancelSub, _ := e.seedDueOnPlan(planID, "1 minute", true, "")
+	declinedCancelSub, declinedCancelCust := e.seedDueOnPlan(planID, "1 minute", true, "cus_metered_cancel_declines")
+	_, end = e.period(declinedCancelSub)
+	usage(declinedCancelSub, declinedCancelCust, end.Add(-time.Hour), 40)
+	e.charger.declined["cus_metered_cancel_declines"] = true
+
+	idleCancelSub, _ := e.seedDueOnPlan(planID, "1 minute", true, "cus_metered_cancel_idle")
 
 	crashSub, crashCust := e.seedDueOnPlan(planID, "1 minute", false, "")
 	_, end = e.period(crashSub)
@@ -435,8 +444,8 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusPaid) || got[0].total != 100500 || got[0].paid != 100500 {
 			t.Fatalf("invoices = %+v, want one paid invoice of 100500", got)
 		}
-		if len(e.charger.amounts) != 1 || e.charger.amounts[0] != 100500 {
-			t.Errorf("charged %v, want exactly 100500", e.charger.amounts)
+		if got := e.charger.chargesOf("cus_metered_pays"); !equalInt64s(got, []int64{100500}) {
+			t.Errorf("charged %v, want exactly 100500", got)
 		}
 	})
 
@@ -449,9 +458,13 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 		}
 	})
 
-	t.Run("cancel at period end bills usage without the flat fee", func(t *testing.T) {
-		if got := invoiceTotals(e.invoices(cancelSub)); !equalInt64s(got, []int64{2000}) {
-			t.Fatalf("totals = %v, want final usage only: 40 units x 50 = 2000", got)
+	t.Run("cancel at period end charges the saved card for usage without the flat fee", func(t *testing.T) {
+		got := e.invoices(cancelSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusPaid) || got[0].total != 2000 || got[0].paid != 2000 {
+			t.Fatalf("invoices = %+v, want one paid final usage invoice: 40 units x 50 = 2000", got)
+		}
+		if got := e.charger.chargesOf("cus_metered_cancels"); !equalInt64s(got, []int64{2000}) {
+			t.Errorf("charged %v, want exactly 2000", got)
 		}
 		if status, _ := e.subState(cancelSub); status != string(domain.SubscriptionStatusCanceled) {
 			t.Errorf("status = %s, want canceled", status)
@@ -461,9 +474,22 @@ func TestRenewalSweep_MeteredUsage_Postgres(t *testing.T) {
 		}
 	})
 
-	t.Run("cancel at period end with no usage raises no invoice", func(t *testing.T) {
+	t.Run("a declined final charge leaves the invoice open and the subscription canceled", func(t *testing.T) {
+		got := e.invoices(declinedCancelSub)
+		if len(got) != 1 || got[0].status != string(domain.InvoiceStatusOpen) || got[0].paid != 0 {
+			t.Fatalf("invoices = %+v, want one open unpaid invoice", got)
+		}
+		if status, _ := e.subState(declinedCancelSub); status != string(domain.SubscriptionStatusCanceled) {
+			t.Errorf("status = %s, want canceled", status)
+		}
+	})
+
+	t.Run("cancel at period end with no usage raises no invoice or charge", func(t *testing.T) {
 		if got := e.invoices(idleCancelSub); len(got) != 0 {
 			t.Fatalf("invoices = %+v, want none", got)
+		}
+		if got := e.charger.chargesOf("cus_metered_cancel_idle"); len(got) != 0 {
+			t.Errorf("charged %v, want nothing", got)
 		}
 		if status, _ := e.subState(idleCancelSub); status != string(domain.SubscriptionStatusCanceled) {
 			t.Errorf("status = %s, want canceled", status)
