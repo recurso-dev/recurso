@@ -87,6 +87,9 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 	// window on immediate cancel — the flat fee was paid in advance, but the
 	// usage since period start would otherwise never be invoiced. Best-effort:
 	// a failure logs loudly and leaves the window unclaimed for a manual rerun.
+	// The invoice is charged before the rev-rec unwind below so the schedule
+	// that payment creates is unwound with the rest. A decline leaves it open
+	// for dunning, and the subscription stays canceled.
 	// Cancel-at-period-end needs nothing here: the normal cycle generator
 	// rates the full period when it closes.
 	if immediately && s.finalUsageInvoicer != nil {
@@ -95,6 +98,9 @@ func (s *SubscriptionService) Cancel(ctx context.Context, tenantID, subscription
 		} else if finalInv != nil {
 			s.logger.InfoContext(ctx, "final usage invoice generated on cancel",
 				"subscription_id", sub.ID, "invoice_id", finalInv.ID, "total", finalInv.Total)
+			if s.finalInvoiceCharger != nil {
+				s.finalInvoiceCharger.AttemptPayment(ctx, finalInv)
+			}
 		}
 	}
 

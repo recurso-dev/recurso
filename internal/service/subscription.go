@@ -67,6 +67,7 @@ type SubscriptionService struct {
 	addonRepo           port.SubscriptionAddonRepository // Multi-product catalog v1; nil-safe (add-ons disabled)
 	telemetry           *telemetry.Client                // nil-safe; only set when TELEMETRY_OPTIN=true
 	finalUsageInvoicer  finalUsageInvoicer               // Usage-based billing v1: bill the partial window on immediate cancel; nil-safe
+	finalInvoiceCharger finalInvoiceCharger              // Charge that final invoice to the saved method; nil-safe
 	paymentAttempts     paymentAttemptLister             // nil-safe; the invoice page's payment-attempt history
 	invoiceStatusLog    invoiceStatusHistoryReader       // nil-safe; the invoice page's status timeline
 	subHistory          subscriptionHistoryReader        // nil-safe; the subscription page's status+plan timeline
@@ -77,6 +78,13 @@ type SubscriptionService struct {
 // partial elapsed window. Satisfied by *InvoiceService.
 type finalUsageInvoicer interface {
 	GenerateFinalUsageInvoice(ctx context.Context, sub *domain.Subscription, endedAt time.Time) (*domain.Invoice, error)
+}
+
+// finalInvoiceCharger charges an open final invoice to the customer's saved
+// payment method, leaving it open for dunning if it can't. Satisfied by
+// *RenewalService.
+type finalInvoiceCharger interface {
+	AttemptPayment(ctx context.Context, inv *domain.Invoice)
 }
 
 func NewSubscriptionService(
@@ -183,6 +191,12 @@ func (s *SubscriptionService) SetTelemetry(t *telemetry.Client) { s.telemetry = 
 // SetFinalUsageInvoicer wires the metered final invoice on immediate cancel
 // (usage-based billing v1); nil-safe when unset.
 func (s *SubscriptionService) SetFinalUsageInvoicer(f finalUsageInvoicer) { s.finalUsageInvoicer = f }
+
+// SetFinalInvoiceCharger wires charging the final usage invoice on immediate
+// cancel; nil-safe when unset (the invoice stays open for dunning).
+func (s *SubscriptionService) SetFinalInvoiceCharger(c finalInvoiceCharger) {
+	s.finalInvoiceCharger = c
+}
 
 // SetCommitment sets the subscription's per-period minimum (Lago-parity
 // B2): when a period's subtotal falls short, a true-up line fills the gap

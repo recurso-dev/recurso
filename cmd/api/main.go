@@ -1064,6 +1064,7 @@ func main() {
 		ChargeSavedPaymentMethod(ctx context.Context, stripeCustomerID, paymentMethodID string, amount int64, currency, invoiceID, idempotencyKey string) (*port.PaymentResult, error)
 	})
 	renewalService.SetSavedMethodCharging(renewalCharger, customerRepo, subscriptionService)
+	subscriptionService.SetFinalInvoiceCharger(renewalService)
 	walletService.SetSavedMethodCharging(renewalCharger, customerRepo)
 	// B1 autopay: route every off-session charge to the gateway the card was
 	// saved on (BYO connection or platform). One shared router across the
