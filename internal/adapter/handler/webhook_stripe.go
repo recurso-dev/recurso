@@ -164,6 +164,10 @@ func (h *WebhookHandler) handlePaymentIntentSucceeded(ctx context.Context, event
 		}
 	}
 
+	// The buyer may never return to the checkout success page, so this is also
+	// where a checkout's card gets saved. Save is a no-op for any other intent.
+	h.checkoutAutopay.Save(ctxWithTenant, inv, pi.ID)
+
 	// Record the dunning success only when THIS delivery performed the paid
 	// transition, so a redelivered payment_intent.succeeded (or a second settler)
 	// can't double-count the dunning bandit's reward (ENG-162).

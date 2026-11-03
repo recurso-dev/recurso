@@ -1405,8 +1405,9 @@ func main() {
 	portalAPIHandler.SetPaymentMethodSetup(customerRepo, portalStripeSetup, os.Getenv("STRIPE_PUBLISHABLE_KEY"))
 	// B1 autopay: save cards on the tenant's BYO Stripe gateway when connected,
 	// recording the connection so renewal charges the same account.
+	var checkoutAutopay *handler.CheckoutAutopay
 	if portalStripeSetup != nil {
-		portalAPIHandler.SetPaymentSetupResolver(handler.NewBYOSetupResolver(
+		setupResolver := handler.NewBYOSetupResolver(
 			func(ctx context.Context, tenantID uuid.UUID) port.PaymentGateway {
 				return gatewayResolver.StripeFor(ctx, tenantID)
 			},
@@ -1416,7 +1417,11 @@ func main() {
 			},
 			portalStripeSetup,
 			os.Getenv("STRIPE_PUBLISHABLE_KEY"),
-		))
+		)
+		portalAPIHandler.SetPaymentSetupResolver(setupResolver)
+		// Paying a subscription invoice at checkout also saves the card for renewals.
+		checkoutAutopay = handler.NewCheckoutAutopay(customerRepo, setupResolver)
+		checkoutHandler.SetAutopay(checkoutAutopay)
 	}
 	// ENG-5 Phase 3a: portal UPI-mandate re-authorization. Gated on real
 	// Razorpay keys — the mock gateway's AuthURL would strand customers on a
@@ -1541,7 +1546,8 @@ func main() {
 	webhookHandler.SetCreditNoteService(creditNoteService)                          // consume gateway refund events (refund.processed/failed, charge.refunded)
 	webhookHandler.SetInboundWebhookDedup(db.NewInboundWebhookRepository(database)) // skip redelivered gateway webhooks (ENG-162)
 	webhookHandler.SetGatewayConnections(gatewayConnService)                        // BYO increment 3: per-connection webhook secrets
-	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database))     // ACH async settlement (Inc 3b)
+	webhookHandler.SetCheckoutAutopay(checkoutAutopay)
+	webhookHandler.SetPaymentAttempts(db.NewPaymentAttemptRepository(database)) // ACH async settlement (Inc 3b)
 
 	// Revenue Recognition Handler
 	revrecHandler := handler.NewRevRecHandler(revrecService)
