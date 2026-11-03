@@ -3,18 +3,13 @@
   "repo": {
     "stargazers_count": 7,
     "forks_count": 5,
-    "open_issues_count": 19,
+    "open_issues_count": 16,
     "subscribers_count": 0
   },
   "clones": {
-    "count": 104,
-    "uniques": 50,
+    "count": 252,
+    "uniques": 81,
     "clones": [
-      {
-        "timestamp": "2026-10-19T00:00:00Z",
-        "count": 6,
-        "uniques": 5
-      },
       {
         "timestamp": "2026-10-20T00:00:00Z",
         "count": 11,
@@ -79,18 +74,18 @@
         "timestamp": "2026-11-01T00:00:00Z",
         "count": 6,
         "uniques": 1
+      },
+      {
+        "timestamp": "2026-11-02T00:00:00Z",
+        "count": 154,
+        "uniques": 38
       }
     ]
   },
   "views": {
-    "count": 404,
-    "uniques": 268,
+    "count": 421,
+    "uniques": 270,
     "views": [
-      {
-        "timestamp": "2026-10-19T00:00:00Z",
-        "count": 8,
-        "uniques": 1
-      },
       {
         "timestamp": "2026-10-20T00:00:00Z",
         "count": 1,
@@ -155,6 +150,11 @@
         "timestamp": "2026-11-01T00:00:00Z",
         "count": 4,
         "uniques": 3
+      },
+      {
+        "timestamp": "2026-11-02T00:00:00Z",
+        "count": 25,
+        "uniques": 5
       }
     ]
   },
@@ -166,7 +166,7 @@
     },
     {
       "referrer": "github.com",
-      "count": 7,
+      "count": 8,
       "uniques": 4
     },
     {
@@ -184,19 +184,19 @@
     {
       "path": "/recurso-dev/recurso",
       "title": "Overview",
-      "count": 65,
+      "count": 69,
       "uniques": 30
     },
     {
       "path": "/recurso-dev/recurso/issues",
       "title": "/issues",
-      "count": 30,
+      "count": 36,
       "uniques": 2
     },
     {
       "path": "/recurso-dev/recurso/pulls",
       "title": "/pulls",
-      "count": 26,
+      "count": 35,
       "uniques": 4
     },
     {
