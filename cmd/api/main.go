@@ -293,6 +293,9 @@ func main() {
 		log.Println("BYO gateway vault enabled")
 	}
 	gatewayConnService := service.NewGatewayConnectionService(db.NewGatewayConnectionRepository(database), gatewayVault)
+	if !demo.Enabled() {
+		gatewayConnService.SetStripeKeyChecker(gateway.CheckStripeSecretKey)
+	}
 	gatewayResolver := gateway.NewGatewayResolver(gatewayConnService, paymentGateway)
 	// tenantGateway is a drop-in port.PaymentGateway: every consumer below that
 	// took paymentGateway now takes this wrapper, which routes per-tenant with

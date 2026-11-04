@@ -176,29 +176,74 @@ func invoiceEmailData(inv *domain.Invoice, customer *domain.Customer) InvoiceDat
 		CustomerEmail: customer.Email,
 		InvoiceNumber: inv.InvoiceNumber,
 		InvoiceID:     inv.ID.String(), // SendInvoiceCreated builds the /checkout/{id} Pay Now link
-		Amount:        formatAmount(inv.Total, inv.Currency),
+		Amount:        formatAmount(invoiceEmailAmount(inv), inv.Currency),
 		DueDate:       inv.DueDate.Format("Jan 02, 2006"),
 	}
+}
+
+// invoiceEmailAmount is what the invoice email asks for: what is still owed, or
+// the total once nothing is (a manual re-send of a paid invoice).
+func invoiceEmailAmount(inv *domain.Invoice) int64 {
+	if due := inv.Total - inv.AmountPaid - inv.CreditApplied; due > 0 {
+		return due
+	}
+	return inv.Total
+}
+
+// invoicePayable reports whether the customer still owes anything on the invoice.
+func invoicePayable(inv *domain.Invoice) bool {
+	return inv != nil && inv.Status != domain.InvoiceStatusPaid && inv.Total-inv.AmountPaid-inv.CreditApplied > 0
+}
+
+// savedMethodReader finds a customer's saved card. Satisfied by
+// *db.CustomerRepository.
+type savedMethodReader interface {
+	GetSavedPaymentMethod(ctx context.Context, customerID uuid.UUID) (stripeCustomerID, paymentMethodID string, gatewayConnectionID *uuid.UUID, err error)
 }
 
 // notifyInvoiceCreated emails the customer their new invoice with the hosted
 // "Pay Now" link — best-effort and NON-BLOCKING, so a slow SMTP send never
 // delays or fails invoice generation (which may run in a renewal sweep). No-op
-// when the notifier is unwired, the invoice is nil, or nothing is owed
-// (a zero / already-covered invoice needs no "Pay Now" prompt).
+// when the notifier is unwired or nothing is owed.
 func (s *InvoiceService) notifyInvoiceCreated(inv *domain.Invoice) {
-	if s.NotificationService == nil || inv == nil || inv.Total <= 0 {
+	s.sendInvoiceEmail(inv, false)
+}
+
+// notifyUnlessAutoCharged is notifyInvoiceCreated for an invoice the caller is
+// about to charge to any saved card. A "Pay Now" email at that moment invites
+// paying by hand as well. If the charge fails, dunning emails the payment link.
+func (s *InvoiceService) notifyUnlessAutoCharged(inv *domain.Invoice) {
+	s.sendInvoiceEmail(inv, true)
+}
+
+func (s *InvoiceService) sendInvoiceEmail(inv *domain.Invoice, skipIfCardSaved bool) {
+	if s.NotificationService == nil || !invoicePayable(inv) {
 		return
 	}
+	snapshot := *inv
 	safego.Go("invoice.notifyInvoiceCreated", func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		// The caller's context may end first, and repositories need the tenant.
+		ctx, cancel := context.WithTimeout(context.WithValue(context.Background(), domain.TenantIDKey, snapshot.TenantID), 30*time.Second)
 		defer cancel()
-		customer, err := s.CustomerRepo.GetByID(ctx, inv.CustomerID)
-		if err != nil || customer == nil || customer.Email == "" {
+		if skipIfCardSaved {
+			if reader, ok := s.CustomerRepo.(savedMethodReader); ok {
+				stripeCustomerID, methodID, _, err := reader.GetSavedPaymentMethod(ctx, snapshot.CustomerID)
+				if err == nil && stripeCustomerID != "" && methodID != "" {
+					return
+				}
+			}
+		}
+		customer, err := s.CustomerRepo.GetByID(ctx, snapshot.CustomerID)
+		if err != nil || customer == nil {
+			slog.ErrorContext(ctx, "invoice email not sent: customer lookup failed", "error", err, "invoice_id", snapshot.ID)
 			return
 		}
-		if err := s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(inv, customer)); err != nil {
-			slog.ErrorContext(ctx, "failed to send invoice email", "error", err, "invoice_id", inv.ID)
+		if customer.Email == "" {
+			slog.WarnContext(ctx, "invoice email not sent: customer has no email address", "invoice_id", snapshot.ID)
+			return
+		}
+		if err := s.NotificationService.SendInvoiceCreated(ctx, invoiceEmailData(&snapshot, customer)); err != nil {
+			slog.ErrorContext(ctx, "failed to send invoice email", "error", err, "invoice_id", snapshot.ID)
 		}
 	})
 }
@@ -543,7 +588,6 @@ func (s *InvoiceService) generateInvoice(ctx context.Context, sub *domain.Subscr
 	// P25 e-invoicing on the now-committed invoice.
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
-	s.notifyInvoiceCreated(inv) // email the customer their invoice + Pay Now link (best-effort)
 
 	// 6a. Drain the customer's prepaid wallet FIRST (Lago-parity B1, D3
 	// ordering: wallet → adjustment credit notes → gateway). The drain is a
@@ -580,6 +624,14 @@ func (s *InvoiceService) generateInvoice(ctx context.Context, sub *domain.Subscr
 			}
 			slog.InfoContext(ctx, "applied account credit to invoice", "invoice_id", inv.ID, "credit_applied", applied)
 		}
+	}
+
+	// Email the invoice once wallet and credit have reduced what is owed. A
+	// renewal goes on to charge any saved card, so it only emails without one.
+	if renewalKey != "" {
+		s.notifyUnlessAutoCharged(inv)
+	} else {
+		s.notifyInvoiceCreated(inv)
 	}
 
 	// Create the recognition schedule at issuance when EITHER:
@@ -734,7 +786,7 @@ func (s *InvoiceService) GenerateFinalUsageInvoice(ctx context.Context, sub *dom
 
 	s.generateEInvoiceAfterCommit(ctx, inv, customer)
 	s.generateEUEInvoiceAfterCommit(ctx, inv, customer)
-	s.notifyInvoiceCreated(inv) // email the customer their invoice + Pay Now link (best-effort)
+	s.notifyUnlessAutoCharged(inv) // both cancel paths then charge any saved card
 
 	if s.RatingRepo != nil {
 		for _, rating := range ratings {

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -281,5 +282,67 @@ func TestConnectSanitizesPastedSecrets(t *testing.T) {
 		Provider: "gocardless", Mode: "test", SecretKey: "sandbox_tökén",
 	}); err == nil || !IsGatewayConnectionValidationError(err) {
 		t.Fatalf("non-ASCII secret: want validation error, got %v", err)
+	}
+}
+
+func TestConnectStripeRejectsKeysThatCannotWork(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   ConnectInput
+	}{
+		{"live secret in test mode", ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "sk_live_a"}},
+		{"live secret with mode left out", ConnectInput{Provider: "stripe", PublicKey: "pk_test_a", SecretKey: "sk_live_a"}},
+		{"test secret in live mode", ConnectInput{Provider: "stripe", Mode: "live", PublicKey: "pk_live_a", SecretKey: "sk_test_a"}},
+		{"restricted live key in test mode", ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "rk_live_a"}},
+		{"live publishable in test mode", ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_live_a", SecretKey: "sk_test_a"}},
+		{"test publishable in live mode", ConnectInput{Provider: "stripe", Mode: "live", PublicKey: "pk_test_a", SecretKey: "sk_live_a"}},
+		{"publishable key as the secret", ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "pk_test_b"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+			if _, err := svc.Connect(context.Background(), uuid.New(), tc.in); !IsGatewayConnectionValidationError(err) {
+				t.Errorf("err = %v, want a validation error", err)
+			}
+		})
+	}
+}
+
+func TestConnectStripeKeepsTheWorkingConnectionWhenTheNewKeyFails(t *testing.T) {
+	svc := NewGatewayConnectionService(newFakeGatewayConnRepo(), testVault(t))
+	tenant := uuid.New()
+	ctx := context.Background()
+	good := ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "sk_test_good"}
+
+	var checked []string
+	svc.SetStripeKeyChecker(func(_ context.Context, secret string) error {
+		checked = append(checked, secret)
+		if secret != "sk_test_good" {
+			return errors.New("Stripe rejected this secret key")
+		}
+		return nil
+	})
+	before, err := svc.Connect(ctx, tenant, good)
+	if err != nil {
+		t.Fatalf("connect good key: %v", err)
+	}
+
+	_, err = svc.Connect(ctx, tenant, ConnectInput{Provider: "stripe", Mode: "test", PublicKey: "pk_test_a", SecretKey: "sk_test_bad"})
+	if !IsGatewayConnectionValidationError(err) || !strings.Contains(err.Error(), "Stripe rejected") {
+		t.Fatalf("err = %v, want Stripe's rejection as a validation error", err)
+	}
+	active, err := svc.GetActive(ctx, tenant, domain.GatewayStripe)
+	if err != nil || active == nil || active.ID != before.ID {
+		t.Fatalf("active = %+v, err = %v, want the original connection %s", active, err, before.ID)
+	}
+	if len(checked) != 2 {
+		t.Errorf("checked = %v, want both keys", checked)
+	}
+
+	// Razorpay and GoCardless keys aren't Stripe's to judge.
+	if _, err := svc.Connect(ctx, tenant, ConnectInput{Provider: "razorpay", PublicKey: "rzp", SecretKey: "s"}); err != nil {
+		t.Errorf("razorpay: %v", err)
+	}
+	if len(checked) != 2 {
+		t.Errorf("checker ran for another provider: %v", checked)
 	}
 }
